@@ -42,9 +42,10 @@ function useOf(row, unit) {
   return ['other', null];
 }
 
-// Counties live before improved parcels were told apart by what stands on them: they keep counting every improved parcel
-// as a home until the founder turns the new rule on for them (FOUNDER-LIST.md, "Montana: parcels with no home on them").
-const KEEPS_OLD_RULE = new Set(['30031', '30043', '30049', '30057', '30081']);
+// Counties that keep counting every improved parcel as a home (the rule before improved parcels were told apart by what
+// stands on them). Empty since the founder turned the new rule on for the five counties live before it (Nov 14: "turn
+// whatever can be turned on all on"; FOUNDER-LIST.md, "Montana: parcels with no home on them").
+const KEEPS_OLD_RULE = new Set([]);
 const UNITS_IN = { 102: 2, 103: 3, 104: 4 };
 
 /**
