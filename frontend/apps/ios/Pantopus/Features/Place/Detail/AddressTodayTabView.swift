@@ -34,6 +34,9 @@ struct AddressTodayTabView: View {
     @State private var resolvedUserID: String?
     /// Needs you (AI phase 3): one list for the tab, whichever view shows it.
     @State private var needsYou = TodayNeedsYouModel()
+    /// Around you (2026-11-14): Today's second half for the place shown, and which half shows.
+    @State private var aroundYou = TodayAroundYouModel()
+    @State private var half: TodayHalf = .home
 
     init(onAddHome: @escaping () -> Void) {
         self.onAddHome = onAddHome
@@ -55,6 +58,10 @@ struct AddressTodayTabView: View {
             .task(id: resolveKey) {
                 if rootTabs.selected == .today { await needsYou.load() }
             }
+            // Around you reads once the place is known, and again each time Today shows.
+            .task(id: aroundKey) {
+                if rootTabs.selected == .today { await aroundYou.load(for: detail) }
+            }
             .refreshesOnStoreChange(onBackground: discardTemporaryPlace) {
                 guard rootTabs.selected == .today else { return }
                 await resolveHome()
@@ -68,6 +75,16 @@ struct AddressTodayTabView: View {
 
     private var resolveKey: String {
         "\(rootTabs.selected)|\(currentUserID ?? "")"
+    }
+
+    private var aroundKey: String {
+        "\(resolveKey)|\(detail?.identity ?? "")"
+    }
+
+    /// Around you shows only while the server has something for this place;
+    /// without it Today is the page it was.
+    private var showsAround: Bool {
+        half == .around && aroundYou.available && detail != nil
     }
 
     private var currentUserID: String? {
@@ -88,15 +105,22 @@ struct AddressTodayTabView: View {
     /// The side menu first, then the title, date and address, and the chat
     /// button at the end (founder decisions 2026-10-20 and 2026-11-08).
     private var header: some View {
-        HStack(alignment: .top, spacing: Spacing.s1) {
-            NavigationMenuButton(accessibilityIdentifier: "today.menu")
-                .padding(.top, -Spacing.s2)
-            titleBlock
-            MessagesButton(accessibilityIdentifier: "today.chat")
-                .padding(.top, -Spacing.s2)
+        VStack(spacing: Spacing.s2) {
+            HStack(alignment: .top, spacing: Spacing.s1) {
+                NavigationMenuButton(accessibilityIdentifier: "today.menu")
+                    .padding(.top, -Spacing.s2)
+                titleBlock
+                MessagesButton(accessibilityIdentifier: "today.chat")
+                    .padding(.top, -Spacing.s2)
+            }
+            .padding(.leading, Spacing.s1)
+            .padding(.trailing, Spacing.s2)
+            // At home | Around you, only where there is something around to show.
+            if aroundYou.available, detail != nil {
+                TodayHalfSwitch(half: $half)
+                    .padding(.horizontal, Spacing.s4)
+            }
         }
-        .padding(.leading, Spacing.s1)
-        .padding(.trailing, Spacing.s2)
         .padding(.vertical, 10)
     }
 
@@ -141,8 +165,23 @@ struct AddressTodayTabView: View {
         return .autoupdatingCurrent
     }
 
-    @ViewBuilder
+    /// Today's page: At home stays in place under Around you, so coming back
+    /// to it is instant and keeps where it was scrolled.
     private var content: some View {
+        ZStack(alignment: .top) {
+            atHome
+                .opacity(showsAround ? 0 : 1)
+                .allowsHitTesting(!showsAround)
+                .accessibilityHidden(showsAround)
+            if showsAround, let page = aroundYou.page {
+                TodayAroundYouPage(page: page) { await aroundYou.load(for: detail) }
+                    .background(Theme.Color.appBg)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var atHome: some View {
         if !resolved {
             TodaySkeleton()
         } else if let detail {
