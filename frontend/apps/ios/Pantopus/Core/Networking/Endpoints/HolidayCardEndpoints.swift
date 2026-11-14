@@ -69,6 +69,13 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .post, path: "/api/mailbox/cards/shared", body: body)
     }
 
+    /// `GET /api/mailbox/cards/share-video/:design` — route `backend/routes/mailbox.js` (next to `POST /cards/shared`).
+    /// The video a card shares as (the server's launch key `card_share_video`; 404 while it's off): the picture's card
+    /// arriving on the table, the same for everyone, with no note or name in it.
+    public static func shareVideo(design: String) -> Endpoint {
+        Endpoint(method: .get, path: "/api/mailbox/cards/share-video/\(design)")
+    }
+
     /// `GET /api/mailbox/cards/:id/link`: the link again, for its sender, while it waits. 409 with the reason otherwise.
     public static func link(cardId: String) -> Endpoint {
         Endpoint(method: .get, path: "/api/mailbox/cards/\(cardId)/link")

@@ -326,7 +326,7 @@ public struct HolidayCardSharedBody: Encodable, Sendable {
     public let design: String
     /// `instagram`, `facebook`, `email`, `link`, `save` or `more`.
     public let kind: String
-    /// `story`, `post` or `link`.
+    /// `story`, `post`, `link` or `video`.
     public let format: String
     public let withNote: Bool
 
@@ -334,6 +334,13 @@ public struct HolidayCardSharedBody: Encodable, Sendable {
         case design, kind, format
         case withNote = "with_note"
     }
+}
+
+/// `GET /api/mailbox/cards/share-video/:design`: where the picture's share video is (public storage), and its size.
+public struct HolidayCardShareVideo: Decodable, Sendable, Hashable {
+    public let url: String
+    public let width: Int?
+    public let height: Int?
 }
 
 public struct SendHolidayCardBody: Encodable, Sendable {
