@@ -44,6 +44,8 @@ import ChristmasCountdown from '@/components/mailbox/cards/ChristmasCountdown';
 import SunCard from '@/components/sky/SunCard';
 import { ADDRESS_FIRST_PATH, TodayAreaAddAddress, TodayAreaStart } from '@/components/hub/TodayAreaCards';
 import { useMe } from '@/lib/me';
+import { AroundYouPanel, TodayHalfSwitch } from '@/components/hub/AroundYou';
+import { aroundYouQuery, type TodayHalf } from '@/lib/aroundYou';
 import {
   AREA_REREAD_MS,
   areaSunData,
@@ -220,6 +222,20 @@ export default function HubTodayPage() {
 
   // The briefing shown: your place's, else your area's city, fed through the same page.
   const briefing = today && today.display_mode !== 'hidden' ? today : areaBriefing;
+  // Around you, Today's second half (2026-11-14): local headlines for the place this briefing is about. The switch
+  // shows only when the server has something to show; "At home" is the page as it was.
+  const around = useQuery({
+    ...aroundYouQuery(areaView ? userId : null, areaView && keptArea ? keptArea : null),
+    enabled: hasToken && !!briefing,
+  });
+  const [half, setHalf] = useState<TodayHalf>('home');
+  const aroundData = briefing && around.data?.available ? around.data : null;
+  const showAround = !!aroundData && half === 'around';
+  // "3 hr ago" follows this browser's clock, read when the half opens or its answer changes.
+  const [aroundNow, setAroundNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (showAround) setAroundNow(Date.now());
+  }, [showAround, around.dataUpdatedAt]);
   // The Weather box's sky: the briefing's own weather, sun times and clock. The kind of home comes from your primary
   // home, which the page already holds (first content, or the shell's read), when the briefing is about that home.
   // Guests and service providers get the scene's first house, as on the apps, where the Your Home section isn't theirs.
@@ -266,7 +282,8 @@ export default function HubTodayPage() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([query.refetch(), claim ? claimTodayQuery.refetch() : null, areaView ? areaQuery.refetch() : null]);
+      await Promise.all([query.refetch(), claim ? claimTodayQuery.refetch() : null, areaView ? areaQuery.refetch() : null,
+        aroundData ? around.refetch() : null]);
     } finally { setRefreshing(false); }
   };
 
@@ -298,6 +315,11 @@ export default function HubTodayPage() {
           </button>
         </div>
 
+        {aroundData ? <TodayHalfSwitch half={half} onChange={setHalf} /> : null}
+        {showAround && aroundData ? <AroundYouPanel data={aroundData} now={hydrated ? aroundNow : null} /> : null}
+
+        {/* At home: Today as it was. It stays mounted under Around you, so coming back is instant. */}
+        <div className={showAround ? 'hidden' : undefined} data-testid="todayAtHome">
         {/* Loading skeleton */}
         {loading && (
           <div className="rounded-2xl border border-app bg-surface dark:bg-surface-dark p-6 animate-pulse space-y-5">
@@ -594,6 +616,7 @@ export default function HubTodayPage() {
             )}
           </div>
         )}
+        </div>
       </div>
 
       {showLocationPicker && (

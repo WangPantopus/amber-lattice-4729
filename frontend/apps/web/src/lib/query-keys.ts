@@ -16,6 +16,10 @@ export const queryKeys = {
   todayArea: (userId: string | null, latitude: number | null, longitude: number | null) =>
     ['hub', 'today-area', userId, latitude, longitude] as const,
 
+  /** Around you, Today's second half: the hub's place (no point) or the kept area's (lib/aroundYou.ts). */
+  aroundYou: (userId: string | null, latitude: number | null, longitude: number | null) =>
+    ['hub', 'around', userId, latitude, longitude] as const,
+
   // ── Feed ───────────────────────────────────────────────────
   feed: (surface: string, filter: string) =>
     ['feed', surface, filter] as const,
