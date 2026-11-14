@@ -734,6 +734,25 @@ router.get('/today', verifyToken, async (req, res) => {
 });
 
 // ============================================================
+// GET /api/hub/today/around
+// Around you (Today's second half) for the place GET /today resolves for the
+// viewer: local headlines that link to their outlets
+// (services/aroundYouService.js). `available` false means no switch shows.
+// ============================================================
+router.get('/today/around', verifyToken, async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  try {
+    const { resolveLocation } = require('../services/context/locationResolver');
+    const { aroundYou, EMPTY } = require('../services/aroundYouService');
+    const location = await resolveLocation(req.user.id);
+    return res.json(location.source === 'none' ? EMPTY : await aroundYou(location));
+  } catch (err) {
+    logger.error('Hub around error', { error: err.message, userId: req.user.id });
+    return res.status(500).json({ error: 'Failed to load what is around you' });
+  }
+});
+
+// ============================================================
 // GET /api/hub/briefings/:id
 // Saved daily/evening briefing delivery detail for notification taps.
 // ============================================================
