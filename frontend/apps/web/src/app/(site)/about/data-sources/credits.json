@@ -134,7 +134,7 @@
           "license": "Open Database License (ODbL) 1.0",
           "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
           "dataset": "Tax Parcels (bedrooms and baths)",
-          "statement": "Contains information from Dakota County's Tax Parcels, made available under the Open Database License (ODbL) 1.0; its contents are under the Database Contents License. Dakota County GIS Database Disclaimer: the GIS data are provided as is and without any warranty as to their performance, merchantability or fitness for any particular purpose; Dakota County does not represent or warrant that they are error-free, complete, current or accurate; the full disclaimer and metadata are at the link above."
+          "statement": "Contains information from Dakota County's Tax Parcels, made available under the Open Database License (ODbL) 1.0; its contents are under the Database Contents License. Dakota County GIS Database Disclaimer: the GIS data are provided as is and without any warranty as to their performance, merchantability or fitness for any particular purpose; Dakota County does not represent or warrant that they are error-free, complete, current or accurate; the full disclaimer and metadata are at the link above. Pantopus's Dakota County records are available under the ODbL on request."
         },
         {
           "id": "nc-onemap",
