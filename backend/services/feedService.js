@@ -9,6 +9,7 @@
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { GeoCache } = require('../utils/geoCache');
+const { aroundYouEnabled } = require('../utils/featureFlags');
 const { personaPostVisibleToViewer } = require('../utils/personaPostVisibility');
 const {
   applyLocationPrecision,
@@ -1382,6 +1383,9 @@ async function getListFeed({
     if (topic) query = query.eq('topic', topic);
     // 7. tags filter
     if (tags?.length) query = query.overlaps('tags', tags);
+    // 7b. Around you (2026-11-14): local news lives on Today, so the curator account's posts stay out of the Pulse
+    // list. The Sports lane (above) keeps its own.
+    if (surface === 'place' && aroundYouEnabled()) query = query.neq('origin', 'curator');
     return query;
   };
 
@@ -2002,6 +2006,8 @@ async function loadMapPosts({
 
   if (postType) query = query.eq('post_type', postType);
   query = graph ? connectionPostsQuery(query, graph) : query.overlaps('distribution_targets', ['place']);
+  // Around you (2026-11-14): the curator account's posts stay off the Pulse map, as off its list.
+  if (!graph && aroundYouEnabled()) query = query.neq('origin', 'curator');
 
   const { data, error } = await query;
   if (error) {
