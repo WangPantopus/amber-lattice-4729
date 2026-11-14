@@ -46,6 +46,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.asImageBitmap
@@ -77,8 +79,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -93,6 +100,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.min
 
 /** The ways out of the sheet, by the name the counts keep them under. */
@@ -147,6 +156,9 @@ private fun ShareSheetBody(
     val picture = rememberCardPicture(card.design, wanted = !card.sealed)
     val pieces = SharePieces(tableArt, faceArt, picture)
     val drawn = rememberSharePicture(card, format, showNote, pieces)
+    // The picture's video (the server's launch key card_share_video): Picture | Video shows only when there is one.
+    val film = rememberShareFilm(card, viewModel) { say = it }
+    val showsVideo = film.video && film.url != null
     Box(
         modifier =
             Modifier
@@ -181,24 +193,33 @@ private fun ShareSheetBody(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SheetHead(if (card.sealed) "Share the sealed card" else "Share this card", onClose)
-                SharePreview(format, drawn)
-                SizeChoice(format) {
-                    formatKey = it.key
-                    say = ""
-                }
-                if (!card.sealed && format != ShareFormat.Link) {
-                    NoteSwitch(card, mine, showNote) { showNote = it }
-                }
-                ActionTiles(
-                    canDraw = drawn !is SharePictureState.Failed,
-                    canDrawAll = picture !is CardPictureState.Failed,
-                ) { action ->
-                    if (action == ShareAction.All) say = "Drawing the pictures…"
-                    scope.launch {
-                        say = runAction(context, viewModel, card, mine, format, showNote, drawn, action) { pieces.drawSet(card, showNote) }
+                if (film.url != null) ModeChoice(film) { say = "" }
+                if (showsVideo) {
+                    VideoPart(film) { action -> scope.launch { say = runVideoAction(context, viewModel, card, film.file, action) } }
+                } else {
+                    SharePreview(format, drawn)
+                    SizeChoice(format) {
+                        formatKey = it.key
+                        say = ""
+                    }
+                    if (!card.sealed && format != ShareFormat.Link) {
+                        NoteSwitch(card, mine, showNote) { showNote = it }
+                    }
+                    ActionTiles(
+                        canDraw = drawn !is SharePictureState.Failed,
+                        canDrawAll = picture !is CardPictureState.Failed,
+                    ) { action ->
+                        if (action == ShareAction.All) say = "Drawing the pictures…"
+                        scope.launch {
+                            say =
+                                runAction(context, viewModel, card, mine, format, showNote, drawn, action) {
+                                    pieces.drawSet(card, showNote)
+                                }
+                        }
                     }
                 }
-                SayLine(say, drawn)
+                // The picture's own trouble isn't the video's: only what the last tile did shows under the video.
+                SayLine(say, drawn.takeUnless { showsVideo } ?: SharePictureState.Drawing)
             }
         }
     }
@@ -868,4 +889,245 @@ private suspend fun saveToGallery(
                 resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
             }.isSuccess
         if (saved) "Saved to your gallery." else "Couldn't save the picture. Check that your phone has free space, then try again."
+    }
+
+/** Picture or Video at the top of the sheet, only when the picture has a video; [onSwitch] clears the last message. */
+@Composable
+private fun ModeChoice(
+    film: ShareFilm,
+    onSwitch: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.tableCream8)
+                .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        listOf(false to "Picture", true to "Video").forEach { (isVideo, label) ->
+            val chosen = isVideo == film.video
+            Box(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (chosen) PantopusColors.tableCream14 else PantopusColors.tableCream8.copy(alpha = 0f))
+                        .clickable(role = Role.Button) {
+                            film.video = isVideo
+                            onSwitch()
+                        }
+                        .semantics { selected = chosen }
+                        .testTag(if (isVideo) "cardShareMode.video" else "cardShareMode.picture"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    fontSize = 13.5.sp,
+                    fontWeight = if (chosen) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (chosen) PantopusColors.tableCream else PantopusColors.tableCreamSoft,
+                )
+            }
+        }
+    }
+}
+
+/** The picture's video: where it is in public storage, and the file on this phone once fetched. */
+private class ShareFilm {
+    /** Video is chosen over Picture. */
+    var video by mutableStateOf(false)
+    var url by mutableStateOf<String?>(null)
+    var file by mutableStateOf<File?>(null)
+    var failed by mutableStateOf(false)
+    val settled: Boolean get() = file != null || failed
+}
+
+private const val FILM_DESCRIPTION = "The video that will be shared: the card arriving and opening, with no note or name in it"
+
+/** Asks whether the picture has a video, and fetches the file once Video is chosen; [onFailed] says why not. */
+@Composable
+private fun rememberShareFilm(
+    card: CardOnTable,
+    viewModel: CardShareViewModel,
+    onFailed: (String) -> Unit,
+): ShareFilm {
+    val context = LocalContext.current
+    val film = remember(card.id) { ShareFilm() }
+    LaunchedEffect(card.id) { film.url = viewModel.shareVideoUrl(card) }
+    LaunchedEffect(film.video, film.url) {
+        val source = film.url
+        if (!film.video || source == null || film.settled) return@LaunchedEffect
+        film.file = downloadFilm(context, source, card.design)
+        if (film.file == null) {
+            film.failed = true
+            onFailed("We couldn't load the video. Check your connection, or copy the link instead.")
+        }
+    }
+    return film
+}
+
+/** The video's part of the sheet: the film playing, what's in it, and where it can go. */
+@Composable
+private fun VideoPart(
+    film: ShareFilm,
+    onAction: (ShareAction) -> Unit,
+) {
+    FilmPreview(film.file?.let { Uri.fromFile(it) } ?: Uri.parse(film.url))
+    Text(
+        "The card arriving and opening, with the paper sounds. Nobody's note or name is in it.",
+        fontSize = 12.5.sp,
+        lineHeight = 1.35.em,
+        color = PantopusColors.tableCreamFaint,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    VideoTiles(ready = film.settled, onAction = onAction)
+}
+
+/** The share video playing in the sheet: muted, looping, no controls. */
+@Composable
+private fun FilmPreview(source: Uri) {
+    val context = LocalContext.current
+    val tall = LocalConfiguration.current.screenHeightDp * 0.46f
+    val player =
+        remember(source) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(source))
+                repeatMode = Player.REPEAT_MODE_ONE
+                volume = 0f
+                playWhenReady = true
+                prepare()
+            }
+        }
+    DisposableEffect(player) { onDispose { player.release() } }
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val shape = RoundedCornerShape(8.dp)
+        AndroidView(
+            factory = { PlayerView(it).apply { useController = false } },
+            update = { it.player = player },
+            modifier =
+                Modifier
+                    .height(min(tall, 430f).dp)
+                    .aspectRatio(9f / 16f)
+                    .shadow(13.dp, shape)
+                    .clip(shape)
+                    .background(PantopusColors.tableNight)
+                    .semantics { contentDescription = FILM_DESCRIPTION }
+                    .testTag("cardShareVideoPreview"),
+        )
+    }
+}
+
+/** The video's ways out: Instagram, Facebook, Save, More and Copy link. */
+@Composable
+private fun VideoTiles(
+    ready: Boolean,
+    onAction: (ShareAction) -> Unit,
+) {
+    val tiles =
+        buildList {
+            add(ShareAction.Instagram)
+            add(ShareAction.Facebook)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(ShareAction.Save)
+            add(ShareAction.More)
+            add(ShareAction.Link)
+        }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        tiles.forEach { action ->
+            val usable = ready || action == ShareAction.Link
+            ActionTile(action, { if (usable) onAction(it) }, Modifier.weight(1f).alpha(if (usable) 1f else 0.45f))
+        }
+    }
+}
+
+/** Fetches the video into the shared cache folder, once; null when it couldn't. */
+private suspend fun downloadFilm(
+    context: Context,
+    source: String,
+    design: String,
+): File? =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val folder = File(context.cacheDir, "card-share-video").apply { mkdirs() }
+            val file = File(folder, "pantopus-christmas-card-$design.mp4")
+            if (file.length() > 0) return@runCatching file
+            val part = File(folder, "$design.part")
+            val connection = URL(source).openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                check(connection.responseCode == HttpURLConnection.HTTP_OK) { "status ${connection.responseCode}" }
+                connection.inputStream.use { input -> part.outputStream().use { input.copyTo(it) } }
+            } finally {
+                connection.disconnect()
+            }
+            check(part.renameTo(file)) { "rename" }
+            file
+        }.getOrNull()
+    }
+
+/** Does what the video's tile says, and answers with what to tell the person. */
+private suspend fun runVideoAction(
+    context: Context,
+    viewModel: CardShareViewModel,
+    card: CardOnTable,
+    file: File?,
+    action: ShareAction,
+): String {
+    viewModel.shared(card.design, action.key, "video", false)
+    if (action == ShareAction.Link) {
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Card link", viewModel.cardPageLink(card)))
+        return "Link copied."
+    }
+    file ?: return "We couldn't load the video. You can copy the link instead."
+    if (action == ShareAction.Save) return saveVideoToGallery(context, file)
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val send =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "video/mp4"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("Christmas card", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (action == ShareAction.More) putExtra(Intent.EXTRA_TEXT, viewModel.cardPageLink(card))
+        }
+    return try {
+        val app =
+            when (action) {
+                ShareAction.Instagram -> INSTAGRAM
+                ShareAction.Facebook -> FACEBOOK
+                else -> null
+            }
+        val direct = app?.let { Intent(send).setPackage(it) }?.takeIf { it.resolveActivity(context.packageManager) != null }
+        context.startActivity(direct ?: Intent.createChooser(send, "Share this card"))
+        ""
+    } catch (_: ActivityNotFoundException) {
+        "No app on this phone can take this video. You can copy the link instead."
+    }
+}
+
+/** Saves the video to the gallery (Movies/Pantopus). A half-written file is never left behind. */
+private suspend fun saveVideoToGallery(
+    context: Context,
+    file: File,
+): String =
+    withContext(NonCancellable + Dispatchers.IO) {
+        val saved =
+            runCatching {
+                val values =
+                    ContentValues().apply {
+                        put(MediaStore.Video.Media.DISPLAY_NAME, "pantopus-christmas-card-${System.currentTimeMillis()}.mp4")
+                        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                        put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Pantopus")
+                        put(MediaStore.Video.Media.IS_PENDING, 1)
+                    }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("no row")
+                resolver.openOutputStream(uri)?.use { output -> file.inputStream().use { it.copyTo(output) } } ?: error("no stream")
+                resolver.update(uri, ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }, null, null)
+            }.isSuccess
+        if (saved) "Saved to your gallery." else "Couldn't save the video. Check that your phone has free space, then try again."
     }

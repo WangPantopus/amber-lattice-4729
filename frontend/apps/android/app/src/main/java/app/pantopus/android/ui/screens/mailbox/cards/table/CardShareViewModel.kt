@@ -30,6 +30,9 @@ class CardShareViewModel
             return InviteLinks.publicPageUrl(path + (code?.let { "?ref=${Uri.encode(it)}" }.orEmpty()))
         }
 
+        /** The picture's share video, or null while the server has none. A sealed card never asks. */
+        suspend fun shareVideoUrl(card: CardOnTable): String? = if (card.sealed) null else cards.shareVideoUrl(card.design)
+
         /** Tells the server's counts what was shared, if it can; a failure here never gets in the way. */
         fun shared(
             design: String,

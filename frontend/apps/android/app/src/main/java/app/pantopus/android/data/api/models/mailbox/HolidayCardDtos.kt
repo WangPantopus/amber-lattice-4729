@@ -300,13 +300,21 @@ data class SendHolidayCardBody(
     val voice: String? = null,
 )
 
+/** `GET /api/mailbox/cards/share-video/:design` (the server's launch key `card_share_video`): where the picture's video is. */
+@JsonClass(generateAdapter = true)
+data class HolidayCardShareVideo(
+    val url: String,
+    val width: Int? = null,
+    val height: Int? = null,
+)
+
 /** `POST /api/mailbox/cards/shared` (launch key `card_table`): what was shared, for the counts; never the note or a name. */
 @JsonClass(generateAdapter = true)
 data class HolidayCardSharedBody(
     val design: String,
     /** `instagram`, `facebook`, `email`, `link`, `save` or `more`. */
     val kind: String,
-    /** `story`, `post` or `link`. */
+    /** `story`, `post`, `link` or `video`. */
     val format: String,
     @Json(name = "with_note") val withNote: Boolean,
 )
