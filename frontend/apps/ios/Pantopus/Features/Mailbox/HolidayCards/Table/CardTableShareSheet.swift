@@ -5,13 +5,9 @@
 //  Share opens a sheet over the table (launch key `card_table`): a picture
 //  preview, then the size, the switch, and the actions. Actions the phone can't do
 //  are hidden. If a picture can't be drawn it says so and offers Copy link.
-//  A card that isn't sealed can also go as a video of it arriving (the server's
-//  launch key `card_share_video`): one film per picture, made ahead, with no
-//  note or name in it. The sheet asks for it and shows Picture | Video only
-//  when the server has one.
+//  Picture | Video shows when the server has the picture's video (CardTableShareVideo.swift).
 //
 
-import AVFoundation
 import Photos
 import SwiftUI
 import UIKit
@@ -46,6 +42,7 @@ enum CardTableShareLinks {
     }
 }
 
+// swiftlint:disable:next type_body_length
 struct CardTableShareSheet: View {
     let content: CardTableContent
     let art: CardTableArt
@@ -61,11 +58,7 @@ struct CardTableShareSheet: View {
     @State private var request: SystemSheetRequest?
     @State private var contentHeight: CGFloat = 0
     @State private var mode: CardShareMode = .picture
-    /// The picture's video in public storage, once the server says there is one.
     @State private var filmURL: URL?
-    /// The video on this phone, once it has been fetched for sharing.
-    @State private var filmFile: URL?
-    @State private var filmFailed = false
     @ScaledMetric(relativeTo: .title2) private var titleSize: CGFloat = 21
     @ScaledMetric(relativeTo: .footnote) private var sizeLabel: CGFloat = 13.5
     @ScaledMetric(relativeTo: .subheadline) private var noteTitle: CGFloat = 14.5
@@ -90,23 +83,13 @@ struct CardTableShareSheet: View {
         ScrollView {
             VStack(spacing: 12) {
                 header
-                if filmURL != nil {
-                    modeChoice
-                }
-                if showsVideo {
-                    filmPreview
-                    Text("The card arriving and opening, with the paper sounds. Nobody’s note or name is in it.")
-                        .font(.system(size: noteLine))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(MailPaper.tableCreamFaint)
-                        .frame(maxWidth: .infinity)
-                    videoActions
+                if filmURL != nil { CardShareModeChoice(mode: $mode) }
+                if let filmURL, mode == .video {
+                    CardShareVideoSection(content: content, filmURL: filmURL, cardPage: cardPage, say: $say, request: $request)
                 } else {
                     preview
                     sizes
-                    if !content.sealed, format != .link {
-                        noteRow
-                    }
+                    if !content.sealed, format != .link { noteRow }
                     actions
                 }
                 if let say {
@@ -133,8 +116,7 @@ struct CardTableShareSheet: View {
         .preferredColorScheme(.dark)
         .sheet(item: $request) { $0.makeView() }
         .task(id: key) { draw() }
-        .task { await findFilm() }
-        .task(id: mode) { if mode == .video { await fetchFilm() } }
+        .task { filmURL = await CardShareVideoSection.find(content) }
         .accessibilityIdentifier("cardShareSheet")
     }
 
@@ -273,118 +255,6 @@ struct CardTableShareSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("cardShareAction.\(identifier)")
-    }
-
-    // MARK: Video
-
-    private var showsVideo: Bool {
-        mode == .video && filmURL != nil
-    }
-
-    private var modeChoice: some View {
-        HStack(spacing: 3) {
-            ForEach(CardShareMode.allCases) { each in
-                Button {
-                    mode = each
-                    say = nil
-                } label: {
-                    Text(each.title)
-                        .font(.system(size: sizeLabel, weight: each == mode ? .semibold : .regular))
-                        .foregroundStyle(each == mode ? MailPaper.tableCream : MailPaper.tableCreamSoft)
-                        .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(
-                            each == mode ? MailPaper.tableCream.opacity(0.14) : .clear,
-                            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(each == mode ? [.isButton, .isSelected] : .isButton)
-                .accessibilityIdentifier("cardShareMode.\(each.rawValue)")
-            }
-        }
-        .padding(3)
-        .background(MailPaper.tableCream.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var filmPreview: some View {
-        let height = min(UIScreen.main.bounds.height * 0.46, 430)
-        return Group {
-            if let source = filmFile ?? filmURL {
-                CardShareFilmView(url: source)
-                    .aspectRatio(9 / 16, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: .black.opacity(0.5), radius: 13, x: 0, y: 8)
-                    .accessibilityElement()
-                    .accessibilityLabel("The video to share: the card arriving and opening, with no note or name in it.")
-                    .accessibilityIdentifier("cardShareVideoPreview")
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: height)
-    }
-
-    private var videoActions: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
-            action("Instagram", identifier: "instagram", glyph: AnyView(CardShareInstagramGlyph())) { shareFilm(kind: "instagram") }
-            action("Facebook", identifier: "facebook", glyph: AnyView(CardShareFacebookGlyph())) { shareFilm(kind: "facebook") }
-            action("Save", identifier: "save", glyph: icon(.download)) { saveFilm() }
-            action("More", identifier: "more", glyph: icon(.moreHorizontal)) { shareFilm(kind: "more") }
-            action("Copy link", identifier: "link", glyph: icon(.link)) { copyLink() }
-        }
-        .disabled(filmFile == nil && !filmFailed)
-        .opacity(filmFile == nil && !filmFailed ? 0.45 : 1)
-    }
-
-    /// Whether this picture has a video: the server answers only while `card_share_video` is on. A sealed card never asks.
-    private func findFilm() async {
-        guard !content.sealed, filmURL == nil else { return }
-        let answer: HolidayCardShareVideo? = try? await APIClient.shared.request(HolidayCardEndpoints.shareVideo(design: content.design))
-        if let answer, let url = URL(string: answer.url) { filmURL = url }
-    }
-
-    /// The file on this phone, so a button can hand it on straight from the press.
-    private func fetchFilm() async {
-        guard let filmURL, filmFile == nil else { return }
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("card-share", isDirectory: true)
-        let target = folder.appendingPathComponent("pantopus-christmas-card-\(content.design).mp4")
-        if FileManager.default.fileExists(atPath: target.path) {
-            filmFile = target
-            return
-        }
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let (downloaded, response) = try await URLSession.shared.download(from: filmURL)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-            try? FileManager.default.removeItem(at: target)
-            try FileManager.default.moveItem(at: downloaded, to: target)
-            filmFile = target
-        } catch {
-            filmFailed = true
-            say = "We couldn’t load the video. Check your connection, or copy the link instead."
-        }
-    }
-
-    private func shareFilm(kind: String) {
-        guard let filmFile else { return }
-        if kind != "more", let url = CardShareStories.video(filmFile, to: kind, page: cardPage) {
-            countVideo(kind)
-            openURL(url)
-            return
-        }
-        countVideo(kind)
-        request = .share(items: [filmFile, kind == "more" ? cardPage : nil].compactMap { $0 })
-    }
-
-    private func saveFilm() {
-        guard let filmFile else { return }
-        countVideo("save")
-        Task { @MainActor in say = await CardShareStories.saveVideo(filmFile) }
-    }
-
-    private func countVideo(_ kind: String) {
-        let body = HolidayCardSharedBody(design: content.design, kind: kind, format: "video", withNote: false)
-        Task { _ = try? await APIClient.shared.request(HolidayCardEndpoints.shared(body)) }
     }
 
     // MARK: Drawing
@@ -542,35 +412,6 @@ enum CardShareStories {
         return url
     }
 
-    /// A video to a new Story in one tap, where the phone has the app and this build has a Meta app ID.
-    static func video(_ file: URL, to app: String, page: String) -> URL? {
-        guard let id = CardTableShareLinks.metaAppID, let data = try? Data(contentsOf: file) else { return nil }
-        let scheme = app == "instagram" ? "instagram-stories" : app == "facebook" ? "facebook-stories" : nil
-        guard let scheme, let url = URL(string: "\(scheme)://share?source_application=\(id)"),
-              UIApplication.shared.canOpenURL(url) else { return nil }
-        let item: [String: Any] = app == "instagram"
-            ? ["com.instagram.sharedSticker.backgroundVideo": data, "com.instagram.sharedSticker.contentURL": page]
-            : ["com.facebook.sharedSticker.backgroundVideo": data, "com.facebook.sharedSticker.appID": id]
-        UIPasteboard.general.setItems([item], options: [.expirationDate: Date().addingTimeInterval(300)])
-        return url
-    }
-
-    /// Saves the video to Photos, and says how it went.
-    static func saveVideo(_ file: URL) async -> String {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        guard status == .authorized || status == .limited else {
-            return "Pantopus can’t save to your photos. You can allow it in Settings, under Privacy & Security, Photos."
-        }
-        do {
-            try await PHPhotoLibrary.shared().performChanges {
-                _ = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: file)
-            }
-            return "Saved to your photos."
-        } catch {
-            return "We couldn’t save it to your photos. Check that there’s room on your phone, then try again."
-        }
-    }
-
     /// Saves to Photos, and says how it went.
     static func save(_ image: UIImage) async -> String {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
@@ -642,65 +483,5 @@ struct CardShareFacebookGlyph: View {
         }
         .frame(width: 22, height: 22)
         .accessibilityHidden(true)
-    }
-}
-
-/// Picture or Video at the top of the share sheet (only when the picture has a video).
-enum CardShareMode: String, CaseIterable, Identifiable {
-    case picture
-    case video
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .picture: "Picture"
-        case .video: "Video"
-        }
-    }
-}
-
-/// The share video playing in the sheet: muted, looping, no controls.
-struct CardShareFilmView: UIViewRepresentable {
-    let url: URL
-
-    func makeUIView(context: Context) -> FilmLayerView {
-        let view = FilmLayerView()
-        view.play(url)
-        return view
-    }
-
-    func updateUIView(_ view: FilmLayerView, context: Context) {
-        if view.playing != url { view.play(url) }
-    }
-
-    static func dismantleUIView(_ view: FilmLayerView, coordinator: ()) {
-        view.stop()
-    }
-
-    final class FilmLayerView: UIView {
-        override static var layerClass: AnyClass { AVPlayerLayer.self }
-        private var looper: AVPlayerLooper?
-        private var player: AVQueuePlayer?
-        private(set) var playing: URL?
-
-        func play(_ url: URL) {
-            stop()
-            let player = AVQueuePlayer()
-            player.isMuted = true
-            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
-            (layer as? AVPlayerLayer)?.player = player
-            (layer as? AVPlayerLayer)?.videoGravity = .resizeAspect
-            player.play()
-            self.player = player
-            playing = url
-        }
-
-        func stop() {
-            player?.pause()
-            looper = nil
-            player = nil
-            playing = nil
-        }
     }
 }
