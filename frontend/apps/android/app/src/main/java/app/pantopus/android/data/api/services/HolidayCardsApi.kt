@@ -136,7 +136,7 @@ interface HolidayCardsApi {
     @GET("api/mailbox/cards/share-video/{design}")
     suspend fun shareVideo(
         @Path("design") design: String,
-    ): Response<HolidayCardShareVideo>
+    ): HolidayCardShareVideo
 
     /** `POST /api/mailbox/cards/shared` — counts what was shared (launch key `card_table`). Answers 204. */
     @POST("api/mailbox/cards/shared")

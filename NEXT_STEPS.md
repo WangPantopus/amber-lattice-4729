@@ -353,7 +353,7 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] Picture | Video at the top of "Share this card" on web, iPhone and Android, for a card that isn't sealed. Video plays the picture's film in the sheet, with Instagram, Facebook, Save, More and Copy link. A sealed card stays picture-only.
 - [x] One 12-second video per picture (67), filmed from the real web card table with its paper sounds: "For you" from "Pantopus" on the envelope, the invitation on the back, a "PANTOPUS POST" slip at the end.
 - [x] A new launch key, `card_share_video`, on the server only, which needs `mailbox`, `holiday_cards` and `card_table` on too. It starts off. No new table and no migration. The videos live in the server's public file storage under `card-videos/v1/`.
-- [ ] **Founder:** switch `card_share_video` on (staging first, then production), after checking the videos are in that server's storage.
+- [ ] **Founder:** put the 67 videos into each server's storage, then switch `card_share_video` on there (staging first, then production). From the Mac, once that server runs a release with this change: `scripts/deploy/upload-card-videos.sh ec2-user@<host> <backend container>` (it shows a dry run and asks first; SSH key options go in `SSH_OPTS`). The films are in `test-results/card-videos/` of the build worktree and in the launch kit's `streams/CARDVID/videos/`; `frontend/apps/web/scripts/film-card-videos.cjs` makes them again in about 40 minutes.
 - [ ] **Founder:** the phones get the Video choice with the next iPhone and Android store builds; the web has it once `dev` is promoted.
 - [ ] Not built: a sealing video for the sender, and the video on the public card page (`/cards/<name>`).
 

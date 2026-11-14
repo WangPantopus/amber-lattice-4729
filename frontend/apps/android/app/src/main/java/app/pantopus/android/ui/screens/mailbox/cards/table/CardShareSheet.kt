@@ -158,21 +158,8 @@ private fun ShareSheetBody(
     val drawn = rememberSharePicture(card, format, showNote, pieces)
     // The picture's video (the server's launch key card_share_video): Picture | Video shows only when there is one.
     var video by rememberSaveable(card.id) { mutableStateOf(false) }
-    var filmUrl by remember(card.id) { mutableStateOf<String?>(null) }
-    var filmFile by remember(card.id) { mutableStateOf<File?>(null) }
-    var filmFailed by remember(card.id) { mutableStateOf(false) }
-    LaunchedEffect(card.id) { filmUrl = viewModel.shareVideoUrl(card) }
-    LaunchedEffect(video, filmUrl) {
-        val source = filmUrl
-        if (video && source != null && filmFile == null && !filmFailed) {
-            filmFile = downloadFilm(context, source, card.design)
-            if (filmFile == null) {
-                filmFailed = true
-                say = "We couldn't load the video. Check your connection, or copy the link instead."
-            }
-        }
-    }
-    val showsVideo = video && filmUrl != null
+    val film = rememberShareFilm(card, viewModel, video) { say = it }
+    val showsVideo = video && film.url != null
     Box(
         modifier =
             Modifier
@@ -207,25 +194,14 @@ private fun ShareSheetBody(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SheetHead(if (card.sealed) "Share the sealed card" else "Share this card", onClose)
-                if (filmUrl != null) {
+                if (film.url != null) {
                     ModeChoice(video) {
                         video = it
                         say = ""
                     }
                 }
                 if (showsVideo) {
-                    FilmPreview(filmFile?.let { Uri.fromFile(it) } ?: Uri.parse(filmUrl))
-                    Text(
-                        "The card arriving and opening, with the paper sounds. Nobody's note or name is in it.",
-                        fontSize = 12.5.sp,
-                        lineHeight = 1.35.em,
-                        color = PantopusColors.tableCreamFaint,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    VideoTiles(ready = filmFile != null || filmFailed) { action ->
-                        scope.launch { say = runVideoAction(context, viewModel, card, filmFile, action) }
-                    }
+                    VideoPart(film) { action -> scope.launch { say = runVideoAction(context, viewModel, card, film.file, action) } }
                 } else {
                     SharePreview(format, drawn)
                     SizeChoice(format) {
@@ -241,11 +217,15 @@ private fun ShareSheetBody(
                     ) { action ->
                         if (action == ShareAction.All) say = "Drawing the pictures…"
                         scope.launch {
-                            say = runAction(context, viewModel, card, mine, format, showNote, drawn, action) { pieces.drawSet(card, showNote) }
+                            say =
+                                runAction(context, viewModel, card, mine, format, showNote, drawn, action) {
+                                    pieces.drawSet(card, showNote)
+                                }
                         }
                     }
                 }
-                SayLine(say, drawn)
+                // The picture's own trouble isn't the video's: only what the last tile did shows under the video.
+                SayLine(say, drawn.takeUnless { showsVideo } ?: SharePictureState.Drawing)
             }
         }
     }
@@ -958,6 +938,57 @@ private fun ModeChoice(
     }
 }
 
+/** The picture's video: where it is in public storage, and the file on this phone once fetched. */
+private class ShareFilm {
+    var url by mutableStateOf<String?>(null)
+    var file by mutableStateOf<File?>(null)
+    var failed by mutableStateOf(false)
+    val settled: Boolean get() = file != null || failed
+}
+
+private const val FILM_DESCRIPTION = "The video that will be shared: the card arriving and opening, with no note or name in it"
+
+/** Asks whether the picture has a video, and fetches the file once Video is chosen ([wanted]); [onFailed] says why not. */
+@Composable
+private fun rememberShareFilm(
+    card: CardOnTable,
+    viewModel: CardShareViewModel,
+    wanted: Boolean,
+    onFailed: (String) -> Unit,
+): ShareFilm {
+    val context = LocalContext.current
+    val film = remember(card.id) { ShareFilm() }
+    LaunchedEffect(card.id) { film.url = viewModel.shareVideoUrl(card) }
+    LaunchedEffect(wanted, film.url) {
+        val source = film.url
+        if (!wanted || source == null || film.settled) return@LaunchedEffect
+        film.file = downloadFilm(context, source, card.design)
+        if (film.file == null) {
+            film.failed = true
+            onFailed("We couldn't load the video. Check your connection, or copy the link instead.")
+        }
+    }
+    return film
+}
+
+/** The video's part of the sheet: the film playing, what's in it, and where it can go. */
+@Composable
+private fun VideoPart(
+    film: ShareFilm,
+    onAction: (ShareAction) -> Unit,
+) {
+    FilmPreview(film.file?.let { Uri.fromFile(it) } ?: Uri.parse(film.url))
+    Text(
+        "The card arriving and opening, with the paper sounds. Nobody's note or name is in it.",
+        fontSize = 12.5.sp,
+        lineHeight = 1.35.em,
+        color = PantopusColors.tableCreamFaint,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    VideoTiles(ready = film.settled, onAction = onAction)
+}
+
 /** The share video playing in the sheet: muted, looping, no controls. */
 @Composable
 private fun FilmPreview(source: Uri) {
@@ -986,7 +1017,7 @@ private fun FilmPreview(source: Uri) {
                     .shadow(13.dp, shape)
                     .clip(shape)
                     .background(PantopusColors.tableNight)
-                    .semantics { contentDescription = "The video that will be shared: the card arriving and opening, with no note or name in it" }
+                    .semantics { contentDescription = FILM_DESCRIPTION }
                     .testTag("cardShareVideoPreview"),
         )
     }
