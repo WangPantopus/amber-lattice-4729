@@ -20,6 +20,16 @@ function isPersonaBroadcastEnabled() {
   return isPersonaEnabled() && enabled('PERSONA_BROADCAST_ENABLED');
 }
 
+// Around you (founder decision 2026-11-14): Today's second half lists local headlines that link to their outlets
+// (services/aroundYouService.js), and the curator account's posts leave the Pulse list and map. AROUND_YOU is '1' (on)
+// or '0' (off); unset, it is on for hosted staging and off everywhere else.
+function aroundYouEnabled(env = process.env) {
+  const value = String(env.AROUND_YOU || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // First-launch scope (founder direction, 2026-09-27). These features are
 // hidden for the first launch; their code stays. A feature is OFF unless its
 // key is listed in LAUNCH_FEATURES (comma-separated, or "all"). The same keys
@@ -200,6 +210,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 }
 
 module.exports = {
+  aroundYouEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
   areLaunchFeaturesEnabled,
