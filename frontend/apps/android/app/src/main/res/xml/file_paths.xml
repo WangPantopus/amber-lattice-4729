@@ -32,6 +32,10 @@
     <cache-path
         name="card_share"
         path="card-share/" />
+    <!-- A Christmas card's share video, fetched once per picture (CardShareSheet). -->
+    <cache-path
+        name="card_share_video"
+        path="card-share-video/" />
     <!-- Today's sky card and calendar invites, for the share sheet. -->
     <cache-path
         name="share"
