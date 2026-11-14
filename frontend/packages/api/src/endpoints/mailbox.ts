@@ -1018,10 +1018,18 @@ export async function getSentCard(id: string, params?: { include?: 'not_delivere
 export async function recordHolidayCardShare(data: {
   design: string;
   kind: 'instagram' | 'facebook' | 'email' | 'link' | 'save' | 'more';
-  format: 'story' | 'post' | 'link';
+  format: 'story' | 'post' | 'link' | 'video';
   with_note: boolean;
 }): Promise<void> {
   await post<void>('/api/mailbox/cards/shared', data);
+}
+
+/**
+ * GET /api/mailbox/cards/share-video/:design (launch key card_share_video): the video a card shares as, the picture's
+ * card arriving on the table, the same for everyone. Answers 404 while the key is off: then the sheet shows pictures only.
+ */
+export async function getHolidayCardShareVideo(design: string): Promise<{ url: string; width: number; height: number }> {
+  return get<{ url: string; width: number; height: number }>(`/api/mailbox/cards/share-video/${encodeURIComponent(design)}`);
 }
 
 /** POST /api/mailbox/cards/:id/take-back: before the 7 a.m. pickup (by email: before they open it). */

@@ -348,6 +348,15 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] A list still sends one note to everyone, so for three or more people the helper writes a note that names no one. A different note per person is not built.
 - [ ] Not this season: AI-made card pictures. "Draw our photo in this card's style" would need a picture vendor and your decision on sending family photos to it.
 
+**Made by the founder on November 14 (sharing a Christmas card as a video).** You asked for a second way to share a card, a video of the whole experience, and worried about people sharing a private note. You approved one "Share this card" button with Picture | Video in its sheet, videos that never show a note or a name, and the build ("Yes, plan the build", then "yes, finish them please" after the first three videos).
+
+- [x] Picture | Video at the top of "Share this card" on web, iPhone and Android, for a card that isn't sealed. Video plays the picture's film in the sheet, with Instagram, Facebook, Save, More and Copy link. A sealed card stays picture-only.
+- [x] One 12-second video per picture (67), filmed from the real web card table with its paper sounds: "For you" from "Pantopus" on the envelope, the invitation on the back, a "PANTOPUS POST" slip at the end.
+- [x] A new launch key, `card_share_video`, on the server only, which needs `mailbox`, `holiday_cards` and `card_table` on too. It starts off. No new table and no migration. The videos live in the server's public file storage under `card-videos/v1/`.
+- [ ] **Founder:** switch `card_share_video` on (staging first, then production), after checking the videos are in that server's storage.
+- [ ] **Founder:** the phones get the Video choice with the next iPhone and Android store builds; the web has it once `dev` is promoted.
+- [ ] Not built: a sealing video for the sender, and the video on the public card page (`/cards/<name>`).
+
 **Made by the founder on November 13 (the tab order, ways into a Christmas card, and the first screen without an address).** You asked whether to reorder the tabs to win attention and get Christmas cards sent, approved the eight [drawings](https://claude.ai/artifact/JmQRCAsKi2uXTFoHVsk2jG) (private) with "all and including board 8", and said "Let's start". Progress is in the section of the same name below.
 
 - [x] Mail is third on the bar while the Mailbox is on: Place · Today · Mail · Pulse · Moments · Plans on iPhone and Android, Place · Today · Mail · Pulse on phone-width web. Only Mail moved. The desktop web sidebar keeps its order, the chat button stays top right, and the apps still open on Place. You asked whether Today should come before Place; it stays second, because Today has less to show than Place before there is an address.

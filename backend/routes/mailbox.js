@@ -41,6 +41,7 @@ const holidayCards = require('../services/holidayCards');
 const cardMedia = require('../services/holidayCardMedia');
 const cardVoice = require('../services/cardVoice');
 const mailStamps = require('../services/mailStamps');
+const { getPublicUrl } = require('../services/s3Service');
 const { personFindableBy } = require('./mailCompose');
 // A letter sent as a business names the business to everyone it reaches, never the person who sent it.
 const { presentMailSender, presentMailSenders, nameMailSender, nameMailSenders, objectForRecipient, payloadForRecipient,
@@ -1784,6 +1785,8 @@ const cardTableOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 
 // "Help me write it" on the write step (POST /api/ai/draft/card-note): its launch key, and a Claude key to call with.
 const cardNoteHelpOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_note_help'])
   && Boolean(process.env.ANTHROPIC_API_KEY);
+// Sharing a card as a video of it arriving (launch key card_share_video): one film per picture, in public storage.
+const cardShareVideoOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_table', 'card_share_video']);
 const sendCardsOff = (res) => res.status(404).json({ error: 'Not found' });
 // A send's answer as { status, body }, so one card's send and each card on a list answer alike; `reply` sends it.
 const reply = (res, answer) => res.status(answer.status).json(answer.body);
@@ -2166,7 +2169,7 @@ const cardSharedLimiter = rateLimit({
 const cardSharedSchema = Joi.object({
   design: Joi.string().max(64).required(),
   kind: Joi.string().valid('instagram', 'facebook', 'email', 'link', 'save', 'more').required(),
-  format: Joi.string().valid('story', 'post', 'link').required(),
+  format: Joi.string().valid('story', 'post', 'link', 'video').required(),
   with_note: Joi.boolean().required(),
 });
 
@@ -2181,6 +2184,21 @@ router.post('/cards/shared', verifyToken, cardSharedLimiter, validate(cardShared
   if (!holidayCards.designById(design)) return res.status(400).json({ error: 'Pick one of the Christmas cards.', code: 'CARD_DESIGN_UNKNOWN' });
   await logMailEvent('holiday_card_shared', null, req.user.id, { design, kind, format, withNote });
   return res.status(204).end();
+});
+
+/**
+ * GET /api/mailbox/cards/share-video/:design
+ * The video a card shares as (launch key card_share_video): the picture's card arriving on the table, made once per
+ * picture (frontend/apps/web/scripts/film-card-videos.cjs) and kept in public storage. It never holds a note or a name,
+ * so it is the same for everyone who shares that picture. 404 while the key is off or for a picture that isn't one of
+ * the cards: the apps then show only pictures. A sealed card's sheet doesn't ask.
+ */
+router.get('/cards/share-video/:design', verifyToken, (req, res) => {
+  if (!cardShareVideoOn()) return sendCardsOff(res);
+  const design = holidayCards.designById(String(req.params.design || ''));
+  if (!design) return sendCardsOff(res);
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json({ url: getPublicUrl(`card-videos/v1/${design.id}.mp4`), width: 1080, height: 1920 });
 });
 
 // ---- A card's own photo and voice (launch key holiday_card_memories; services/holidayCardMedia) ----

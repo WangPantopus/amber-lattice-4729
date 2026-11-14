@@ -12,6 +12,7 @@
 //   --url <address>    a web dev server that is already running (else one is started)
 //   --port <number>    the port for the dev server this starts (default 18977)
 //   --keep-frames      leave each video's frames beside it
+//   --skip-existing    leave a picture alone when its video is already in the folder
 //
 // Needs Google Chrome, ffmpeg, and this app's node_modules. See "Remaking the
 // videos" in docs/product/christmas-card-table/pictures.md.
@@ -281,8 +282,18 @@ async function filmOne(browser, base, design, year, out, keepFrames) {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
   try {
     for (const design of picked) {
+      if (process.argv.includes('--skip-existing') && fs.existsSync(path.join(out, `${design.id}.mp4`))) continue;
       const began = Date.now();
-      const made = await filmOne(browser, server.url, design, year, out, process.argv.includes('--keep-frames'));
+      // A busy machine can make a page miss its wait: each picture gets three tries, each in a fresh tab.
+      let made = null;
+      for (let attempt = 1; !made; attempt += 1) {
+        try {
+          made = await filmOne(browser, server.url, design, year, out, process.argv.includes('--keep-frames'));
+        } catch (error) {
+          if (attempt >= 3) throw error;
+          console.log(`${design.id}  try ${attempt} failed (${String(error.message).split('\n')[0]}); trying again`);
+        }
+      }
       console.log(`${design.id}  ${made.megabytes.toFixed(1)} MB  ${((Date.now() - began) / 1000).toFixed(0)} s  ${made.sounds.join(' ') || 'no sounds'}`);
     }
   } finally {

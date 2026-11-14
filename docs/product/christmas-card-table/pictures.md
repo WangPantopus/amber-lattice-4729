@@ -80,6 +80,18 @@ Everything in `sample/a/` comes from `sample/art/`. Run from that folder, with P
 
 `shot.cjs` and `flow.cjs` take screenshots of the page. `drag.py` drives a finger on a simulator (`SIM_UDID` in the environment).
 
+## Remaking the videos (November 14, 2026)
+
+"Share this card" can share a 12-second video of the card arriving (launch key `card_share_video`), one per picture. The videos never hold a note or a name: the envelope says "For you" from "Pantopus", with the December 25 postmark the public pages print, and the back says "This is how a Christmas card arrives on Pantopus. It opens like real mail. Send one at pantopus.com/cards", signed FROM Pantopus.
+
+They are filmed from the real web card table, so a video looks exactly like the app (the picture's cloth, stamp and mood, and its three paper sounds):
+
+1. From `frontend/apps/web`, with Google Chrome and ffmpeg installed: `node scripts/film-card-videos.cjs`. It starts the web dev server, opens `/dev/card-film` (404 in production builds) for each picture, steps the table frame by frame on its own clock and encodes `test-results/card-videos/<id>.mp4` (1080 × 1920, 30 frames a second, about 8 MB) with a sheet of its frames. About 30 seconds a picture. `--only 8,53` films only those numbers; `--skip-existing` resumes a run.
+2. Look over the sheets: no person's name or note, the card turns as it should.
+3. From `backend`, with that server's storage settings in the environment: `node scripts/upload-card-videos.js ../test-results/card-videos` puts them at `card-videos/v1/<id>.mp4` in its public storage (`--dry-run` first prints where).
+
+A new picture needs its video filmed and uploaded before `card_share_video` is on, or its Video choice plays nothing. The files are cached for a year, so a changed video goes to a new folder (`v2`, with the route changed to match), never over an old one.
+
 ## Pictures 50–58: Christmas with Santa (November 7, 2026)
 
 The founder's own Santa pictures, made with ChatGPT. The originals are 1214 × 1295, already 15:16, with no border or text, so nothing is trimmed: each `crop` in `designs-table.json` is the whole picture. The founder's 1500 × 1600 copies are plain enlargements of the same files, so the cards are made from the originals. From each original:
