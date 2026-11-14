@@ -157,9 +157,8 @@ private fun ShareSheetBody(
     val pieces = SharePieces(tableArt, faceArt, picture)
     val drawn = rememberSharePicture(card, format, showNote, pieces)
     // The picture's video (the server's launch key card_share_video): Picture | Video shows only when there is one.
-    var video by rememberSaveable(card.id) { mutableStateOf(false) }
-    val film = rememberShareFilm(card, viewModel, video) { say = it }
-    val showsVideo = video && film.url != null
+    val film = rememberShareFilm(card, viewModel) { say = it }
+    val showsVideo = film.video && film.url != null
     Box(
         modifier =
             Modifier
@@ -194,12 +193,7 @@ private fun ShareSheetBody(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SheetHead(if (card.sealed) "Share the sealed card" else "Share this card", onClose)
-                if (film.url != null) {
-                    ModeChoice(video) {
-                        video = it
-                        say = ""
-                    }
-                }
+                if (film.url != null) ModeChoice(film) { say = "" }
                 if (showsVideo) {
                     VideoPart(film) { action -> scope.launch { say = runVideoAction(context, viewModel, card, film.file, action) } }
                 } else {
@@ -897,11 +891,11 @@ private suspend fun saveToGallery(
         if (saved) "Saved to your gallery." else "Couldn't save the picture. Check that your phone has free space, then try again."
     }
 
-/** Picture or Video at the top of the sheet, only when the picture has a video. */
+/** Picture or Video at the top of the sheet, only when the picture has a video; [onSwitch] clears the last message. */
 @Composable
 private fun ModeChoice(
-    video: Boolean,
-    onChoose: (Boolean) -> Unit,
+    film: ShareFilm,
+    onSwitch: () -> Unit,
 ) {
     val shape = RoundedCornerShape(12.dp)
     Row(
@@ -914,7 +908,7 @@ private fun ModeChoice(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         listOf(false to "Picture", true to "Video").forEach { (isVideo, label) ->
-            val chosen = isVideo == video
+            val chosen = isVideo == film.video
             Box(
                 modifier =
                     Modifier
@@ -922,7 +916,10 @@ private fun ModeChoice(
                         .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(9.dp))
                         .background(if (chosen) PantopusColors.tableCream14 else PantopusColors.tableCream8.copy(alpha = 0f))
-                        .clickable(role = Role.Button) { onChoose(isVideo) }
+                        .clickable(role = Role.Button) {
+                            film.video = isVideo
+                            onSwitch()
+                        }
                         .semantics { selected = chosen }
                         .testTag(if (isVideo) "cardShareMode.video" else "cardShareMode.picture"),
                 contentAlignment = Alignment.Center,
@@ -940,6 +937,8 @@ private fun ModeChoice(
 
 /** The picture's video: where it is in public storage, and the file on this phone once fetched. */
 private class ShareFilm {
+    /** Video is chosen over Picture. */
+    var video by mutableStateOf(false)
     var url by mutableStateOf<String?>(null)
     var file by mutableStateOf<File?>(null)
     var failed by mutableStateOf(false)
@@ -948,20 +947,19 @@ private class ShareFilm {
 
 private const val FILM_DESCRIPTION = "The video that will be shared: the card arriving and opening, with no note or name in it"
 
-/** Asks whether the picture has a video, and fetches the file once Video is chosen ([wanted]); [onFailed] says why not. */
+/** Asks whether the picture has a video, and fetches the file once Video is chosen; [onFailed] says why not. */
 @Composable
 private fun rememberShareFilm(
     card: CardOnTable,
     viewModel: CardShareViewModel,
-    wanted: Boolean,
     onFailed: (String) -> Unit,
 ): ShareFilm {
     val context = LocalContext.current
     val film = remember(card.id) { ShareFilm() }
     LaunchedEffect(card.id) { film.url = viewModel.shareVideoUrl(card) }
-    LaunchedEffect(wanted, film.url) {
+    LaunchedEffect(film.video, film.url) {
         val source = film.url
-        if (!wanted || source == null || film.settled) return@LaunchedEffect
+        if (!film.video || source == null || film.settled) return@LaunchedEffect
         film.file = downloadFilm(context, source, card.design)
         if (film.file == null) {
             film.failed = true

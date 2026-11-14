@@ -82,7 +82,8 @@ async function devServer() {
   const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '-p', port, '-H', '127.0.0.1'], {
     cwd: WEB,
     // The film page asks the server for nothing; the address only has to be set.
-    env: { ...process.env, NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:9' },
+    // Its own build folder, so a dev server already running from this checkout keeps working.
+    env: { ...process.env, NEXT_DIST_DIR: '.next-film', NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:9' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let log = '';
