@@ -367,6 +367,7 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] The database gains columns on posts and new kinds of area; no new table in phases A to C.
 - [x] Sponsored lift: later, and from Town up only. A public sky page on the web for people with no account: yes, in phase E.
 - [x] The names: the Sky, Overhead, How far, and the levels Nearby, Town, City, Region, Country, World.
+- [x] Changed later the same day, on your word: height on the map is physical. A post sits as far above the map as it was above the ground under it (on Mount Rainier at 10,000 ft you are on the ground; a paraglider 500 ft over the ground floats 500 ft up), with the sea-level number kept as the tag. Reach shows as brightness, size and how far out a post stays visible. The map stays flat for now; real 3D terrain is a future project. This reverses "lift means reach".
 - [x] Added with your yes to the screens, as directions for later phases: most posts stay near the ground; someone with many followers may choose to start higher (this replaces "public pages start at City level"); and a view where the ground rises where it is busy, by public place in built-up areas, where higher means busy and not good.
 
 **Still open. The brief builds the default until you decide.**
@@ -1067,5 +1068,6 @@ Decided November 14 (section 0). Every Moment and Pulse post gets a place that i
 - [ ] Your go for phase A. It is ten small pull requests into `dev` behind one switch, `sky_places`, which you turn on for your own account first.
 - [ ] The homes-per-cell file is built and published beside the property index; that bucket belongs to the property-data lane.
 - [ ] Details and drawings for the two later additions: the higher starting level (which followers count, the steps) and the terrain (same map or its own screen).
+- [ ] Screens 1, 2, 6 and 7 redrawn for "height is physical, reach is brightness", before phase B.
 - [ ] Phases B to E (the floating look, levels, the living sky, the world) each need their own contract and your OK.
 - [ ] Not decided: whether old exact points are replaced with area points in the production database (contract call C8). They are no longer shown either way.

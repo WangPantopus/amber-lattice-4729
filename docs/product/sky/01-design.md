@@ -14,6 +14,21 @@ Pantopus was never meant to be only local. The Sky keeps the local layer whole a
 
 **What stays.** The tabs, List | Map, Connections, and how long a Moment lasts (1 to 48 hours). No live location and no trail between posts. Everything new sits behind a switch, and app builds already in the stores keep working.
 
+## Changed on November 14: height is real, reach is brightness
+
+The founder settled how elevation and popularity share one map. This section wins over any sentence below that says lift means reach.
+
+- **Height is physical.** A post sits as far above the map as it was above the ground under it. Someone at 10,000 ft on Mount Rainier is on the ground. Someone in Death Valley, below sea level, is on the ground. A paraglider at 1,000 ft over ground that sits at 500 ft floats 500 ft up.
+- **The server works it out when the post is made:** the phone's elevation minus the ground's elevation at that point. The exact point is still not stored.
+- **A margin for error.** Phone elevation is often off by 30 to 100 ft. A post counts as on the ground unless it is more than about 150 ft above it, or moving at flying speed.
+- **The sea-level number stays as the tag** ("10,000 ft"), with its colours. At home no height is shown.
+- **Reach is not height.** A post with reach is brighter and larger, and stays visible from farther out. Levels, ranks, the author's yes and the widening place are unchanged.
+- **Zoomed out to a country or the world,** height above the ground is too small to see. The posts left are the ones with reach, shown over the globe among the stars.
+- **An area is shown by its disc,** not by floating. A disc and no tail means somewhere in this area; a tail means exactly here.
+- **The map stays flat for now.** Real 3D terrain, where mountains rise and posts stand on their slopes, is a future project, starting where the map engines support it.
+- **The view of busy places** becomes its own view, so its hills are not mistaken for real ones.
+- **Screens to redraw in part:** 1, 2, 6 and 7. Phase A does not change.
+
 ## Principles
 
 Every later choice in this document follows from these seven rules.
@@ -23,7 +38,7 @@ Every later choice in this document follows from these seven rules.
 3. **Up close, local wins.** A famous post overhead never covers the yard sale next door.
 4. **An ordinary person's post rises far only with their yes.**
 5. **No live location and no trail.** Only the posted point is kept, and nothing joins one post to the next. This is true today and stays true.
-6. **One meaning for lift.** Lift shows reach. Real elevation keeps its own colour, number and view.
+6. **One meaning for lift.** Lift shows how far a post is above the ground under it. Reach shows as brightness, size and how far out a post stays visible.
 7. **Safety rules live on the server.** They protect people on app builds already in the stores, not only on new ones.
 
 ## Where a post is
@@ -363,7 +378,7 @@ The founder accepted all sixteen recommendations on November 14, 2026 ("Yes, all
 | 2 | Exact pins only at public places picked by name. This reverses the November 5 choice of an exact pin wherever a photo was taken, the author's home included, and applies to Pulse posts already made | Yes |
 | 3 | A post made at home is always an area, with no choice | Yes |
 | 4 | The smallest area holds 100 homes | Yes, and tune it after measuring |
-| 5 | Lift means reach. Real elevation keeps its chip, colours, numbers and its floating view as a mode | Yes. Nothing built for elevation is thrown away |
+| 5 | Lift means reach. Real elevation keeps its chip, colours, numbers and its floating view as a mode | Reversed the same day: lift is height above the ground, and reach is brightness, size and zoom range |
 | 6 | Rising by rank with a floor, at the numbers in the table | Yes, as starting points |
 | 7 | Views count toward height as one twentieth of a reaction, at most half the score | Yes |
 | 8 | Rising past Town needs the author's yes; public pages rise without asking | Yes |

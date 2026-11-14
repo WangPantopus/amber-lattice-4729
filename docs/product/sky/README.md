@@ -44,6 +44,9 @@ founder's go.
 - The tab bar is the 2.1.2 store app's, not the newer bar with Mail third.
 - **The discs are drawn at about three quarters of their real size.** The phase A contract (call C2) sets the real
   size: about 0.4 mile across at the smallest.
+- **Screens 1, 2, 6 and 7 are partly out of date.** They draw lift as reach. Later on November 14 the founder decided
+  that lift is a post's height above the ground under it, and reach is brightness, size and how far out a post
+  stays visible (the design's "Changed on November 14" section). They are to be redrawn before phase B.
 - Phase A builds only screens 4, 5 and 9. The others belong to phases B and C.
 
 The editable boards are a private design canvas, and the design is a private Claude Doc; both belong to the

@@ -362,6 +362,7 @@ whole-US cells file until it is published.
 
 ## 14. Not in phase A
 
-The floating look on the map, discs on the map, levels, Overhead, "How far", the author's yes, review before
+Height above the ground (the phone's elevation minus the ground's; decided November 14 after this contract was
+accepted: it belongs with the map's look in phase B, and section 7 here keeps today's sea-level number). Also: the floating look on the map, discs on the map, levels, Overhead, "How far", the author's yes, review before
 Country and World, the viewer's "Floating over" header, a higher starting level, the terrain, sponsored lift,
 areas outside the US, and replacing old exact points in the database (C8).
