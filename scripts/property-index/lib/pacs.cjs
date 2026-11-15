@@ -57,8 +57,11 @@ async function* properties(zip, stats = {}) {
   }
 }
 
-/** The largest improvement on each wanted account: what's on it, in a district's own words (`classify` names each detail). */
-async function mainImprovements(zip, wanted, classify, attributes = []) {
+/**
+ * The largest improvement on each wanted account: what's on it, in a district's own words (`classify` names each detail).
+ * `accept` keeps an attribute's line only when its value fits (Guadalupe writes its water source and its bath count under the same name).
+ */
+async function mainImprovements(zip, wanted, classify, attributes = [], accept = () => true) {
   const byAccount = new Map();
   for await (const line of lines(zip, 'IMP_DET')) {
     const id = accountOf(line);
@@ -93,7 +96,8 @@ async function mainImprovements(zip, wanted, classify, attributes = []) {
       const held = main.get(accountOf(line));
       if (!held || held.id !== cut(line, 17, 28)) continue;
       const name = cut(line, 53, 77);
-      if (attributes.includes(name) && !held[name]) held[name] = cut(line, 78, 87).toUpperCase();
+      const value = cut(line, 78, 87).toUpperCase();
+      if (attributes.includes(name) && !held[name] && accept(name, value)) held[name] = value;
     }
   }
   return main;
