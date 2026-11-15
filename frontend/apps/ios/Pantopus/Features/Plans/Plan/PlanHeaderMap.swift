@@ -56,7 +56,8 @@ struct PlanHeaderMap: View {
                             kind: card.kind,
                             tag: pinTag(place),
                             isSelected: true,
-                            badge: isHosting ? .hosting : (card.isBusiness && card.viewer?.isIn != true ? nil : .going),
+                            // A place shown before you're in (a business's, a private plan's for the person invited) has no "in" badge.
+                            badge: isHosting ? .hosting : (placeIsOpen && card.viewer?.isIn != true ? nil : .going),
                             isBusiness: card.isBusiness
                         ))
                         .scaleEffect(pinScale, anchor: .center)
@@ -88,8 +89,14 @@ struct PlanHeaderMap: View {
 
     /// Before you're in the area shows; once in, a faint ghost stays under the pin.
     private var showsArea: Bool {
-        // A business's place is exact and public: no area (board G3).
-        !card.isBusiness && (place == nil || revealing || !isHosting)
+        // A business's place is exact and public, and a private plan's is shown to the people invited: no area
+        // (boards G3 and Invited).
+        !placeIsOpen && (place == nil || revealing || !isHosting)
+    }
+
+    /// The exact place is the viewer's to see before they're in: a business's, or a private plan's (Plans step 1).
+    private var placeIsOpen: Bool {
+        card.isBusiness || card.invitedPlace != nil
     }
 
     private var areaCoordinate: CLLocationCoordinate2D {

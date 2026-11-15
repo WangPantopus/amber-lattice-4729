@@ -30,8 +30,6 @@ struct PlanAudienceField: View {
                     identifier: "plansAudienceInvited"
                 )
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Who can see this")
             PlanScopeLine(
                 text: "The people you invite get in right away. A private plan can be anywhere, up to 60 days ahead.",
                 icon: .info

@@ -173,7 +173,7 @@ struct PlanPrivatePreviewScreen: View {
         .buttonStyle(.plain)
         .disabled(full || model.isPosting)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Invite \(person.displayName)")
+        .accessibilityLabel("Invite \(person.displayName), \(PlanInviteLines.reason(person.reason))")
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("planInvitePerson.\(person.userId)")
     }
