@@ -947,9 +947,9 @@ private fun NeighborPreview(
                 )
             }
         }
+        // An online plan has a link where the others have a place.
         Text(
             text =
-                // An online plan has a link where the others have a place.
                 "You can change or cancel it any time. If you move the time or the ${if (ui.isOnline) "link" else "place"}, " +
                     "everyone who's in is asked “Still coming?”",
             style = PantopusTextStyle.caption,
