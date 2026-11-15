@@ -3,7 +3,8 @@
 // the county GIS office's own public parcel layer (OpenGov, the Tax Department's tax-year records). No terms are posted on it or on the
 // county's site. Only the parcel numbers, the first improvement's counts and area, the improvement count and the tax year are asked for:
 // the owner and mailing columns never are. A parcel with more than one improvement takes nothing, since its counts may be another
-// building's.
+// building's. OneMap's Lenoir file gives no property city or ZIP, so the ZIP codes that reach into the county (the Census Bureau's
+// ZCTA-to-county file) are where a person's ZIP looks, as for Carteret: a list of places to look, never a fact on a record.
 
 const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
@@ -11,6 +12,7 @@ const { year, isoDate } = require('../lib/addresses.cjs');
 const { positive } = require('../lib/values.cjs');
 const { fillHomes, bathFacts, describe, monthOf } = require('../lib/fill.cjs');
 const { log } = require('../lib/log.cjs');
+const { zipsByCounty } = require('../lib/zcta.cjs');
 const { countyParcels } = require('./nc-onemap.cjs');
 
 const FIPS = '37107';
@@ -70,6 +72,7 @@ async function* build({ work }) {
     method: 'county',
     source: 'nc-lenoir',
     title: 'County records',
+    extra_zips: [...new Set([...(entry.extra_zips || []), ...(zipsByCounty(work, ['37']).get(FIPS) || [])])].sort(),
   };
 }
 
