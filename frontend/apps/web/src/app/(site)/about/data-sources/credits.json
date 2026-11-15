@@ -292,6 +292,13 @@
           "url": "https://maps.townofbreckenridge.com/arcgis/rest/services/CountyParcel/FeatureServer/0",
           "license": "No terms posted",
           "dataset": "County parcels (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "fl-orange",
+          "publisher": "Orange County Property Appraiser, Florida, as published by Orange County Government",
+          "url": "https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/56",
+          "license": "No license stated; the county government's terms of use ask for lawful use",
+          "dataset": "Parcels (bedrooms, baths, living area, floors), updated weekly"
         }
       ]
     },
