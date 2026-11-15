@@ -1059,7 +1059,7 @@ Decided November 13 (section 0). Built the same night by one builder per platfor
 
 ## The Sky (added November 14)
 
-Decided November 14 (section 0). Every Moment and Pulse post gets a place that is only as exact as is safe, and a height on the map that shows how far it reaches. Everything is in [docs/product/sky](docs/product/sky/README.md): the design, fourteen boards for the ten screens, and the build contract for phase A.
+Decided November 14 (section 0). Every Moment and Pulse post gets a place that is only as exact as is safe, and a height on the map that shows how far it reaches. Everything is in [docs/product/sky](docs/product/sky/README.md): the design, fourteen boards for the ten screens, and the build contract for phase A. The full hand-off, with what to redraw and the next steps, is [docs/product/sky/HANDOFF.md](docs/product/sky/HANDOFF.md).
 
 - [x] The design, with its sixteen decisions accepted on November 14.
 - [x] The ten screens, approved on November 14. They sit on real screenshots of today's apps where a screen exists.

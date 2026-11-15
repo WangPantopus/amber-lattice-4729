@@ -12,6 +12,7 @@ founder's go.
 
 | File | What it is |
 | --- | --- |
+| [HANDOFF.md](HANDOFF.md) | **Start here.** Everything discussed, every decision, what to redraw, next steps, and the prompt for a new session. |
 | [01-design.md](01-design.md) | The design: where a post is, levels, what it looks like, safety, architecture, build order, the decisions, and what exists today. |
 | [02-phase-a-contract.md](02-phase-a-contract.md) | The build contract for phase A: approximate places, built fully. |
 | [screens/](screens/) | The ten screens as fourteen pictures, and two overview sheets. |
