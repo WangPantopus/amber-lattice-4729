@@ -103,6 +103,8 @@ struct PlanSegmented<Value: Hashable>: View {
     let label: String
     /// Test ids, one per option in order (Plans with businesses' filter and "Who gets in").
     var identifiers: [String]?
+    /// A glyph before an option's words, one per option in order (Where's "Online", board Details).
+    var icons: [PantopusIcon?]?
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -124,12 +126,17 @@ struct PlanSegmented<Value: Hashable>: View {
         ForEach(Array(options.enumerated()), id: \.offset) { index, option in
             let isOn = option.0 == selection
             Button { selection = option.0 } label: {
-                Text(option.1)
-                    .planFont(.smallStrong)
-                    .foregroundStyle(isOn ? Theme.Color.appText : Theme.Color.appTextSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, minHeight: 38)
+                HStack(spacing: 6) {
+                    if let icon = icons.flatMap({ $0.indices.contains(index) ? $0[index] : nil }) {
+                        Icon(icon, size: 14, color: isOn ? Theme.Color.appText : Theme.Color.appTextSecondary)
+                    }
+                    Text(option.1)
+                }
+                .planFont(.smallStrong)
+                .foregroundStyle(isOn ? Theme.Color.appText : Theme.Color.appTextSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 38)
                     .background(
                         RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
                             .fill(isOn ? Theme.Color.appSurface : Color.clear)

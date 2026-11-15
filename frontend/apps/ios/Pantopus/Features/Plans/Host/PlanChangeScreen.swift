@@ -30,6 +30,8 @@ struct PlanChangeScreen: View {
     @State private var choosingLocation = false
     /// How it repeats (Plans step 2), sent only when the host changed it; nil where repeating isn't offered.
     @State private var repeating: PlanRepeatDraft?
+    /// An online plan's new link (Plans step 3), nil while it's the same.
+    @State private var newLink: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +40,11 @@ struct PlanChangeScreen: View {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     if let card = plan?.card {
                         when(card)
-                        if card.isBusiness { businessPlace(card) } else if card.placeKind != .home { place(card) }
+                        if card.isBusiness {
+                            businessPlace(card)
+                        } else if card.isOnline {
+                            PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)
+                        } else if card.placeKind != .home { place(card) }
                         if asksStillComing(card) { warning(card) }
                         if asksStillComing(card) { preview(card) }
                     } else {
@@ -123,7 +129,7 @@ struct PlanChangeScreen: View {
                 ForEach(locations) { location in
                     Button(PlanBusinessLocationRow.line(location, business: business)) {
                         // Choosing the place it's already at changes nothing.
-                        let here = card.businessPlace.map {
+                        let here = card.businessPlace?.coordinate.map {
                             abs($0.latitude - location.latitude) < 0.00001 && abs($0.longitude - location.longitude) < 0.00001
                         } ?? false
                         newLocationId = here ? nil : location.id
@@ -205,9 +211,9 @@ struct PlanChangeScreen: View {
         goingCount(card) > 0 && (placeChanged || timeMoved(card))
     }
 
-    /// A new public place, or another of the business's locations.
+    /// A new public place, another of the business's locations, or an online plan's new link.
     private var placeChanged: Bool {
-        newPlace != nil || newLocationId != nil
+        newPlace != nil || newLocationId != nil || newLink != nil
     }
 
     private func timeMoved(_ card: PlanCardDTO) -> Bool {
@@ -221,6 +227,7 @@ struct PlanChangeScreen: View {
         let host = PlanCardLines.hostName(card)
         let noun = PlanCardLines.noun(card)
         let now = "Now \(PlanFormat.dayPhrase(start, calendar: calendar)) at \(PlanFormat.time(start, calendar: calendar))"
+        if newLink != nil { return PlanChangeOnlineLink.pushWords(host: host, noun: noun, now: now, timeMoved: timeMoved(card)) }
         if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
         if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
         return ("\(host) moved the \(noun)", "\(now). Still coming?")
@@ -231,7 +238,7 @@ struct PlanChangeScreen: View {
         let going = goingCount(card)
         let asks = !placeChanged
             ? "Moving the time by more than 30 minutes asks each of them \u{201C}Still coming?\u{201D}"
-            : "Changing the place asks each of them \u{201C}Still coming?\u{201D}"
+            : "Changing the \(newLink == nil ? "place" : "link") asks each of them \u{201C}Still coming?\u{201D}"
         return HStack(alignment: .top, spacing: Spacing.s3) {
             Icon(.alertTriangle, size: 22, color: Theme.Color.warning)
             Text("\(going) \(going == 1 ? "person is" : "people are") in. \(asks)")
@@ -318,6 +325,15 @@ struct PlanChangeScreen: View {
             )
         }
         body.businessLocationId = newLocationId
+        if let newLink {
+            // The server's check first, with its sentence.
+            guard let parsed = PlanOnlineLink.parse(newLink) else {
+                isSaving = false
+                error = PlanOnlineCopy.linkProblem
+                return
+            }
+            body.place = .online(link: parsed.link)
+        }
         Task {
             // Moving a public plan needs the same fresh nearby proof as posting one.
             let location = DeviceLocationProvider.shared

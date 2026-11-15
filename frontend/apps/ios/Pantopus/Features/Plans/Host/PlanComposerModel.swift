@@ -11,25 +11,11 @@
 import Foundation
 import Observation
 
-enum PlanApproval: Hashable {
-    case approveEach
-    case verifiedAuto
-    case anyoneNearby
-}
-
-struct PlanHomeChoice: Hashable {
-    let id: String
-    let street: String?
-    let city: String?
-    let latitude: Double
-    let longitude: Double
-}
-
 @Observable
 @MainActor
 final class PlanComposerModel {
     enum Where: Hashable {
-        case publicPlace, home
+        case publicPlace, home, online
     }
 
     var kind: PlanKind {
@@ -78,6 +64,8 @@ final class PlanComposerModel {
     let privacy = PlanPrivateDraft()
     /// Repeating plans (step 2): how it repeats (board Repeats).
     let repeating = PlanRepeatDraft()
+    /// Plans steps 3 and 4: the newer kinds' choices and an online plan's link.
+    let more = PlanMoreDraft()
 
     private(set) var isPosting = false
     var postError: String?
@@ -202,6 +190,7 @@ final class PlanComposerModel {
         if effectiveTitle.trimmingCharacters(in: .whitespaces).isEmpty { return "Give your plan a title." }
         if whereKind == .publicPlace, place == nil { return "Choose a place." }
         if whereKind == .home, home == nil { return "Add your home to host there, or choose a public place." }
+        if let onlineProblem { return onlineProblem }
         let span = end.timeIntervalSince(effectiveStart)
         if span < 15 * 60 { return "A plan lasts at least 15 minutes." }
         if span > 8 * 3600 { return "A plan lasts at most 8 hours." }
@@ -267,6 +256,9 @@ final class PlanComposerModel {
                 longitude: home.longitude,
                 homeId: home.id
             )
+        case .online:
+            guard let online = onlinePlaceBody else { return nil }
+            placeBody = online
         }
         var gps: PlanGPSBody?
         if location.canLocateWithoutAsking, let fix = await location.requestCurrent(timeoutSeconds: 4) {
@@ -338,6 +330,8 @@ final class PlanComposerModel {
             approval = .verifiedAuto
             start = Self.sensibleStart(for: kind, calendar: calendar)
             end = start.addingTimeInterval(3600)
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse:
+            applyNewerDefaults()
         }
         if !canHostAtHome { whereKind = .publicPlace }
     }
@@ -355,11 +349,12 @@ extension PlanComposerModel {
         case .walkCoffee: whereKind == .home ? [.approveEach] : [.verifiedAuto, .approveEach]
         case .watchParty: whereKind == .home ? [.approveEach] : [.approveEach, .verifiedAuto]
         case .studyGroup: [.approveEach, .verifiedAuto]
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: whereKind == .home ? [.approveEach] : [.approveEach, .verifiedAuto]
         }
     }
 
     var canHostAtHome: Bool {
-        kind == .watchParty || kind == .walkCoffee
+        kind == .watchParty || kind == .walkCoffee || kind.isNewer
     }
 
     var effectiveTitle: String {
@@ -376,6 +371,7 @@ extension PlanComposerModel {
         switch whereKind {
         case .publicPlace: return place.map { ($0.latitude, $0.longitude) }
         case .home: return home.map { ($0.latitude, $0.longitude) }
+        case .online: return nil
         }
     }
 
@@ -397,6 +393,8 @@ extension PlanComposerModel {
         case .studyGroup:
             details.subject = trimmedSubject
             details.studyStyle = studyStyle
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse:
+            more.apply(to: &details, kind: kind, pace: pace)
         }
         return details
     }
@@ -411,7 +409,9 @@ extension PlanComposerModel {
         let (earliest, latest, preferred) = switch kind {
         case .playdate: (8, 18, 10)
         case .walkCoffee: (7, 21, 8)
-        case .watchParty, .pickupGame, .studyGroup: (8, 21, 19)
+        case .outdoors: (7, 19, 9)
+        case .foodDrinks: (8, 21, 18)
+        case .watchParty, .pickupGame, .studyGroup, .gameNight, .somethingElse: (8, 21, 19)
         }
         let hour = calendar.component(.hour, from: soon)
         if hour >= earliest, hour < latest { return soon }
@@ -447,6 +447,7 @@ extension PlanComposerModel {
             dogsWelcome = details.dogsWelcome ?? false
             subject = details.subject ?? subject
             studyStyle = details.studyStyle ?? studyStyle
+            more.restore(from: details)
         }
         let rules = Set(card.autoRules ?? [])
         privacy.audience = card.isPrivate && PlansFlags.shared.privatePlans ? .invited : .nearby
@@ -455,15 +456,17 @@ extension PlanComposerModel {
         approval = rules.contains(.anyoneNearby) ? .anyoneNearby : rules.contains(.verified) ? .verifiedAuto : .approveEach
         if card.placeKind == .home {
             whereKind = .home
-        } else if let place = plan.place {
+        } else if card.isOnline {
+            repeatOnline(plan.place)
+        } else if let place = plan.place, let latitude = place.latitude, let longitude = place.longitude {
             whereKind = .publicPlace
             self.place = PlanPlaceOptionDTO(
                 placeId: nil,
                 name: place.name ?? card.area.label,
                 category: nil,
                 address: place.address,
-                latitude: place.latitude,
-                longitude: place.longitude
+                latitude: latitude,
+                longitude: longitude
             )
         }
     }
@@ -487,7 +490,7 @@ private extension PlanComposerModel {
         let starting: String? = switch kind {
         case .playdate: "Playground morning"
         case .walkCoffee: "Coffee walk"
-        case .watchParty, .pickupGame, .studyGroup: nil
+        case .watchParty, .pickupGame, .studyGroup, .foodDrinks, .gameNight, .outdoors, .somethingElse: nil
         }
         guard let starting else { return }
         title = starting
