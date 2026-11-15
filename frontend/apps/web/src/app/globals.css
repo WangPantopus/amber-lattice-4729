@@ -355,6 +355,15 @@
   --color-cat-plan-walk-tint: #FEF3C7;
   --color-cat-plan-study: #DB2777;
   --color-cat-plan-study-tint: #FCE7F3;
+  /* The four newer kinds (boards Type and Main, more.css). */
+  --color-cat-plan-food: #B91C1C;
+  --color-cat-plan-food-tint: #FEE2E2;
+  --color-cat-plan-game: #2563EB;
+  --color-cat-plan-game-tint: #DBEAFE;
+  --color-cat-plan-outdoors: #0F766E;
+  --color-cat-plan-outdoors-tint: #CCFBF1;
+  --color-cat-plan-else: #475569;
+  --color-cat-plan-else-tint: #E2E8F0;
 
   /* ── Spacing (px) ────────────────────────────────────────── */
   --spacing-0: 0px;
@@ -654,6 +663,14 @@
     --color-cat-plan-walk-tint: #33290F;
     --color-cat-plan-study: #F472B6;
     --color-cat-plan-study-tint: #3A1A2C;
+    --color-cat-plan-food: #F87171;
+    --color-cat-plan-food-tint: #3A1717;
+    --color-cat-plan-game: #60A5FA;
+    --color-cat-plan-game-tint: #172A4D;
+    --color-cat-plan-outdoors: #2DD4BF;
+    --color-cat-plan-outdoors-tint: #0F2F2C;
+    --color-cat-plan-else: #94A3B8;
+    --color-cat-plan-else-tint: #262D38;
     --app-surface: 15 23 42;
     --app-surface-raised: 30 41 59;
     /* A step below --app-surface (it was equal), so sunken fills such as

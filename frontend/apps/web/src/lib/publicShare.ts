@@ -142,7 +142,16 @@ export const fetchPublicBookingByToken = cache(
  */
 export type PublicPlan = {
   id?: string;
-  kind: 'watch_party' | 'playdate' | 'pickup_game' | 'walk_coffee' | 'study_group';
+  kind:
+    | 'watch_party'
+    | 'playdate'
+    | 'pickup_game'
+    | 'walk_coffee'
+    | 'study_group'
+    | 'food_drinks'
+    | 'game_night'
+    | 'outdoors'
+    | 'something_else';
   title?: string;
   about?: string;
   starts_at?: string | null;
@@ -151,7 +160,8 @@ export type PublicPlan = {
   day_part?: string | null;
   timezone?: string;
   area?: { label: string; city: string | null; precision: string };
-  place_kind?: 'public' | 'home';
+  /** 'online': people join with a link, which this page never gets. */
+  place_kind?: 'public' | 'home' | 'online';
   host?: { display_name: string; avatar_url: string | null; verified_address: boolean; plans_hosted: number };
   spots?: number;
   going_count?: number;
