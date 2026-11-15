@@ -3,7 +3,8 @@
 // updated as the city or county updates their records, with a full refresh each month). The Appraiser is the data's origin and the city
 // publishes this copy. The city's catalog entry puts the parcel database under the Open Data Commons Public Domain Dedication and License 1.0 and
 // asks users to follow K.S.A. 45-230, which bars selling or giving lists of names and addresses from public records for sales solicitation:
-// Pantopus reads no names, keeps no list and sells nothing. The county itself offers its parcels free on its GIS Data Layers page, weekly.
+// Pantopus reads no names, so no list of names and addresses exists, and it uses these records only to show a home its own record,
+// never for solicitation. The county itself offers its parcels free on its GIS Data Layers page, weekly.
 // Each parcel gives its site address and ZIP, land use, appraised land, improvement and total values, and the main dwelling's year built,
 // living area, bedrooms, full and half baths, rooms, basement, style, quality and condition. Its only lot figure is the county's mapped
 // parcel acres (ParcAcresC), which the source line names. Owner and mailing columns are never asked for.
