@@ -95,7 +95,7 @@ struct PlanComposerRoot: View {
                                 draft: model.repeating,
                                 start: model.effectiveStart,
                                 end: model.end,
-                                noun: PlanRepeatCopy.noun(kind: model.kind, walkKind: model.walkKind)
+                                noun: PlanRepeatCopy.noun(kind: model.kind, walkKind: model.walkKind, details: model.details)
                             ) { path.removeLast() }
                                 .readableColumn()
                         case .preview:

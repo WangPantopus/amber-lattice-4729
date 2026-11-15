@@ -74,6 +74,23 @@ enum PlanKindsMore {
         return kind.isNewer ? "No \(kind.title) plans near you yet." : "No other \(kind.title.lowercased()) near you yet."
     }
 
+    /// What a repeating plan's summary counts ("24 hikes", "6 happy hours"), after the server's nouns; nil
+    /// ("times") for "Something else" and today's five.
+    static func repeatNoun(_ kind: PlanKind, _ details: PlanDetailsDTO?) -> (one: String, many: String)? {
+        switch kind {
+        case .foodDrinks:
+            let one = foodNouns[details?.foodKind ?? "dinner"] ?? "get-together"
+            return (one, one == "brunch" ? "brunches" : "\(one)s")
+        case .gameNight:
+            return ("game night", "game nights")
+        case .outdoors:
+            let one = outdoorNouns[details?.outdoorKind ?? "hike"] ?? "outing"
+            return (one, "\(one)s")
+        default:
+            return nil
+        }
+    }
+
     /// The plan page's details line: "Potluck", "Trivia", "Bike ride · Brisk pace". Nothing for "Something else".
     static func details(_ kind: PlanKind, _ details: PlanDetailsDTO?) -> [String] {
         guard let details else { return [] }

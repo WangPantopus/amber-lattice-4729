@@ -292,7 +292,7 @@ struct PlanChangeRepeatsRow: View {
                     draft: draft,
                     start: start,
                     end: end,
-                    noun: PlanRepeatCopy.noun(kind: card.kind, walkKind: card.details?.walkKind)
+                    noun: PlanRepeatCopy.noun(kind: card.kind, walkKind: card.details?.walkKind, details: card.details)
                 ) { showsRepeats = false }
                     .readableColumn()
             }

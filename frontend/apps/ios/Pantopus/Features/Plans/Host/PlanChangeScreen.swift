@@ -221,18 +221,6 @@ struct PlanChangeScreen: View {
         return abs(original.timeIntervalSince(start)) > 30 * 60
     }
 
-    /// The push the server sends, word for word (board H11; Android shows the same).
-    private func pushWords(_ card: PlanCardDTO) -> (title: String, body: String) {
-        let calendar = PlanFormat.calendar(for: card.timezone)
-        let host = PlanCardLines.hostName(card)
-        let noun = PlanCardLines.noun(card)
-        let now = "Now \(PlanFormat.dayPhrase(start, calendar: calendar)) at \(PlanFormat.time(start, calendar: calendar))"
-        if newLink != nil { return PlanChangeOnlineLink.pushWords(host: host, noun: noun, now: now, timeMoved: timeMoved(card)) }
-        if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
-        if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
-        return ("\(host) moved the \(noun)", "\(now). Still coming?")
-    }
-
     /// Board H11: one sentence beside a warning glyph (as on Android).
     private func warning(_ card: PlanCardDTO) -> some View {
         let going = goingCount(card)
@@ -351,5 +339,19 @@ struct PlanChangeScreen: View {
                 self.error = PlanErrors.sentence(for: error)
             }
         }
+    }
+}
+
+private extension PlanChangeScreen {
+    /// The push the server sends, word for word (board H11; Android shows the same).
+    func pushWords(_ card: PlanCardDTO) -> (title: String, body: String) {
+        let calendar = PlanFormat.calendar(for: card.timezone)
+        let host = PlanCardLines.hostName(card)
+        let noun = PlanCardLines.noun(card)
+        let now = "Now \(PlanFormat.dayPhrase(start, calendar: calendar)) at \(PlanFormat.time(start, calendar: calendar))"
+        if newLink != nil { return PlanChangeOnlineLink.pushWords(host: host, noun: noun, now: now, timeMoved: timeMoved(card)) }
+        if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
+        if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
+        return ("\(host) moved the \(noun)", "\(now). Still coming?")
     }
 }

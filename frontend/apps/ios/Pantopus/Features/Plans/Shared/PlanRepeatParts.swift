@@ -21,9 +21,12 @@ enum PlanRepeatCopy {
 
     static let times = Noun(one: "time", many: "times")
 
-    /// The kind's short noun, or "times" where it has none (coffee, a study group).
-    static func noun(kind: PlanKind, walkKind: String?) -> Noun {
+    /// The kind's short noun, or "times" where it has none (coffee, a study group, something else). The newer kinds
+    /// count by their details (`details`: "hikes", "happy hours"), as the server's nouns go.
+    static func noun(kind: PlanKind, walkKind: String?, details: PlanDetailsDTO? = nil) -> Noun {
         switch kind {
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse:
+            PlanKindsMore.repeatNoun(kind, details).map { Noun(one: $0.one, many: $0.many) } ?? times
         case .watchParty: Noun(one: "watch party", many: "watch parties")
         case .playdate: Noun(one: "playdate", many: "playdates")
         case .pickupGame: Noun(one: "game", many: "games")
