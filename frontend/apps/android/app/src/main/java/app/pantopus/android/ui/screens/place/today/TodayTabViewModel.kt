@@ -114,7 +114,7 @@ class TodayTabViewModel
 
         private val _aroundToast = MutableStateFlow<String?>(null)
 
-        /** Feedback from a tap on an Around you post ("Saved to your bookmarks."). */
+        /** Feedback from a tap on an Around you post ("Saved.", "Reposted. Your connections see it, …"). */
         val aroundToast: StateFlow<String?> = _aroundToast.asStateFlow()
 
         fun dismissAroundToast() {

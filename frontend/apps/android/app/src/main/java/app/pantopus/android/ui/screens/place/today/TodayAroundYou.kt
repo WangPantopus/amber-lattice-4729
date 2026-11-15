@@ -48,6 +48,7 @@ import app.pantopus.android.ui.components.rememberShareTextWithCompletion
 import app.pantopus.android.ui.components.toastDurationMillis
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.place.components.placeCard
 import app.pantopus.android.ui.screens.profile.ProfilePostCardActions
 import app.pantopus.android.ui.screens.profile.ProfilePostCards
@@ -129,8 +130,9 @@ private val noPost: StateFlow<String?> = MutableStateFlow(null)
 
 /**
  * Around you on the Today tab: the page, its posts' "Post options" (Share…, Report post) and report reasons as on a
- * profile, and the feedback a tap leaves. [controller] holds the cards and what the viewer's taps did to them; a tap on
- * a card opens its post page ([onOpenPost]).
+ * profile, the Repost chooser as in Pulse, and the feedback a tap leaves. [controller] holds the cards and what the
+ * viewer's taps did to them; a tap on a card opens its post page ([onOpenPost]); "Repost with your words" opens the
+ * Pulse composer with the headline quoted ([onQuotePost]; null leaves that row out).
  */
 @Composable
 @Suppress("LongParameterList")
@@ -142,6 +144,7 @@ internal fun TodayAroundYouHost(
     toast: String?,
     onDismissToast: () -> Unit,
     onOpenPost: (String) -> Unit,
+    onQuotePost: ((String) -> Unit)? = null,
 ) {
     val cards by (controller?.cards ?: noCards).collectAsStateWithLifecycle()
     val optionsId by (controller?.optionsPostId ?: noPost).collectAsStateWithLifecycle()
@@ -168,7 +171,8 @@ internal fun TodayAroundYouHost(
                         onChooseReaction = posts::chooseReaction,
                         onOptions = posts::openOptions,
                         onToggleSave = posts::toggleSave,
-                        onToggleRepost = posts::toggleRepost,
+                        // ↻ opens the Repost chooser, as on a Pulse card (Repost / Repost with your words).
+                        onToggleRepost = posts::openRepostChooser,
                     )
                 } ?: ProfilePostCardActions(onOpen = onOpenPost),
         )
@@ -201,9 +205,33 @@ internal fun TodayAroundYouHost(
             )
         }
     }
+    AroundYouRepostChooser(controller, cards, onQuotePost)
     reportingId?.let { id ->
         ProfilePostReportDialog(onReport = { reason -> controller.report(id, reason) }, onDismiss = { controller.cancelReport() })
     }
+}
+
+/** ↻ on an Around you card: Repost (or Undo repost) and Repost with your words, as on a Pulse card. */
+@Composable
+private fun AroundYouRepostChooser(
+    controller: ProfilePostCards,
+    cards: List<PulsePostCardContent>,
+    onQuotePost: ((String) -> Unit)?,
+) {
+    val chooserId by controller.repostChooserPostId.collectAsStateWithLifecycle()
+    val card = chooserId?.let { id -> cards.firstOrNull { it.id == id } } ?: return
+    PulseRepostChooserSheet(
+        isReposted = card.actions.isReposted,
+        onToggleRepost = { controller.toggleRepost(card.id) },
+        onQuote =
+            onQuotePost?.let { quote ->
+                {
+                    controller.prepareQuote(card.id)
+                    quote(card.id)
+                }
+            },
+        onDismiss = { controller.dismissRepostChooser() },
+    )
 }
 
 /**
