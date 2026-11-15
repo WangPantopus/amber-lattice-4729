@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
@@ -139,6 +140,8 @@ private fun ChangePlacePicker(
                 gathering = ui.placesGathering,
                 placesError = ui.placesError,
                 suggestions = ui.suggestions,
+                // A private plan moves to any place (Plans step 1).
+                anywhere = ui.plan?.isPrivate == true,
             ),
         onClose = viewModel::closePlaces,
         onUse = viewModel::usePlace,

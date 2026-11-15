@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.R
@@ -109,6 +110,7 @@ internal fun PlacePickerStep(
                 placesError = ui.placesError,
                 suggestions = ui.suggestions,
                 homePoints = ui.homePoints,
+                anywhere = ui.isPrivate,
             ),
         onClose = vm::closePlaces,
         onUse = vm::usePlace,
@@ -149,6 +151,8 @@ internal data class PlacePickerState(
     val suggestions: PlaceSuggestions = PlaceSuggestions.Idle,
     /** The host's homes: "Pick it on the map" never takes a place at one. */
     val homePoints: List<Pair<Double, Double>> = emptyList(),
+    /** A private plan (Plans step 1) can be anywhere: "Pick it on the map" has no 3-mile reach. */
+    val anywhere: Boolean = false,
 )
 
 /**
@@ -276,6 +280,7 @@ internal fun PublicPlacePicker(
             kind = kind,
             origin = origin,
             homePoints = state.homePoints,
+            anywhere = state.anywhere,
             onUse = { picked ->
                 pickingOnMap = false
                 onPick(picked)
@@ -735,30 +740,50 @@ private fun PickerMap(
     }
 }
 
-/** H7: what neighbors see, and what only the people you accept see. */
+/**
+ * H7: what others see, and what only the people you accept see. A private plan (Plans step 1) previews what the people
+ * invited see, with the host's people to invite as it is posted.
+ */
 @Composable
 internal fun HostPreviewStep(
     ui: HostUi,
     onBack: () -> Unit,
     onPost: () -> Unit,
+    privateActions: PrivatePreviewActions? = null,
 ) {
     val draft = ui.draft
     val kind = draft.kind ?: return
+    val invitedOnly = ui.isPrivate && privateActions != null
     HostStepScaffold(
         title = "Preview",
         step = "3 of 3",
         leadingClose = false,
         onLeading = onBack,
         footer = {
-            ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
-            HostFooterButton(title = "Post plan", onClick = onPost, loading = ui.posting)
+            ui.error?.let {
+                Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error, modifier = Modifier.testTag("planHostError"))
+            }
+            if (invitedOnly) {
+                Box(modifier = Modifier.testTag("planPostAndInvite")) {
+                    HostFooterButton(title = privatePostTitle(draft.inviteIds.size), onClick = onPost, loading = ui.posting)
+                }
+                Text(
+                    text = "You can invite more people later",
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                HostFooterButton(title = "Post plan", onClick = onPost, loading = ui.posting)
+            }
         },
     ) {
         val business = ui.business
-        if (business != null) {
-            BusinessPreview(ui, kind, business)
-        } else {
-            NeighborPreview(ui, kind)
+        when {
+            business != null -> BusinessPreview(ui, kind, business)
+            invitedOnly -> PrivatePreview(ui, kind, requireNotNull(privateActions))
+            else -> NeighborPreview(ui, kind)
         }
     }
 }

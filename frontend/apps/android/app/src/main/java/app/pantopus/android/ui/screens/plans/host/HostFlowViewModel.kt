@@ -13,23 +13,28 @@ import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
+import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlansSportsDto
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.GeoApi
 import app.pantopus.android.data.location.ViewingLocationRepository
+import app.pantopus.android.data.plans.PlanAudience
 import app.pantopus.android.data.plans.PlanAutoRule
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanPlaceQuery
+import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.data.plans.PlanStudyStyle
 import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
@@ -116,7 +121,28 @@ data class HostDraft(
     val label: String? = null,
     /** Which of the business's own locations it meets at (B2). */
     val locationId: String? = null,
+    /** "Only people I invite" (Plans step 1): a private plan. False is "Anyone nearby", as every plan was. */
+    val isPrivate: Boolean = false,
+    /** A private plan: "Guests can bring a friend" (each person invited may invite one more). */
+    val guestsCanInvite: Boolean = false,
+    /** A private plan: the people chosen on the preview, in the order chosen, invited as it is posted. */
+    val inviteIds: List<String> = emptyList(),
 )
+
+/** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
+sealed interface HostInvitePeople {
+    data object Idle : HostInvitePeople
+
+    data object Loading : HostInvitePeople
+
+    data class Loaded(
+        val people: List<PlanInviteCandidateDto>,
+    ) : HostInvitePeople
+
+    data class Failed(
+        val message: String,
+    ) : HostInvitePeople
+}
 
 /** H1 to H8. */
 data class HostUi(
@@ -156,7 +182,19 @@ data class HostUi(
     val businesses: List<HostAsBusinessDto> = emptyList(),
     /** H1's "Host as" choice: a business's account, or null for yourself. Kept while the kind is chosen again. */
     val hostAsChoice: String? = null,
+    /** `plans_private` is on for this person: "Who can see this" shows on a person's own plan (Plans step 1). */
+    val privateOn: Boolean = false,
+    /** "Who can see this" as last chosen (or the empty state's "Plan with people you know"), kept while the kind changes. */
+    val privateChoice: Boolean = false,
+    /** A private plan's preview: the people to invite. */
+    val invitePeople: HostInvitePeople = HostInvitePeople.Idle,
 ) {
+    /** "Who can see this" shows: the switch is on and the plan is the person's own (a business's plan is never private). */
+    val showsAudience: Boolean get() = privateOn && business == null
+
+    /** The draft is a private plan: chosen, and still allowed. */
+    val isPrivate: Boolean get() = showsAudience && draft.isPrivate
+
     /** The business the draft is posted for, or null for a neighbor's own plan. */
     val business: HostAsBusinessDto? get() = draft.hostAs?.let { id -> businesses.firstOrNull { it.userId == id } }
 
@@ -190,7 +228,7 @@ class HostFlowViewModel
         private val viewing: ViewingLocationRepository,
         private val events: PlansEvents,
         private val geo: GeoApi,
-        feature: PlansFeature,
+        private val feature: PlansFeature,
     ) : ViewModel() {
         /** The plan "Host again" copies (A5), sent as `hosted_again_from`. */
         private var againFrom: String? = null
@@ -206,6 +244,8 @@ class HostFlowViewModel
                     playdatesOn = feature.flags.value.playdatesOn,
                     hostName = shortName(feature.viewer?.displayName),
                     hostAvatar = feature.viewer?.avatarUrl,
+                    privateOn = feature.flags.value.privateOn,
+                    privateChoice = feature.flags.value.privateOn && savedStateHandle.get<Boolean>(PlansRoutes.PRIVATE_KEY) == true,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -280,13 +320,23 @@ class HostFlowViewModel
                             pickupNow = false,
                             subject = d?.subject.orEmpty(),
                             studyStyle = PlanStudyStyle.from(d?.studyStyle),
+                            // A private plan is hosted again as a private one, with nobody invited yet.
+                            isPrivate = plan.isPrivate && it.privateOn,
+                            guestsCanInvite = plan.isPrivate && plan.guestsCanInvite == true,
                         ),
+                    privateChoice = plan.isPrivate && it.privateOn,
                 )
+            }
+            // A private plan copied while private plans are off is never posted for everyone without a word.
+            if (plan.isPrivate && !_ui.value.privateOn) {
+                _ui.update { it.copy(error = "Private plans aren't available right now. This copy would be seen by people nearby.") }
+                return
             }
             // "Host again" opens the preview (board A5 → H7, as on iOS); a copy that needs a fix opens its details.
             if (validate(_ui.value.draft) == null) {
                 _ui.update { it.copy(step = HostStep.Preview) }
                 loadPreviewArea()
+                if (_ui.value.isPrivate) loadInvitePeople()
             }
         }
 
@@ -370,7 +420,7 @@ class HostFlowViewModel
                     draft.copy(start = now.plusMinutes(PICKUP_LEAD_MINUTES), end = now.plusHours(2))
                 } else {
                     draft.copy(start = start, end = start.plusHours(hours))
-                }
+                }.copy(isPrivate = _ui.value.privateChoice && _ui.value.privateOn)
             _ui.update { it.copy(step = HostStep.Details, draft = timed, error = null) }
             // A watch party starts on the soonest game, its chip checked and its title and time filled in (board H2, as on iOS).
             if (kind == PlanKind.WATCH_PARTY) automaticGame()?.let(::pickGame)
@@ -466,6 +516,39 @@ class HostFlowViewModel
                     val start = clock.plusHours(3).truncatedTo(ChronoUnit.HOURS)
                     draft.copy(pickupNow = false, start = start, end = start.plusHours(2))
                 }
+            }
+        }
+
+        /** "Who can see this" (Plans step 1): anyone nearby, or only the people the host invites. */
+        fun setPrivate(invitedOnly: Boolean) {
+            if (!_ui.value.showsAudience) return
+            _ui.update { it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly), error = null) }
+        }
+
+        /** "Guests can bring a friend" on a private plan. */
+        fun setGuestsCanInvite(on: Boolean) = edit { it.copy(guestsCanInvite = on) }
+
+        /** A person on the private preview's list, chosen or not (up to 30 invited as it is posted). */
+        fun toggleInvite(userId: String) {
+            val chosen = _ui.value.draft.inviteIds
+            if (userId !in chosen && chosen.size >= MAX_INVITES_AT_POST) {
+                _ui.update { it.copy(error = "You can invite up to $MAX_INVITES_AT_POST people as you post. Invite more after.") }
+                return
+            }
+            edit { it.copy(inviteIds = if (userId in chosen) chosen - userId else chosen + userId) }
+        }
+
+        /** The private preview's people: read when it opens, and again from "Try again". */
+        fun loadInvitePeople() {
+            if (_ui.value.invitePeople == HostInvitePeople.Loading) return
+            _ui.update { it.copy(invitePeople = HostInvitePeople.Loading) }
+            viewModelScope.launch {
+                val next =
+                    when (val result = repository.invitePeopleBefore()) {
+                        is NetworkResult.Success -> HostInvitePeople.Loaded(result.data.people)
+                        is NetworkResult.Failure -> HostInvitePeople.Failed(result.error.planMessage)
+                    }
+                _ui.update { it.copy(invitePeople = next) }
             }
         }
 
@@ -715,6 +798,7 @@ class HostFlowViewModel
             }
             _ui.update { it.copy(step = HostStep.Preview, error = null) }
             loadPreviewArea()
+            if (_ui.value.isPrivate && _ui.value.invitePeople !is HostInvitePeople.Loaded) loadInvitePeople()
         }
 
         /** The city the place is in, for the preview's "Near Camas" (iOS reverse-geocodes the same point). */
@@ -751,10 +835,15 @@ class HostFlowViewModel
             return true
         }
 
-        fun post() {
+        /**
+         * Posts the plan. [then] is a private plan's "Text a link" or "Email" on the preview: the invite sheet opens over
+         * the posted plan.
+         */
+        fun post(then: PlanPostedInvite? = null) {
             val ui = _ui.value
             val draft = ui.draft
             val kind = draft.kind ?: return
+            if (ui.posting) return
             validate(draft)?.let { problem ->
                 _ui.update { it.copy(error = problem) }
                 return
@@ -766,28 +855,46 @@ class HostFlowViewModel
                     if (business != null) {
                         businessCreateBody(kind, draft, ui.zone, business)
                     } else {
-                        val fix = locations.gpsFix()
+                        // A private plan can be anywhere: no fix is needed to prove the host is nearby.
+                        val fix = if (ui.isPrivate) null else locations.gpsFix()
                         buildBody(kind, draft, ui, fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) })
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        events.posted(result.data.id)
+                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
                         _ui.update { it.copy(posting = false, postedId = result.data.id) }
                     }
-                    is NetworkResult.Failure ->
-                        _ui.update {
-                            it.copy(
-                                posting = false,
-                                error =
-                                    when (result.error.planCode) {
-                                        "not_near" -> "You can host within 3 miles of where you live or where you are now."
-                                        else -> result.error.planMessage
-                                    },
-                            )
-                        }
+                    is NetworkResult.Failure -> _ui.update { it.copy(posting = false, error = postError(result.error)) }
                 }
             }
         }
+
+        /**
+         * What went wrong with the invitations a private plan sent as it was posted: the server's sentence when none went
+         * out, or how many people couldn't be invited; null when all went well.
+         */
+        private fun inviteNote(plan: PlanDto): String? {
+            plan.inviteError?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
+            val missed = plan.inviteResults.orEmpty().count { it.outcome == "unavailable" }
+            return when (missed) {
+                0 -> null
+                1 -> "Couldn't invite 1 person. You can invite people from your plan."
+                else -> "Couldn't invite $missed people. You can invite people from your plan."
+            }
+        }
+
+        /** Why posting didn't work, in the server's words where it has them (Plans step 1 adds the private plan's refusals). */
+        private fun postError(error: NetworkError): String =
+            when (error.planCode) {
+                "not_near" -> "You can host within 3 miles of where you live or where you are now."
+                "private_unavailable" -> {
+                    // The switch went off since this screen opened: read it again for the other screens. This one keeps
+                    // "Who can see this", so the host chooses Anyone nearby themselves; nothing goes public unasked.
+                    feature.refresh()
+                    "Private plans aren't available right now. Choose Anyone nearby to post it."
+                }
+                else -> error.planMessage
+            }
 
         private fun buildBody(
             kind: PlanKind,
@@ -820,6 +927,7 @@ class HostFlowViewModel
                     }
                 }.distinct()
             val game = ui.games.firstOrNull { it.id == draft.gameId }
+            val invitedOnly = ui.isPrivate
             return CreatePlanBody(
                 kind = kind.wire,
                 title = draft.title.trim(),
@@ -837,6 +945,10 @@ class HostFlowViewModel
                 guestNote = draft.note.trim().takeIf(String::isNotEmpty),
                 gps = gps,
                 hostedAgainFrom = againFrom,
+                // A private plan (Plans step 1); a plan anyone nearby can see sends none of these, as before.
+                audience = PlanAudience.INVITED.takeIf { invitedOnly },
+                guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },
+                inviteUserIds = draft.inviteIds.take(MAX_INVITES_AT_POST).takeIf { invitedOnly && it.isNotEmpty() },
             )
         }
 
@@ -860,11 +972,14 @@ class HostFlowViewModel
             val end = draft.end
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
+            // A private plan can start up to 60 days ahead (Plans step 1).
+            val invitedOnly = _ui.value.showsAudience && draft.isPrivate
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
-                start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
+                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
                 kindProblem != null -> kindProblem
@@ -894,6 +1009,8 @@ class HostFlowViewModel
             const val WALK_HOUR = 8
             const val EVENING_HOUR = 19
             const val MAX_DAYS_AHEAD = 14L
+            const val MAX_PRIVATE_DAYS_AHEAD = 60L
+            const val MAX_INVITES_AT_POST = 30
             const val MIN_MINUTES = 15L
             const val QUARTER_HOUR = 15L
             const val GAME_ON_LEAD_MINUTES = 5L

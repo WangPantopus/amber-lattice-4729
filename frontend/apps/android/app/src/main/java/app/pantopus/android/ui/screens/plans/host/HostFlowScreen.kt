@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.components.LARGE_TEXT_SCALE
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
@@ -79,7 +80,20 @@ fun HostFlowScreen(
             HostStep.Type -> HostTypeStep(ui, onClose = onClose, onChoose = choose, onHostAs = viewModel::chooseHostAs)
             HostStep.Details -> HostDetailsStep(ui, viewModel, onBack = { if (!viewModel.back()) onClose() })
             HostStep.Place -> PlacePickerStep(ui, viewModel)
-            HostStep.Preview -> HostPreviewStep(ui, onBack = { viewModel.back() }, onPost = viewModel::post)
+            HostStep.Preview ->
+                HostPreviewStep(
+                    ui,
+                    onBack = { viewModel.back() },
+                    onPost = { viewModel.post() },
+                    privateActions =
+                        PrivatePreviewActions(
+                            onToggle = viewModel::toggleInvite,
+                            onRetry = viewModel::loadInvitePeople,
+                            // Both post the plan with whoever is chosen, then open the invite sheet over it.
+                            onTextLink = { viewModel.post(PlanPostedInvite.Text) },
+                            onEmail = { viewModel.post(PlanPostedInvite.Email) },
+                        ),
+                )
         }
     }
 }
