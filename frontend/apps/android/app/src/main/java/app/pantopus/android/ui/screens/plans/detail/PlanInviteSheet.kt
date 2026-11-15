@@ -59,6 +59,7 @@ import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanInviteCountsDto
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusCheckbox
 import app.pantopus.android.ui.components.PrimaryButton
@@ -133,7 +134,7 @@ internal fun PlanInviteSheet(
                     verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 ) {
                     InviteHeader(plan, onDismiss)
-                    InviteBody(ui, vm)
+                    InviteBody(ui, vm, privatePlan = plan.isPrivate)
                 }
                 SendBar(ui, onSend = vm::send)
             }
@@ -148,6 +149,7 @@ internal fun PlanInviteSheet(
 private fun ColumnScope.InviteBody(
     ui: PlanInviteUi,
     vm: PlanInviteViewModel,
+    privatePlan: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.weight(1f).testTag("planInviteSearch")) {
@@ -184,7 +186,13 @@ private fun ColumnScope.InviteBody(
             TextInviteCard(making = ui.makingLink, onText = vm::makeTextInvite)
             Sent(ui, onCancel = vm::cancel)
             Text(
-                text = "Each invitation is for one person. Emails and texts show the plan's card and area, never your address.",
+                text =
+                    if (privatePlan) {
+                        // A private plan at a public place shows the person invited its place by name (Plans step 1).
+                        "Each invitation is for one person. Emails and texts show the plan's card, never your address."
+                    } else {
+                        "Each invitation is for one person. Emails and texts show the plan's card and area, never your address."
+                    },
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )

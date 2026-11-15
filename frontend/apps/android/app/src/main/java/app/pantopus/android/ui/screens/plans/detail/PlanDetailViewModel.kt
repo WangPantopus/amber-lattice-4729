@@ -148,21 +148,23 @@ class PlanDetailViewModel
             if (!active || loadJob?.isActive == true) return
             loadJob =
                 viewModelScope.launch {
-                    claimInviteOnce()
+                    val missed = claimInviteOnce()
                     read()
+                    if (missed) inviteMissedNotice()
                 }
         }
 
         /**
          * Opened from an email or text invitation: it becomes this account's. Someone else already used it, or the host
-         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS).
+         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS). True when the
+         * invitation wasn't found.
          */
-        private suspend fun claimInviteOnce() {
-            val token = inviteToken ?: return
-            if (inviteClaimed) return
+        private suspend fun claimInviteOnce(): Boolean {
+            val token = inviteToken ?: return false
+            if (inviteClaimed) return false
             val generation = readGeneration
             val result = repository.claimInvite(planId, token)
-            if (!active || generation != readGeneration) return
+            if (!active || generation != readGeneration) return false
             inviteClaimed = true
             when (result) {
                 is NetworkResult.Success ->
@@ -171,15 +173,27 @@ class PlanDetailViewModel
                         _ui.update { it.copy(state = PlanDetailUiState.Ready(plan, fresh = false)) }
                     }
                 is NetworkResult.Failure -> {
-                    val sentence =
-                        when {
-                            result.error == NetworkError.NotFound -> "This invitation isn't available anymore. You can still ask to join."
-                            result.error.planCode == "invite_used" -> result.error.planMessage
-                            else -> null
-                        }
-                    sentence?.let { line -> _ui.update { it.copy(notice = line) } }
+                    // Taken back, or never this plan's: said once the plan is read (see [inviteMissedNotice]).
+                    if (result.error == NetworkError.NotFound) return true
+                    if (result.error.planCode == "invite_used") _ui.update { it.copy(notice = result.error.planMessage) }
                 }
             }
+            return false
+        }
+
+        /**
+         * The invitation isn't there anymore. A plan the person can still see takes requests as any shared plan does; a
+         * private plan (Plans step 1) shows nothing without its invitation, so nothing is offered.
+         */
+        private fun inviteMissedNotice() {
+            val canAsk = _ui.value.state is PlanDetailUiState.Ready
+            val line =
+                if (canAsk) {
+                    "This invitation isn't available anymore. You can still ask to join."
+                } else {
+                    "This invitation isn't available anymore."
+                }
+            _ui.update { it.copy(notice = line) }
         }
 
         /** "Can't make it" to an invitation (someone already in or waiting is taken out first). */

@@ -378,12 +378,7 @@ internal fun PublicPlacePicker(
                         }
                     places.isEmpty() ->
                         Text(
-                            text =
-                                if (query.isEmpty()) {
-                                    "No public places are on the map within 3 miles of you yet."
-                                } else {
-                                    "No public places match “$query” within 3 miles."
-                                },
+                            text = noPlacesLine(query, state.anywhere),
                             style = PantopusTextStyle.small,
                             color = PantopusColors.appTextSecondary,
                             modifier = Modifier.padding(vertical = Spacing.s3),
@@ -407,7 +402,13 @@ internal fun PublicPlacePicker(
                 homeRow?.invoke(first)
             }
             Text(
-                text = "You can host within 3 miles of where you live or where you are now.",
+                text =
+                    if (state.anywhere) {
+                        // A private plan (Plans step 1) has no 3-mile rule; the list still shows the places near the host.
+                        "A private plan can be anywhere. If the place isn't listed, pick it on the map."
+                    } else {
+                        "You can host within 3 miles of where you live or where you are now."
+                    },
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )
@@ -739,6 +740,18 @@ private fun PickerMap(
         }
     }
 }
+
+/** What the list says when it has no place to show; a private plan ([anywhere]) is pointed at the map instead of the 3 miles. */
+private fun noPlacesLine(
+    query: String,
+    anywhere: Boolean,
+): String =
+    when {
+        anywhere && query.isEmpty() -> "No public places are on the map near you yet. For one farther away, pick it on the map."
+        anywhere -> "No public places match “$query” near you. For one farther away, pick it on the map."
+        query.isEmpty() -> "No public places are on the map within 3 miles of you yet."
+        else -> "No public places match “$query” within 3 miles."
+    }
 
 /**
  * H7: what others see, and what only the people you accept see. A private plan (Plans step 1) previews what the people

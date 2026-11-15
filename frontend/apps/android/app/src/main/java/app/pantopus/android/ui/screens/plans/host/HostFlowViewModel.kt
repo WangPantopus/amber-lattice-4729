@@ -809,7 +809,7 @@ class HostFlowViewModel
             val ui = _ui.value
             val draft = ui.draft
             val kind = draft.kind ?: return
-            if (ui.posting) return
+            if (ui.posting || ui.postedId != null) return
             validate(draft)?.let { problem ->
                 _ui.update { it.copy(error = problem) }
                 return

@@ -246,7 +246,12 @@ internal fun ColumnScope.PlanBeforeInBody(
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
     if (plan.isPlaydate) {
         PlanNote(
-            "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family.",
+            if (plan.isPrivate) {
+                // The families a host invites to a private playdate get in right away (Plans step 1).
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools."
+            } else {
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family."
+            },
         )
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {

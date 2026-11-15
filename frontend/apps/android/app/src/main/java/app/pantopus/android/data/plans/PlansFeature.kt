@@ -21,8 +21,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The server flags (brief section 3). [playdates] only counts when [plans] is on; so does [privatePlans] (`plans_private`,
- * Plans step 1: invite-only plans), which shows none of its controls while off.
+ * The server flags (brief section 3). [playdates] only counts when [plans] is on; so does [privatePlans] (`plans_private`
+ * and `plans_invites` both on, Plans step 1: invite-only plans), which shows none of its controls while off.
  */
 data class PlansFlags(
     val plans: Boolean = false,
@@ -154,9 +154,11 @@ class PlansFeature
                     val plans = async { read(FLAG_PLANS) }
                     val playdates = async { read(FLAG_PLAYDATES) }
                     val privatePlans = async { read(FLAG_PRIVATE) }
+                    val invites = async { read(FLAG_INVITES) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
-                    val privateOn = privatePlans.await()
+                    // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
+                    val privateOn = bothOn(privatePlans.await(), invites.await())
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -169,6 +171,17 @@ class PlansFeature
                     remember(id, next)
                 }
         }
+
+        /** Both flags on; null (keep what was known) when a read failed and the other didn't already say off. */
+        private fun bothOn(
+            first: Boolean?,
+            second: Boolean?,
+        ): Boolean? =
+            when {
+                first == false || second == false -> false
+                first == null || second == null -> null
+                else -> true
+            }
 
         private suspend fun read(name: String): Boolean? =
             when (val result = safeApiCall { api.flag(name) }) {
@@ -200,5 +213,6 @@ class PlansFeature
             const val FLAG_PLANS = "plans"
             const val FLAG_PLAYDATES = "plans_playdates"
             const val FLAG_PRIVATE = "plans_private"
+            const val FLAG_INVITES = "plans_invites"
         }
     }
