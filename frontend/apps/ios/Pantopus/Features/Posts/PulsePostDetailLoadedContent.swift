@@ -177,6 +177,7 @@ public struct PulsePostDetailLoadedContent: View {
                     mediaLocationBadge: detail.post.locationName,
                     detailLine: detail.post.dealDetailLine ?? detail.post.lostFoundDetailLine ?? detail.post.alertDetailLine,
                     eventDetails: detail.post.eventDetails,
+                    source: detail.post.source,
                     composerAvatarURL: nil,
                     composerAvatarName: "You",
                     composerText: $composerText,

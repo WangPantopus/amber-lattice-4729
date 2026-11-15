@@ -117,7 +117,9 @@ struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.s2) {
-            Spacer().frame(width: CGFloat(comment.indentLevel) * 36)
+            // A reply steps in under the comment it answers; deeper replies step in less, so a thread of threads
+            // still has room for its words on a phone.
+            Spacer().frame(width: comment.indentLevel > 0 ? 36 + CGFloat(comment.indentLevel - 1) * 20 : 0)
             Button(action: { onAvatarTap() }) {
                 AvatarWithIdentityRing(
                     name: comment.authorName,

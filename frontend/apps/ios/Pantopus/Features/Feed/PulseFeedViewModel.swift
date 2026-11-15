@@ -1496,7 +1496,8 @@ public final class PulseFeedViewModel {
             pulseTopic: LaunchFeatures.pulseRedesign ? PulseTopic(stored: post.topic) : nil,
             status: Self.status(of: post, solved: isSolved, going: likeCount, expiresAt: expiresAt),
             repostedBy: Self.repostedByText(post.repostedBy),
-            authorLink: Self.authorLink(for: post)
+            authorLink: Self.authorLink(for: post),
+            source: post.source
         )
     }
 

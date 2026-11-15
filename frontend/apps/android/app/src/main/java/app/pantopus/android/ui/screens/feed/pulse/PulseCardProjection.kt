@@ -91,6 +91,7 @@ internal fun pulseCardContent(
         origin = post.origin,
         title = post.title,
         body = post.content.orEmpty(),
+        source = post.source,
         event =
             pulseEventDetails(
                 postType = post.postType,

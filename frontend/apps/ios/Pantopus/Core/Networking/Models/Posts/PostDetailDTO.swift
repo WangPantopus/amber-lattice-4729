@@ -274,6 +274,8 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
     public let claimMode: String?
     /// The asker already used "Keep open 7 more days" (`post_metadata.kept_open_at`).
     public let keptOpenAt: String?
+    /// Where the post's story was published (`post_metadata.source_url`), as on its card.
+    public let source: PostSource?
     /// A plan's own post (Plans marks it `post_metadata.plan`): its event
     /// times are real moments, not the composer's wall clock labelled UTC.
     public let isPlanPost: Bool
@@ -389,6 +391,7 @@ public struct PostDetailDTO: Decodable, Sendable, Hashable, Identifiable {
         claimMode = c.lenient(String.self, forKey: .claimMode)
         let metadata = c.lenient(PostLifecycleMetadata.self, forKey: .postMetadata)
         keptOpenAt = metadata?.keptOpenAt
+        source = PostSource(url: metadata?.sourceUrl, name: metadata?.sourceName)
         isPlanPost = metadata?.plan == true
         profilePinned = c.lenient(Bool.self, forKey: .profilePinned)
         showOnProfile = c.lenient(Bool.self, forKey: .showOnProfile)
@@ -447,6 +450,7 @@ extension PostDetailDTO {
         expiresAt = post.expiresAt
         claimMode = post.claimMode
         keptOpenAt = post.keptOpenAt
+        source = post.source
         isPlanPost = post.isPlanPost
         profilePinned = post.profilePinned
         showOnProfile = post.showOnProfile

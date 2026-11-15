@@ -736,7 +736,7 @@ async function serializePostForViewer(post, viewerUserId, authorRows = null) {
 // A reader who isn't signed in (the web's public post page and its link preview,
 // frontend/apps/web/src/app/posts/[id]/page.tsx) gets what that page shows and nothing else.
 const SIGNED_OUT_POST_FIELDS = ['id', 'title', 'content', 'post_type', 'state', 'media_urls', 'media_live_urls',
-  'ref_task_id', 'ref_listing_id', 'location_name', 'created_at'];
+  'ref_task_id', 'ref_listing_id', 'location_name', 'created_at', 'post_metadata'];
 
 // A signed-in reader who isn't the author gets what the web, iOS and Android post pages read: the post, its
 // approximate place, the Lost & Found contact (phone|<digits> when the poster asked for calls), what decides whether
@@ -752,8 +752,16 @@ const READER_POST_FIELDS = [
   'event_date', 'event_end_date', 'event_venue', 'safety_alert_kind', 'deal_business_name', 'deal_expires_at',
   'lost_found_type', 'lost_found_contact_pref', 'service_category', 'ref_task_id', 'ref_listing_id',
   'like_count', 'comment_count', 'share_count', 'userHasLiked', 'userHasSaved', 'userHasReposted', 'comments',
-  'reactions', 'userReaction', 'quoted_post',
+  'reactions', 'userReaction', 'quoted_post', 'post_metadata',
 ];
+
+// The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
+// and its name, an Official or curator notice's source). Only the server sets those keys (POST /api/posts,
+// services/aroundYouService.js); the rest of the metadata stays with the author.
+function sourceMetadata(post) {
+  const { source_url: url, source_name: name } = post?.post_metadata || {};
+  return url ? { source_url: url, ...(name ? { source_name: name } : {}) } : null;
+}
 
 // "Photo taken here": the author's own photo or video placed the post (set at posting, in post_metadata).
 function photoBasisFields(post) {
@@ -763,6 +771,7 @@ function photoBasisFields(post) {
 
 function signedOutPostView(post) {
   const view = Object.fromEntries(SIGNED_OUT_POST_FIELDS.map((field) => [field, post[field] ?? null]));
+  view.post_metadata = sourceMetadata(post);
   // The author as the post shows them, without the profile or home id behind it.
   const { id: _creatorId, ...creator } = post.creator || {};
   view.creator = post.creator ? creator : null;
@@ -770,7 +779,7 @@ function signedOutPostView(post) {
 }
 
 function readerPostView(post) {
-  return Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null]));
+  return { ...Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null])), post_metadata: sourceMetadata(post) };
 }
 
 

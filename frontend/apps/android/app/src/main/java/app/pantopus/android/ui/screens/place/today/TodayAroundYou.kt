@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,25 +36,46 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.saved_places.AroundYouDto
 import app.pantopus.android.data.api.models.saved_places.AroundYouItemDto
 import app.pantopus.android.data.api.models.saved_places.AroundYouSectionDto
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
 import app.pantopus.android.ui.screens.place.components.placeCard
+import app.pantopus.android.ui.components.Toast
+import app.pantopus.android.ui.components.ToastAppearance
+import app.pantopus.android.ui.components.rememberShareTextWithCompletion
+import app.pantopus.android.ui.components.toastDurationMillis
+import app.pantopus.android.ui.screens.profile.ProfilePostCardActions
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
+import app.pantopus.android.ui.screens.profile.ProfilePostOptionsSheet
+import app.pantopus.android.ui.screens.profile.ProfilePostReportDialog
+import app.pantopus.android.ui.screens.profile.profilePostHasOptions
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
+import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import kotlin.math.roundToLong
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /*
  * Today's two halves (founder decision 2026-11-14): "At home" is Today as it was; "Around you" lists local headlines
  * for the same place, each the outlet's own with its name, opened at the outlet. The switch is the big two-part one
  * Pulse draws for List | Map, and it shows only when the server has something for this place, so an area without
- * local sources sees Today unchanged. Parity twin of iOS `TodayAroundYou.swift`.
+ * local sources sees Today unchanged. Each headline is a post by the Pantopus curator account, drawn with the Pulse
+ * card (emoji reactions, Save, the post menu; a tap opens its post page with the reply threads); "Read at <outlet>"
+ * opens the story. A server from before the posts sends rows, drawn as the first build drew them. Parity twin of iOS
+ * `TodayAroundYou.swift`.
  */
 
 /** Something to show for this place: Today offers the switch. */
@@ -101,14 +124,106 @@ fun TodayHalfSwitch(
     }
 }
 
-/** The Around you page: the sections the server sends, each a card of rows. */
+private val noCards: StateFlow<List<PulsePostCardContent>> = MutableStateFlow(emptyList())
+private val noPost: StateFlow<String?> = MutableStateFlow(null)
+
+/**
+ * Around you on the Today tab: the page, its posts' "Post options" (Share…, Report post) and report reasons as on a
+ * profile, and the feedback a tap leaves. [controller] holds the cards and what the viewer's taps did to them; a tap on
+ * a card opens its post page ([onOpenPost]).
+ */
 @Composable
+@Suppress("LongParameterList")
+internal fun TodayAroundYouHost(
+    page: AroundYouDto,
+    top: Dp,
+    nowMs: Long,
+    controller: ProfilePostCards?,
+    toast: String?,
+    onDismissToast: () -> Unit,
+    onOpenPost: (String) -> Unit,
+) {
+    val cards by (controller?.cards ?: noCards).collectAsStateWithLifecycle()
+    val optionsId by (controller?.optionsPostId ?: noPost).collectAsStateWithLifecycle()
+    val reportingId by (controller?.reportingPostId ?: noPost).collectAsStateWithLifecycle()
+    val shareText = rememberShareTextWithCompletion()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(toastDurationMillis(toast, minimumMillis = 2_000))
+            onDismissToast()
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        TodayAroundYouPage(
+            page = page,
+            top = top,
+            nowMs = nowMs,
+            cards = cards,
+            actions =
+                controller?.let { posts ->
+                    ProfilePostCardActions(
+                        onOpen = onOpenPost,
+                        onReact = posts::tapReaction,
+                        onChooseReaction = posts::chooseReaction,
+                        onOptions = posts::openOptions,
+                        onToggleSave = posts::toggleSave,
+                        onToggleRepost = posts::toggleRepost,
+                    )
+                } ?: ProfilePostCardActions(onOpen = onOpenPost),
+        )
+        toast?.let { message ->
+            Toast(
+                text = message,
+                appearance =
+                    ToastAppearance(
+                        background = PantopusColors.appText.copy(alpha = 0.9f),
+                        foreground = PantopusColors.appTextInverse,
+                        textStyle = PantopusTextStyle.small,
+                    ),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
+            )
+        }
+    }
+    if (controller == null) return
+    optionsId?.let { id ->
+        cards.firstOrNull { it.id == id }?.let { card ->
+            ProfilePostOptionsSheet(
+                card = card,
+                onShare = {
+                    controller.dismissOptions()
+                    controller.shareExternally(card.id) { url, onCompleted ->
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && shareText(url, onCompleted)
+                    }
+                },
+                onReport = { controller.beginReport(card.id) },
+                onDismiss = { controller.dismissOptions() },
+            )
+        }
+    }
+    reportingId?.let { id ->
+        ProfilePostReportDialog(onReport = { reason -> controller.report(id, reason) }, onDismiss = { controller.cancelReport() })
+    }
+}
+
+/**
+ * The Around you page: under each section's name, its headlines as Pulse cards ([cards], from the page's posts), or,
+ * from a server before the posts, a card of the first build's rows.
+ */
+@Composable
+@Suppress("LongParameterList")
 fun TodayAroundYouPage(
     page: AroundYouDto,
     top: Dp,
     nowMs: Long,
     modifier: Modifier = Modifier,
+    cards: List<PulsePostCardContent> = emptyList(),
+    actions: ProfilePostCardActions = ProfilePostCardActions(),
 ) {
+    if (page.hasPosts) {
+        AroundYouPostsPage(page, top, cards, actions, modifier)
+        return
+    }
     val context = LocalContext.current
     val open: (String) -> Unit = { link ->
         try {
@@ -143,6 +258,88 @@ fun TodayAroundYouPage(
 }
 
 @Composable
+private fun AroundYouPostsPage(
+    page: AroundYouDto,
+    top: Dp,
+    cards: List<PulsePostCardContent>,
+    actions: ProfilePostCardActions,
+    modifier: Modifier,
+) {
+    val scroll = rememberScrollState()
+    ScrollAwayHeaderPage(scroll)
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .verticalScroll(scroll)
+                .padding(top = top)
+                .padding(top = 8.dp, bottom = 40.dp)
+                .testTag("aroundYouPanel"),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        page.area?.let { area ->
+            Text(
+                "From local news outlets around $area. Each post links to the story where it was published.",
+                fontSize = 13.sp,
+                color = PantopusColors.appTextSecondary,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
+        page.sections.forEach { section ->
+            val ids = section.posts.orEmpty().map { it.id }.toSet()
+            val sectionCards = cards.filter { it.id in ids }
+            // A section whose posts all left (removed, hidden) shows nothing.
+            if (sectionCards.isNotEmpty()) AroundYouPostSection(section.id, section.title, sectionCards, actions)
+        }
+    }
+}
+
+/** A section's posts, full-width rows as in Pulse. */
+@Composable
+private fun AroundYouPostSection(
+    id: String,
+    title: String,
+    cards: List<PulsePostCardContent>,
+    actions: ProfilePostCardActions,
+) {
+    Column(modifier = Modifier.testTag("aroundYouSection_$id"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionHeading(title, Modifier.padding(horizontal = 20.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(PantopusColors.appBorderSubtle))
+            cards.forEach { card ->
+                val going = { actions.onReact(card.id) }
+                // A Repost shows the headline to the reposter's connections in Pulse; the post itself lists only here.
+                PulsePostCard(
+                    content = card,
+                    onTap = { actions.onOpen(card.id) },
+                    onPrimaryReaction = going,
+                    onRSVP = going.takeIf { card.attendees != null },
+                    onReact = { emoji -> actions.onChooseReaction(card.id, emoji) },
+                    onOverflow = { actions.onOptions(card.id) }.takeIf { profilePostHasOptions(card) },
+                    onToggleSave = { actions.onToggleSave(card.id) },
+                    onToggleRepost = { actions.onToggleRepost(card.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeading(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        title.uppercase(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.77.sp,
+        color = PantopusColors.appTextSecondary,
+        modifier = modifier.semantics { heading() },
+    )
+}
+
+@Composable
 private fun AroundYouSection(
     section: AroundYouSectionDto,
     nowMs: Long,
@@ -152,14 +349,7 @@ private fun AroundYouSection(
         modifier = Modifier.testTag("aroundYouSection_${section.id}"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            section.title.uppercase(),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.77.sp,
-            color = PantopusColors.appTextSecondary,
-            modifier = Modifier.padding(horizontal = 4.dp).semantics { heading() },
-        )
+        SectionHeading(section.title, Modifier.padding(horizontal = 4.dp))
         Column(modifier = Modifier.fillMaxWidth().placeCard()) {
             section.items.forEachIndexed { index, item ->
                 if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(PantopusColors.appBorderSubtle))

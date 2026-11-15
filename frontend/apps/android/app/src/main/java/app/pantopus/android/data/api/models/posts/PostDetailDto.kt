@@ -163,6 +163,9 @@ data class PostDetailDto(
     /** A plan's own post (Plans marks it `post_metadata.plan`): its event times are real moments. */
     val isPlanPost: Boolean get() = lifecycleMetadata?.plan == true
 
+    /** Where the post's story was published, as on its card; null on most posts. */
+    val source: PostSource? get() = lifecycleMetadata?.source
+
     val canShareExternally: Boolean
         get() =
             !isRemovedByModerator &&

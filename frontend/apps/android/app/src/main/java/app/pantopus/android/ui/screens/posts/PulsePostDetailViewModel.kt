@@ -85,6 +85,9 @@ internal const val POST_REPORT_SUBMITTED_TOAST = "Report submitted"
 internal const val ASK_KEPT_OPEN_TOAST = "Kept open for 7 more days."
 internal const val ASK_CLOSED_TOAST = "Question closed."
 
+/** How far a thread of replies steps in: a reply to a reply to a reply sits three steps in, and deeper ones stay there. */
+private const val MAX_REPLY_INDENT = 4
+
 /** The success toasts on this screen; every other toast reports a failure. */
 internal val POST_DETAIL_SUCCESS_TOASTS = setOf(POST_REPORT_SUBMITTED_TOAST, ASK_KEPT_OPEN_TOAST, ASK_CLOSED_TOAST)
 
@@ -812,16 +815,16 @@ class PulsePostDetailViewModel
 
             for (parent in topLevel) {
                 rows += rowFrom(parent, indent = 0)
-                // Reply is available on every row; flatten descendants using
-                // the existing single-level indentation and expansion control.
-                val replies = mutableListOf<PostCommentDto>()
-                val pending = ArrayDeque(repliesByParent[parent.id].orEmpty().asReversed())
+                // Reply is available on every row. Each reply follows the one it answers, oldest first, one step
+                // further in (founder 2026-11-15: threads of threads read as threads).
+                val replies = mutableListOf<Pair<PostCommentDto, Int>>()
+                val pending = ArrayDeque(repliesByParent[parent.id].orEmpty().asReversed().map { it to 1 })
                 val visited = mutableSetOf(parent.id)
                 while (pending.isNotEmpty()) {
-                    val reply = pending.removeLast()
+                    val (reply, depth) = pending.removeLast()
                     if (!visited.add(reply.id)) continue
-                    replies += reply
-                    pending.addAll(repliesByParent[reply.id].orEmpty().asReversed())
+                    replies += reply to depth
+                    pending.addAll(repliesByParent[reply.id].orEmpty().asReversed().map { it to depth + 1 })
                 }
                 totalReplyCount += replies.size
                 val cap =
@@ -830,8 +833,8 @@ class PulsePostDetailViewModel
                     } else {
                         minOf(maxInitialReplies, replies.size)
                     }
-                for (reply in replies.take(cap)) {
-                    rows += rowFrom(reply, indent = 1)
+                for ((reply, depth) in replies.take(cap)) {
+                    rows += rowFrom(reply, indent = minOf(depth, MAX_REPLY_INDENT))
                     visibleReplyCount++
                 }
             }
