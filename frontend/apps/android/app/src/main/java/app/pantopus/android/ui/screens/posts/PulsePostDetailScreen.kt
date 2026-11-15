@@ -60,9 +60,15 @@ import app.pantopus.android.ui.screens.compose.pulse.PulseComposePurpose
 import app.pantopus.android.ui.screens.compose.pulse.PulseLostFoundContactPref
 import app.pantopus.android.ui.screens.compose.pulse.PulseLostFoundKind
 import app.pantopus.android.ui.screens.compose.pulse.PulseSafetyAlertKind
+import app.pantopus.android.ui.screens.feed.pulse.PULSE_ACTION_TOAST_MILLIS
 import app.pantopus.android.ui.screens.feed.pulse.PostStatusPill
 import app.pantopus.android.ui.screens.feed.pulse.PulseEventDetails
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
+import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedPostCard
+import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
 import app.pantopus.android.ui.screens.feed.pulse.pulseEventDetails
+import app.pantopus.android.ui.screens.feed.pulse.toastButton
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailTopBar
@@ -158,6 +164,12 @@ fun PulsePostDetailScreen(
     onAsk: ((AIScreenContext) -> Unit)? = null,
     /** Plans is on for the person, so Ask on an event that hasn't ended offers "Make this a plan". */
     plansOn: Boolean = false,
+    /** Opens another post's page: the post this one quotes. */
+    onOpenPost: (String) -> Unit = {},
+    /** "Repost with your words": the composer with this post quoted. Null leaves it out of the Repost chooser. */
+    onQuotePost: ((String) -> Unit)? = null,
+    /** "View" on the "Saved." toast: My posts on its Saved tab. Null leaves the toast without it. */
+    onOpenSavedPosts: (() -> Unit)? = null,
     viewModel: PulsePostDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -167,6 +179,7 @@ fun PulsePostDetailScreen(
     val composer by viewModel.composerText.collectAsStateWithLifecycle()
     val isSending by viewModel.isSendingComment.collectAsStateWithLifecycle()
     val toast by viewModel.toastMessage.collectAsStateWithLifecycle()
+    val toastAction by viewModel.toastAction.collectAsStateWithLifecycle()
     val showsOverflow by viewModel.showsOverflowMenu.collectAsStateWithLifecycle()
     val confirmingClose by viewModel.confirmingClose.collectAsStateWithLifecycle()
     val didDelete by viewModel.didDeletePost.collectAsStateWithLifecycle()
@@ -182,6 +195,7 @@ fun PulsePostDetailScreen(
     var showsReportReasons by rememberSaveable { mutableStateOf(false) }
     var showsDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var commentPendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showsRepostChooser by rememberSaveable { mutableStateOf(false) }
 
     LifecycleResumeEffect(Unit) {
         viewModel.load()
@@ -202,9 +216,18 @@ fun PulsePostDetailScreen(
         if (didDelete) onBack()
     }
 
-    LaunchedEffect(toast) {
+    // "View" on the "Saved." toast (contract §5), where there is a My posts to open.
+    val shownToastAction =
+        toastAction
+            ?.takeIf { onOpenSavedPosts != null }
+            .toastButton(toast) { action ->
+                viewModel.dismissToast()
+                if (action == PulseToastAction.ViewSaved) onOpenSavedPosts?.invoke()
+            }
+    LaunchedEffect(toast, toastAction) {
         if (toast != null) {
-            delay(2_500)
+            // A toast with a button stays long enough to reach it.
+            delay(if (shownToastAction != null) PULSE_ACTION_TOAST_MILLIS else 2_500L)
             viewModel.dismissToast()
         }
     }
@@ -283,11 +306,16 @@ fun PulsePostDetailScreen(
                     onCommentLike = { row -> viewModel.toggleCommentLike(row.id) },
                     onCommentDelete = { row -> commentPendingDeleteId = row.id },
                     commentsLoading = commentsLoading,
+                    onOpenQuoted = { quotedId ->
+                        viewModel.seedQuotedPost(quotedId)
+                        onOpenPost(quotedId)
+                    },
                 )
             }
         }
         toast?.let { message ->
-            // Tinted by kind: a report sent, an Ask kept open or closed is good news; the rest are failures.
+            // Tinted by kind: a report sent, an Ask kept open or closed, a save or a repost is good news; the rest are
+            // failures.
             Toast(
                 message =
                     ToastMessage(
@@ -295,8 +323,27 @@ fun PulsePostDetailScreen(
                         kind = if (message in POST_DETAIL_SUCCESS_TOASTS) ToastKind.Success else ToastKind.Error,
                     ),
                 modifier = Modifier.align(Alignment.BottomCenter).imePadding().padding(bottom = 100.dp),
+                action = shownToastAction,
             )
         }
+    }
+
+    if (showsRepostChooser) {
+        PulseRepostChooserSheet(
+            isReposted = isReposted,
+            onToggleRepost = {
+                showsRepostChooser = false
+                viewModel.toggleRepost()
+            },
+            onQuote =
+                onQuotePost?.let { quote ->
+                    {
+                        showsRepostChooser = false
+                        (state as? PulsePostDetailUiState.Loaded)?.let { quote(it.content.post.id) }
+                    }
+                },
+            onDismiss = { showsRepostChooser = false },
+        )
     }
 
     if (showsOverflow) {
@@ -320,7 +367,7 @@ fun PulsePostDetailScreen(
                     color = PantopusColors.appText,
                 )
                 OverflowAction(
-                    label = if (isSaved) "Remove bookmark" else "Save post",
+                    label = if (isSaved) PulsePostCopy.REMOVE_SAVED_LABEL else PulsePostCopy.SAVE_LABEL,
                     testTag = "pulsePostDetail-save",
                 ) {
                     viewModel.dismissOverflowMenu()
@@ -328,12 +375,13 @@ fun PulsePostDetailScreen(
                 }
                 val isRemoved = (state as? PulsePostDetailUiState.Loaded)?.content?.post?.isRemovedByModerator == true
                 if (!isRemoved) {
+                    // Opens the Repost chooser (contract §2).
                     OverflowAction(
-                        label = if (isReposted) "Undo repost" else "Repost",
+                        label = if (isReposted) PulsePostCopy.UNDO_REPOST else PulsePostCopy.REPOST,
                         testTag = "pulsePostDetail-repost",
                     ) {
                         viewModel.dismissOverflowMenu()
-                        viewModel.toggleRepost()
+                        showsRepostChooser = true
                     }
                 }
                 if (viewModel.canKeepOpen) {
@@ -528,6 +576,8 @@ fun PulsePostDetailLoadedContent(
     /** Instant Screens: the post shows from its feed card while its comments load. */
     commentsLoading: Boolean = false,
     refreshNotice: RefreshNotice? = null,
+    /** Opens the quoted post's page, with its id; null leaves the quoted card still. */
+    onOpenQuoted: ((String) -> Unit)? = null,
 ) {
     ContentDetailShell(
         title = "Post",
@@ -620,6 +670,11 @@ fun PulsePostDetailLoadedContent(
                 repliesClosedNote = if (content.post.isRemovedByModerator) "Replies are off for this post." else null,
                 commentsLoading = commentsLoading,
                 loadingCommentCount = content.post.commentCount,
+                // The post it quotes, under its own text and media (contract §8.3).
+                belowMedia =
+                    content.quoted?.let { quoted ->
+                        { PulseQuotedPostCard(card = quoted, testTag = "pulseQuotedPost_${content.post.id}", onOpen = onOpenQuoted) }
+                    },
                 // Launch cuts #6/#4: "Nearby providers" is business discovery and broad provider search.
                 belowReactions =
                     if (nearbyProviders.isEmpty() || !(LaunchFeatures.businessDirectory && LaunchFeatures.openGigs)) {

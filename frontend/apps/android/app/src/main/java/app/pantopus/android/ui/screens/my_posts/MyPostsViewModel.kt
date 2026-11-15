@@ -73,6 +73,9 @@ object MyPostsTab {
 
     /** Saved posts; its list lives in [SavedPostsViewModel]. */
     const val SAVED = "saved"
+
+    /** The posts you reposted (after Saved); its list lives in [RepostedPostsViewModel]. */
+    const val REPOSTS = "reposts"
 }
 
 /** Lightweight presentation contract for the per-row kebab action sheet. */
@@ -272,6 +275,18 @@ class MyPostsViewModel
             _selectedTab.value = id
             // Before a successful load there is no list to show; keep the error.
             if (loadedAtLeastOnce) applyState()
+        }
+
+        private var initialTabApplied = false
+
+        /**
+         * The tab the route asked for (`my-posts?tab=saved`, the "Saved." toast's View), applied once per visit: coming
+         * back from a post keeps the tab the person is on.
+         */
+        fun openInitialTab(id: String?) {
+            if (initialTabApplied) return
+            initialTabApplied = true
+            id?.takeIf { it in INITIAL_TABS }?.let(::selectTab)
         }
 
         /**
@@ -768,6 +783,9 @@ class MyPostsViewModel
 
             /** Deepest re-query a refresh makes to keep the rows already paged in. */
             const val MAX_REFRESH_DEPTH = 200
+
+            /** The tabs a `my-posts?tab=` route may open on. */
+            private val INITIAL_TABS = setOf(MyPostsTab.ACTIVE, MyPostsTab.ARCHIVED, MyPostsTab.SAVED, MyPostsTab.REPOSTS)
 
             /** The cursor for the page after [response], or null when the server reports no more. */
             fun nextPageAfter(response: MyPostsResponse): FeedCursor? = response.pagination?.takeIf { it.hasMore == true }?.nextCursor

@@ -507,6 +507,7 @@ internal fun ProfilePulseCards(
                         onOverflow = { actions.onOptions(card.id) }.takeIf { profilePostHasOptions(card) },
                         onToggleSave = { actions.onToggleSave(card.id) },
                         onToggleRepost = { actions.onToggleRepost(card.id) },
+                        onOpenQuoted = actions.onOpenQuoted,
                     )
                 } else {
                     PulsePostCard(content = card, onTap = null, onPrimaryReaction = {})

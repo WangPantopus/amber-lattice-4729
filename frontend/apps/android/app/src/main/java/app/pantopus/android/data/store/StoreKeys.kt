@@ -296,13 +296,13 @@ object StoreKeys {
     )
 
     /**
-     * A person's posts on their profile, read as feed rows for the Pulse card. Its own entry
-     * (`shape`, never sent) so it can't meet a [userPosts] reply of another type.
+     * A person's posts on their profile, read as feed rows for the Pulse card, with the posts they reposted
+     * (`include_reposts`). Its own entry (`shape`, never sent) so it can't meet a [userPosts] reply of another type.
      */
     fun profilePosts(userId: String) =
         StoreKey<FeedResponse>(
             "api/posts/user/$userId",
-            mapOf("limit" to PROFILE_POSTS_LIMIT.toString(), "shape" to "feed"),
+            mapOf("limit" to PROFILE_POSTS_LIMIT.toString(), "include_reposts" to "true", "shape" to "feed"),
             kind = StoreKind.POST,
             topics = setOf(StoreTopics.POSTS, "profile:$userId"),
         )
@@ -313,6 +313,15 @@ object StoreKeys {
     fun savedPosts(limit: Int) =
         StoreKey<SavedPostsResponse>(
             "api/posts/saved",
+            mapOf("limit" to limit.toString()),
+            kind = StoreKind.POST,
+            topics = setOf(StoreTopics.POSTS, StoreTopics.PROFILE_ME),
+        )
+
+    /** My posts' Reposts tab: the first page of `GET /api/posts/reposts`, kept as the Saved tab's is. */
+    fun repostedPosts(limit: Int) =
+        StoreKey<SavedPostsResponse>(
+            "api/posts/reposts",
             mapOf("limit" to limit.toString()),
             kind = StoreKind.POST,
             topics = setOf(StoreTopics.POSTS, StoreTopics.PROFILE_ME),

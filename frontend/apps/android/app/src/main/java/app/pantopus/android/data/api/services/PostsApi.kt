@@ -178,13 +178,15 @@ interface PostsApi {
     /**
      * The same list read as feed rows (the route uses the feed's serializer), for a person's
      * profile, which draws each post with the Pulse card. Route `backend/routes/posts.js`,
-     * `/user/:userId`.
+     * `/user/:userId`. [includeReposts] (`include_reposts=true`, profiles only, never My posts) also lists the
+     * posts that person reposted, each at its repost time, for the owner and their connections.
      */
     @GET("api/posts/user/{userId}")
     suspend fun profilePostsConditional(
         @Path("userId") userId: String,
         @Query("limit") limit: Int,
         @Header("If-None-Match") etag: String?,
+        @Query("include_reposts") includeReposts: Boolean? = null,
     ): Response<FeedResponse>
 
     /** Preview as: your posts as `anyone` (none, `sign_in_required`), `neighbors` or `connections` see them. */
@@ -229,6 +231,22 @@ interface PostsApi {
 
     @GET("api/posts/saved")
     suspend fun savedPostsConditional(
+        @Query("limit") limit: Int,
+        @Header("If-None-Match") etag: String?,
+    ): Response<SavedPostsResponse>
+
+    /**
+     * `GET /api/posts/reposts` — the viewer's reposts they can still open, newest repost first; mirrors
+     * [savedPosts] exactly (offset paging over reposts). Route `backend/routes/posts.js`, `/reposts`.
+     */
+    @GET("api/posts/reposts")
+    suspend fun repostedPosts(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0,
+    ): SavedPostsResponse
+
+    @GET("api/posts/reposts")
+    suspend fun repostedPostsConditional(
         @Query("limit") limit: Int,
         @Header("If-None-Match") etag: String?,
     ): Response<SavedPostsResponse>

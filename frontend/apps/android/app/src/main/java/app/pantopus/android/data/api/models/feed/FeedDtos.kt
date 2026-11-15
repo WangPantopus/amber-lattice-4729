@@ -34,8 +34,15 @@ data class FeedPost(
     @Json(name = "userReaction") val userReaction: String? = null,
     @Json(name = "userHasSaved") val userHasSaved: Boolean = false,
     @Json(name = "userHasReposted") val userHasReposted: Boolean = false,
-    /** Connections list only: which of the viewer's connections reposted the post. */
+    /**
+     * Who reposted the post: the viewer ("You") and their connections. Connections, Nearby, profile and Reposts rows;
+     * older servers send it on Connections rows only, without the viewer.
+     */
     @Json(name = "reposted_by") val repostedBy: FeedRepostedBy? = null,
+    /** On a profile's Posts and on My posts' Reposts: when that person reposted it (ISO 8601). */
+    @Json(name = "reposted_at") val repostedAt: String? = null,
+    /** "Repost with your words": the post this one quotes, or why it can't be shown; null on an ordinary post. */
+    @Json(name = "quoted_post") val quotedPost: FeedQuotedPost? = null,
     /** Lifecycle state — `open` / `solved` (`backend/services/feedService.js:234`). */
     val state: String? = null,
     /**
@@ -98,13 +105,29 @@ data class FeedPost(
         get() = PostReactionSummary.of(reactions, likeCount, userReaction, userHasLiked)
 }
 
-/** The viewer's connections who reposted a Connections post (`feedService.js` repostedByLines). */
+/**
+ * Who reposted a post (`feedService.js` repostedByLines): the viewer and their connections. A value that can't be read
+ * reads as none ([app.pantopus.android.data.api.models.common.TolerantJsonAdapterFactory]), never failing the post.
+ */
 @JsonClass(generateAdapter = true)
 data class FeedRepostedBy(
-    /** The latest reposters' names, at most two. */
+    /** The latest reposters' names, at most two; "You" first when the viewer reposted it. */
     val names: List<String> = emptyList(),
-    /** How many of the viewer's connections reposted it. */
+    /** Everyone counted, the viewer included. */
     val count: Int = 0,
+    /** The viewer reposted it (then [names] starts with "You"); older servers leave it out. */
+    val viewer: Boolean = false,
+)
+
+/**
+ * The post a quote post quotes (contract §8). [available] false: deleted, hidden, removed, or not this viewer's to
+ * read; then [post] is absent. Otherwise [post] is an ordinary feed row for this viewer (never quoting another). A value
+ * that can't be read reads as none, never failing the post that carries it.
+ */
+@JsonClass(generateAdapter = true)
+data class FeedQuotedPost(
+    val available: Boolean = false,
+    val post: FeedPost? = null,
 )
 
 /**

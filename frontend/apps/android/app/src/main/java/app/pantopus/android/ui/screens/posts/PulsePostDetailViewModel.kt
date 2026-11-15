@@ -26,6 +26,11 @@ import app.pantopus.android.data.store.StoreKind
 import app.pantopus.android.ui.components.IdentityPillar
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.screens.feed.pulse.PostStatus
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
+import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedCard
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastActionFor
+import app.pantopus.android.ui.screens.feed.pulse.pulseQuotedCard
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.PostCommentRow
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.PostReactionCounts
@@ -69,6 +74,8 @@ data class PulsePostDetailContent(
     val hiddenReplyCount: Int,
     /** How the post ended, or when a heads-up ends (S7): the pill under the author. */
     val status: PostStatus? = null,
+    /** "Repost with your words": the quoted post's compact card under the text and media; null on an ordinary post. */
+    val quoted: PulseQuotedCard? = null,
 )
 
 /** Observed UI state for the Pulse post detail screen. */
@@ -89,7 +96,16 @@ internal const val ASK_CLOSED_TOAST = "Question closed."
 private const val MAX_REPLY_INDENT = 4
 
 /** The success toasts on this screen; every other toast reports a failure. */
-internal val POST_DETAIL_SUCCESS_TOASTS = setOf(POST_REPORT_SUBMITTED_TOAST, ASK_KEPT_OPEN_TOAST, ASK_CLOSED_TOAST)
+internal val POST_DETAIL_SUCCESS_TOASTS =
+    setOf(
+        POST_REPORT_SUBMITTED_TOAST,
+        ASK_KEPT_OPEN_TOAST,
+        ASK_CLOSED_TOAST,
+        PulsePostCopy.SAVED,
+        PulsePostCopy.UNSAVED,
+        PulsePostCopy.REPOSTED,
+        PulsePostCopy.REPOST_REMOVED,
+    )
 
 /** Loads + mutates a single Pulse post. */
 @HiltViewModel
@@ -137,6 +153,10 @@ class PulsePostDetailViewModel
 
         private val _toastMessage = MutableStateFlow<String?>(null)
         val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
+
+        /** "View" on the "Saved." toast (contract §5), shown while the toast says its words. */
+        private val _toastAction = MutableStateFlow<PulseToastActionFor?>(null)
+        val toastAction: StateFlow<PulseToastActionFor?> = _toastAction.asStateFlow()
 
         private val _showsOverflowMenu = MutableStateFlow(false)
 
@@ -373,6 +393,17 @@ class PulsePostDetailViewModel
 
         fun dismissToast() {
             _toastMessage.value = null
+            _toastAction.value = null
+        }
+
+        /**
+         * The quoted post's page opens from its card: its copy goes in the store first (Instant Screens), as a feed card
+         * tapped does.
+         */
+        fun seedQuotedPost(postId: String) {
+            val loaded = (_state.value as? PulsePostDetailUiState.Loaded)?.content?.post ?: return
+            val quoted = loaded.quotedPost?.takeIf { it.available }?.post ?: return
+            if (quoted.id == postId) repo.seedDetail(quoted)
         }
 
         fun showMoreReplies() {
@@ -560,7 +591,7 @@ class PulsePostDetailViewModel
             }
         }
 
-        /** Toggle the bookmark — optimistic with reconcile/rollback. */
+        /** Toggle Save — optimistic with reconcile/rollback; "Saved." comes with "View" (contract §5). */
         fun toggleSave() {
             if (_savePending.value) return
             _savePending.value = true
@@ -572,12 +603,18 @@ class PulsePostDetailViewModel
                     when (val result = repo.toggleSave(postId, saved = !before)) {
                         is NetworkResult.Success -> {
                             _isSaved.value = result.data.saved
+                            if (result.data.saved) {
+                                _toastAction.value = PulseToastActionFor(PulsePostCopy.SAVED, PulseToastAction.ViewSaved)
+                                _toastMessage.value = PulsePostCopy.SAVED
+                            } else {
+                                _toastMessage.value = PulsePostCopy.UNSAVED
+                            }
                             // A stale card's next tap would undo this save: lists showing the post refetch.
                             postsRefresh.notifyPostsDidChange()
                         }
                         is NetworkResult.Failure -> {
                             _isSaved.value = before
-                            _toastMessage.value = "Couldn't update the bookmark"
+                            _toastMessage.value = PulsePostCopy.SAVE_FAILED
                         }
                     }
                 } finally {
@@ -588,20 +625,30 @@ class PulsePostDetailViewModel
             }
         }
 
-        /** Toggle the repost — optimistic with reconcile/rollback. */
+        private var reposting = false
+
+        /** "Repost" / "Undo repost" in the Repost chooser — optimistic with reconcile/rollback (contract §1–§2). */
         fun toggleRepost() {
+            if (reposting) return
+            reposting = true
             val before = _isReposted.value
             _isReposted.value = !before
             viewModelScope.launch {
-                when (val result = repo.share(postId, shareType = "repost", reposted = !before)) {
-                    is NetworkResult.Success -> {
-                        _isReposted.value = result.data.reposted ?: !before
-                        postsRefresh.notifyPostsDidChange()
+                try {
+                    when (val result = repo.share(postId, shareType = "repost", reposted = !before)) {
+                        is NetworkResult.Success -> {
+                            val reposted = result.data.reposted ?: !before
+                            _isReposted.value = reposted
+                            _toastMessage.value = if (reposted) PulsePostCopy.REPOSTED else PulsePostCopy.REPOST_REMOVED
+                            postsRefresh.notifyPostsDidChange()
+                        }
+                        is NetworkResult.Failure -> {
+                            _isReposted.value = before
+                            _toastMessage.value = PulsePostCopy.REPOST_FAILED
+                        }
                     }
-                    is NetworkResult.Failure -> {
-                        _isReposted.value = before
-                        _toastMessage.value = "Couldn't update the repost"
-                    }
+                } finally {
+                    reposting = false
                 }
             }
         }
@@ -791,6 +838,7 @@ class PulsePostDetailViewModel
                             expiresAt = post.expiresAt.takeIf { post.archivedAt == null },
                             goingCount = post.likeCount,
                         )?.takeIf { LaunchFeatures.pulseRedesign },
+                quoted = pulseQuotedCard(post.quotedPost),
             )
         }
 

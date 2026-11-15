@@ -31,6 +31,8 @@ internal data class PulseCardLiveValues(
     val keptOpen: Boolean,
     val likePending: Boolean = false,
     val savePending: Boolean = false,
+    /** Who reposted it, with "You" once the viewer reposted it here ([afterViewerRepost]); null draws no line. */
+    val repostedBy: FeedRepostedBy? = null,
 ) {
     /** Whether the viewer reacted: Going, when [kind] is an event's; an emoji on every other post. */
     fun viewerReacted(kind: PostReactionKind): Boolean = if (kind == PostReactionKind.Going) hasReacted else reactions.mine != null
@@ -47,6 +49,7 @@ internal data class PulseCardLiveValues(
                 shareCount = post.shareCount,
                 isSolved = post.state == "solved",
                 keptOpen = !post.lifecycleMetadata?.keptOpenAt.isNullOrBlank(),
+                repostedBy = post.repostedBy,
             )
     }
 }
@@ -77,7 +80,7 @@ internal fun pulseCardContent(
         likePending = live.likePending,
         savePending = live.savePending,
         authorName = authorName,
-        authorInitials = initials(authorName),
+        authorInitials = pulseInitials(authorName),
         // Beacon credentials come from the public profile, never the surface.
         // Other surfaces carry no verification field, so no badge (being
         // a business isn't being verified).
@@ -149,8 +152,9 @@ internal fun pulseCardContent(
                 isPlanPost = post.isPlanPost,
             ),
         status = statusFor(post, live),
-        repostedBy = repostedByText(post.repostedBy),
+        repostedBy = repostedByText(live.repostedBy),
         authorLink = pulseAuthorLink(post),
+        quoted = pulseQuotedCard(post.quotedPost),
     )
 }
 
@@ -195,7 +199,10 @@ internal fun isOpenAsk(
     return PostStatus.askWindowIsOpen(post.createdAt, post.expiresAt)
 }
 
-/** Connections: "Ben C. reposted", "Ben C. and Eve H. reposted", "Ben C. and 2 others reposted" (as on web). */
+/**
+ * The "reposted" line (contract §1), after the ↻ the card draws: "You reposted", "Ben C. reposted", "You and Ben C.
+ * reposted", "You and 2 others reposted" (as on web). Null without a name.
+ */
 private fun repostedByText(repostedBy: FeedRepostedBy?): String? {
     val first = repostedBy?.names?.firstOrNull()
     val second = repostedBy?.names?.getOrNull(1)
@@ -230,7 +237,7 @@ private fun metaString(
     topic: PulseTopic?,
 ): String =
     listOfNotNull(
-        relativeTimestamp(post.createdAt),
+        pulseRelativeTime(post.createdAt),
         // Ahead of the place so a long place name never truncates it; web draws the badge beside the time.
         // A post the author's own photo placed says so instead of Visitor.
         photoProvenanceLabel(post) ?: "Visitor".takeIf { post.isVisitorPost },
@@ -260,7 +267,8 @@ internal fun photoProvenanceLabel(
     return "Photo taken here ${if (sameYear) "on" else "in"} $day"
 }
 
-private fun relativeTimestamp(iso: String): String =
+/** A card's time: "Just now", "5m", "3h", "2d", "4w" (the ISO text itself when it can't be read). */
+internal fun pulseRelativeTime(iso: String): String =
     runCatching {
         val instant = Instant.parse(iso)
         val seconds = Duration.between(instant, Instant.now()).seconds
@@ -273,7 +281,8 @@ private fun relativeTimestamp(iso: String): String =
         }
     }.getOrDefault(iso)
 
-private fun initials(name: String): String {
+/** Up to two initials for an avatar without a photo ("Maria L." is "ML"). */
+internal fun pulseInitials(name: String): String {
     val parts = name.split(" ").take(2)
     return parts.mapNotNull { it.firstOrNull()?.toString() }.joinToString("").uppercase()
 }

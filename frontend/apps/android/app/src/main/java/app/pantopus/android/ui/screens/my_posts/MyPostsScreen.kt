@@ -22,6 +22,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +37,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.pantopus.android.data.api.models.posts.MyPostDto
+import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastKind
@@ -44,12 +46,14 @@ import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.activity_filter_sheet.ActivityFilterSheet
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsScreen
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsTab
+import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsUiState
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 
 /** Test tag on the My posts root container. */
 const val MY_POSTS_TAG = "my-posts"
@@ -58,11 +62,12 @@ const val MY_POSTS_TAG = "my-posts"
 private const val TOAST_MILLIS = 2_500L
 
 /**
- * T5.3.3 — My posts. Thin wrapper around [ListOfRowsScreen]. Two tabs
- * (Active / Archived), 52dp secondary-create FAB, filter icon in the
- * top-bar trailing slot, and per-row kebab → modal bottom sheet (Archive
- * / Restore + Delete) → confirmation alert (for the destructive
- * Delete action).
+ * T5.3.3 — My posts. Thin wrapper around [ListOfRowsScreen]. Four tabs
+ * (Active / Archived / Saved / Reposts), 52dp secondary-create FAB, filter
+ * icon in the top-bar trailing slot, and per-row kebab → modal bottom sheet
+ * (Archive / Restore + Delete) → confirmation alert (for the destructive
+ * Delete action). Saved and Reposts list other people's posts
+ * ([OffsetPostsTabViewModel]), each row with its one action.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,11 +76,14 @@ fun MyPostsScreen(
     onOpenPost: (MyPostDto) -> Unit,
     onCompose: () -> Unit = {},
     onEditPost: (MyPostDto) -> Unit = {},
+    /** The tab to open on (`my-posts?tab=saved`, the "Saved." toast's View); null opens Active. */
+    initialTab: String? = null,
     viewModel: MyPostsViewModel = hiltViewModel(),
     savedViewModel: SavedPostsViewModel = hiltViewModel(),
+    repostsViewModel: RepostedPostsViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    val refreshNotice by viewModel.refreshNotice.collectAsStateWithLifecycle()
+    // Once per visit, before the first read, so it reads the tab it opens on.
+    viewModel.openInitialTab(initialTab)
     val topBarAction by viewModel.topBarAction.collectAsStateWithLifecycle()
     val fab by viewModel.fab.collectAsStateWithLifecycle()
     val tabs by viewModel.tabs.collectAsStateWithLifecycle()
@@ -85,10 +93,19 @@ fun MyPostsScreen(
     val showFilterSheet by viewModel.showFilterSheet.collectAsStateWithLifecycle()
     val activityFilter by viewModel.activityFilter.collectAsStateWithLifecycle()
     val toast by viewModel.toastMessage.collectAsStateWithLifecycle()
-    val savedState by savedViewModel.state.collectAsStateWithLifecycle()
-    val savedRefreshNotice by savedViewModel.refreshNotice.collectAsStateWithLifecycle()
+    // Saved and Reposts: other people's posts, read by their own view-models.
+    val keptList: OffsetPostsTabViewModel? =
+        when (selectedTab) {
+            MyPostsTab.SAVED -> savedViewModel
+            MyPostsTab.REPOSTS -> repostsViewModel
+            else -> null
+        }
+    val list = remember(keptList) { MyPostsTabList(viewModel, keptList) }
+    val listState by list.state.collectAsStateWithLifecycle()
+    val listRefreshNotice by list.refreshNotice.collectAsStateWithLifecycle()
+    val listToast by list.toastMessage.collectAsStateWithLifecycle()
     val savedToast by savedViewModel.toastMessage.collectAsStateWithLifecycle()
-    val onSaved = selectedTab == MyPostsTab.SAVED
+    val repostsToast by repostsViewModel.toastMessage.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.bindCallbacks(
@@ -97,19 +114,18 @@ fun MyPostsScreen(
             onEditPost = onEditPost,
         )
         savedViewModel.bindCallbacks(onOpenPost = onOpenPost)
+        repostsViewModel.bindCallbacks(onOpenPost = onOpenPost)
     }
 
-    LifecycleResumeEffect(onSaved) {
-        if (onSaved) savedViewModel.load() else viewModel.load()
+    LifecycleResumeEffect(list) {
+        list.load()
         onPauseOrDispose { }
     }
-    RefreshOnStoreChange { if (onSaved) savedViewModel.load() else viewModel.load() }
+    RefreshOnStoreChange { list.load() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle, onSaved) {
+    LaunchedEffect(lifecycle, list) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            viewModel.postChanges.collect {
-                if (onSaved) savedViewModel.load() else viewModel.load()
-            }
+            viewModel.postChanges.collect { list.load() }
         }
     }
 
@@ -117,6 +133,13 @@ fun MyPostsScreen(
         if (savedToast != null) {
             delay(TOAST_MILLIS)
             savedViewModel.dismissToast()
+        }
+    }
+
+    LaunchedEffect(repostsToast) {
+        if (repostsToast != null) {
+            delay(TOAST_MILLIS)
+            repostsViewModel.dismissToast()
         }
     }
 
@@ -129,20 +152,23 @@ fun MyPostsScreen(
 
     Box(modifier = Modifier.fillMaxSize().testTag(MY_POSTS_TAG)) {
         ListOfRowsScreen(
-            refreshNotice = if (onSaved) savedRefreshNotice else refreshNotice,
+            refreshNotice = listRefreshNotice,
             title = "My posts",
-            state = if (onSaved) savedState else state,
-            onRefresh = { if (onSaved) savedViewModel.refresh() else viewModel.refresh() },
-            onEndReached = { if (onSaved) savedViewModel.loadMoreIfNeeded() else viewModel.loadMoreIfNeeded() },
-            tabs = tabs + ListOfRowsTab(id = MyPostsTab.SAVED, label = "Saved"),
+            state = listState,
+            onRefresh = list::refresh,
+            onEndReached = list::loadMore,
+            tabs =
+                tabs +
+                    ListOfRowsTab(id = MyPostsTab.SAVED, label = "Saved") +
+                    ListOfRowsTab(id = MyPostsTab.REPOSTS, label = "Reposts"),
             selectedTab = selectedTab,
             onSelectTab = { viewModel.selectTab(it) },
             // The type/date filter applies to your own posts only.
-            topBarAction = if (onSaved) null else topBarAction,
+            topBarAction = topBarAction.takeIf { list.isOwnPosts },
             fab = fab,
             onBack = onBack,
         )
-        (if (onSaved) savedToast else toast)?.let { message ->
+        listToast?.let { message ->
             Toast(
                 message = ToastMessage(text = message, kind = ToastKind.Error),
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
@@ -214,6 +240,27 @@ fun MyPostsScreen(
             onDismiss = { viewModel.dismissFilterSheet() },
         )
     }
+}
+
+/**
+ * The list the selected tab shows: your own posts ([own], Active and Archived) or a kept list ([kept]: Saved or
+ * Reposts), with its reads.
+ */
+private class MyPostsTabList(
+    private val own: MyPostsViewModel,
+    private val kept: OffsetPostsTabViewModel?,
+) {
+    /** Active or Archived: the type/date filter applies. */
+    val isOwnPosts: Boolean get() = kept == null
+    val state: StateFlow<ListOfRowsUiState> = kept?.state ?: own.state
+    val refreshNotice: StateFlow<RefreshNotice?> = kept?.refreshNotice ?: own.refreshNotice
+    val toastMessage: StateFlow<String?> = kept?.toastMessage ?: own.toastMessage
+
+    fun load() = if (kept != null) kept.load() else own.load()
+
+    fun refresh() = if (kept != null) kept.refresh() else own.refresh()
+
+    fun loadMore() = if (kept != null) kept.loadMoreIfNeeded() else own.loadMoreIfNeeded()
 }
 
 @Composable

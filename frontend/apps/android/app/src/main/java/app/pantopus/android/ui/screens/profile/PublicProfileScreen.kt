@@ -55,7 +55,11 @@ import app.pantopus.android.ui.components.ToastAppearance
 import app.pantopus.android.ui.components.rememberShareTextWithCompletion
 import app.pantopus.android.ui.components.shareText
 import app.pantopus.android.ui.components.toastDurationMillis
+import app.pantopus.android.ui.screens.feed.pulse.PULSE_ACTION_TOAST_MILLIS
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
+import app.pantopus.android.ui.screens.feed.pulse.toastButton
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
@@ -113,6 +117,10 @@ fun PublicProfileScreen(
     expandMonthlyReceipt: Boolean = false,
     /** "Send a card" beside Message: the card flow with this person chosen (user id, name); null leaves it out. */
     onSendCard: ((userId: String, name: String) -> Unit)? = null,
+    /** "Repost with your words" on a post card: the composer with that post quoted. Null leaves it out of the chooser. */
+    onQuotePost: ((String) -> Unit)? = null,
+    /** "View" on the "Saved." toast: My posts on its Saved tab. Null leaves the toast without it. */
+    onOpenSavedPosts: (() -> Unit)? = null,
     viewModel: PublicProfileViewModel = hiltViewModel(),
     usernameShare: UsernameShareViewModel = hiltViewModel(),
     christmasCards: ChristmasCardDoorsViewModel = hiltViewModel(),
@@ -142,6 +150,8 @@ fun PublicProfileScreen(
     val postsLoadFailed by viewModel.postsLoadFailed.collectAsStateWithLifecycle()
     val postCards by viewModel.postCards.cards.collectAsStateWithLifecycle()
     val postOptionsId by viewModel.postCards.optionsPostId.collectAsStateWithLifecycle()
+    val repostChooserPostId by viewModel.postCards.repostChooserPostId.collectAsStateWithLifecycle()
+    val toastAction by viewModel.toastAction.collectAsStateWithLifecycle()
     val reportingPostId by viewModel.postCards.reportingPostId.collectAsStateWithLifecycle()
     val showUnfollowConfirm by viewModel.showUnfollowConfirm.collectAsStateWithLifecycle()
     val showConnectSheet by viewModel.showConnectSheet.collectAsStateWithLifecycle()
@@ -168,7 +178,12 @@ fun PublicProfileScreen(
                 onChooseReaction = viewModel.postCards::chooseReaction,
                 onOptions = viewModel.postCards::openOptions,
                 onToggleSave = viewModel.postCards::toggleSave,
-                onToggleRepost = viewModel.postCards::toggleRepost,
+                // ↻ opens the Repost chooser (contract §2).
+                onToggleRepost = viewModel.postCards::openRepostChooser,
+                onOpenQuoted = { quotedId ->
+                    viewModel.postCards.seedQuotedPost(quotedId)
+                    onOpenPost(quotedId)
+                },
             )
         }
     val sheetState = rememberModalBottomSheetState()
@@ -211,9 +226,19 @@ fun PublicProfileScreen(
         }
     }
 
-    LaunchedEffect(toast) {
+    // "View" on the "Saved." toast (contract §5), where there is a My posts to open.
+    val shownToastAction =
+        toastAction
+            ?.takeIf { onOpenSavedPosts != null }
+            .toastButton(toast) { action ->
+                viewModel.dismissToast()
+                if (action == PulseToastAction.ViewSaved) onOpenSavedPosts?.invoke()
+            }
+    LaunchedEffect(toast, toastAction) {
         if (toast != null) {
-            delay(toastDurationMillis(toast.orEmpty(), minimumMillis = 2_000))
+            // A toast with a button stays long enough to reach it.
+            val minimum = if (shownToastAction != null) PULSE_ACTION_TOAST_MILLIS else 2_000L
+            delay(toastDurationMillis(toast.orEmpty(), minimumMillis = minimum))
             viewModel.dismissToast()
         }
     }
@@ -380,6 +405,7 @@ fun PublicProfileScreen(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 100.dp),
+                action = shownToastAction,
             )
         }
         if (showOverflow) {
@@ -555,6 +581,22 @@ fun PublicProfileScreen(
                     onDismiss = { viewModel.postCards.dismissOptions() },
                     onToggleProfilePin = { viewModel.postCards.toggleProfilePin(card.id) },
                     onOpenPlan = { viewModel.postCards.openPlan(card.id) },
+                )
+            }
+        }
+        repostChooserPostId?.let { id ->
+            postCards.firstOrNull { it.id == id }?.let { card ->
+                PulseRepostChooserSheet(
+                    isReposted = card.actions.isReposted,
+                    onToggleRepost = { viewModel.postCards.toggleRepost(card.id) },
+                    onQuote =
+                        onQuotePost?.let { quote ->
+                            {
+                                viewModel.postCards.prepareQuote(card.id)
+                                quote(card.id)
+                            }
+                        },
+                    onDismiss = { viewModel.postCards.dismissRepostChooser() },
                 )
             }
         }
