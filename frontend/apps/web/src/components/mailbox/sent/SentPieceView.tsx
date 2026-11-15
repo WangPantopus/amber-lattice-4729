@@ -10,8 +10,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, ChevronLeft, Loader2, Lock } from 'lucide-react';
-import { useHolidayCards, useSentCard, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
+import { CalendarClock, ChevronLeft, Loader2, Lock, MailWarning } from 'lucide-react';
+import { useEmailHolidayCardAgain, useHolidayCards, useSentCard, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
 import { toast } from '@/components/ui/toast-store';
 import MailPiece from '../MailPiece';
 import { calendarDay } from '../MailRow';
@@ -65,10 +65,12 @@ export default function SentPieceView({ id }: { id: string }) {
   const { timeZone } = useMailAddressee();
   const { data: piece, isLoading, error, refetch } = useSentCard(id);
   const takeBack = useTakeBackHolidayCard();
+  const emailAgain = useEmailHolidayCardAgain();
   // With digital stamps on, taking a card back gives its stamp back.
   const { data: holidayCards } = useHolidayCards({ enabled: launchFeatures.holidayCards && launchFeatures.mailbox });
   const [showBack, setShowBack] = useState(false);
   const [takeBackError, setTakeBackError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [onTable, setOnTable] = useState(false);
   const [sharing, setSharing] = useState(false);
   const backToSent = () => router.push('/app/mailbox/sent');
@@ -133,6 +135,17 @@ export default function SentPieceView({ id }: { id: string }) {
     });
   };
 
+  // Email it again: one more try of an email that didn't go out. The server says why when it still doesn't.
+  const doEmailAgain = () => {
+    setEmailError(null);
+    emailAgain.mutate(piece.id, {
+      onSuccess: () => { toast.success('We emailed them.'); void refetch(); },
+      // Every answer of this route carries words to show (CARD_EMAIL_FAILED is a 503 with what to do next).
+      onError: (err) => { setEmailError(err.serverCode ? err.message : mailLoadMessage(err)); void refetch(); },
+    });
+  };
+  const emailTo = piece.email_to || name;
+
   return (
     <div className="flex h-full flex-col md:overflow-hidden" data-testid="mailSentPiece">
       {/* The same full-screen moment they have. Your own note is shown, so it opens as it did for them, seal or none. */}
@@ -170,6 +183,36 @@ export default function SentPieceView({ id }: { id: string }) {
         <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-1 md:px-7 md:pt-6">
           <h2 className="text-2xl font-bold leading-8 tracking-tight text-app-text">{byLinkUnopened ? 'Your card by link' : <>Your {piece.kind === 'letter' ? 'letter' : 'card'} to {name}</>}</h2>
           <p className="mt-0.5 text-sm leading-5 text-app-text-secondary">Sent {shortDay(piece.sent_at)} · {sentStatusLine(piece)}</p>
+          {piece.email_status ? (
+            // Its email didn't go out: the server keeps trying for about an hour, then gives up. Say so, with the
+            // address they typed, first on the page, and let them email it again (or take it back below).
+            <div className="mt-4 max-w-2xl">
+              <section aria-label={piece.email_status === 'failed' ? 'The email didn’t go out' : 'The email hasn’t gone out yet'} data-testid="mailSentEmailTrouble" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e7dcc6] bg-[#fbf6ec] px-4 py-3.5 text-[#111827] [@media(prefers-color-scheme:dark)]:brightness-[0.94]">
+                <MailWarning className="h-5 w-5 flex-shrink-0 text-[#8b1d1d]" aria-hidden />
+                {/* Wide enough to read: on a phone the button goes under the words. */}
+                <div className="min-w-0 flex-1 basis-[240px]">
+                  <p className="text-sm font-semibold leading-5">{piece.email_status === 'failed' ? 'The email didn’t go out' : 'The email hasn’t gone out yet'}</p>
+                  <p className="break-words text-[13px] leading-[18px] text-[#4e5563]">
+                    {piece.email_status === 'failed'
+                      ? `We couldn’t email ${emailTo}. If the address is right, email it again. If it has a mistake, take the card back and send it to the right one.${holidayCards?.postage_enabled ? ' Your stamp comes back.' : ''}`
+                      : `We couldn’t reach ${emailTo} yet. We’ll keep trying for an hour, or you can email it again now.`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="mailSentEmailAgain"
+                  onClick={doEmailAgain}
+                  disabled={emailAgain.isPending}
+                  className={`${button} text-white hover:brightness-110 focus-visible:ring-[#8b1d1d] disabled:opacity-60`}
+                  style={{ backgroundColor: WAX }}
+                >
+                  {emailAgain.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                  Email it again
+                </button>
+              </section>
+              {emailError ? <p role="alert" className="mt-2 text-sm font-medium text-red-700">{emailError}</p> : null}
+            </div>
+          ) : null}
 
           <div className="mt-5 grid gap-5 [grid-template-areas:'envelope'_'card'_'trail'_'take'] md:grid-cols-[340px_minmax(0,1fr)] md:[grid-template-areas:'envelope_trail'_'card_card'_'take_take']">
             <section aria-label={theirMailbox} className="[grid-area:envelope]">

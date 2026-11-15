@@ -959,6 +959,13 @@ export interface SentPiece {
   by_email: boolean;
   /** Sent as a link anyone can open (launch key card_table). `to_name` is "them" until someone opens it. */
   by_link?: boolean;
+  /**
+   * A card by email whose email hasn't gone out while it waits: 'retrying' while the server keeps trying (about an hour),
+   * then 'failed'. Absent when the email went (or for anything else).
+   */
+  email_status?: 'retrying' | 'failed';
+  /** With `email_status`: the address they typed, whole, so they can see a mistake in it. */
+  email_to?: string | null;
   arrival: HolidayCardArrival | null;
   /**
    * To a person: before the 7 a.m. pickup, picked up (a Christmas-morning card on its way), in their mailbox.
@@ -1030,6 +1037,14 @@ export async function recordHolidayCardShare(data: {
  */
 export async function getHolidayCardShareVideo(design: string): Promise<{ url: string; width: number; height: number }> {
   return get<{ url: string; width: number; height: number }>(`/api/mailbox/cards/share-video/${encodeURIComponent(design)}`);
+}
+
+/**
+ * POST /api/mailbox/cards/:id/email-again: one more try of a card's email that didn't go out (Sent's `email_status`).
+ * 200 once the mail server took it; otherwise the server's words (503 CARD_EMAIL_FAILED, 429 CARD_EMAIL_BUSY, 409).
+ */
+export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: true }> {
+  return post<{ emailed: true }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/email-again`);
 }
 
 /** POST /api/mailbox/cards/:id/take-back: before the 7 a.m. pickup (by email: before they open it). */
