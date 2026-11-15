@@ -276,6 +276,18 @@ object PlanRepeatWords {
     private val monthDay: DateTimeFormatter get() = DateTimeFormatter.ofPattern("MMM d", locale)
     private val clock: DateTimeFormatter get() = DateTimeFormatter.ofPattern("h:mm a", locale)
 
+    /** A date this many months past the one it is read against carries its year. */
+    private const val YEAR_SHOWN_AFTER_MONTHS = 10L
+
+    /**
+     * "Feb 4", or "Nov 14, 2027" when the date is so far past [from] that it could be read as this year's (a series may
+     * end a year after its date: "First on Sun, Nov 15. Last on Sun, Nov 14, 2027.").
+     */
+    private fun LocalDate.said(
+        pattern: DateTimeFormatter,
+        from: LocalDate = LocalDate.now(),
+    ): String = if (isAfter(from.plusMonths(YEAR_SHOWN_AFTER_MONTHS))) "${format(pattern)}, $year" else format(pattern)
+
     val WEEKDAYS = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     private val SHORT = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
@@ -373,7 +385,7 @@ object PlanRepeatWords {
     fun cardLine(repeat: PlanRepeatDto?): String? {
         val short = cardShort(repeat) ?: return null
         val last = repeat?.lastOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        return if (last != null) "$short until ${last.format(monthDay)}" else short
+        return if (last != null) "$short until ${last.said(monthDay)}" else short
     }
 
     /** The host's card under its title: "Every Tue and Thu · 6:30 AM". */
@@ -396,14 +408,14 @@ object PlanRepeatWords {
         val index = repeat.index ?: 1
         val total = repeat.total ?: index
         val last = repeat.lastOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        return listOfNotNull("$index of $total", last?.let { "ends ${it.format(dateShort)}" }).joinToString(" · ")
+        return listOfNotNull("$index of $total", last?.let { "ends ${it.said(dateShort)}" }).joinToString(" · ")
     }
 
     /** A draft's line on the preview: "Every Tue and Thu until Feb 4" (the pattern starting on [anchor]). */
     fun draftLine(
         chosen: PlanRepeatPattern,
         anchor: LocalDate,
-    ): String = "${patternText(chosen, short = true)} until ${PlanSeries.lastOn(chosen, anchor).format(monthDay)}"
+    ): String = "${patternText(chosen, short = true)} until ${PlanSeries.lastOn(chosen, anchor).said(monthDay, anchor)}"
 
     /** "Thursday": the weekday this plan falls on, for "Skip Thursday". */
     fun weekdayOf(plan: PlanDto): String {
@@ -427,7 +439,7 @@ object PlanRepeatWords {
     ): String {
         val last = PlanSeries.lastOn(chosen, anchor)
         val total = PlanSeries.total(chosen, anchor)
-        return "First on ${anchor.format(dateShort)}. Last on ${last.format(dateShort)}. ${countWords(total, kind, walkKind)}."
+        return "First on ${anchor.format(dateShort)}. Last on ${last.said(dateShort, anchor)}. ${countWords(total, kind, walkKind)}."
     }
 
     /** "24 walks", "6 times": a short noun for the kind, else "times" (the contract's rule). */
@@ -447,7 +459,7 @@ object PlanRepeatWords {
     }
 
     /** The end date as the Ends row shows it: "Thu, Feb 4". */
-    fun endDate(date: LocalDate): String = date.format(dateShort)
+    fun endDate(date: LocalDate): String = date.said(dateShort)
 
     /** The count as the Ends row shows it: "6 times". */
     fun times(count: Int): String = if (count == 1) "1 time" else "$count times"
