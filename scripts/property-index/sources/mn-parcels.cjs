@@ -28,7 +28,7 @@ async function stateLayers() {
 }
 
 // Counties read by their own connector.
-const OWN_CONNECTOR = new Set(['27037', '27123', '27139']);
+const OWN_CONNECTOR = new Set(['27037', '27123', '27139', '27171']);
 const COLUMNS = ['county_pin', 'state_pin', 'anumberpre', 'anumber', 'anumbersuf', 'st_pre_dir', 'st_pre_typ', 'st_name', 'st_pos_typ', 'st_pos_dir', 'sub_type1', 'sub_id1', 'sub_id2', 'zip', 'ctu_name', 'postcomm', 'co_name', 'acres_deed', 'acres_poly',
   'emv_land', 'emv_bldg', 'emv_total', 'tax_year', 'mkt_year', 'useclass1', 'dwell_type', 'home_style', 'fin_sq_ft', 'garage', 'garagesqft', 'basement', 'heating', 'cooling', 'year_built', 'num_units', 'sale_date', 'sale_value', 'school_dst', 'plat_name'];
 
