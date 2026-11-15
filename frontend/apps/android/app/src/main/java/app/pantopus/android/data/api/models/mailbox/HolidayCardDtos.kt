@@ -527,6 +527,19 @@ data class SentCard(
     val note: String? = null,
     /** Where it's been, in order (the card's page only). */
     val trail: List<SentCardStep> = emptyList(),
+    /**
+     * A card by email whose email hasn't gone out while it waits (`email_waiting`): `retrying` while the server keeps
+     * trying (about an hour), then `failed`. Absent once it went; any other word is read as no trouble.
+     */
+    @Json(name = "email_status") val emailStatus: String? = null,
+    /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
+    @Json(name = "email_to") val emailTo: String? = null,
+)
+
+/** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */
+@JsonClass(generateAdapter = true)
+data class CardEmailedAgainResponse(
+    val emailed: Boolean = false,
 )
 
 /** The envelope as they got it: who it's from, and the day it was postmarked by their clock (null before the pickup). */
@@ -561,7 +574,7 @@ data class SentCardFace(
 
 /**
  * One step of a sent card's trail: `sealed`, `picked_up`, `delivered`, `opens`, `emailed`, `joined` or `returned`, when
- * (a time, [at], or a day by their clock, [on]) and whether it has happened.
+ * (a time, [at], or a day by their clock, [on]) and whether it has happened (`emailed` only once the email went out).
  */
 @JsonClass(generateAdapter = true)
 data class SentCardStep(
