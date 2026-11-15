@@ -32,6 +32,8 @@ public struct PulseComposeView: View {
     private let onPosted: @MainActor (String?) -> Void
     private let onCancel: @MainActor () -> Void
     private let managesDismiss: Bool
+    /// "Change" beside "Posting to …": back to the flow's first step ("Repost with your words" only).
+    private let onChangeTarget: (@MainActor () -> Void)?
 
     /// - Parameter businessAuthorId: C2 — when non-nil the submit posts to
     ///   `POST /api/businesses/:businessId/posts` so the row is authored by
@@ -66,6 +68,7 @@ public struct PulseComposeView: View {
         self.managesDismiss = managesDismiss
         self.onCancel = onCancel
         self.onPosted = onPosted
+        onChangeTarget = nil
     }
 
     /// Test seam — accept a pre-built view-model so tests can drive
@@ -74,12 +77,14 @@ public struct PulseComposeView: View {
         viewModel: PulseComposeViewModel,
         managesDismiss: Bool = true,
         onCancel: @escaping @MainActor () -> Void = {},
-        onPosted: @escaping @MainActor (String?) -> Void = { _ in }
+        onPosted: @escaping @MainActor (String?) -> Void = { _ in },
+        onChangeTarget: (@MainActor () -> Void)? = nil
     ) {
         _viewModel = State(initialValue: viewModel)
         self.managesDismiss = managesDismiss
         self.onCancel = onCancel
         self.onPosted = onPosted
+        self.onChangeTarget = onChangeTarget
     }
 
     public var body: some View {
@@ -328,8 +333,15 @@ public struct PulseComposeView: View {
                 isLoadingMedia = true
                 showsPhotosPicker = true
             },
-            onTakePhoto: { showsCamera = true }
+            onTakePhoto: { showsCamera = true },
+            onChangeTarget: changeTargetAction
         )
+    }
+
+    /// "Change" beside "Posting to …", when the flow offers it.
+    private var changeTargetAction: (() -> Void)? {
+        guard let onChangeTarget else { return nil }
+        return { onChangeTarget() }
     }
 }
 
@@ -364,11 +376,13 @@ public extension PulseComposeViewModel {
             postingTargetLabel: isEditing ? visibility.label : postingTarget?.displayLabel,
             isNetworkTarget: !isEditing && postingTarget?.isNetworkTarget == true,
             earlierAnswers: earlierAnswers,
-            assist: isEditing ? nil : assist,
+            // A quote is a few words about the post under them; the assist writes whole posts from photos.
+            assist: isEditing || quote != nil ? nil : assist,
             assistHasMaterial: assistHasMaterial,
             assistPhotoCount: assistPhotoCount,
             assistCanUndo: canUndoSuggestion,
-            canTakePhoto: UIImagePickerController.isSourceTypeAvailable(.camera)
+            canTakePhoto: UIImagePickerController.isSourceTypeAvailable(.camera),
+            quoted: isEditing ? nil : quote.map { PulseQuotedPost.available($0.card) }
         )
     }
 }

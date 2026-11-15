@@ -75,6 +75,10 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
     /// for the Place check and the post's pin (`createPostSchema.mediaLocations`).
     /// `var`: the composer stamps it after building, like `refTaskId`.
     public var mediaLocations: [PostMediaLocation]?
+    /// "Repost with your words": the post this one quotes (PULSEREPOST
+    /// contract §8). `var`: the composer stamps it after building, like
+    /// `refTaskId`. Never sent on an edit.
+    public var quotedPostId: String?
 
     public init(
         content: String,
@@ -168,6 +172,7 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
         case businessName, serviceCategory, audience, purpose
         case refTaskId
         case mediaLocations
+        case quotedPostId
     }
 
     /// Encode dropping `nil` keys so optional fields aren't sent as
@@ -212,6 +217,7 @@ public struct PostCreateRequest: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(purpose, forKey: .purpose)
         try container.encodeIfPresent(refTaskId, forKey: .refTaskId)
         try container.encodeIfPresent(mediaLocations, forKey: .mediaLocations)
+        try container.encodeIfPresent(quotedPostId, forKey: .quotedPostId)
     }
 }
 

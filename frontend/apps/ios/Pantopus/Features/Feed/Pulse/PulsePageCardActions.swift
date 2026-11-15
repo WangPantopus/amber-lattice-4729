@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  The Pulse page's card "…" entries (Pulse S6; build spec §3, "everything
-//  else is in '…'"), agreed with PA: Save post / Remove bookmark, Mute this
+//  else is in '…'"), agreed with PA: Save post / Remove from Saved, Mute this
 //  topic in this area, Hide post, Mute this person and Report a problem on
 //  someone else's post, with Why am I seeing this?, Follow this
 //  conversation and See more of this topic (Pulse S10, build spec §7);
@@ -22,7 +22,7 @@ public extension PulsePageViewModel {
         return APIError.code(in: body)
     }
 
-    /// "Save post" / "Remove bookmark": `POST /api/posts/:id/save`.
+    /// "Save post" / "Remove from Saved": `POST /api/posts/:id/save`.
     func toggleSave(cardId: String) async {
         guard let card = card(cardId), let saved = card.saved, beginMutation(cardId) else { return }
         savedOverrides[cardId] = !saved
@@ -32,13 +32,13 @@ public extension PulsePageViewModel {
             let response: PostSaveResponse = try await api.request(PostsEndpoints.toggleSave(id: cardId, saved: !saved))
             savedOverrides[cardId] = response.saved
             rebuild()
-            showToast(response.saved ? "Saved to your bookmarks." : "Removed from bookmarks.", kind: .success)
+            showToast(response.saved ? "Saved." : "Removed from Saved.", kind: .success)
             // My posts → Saved reads again.
             PulsePostsRefresh.notifyPostsDidChange()
         } catch {
             savedOverrides[cardId] = saved
             rebuild()
-            toastMessage = "Couldn't update your bookmark."
+            toastMessage = "Couldn't update Saved. Try again."
         }
     }
 

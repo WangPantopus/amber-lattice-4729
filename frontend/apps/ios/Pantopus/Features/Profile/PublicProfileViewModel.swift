@@ -532,7 +532,7 @@ public final class PublicProfileViewModel {
         profileKind = kind
         var rows: [FeedPostDTO] = []
         if kind == .local {
-            guard let copy = store.peek(PostsEndpoints.userPosts(userId: profile.id), as: FeedResponse.self) else { return }
+            guard let copy = store.peek(Self.profilePosts(profile.id), as: FeedResponse.self) else { return }
             rows = copy.value.posts
             postsReadAt = copy.fetchedAt
             postCards.show(rows, readRevision: postCards.actionRevision)
@@ -816,7 +816,7 @@ public final class PublicProfileViewModel {
     /// Connection-only posts and profile fields have a different audience now.
     /// Retire the previous copy before the read, so a failure cannot retain it.
     private func reloadAfterConnectionChange() async {
-        store.remove(PostsEndpoints.userPosts(userId: resolvedUserId))
+        store.remove(Self.profilePosts(resolvedUserId))
         postCards.show([], readRevision: postCards.actionRevision)
         postsReadAt = nil
         relationshipLoaded = false
@@ -1181,6 +1181,12 @@ public final class PublicProfileViewModel {
         }
     }
 
+    /// The profile's Posts list: the person's posts and the posts they
+    /// reposted, for the owner and their connections (PULSEREPOST contract §3).
+    static func profilePosts(_ userId: String) -> Endpoint {
+        PostsEndpoints.userPosts(userId: userId, includeReposts: true)
+    }
+
     /// A21.2 — the Local profile's post feed. Mirrors the RN
     /// `components/profile/PostsTab` fetch. A failure doesn't fail the whole
     /// profile: the feed stays empty and `postsLoadFailed` makes it offer
@@ -1194,7 +1200,7 @@ public final class PublicProfileViewModel {
         }
         do {
             let snapshot = try await store.load(
-                PostsEndpoints.userPosts(userId: id),
+                Self.profilePosts(id),
                 as: FeedResponse.self,
                 kind: .otherPeople,
                 // Your own taps on posts (here, in Pulse) mark this list too.
@@ -1227,7 +1233,7 @@ public final class PublicProfileViewModel {
         }
         do {
             let response = try await client.request(
-                PostsEndpoints.userPosts(userId: id, previewAs: audience.rawValue),
+                PostsEndpoints.userPosts(userId: id, previewAs: audience.rawValue, includeReposts: true),
                 as: FeedResponse.self
             )
             postsLoadFailed = false

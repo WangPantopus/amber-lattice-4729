@@ -23,6 +23,8 @@
 
 import SwiftUI
 
+// swiftlint:disable file_length
+
 /// Typed routes within the Pulse tab's NavigationStack.
 public enum PulseRoute: Hashable {
     case post(postId: String)
@@ -31,6 +33,8 @@ public enum PulseRoute: Hashable {
     case publicProfile(userId: String)
     /// A DM opened from a profile's Message button.
     case chatConversation(InboxConversationDestination)
+    /// My posts on one of its tabs (`MyPostsTab`): "View" on a "Saved." toast opens Saved (PULSEREPOST contract §5).
+    case myPosts(initialTab: String)
 }
 
 /// NavigationStack wrapper for the Pulse tab.
@@ -166,7 +170,8 @@ public struct PulseTabRoot: View {
                         .navigationDestination(for: PulseRoute.self) { route in
                             destination(for: route)
                                 .readableColumn()
-                                .toolbar(.hidden, for: .navigationBar)
+                                // My posts keeps the system bar (its title, Back and filter), as in the Place stack.
+                                .modifier(OwnHeaderBar(drawsOwnHeader: route.drawsOwnHeader))
                         }
                 }
                 .onAppear { stackRoutesBeside() }
@@ -231,7 +236,8 @@ public struct PulseTabRoot: View {
                 onBack: onClose,
                 mapSwitchOnTop: mapSwitchOnTop,
                 scrollToTop: rootTabs.pulseHomeReselected,
-                asksPantopus: true
+                asksPantopus: true,
+                onOpenSaved: savedOpener
             )
         }
     }
@@ -312,6 +318,13 @@ public struct PulseTabRoot: View {
         if !path.isEmpty { path.removeLast() }
     }
 
+    /// "View" on "Saved.": My posts' Saved tab on this stack; not beside the feed, whose column has no system bar.
+    private var savedOpener: (@MainActor () -> Void)? {
+        guard !isSideBySide else { return nil }
+        let saved = PulseRoute.myPosts(initialTab: MyPostsTab.saved)
+        return { path.append(saved) }
+    }
+
     @ViewBuilder
     private func destination(for route: PulseRoute) -> some View {
         switch route {
@@ -333,6 +346,8 @@ public struct PulseTabRoot: View {
                     // router, which opens it in the Hub tab's stack.
                     Task { @MainActor in DeepLinkRouter.shared.handle(path: "/business/\(business)") }
                 },
+                onOpenSaved: savedOpener,
+                onOpenPost: { id in path.append(.post(postId: id)) },
                 onContentLoaded: { router.completePostArrival(id: postId) }
             )
             // A post link opened over another post replaces this stack entry;
@@ -377,6 +392,8 @@ public struct PulseTabRoot: View {
             )
         case let .chatConversation(dest):
             chatConversation(dest)
+        case let .myPosts(initialTab):
+            Self.myPostsScreen(initialTab: initialTab) { path.append($0) }
         }
     }
 }

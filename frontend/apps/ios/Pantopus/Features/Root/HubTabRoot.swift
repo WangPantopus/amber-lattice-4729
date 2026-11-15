@@ -188,8 +188,10 @@ public enum HubRoute: Hashable {
     case searchAccessCodes(homeId: String)
     /// Pulse tab (T1.2). Reached from Hub → pillar(.pulse).
     case pulseFeed
-    /// T5.3.3 — Author's own posts (My Pulse in the drawer).
-    case myPosts
+    /// T5.3.3 — Author's own posts (My Pulse in the drawer), on one of its
+    /// tabs (`MyPostsTab`; nil: Active). "View" on a "Saved." toast opens
+    /// Saved (PULSEREPOST contract §5).
+    case myPosts(initialTab: String?)
     /// A03.2 — Beacon Updates feed (`surface=personas`). Reached from the
     /// AudienceProfile entry and the `pantopus://beacons` deep link.
     case beaconsFeed
@@ -1227,7 +1229,7 @@ public struct HubTabRoot: View {
         case .discoverNeighbors: return .discoverHub
         case .myBeacon: return .myBeacon
         case .myListings: return .myListings
-        case .myPulse: return .myPosts
+        case .myPulse: return .myPosts(initialTab: nil)
         case .myTasks: return .myTasks
         case .myBids: return .myBids
         case .offersAndBids: return .offers
@@ -2703,7 +2705,9 @@ public struct HubTabRoot: View {
                 onOpenBusiness: { business in
                     // A "Nearby Providers" row (username) or a business author (id) → `/business/:key`.
                     Task { @MainActor in push(.businessProfile(businessId: business)) }
-                }
+                },
+                onOpenSaved: { push(.myPosts(initialTab: MyPostsTab.saved)) },
+                onOpenPost: { id in push(.pulsePost(postId: id)) }
             )
             .toolbar(.hidden, for: .navigationBar)
         case .mailboxVault:
@@ -2751,11 +2755,14 @@ public struct HubTabRoot: View {
                     Task { @MainActor in push(.composePost(intent: intent.rawValue)) }
                 },
                 onBack: { Task { @MainActor in pop() } },
-                asksPantopus: true
+                asksPantopus: true,
+                // swiftlint:disable:next trailing_closure
+                onOpenSaved: { push(.myPosts(initialTab: MyPostsTab.saved)) }
             )
-        case .myPosts:
+        case let .myPosts(initialTab):
             MyPostsView(
                 viewModel: MyPostsViewModel(
+                    initialTab: initialTab ?? MyPostsTab.active,
                     onOpenPost: { dto in
                         Task { @MainActor in push(.pulsePost(postId: dto.id)) }
                     },

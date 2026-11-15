@@ -42,8 +42,13 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
     public let userReaction: PostReactionEmoji?
     public let userHasSaved: Bool
     public let userHasReposted: Bool
-    /// Connections list only: which of the viewer's connections reposted the post.
+    /// Who reposted the post: the viewer ("You") and their connections; on Connections, Nearby, profile and
+    /// Reposts rows (PULSEREPOST contract §1). Nil when nobody the viewer knows reposted it, and from older servers.
     public let repostedBy: FeedRepostedBy?
+    /// When this row's person reposted it (ISO 8601): profile rows and the Reposts list (contract §3, §4).
+    public let repostedAt: String?
+    /// The post this one quotes ("Repost with your words", contract §8); nil for an ordinary post.
+    public let quotedPost: FeedQuotedPost?
     /// Lifecycle state — `open` / `solved` (`feedService.js:234`).
     public let state: String?
     /// Server-derived authorship: `user`, `curator` or `system`.
@@ -115,6 +120,8 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         case userHasSaved
         case userHasReposted
         case repostedBy = "reposted_by"
+        case repostedAt = "reposted_at"
+        case quotedPost = "quoted_post"
         case state, origin, topic, resolution
         case expiresAt = "expires_at"
         case claimMode = "claim_mode"
@@ -162,6 +169,8 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         userHasSaved = c.lenient(Bool.self, forKey: .userHasSaved) ?? false
         userHasReposted = c.lenient(Bool.self, forKey: .userHasReposted) ?? false
         repostedBy = c.lenient(FeedRepostedBy.self, forKey: .repostedBy)
+        repostedAt = c.lenient(String.self, forKey: .repostedAt)
+        quotedPost = c.lenient(FeedQuotedPost.self, forKey: .quotedPost)
         state = c.lenient(String.self, forKey: .state)
         origin = c.lenient(String.self, forKey: .origin)
         topic = c.lenient(String.self, forKey: .topic)
@@ -193,21 +202,50 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// The viewer's connections who reposted a Connections post (`feedService.js` repostedByLines).
+/// Who reposted a post: the viewer and their connections (`feedService.js` repostedByLines, PULSEREPOST
+/// contract §1).
 public struct FeedRepostedBy: Decodable, Sendable, Hashable {
-    /// The latest reposters' names, at most two.
+    /// The latest reposters' names, at most two; "You" first when the viewer reposted it.
     public let names: [String]
-    /// How many of the viewer's connections reposted it.
+    /// How many reposted it, the viewer included.
     public let count: Int
+    /// The viewer reposted it (`names[0]` is "You"); false from older servers.
+    public let viewer: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case names, count
+        case names, count, viewer
+    }
+
+    public init(names: [String], count: Int, viewer: Bool) {
+        self.names = names
+        self.count = count
+        self.viewer = viewer
     }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         names = c.lenient([String].self, forKey: .names) ?? []
         count = c.lenient(Int.self, forKey: .count) ?? 0
+        viewer = c.lenient(Bool.self, forKey: .viewer) ?? false
+    }
+
+    /// The line after the viewer's own repost or undo on this device, before the next read (contract §1): "You"
+    /// joins at the front, or leaves; nil when nobody is left. `server` is the line as read, `serverReposted`
+    /// whether the read had the viewer's repost, `reposted` whether it stands now.
+    static func live(_ server: FeedRepostedBy?, serverReposted: Bool, reposted: Bool) -> FeedRepostedBy? {
+        guard reposted != serverReposted else { return server }
+        let hasYou = server?.viewer == true
+        if reposted, !hasYou {
+            let names = Array((["You"] + (server?.names ?? [])).prefix(2))
+            return FeedRepostedBy(names: names, count: (server?.count ?? 0) + 1, viewer: true)
+        }
+        if !reposted, hasYou, let server {
+            let names = Array(server.names.dropFirst())
+            let count = max(0, server.count - 1)
+            guard count > 0, !names.isEmpty else { return nil }
+            return FeedRepostedBy(names: names, count: count, viewer: false)
+        }
+        return server
     }
 }
 
