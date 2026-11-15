@@ -27,6 +27,7 @@ const planBusiness = require('./planBusiness');
 const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
 const { findGame } = require('./planGames');
+const { validTimezone } = require('../../utils/timezone');
 
 class PlanError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -310,16 +311,19 @@ function resolveOnlinePlace(viewer, kind, place, { isPrivate = false, details = 
     link: parsed.link,
     link_host: parsed.host,
     noArea,
+    // With no area there is no place to read a time zone from: the app sends the phone's (an IANA name).
+    timezone: noArea ? validTimezone(typeof place.timezone === 'string' ? place.timezone.slice(0, 64) : null) || null : null,
   };
 }
 
 /**
- * The time zone a plan keeps: its place's, or for an online plan posted with no area the host's home's (a series'
- * next date: the date before's), else the default.
+ * The time zone a plan keeps: its place's, or for an online plan posted with no area the one it already has (a
+ * series' next date, an edit), else the phone's own (`place.timezone`), else the host's home's, else the default.
  */
 function placeTimezone(viewer, place, { keepTimezone = null } = {}) {
   if (!place.noArea) return planPlace.timezoneFor(place.latitude, place.longitude);
   if (keepTimezone) return keepTimezone;
+  if (place.timezone) return place.timezone;
   const home = viewer.homes.find((h) => h.point);
   return home ? planPlace.timezoneFor(home.point.latitude, home.point.longitude) : rules.DEFAULT_TIMEZONE;
 }

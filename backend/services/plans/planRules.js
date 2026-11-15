@@ -143,6 +143,10 @@ const DEFAULT_TIMEZONE = 'UTC';
 const { timezoneFromCoordinates } = require('../../utils/timezone');
 
 function timezoneForPlan(plan) {
+  // An online plan posted with no area sits at 0, 0, which is nobody's time zone: it keeps the one it was saved with.
+  if (plan?.place_kind === 'online' && Number(plan.place_latitude) === 0 && Number(plan.place_longitude) === 0) {
+    return plan.timezone || DEFAULT_TIMEZONE;
+  }
   return timezoneFromCoordinates(plan?.place_latitude, plan?.place_longitude, plan?.timezone || DEFAULT_TIMEZONE);
 }
 

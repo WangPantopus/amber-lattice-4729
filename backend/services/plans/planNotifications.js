@@ -56,7 +56,8 @@ const ICON_BY_KIND = {
   something_else: '📅',
 };
 
-const FOOD_NOUNS = { dinner: 'dinner', potluck: 'potluck', drinks: 'drinks', brunch: 'brunch', bbq: 'barbecue' };
+// "Happy hour" for drinks: a noun a sentence can use ("Your happy hour is today").
+const FOOD_NOUNS = { dinner: 'dinner', potluck: 'potluck', drinks: 'happy hour', brunch: 'brunch', bbq: 'barbecue' };
 const OUTDOOR_NOUNS = { hike: 'hike', bike_ride: 'bike ride', run: 'run' };
 
 // ── Words ────────────────────────────────────────────────────
@@ -640,7 +641,7 @@ function invitedTitle(plan, hostFirst) {
   const what = noun(plan);
   if (what === 'coffee') return `${hostFirst} invited you for coffee`;
   if (rules.NEW_KINDS.includes(plan.kind) && !plan.business_user_id) {
-    if (what === 'drinks') return `${hostFirst} invited you for drinks`;
+    if (plan.kind === 'food_drinks' && plan.details?.food_kind === 'drinks') return `${hostFirst} invited you for drinks`;
     if (what === 'dinner' || what === 'brunch') return `${hostFirst} invited you to ${what}`;
     if (/^[aeiou]/.test(what)) return `${hostFirst} invited you to an ${what}`;
   }
