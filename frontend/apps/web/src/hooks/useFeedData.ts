@@ -7,6 +7,7 @@ import {
   useQueryClient,
   type InfiniteData,
   type QueryClient,
+  type QueryKey,
 } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import { getPostTypeConfig } from '@pantopus/ui-utils';
@@ -19,6 +20,11 @@ import { FEED_PAGE_SIZE, buildFeedKey, feedLocationKey } from '@/lib/feedKeys';
 import { useFirstPageRefresh } from '@/lib/firstPageRefresh';
 import { withFreshFix } from '@/lib/freshPostFix';
 import { reactedPostPatch, reactionFieldsOf, serverReactionPatch } from '@/components/feed/PostReactions';
+import { mergePostPatch, useRepostToggle } from '@/components/feed/repost';
+import {
+  HIDDEN_TOAST, NOT_HELPFUL_HIDDEN_TOAST, NOT_HELPFUL_KEPT_TOAST, SAVED_TOAST, UNDO_FAILED_TOAST, UNSAVED_TOAST,
+  type ShowFeedToast,
+} from '@/components/feed/feedToasts';
 import type { SportsMode, TopicKey } from '@/constants/feedTopics';
 import { fetchMe } from '@/lib/me';
 
@@ -54,7 +60,10 @@ interface UseFeedDataOptions {
   /** False while the viewing area is still being read: the Place feed waits for it instead of
    * first asking without coordinates. */
   areaReady?: boolean;
-  showToast: (msg: string) => void;
+  /** The feed's toasts; a save, a hide and "Not helpful here" come with an action ("View", "Undo"). */
+  showToast: ShowFeedToast;
+  /** "View" on the "Saved." toast: My posts on its Saved tab. */
+  onViewSaved?: () => void;
 }
 
 type FeedPage = Awaited<ReturnType<typeof api.posts.getFeedV2>>;
@@ -69,19 +78,59 @@ const sameCursor = (a: FeedCursor, b: FeedCursor) => !!a && !!b
  * in My pulse then shows on its feed card when you come back; a stale card's next click would undo it.
  */
 export function patchPostInFeedCaches(queryClient: QueryClient, postId: string, patch: Partial<Post>) {
+  // A repost's change also puts "You" on each list's own "reposted" line (mergePostPatch).
   // The post's own kept copy (usePostDetail) takes the change too.
   queryClient.setQueryData<{ post: Post | null; complete: boolean }>(queryKeys.postDetail(postId), (old) =>
-    old?.post ? { ...old, post: { ...old.post, ...patch } } : old);
+    old?.post ? { ...old, post: mergePostPatch(old.post, patch) } : old);
   queryClient.setQueriesData<InfiniteData<FeedPage>>({ queryKey: ['feed'] }, (old) => {
     if (!old) return old;
     return {
       ...old,
       pages: old.pages.map((page) => ({
         ...page,
-        posts: (page.posts || []).map((post) => (post.id === postId ? { ...post, ...patch } : post)),
+        posts: (page.posts || []).map((post) => (post.id === postId ? mergePostPatch(post, patch) : post)),
       })),
     };
   });
+}
+
+/** Where a hidden post was in each cached feed list, to put it back there on Undo. */
+type FeedSpot = { queryKey: QueryKey; pageIndex: number; index: number; post: Post };
+
+/**
+ * Takes a post out of every cached feed list (a hide applies to every feed) and says where it was in each, so Undo
+ * can put the card back where it was.
+ */
+function takePostOutOfFeedCaches(queryClient: QueryClient, postId: string): FeedSpot[] {
+  const spots: FeedSpot[] = [];
+  for (const [queryKey, data] of queryClient.getQueriesData<InfiniteData<FeedPage>>({ queryKey: ['feed'] })) {
+    data?.pages?.forEach((page, pageIndex) => {
+      const index = (page?.posts || []).findIndex((post) => post.id === postId);
+      if (index >= 0) spots.push({ queryKey, pageIndex, index, post: page.posts[index] });
+    });
+  }
+  removePostFromFeedCaches(queryClient, postId);
+  return spots;
+}
+
+/** Undo of a hide: each list that had the post gets it back in its old place (a list that has it again keeps it). */
+function putPostBackInFeedCaches(queryClient: QueryClient, spots: FeedSpot[]) {
+  for (const spot of spots) {
+    queryClient.setQueryData<InfiniteData<FeedPage>>(spot.queryKey, (old) => {
+      if (!old?.pages?.length) return old;
+      if (old.pages.some((page) => (page?.posts || []).some((post) => post.id === spot.post.id))) return old;
+      const pageIndex = Math.min(spot.pageIndex, old.pages.length - 1);
+      return {
+        ...old,
+        pages: old.pages.map((page, i) => {
+          if (i !== pageIndex) return page;
+          const posts = [...(page?.posts || [])];
+          posts.splice(Math.min(spot.index, posts.length), 0, spot.post);
+          return { ...page, posts };
+        }),
+      };
+    });
+  }
 }
 
 // When each account last moved its Nearby marker, this page load.
@@ -148,6 +197,7 @@ export function useFeedData({
   radiusMiles,
   areaReady = true,
   showToast,
+  onViewSaved,
 }: UseFeedDataOptions) {
   const queryClient = useQueryClient();
 
@@ -572,7 +622,9 @@ export function useFeedData({
     },
     onSuccess: (res, { postId }) => {
       patchPostInFeedCaches(queryClient, postId, { userHasSaved: res.saved });
-      showToast(res.saved ? 'Post saved' : 'Removed from saved');
+      // Say where it went: "View" opens My posts on its Saved tab.
+      if (res.saved) showToast(SAVED_TOAST, onViewSaved ? { label: 'View', onClick: onViewSaved } : undefined);
+      else showToast(UNSAVED_TOAST);
     },
     onError: (_err, _vars, context) => {
       if (!context) return;
@@ -613,16 +665,27 @@ export function useFeedData({
     }
   }, [showToast, removePostsFromCache]);
 
+  // Undo of a hide (or of "Not helpful here", whose flag stays): DELETE /api/posts/hide/:id, then the card goes back
+  // where it was. An older server answers 404, which says it couldn't, with Undo to try again.
+  const undoHide = useCallback(async function undo(postId: string, spots: FeedSpot[]) {
+    try {
+      await api.posts.unhidePost(postId);
+      putPostBackInFeedCaches(queryClient, spots);
+    } catch {
+      showToast(UNDO_FAILED_TOAST, { label: 'Undo', onClick: () => { void undo(postId, spots); } });
+    }
+  }, [queryClient, showToast]);
+
   const handleHide = useCallback(async (postId: string) => {
     try {
       await api.posts.hidePost(postId);
       // A hide applies to every feed (the server filters it everywhere), so every cached list drops it.
-      removePostsFromCache((p) => p.id === postId, true);
-      showToast('Post hidden');
+      const spots = takePostOutOfFeedCaches(queryClient, postId);
+      showToast(HIDDEN_TOAST, { label: 'Undo', onClick: () => { void undoHide(postId, spots); } });
     } catch {
       showToast('Failed to hide post');
     }
-  }, [showToast, removePostsFromCache]);
+  }, [showToast, queryClient, undoHide]);
 
   const handleDismissSeeded = useCallback(async (factId: string) => {
     try {
@@ -680,9 +743,35 @@ export function useFeedData({
     }
   }, [showToast, surface, queryClient]);
 
-  const handleNotHelpful = useCallback((id: string) => {
-    removePostsFromCache((p) => p.id === id);
-  }, [removePostsFromCache]);
+  // "Not helpful here" (Nearby): the server flags the post and hides it for this person; the card goes as a hide's
+  // does, with Undo. An older server only flags it: the card stays.
+  const notHelpfulPending = useRef(new Set<string>());
+  const handleNotHelpful = useCallback(async (id: string) => {
+    if (notHelpfulPending.current.has(id)) return;
+    notHelpfulPending.current.add(id);
+    try {
+      const res = await api.posts.markNotHelpful(id, surface === 'place' ? 'nearby' : surface);
+      if (res?.hidden === true) {
+        const spots = takePostOutOfFeedCaches(queryClient, id);
+        showToast(NOT_HELPFUL_HIDDEN_TOAST, { label: 'Undo', onClick: () => { void undoHide(id, spots); } });
+      } else {
+        showToast(NOT_HELPFUL_KEPT_TOAST);
+      }
+    } catch {
+      // As before: a flag that didn't reach the server changes nothing on screen.
+    } finally {
+      notHelpfulPending.current.delete(id);
+    }
+  }, [surface, queryClient, showToast, undoHide]);
+
+  // ── Repost (optimistic, put back if refused): the card changes in place and keeps its spot ──
+  const { toggleRepost: handleRepost, repostingIds } = useRepostToggle({
+    findPost: (postId) => postsRef.current.find((p) => p.id === postId),
+    applyPatch: (postId, patch) => updatePostsInCache((p) => (p.id === postId ? mergePostPatch(p, patch) : p)),
+    // Every cached list takes the server's answer, as for likes and saves.
+    onConfirmed: (postId, patch) => patchPostInFeedCaches(queryClient, postId, patch),
+    showToast,
+  });
 
   const handleSolved = useCallback((id: string) => {
     patchPostInFeedCaches(queryClient, id, { state: 'solved' });
@@ -712,6 +801,7 @@ export function useFeedData({
     isPosting,
     likingIds,
     savingIds,
+    repostingIds,
     placeEligible,
     eligibilityReason,
     sentinelRef,
@@ -723,6 +813,7 @@ export function useFeedData({
     handleSave,
     handleDelete,
     handleHide,
+    handleRepost,
     handleDismissSeeded,
     handleReport,
     handleMute,

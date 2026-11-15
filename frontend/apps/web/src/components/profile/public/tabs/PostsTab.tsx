@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Hand, Lock, MessageSquare } from 'lucide-react';
 import * as api from '@pantopus/api';
@@ -8,6 +9,10 @@ import type { Post } from '@pantopus/types';
 import { PostCard, PostDetailPanel } from '@/components/feed';
 import { patchPostInFeedCaches } from '@/hooks/useFeedData';
 import { reactedPostPatch, reactionFieldsOf, serverReactionPatch } from '@/components/feed/PostReactions';
+import { mergePostPatch, useRepostToggle } from '@/components/feed/repost';
+import {
+  FEED_TOAST_ACTION_MS, FEED_TOAST_ACTION_TEST_ID, SAVED_POSTS_PATH, SAVED_TOAST, UNSAVED_TOAST,
+} from '@/components/feed/feedToasts';
 import { useProfilePin } from '@/hooks/useProfilePin';
 import ReportModal from '@/components/ui/ReportModal';
 import { toast } from '@/components/ui/toast-store';
@@ -45,8 +50,8 @@ const pillButton = 'mt-4 min-h-[2.75rem] px-5 rounded-full border border-app-str
 
 /**
  * A person's posts on their profile, drawn with the feed's card (photos and video, link previews,
- * Helpful, comments, save, share and report); a click opens the post panel, as in the feed and
- * My Pulse.
+ * Helpful, comments, save, repost, share and report); a click opens the post panel, as in the feed and
+ * My Pulse. The posts the person reposted are listed too, each as its own author's post with "<name> reposted".
  */
 export default function PostsTab({
   posts,
@@ -65,6 +70,7 @@ export default function PostsTab({
   authorColorSeed,
 }: PostsTabProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [detailPostId, setDetailPostId] = useState<string | null>(null);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
   const [likingIds, setLikingIds] = useState<Set<string>>(new Set());
@@ -72,9 +78,18 @@ export default function PostsTab({
   const savingIds = useRef<Set<string>>(new Set());
 
   const patch = (postId: string, changes: Partial<Post>) => {
-    onPostsChange((prev) => prev.map((p) => (p.id === postId ? { ...p, ...changes } : p)));
+    onPostsChange((prev) => prev.map((p) => (p.id === postId ? mergePostPatch(p, changes) : p)));
     patchPostInFeedCaches(queryClient, postId, changes);
   };
+
+  // Repost or Undo repost from a card's chooser: shown at once, put back if refused; the feed takes the answer.
+  const { toggleRepost, repostingIds } = useRepostToggle({
+    findPost: (postId) => posts.find((p) => p.id === postId),
+    applyPatch: (postId, changes) => onPostsChange((prev) => prev.map((p) => (p.id === postId ? mergePostPatch(p, changes) : p))),
+    onConfirmed: (postId, changes) => patchPostInFeedCaches(queryClient, postId, changes),
+    showToast: (message) => toast.info(message),
+  });
+  const handleRepost = (postId: string, reposted: boolean) => { void toggleRepost(postId, reposted); };
 
   const profilePin = useProfilePin();
   const handleProfilePin = async (post: Post, pin: boolean) => {
@@ -98,7 +113,17 @@ export default function PostsTab({
 
   const saveMutation = useMutation({
     mutationFn: ({ postId, wantSaved }: { postId: string; wantSaved: boolean }) => api.posts.toggleSave(postId, wantSaved),
-    onSuccess: (res, { postId }) => patch(postId, { userHasSaved: res.saved }),
+    onSuccess: (res, { postId }) => {
+      patch(postId, { userHasSaved: res.saved });
+      // Say where it went: "View" opens My posts on its Saved tab.
+      if (res.saved) {
+        toast.success(SAVED_TOAST, FEED_TOAST_ACTION_MS, {
+          label: 'View', onClick: () => router.push(SAVED_POSTS_PATH), testId: FEED_TOAST_ACTION_TEST_ID,
+        });
+      } else {
+        toast.info(UNSAVED_TOAST);
+      }
+    },
     onError: () => toast.error('Failed to save post'),
   });
 
@@ -227,7 +252,8 @@ export default function PostsTab({
       <div className="space-y-3" data-testid="profile-posts">
         {posts.map((post) => (
           <PostCard
-            key={post.id}
+            // A post the person both wrote and reposted is listed twice: once at each time.
+            key={`${post.id}:${post.reposted_at ?? ''}`}
             post={post}
             onLike={handleLike}
             onReact={handleReact}
@@ -235,11 +261,16 @@ export default function PostsTab({
             onOpenDetail={(id) => setDetailPostId(id)}
             onSave={handleSave}
             onReport={(id) => setReportPostId(id)}
+            onRepost={currentUserId ? handleRepost : undefined}
+            isReposting={repostingIds.has(post.id)}
+            // Owner actions follow the post's own author (PostCard), never "this is my profile": a repost is
+            // someone else's post.
             onProfilePin={isOwner ? handleProfilePin : undefined}
             currentUserId={currentUserId}
             isLiking={likingIds.has(post.id)}
             showToast={(message) => toast.info(message)}
-            authorColorSeed={authorColorSeed}
+            // The person's own color is for their own posts' initials, not for the posts they reposted.
+            authorColorSeed={authorColorSeed && (post.author_user_id || post.user_id) === authorColorSeed ? authorColorSeed : undefined}
           />
         ))}
       </div>

@@ -95,6 +95,11 @@ export interface PostingIdentity {
   imageUrl?: string | null;
 }
 
+/** The original a quote post quotes: a full feed post for this viewer (never with its own `quoted_post`), or unavailable. */
+export type QuotedPost =
+  | { available: true; post: Post }
+  | { available: false; post?: undefined };
+
 export interface Post {
   id: string;
   user_id: string;
@@ -206,8 +211,19 @@ export interface Post {
   userReaction?: string | null;
   userHasSaved?: boolean;
   userHasReposted?: boolean;
-  /** Connections list only: the viewer's connections who reposted the post, the latest first (at most two names). */
-  reposted_by?: { names: string[]; count: number } | null;
+  /**
+   * On a list row: who reposted the post among the viewer and their connections, the latest first (at most two
+   * names). When the viewer reposted it, `names[0]` is the literal "You" and `viewer` is true; `count` counts everyone.
+   * Missing from older servers (which sent it on Connections rows only).
+   */
+  reposted_by?: { names: string[]; count: number; viewer?: boolean } | null;
+  /** A reposted row (a profile's Posts or My posts → Reposts): when it was reposted. */
+  reposted_at?: string | null;
+  /**
+   * A quote post ("repost with your words"): the post it quotes, or `available: false` when this viewer can't read it
+   * (deleted, hidden, removed, blocked, not in its audience). Missing or null on an ordinary post.
+   */
+  quoted_post?: QuotedPost | null;
   comments?: PostComment[];
   // Organic match fields
   matched_business_ids?: string[] | null;
