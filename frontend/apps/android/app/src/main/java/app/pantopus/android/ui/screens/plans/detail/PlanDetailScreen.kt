@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.plans.detail
 
 import android.Manifest
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +39,8 @@ import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.ErrorState
@@ -100,6 +103,19 @@ fun PlanDetailScreen(
             toast.info(it)
             viewModel.noticeShown()
         }
+    }
+    // "Bring a friend" (Plans step 1): the guest's one link goes out from their own phone, with the words to send.
+    val context = LocalContext.current
+    LaunchedEffect(ui.friendLink) {
+        val link = ui.friendLink ?: return@LaunchedEffect
+        val send =
+            Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, "${link.message} ${link.url}")
+        runCatching {
+            context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        viewModel.friendLinkShared()
     }
     Box(modifier = Modifier.fillMaxSize().testTag("planDetail")) {
         when (val state = ui.state) {
@@ -202,7 +218,8 @@ private fun PlanReady(
         onBack = onBack,
         scope = scopeChip(plan),
         scopeIcon = if (plan.isBusiness) PantopusIcon.MapPin else PantopusIcon.Lock,
-        onShare = if (plan.shareUrl != null && !closed) ({ context.sharePlan(plan) }) else null,
+        // A private plan is never shared by link (Plans step 1): its host invites, a guest may bring a friend.
+        onShare = if (plan.shareUrl != null && !closed && !plan.isPrivate) ({ context.sharePlan(plan) }) else null,
         menu = menu,
         footer = footerFor(plan, ui, closed, viewModel, onSeeAllPlans, onVerify, askLocation) { confirmLeave = it },
         onAsk = onAskPantopus?.let { ask -> { ask(AIScreenContext.plan(plan.id, PlanFormat.shortTitle(plan), hosting)) } },
@@ -231,9 +248,12 @@ private fun PlanReady(
                     viewerId = ui.viewerId,
                     onStillComing = { coming -> if (coming) viewModel.stillComing(true) else confirmLeave = LeaveKind.Plan },
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
+                    friend = PlanFriendInvite(invited = ui.friendInvited, making = ui.makingFriendLink, onBring = viewModel::bringFriend),
                 )
             standing == PlanViewerStanding.REQUESTED -> PlanRequestedBody(plan)
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
+            // A private plan's invitation goes under its title (board Invited, Plans step 1).
+            plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
                 PlanBeforeInBody(plan)
@@ -318,7 +338,8 @@ private fun scopeChip(plan: PlanDto): String? {
     return when {
         // A business's plan meets at its own public address (board G3): the street address over the map.
         plan.isBusiness -> if (closed || !browsing) null else plan.place?.address ?: plan.place?.name
-        plan.hasPrivatePart || !browsing || closed -> null
+        // A private plan shows the person invited its place by name already (Plans step 1).
+        plan.hasPrivatePart || plan.placeShownToInvitee || !browsing || closed -> null
         plan.isPlaydate -> "Exact place and time shared when you're in"
         else -> "Exact place shared when you're in"
     }

@@ -65,8 +65,13 @@ data class MapPin(
     /** Playdates show the neighborhood (about 1 km) instead of the area (about 500 m). */
     val neighborhood: Boolean = false,
     val areaLabel: String? = null,
-    /** A business's pin (board G1): the place is its own public address, so no shaded area is drawn around it. */
+    /**
+     * A business's pin (board G1): the place is its own public address, so no shaded area is drawn around it. A private
+     * plan's pin whose place the viewer may see (`precision: exact`) is drawn the same way.
+     */
     val exact: Boolean = false,
+    /** A private plan (Plans step 1): the pin wears the lock badge. */
+    val isPrivate: Boolean = false,
 )
 
 /** What the overlay places: a pin, a cluster of pins, or the selected pin's area. */
@@ -223,6 +228,7 @@ private fun PinItem(
         live = pin.live,
         badge = pin.badge,
         reduceMotion = reduceMotion,
+        isPrivate = pin.isPrivate,
         modifier =
             Modifier
                 .graphicsLayer { translationY = fall.value * density }

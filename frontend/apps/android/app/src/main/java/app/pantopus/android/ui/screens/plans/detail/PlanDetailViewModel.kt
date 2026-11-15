@@ -89,6 +89,11 @@ data class PlanDetailUi(
     val requests: PlanRequestsResponse? = null,
     /** The person looking, to tell "you" apart in the people going. */
     val viewerId: String? = null,
+    /** "Bring a friend" (Plans step 1): the guest's one link, ready for their share sheet. */
+    val friendLink: PlanTextInvite? = null,
+    /** The guest made their friend link on this visit (the card's `used` says so after the next read too). */
+    val friendInvited: Boolean = false,
+    val makingFriendLink: Boolean = false,
 )
 
 /**
@@ -450,6 +455,39 @@ class PlanDetailViewModel
         }
 
         fun removeGuest(requestId: String) = act(done = "Removed. They no longer see the plan.") { repository.remove(planId, requestId) }
+
+        // ---- Bring a friend (a guest on a private plan, Plans step 1) ----
+
+        /** Makes the guest's one friend link (`POST /:id/invites/link`), for their phone's share sheet. */
+        fun bringFriend() {
+            if (_ui.value.makingFriendLink) return
+            _ui.update { it.copy(makingFriendLink = true) }
+            viewModelScope.launch {
+                when (val result = repository.inviteLink(planId, confirmSharesAddress = false)) {
+                    is NetworkResult.Success ->
+                        _ui.update {
+                            it.copy(
+                                makingFriendLink = false,
+                                friendInvited = true,
+                                friendLink = PlanTextInvite(result.data.message, result.data.url),
+                            )
+                        }
+                    is NetworkResult.Failure -> {
+                        // Already made (on another phone, say): the row says so, and the server's sentence says why.
+                        val used = result.error.planCode == "friend_invite_used"
+                        _ui.update {
+                            it.copy(makingFriendLink = false, friendInvited = it.friendInvited || used, notice = result.error.planMessage)
+                        }
+                    }
+                }
+                read()
+            }
+        }
+
+        /** The share sheet opened with the friend link. */
+        fun friendLinkShared() {
+            _ui.update { it.copy(friendLink = null, notice = "Done. That link works for one person.") }
+        }
 
         private fun act(
             done: String? = null,

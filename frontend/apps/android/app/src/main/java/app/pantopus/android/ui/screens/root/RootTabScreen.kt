@@ -3359,6 +3359,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                     onHost = { kind, game ->
                                         navController.navigate(PlansRoutes.host(kind = kind?.wire, game = game?.id))
                                     },
+                                    // "Plan with people you know" (Plans step 1): starts on "Only people I invite".
+                                    onHostPrivate = { navController.navigate(PlansRoutes.host(startPrivate = true)) },
                                     // The list's "More nearby" rows: only with the Pulse redesign on (Nearby has them).
                                     onOpenPulse = { navController.navigateToRootTab(PantopusRoute.Pulse) },
                                     onOpenConnections = { navController.navigate(ChildRoutes.CONNECTIONS) },

@@ -43,6 +43,7 @@ import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.ui.components.DestructiveButton
 import app.pantopus.android.ui.components.GhostButton
@@ -55,6 +56,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsMeter
 import app.pantopus.android.ui.screens.plans.components.PlanStatusChip
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
@@ -86,11 +88,15 @@ internal fun ColumnScope.PlanHostBody(
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlanStatusChip(
-            text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
-            icon = PantopusIcon.Flag,
-            iconTint = PantopusColors.primary600,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            PlanStatusChip(
+                text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
+                icon = PantopusIcon.Flag,
+                iconTint = PantopusColors.primary600,
+            )
+            // A private plan says so (Plans step 1): only the people the host invites see it.
+            if (plan.isPrivate) PlanPrivateChip()
+        }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
         val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
         Text(
@@ -121,7 +127,8 @@ internal fun ColumnScope.PlanHostBody(
             if (plan.chatRoomId != null) {
                 GhostButton(title = "Message guests", onClick = onMessageGuests, modifier = Modifier.weight(1f))
             }
-            GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
+            // No Share for a private plan: the Invite row above invites each person (Plans step 1).
+            if (!plan.isPrivate) GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
         }
         Column {
             PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)

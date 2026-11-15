@@ -88,12 +88,17 @@ import app.pantopus.android.ui.theme.Spacing
 internal fun PlanInviteSheet(
     plan: PlanDto,
     onDismiss: () -> Unit,
+    /** Make a text invite as it opens (a private plan's "Text a link" on its preview, Plans step 1). */
+    textFirst: Boolean = false,
     vm: PlanInviteViewModel = hiltViewModel(key = "planInvite-${plan.id}"),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toast = remember { ToastController() }
-    LaunchedEffect(plan.id) { vm.start(plan.id) }
+    LaunchedEffect(plan.id) {
+        vm.start(plan.id)
+        if (textFirst) vm.makeTextInvite()
+    }
     LaunchedEffect(ui.notice) {
         ui.notice?.let {
             toast.info(it)

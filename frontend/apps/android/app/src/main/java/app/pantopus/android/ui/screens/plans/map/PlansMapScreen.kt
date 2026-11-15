@@ -79,9 +79,12 @@ import app.pantopus.android.data.api.models.plans.PlanPinDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocation
+import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.standing
@@ -90,6 +93,7 @@ import app.pantopus.android.ui.components.MessagesEntryHolder
 import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.screens.plans.PlansGateViewModel
+import app.pantopus.android.ui.screens.plans.components.PLAN_PRIVATE_SPOKEN
 import app.pantopus.android.ui.screens.plans.components.PlanPinBadge
 import app.pantopus.android.ui.screens.plans.components.PlanScopeChip
 import app.pantopus.android.ui.screens.plans.components.PlanSheet
@@ -141,6 +145,8 @@ data class PlansMapActions(
     val onAskPantopus: ((AIScreenContext) -> Unit)? = null,
     /** The side menu, on every tab (founder decision 2026-10-20); null hides the button. */
     val onOpenMenu: (() -> Unit)? = null,
+    /** "Plan with people you know" (Plans step 1): the host flow, starting on "Only people I invite". */
+    val onHostPrivate: () -> Unit = {},
 )
 
 /**
@@ -272,7 +278,26 @@ private fun PlansSheetHost(
     val missing = state.locationStatus == PlansLocationStatus.Missing
     // "Invite friends" from the posted plan (H8).
     var inviting by remember { mutableStateOf<PlanDto?>(null) }
-    inviting?.let { plan -> PlanInviteSheet(plan = plan, onDismiss = { inviting = null }) }
+    var textFirst by remember { mutableStateOf(false) }
+    inviting?.let { plan ->
+        PlanInviteSheet(
+            plan = plan,
+            textFirst = textFirst,
+            onDismiss = {
+                inviting = null
+                textFirst = false
+            },
+        )
+    }
+    // A private plan posted from its preview's "Text a link" or "Email" (Plans step 1): the invite sheet opens over it
+    // once the plan, with the host's invitations, has loaded.
+    LaunchedEffect(state.postedInvite, selected?.id, selected?.invites != null) {
+        val then = state.postedInvite ?: return@LaunchedEffect
+        val plan = selected?.takeIf { it.id == state.postedId && it.invites?.canInvite == true } ?: return@LaunchedEffect
+        textFirst = then == PlanPostedInvite.Text
+        inviting = plan
+        viewModel.postedInviteOpened()
+    }
     PlanSheet(
         stop = stop,
         onStop = onStop,
@@ -302,6 +327,7 @@ private fun PlansSheetHost(
                 } else {
                     PlanPostedContent(
                         plan = selected,
+                        note = state.postedNote,
                         onShare = { context.sharePlanLink(selected) },
                         onSeePlan = {
                             viewModel.dismissPosted()
@@ -334,6 +360,7 @@ private fun PlansSheetHost(
                 PlansEmptyContent(
                     state,
                     onHost = actions.onHost,
+                    onHostPrivate = actions.onHostPrivate,
                     onInvite = actions.onInvite,
                     onGamesChanged = viewModel::loadGames,
                     // The sheet goes down so the town with plans shows in the open map (as on iOS).
@@ -645,7 +672,8 @@ private fun PlanPinDto.toMapPin(card: PlanDto?): MapPin? {
         latitude = lat,
         longitude = lng,
         tag = PlanFormat.pinTag(this),
-        spoken = PlanFormat.pinSpoken(this, card?.distanceBand),
+        // A private plan's pin says so first (Plans step 1), as its lock badge shows.
+        spoken = listOfNotNull(PLAN_PRIVATE_SPOKEN.takeIf { isPrivate }, PlanFormat.pinSpoken(this, card?.distanceBand)).joinToString(", "),
         live = planState == PlanState.LIVE,
         full = isFull && standing != PlanViewerStanding.IN && standing != PlanViewerStanding.HOSTING,
         badge =
@@ -658,7 +686,8 @@ private fun PlanPinDto.toMapPin(card: PlanDto?): MapPin? {
             },
         neighborhood = !isBusiness && (precision == "neighborhood" || kind == PlanKind.PLAYDATE),
         areaLabel = if (kind == PlanKind.PLAYDATE && !isBusiness) areaLabel ?: card?.area?.label else null,
-        exact = isBusiness,
+        exact = isBusiness || (isPrivate && precision == "exact"),
+        isPrivate = isPrivate,
     )
 }
 
@@ -717,8 +746,9 @@ private fun PlansTopChrome(
                 GlassCircleButton(icon = PantopusIcon.ChevronLeft, label = "Back to all plans", onClick = onBackFromCard)
                 Spacer(modifier = Modifier.weight(1f))
                 val inOrHosting = selected?.standing == PlanViewerStanding.IN || selected?.standing == PlanViewerStanding.HOSTING
-                // A business's plan is at its own public address: no "area only" promise to make.
-                if (!inOrHosting && selected?.isBusiness != true) {
+                // A business's plan is at its own public address, and a private plan shows the person invited its
+                // place by name: no "area only" promise to make.
+                if (!inOrHosting && selected?.isBusiness != true && selected?.placeShownToInvitee != true) {
                     PlanScopeChip(
                         text =
                             if (selected?.planKind == PlanKind.PLAYDATE) {

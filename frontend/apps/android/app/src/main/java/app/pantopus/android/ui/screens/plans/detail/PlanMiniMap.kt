@@ -39,6 +39,7 @@ import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.standing
@@ -104,16 +105,17 @@ fun PlanMiniMap(
         if (!ready) return@Box
         val neighborhood = kind == PlanKind.PLAYDATE || plan.area?.precision == "neighborhood"
         val radiusDp = ((if (neighborhood) 1000.0 else 500.0) / metersPerDp(center.latitude)).toFloat()
-        if (exactPoint != null && plan.isBusiness) {
+        if (exactPoint != null && (plan.isBusiness || plan.placeShownToInvitee)) {
             // A business's plan is at its own public address (board G3): the pin with the place's name, no area and
-            // no reveal, for everyone.
+            // no reveal, for everyone. So is a private plan's place for the person invited (board Invited).
             val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
             val badge =
                 when {
                     closed -> PlanPinBadge.None
                     plan.standing == PlanViewerStanding.HOSTING -> PlanPinBadge.Hosting
                     plan.standing == PlanViewerStanding.IN -> PlanPinBadge.In
-                    else -> PlanPinBadge.Business
+                    plan.isBusiness -> PlanPinBadge.Business
+                    else -> PlanPinBadge.None
                 }
             PinAt(camera, exactPoint, kind, plan.place?.name, badge, scale = 1f, alpha = 1f)
         } else if (exactPoint == null) {
