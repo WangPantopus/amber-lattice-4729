@@ -45,9 +45,16 @@ struct PlanSomethingElseRow: View {
             HStack(spacing: Spacing.s3) {
                 PlanTile(kind: .somethingElse, size: 44, glyph: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(PlanKind.somethingElse.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
-                        PlanNewTag()
+                    // The tag goes under the name when both don't fit on one line (large text).
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            Text(PlanKind.somethingElse.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
+                            PlanNewTag()
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(PlanKind.somethingElse.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
+                            PlanNewTag()
+                        }
                     }
                     Text(PlanKindsMore.blurb(.somethingElse))
                         .planFont(.small)
@@ -67,5 +74,25 @@ struct PlanSomethingElseRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("planType.\(PlanKind.somethingElse.rawValue)")
+    }
+}
+
+/// Board Main's kind buttons (`.btns4 .btn.stack`): tonal, 78 pt tall, the swatch over a 12 pt label of up to
+/// two centered lines with 4 pt at the sides, so "Something else" breaks between its words.
+struct PlanKindGridButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .planFont(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(Theme.Color.appText)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 78)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.Color.appSurfaceSunken))
+            .opacity(configuration.isPressed ? 0.85 : isEnabled ? 1 : 0.5)
+            .contentShape(Rectangle())
     }
 }

@@ -53,7 +53,7 @@ struct PlanPreviewScreen: View {
                         privateRow(icon: .users, text: "Who's going, and the group chat")
                     } }
                     Text(
-                        "You can change or cancel it any time. If you move the time or the place, "
+                        "You can change or cancel it any time. If you move the time or the \(model.isOnline ? "link" : "place"), "
                             + "everyone who's in is asked \u{201C}Still coming?\u{201D}"
                     )
                     .planFont(.caption)
@@ -203,8 +203,9 @@ struct PlanPostedScreen: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
-                if plan.card.isOnline {
+                if plan.card.isOnline || (plan.place?.coordinate == nil && plan.card.area.coordinate == nil) {
                     // An online plan has no pin: the kind's tile with the video glyph above the sheet (board Online).
+                    // Nor does a plan with no point at all: nothing is drawn at 0, 0.
                     PlanOnlineHero(kind: plan.card.kind, height: geo.size.height * 0.47)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(plan.card.kind.tint.ignoresSafeArea())

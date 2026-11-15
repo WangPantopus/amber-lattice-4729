@@ -14,6 +14,7 @@ struct PlansEmptyCard: View {
     let viewModel: PlansMapViewModel
     let actions: PlansMapActions
     @State private var flags = PlansFlags.shared
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showsTeams = false
     @State private var teams = PlanTeamsModel()
     @AppStorage("plans.sports.askDismissed") private var sportsAskDismissed = false
@@ -163,29 +164,33 @@ struct PlansEmptyCard: View {
         return "\(matchup) \(when) at \(time)"
     }
 
-    /// The other kinds as tonal buttons: a row of today's, or with `plans_kinds` on a 4-column grid of eight
-    /// (board Main).
+    /// The other kinds as tonal buttons: a row of today's, or with `plans_kinds` on a grid of eight with board
+    /// Main's buttons (`.btns4`), in 4 columns, or 2 above the default text size so no word breaks.
     @ViewBuilder private var otherKinds: some View {
         let kinds = PlanKind.listed(withNewer: flags.kinds).filter { $0 != .watchParty && ($0 != .playdate || flags.playdates) }
         if flags.kinds {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.s2), count: 4), spacing: Spacing.s2) {
-                ForEach(kinds) { kind in kindButton(kind) }
+            let count = typeSize >= .xLarge ? 2 : 4
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.s2), count: count), spacing: Spacing.s2) {
+                ForEach(kinds) { kind in
+                    kindButton(kind, spacing: 6).buttonStyle(PlanKindGridButtonStyle())
+                }
             }
         } else {
             HStack(spacing: Spacing.s2) {
-                ForEach(kinds) { kind in kindButton(kind) }
+                ForEach(kinds) { kind in
+                    kindButton(kind, spacing: Spacing.s1).planButton(.tonal, size: .stack)
+                }
             }
         }
     }
 
-    private func kindButton(_ kind: PlanKind) -> some View {
+    private func kindButton(_ kind: PlanKind, spacing: CGFloat) -> some View {
         Button { actions.host(PlansHostStart(kind: kind)) } label: {
-            VStack(spacing: Spacing.s1) {
+            VStack(spacing: spacing) {
                 PlanSwatch(kind: kind)
                 Text(kind.title)
             }
         }
-        .planButton(.tonal, size: .stack)
         .accessibilityLabel(hostLabel(kind))
         .accessibilityIdentifier("planKind.\(kind.rawValue)")
     }

@@ -54,16 +54,35 @@ enum PlanOnlineLink {
               let url = URL(string: link), url.scheme?.lowercased() == "https",
               var host = url.host?.lowercased() else { return nil }
         if host.hasSuffix(".") { host.removeLast() }
-        let isAddress = host.range(of: #"^\d{1,3}(\.\d{1,3}){3}$"#, options: .regularExpression) != nil
-        guard host.contains("."), !host.contains(":"), !host.hasPrefix("["), !isAddress,
+        // The server's URL parser refuses a port above 65535.
+        if let port = url.port, port > 65535 { return nil }
+        guard host.contains("."), !host.contains(":"), !host.hasPrefix("["), !endsInNumber(host),
               host != "localhost", !host.hasSuffix(".localhost") else { return nil }
         return (link, host.hasPrefix("www.") ? String(host.dropFirst(4)) : host)
     }
 
-    /// The link to open from "Join": https only, whatever the server sent.
+    /// A host the server's URL parser reads as an IP address, or refuses: its last label is a number, decimal
+    /// or hex ("1.2.3.4", "127.1", "0x7f.0.0.1", "1.2.3"), as the WHATWG URL standard's "ends in a number".
+    private static func endsInNumber(_ host: String) -> Bool {
+        guard let last = host.split(separator: ".", omittingEmptySubsequences: false).last else { return false }
+        if !last.isEmpty, last.allSatisfy(\.isASCIIDigit) { return true }
+        let lower = last.lowercased()
+        return lower.hasPrefix("0x") && lower.dropFirst(2).allSatisfy(\.isHexDigit)
+    }
+
+    /// The link to open from "Join": the server checked it when it was saved, so any https link with a host
+    /// opens (the phone's stricter typing check isn't run again).
     static func joinURL(_ link: String?) -> URL? {
-        guard let link, let parsed = parse(link) else { return nil }
-        return URL(string: parsed.link)
+        guard let raw = link?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let url = URL(string: raw), url.scheme?.lowercased() == "https",
+              let host = url.host, !host.isEmpty else { return nil }
+        return url
+    }
+}
+
+private extension Character {
+    var isASCIIDigit: Bool {
+        isASCII && isNumber
     }
 }
 
@@ -182,27 +201,38 @@ struct PlanOnlineLinkCard: View {
     }
 }
 
-/// Board Online's footer for the host and people who are in: "Join" opens the link in the browser.
+/// Board Online's footer for the host and people who are in: "Join" opens the link in the browser. When it
+/// can't, the line under the button says why instead of leaving a dead button.
 struct PlanOnlineJoin: View {
     let place: PlanPlaceDTO?
 
     @Environment(\.openURL) private var openURL
+    @State private var didNotOpen = false
 
     var body: some View {
         let url = PlanOnlineLink.joinURL(place?.link)
         Button {
-            if let url { openURL(url) }
+            guard let url else { return }
+            openURL(url) { opened in didNotOpen = !opened }
         } label: {
             PlanButtonLabel(title: "Join", icon: .video, kind: .primary)
         }
         .planButton(.primary)
         .disabled(url == nil)
-        .accessibilityHint(PlanOnlineCopy.opens(place?.linkHost))
+        .accessibilityHint(caption(url: url))
         .accessibilityIdentifier("planJoinOnline")
-        Text(PlanOnlineCopy.opens(place?.linkHost))
+        Text(caption(url: url))
             .planFont(.caption)
-            .foregroundStyle(Theme.Color.appTextSecondary)
+            .foregroundStyle(url == nil || didNotOpen ? Theme.Color.warning : Theme.Color.appTextSecondary)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("planJoinOnlineCaption")
+    }
+
+    private func caption(url: URL?) -> String {
+        if place == nil { return "The link hasn't loaded. Pull down to try again." }
+        if url == nil { return "This link can't be opened from Pantopus. Ask in the group chat for another." }
+        if didNotOpen { return "Couldn't open \(place?.linkHost ?? "the link"). Ask in the group chat for another." }
+        return PlanOnlineCopy.opens(place?.linkHost)
     }
 }

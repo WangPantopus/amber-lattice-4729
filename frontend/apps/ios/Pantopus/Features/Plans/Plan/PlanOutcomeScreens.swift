@@ -54,7 +54,7 @@ struct PlanNotThisTimeScreen: View {
                     Button("See all plans", action: onSeeAll)
                         .planButton(.secondary)
                         .accessibilityIdentifier("planSeeAllPlans")
-                    Button("Host your own \(card.kind.title.lowercased())", action: onHost)
+                    Button("Host your own \(PlanKindsMore.sentenceName(card))", action: onHost)
                         .planButton(.text, size: .extraSmall)
                         .frame(maxWidth: .infinity)
                 }

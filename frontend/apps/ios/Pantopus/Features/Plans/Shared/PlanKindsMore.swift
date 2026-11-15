@@ -61,6 +61,19 @@ enum PlanKindsMore {
         }
     }
 
+    /// The plan's kind in a sentence ("Host your … again?", "yesterday's … with Sam"): today's five by their
+    /// name, as always ("watch party", "walk & coffee"); the newer by the card's noun ("hike", "happy hour", "plan").
+    static func sentenceName(_ card: PlanCardDTO) -> String {
+        card.kind.isNewer ? PlanCardLines.noun(card) : card.kind.title.lowercased()
+    }
+
+    /// The map list's line when a kind filter finds nothing: "No other watch party near you yet." for today's
+    /// five, as always; "No Outdoors plans near you yet." for the newer.
+    static func noneNearby(_ kind: PlanKind?) -> String {
+        guard let kind else { return "No other plans near you yet." }
+        return kind.isNewer ? "No \(kind.title) plans near you yet." : "No other \(kind.title.lowercased()) near you yet."
+    }
+
     /// The plan page's details line: "Potluck", "Trivia", "Bike ride · Brisk pace". Nothing for "Something else".
     static func details(_ kind: PlanKind, _ details: PlanDetailsDTO?) -> [String] {
         guard let details else { return [] }

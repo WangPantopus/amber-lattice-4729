@@ -197,11 +197,13 @@ struct PlanTypePicker: View {
     private func card(_ kind: PlanKind) -> some View {
         Button { onPick(kind) } label: {
             VStack(alignment: .leading, spacing: 10) {
-                PlanTile(kind: kind, size: 52, glyph: 28)
-                HStack(spacing: 6) {
-                    Text(business?.kind(kind)?.name ?? kind.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
+                // A newer kind's "New" sits on the tile's row, so it never shares a line with the name.
+                HStack(alignment: .top) {
+                    PlanTile(kind: kind, size: 52, glyph: 28)
+                    Spacer(minLength: 0)
                     if kind.isNewer { PlanNewTag() }
                 }
+                Text(business?.kind(kind)?.name ?? kind.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
                 Text(business == nil ? Self.blurb(kind) : Self.businessBlurb(kind))
                     .planFont(.small)
                     .foregroundStyle(Theme.Color.appTextSecondary)

@@ -35,8 +35,9 @@ struct PlanHeaderMap: View {
     static let height: CGFloat = 236
 
     var body: some View {
-        if card.isOnline {
-            // An online plan has no place to map: the kind's tile with the video glyph (board Online).
+        // An online plan has no place to map: the kind's tile with the video glyph (board Online). So does any plan
+        // with no point at all, so nothing is ever drawn at 0, 0.
+        if card.isOnline || (place?.coordinate == nil && card.area.coordinate == nil) {
             PlanOnlineHero(kind: card.kind)
         } else {
             map

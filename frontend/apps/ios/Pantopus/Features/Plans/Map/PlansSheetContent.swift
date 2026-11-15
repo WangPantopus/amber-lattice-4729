@@ -235,7 +235,7 @@ struct PlansListSheet: View {
                             .padding(.top, Spacing.s4)
                             .hiddenUnderPlansTabBar()
                     } else if days.isEmpty {
-                        Text("No other \(viewModel.kindFilter?.title.lowercased() ?? "plans") near you yet.")
+                        Text(PlanKindsMore.noneNearby(viewModel.kindFilter))
                             .planFont(.small)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             .padding(.top, Spacing.s4)

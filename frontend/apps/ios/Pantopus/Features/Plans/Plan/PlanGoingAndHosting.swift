@@ -57,8 +57,7 @@ struct PlanGoingSection: View {
             PlanFactRow(icon: .calendar, text: PlanScreenLines.when(card))
             if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
-        // An online plan: the link's site and who sees it (board Online); "Join" is in the footer.
-        if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) }
+        if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) } // board Online
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 HStack(spacing: Spacing.s2) {
@@ -75,8 +74,7 @@ struct PlanGoingSection: View {
             .accessibilityElement(children: .combine)
         }
         HStack(spacing: Spacing.s2) {
-            // Nowhere to go for an online plan: no Directions.
-            if !card.isOnline {
+            if !card.isOnline { // nowhere to go for an online plan
                 Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
                     .planButton(.tonal, size: .stack)
                     .disabled(viewModel.plan?.place?.coordinate == nil)
@@ -142,7 +140,7 @@ struct PlanGoingSection: View {
         return VStack(alignment: .leading, spacing: 10) {
             PlanBanner(tone: .warning, icon: .alertTriangle, title: words.title, message: words.message)
             HStack(spacing: 10) {
-                Button("Can't make it") { onConfirm(.notComing(host: PlanCardLines.hostName(card))) }
+                Button("Can't make it") { onConfirm(.notComing(host: PlanCardLines.hostName(card), online: card.isOnline)) }
                     .planButton(.secondary, size: .small)
                 Button("Still coming") { Task { _ = await viewModel.stillComing(true) } }
                     .planButton(.primary, size: .small)
@@ -456,7 +454,12 @@ struct PlanHostingSection: View {
                 Menu {
                     if let requestId = viewModel.requestId(for: person) {
                         Button("Remove from plan", role: .destructive) {
-                            onConfirm(.removeGuest(name: person.displayName, requestId: requestId, atHome: card.placeKind == .home))
+                            onConfirm(.removeGuest(
+                                name: person.displayName,
+                                requestId: requestId,
+                                atHome: card.placeKind == .home,
+                                online: card.isOnline
+                            ))
                         }
                     }
                 } label: {
