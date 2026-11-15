@@ -1378,18 +1378,19 @@ public struct ChatConversationView: View {
 // MARK: - AI welcome
 
 extension ChatConversationView {
-    /// A15.3 `.empty` — "Ask me anything" headline, trust pill, then the
+    /// A15.3 `.empty` — the headline (what the assistant is for), trust pill, then the
     /// 2×2 categorized prompt grid. Tapping a card sends its question.
     private var aiWelcomeFrame: some View {
         ScrollView {
             VStack(spacing: Spacing.s0) {
                 ChatAIAvatar(size: 88)
-                Text("Ask me anything")
+                Text("Ask about your home and what\u{2019}s nearby")
+                    .multilineTextAlignment(.center)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
                     .padding(.top, 16)
-                // Launch cuts #3 / #4: it names only what can still be drafted.
-                Text("I can draft \(Self.aiDraftables), and I use your saved places to fit answers to your area.")
+                // Launch cuts #3 / #4 / #10: it names only what can be looked into and drafted.
+                Text(Self.aiWelcomeLine)
                     .font(.system(size: 13))
                     .lineSpacing(5)
                     .foregroundStyle(Theme.Color.appTextSecondary)
@@ -1416,49 +1417,56 @@ extension ChatConversationView {
     /// A15.3 `.prompt-grid` — 2×2 categorized prompt cards; tapping one
     /// sends its question as the thread's first message.
     private var aiPromptGrid: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: Spacing.s2), GridItem(.flexible(), spacing: Spacing.s2)],
-            spacing: Spacing.s2
-        ) {
-            // Launch cut #3 (Marketplace): a Home prompt takes the Marketplace card's place.
-            ForEach(Self.launchPromptCards) { card in
-                Button {
-                    Task {
-                        await viewModel.sendCapabilityPrompt(
-                            ChatPromptChip(id: card.id, label: card.question, icon: card.icon)
-                        )
+        // Launch cut #3 (Marketplace): a Home prompt takes the Marketplace card's place.
+        let cards = Self.launchPromptCards
+        // Two to a row, each as tall as the taller one, whatever their questions' lengths.
+        return Grid(horizontalSpacing: Spacing.s2, verticalSpacing: Spacing.s2) {
+            ForEach(Array(stride(from: 0, to: cards.count, by: 2)), id: \.self) { start in
+                GridRow {
+                    ForEach(cards[start..<min(start + 2, cards.count)]) { card in
+                        aiPromptCardButton(card)
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Icon(card.icon, size: 14, color: Theme.Color.appTextInverse)
-                            .frame(width: 26, height: 26)
-                            .background(card.tint)
-                            .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
-                        Text(card.category.uppercased())
-                            .font(.system(size: 9.5, weight: .bold))
-                            .tracking(0.6)
-                            .foregroundStyle(Theme.Color.appTextMuted)
-                        Text(card.question)
-                            .font(.system(size: 12.5, weight: .medium))
-                            .foregroundStyle(Theme.Color.appText)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .background(Theme.Color.appSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Theme.Color.appBorder, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: .black.opacity(0.04), radius: 1.5, y: 1)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(card.question)
-                .accessibilityIdentifier("chatAIPromptCard_\(card.id)")
             }
         }
+    }
+
+    private func aiPromptCardButton(_ card: AIPromptCard) -> some View {
+        Button {
+            Task {
+                await viewModel.sendCapabilityPrompt(
+                    ChatPromptChip(id: card.id, label: card.question, icon: card.icon)
+                )
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Icon(card.icon, size: 14, color: Theme.Color.appTextInverse)
+                    .frame(width: 26, height: 26)
+                    .background(card.tint)
+                    .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+                Text(card.category.uppercased())
+                    .font(.system(size: 9.5, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(Theme.Color.appTextMuted)
+                Text(card.question)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Theme.Color.appSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Theme.Color.appBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.04), radius: 1.5, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(card.question)
+        .accessibilityIdentifier("chatAIPromptCard_\(card.id)")
     }
 
     /// Ask on a screen: that screen's starter prompts, in the suggestion
@@ -1510,10 +1518,10 @@ extension ChatConversationView {
             question: "Draft a post asking for a dog-sitter this weekend."
         ),
         AIPromptCard(
-            id: "mailbox", category: "Mailbox", icon: .mailbox,
+            id: "mailbox", category: "Mail", icon: .mailbox,
             tint: Theme.Color.home,
-            // It summarizes a letter you give it; it can't read the inbox.
-            question: "Help me understand a letter I got."
+            // It looks in their Mail (after the app's identity check).
+            question: "What\u{2019}s due in my mail?"
         ),
         AIPromptCard(
             id: "marketplace", category: "Marketplace", icon: .shoppingBag,
@@ -1521,6 +1529,13 @@ extension ChatConversationView {
             question: "Price my mid-century sofa for a quick sale."
         )
     ]
+
+    /// What the assistant looks into and drafts, under the empty thread's
+    /// headline. Mail is named only while the Mailbox is on (launch cut #10).
+    private static var aiWelcomeLine: String {
+        let looks = LaunchFeatures.mailbox ? "your mail, your wallet and the days ahead" : "your wallet and the days ahead"
+        return "I can look in \(looks), and draft \(aiDraftables) for you."
+    }
 
     /// First-launch scope: what the assistant can draft (launch cut #4 hides
     /// open tasks and #3 listings; the backend drops those draft tools too).
@@ -2171,6 +2186,7 @@ extension ChatConversationView {
             aiStatus: viewModel.aiStatus,
             // While messages are being picked, a tap picks the message instead.
             onOpenSender: isSelecting ? nil : bubble.senderUserId.map { userId in { @MainActor in onOpenProfile(userId) } },
+            onVerifyIdentity: { Task { await viewModel.verifyIdentityAndAskAgain(messageId: bubble.id) } },
             canManage: viewModel.canManageMessage(bubble.id),
             canDiscard: viewModel.canDiscardMessage(bubble.id),
             onLockedAction: { upgradePromptPresented = true },
@@ -3500,6 +3516,8 @@ private struct ChatBubbleRow: View {
     var aiStatus: String?
     /// Opens the profile of the person who sent a room's message, from their name and photo.
     var onOpenSender: (@MainActor () -> Void)?
+    /// "Verify it's me" under an assistant reply: the identity check, then the question again.
+    var onVerifyIdentity: (@MainActor () -> Void)?
     let canManage: Bool
     let canDiscard: Bool
     let onLockedAction: @MainActor () -> Void
@@ -4211,7 +4229,7 @@ private struct ChatBubbleRow: View {
                 }
             }
             if !content.aiLinks.isEmpty {
-                AILinkButtons(links: content.aiLinks)
+                AILinkButtons(links: content.aiLinks, onVerifyIdentity: onVerifyIdentity)
             }
         }
         .padding(.horizontal, 12)

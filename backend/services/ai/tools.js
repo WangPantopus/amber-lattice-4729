@@ -324,6 +324,9 @@ function closingForDrafts(calls) {
 // Mail (and the Wallet) open on the phones only after Face ID or the passcode.
 const PRIVATE_TOOL_NAMES = new Set([...MAIL_TOOL_NAMES, ...WALLET_TOOL_NAMES]);
 const IDENTITY_NEEDED = "That opens in the app only after it checks it's them (the phone's face or fingerprint unlock, or its passcode), and it hasn't for this conversation. Say so in a sentence and point them to that screen; don't guess what is there.";
+// For an app that asks for the check in the thread (`cards` lists "identity_ask"): the chat puts a "Verify it's me"
+// button under the reply (agentService), and the app sends the question again once the check passes.
+const IDENTITY_ASK = "The app hasn't checked it's them yet (the phone's face or fingerprint unlock, or its passcode), so nothing in their Mail or Wallet can be read for this message. Say that in one short, plain sentence (for example: \"I can look in your Mail once the app checks it's you.\"), and say nothing about what might be there. A \"Verify it's me\" button shows under your reply by itself, and once they pass the check the app sends their question again for you to answer. Don't add a button of your own, don't tell them to open Mail or the Wallet, and don't ask them to ask again.";
 
 const TOOL_TIMEOUT_MS = 5000;
 // Reads that compose several providers, and the plan card's place search, need longer.
@@ -436,7 +439,7 @@ async function _executeToolImpl(name, args, ctx) {
   if (verification) return verification;
   // What the phones keep behind their identity check is read only once the app says it passed (agentService
   // leaves these tools out otherwise; this is the same rule for a call that names one anyway).
-  if (PRIVATE_TOOL_NAMES.has(name) && !ctx.identity) return { error: IDENTITY_NEEDED };
+  if (PRIVATE_TOOL_NAMES.has(name) && !ctx.identity) return ctx.identityAsk ? { error: IDENTITY_ASK, identity_needed: true } : { error: IDENTITY_NEEDED };
   const mail = await runMailReadTool(name, args, ctx);
   if (mail) return mail;
   const chats = await runChatReadTool(name, args, ctx);

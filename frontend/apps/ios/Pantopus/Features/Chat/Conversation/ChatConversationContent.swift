@@ -349,6 +349,15 @@ public struct ChatAILink: Identifiable, Sendable, Hashable {
         "\(label)|\(url)"
     }
 
+    /// The link the server puts under a reply that couldn't look into Mail or
+    /// the Wallet before the identity check ("Verify it's me"). It opens no
+    /// screen: the thread runs the check and asks the question again.
+    public static let verifyIdentityURL = "pantopus://assistant/verify"
+
+    public var asksIdentity: Bool {
+        url == Self.verifyIdentityURL
+    }
+
     public init(label: String, url: String) {
         self.label = label
         self.url = url
