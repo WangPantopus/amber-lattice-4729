@@ -3,12 +3,14 @@
  *
  * Local headlines for the place Today shows, read straight from the list the content fetcher already fills every two
  * hours (`seeder_content_queue`): each item is the outlet's own headline, the outlet's name and a link to the story at
- * the outlet. Nothing is rewritten, no photo is carried and no Claude call is made. While this is on, the curator
+ * the outlet. Nothing is rewritten and no Claude call is made. While this is on, the curator
  * account's posts stay out of the Pulse list and map (services/feedService.js).
  *
  * Each item is also a real post (founder, the same evening: people react with emojis and reply in threads, as on
  * Pulse): the region's curator account posts the outlet's headline, with the outlet's name and the link in
- * post_metadata (source_name, source_url), and the apps draw it with the Pulse card. These posts carry no Pulse
+ * post_metadata (source_name, source_url), and the apps draw it with the Pulse card. A post carries the story's own
+ * pictures as the curator's Pulse posts did (founder, 2026-11-15): the links the fetcher kept from the outlet's feed,
+ * shown from the outlet's own address, never copied; a post made before that gets them on the next read. These posts carry no Pulse
  * distribution target, so the Pulse list and map never read them, whatever the switch says; they show only here, on
  * their own post page and in a person's saved posts. A post's id is derived from its queue row's id, so two reads at
  * once make one post, and a post moderation removed stays removed.
@@ -35,6 +37,9 @@ const DEFAULT_RADIUS_M = 25_000;
 const MAX_REGIONS = 2;
 const MAX_ROWS = 400;
 const MAX_TITLE_LENGTH = 180;
+// The fetcher keeps at most four pictures for a story; a link longer than this is not one a card should load.
+const MAX_PICTURES = 4;
+const MAX_PICTURE_LINK_LENGTH = 2048;
 
 // What a page can hold, in the order it shows. `hours` is how long an item stays after the fetcher first saw it.
 const SECTIONS = [
@@ -190,6 +195,16 @@ function buildSections(rows, sourceNames, now = Date.now()) {
   return sections;
 }
 
+// The story's own pictures, as the fetcher kept them from the outlet's feed (media_urls, with media_types beside
+// them): secure web links to images only, so every app can load them.
+function pictures(row) {
+  const types = Array.isArray(row.media_types) ? row.media_types : [];
+  return (Array.isArray(row.media_urls) ? row.media_urls : [])
+    .filter((link, index) => (types[index] || 'image') === 'image' && typeof link === 'string'
+      && link.length <= MAX_PICTURE_LINK_LENGTH && webLink(link)?.startsWith('https://'))
+    .slice(0, MAX_PICTURES);
+}
+
 // The post for a queue row: the same id for the same row on every server, so a post is made once (POST /api/posts'
 // replies derive their ids the same way).
 function postIdFor(itemId) {
@@ -198,9 +213,9 @@ function postIdFor(itemId) {
 }
 
 // An item as a post by its region's curator account: the outlet's headline as written, its name and link in the
-// metadata, no photo, no place. Visible to anyone signed in (visibility public), listed nowhere but here (no
+// metadata, the story's pictures, no place. Visible to anyone signed in (visibility public), listed nowhere but here (no
 // distribution target), and off the curator's profile. Its time is when the fetcher first saw the story.
-function postRow(item, sectionId, curatorUserId, localProfileId) {
+function postRow(item, sectionId, curatorUserId, localProfileId, itemPictures = []) {
   return {
     id: item.post_id,
     user_id: curatorUserId,
@@ -209,8 +224,8 @@ function postRow(item, sectionId, curatorUserId, localProfileId) {
     identity_context_id: localProfileId || null,
     title: null,
     content: item.title,
-    media_urls: [],
-    media_types: [],
+    media_urls: itemPictures,
+    media_types: itemPictures.map(() => 'image'),
     post_type: 'local_update',
     purpose: 'local_update',
     post_format: 'standard',
@@ -232,8 +247,24 @@ function postRow(item, sectionId, curatorUserId, localProfileId) {
   };
 }
 
-// Makes the posts a page's items don't have yet; one that exists (or was removed by moderation) is left as it is.
-async function makePosts(sections, regionOfItem, regions) {
+// Gives the pictures to posts made before posts carried them. A failure leaves them for the next read: a post without
+// its picture is still the post.
+async function addMissingPictures(rows) {
+  const pictured = rows.filter((row) => row.media_urls.length);
+  if (!pictured.length) return;
+  const { data: made, error } = await supabaseAdmin.from('Post').select('id, media_urls')
+    .in('id', pictured.map((row) => row.id));
+  if (error) throw error;
+  const bare = new Set((made || []).filter((post) => !(post.media_urls || []).length).map((post) => post.id));
+  const results = await Promise.all(pictured.filter((row) => bare.has(row.id)).map((row) => supabaseAdmin.from('Post')
+    .update({ media_urls: row.media_urls, media_types: row.media_types }).eq('id', row.id).eq('origin', 'curator')));
+  const failed = results.find((result) => result.error);
+  if (failed) throw failed.error;
+}
+
+// Makes the posts a page's items don't have yet; one that exists (or was removed by moderation) is left as it is,
+// but for its pictures (addMissingPictures).
+async function makePosts(sections, regionOfItem, regions, picturesOfItem) {
   const curatorOf = new Map(regions.map((region) => [region.region, region.curator_user_id]));
   const curatorIds = [...new Set([...curatorOf.values()].filter(Boolean))];
   const { data: profiles } = curatorIds.length
@@ -242,11 +273,15 @@ async function makePosts(sections, regionOfItem, regions) {
   const profileOf = new Map((profiles || []).map((row) => [String(row.user_id), row.id]));
   const rows = sections.flatMap((section) => section.items.flatMap((item) => {
     const curator = curatorOf.get(regionOfItem.get(item.id));
-    return curator ? [postRow(item, section.id, curator, profileOf.get(String(curator)))] : [];
+    return curator
+      ? [postRow(item, section.id, curator, profileOf.get(String(curator)), picturesOfItem.get(item.id))] : [];
   }));
   if (!rows.length) return;
   const { error } = await supabaseAdmin.from('Post').upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
   if (error) throw error;
+  await addMissingPictures(rows).catch((err) => {
+    logger.warn('Around you pictures could not be added', { error: err.message });
+  });
 }
 
 async function readPage(regions) {
@@ -255,7 +290,7 @@ async function readPage(regions) {
   const [queue, sources] = await Promise.all([
     supabaseAdmin
       .from('seeder_content_queue')
-      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at')
+      .select('id, source, source_url, raw_title, raw_body, region, category, fetched_at, media_urls, media_types')
       .in('region', regionIds)
       .in('category', CATEGORIES)
       .eq('scope', 'local')
@@ -282,7 +317,10 @@ async function readPage(regions) {
   if (!sections.length) return EMPTY;
   let postsReady = true;
   try {
-    await makePosts(sections, new Map(rows.map((row) => [row.id, row.region])), regions);
+    await makePosts(
+      sections, new Map(rows.map((row) => [row.id, row.region])), regions,
+      new Map(rows.map((row) => [row.id, pictures(row)])),
+    );
   } catch (err) {
     postsReady = false;
     logger.warn('Around you posts could not be made', { error: err.message });
@@ -372,4 +410,4 @@ function resetAroundYouCache() {
   pageCache.clear();
 }
 
-module.exports = { aroundYou, resetAroundYouCache, buildSections, coveringRegions, postIdFor, EMPTY };
+module.exports = { aroundYou, resetAroundYouCache, buildSections, coveringRegions, postIdFor, pictures, EMPTY };
