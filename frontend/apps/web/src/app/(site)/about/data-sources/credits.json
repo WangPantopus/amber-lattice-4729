@@ -90,6 +90,14 @@
           "statement": "The borough's Assessment Department is the origin of these records; Ketchikan Gateway Borough GIS publishes them as web map services, hosted by its GIS contractor."
         },
         {
+          "id": "ok-cleveland",
+          "publisher": "Cleveland County Assessor, Oklahoma",
+          "url": "https://www.arcgis.com/home/item.html?id=a0b7946cceaf499f963e0a9ce9946cb3",
+          "license": "Published by the Assessor; no license or limit on use stated",
+          "dataset": "Tax parcels with the Assessor's appraisal records (dated copies; June 2026)",
+          "statement": "The Cleveland County Assessor is both the origin and the publisher of these records."
+        },
+        {
           "id": "va-charlottesville",
           "publisher": "City of Charlottesville, Virginia",
           "url": "https://opendata.charlottesville.org",
