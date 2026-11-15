@@ -3,19 +3,33 @@
  *
  * Local headlines for the place Today shows, read straight from the list the content fetcher already fills every two
  * hours (`seeder_content_queue`): each item is the outlet's own headline, the outlet's name and a link to the story at
- * the outlet. Nothing is rewritten, no photo is carried and nothing is posted to Pulse. While this is on, the curator
+ * the outlet. Nothing is rewritten, no photo is carried and no Claude call is made. While this is on, the curator
  * account's posts stay out of the Pulse list and map (services/feedService.js).
  *
+ * Each item is also a real post (founder, the same evening: people react with emojis and reply in threads, as on
+ * Pulse): the region's curator account posts the outlet's headline, with the outlet's name and the link in
+ * post_metadata (source_name, source_url), and the apps draw it with the Pulse card. These posts carry no Pulse
+ * distribution target, so the Pulse list and map never read them, whatever the switch says; they show only here, on
+ * their own post page and in a person's saved posts. A post's id is derived from its queue row's id, so two reads at
+ * once make one post, and a post moderation removed stays removed.
+ *
  * Switch: AROUND_YOU ('1' on, '0' off). Unset, it is on for hosted staging (APP_ENV=staging) and off everywhere else.
+ * Nothing is read or posted while it is off.
  */
 
+const { createHash } = require('crypto');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { aroundYouEnabled } = require('../utils/featureFlags');
 const { haversineM, hasUsableCoordinates } = require('./seederProvisioningService');
+const {
+  FEED_POST_SELECT, normalizeFeedPostRow, enrichFeedPosts, getMuteAndHideFilters,
+} = require('./feedService');
 
 const HOUR_MS = 3_600_000;
 const CACHE_TTL_MS = 300_000;
+// A page whose posts could not be made is tried again sooner; until then the apps draw its plain rows.
+const RETRY_TTL_MS = 30_000;
 const DEFAULT_RADIUS_M = 25_000;
 // The nearest regions that cover the point; a place between two metros reads both.
 const MAX_REGIONS = 2;
@@ -43,7 +57,7 @@ const MAX_PER_OUTLET = 5;
 // (pantopus-seeder/src/config/constants.py BLOCKLIST_TERMS). The same kinds of story under words that list misses
 // stay off this page too; whole words only, headline only.
 const LEFT_OUT = new RegExp(`\\b(${[
-  'police say', 'suspect', 'suspects', 'killed', 'kills', 'killing', 'dead', 'dies', 'died', 'death', 'deaths', 'fatal',
+  'police say', 'suspect', 'suspects', 'killed', 'kills', 'killing', 'dead', 'die', 'dies', 'died', 'death', 'deaths', 'fatal',
   'fatally', 'fentanyl', 'overdose', 'overdoses', 'rape', 'raped', 'gunman', 'gunfire', 'shot', 'stabbed', 'victim',
   'victims', 'kidnapped', 'kidnapping', 'sexual assault', 'sex abuse', 'sexual abuse', 'trafficking',
   'republican', 'republicans', 'gop', 'maga', 'trump', 'biden',
@@ -52,14 +66,17 @@ const LEFT_OUT = new RegExp(`\\b(${[
 const EMPTY = Object.freeze({ available: false, area: null, sections: [] });
 
 let regionsCache = { rows: null, expires: 0 };
-const pageCache = new Map(); // region ids -> { page, expires }
+// The page for a set of regions is the same for everyone: region ids -> { page, expires }. What a viewer sees of its
+// posts (their own reaction, a post they hid) is added for each read (withPosts).
+const pageCache = new Map();
+const pageBuilds = new Map(); // region ids -> the read in flight, so one process builds a page once
 
 async function activeRegions() {
   const now = Date.now();
   if (regionsCache.rows && now < regionsCache.expires) return regionsCache.rows;
   const { data, error } = await supabaseAdmin
     .from('seeder_config')
-    .select('region, lat, lng, radius_meters, display_name')
+    .select('region, lat, lng, radius_meters, display_name, curator_user_id')
     .eq('active', true);
   if (error) throw error;
   regionsCache = { rows: data || [], expires: now + CACHE_TTL_MS };
@@ -173,6 +190,65 @@ function buildSections(rows, sourceNames, now = Date.now()) {
   return sections;
 }
 
+// The post for a queue row: the same id for the same row on every server, so a post is made once (POST /api/posts'
+// replies derive their ids the same way).
+function postIdFor(itemId) {
+  const hex = createHash('sha256').update(`pantopus:around-you-post:v1:${String(itemId).toLowerCase()}`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+// An item as a post by its region's curator account: the outlet's headline as written, its name and link in the
+// metadata, no photo, no place. Visible to anyone signed in (visibility public), listed nowhere but here (no
+// distribution target), and off the curator's profile. Its time is when the fetcher first saw the story.
+function postRow(item, sectionId, curatorUserId, localProfileId) {
+  return {
+    id: item.post_id,
+    user_id: curatorUserId,
+    author_user_id: curatorUserId,
+    identity_context_type: 'local',
+    identity_context_id: localProfileId || null,
+    title: null,
+    content: item.title,
+    media_urls: [],
+    media_types: [],
+    post_type: 'local_update',
+    purpose: 'local_update',
+    post_format: 'standard',
+    post_as: 'personal',
+    visibility: 'public',
+    audience: 'nearby',
+    distribution_targets: [],
+    tags: [],
+    show_on_profile: false,
+    state: 'open',
+    origin: 'curator',
+    post_metadata: {
+      ...(item.url ? { source_url: item.url } : {}),
+      ...(item.source ? { source_name: item.source } : {}),
+      around_you: { item: item.id, section: sectionId },
+    },
+    created_at: item.seen_at,
+    updated_at: item.seen_at,
+  };
+}
+
+// Makes the posts a page's items don't have yet; one that exists (or was removed by moderation) is left as it is.
+async function makePosts(sections, regionOfItem, regions) {
+  const curatorOf = new Map(regions.map((region) => [region.region, region.curator_user_id]));
+  const curatorIds = [...new Set([...curatorOf.values()].filter(Boolean))];
+  const { data: profiles } = curatorIds.length
+    ? await supabaseAdmin.from('LocalProfile').select('id, user_id').in('user_id', curatorIds)
+    : { data: [] };
+  const profileOf = new Map((profiles || []).map((row) => [String(row.user_id), row.id]));
+  const rows = sections.flatMap((section) => section.items.flatMap((item) => {
+    const curator = curatorOf.get(regionOfItem.get(item.id));
+    return curator ? [postRow(item, section.id, curator, profileOf.get(String(curator)))] : [];
+  }));
+  if (!rows.length) return;
+  const { error } = await supabaseAdmin.from('Post').upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
 async function readPage(regions) {
   const regionIds = regions.map((region) => region.region);
   const since = new Date(Date.now() - LONGEST_HOURS * HOUR_MS).toISOString();
@@ -201,18 +277,79 @@ async function readPage(regions) {
     .sort((x, y) => (order.get(x.row.region) - order.get(y.row.region))
       || (Date.parse(y.row.fetched_at) - Date.parse(x.row.fetched_at)) || (x.index - y.index))
     .map(({ row }) => row);
-  const sections = buildSections(rows, sourceNames);
+  const sections = buildSections(rows, sourceNames)
+    .map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, post_id: postIdFor(item.id) })) }));
   if (!sections.length) return EMPTY;
-  return { available: true, area: regions[0].display_name || null, sections };
+  let postsReady = true;
+  try {
+    await makePosts(sections, new Map(rows.map((row) => [row.id, row.region])), regions);
+  } catch (err) {
+    postsReady = false;
+    logger.warn('Around you posts could not be made', { error: err.message });
+  }
+  return { available: true, area: regions[0].display_name || null, sections, postsReady };
+}
+
+// The page for these regions, from the cache or read once however many ask at the same time.
+function regionPage(regions) {
+  const key = regions.map((region) => region.region).join('|');
+  const kept = pageCache.get(key);
+  if (kept && Date.now() < kept.expires) return Promise.resolve(kept.page);
+  if (pageBuilds.has(key)) return pageBuilds.get(key);
+  const build = readPage(regions).then((page) => {
+    if (pageCache.size > 500) pageCache.clear();
+    const ttl = page.available && !page.postsReady ? RETRY_TTL_MS : CACHE_TTL_MS;
+    pageCache.set(key, { page, expires: Date.now() + ttl });
+    return page;
+  }).finally(() => pageBuilds.delete(key));
+  pageBuilds.set(key, build);
+  return build;
+}
+
+// Without its posts the page is the first build's rows, which every app still draws.
+function rowsOnly(page) {
+  return { available: true, area: page.area, sections: page.sections };
+}
+
+// The page with each section's posts in the feed's shape, as `viewerId` sees them: their own reaction and saves, the
+// counts as they are now, and none they hid or whose author they blocked. A post removed by moderation is left out.
+async function withPosts(page, viewerId) {
+  if (!page.postsReady) return rowsOnly(page);
+  const ids = page.sections.flatMap((section) => section.items.map((item) => item.post_id));
+  try {
+    const [{ data, error }, filters] = await Promise.all([
+      supabaseAdmin.from('Post').select(FEED_POST_SELECT).in('id', ids)
+        .eq('moderation_state', 'live').is('archived_at', null).not('is_story', 'is', true),
+      viewerId ? getMuteAndHideFilters(viewerId).catch(() => null) : null,
+    ]);
+    if (error) throw error;
+    const shown = (data || []).map((row) => normalizeFeedPostRow(row))
+      .filter((post) => !filters || (!filters.hiddenPostIds.has(post.id) && !filters.blockedUserIds.has(post.user_id)));
+    const byId = new Map((await enrichFeedPosts(shown, viewerId)).map((post) => [post.id, post]));
+    return {
+      available: true,
+      area: page.area,
+      sections: page.sections.map((section) => ({
+        ...section,
+        posts: section.items.map((item) => byId.get(item.post_id)).filter(Boolean),
+      })),
+    };
+  } catch (err) {
+    logger.warn('Around you posts could not be read', { error: err.message });
+    return rowsOnly(page);
+  }
 }
 
 /**
- * The Around you page for a point: { available, area, sections: [{ id, title, items: [{ id, title, source, url,
- * seen_at }] }] }. `available` is false (and the apps show no switch) while the feature is off, where no content
- * region covers the point, and when the region has nothing to show. A failed read answers the same way: Today's first
- * half never waits on this.
+ * The Around you page for a point, as `userId` sees it: { available, area, sections: [{ id, title, items: [{ id,
+ * title, source, url, seen_at, post_id }], posts: [feed post] }] }. `items` are the first build's rows (apps from
+ * before the posts read only them); `posts` holds the same items as posts in the feed's shape (GET /api/posts/feed),
+ * in the same order, and is left out when the posts could not be made or read, so the apps draw the rows instead.
+ * `available` is false (and the apps show no switch) while the feature is off, where no content region covers the
+ * point, and when the region has nothing to show. A failed read answers the same way: Today's first half never waits
+ * on this.
  */
-async function aroundYou({ latitude, longitude }) {
+async function aroundYou({ latitude, longitude, userId = null }) {
   if (!aroundYouEnabled()) return EMPTY;
   const lat = Number(latitude);
   const lng = Number(longitude);
@@ -220,13 +357,9 @@ async function aroundYou({ latitude, longitude }) {
   try {
     const regions = coveringRegions(await activeRegions(), lat, lng);
     if (!regions.length) return EMPTY;
-    const key = regions.map((region) => region.region).join('|');
-    const kept = pageCache.get(key);
-    if (kept && Date.now() < kept.expires) return kept.page;
-    const page = await readPage(regions);
-    if (pageCache.size > 500) pageCache.clear();
-    pageCache.set(key, { page, expires: Date.now() + CACHE_TTL_MS });
-    return page;
+    const page = await regionPage(regions);
+    if (!page.available) return EMPTY;
+    return await withPosts(page, userId);
   } catch (err) {
     // The point stays out of the log.
     logger.warn('Around you could not be read', { error: err.message });
@@ -239,4 +372,4 @@ function resetAroundYouCache() {
   pageCache.clear();
 }
 
-module.exports = { aroundYou, resetAroundYouCache, buildSections, coveringRegions, EMPTY };
+module.exports = { aroundYou, resetAroundYouCache, buildSections, coveringRegions, postIdFor, EMPTY };

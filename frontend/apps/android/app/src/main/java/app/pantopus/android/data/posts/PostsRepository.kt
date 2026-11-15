@@ -448,6 +448,7 @@ private fun FeedPost.detailSeed(): PostDetailResponse? {
             eventEndDate = eventEndDate,
             eventVenue = eventVenue,
             lostFoundType = lostFoundType,
+            lifecycleMetadata = lifecycleMetadata,
         ),
     )
 }

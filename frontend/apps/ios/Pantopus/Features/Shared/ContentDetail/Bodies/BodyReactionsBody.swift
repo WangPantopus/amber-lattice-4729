@@ -174,6 +174,10 @@ public struct BodyReactionsBody: View {
     private let detailLine: String?
     /// An Event's when and where, under the text; nil on other posts.
     private let eventDetails: PulseEventDetails?
+    /// Where the post's story was published ("Read at The Columbian"), under the text; nil on most posts.
+    private let source: PostSource?
+    /// The story behind "Read at …", open in the browser sheet.
+    @State private var openedSource: PostSource?
     /// Optional card rendered between the reaction bar and the comment
     /// composer. Pulse post detail passes the "Nearby Providers" card here;
     /// every other caller leaves it nil. Type-erased so adding the slot
@@ -193,6 +197,7 @@ public struct BodyReactionsBody: View {
         mediaLocationBadge: String? = nil,
         detailLine: String? = nil,
         eventDetails: PulseEventDetails? = nil,
+        source: PostSource? = nil,
         composerAvatarURL: URL?,
         composerAvatarName: String,
         composerText: Binding<String>,
@@ -215,6 +220,7 @@ public struct BodyReactionsBody: View {
     ) {
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
+        self.source = source
         bodyText = body
         self.media = media
         self.intent = intent
@@ -255,6 +261,14 @@ public struct BodyReactionsBody: View {
                         .lineSpacing(7) // 15 + 7 ≈ 22pt line height
                         .padding(.horizontal, Spacing.s4)
                         .accessibilityLabel(bodyText)
+                }
+
+                if let source {
+                    PostSourceLink(source: source, accessibilityID: "pulsePostDetail-source") {
+                        openedSource = source
+                    }
+                    .padding(.horizontal, Spacing.s4)
+                    .postSourceBrowser($openedSource)
                 }
 
                 if let eventDetails {

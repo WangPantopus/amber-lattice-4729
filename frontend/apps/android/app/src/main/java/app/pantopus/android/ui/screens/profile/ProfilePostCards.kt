@@ -50,6 +50,8 @@ class ProfilePostCards internal constructor(
     private val onToast: (String) -> Unit,
     /** A pin changed: the Pinned row reads again. */
     private val onPinsChanged: () -> Unit = {},
+    /** The author's avatar takes their profile color, as on a profile; off elsewhere (Today's Around you), as in Pulse. */
+    private val profileColors: Boolean = true,
 ) {
     private val _cards = MutableStateFlow<List<PulsePostCardContent>>(emptyList())
 
@@ -356,7 +358,7 @@ class ProfilePostCards internal constructor(
                             likePending = post.id in liking,
                             savePending = post.id in saving,
                         ),
-                ).let { card -> profileCardColors(post, card) }
+                ).let { card -> if (profileColors) profileCardColors(post, card) else card }
             }
     }
 }

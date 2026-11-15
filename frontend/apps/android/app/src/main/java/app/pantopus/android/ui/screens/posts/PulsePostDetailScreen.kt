@@ -594,6 +594,7 @@ fun PulsePostDetailLoadedContent(
                 body = content.post.content,
                 detailLine = dealDetailLine(content.post) ?: lostFoundDetailLine(content.post) ?: alertDetailLine(content.post),
                 eventDetails = eventDetails(content.post),
+                source = content.post.source,
                 media = content.media,
                 intent = content.intent,
                 reactions = content.reactions,

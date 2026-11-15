@@ -63,6 +63,9 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
     /// A plan's own post (Plans marks it `post_metadata.plan`): its event
     /// times are real moments, not the composer's wall clock labelled UTC.
     public let isPlanPost: Bool
+    /// Where the post's story was published (`post_metadata.source_url`): an
+    /// Around you headline's outlet, or an Official or curator notice's source.
+    public let source: PostSource?
     /// True for cold-start neighborhood facts injected by the feed handler
     /// (`backend/routes/posts.js:84`). Those rows are dismissable, not
     /// reportable.
@@ -168,6 +171,7 @@ public struct FeedPostDTO: Decodable, Sendable, Hashable, Identifiable {
         let metadata = c.lenient(PostLifecycleMetadata.self, forKey: .postMetadata)
         keptOpenAt = metadata?.keptOpenAt
         isPlanPost = metadata?.plan == true
+        source = PostSource(url: metadata?.sourceUrl, name: metadata?.sourceName)
         isSeeded = c.lenient(Bool.self, forKey: .isSeeded) ?? false
         isVisitorPost = c.lenient(Bool.self, forKey: .isVisitorPost) ?? false
         locationBasis = c.lenient(String.self, forKey: .locationBasis)
@@ -208,20 +212,51 @@ public struct FeedRepostedBy: Decodable, Sendable, Hashable {
 }
 
 /// The marks a post row carries in `post_metadata`: the lifecycle mark
-/// (Pulse S7), and the mark Plans puts on a plan's own post.
+/// (Pulse S7), the mark Plans puts on a plan's own post, and where its story
+/// was published (only the server sets `source_url` and `source_name`).
 struct PostLifecycleMetadata: Decodable {
     let keptOpenAt: String?
     let plan: Bool?
+    let sourceUrl: String?
+    let sourceName: String?
 
     private enum CodingKeys: String, CodingKey {
         case keptOpenAt = "kept_open_at"
         case plan
+        case sourceUrl = "source_url"
+        case sourceName = "source_name"
     }
 
     init(from decoder: any Decoder) throws {
         let c = try? decoder.container(keyedBy: CodingKeys.self)
         keptOpenAt = c?.lenient(String.self, forKey: .keptOpenAt)
         plan = c?.lenient(Bool.self, forKey: .plan)
+        sourceUrl = c?.lenient(String.self, forKey: .sourceUrl)
+        sourceName = c?.lenient(String.self, forKey: .sourceName)
+    }
+}
+
+/// Where a post's story was published: an Around you headline's outlet
+/// ("Read at The Columbian"), or an Official or curator notice's source.
+/// A web link only; anything else reads as no source.
+public struct PostSource: Sendable, Hashable {
+    public let url: URL
+    /// The outlet's name, when the post names it.
+    public let name: String?
+
+    public init?(url raw: String?, name: String?) {
+        guard let raw, let url = URL(string: raw), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else { return nil }
+        self.url = url
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.name = trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    /// "Read at The Columbian", or "Source: clark.wa.gov" without a name.
+    public var label: String {
+        if let name { return "Read at \(name)" }
+        let host = url.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? url.absoluteString
+        return "Source: \(host)"
     }
 }
 

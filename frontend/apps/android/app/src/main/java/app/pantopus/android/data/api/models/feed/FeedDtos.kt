@@ -3,6 +3,7 @@ package app.pantopus.android.data.api.models.feed
 import app.pantopus.android.core.identity.MadeUpUsername
 import app.pantopus.android.data.api.models.posts.PostReactionCountDto
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
+import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.data.api.models.posts.permitsExternalPostShare
 import app.pantopus.android.data.api.models.pulse.PostLifecycleMetadata
 import com.squareup.moshi.Json
@@ -88,6 +89,9 @@ data class FeedPost(
 
     /** A plan's own post (Plans marks it `post_metadata.plan`): its event times are real moments. */
     val isPlanPost: Boolean get() = lifecycleMetadata?.plan == true
+
+    /** Where the post's story was published (an Around you headline's outlet); null on most posts. */
+    val source: PostSource? get() = lifecycleMetadata?.source
 
     /** Its emoji reactions as the card shows them (an event's are its Going, counted in [likeCount]). */
     val reactionSummary: PostReactionSummary

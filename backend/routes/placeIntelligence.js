@@ -127,7 +127,9 @@ router.get('/:id/around', verifyToken, async (req, res) => {
     if (home.error) throw home.error;
     if (!home.data) return res.status(404).json({ error: 'Home not found' });
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.json(await aroundYou({ latitude: home.data.map_center_lat, longitude: home.data.map_center_lng }));
+    return res.json(await aroundYou({
+      latitude: home.data.map_center_lat, longitude: home.data.map_center_lng, userId: req.user.id,
+    }));
   } catch (err) {
     logger.error('Around you error', { error: err.message, homeId: id });
     return res.status(500).json({ error: 'Failed to load what is around this place' });

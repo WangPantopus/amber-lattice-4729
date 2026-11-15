@@ -3280,6 +3280,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onCheckClaim = { homeId -> navController.navigate(ChildRoutes.waitingRoom(homeId)) },
                         // An agenda task row opens the task's own page.
                         onOpenTask = { homeId, taskId -> navController.navigate(ChildRoutes.householdTaskDetail(homeId, taskId)) },
+                        // An Around you post opens its page (reply threads) over Today.
+                        onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
                         scrollToTop = todayReselects,
                         radonHomeId = radonHomeId,
                         onRadonShown = { radonHomeId = null },

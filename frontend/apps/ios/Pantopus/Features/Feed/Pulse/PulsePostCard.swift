@@ -168,6 +168,8 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
     public let repostedBy: String?
     /// What the author's photo and name open; nil when they open nothing.
     public let authorLink: PulseAuthorLink?
+    /// Where the post's story was published ("Read at The Columbian"); nil on most posts.
+    public let source: PostSource?
     public var isCurator: Bool {
         origin == "curator"
     }
@@ -202,7 +204,8 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
         pulseTopic: PulseTopic? = nil,
         status: PulsePostStatus? = nil,
         repostedBy: String? = nil,
-        authorLink: PulseAuthorLink? = nil
+        authorLink: PulseAuthorLink? = nil,
+        source: PostSource? = nil
     ) {
         self.id = id
         self.authorName = authorName
@@ -228,6 +231,7 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
         self.status = status
         self.repostedBy = repostedBy
         self.authorLink = authorLink
+        self.source = source
     }
 }
 
@@ -256,6 +260,8 @@ public struct PulsePostCard: View {
     @Environment(\.selectedPulsePostId) private var selectedPostId
     /// The emoji picker is open from the reaction pill.
     @State private var showsReactionPicker = false
+    /// The story behind "Read at …", open in the browser sheet.
+    @State private var openedSource: PostSource?
     private let content: PulsePostCardContent
     private let onTap: @MainActor () -> Void
     /// An emoji picked in the reaction picker (picking the viewer's own takes it away).
@@ -535,6 +541,7 @@ public struct PulsePostCard: View {
         if let status = content.status { parts.append(status.text) }
         if let title = content.title, !title.isEmpty { parts.append(title) }
         if !content.body.isEmpty { parts.append(content.body) }
+        if let source = content.source { parts.append(source.label) }
         if let when = content.event?.when { parts.append(when) }
         if let place = content.event?.place { parts.append(place) }
         if !content.media.isEmpty {
@@ -691,6 +698,9 @@ private extension PulsePostCard {
         if let onToggleRepost {
             Button(content.actions.isReposted ? "Undo repost" : "Repost", action: onToggleRepost)
         }
+        if let source = content.source {
+            Button(source.label) { openedSource = source }
+        }
         if let onOverflow {
             Button("Post options", action: onOverflow)
         }
@@ -818,6 +828,13 @@ private extension PulsePostCard {
                     .lineLimit(content.title?.isEmpty == false ? 2 : 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Spacing.s4)
+            }
+            if let source = content.source {
+                PostSourceLink(source: source, accessibilityID: "pulsePostSource_\(content.id)") {
+                    openedSource = source
+                }
+                .padding(.horizontal, Spacing.s4)
+                .postSourceBrowser($openedSource)
             }
             if let event = content.event {
                 eventRows(event)

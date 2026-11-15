@@ -60,7 +60,7 @@ struct AddressTodayTabView: View {
             }
             // Around you reads once the place is known, and again each time Today shows.
             .task(id: aroundKey) {
-                if rootTabs.selected == .today { await aroundYou.load(for: detail) }
+                if rootTabs.selected == .today { await aroundYou.load(for: detail, viewerId: currentUserID) }
             }
             .refreshesOnStoreChange(onBackground: discardTemporaryPlace) {
                 guard rootTabs.selected == .today else { return }
@@ -174,8 +174,10 @@ struct AddressTodayTabView: View {
                 .allowsHitTesting(!showsAround)
                 .accessibilityHidden(showsAround)
             if showsAround, let page = aroundYou.page {
-                TodayAroundYouPage(page: page) { await aroundYou.load(for: detail) }
-                    .background(Theme.Color.appBg)
+                TodayAroundYouPage(page: page, model: aroundYou) {
+                    await aroundYou.load(for: detail, viewerId: currentUserID)
+                }
+                .background(Theme.Color.appBg)
             }
         }
     }

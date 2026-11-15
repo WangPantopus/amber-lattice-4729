@@ -50,12 +50,14 @@ import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.posts.PostReactionEmoji
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
+import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.ui.screens.moments.components.momentsRing
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatar
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatarTint
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridWithViewer
 import app.pantopus.android.ui.screens.shared.media.PostMediaItem
+import app.pantopus.android.ui.screens.shared.media.PostSourceLink
 import app.pantopus.android.ui.screens.shared.media.postLinkedText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -166,6 +168,8 @@ data class PulsePostCardContent(
     val repostedBy: String? = null,
     /** What the author's photo and name open; null when they open nothing. */
     val authorLink: PulseAuthorLink? = null,
+    /** Where the post's story was published ("Read at The Columbian"); null on most posts. */
+    val source: PostSource? = null,
 ) {
     val isCurator: Boolean get() = origin == "curator"
 
@@ -264,6 +268,7 @@ fun PulsePostCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            content.source?.let { source -> PostSourceLink(source, testTag = "pulsePostSource_${content.id}") }
             // An Event's when and where, under its text (as on the web card).
             content.event?.let { event ->
                 PulseEventDetailRows(
@@ -921,6 +926,7 @@ private fun buildA11yLabel(content: PulsePostCardContent): String {
     if (content.isVisitor) parts.add("Visitor")
     content.title?.takeIf { it.isNotEmpty() }?.let { parts.add(it) }
     if (content.body.isNotEmpty()) parts.add(content.body)
+    content.source?.let { parts.add(it.label) }
     content.event?.whenText?.let { parts.add(it) }
     content.event?.place?.let { parts.add(it) }
     content.status?.let { parts.add(it.spoken) }
