@@ -81,8 +81,11 @@ const fipsOf = (name) => {
   return `54${String(code).padStart(3, '0')}`;
 };
 
-async function* build({ work }) {
-  const only = (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+// Counties read by a connector of their own, which adds the county's own building facts to these parcels.
+const OWN_CONNECTOR = new Set(['54037']);
+
+/** The table's last edit and each county's newest tax year. */
+async function stateCounties() {
   const info = await getJson(`${TABLE}?f=json`, 'The table\'s description');
   const edited = isoDate(info.editingInfo?.lastEditDate);
   const groups = await getJson(`${TABLE}/query?${new URLSearchParams({ where: '1=1', outFields: 'CountyCode,CountyName,TaxYear', returnDistinctValues: 'true', returnGeometry: 'false', f: 'json' })}`, 'The table\'s counties');
@@ -93,28 +96,47 @@ async function* build({ work }) {
   }
   log(`${counties.size} counties listed`);
   if (counties.size !== 55) throw new Error(`${counties.size} counties are listed, not 55`);
-  for (const row of [...counties.values()].sort((a, b) => Number(a.CountyCode) - Number(b.CountyCode))) {
-    const fips = fipsOf(row.CountyName);
-    if (only.length && !only.includes(fips)) continue;
-    const county = `${row.CountyName} County`;
-    const records = [];
-    const seen = new Set();
-    let noAddress = 0;
-    const rows = cached(path.join(work, 'wv-parcels', `${fips}.jsonl.gz`), () => layerRows(TABLE, COLUMNS, { where: `CountyName = '${row.CountyName}'`, oid: 'ID' }));
-    for await (const source of rows) {
-      const record = fromRow(source, fips, county);
-      if (!record) noAddress += 1;
-      else if (!seen.has(record.id)) {
-        seen.add(record.id);
-        records.push(record);
-      }
+  return { edited, counties: [...counties.values()].sort((a, b) => Number(a.CountyCode) - Number(b.CountyCode)) };
+}
+
+async function countyEntry(work, row, edited) {
+  const fips = fipsOf(row.CountyName);
+  const county = `${row.CountyName} County`;
+  const records = [];
+  const seen = new Set();
+  let noAddress = 0;
+  const rows = cached(path.join(work, 'wv-parcels', `${fips}.jsonl.gz`), () => layerRows(TABLE, COLUMNS, { where: `CountyName = '${row.CountyName}'`, oid: 'ID' }));
+  for await (const source of rows) {
+    const record = fromRow(source, fips, county);
+    if (!record) noAddress += 1;
+    else if (!seen.has(record.id)) {
+      seen.add(record.id);
+      records.push(record);
     }
-    log(`${county}: ${records.length} records, ${noAddress} without a street number`);
-    for (const building of condoBuildings(records, { fips, county })) records.push(building);
-    yield {
-      fips, state: 'WV', name: county, publisher: 'WV GIS Technical Center', dataset: `${row.TaxYear} parcel summary`, method: 'state', source: 'wv-parcels', title: 'State records', as_of: edited || `${row.TaxYear}-07-01`, stale_after_days: 730, records,
-    };
+  }
+  log(`${county}: ${records.length} records, ${noAddress} without a street number`);
+  for (const building of condoBuildings(records, { fips, county })) records.push(building);
+  return {
+    fips, state: 'WV', name: county, publisher: 'WV GIS Technical Center', dataset: `${row.TaxYear} parcel summary`, method: 'state', source: 'wv-parcels', title: 'State records', as_of: edited || `${row.TaxYear}-07-01`, stale_after_days: 730, records,
+  };
+}
+
+async function* build({ work }) {
+  const only = (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+  const { edited, counties } = await stateCounties();
+  for (const row of counties) {
+    const fips = fipsOf(row.CountyName);
+    if (OWN_CONNECTOR.has(fips) || (only.length && !only.includes(fips))) continue;
+    yield await countyEntry(work, row, edited);
   }
 }
 
-module.exports = { build };
+/** One county's entry from the state's parcel summary, for a connector that adds the county's own building facts to it. */
+async function countyParcels(work, fips) {
+  const { edited, counties } = await stateCounties();
+  const row = counties.find(({ CountyName }) => fipsOf(CountyName) === fips);
+  if (!row) throw new Error(`The state's table no longer lists ${fips}`);
+  return countyEntry(work, row, edited);
+}
+
+module.exports = { build, countyParcels };

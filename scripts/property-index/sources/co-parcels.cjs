@@ -20,7 +20,7 @@ const { log } = require('../lib/log.cjs');
 const FILE = 'https://www.arcgis.com/sharing/rest/content/items/3245c94414124882b331e35c14bb23a4/data';
 const TABLE = 'Colorado_Public_Parcel_Composite';
 const COLUMNS = ['countyName', 'countyFips', 'parcel_id', 'account', 'situsAdd', 'sitAddCty', 'sitAddZip', 'legalDesc', 'landSqft', 'landAcres', 'lot', 'subName', 'zoningCode', 'landUseCde', 'landUseDsc', 'saleDate', 'salePrice', 'apprValTot', 'asedValTot', 'dateReceived'];
-const OWN_CONNECTOR = new Set(['08001', '08013', '08014', '08031', '08077']);
+const OWN_CONNECTOR = new Set(['08001', '08013', '08014', '08031', '08077', '08117']);
 
 // Counties word their uses their own way. Where only the State's abstract code is given, its first digits say: 1112 and 1212
 // a single-family house, 1230 a condominium, 1115, 1140 and 1215 a manufactured home, 1120, 1125, 1220 and 1225 a building
@@ -71,9 +71,8 @@ function fromRow(row, fips, county) {
   return { id: `pp:${kind}:${fips}:${parcel}`, kind, home_type: homeType, address: { ...parsed, city: String(word(row.sitAddCty) || '').toUpperCase(), zip: zipCode(row.sitAddZip) }, facts };
 }
 
-async function* build({ work, compare = null }) {
-  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
-  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+/** The counties' entries from the State's file: `only` names some (all when empty); `own` also reads counties with a connector of their own. */
+async function* entries(work, only, own) {
   const dir = path.join(work, 'co-parcels');
   const zip = path.join(dir, 'parcels.zip');
   download(FILE, zip);
@@ -86,7 +85,7 @@ async function* build({ work, compare = null }) {
   let newest = null;
   for (const row of rows(table, COLUMNS)) {
     const fips = `08${String(row.countyFips ?? '').trim().padStart(3, '0')}`;
-    if (!/^08\d{3}$/.test(fips) || (OWN_CONNECTOR.has(fips) && !compare) || (only.length && !only.includes(fips))) continue;
+    if (!/^08\d{3}$/.test(fips) || (OWN_CONNECTOR.has(fips) && !own) || (only.length && !only.includes(fips))) continue;
     const received = isoDate(row.dateReceived);
     if (received && (!newest || received > newest)) newest = received;
     if (!counties.has(fips)) counties.set(fips, { name: `${word(row.countyName)?.replace(/([a-z])([A-Z])/g, '$1 $2') || fips} County`, records: new Map(), noAddress: 0 });
@@ -109,4 +108,16 @@ async function* build({ work, compare = null }) {
   }
 }
 
-module.exports = { build };
+async function* build({ work, compare = null }) {
+  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
+  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+  yield* entries(work, only, Boolean(compare));
+}
+
+/** One county's entry from the State's parcels, for a connector that adds the county's own building facts to it. */
+async function countyParcels(work, fips) {
+  for await (const entry of entries(work, [fips], true)) return entry;
+  throw new Error(`The State's file has no addressed parcels for ${fips}`);
+}
+
+module.exports = { build, countyParcels };

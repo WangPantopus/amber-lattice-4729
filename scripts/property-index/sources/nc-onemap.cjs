@@ -76,7 +76,7 @@ const FOOTINGS = { BASEMENT: 'Basement', 'CRAWL SPACE': 'Crawl space', FILL: 'Fi
 
 // Each parcel's largest building, in the county's own figures. How many it has goes on the record too.
 // Counties with a connector of their own, for the bedrooms and baths these parcels lack.
-const OWN_CONNECTOR = new Set(['37031', '37051', '37081', '37097', '37109', '37119', '37133', '37163', '37183']);
+const OWN_CONNECTOR = new Set(['37031', '37051', '37081', '37097', '37101', '37107', '37109', '37119', '37133', '37163', '37183']);
 
 async function buildingsOf(work, fips, lists) {
   const parcels = new Map();
@@ -204,9 +204,8 @@ async function olderRows(work, name, older) {
 
 const filled = (row) => Object.fromEntries(Object.entries(row).filter(([, value]) => String(value ?? '').trim()));
 
-async function* build({ work, compare = null }) {
-  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
-  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+/** The bucket's county files and the building layer's code lists, which every county's entry reads. */
+async function stateFiles() {
   const files = await newestFiles();
   log(`${files.size} county files listed`);
   const about = await getJson(`${BUILDINGS}?f=json`, 'The building layer\'s description');
@@ -214,49 +213,77 @@ async function* build({ work, compare = null }) {
   const lists = { stories: parcelWords(field('NUM_STORY')), frame: parcelWords(field('BUILD_TYPE')), foundation: parcelWords(field('FOUND_TYPE')), occupancy: occupancyWords(field('OCCUP_TYPE')) };
   if (!lists.stories.size || !lists.frame.size) throw new Error('The building layer no longer says what its codes mean');
   if (files.size < 95) throw new Error(`Only ${files.size} county files are listed`);
-  for (const [name, { key, date, older }] of [...files].sort()) {
-    const place = COUNTY_FILES.indexOf(name);
-    if (place < 0) {
+  return { files, lists };
+}
+
+const fipsOfFile = (name) => {
+  const place = COUNTY_FILES.indexOf(name);
+  return place < 0 ? null : `37${String(place * 2 + 1).padStart(3, '0')}`;
+};
+
+/** One county's entry from its newest file (or an older one that still has street numbers). Null when no parcel has a street number. */
+async function countyEntry(work, lists, name, { key, date, older }) {
+  const fips = fipsOfFile(name);
+  const buildings = await buildingsOf(work, fips, lists);
+  const zip = path.join(work, 'nc-onemap', `${name}.zip`);
+  download(`${BUCKET}/${key}`, zip);
+  const member = tableOf(zip, name);
+  const byCounty = [];
+  const seen = new Set();
+  const county = `${name.replace(/-/g, ' ').replace(/(^|\s)\S/g, (first) => first.toUpperCase()).replace(/^Mc(\w)/, (_, next) => `Mc${next.toUpperCase()}`)} County`;
+  let noAddress = 0;
+  const read = async (earlier) => {
+    for await (const row of dbfRows(zip, member, COLUMNS, OPTIONAL)) {
+      const record = fromRow(earlier ? { ...earlier.get(parcelOf(row)), ...filled(row) } : row, fips, county, buildings);
+      if (!record) noAddress += 1;
+      else if (!seen.has(record.id)) {
+        seen.add(record.id);
+        byCounty.push(record);
+      }
+    }
+  };
+  await read(null);
+  if (!byCounty.length && !NEVER_NUMBERED.has(name)) {
+    const earlier = await olderRows(work, name, older);
+    if (earlier) {
+      noAddress = 0;
+      await read(earlier);
+    }
+  }
+  fs.rmSync(zip, { force: true });
+  log(`${county}: ${byCounty.length} records, ${noAddress} without a street number`);
+  // A county whose file has no street numbers has nothing to look up.
+  if (!byCounty.length) return null;
+  for (const building of condoBuildings(byCounty, { fips, county })) byCounty.push(building);
+  return {
+    fips, state: 'NC', name: county, publisher: 'NC OneMap', dataset: 'county parcels and building layer', method: 'state', source: 'nc-onemap', title: 'State records', as_of: date, stale_after_days: 400, records: byCounty,
+  };
+}
+
+async function* build({ work, compare = null }) {
+  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
+  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+  const { files, lists } = await stateFiles();
+  for (const [name, file] of [...files].sort()) {
+    const fips = fipsOfFile(name);
+    if (!fips) {
       log('A file that is not one of the 100 counties isn\'t read');
       continue;
     }
-    const fips = `37${String(place * 2 + 1).padStart(3, '0')}`;
     if ((OWN_CONNECTOR.has(fips) && !compare) || (only.length && !only.includes(fips))) continue;
-    const buildings = await buildingsOf(work, fips, lists);
-    const zip = path.join(work, 'nc-onemap', `${name}.zip`);
-    download(`${BUCKET}/${key}`, zip);
-    const member = tableOf(zip, name);
-    const byCounty = [];
-    const seen = new Set();
-    const county = `${name.replace(/-/g, ' ').replace(/(^|\s)\S/g, (first) => first.toUpperCase()).replace(/^Mc(\w)/, (_, next) => `Mc${next.toUpperCase()}`)} County`;
-    let noAddress = 0;
-    const read = async (earlier) => {
-      for await (const row of dbfRows(zip, member, COLUMNS, OPTIONAL)) {
-        const record = fromRow(earlier ? { ...earlier.get(parcelOf(row)), ...filled(row) } : row, fips, county, buildings);
-        if (!record) noAddress += 1;
-        else if (!seen.has(record.id)) {
-          seen.add(record.id);
-          byCounty.push(record);
-        }
-      }
-    };
-    await read(null);
-    if (!byCounty.length && !NEVER_NUMBERED.has(name)) {
-      const earlier = await olderRows(work, name, older);
-      if (earlier) {
-        noAddress = 0;
-        await read(earlier);
-      }
-    }
-    fs.rmSync(zip, { force: true });
-    log(`${county}: ${byCounty.length} records, ${noAddress} without a street number`);
-    // A county whose file has no street numbers has nothing to look up.
-    if (!byCounty.length) continue;
-    for (const building of condoBuildings(byCounty, { fips, county })) byCounty.push(building);
-    yield {
-      fips, state: 'NC', name: county, publisher: 'NC OneMap', dataset: 'county parcels and building layer', method: 'state', source: 'nc-onemap', title: 'State records', as_of: date, stale_after_days: 400, records: byCounty,
-    };
+    const entry = await countyEntry(work, lists, name, file);
+    if (entry) yield entry;
   }
 }
 
-module.exports = { build };
+/** One county's entry from OneMap's parcels, for a connector that adds the county's own building facts to it. */
+async function countyParcels(work, fips) {
+  const { files, lists } = await stateFiles();
+  const name = [...files.keys()].find((file) => fipsOfFile(file) === fips);
+  if (!name) throw new Error(`OneMap no longer lists a file for ${fips}`);
+  const entry = await countyEntry(work, lists, name, files.get(name));
+  if (!entry) throw new Error(`${fips}'s OneMap parcels have no street numbers`);
+  return entry;
+}
+
+module.exports = { build, countyParcels };
