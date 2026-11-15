@@ -1988,7 +1988,9 @@ async function checkCard(senderId, body, now) {
     return refuseCard(400, 'Sending a card by link isn’t open yet. Send it to a name or an email.', 'CARD_LINK_OFF');
   }
   const from = await checkCardSender(senderId, body, now);
-  return from.refusal ? from : checkCardRecipient(senderId, body, now, from);
+  if (from.refusal) return from;
+  const ownRowId = body.request_id ? holidayCards.requestRowId(senderId, String(body.request_id).toLowerCase()) : null;
+  return checkCardRecipient(senderId, body, now, from, { ownRowId });
 }
 
 // The checks of the card itself and of who sends it: the design, the note, a personal account, the season and one card
@@ -2038,9 +2040,27 @@ async function checkCardSender(senderId, body, now) {
   return { design, message, sender, senderZone, signature: signed.signature, media: media.media, mediaFiles: media.files };
 }
 
+// Whether this sender already has a card on its way to this person for the same morning (the same delivery time). A
+// card taken back doesn't count (it has no recipient any more). `ownRowId` is the row this send's own request ID
+// stores: a second copy of the same send must find that card as its own, not be refused by it. The database decides
+// the same rule again as it stores the card (admit_one_card_per_morning), for sends that arrive at once.
+async function cardForSameMorning(senderId, toUserId, deliveredAt, ownRowId = null) {
+  let query = supabaseAdmin.from('Mail').select('id')
+    .eq('sender_user_id', senderId).eq('recipient_user_id', toUserId)
+    .contains('tags', [holidayCards.CARD_TAG]).eq('delivered_at', deliveredAt).is('deleted_at', null);
+  if (ownRowId) query = query.neq('id', ownRowId);
+  const { data, error } = await query.limit(1);
+  if (error) throw new Error(error.message);
+  return Boolean(data?.length);
+}
+const cardSameMorning = (name, arrival) => refuseCard(429, arrival === 'christmas_morning'
+  ? `You’ve already sent ${name || 'this person'} a card for Christmas morning. Choose another arrival for this one.`
+  : `You’ve already sent ${name || 'this person'} a card for that morning. You can send another after 7 a.m. where they live.`,
+'CARD_SAME_MORNING');
+
 // The checks of who it goes to: the person (or the address), when it can arrive by their clock, and the email limits,
 // counting `earlierAddresses` (those before it on the same list) as sent. `from` is what checkCardSender answered.
-async function checkCardRecipient(senderId, body, now, from, { earlierAddresses = [] } = {}) {
+async function checkCardRecipient(senderId, body, now, from, { earlierAddresses = [], ownRowId = null } = {}) {
   const refuse = refuseCard;
   const { design, message, sender, senderZone, signature, media, mediaFiles } = from;
   const { arrival } = body;
@@ -2061,6 +2081,11 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
     if (!open.includes(arrival)) return arrivalClosed();
     const timing = holidayCards.personDelivery({ arrival, timeZone: recipientZone, now, nextRound: mailDelivery.nextRound });
     const people = await loadChatPeople([senderId, toUserId]);
+    // One card from a sender to the same person for one morning, refused here, before anything is stored or a stamp is
+    // spent: with digital stamps, nothing else kept one sender's 50 cards in 24 hours from all going to one mailbox.
+    if (await cardForSameMorning(senderId, toUserId, timing.delivered_at, ownRowId)) {
+      return cardSameMorning(people.get(String(toUserId))?.displayName, arrival);
+    }
     Object.assign(card, { sealed_until: timing.sealed_until, take_back_until: timing.take_back_until,
       arrives_on: mailDelivery.localDate(new Date(timing.delivered_at), recipientZone),
       to_name: people.get(String(toUserId))?.displayName || null });
@@ -2464,6 +2489,8 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
       }
       const answered = found ? await repeatAnswer(found, digest, now) : null;
       if (answered) return answered;
+      // Another send to the same person for the same morning was stored first (the database's rule).
+      if (insertError?.message === 'CARD_SAME_MORNING') return cardSameMorning(card.to_name, arrival).refusal;
       logger.error('Card not stored', { senderId, error: insertError?.message || null });
       return cardUnavailable();
     }
@@ -2669,7 +2696,7 @@ async function checkCardList(senderId, body, now) {
         item.answer = repeated;
         return;
       }
-      const checked = await checkCardRecipient(senderId, item.single, now, from, { earlierAddresses });
+      const checked = await checkCardRecipient(senderId, item.single, now, from, { earlierAddresses, ownRowId: item.rowId });
       if (checked.refusal) item.answer = checked.refusal;
       else item.checked = checked;
     } catch (err) {
