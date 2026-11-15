@@ -191,6 +191,7 @@ public struct PlansTabRoot: View {
         )
         actions.ask = { askTopic = .plans() }
         actions.hostPrivate = { hostRequest = PlansHostRequest(start: nil, isPrivate: true) }
+        actions.openChange = { plansPath.append(.change(planId: $0)) }
         if LaunchFeatures.pulseRedesign {
             actions.openPulse = { rootTabs.selected = .pulse }
             actions.openConnections = { DeepLinkRouter.shared.handle(path: "/connections") }

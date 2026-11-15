@@ -240,6 +240,9 @@ enum PlanConfirmation: Identifiable, Equatable {
     case notComing(host: String)
     case blockHost(name: String)
     case removeGuest(name: String, requestId: String, atHome: Bool)
+    /// A repeating plan's date skipped (Plans step 2): "Skip Thursday's walk?", and the button's "Skip Thursday".
+    case skipDate(title: String, message: String, label: String)
+    case stopRepeating
 
     var id: String {
         switch self {
@@ -249,6 +252,8 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .notComing: "notComing"
         case .blockHost: "blockHost"
         case let .removeGuest(_, requestId, _): "remove.\(requestId)"
+        case .skipDate: "skipDate"
+        case .stopRepeating: "stopRepeating"
         }
     }
 
@@ -259,6 +264,8 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .cantMakeIt, .notComing: "Can't make it?"
         case let .blockHost(name): "Block \(name)?"
         case let .removeGuest(name, _, _): "Remove \(PlanCardLines.firstName(name))?"
+        case let .skipDate(title, _, _): title
+        case .stopRepeating: "Stop repeating?"
         }
     }
 
@@ -277,6 +284,10 @@ enum PlanConfirmation: Identifiable, Equatable {
             atHome
                 ? "\(PlanCardLines.firstName(name)) has already seen the address. They lose the plan, the note and the chat from now on."
                 : "They lose the plan, the exact place, the note and the chat from now on."
+        case let .skipDate(_, message, _):
+            message
+        case .stopRepeating:
+            PlanRepeatCopy.stopMessage
         }
     }
 
@@ -287,6 +298,8 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .cantMakeIt, .notComing: "I can't make it"
         case .blockHost: "Block"
         case .removeGuest: "Remove"
+        case let .skipDate(_, _, label): label
+        case .stopRepeating: "Stop repeating"
         }
     }
 
@@ -305,6 +318,10 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.blockHost() ? "Blocked. You won't see each other's plans." : nil
         case let .removeGuest(_, requestId, _):
             await viewModel.remove(requestId: requestId) ? "Removed. They no longer see the plan." : nil
+        case .skipDate:
+            await viewModel.skipDate()
+        case .stopRepeating:
+            await viewModel.stopRepeating() ? "It won't repeat. This date stays." : nil
         }
     }
 }

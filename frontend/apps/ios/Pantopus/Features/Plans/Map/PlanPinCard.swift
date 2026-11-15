@@ -56,6 +56,7 @@ struct PlanPinCard: View {
                         .monospacedDigit()
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line) }
                 }
                 .plansSheetPeek(.card(planId))
                 Group {

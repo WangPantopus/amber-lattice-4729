@@ -43,7 +43,9 @@ final class PlansTodayModel {
         going = mine.going.filter(Self.isToday)
         recent = mine.recent.filter { card in
             if PlanAfterDismissals.isDismissed(card.id) { return false }
-            return card.viewer?.isHost == true || card.viewer?.feedbackGiven != true || answered[card.id] != nil
+            // A repeating plan's date whose series goes on: the next date is already posted, so no "Host again".
+            if card.viewer?.isHost == true { return !card.seriesGoesOn }
+            return card.viewer?.feedbackGiven != true || answered[card.id] != nil
         }
     }
 

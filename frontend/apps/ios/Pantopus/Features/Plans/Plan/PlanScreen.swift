@@ -130,6 +130,11 @@ struct PlanScreen: View {
             toast = notice
             viewModel.notice = nil
         }
+        .onChange(of: viewModel.nextPlanId) { _, next in
+            guard let next else { return }
+            viewModel.nextPlanId = nil
+            openNext(next)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planScreen")
     }
@@ -337,6 +342,12 @@ struct PlanScreen: View {
 // MARK: - Small shared pieces
 
 private extension PlanScreen {
+    /// A repeating plan's next date, in place of the date just skipped (Plans step 2).
+    func openNext(_ id: String) {
+        let route = PlansRoute.plan(id: id, intent: .view)
+        if let last = path.last, case .plan = last { path[path.count - 1] = route } else { path.append(route) }
+    }
+
     func sceneChanged(_ phase: ScenePhase) {
         if phase == .background {
             needsForegroundRead = true
