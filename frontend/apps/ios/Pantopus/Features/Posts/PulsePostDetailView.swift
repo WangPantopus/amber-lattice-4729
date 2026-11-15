@@ -8,6 +8,8 @@ import SwiftUI
 /// Pulse post detail entry point.
 @MainActor
 public struct PulsePostDetailView: View {
+    /// A toast with a button (View on "Saved.") stays long enough to reach with VoiceOver.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var viewModel: PulsePostDetailViewModel
     @State private var showsShareSheet = false
     @State private var shareSessionId: String?
@@ -177,7 +179,7 @@ public struct PulsePostDetailView: View {
                 ToastView(message: ToastMessage(text: toast, kind: viewModel.toastKind), action: action)
                     .padding(.bottom, Spacing.s10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .dismissToast(after: toast, minimum: action == nil ? 2.5 : 5) {
+                    .dismissToast(after: toast, minimum: action == nil ? 2.5 : (voiceOverEnabled ? 12 : 5)) {
                         viewModel.toastMessage = nil
                     }
             }

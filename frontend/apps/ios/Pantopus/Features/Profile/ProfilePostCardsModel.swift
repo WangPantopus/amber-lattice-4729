@@ -68,6 +68,11 @@ public final class ProfilePostCardsModel {
         posts.map(\.id)
     }
 
+    /// How many of the rows the person wrote (the rest are posts they reposted): what My posts lists.
+    var writtenCount: Int {
+        posts.filter { $0.repostedAt == nil }.count
+    }
+
     /// The card whose menu is open.
     var overflowCard: PulsePostCardContent? {
         cards.first { $0.id == overflowPostId }
@@ -195,6 +200,11 @@ public final class ProfilePostCardsModel {
             overrides[postId, default: Override()].shareCount = response.shareCount ?? originalCount
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
             onToast?(reposted ? PulseFeedViewModel.repostedToast : "Repost removed.")
+            // On your own profile a post you reposted is there only because you did: undone, it leaves.
+            if !reposted, post.repostedAt != nil, !isOwnPost(post), let viewerId, profileUserId == viewerId {
+                posts.removeAll { $0.id == postId }
+                rebuild()
+            }
         } catch {
             overrides[postId, default: Override()].isReposted = original
             overrides[postId, default: Override()].shareCount = originalCount
