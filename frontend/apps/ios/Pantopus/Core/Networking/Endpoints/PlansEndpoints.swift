@@ -212,21 +212,27 @@ public enum PlansEndpoints {
 
     /// `POST /api/plans` — returns PlanDetail (201). Errors: `not_near`
     /// (403), `too_many_plans` (429), validation (422); a private plan
-    /// (`audience: invited`) with the switch off: `private_unavailable` (422).
+    /// (`audience: invited`) with the switch off: `private_unavailable` (422);
+    /// a `repeat` with `plans_repeat` off: `repeat_unavailable` (422).
     /// Route `backend/routes/plans.js`.
     public static func create(_ body: CreatePlanBody) -> Endpoint {
         Endpoint(method: .post, path: base, query: biz(), body: body)
     }
 
-    /// `PATCH /api/plans/:id` — host edits. Route `backend/routes/plans.js`.
+    /// `PATCH /api/plans/:id` — host edits; `repeat` sets a new pattern from
+    /// this date on, or `null` stops it (422 `validation` with a sentence, or
+    /// `repeat_unavailable`). Route `backend/routes/plans.js`.
     public static func update(id: String, _ body: UpdatePlanBody) -> Endpoint {
         Endpoint(method: .patch, path: "\(base)/\(id)", query: biz(), body: body)
     }
 
     /// `POST /api/plans/:id/cancel` — tells everyone in and waiting, closes
-    /// the chat, removes the pin. Route `backend/routes/plans.js`.
-    public static func cancel(id: String, note: String?) -> Endpoint {
-        Endpoint(method: .post, path: "\(base)/\(id)/cancel", query: biz(), body: CancelPlanBody(note: note))
+    /// the chat, removes the pin. On a repeating plan `keepRepeating` cancels
+    /// this date only and posts the next one now; the answer then carries
+    /// `next_plan_id` (`PlanCancelResponse`). Without it the series stops.
+    /// Route `backend/routes/plans.js`, `cancelPlan` in planActions.js.
+    public static func cancel(id: String, note: String?, keepRepeating: Bool = false) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(id)/cancel", query: biz(), body: CancelPlanBody(note: note, keepRepeating: keepRepeating))
     }
 
     /// `POST /api/plans/:id/requests/:requestId/accept` — idempotent; 409
