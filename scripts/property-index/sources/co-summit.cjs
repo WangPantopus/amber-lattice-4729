@@ -7,6 +7,8 @@
 // nothing, since its counts may be another building's.
 // The Assessor counts full, three-quarter, half and quarter baths apart; the total adds them as wa-skagit's does (a three-quarter bath is
 // .75, a quarter bath .25). Its TotBath column is a count of bathroom rooms, not a total, so it isn't read.
+// The State's file gives Summit's town but no property ZIP, so the ZIP codes that reach into the county (the Census Bureau's
+// ZCTA-to-county file) are where a person's ZIP looks: a list of places to look, never a fact on a record.
 
 const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
@@ -14,6 +16,7 @@ const { year } = require('../lib/addresses.cjs');
 const { positive } = require('../lib/values.cjs');
 const { fillHomes, describe } = require('../lib/fill.cjs');
 const { log } = require('../lib/log.cjs');
+const { zipsByCounty } = require('../lib/zcta.cjs');
 const { countyParcels } = require('./co-parcels.cjs');
 
 const FIPS = '08117';
@@ -85,6 +88,7 @@ async function* build({ work }) {
     method: 'county',
     source: 'co-summit',
     title: 'County records',
+    extra_zips: [...new Set([...(entry.extra_zips || []), ...(zipsByCounty(work, ['08']).get(FIPS) || [])])].sort(),
   };
 }
 
