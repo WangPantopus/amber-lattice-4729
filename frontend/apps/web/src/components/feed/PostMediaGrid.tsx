@@ -1,7 +1,36 @@
 'use client';
 
+import { useCallback, useState } from 'react';
+import type { Post } from '@pantopus/types';
 import FeedMediaImage from './FeedMediaImage';
 import LivePhotoTile from './LivePhotoTile';
+import { postSource } from './PostMetadata';
+
+// Outside pictures this page has seen fail, by link, so a post panel or page opened from a card leaves them out at once.
+const unavailableSourcePictures = new Set<string>();
+
+/**
+ * Which of a post's pictures to lay out, as indexes into its media arrays, and what a picture calls when it can't load.
+ * A post that names an outside source (`post_metadata.source_url`, its "Read at <outlet>") shows the outlet's own
+ * pictures, loaded from the outlet's site: one that fails to load is left out, so the rest are laid out without it and
+ * a post whose pictures all fail shows no picture area. A picture still loading keeps its place. Every other post
+ * (people's own uploads) keeps every slot, and `onUnavailable` is undefined.
+ */
+export function useShownMedia(post: Post | null | undefined): { shown: number[]; onUnavailable?: (url: string) => void } {
+  const [, setDropped] = useState(0);
+  const onUnavailable = useCallback((url: string) => {
+    // Offline, every picture fails for a while: only a link that fails with a connection is a dead one.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    unavailableSourcePictures.add(url);
+    setDropped((count) => count + 1);
+  }, []);
+  const urls: string[] = post?.media_urls ?? [];
+  if (!post || !postSource(post)) return { shown: urls.map((_, i) => i) };
+  return {
+    shown: urls.flatMap((url, i) => (url?.trim() && !unavailableSourcePictures.has(url) ? [i] : [])),
+    onUnavailable,
+  };
+}
 
 /** What the tile at a given slot renders as. */
 export interface PostMediaSlot {
@@ -168,8 +197,10 @@ export default function PostMediaGrid({ urls, thumbnailUrls, mediaTypes, liveUrl
 }
 
 /** A preview that fits the caller's existing tile geometry. */
-export function PostMediaPreview({ url, thumbnailUrl, slot, onPress, imageClassName }: {
+export function PostMediaPreview({ url, thumbnailUrl, slot, onPress, imageClassName, onUnavailable }: {
   url: string; thumbnailUrl?: string; slot: PostMediaSlot; onPress?: () => void; imageClassName?: string;
+  /** A picture that can't load reports its link (`useShownMedia`) instead of only saying it's unavailable. */
+  onUnavailable?: (url: string) => void;
 }) {
   if (slot.kind === 'document') return (
     <div className="flex h-full min-h-32 w-full items-center justify-center bg-app-surface-sunken text-app-text" aria-label="PDF document">
@@ -187,5 +218,6 @@ export function PostMediaPreview({ url, thumbnailUrl, slot, onPress, imageClassN
   );
   // Stored thumbnails are 200px square crops. A feed card is over 600px wide;
   // resize the original to the display size instead of enlarging that crop.
-  return <FeedMediaImage src={url} alt="" className={imageClassName ?? "h-full w-full object-cover"} loading="lazy" />;
+  return <FeedMediaImage src={url} alt="" className={imageClassName ?? "h-full w-full object-cover"} loading="lazy"
+    onUnavailable={onUnavailable && (() => onUnavailable(url))} />;
 }
