@@ -3301,6 +3301,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenTask = { homeId, taskId -> navController.navigate(ChildRoutes.householdTaskDetail(homeId, taskId)) },
                         // An Around you post opens its page (reply threads) over Today.
                         onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
+                        // "Repost with your words" on an Around you post: the Pulse composer with the headline quoted.
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                         scrollToTop = todayReselects,
                         radonHomeId = radonHomeId,
                         onRadonShown = { radonHomeId = null },

@@ -129,6 +129,8 @@ fun TodayTabScreen(
     onTypeAddress: () -> Unit = onClaim,
     /** An Around you post's page (its reply threads), over Today. */
     onOpenPost: (postId: String) -> Unit = {},
+    /** "Repost with your words" on an Around you post: the Pulse composer with it quoted. Null leaves it out. */
+    onQuotePost: ((postId: String) -> Unit)? = null,
     viewModel: TodayTabViewModel = hiltViewModel(),
     needsYou: NeedsYouViewModel = hiltViewModel(),
     christmasCards: ChristmasCardDoorsViewModel = hiltViewModel(),
@@ -240,6 +242,7 @@ fun TodayTabScreen(
                         viewModel.seedAroundPost(postId)
                         onOpenPost(postId)
                     },
+                    onQuotePost = onQuotePost,
                 )
                 return@PullToRefreshUnderHeader
             }
