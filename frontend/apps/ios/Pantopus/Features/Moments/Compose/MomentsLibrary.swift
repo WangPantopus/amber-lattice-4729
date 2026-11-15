@@ -8,7 +8,7 @@
 //  (Favorites, Videos, Recently Saved, the person's own; `MomentsLibraryAlbums.swift`)
 //  and the grid shows the one chosen. One taken more than a day ago says when
 //  on the Moment ("Taken Oct 3"), so it never reads as now. A photo or video
-//  pins where it was taken when the file says where; a video over 30 seconds
+//  pins where it was taken when the file says where; a video too long to post
 //  can't be chosen. "Select" picks up to ten together: each is its own Moment,
 //  with its own Post sheet in turn (`MomentsComposerModel+Several.swift`).
 //
@@ -373,7 +373,7 @@ struct MomentsLibraryScreen: View {
     }
 }
 
-/// One photo or video in the grid; a video shows its length, and one over 30 seconds can't be chosen.
+/// One photo or video in the grid; a video shows its length, and one too long to post can't be chosen.
 private struct MomentsLibraryCell: View {
     let asset: PHAsset
     let isOpening: Bool
@@ -384,7 +384,7 @@ private struct MomentsLibraryCell: View {
 
     var body: some View {
         let tooLong = asset.mediaType == .video
-            && asset.duration > MomentsMediaExport.maxVideoSeconds + MomentsMediaExport.videoSecondsTolerance
+            && asset.duration > MomentsMediaExport.longestVideoSeconds + MomentsMediaExport.videoSecondsTolerance
         Button(action: onTap) {
             MomentsLibraryThumbnail(asset: asset)
                 .aspectRatio(1, contentMode: .fit)
@@ -437,6 +437,6 @@ private struct MomentsLibraryCell: View {
 
     private func label(tooLong: Bool) -> String {
         guard asset.mediaType == .video else { return "Photo" }
-        return tooLong ? "Video, \(duration), over 30 seconds" : "Video, \(duration)"
+        return tooLong ? "Video, \(duration), too long to post" : "Video, \(duration)"
     }
 }

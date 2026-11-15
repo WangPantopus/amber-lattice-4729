@@ -31,8 +31,9 @@ enum MomentsUploadReminder {
     /// Notifications were allowed the last time that was read; closing the app has no time to ask again.
     private static var allowed = false
 
-    /// The file for outbox folder `id` starts going up: the reminder is set (again) for `delay` from now.
-    static func schedule(_ id: String, account: String?) {
+    /// The file for outbox folder `id` starts going up: the reminder is set (again) for `delay` from now, and as
+    /// long again for each of the `behind` files it waits behind (a long video's earlier parts).
+    static func schedule(_ id: String, account: String?, behind: Int = 0) {
         live.insert(id)
         Task {
             let center = UNUserNotificationCenter.current()
@@ -40,7 +41,7 @@ enum MomentsUploadReminder {
             allowed = status == .authorized || status == .provisional || status == .ephemeral
             guard allowed, live.contains(id) else { return }
             center.removeDeliveredNotifications(withIdentifiers: [identifier(id)])
-            try? await center.add(request(id, account: account, after: delay))
+            try? await center.add(request(id, account: account, after: delay * Double(behind + 1)))
             // Finished while it was being set: it goes.
             if !live.contains(id) { center.removePendingNotificationRequests(withIdentifiers: [identifier(id)]) }
         }

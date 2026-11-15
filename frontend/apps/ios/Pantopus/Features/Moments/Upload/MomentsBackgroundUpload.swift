@@ -57,6 +57,8 @@ final class MomentsBackgroundUpload: NSObject, @unchecked Sendable {
         config.isDiscretionary = false
         config.allowsCellularAccess = true
         config.timeoutIntervalForRequest = 90
+        // One file at a time, in the order they were handed over: a long video's parts go up first to last.
+        config.httpMaximumConnectionsPerHost = 1
         // A Moment lasts an hour at the least; a file that isn't up after two won't be wanted.
         config.timeoutIntervalForResource = 7200
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)

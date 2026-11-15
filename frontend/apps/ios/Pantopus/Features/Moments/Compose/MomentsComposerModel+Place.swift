@@ -136,6 +136,8 @@ extension MomentsComposerModel {
     var postLabel: String {
         // Several picked together: which one this is. The hours are on the sheet's own row either way.
         if let pickedPosition { return "Post \(pickedPosition)" }
+        // A video longer than one Moment's: said on the button, before it posts.
+        if parts > 1 { return "Post as \(parts) Moments" }
         return "Post · shows for \(hours == 1 ? "1 hour" : "\(hours) hours")"
     }
 }
