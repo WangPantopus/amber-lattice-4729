@@ -13,7 +13,8 @@ import Observation
 import SwiftUI
 
 /// The Around you page for the place Today shows. It keeps the last answer
-/// for that place; a failed read keeps it, and another place starts blank.
+/// for that place; a failed read keeps it. Another place starts from the
+/// screen store's copy for it, or blank without one.
 @Observable
 @MainActor
 final class TodayAroundYouModel {
@@ -135,27 +136,25 @@ final class TodayAroundYouModel {
             closePost()
             return
         }
+        let endpoint = Self.endpoint(for: detail)
         if placeKey != detail.identity {
-            page = nil
             placeKey = detail.identity
             closePost()
+            // The answer kept for this place (on the phone, after a relaunch) shows before any wait, so Today opens
+            // with the switch it had last time instead of growing it a moment later.
+            page = endpoint.flatMap { store.peek($0, as: AroundYouDTO.self)?.value }
+            // A copy never undoes a tap (-1 is no read's revision).
+            if let page { cards.show(page.posts, readRevision: -1) }
         }
-        let endpoint: Endpoint
-        if let area = detail.area {
-            endpoint = AroundYouEndpoints.area(AreaTodayBody(latitude: area.latitude, longitude: area.longitude))
-        } else if let savedPlaceId = detail.savedPlaceId {
-            endpoint = AroundYouEndpoints.savedPlace(id: savedPlaceId)
-        } else if !detail.homeId.isEmpty {
-            endpoint = AroundYouEndpoints.home(id: detail.homeId)
-        } else {
-            return
-        }
+        guard let endpoint else { return }
         let key = detail.identity
         let cards = cards
         // A tap made while this read is out keeps its value over the read's (`ProfilePostCardsModel.show`).
         let revision = cards.actionRevision
         do {
-            let answer: AroundYouDTO = try await api.request(endpoint)
+            // Every look asks the server, as before; the store keeps the answer for the next first look. An area's
+            // read is a POST (its point stays out of the URL), which the store sends straight through, keeping nothing.
+            let answer = try await store.load(endpoint, as: AroundYouDTO.self, kind: .today, force: true).value
             guard placeKey == key, cards === self.cards else { return }
             page = answer
             cards.show(answer.posts, readRevision: revision)
@@ -165,6 +164,18 @@ final class TodayAroundYouModel {
             }
         } catch {
             // The last answer for this place stays.
+        }
+    }
+
+    private static func endpoint(for detail: PlaceDetailViewModel) -> Endpoint? {
+        if let area = detail.area {
+            AroundYouEndpoints.area(AreaTodayBody(latitude: area.latitude, longitude: area.longitude))
+        } else if let savedPlaceId = detail.savedPlaceId {
+            AroundYouEndpoints.savedPlace(id: savedPlaceId)
+        } else if !detail.homeId.isEmpty {
+            AroundYouEndpoints.home(id: detail.homeId)
+        } else {
+            nil
         }
     }
 

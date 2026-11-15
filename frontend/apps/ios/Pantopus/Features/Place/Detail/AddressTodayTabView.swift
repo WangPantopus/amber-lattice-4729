@@ -75,7 +75,8 @@ struct AddressTodayTabView: View {
             .task(id: resolveKey) {
                 if rootTabs.selected == .today { await needsYou.load() }
             }
-            // Around you reads once the place is known, and again each time Today shows.
+            // Around you reads once the place is known, and again each time Today
+            // shows; its kept copy shows (with the switch) while the read is out.
             .task(id: aroundKey) {
                 if rootTabs.selected == .today { await aroundYou.load(for: detail, viewerId: currentUserID) }
             }
