@@ -43,6 +43,7 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreKeys
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.data.store.Stored
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -71,6 +72,7 @@ class PlansRepository
         private val api: PlansApi,
         private val store: ScreenStore,
         private val tokens: TokenStorage,
+        private val moshi: Moshi,
     ) {
         /** Public cards seen lately, so a plan opened from the map or a list shows its card at once. */
         private val cards =
@@ -377,10 +379,20 @@ class PlansRepository
         }
 
         /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
-        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> {
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateStoppingRepeat(id, UpdatePlanBody())
+
+        /**
+         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and `"repeat": null`: the change screen's
+         * other changes and "Doesn't repeat" together, so either both go through or neither does.
+         */
+        suspend fun updateStoppingRepeat(
+            id: String,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
             val session = cacheSession()
-            val body = STOP_REPEATING_JSON.toRequestBody(JSON_MEDIA_TYPE.toMediaType())
-            return write(id) { api.stopRepeating(id, body) }.also { rememberResult(it, session) }
+            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body)).put(REPEAT_FIELD, JSONObject.NULL)
+            val raw = fields.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
         }
 
         suspend fun ask(
@@ -660,7 +672,7 @@ class PlansRepository
             const val CARD_CACHE = 64
             const val GPS_MAX_AGE_SECONDS = 300L
             const val REPEAT_KEEP = "keep"
-            const val STOP_REPEATING_JSON = "{\"repeat\":null}"
+            const val REPEAT_FIELD = "repeat"
             const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }

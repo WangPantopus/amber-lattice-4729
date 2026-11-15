@@ -70,6 +70,21 @@ data class PlanRepeatEditor(
 
     fun choose(freq: PlanRepeatFreq?): PlanRepeatEditor = copy(freq = freq)
 
+    /**
+     * The days these choices show differ from [given] (the pattern the screen was opened with): it was moved to the
+     * plan's new date ("Every Tue" became "Every Wed"). Its end date or count alone doesn't count.
+     */
+    fun daysDifferFrom(
+        given: PlanRepeatPattern?,
+        setup: PlanRepeatSetup,
+    ): Boolean {
+        val shown = pattern(setup)
+        if (shown == null || given == null) return false
+        return shown.freq != given.freq ||
+            shown.weekdays != given.weekdays ||
+            shown.monthDays.sortedBy { it.order } != given.monthDays.sortedBy { it.order }
+    }
+
     /** A day button: on or off, except the plan's own day, which stays on. */
     fun toggleDay(
         day: Int,

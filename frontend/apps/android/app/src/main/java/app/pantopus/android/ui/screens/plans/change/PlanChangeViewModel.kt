@@ -98,13 +98,12 @@ data class PlanChangeUi(
     /** "Doesn't repeat" was chosen for a plan that repeats: Save stops the series (this date stays). */
     val stopsRepeating: Boolean get() = repeatChosen && newRepeat == null && originalRepeat != null
 
-    /** The Repeats choice differs from how the plan repeats now. */
-    val repeatChanged: Boolean
-        get() {
-            if (!repeatChosen) return false
-            if (stopsRepeating) return true
-            return newRepeat != null && repeatToSend?.toInput() != originalRepeat?.toInput()
-        }
+    /**
+     * The host changed how it repeats on the Repeats screen (any choice made there, even one that ends where it began,
+     * or a pattern the screen moved to this date): Save sends it. "Doesn't repeat" on a plan that doesn't repeat sends
+     * nothing.
+     */
+    val repeatChanged: Boolean get() = repeatChosen && (newRepeat != null || originalRepeat != null)
 
     /** The Repeats row's value: the choice made here, else the plan's own short words, else "Doesn't repeat". */
     val repeatsValue: String?
@@ -167,8 +166,11 @@ data class PlanChangeUi(
             return if (area.latitude != null && area.longitude != null) area.latitude to area.longitude else null
         }
 
+    /** The start or the end moved: only then are the times sent (and checked), as on iOS. */
+    val timesMoved: Boolean get() = start != originalStart || end != originalEnd
+
     /** Anything to save besides how it repeats. */
-    val changedBesidesRepeat: Boolean get() = start != originalStart || end != originalEnd || newPlace != null || locationMoved
+    val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved
 
     val changed: Boolean get() = changedBesidesRepeat || repeatChanged
 
@@ -393,7 +395,9 @@ class PlanChangeViewModel
             val ui = _ui.value
             val start = ui.start ?: return
             val end = ui.end ?: return
-            val problem = validate(start, end)
+            // A repeating plan's later date may already be further out than a new plan may start (a monthly one is
+            // posted up to 62 days ahead): the times are checked, and sent, only when they moved.
+            val problem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
             if (problem != null) {
                 _ui.update { it.copy(error = problem) }
                 return
@@ -402,8 +406,8 @@ class PlanChangeViewModel
             viewModelScope.launch {
                 val body =
                     UpdatePlanBody(
-                        startsAt = start.atZone(ui.zone).toInstant().toString(),
-                        endsAt = end.atZone(ui.zone).toInstant().toString(),
+                        startsAt = start.atZone(ui.zone).toInstant().toString().takeIf { ui.timesMoved },
+                        endsAt = end.atZone(ui.zone).toInstant().toString().takeIf { ui.timesMoved },
                         place =
                             ui.newPlace?.let {
                                 PlanPlaceInput(
@@ -416,10 +420,11 @@ class PlanChangeViewModel
                                 )
                             },
                         businessLocationId = ui.newLocationId.takeIf { ui.locationMoved },
-                        // A new pattern from this date on (Plans step 2); stopping is its own request, below.
+                        // A new pattern from this date on (Plans step 2); "Doesn't repeat" adds `"repeat": null`, below.
                         repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
                     )
-                val result = if (ui.stopsRepeating) saveAndStop(ui, body) else repository.update(planId, body)
+                // One request either way: "Doesn't repeat" goes with the other changes as a raw body.
+                val result = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
                 when (result) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
                     is NetworkResult.Failure -> _ui.update { it.copy(saving = false, error = result.error.planMessage) }
@@ -427,35 +432,33 @@ class PlanChangeViewModel
             }
         }
 
-        /**
-         * "Doesn't repeat" for a plan that repeats: the other changes first (when there are any), then `"repeat": null`,
-         * which the change body can't carry. A refusal of either is shown; the first may have gone through then.
-         */
-        private suspend fun saveAndStop(
-            ui: PlanChangeUi,
-            body: UpdatePlanBody,
-        ): NetworkResult<PlanDto> {
-            if (ui.changedBesidesRepeat) {
-                val first = repository.update(planId, body)
-                if (first is NetworkResult.Failure) return first
-            }
-            return repository.stopRepeating(planId)
-        }
-
+        /** Moved times: not passed, 15 minutes to 8 hours, and a moved start within the days ahead a plan may start. */
         private fun validate(
             start: LocalDateTime,
             end: LocalDateTime,
+            startMoved: Boolean,
         ): String? {
             val now = LocalDateTime.now(_ui.value.zone)
             val minutes = Duration.between(start, end).toMinutes()
-            // A private plan moves up to 60 days ahead (Plans step 1).
-            val invitedOnly = _ui.value.plan?.isPrivate == true
+            val tooFar = if (startMoved) tooFarAhead(start, now) else null
             return when {
                 start.isBefore(now) -> "Pick a time that hasn't passed."
-                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
-                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                tooFar != null -> tooFar
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
+                else -> null
+            }
+        }
+
+        /** A start too far ahead: 14 days, 60 for a private plan (Plans step 1); else null. */
+        private fun tooFarAhead(
+            start: LocalDateTime,
+            now: LocalDateTime,
+        ): String? {
+            val invitedOnly = _ui.value.plan?.isPrivate == true
+            return when {
+                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
+                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
                 else -> null
             }
         }

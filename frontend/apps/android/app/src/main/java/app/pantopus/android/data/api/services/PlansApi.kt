@@ -164,8 +164,8 @@ interface PlansApi {
     ): PlanCancelReply
 
     /**
-     * `PATCH /api/plans/:id` with exactly `{"repeat":null}` (Plans step 2): stops the series; this date stays and none
-     * follows. A raw body, because [UpdatePlanBody] leaves nulls out.
+     * `PATCH /api/plans/:id` with a raw body carrying `"repeat": null` (Plans step 2), with any other changed fields:
+     * stops the series; this date stays and none follows. Raw, because [UpdatePlanBody] leaves nulls out.
      */
     @PATCH("api/plans/{id}")
     suspend fun stopRepeating(

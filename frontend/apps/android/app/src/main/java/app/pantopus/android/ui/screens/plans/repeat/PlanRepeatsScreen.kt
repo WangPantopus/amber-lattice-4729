@@ -66,8 +66,10 @@ private enum class RepeatPicker { AddDay, Until, Count }
 /**
  * The Repeats screen (boards Repeats and Monthly, Plans step 2), pushed over a plan's details or the change screen: how
  * often, on which days, when it ends, and the dates that makes. Done (and Back, which keeps the choices too) gives
- * [onDone] the pattern, or null for "Doesn't repeat", when the host changed something here, and calls [onUnchanged]
- * when nothing changed (so the change screen sends no `repeat`).
+ * [onDone] the pattern, or null for "Doesn't repeat", once the host made any choice here (a frequency, a day, a month's
+ * day added or removed, either end, a date or a count picked; even one that ends where it began), or when the screen
+ * had to move the pattern's days to the plan's new date (what it shows is what is saved). Otherwise it calls
+ * [onUnchanged] (so the change screen sends no `repeat`).
  */
 @Composable
 fun PlanRepeatsScreen(
@@ -75,10 +77,14 @@ fun PlanRepeatsScreen(
     onDone: (PlanRepeatPattern?) -> Unit,
     onUnchanged: () -> Unit,
 ) {
-    val opened = remember(setup) { PlanRepeatEditor.start(setup) }
-    var editor by remember(setup) { mutableStateOf(opened) }
+    var editor by remember(setup) { mutableStateOf(PlanRepeatEditor.start(setup)) }
+    var edited by remember(setup) { mutableStateOf(editor.daysDifferFrom(setup.initial, setup)) }
     var picker by remember { mutableStateOf<RepeatPicker?>(null) }
-    val done = { if (editor == opened) onUnchanged() else onDone(editor.pattern(setup)) }
+    val pick: (PlanRepeatEditor) -> Unit = { next ->
+        editor = next
+        edited = true
+    }
+    val done = { if (edited) onDone(editor.pattern(setup)) else onUnchanged() }
     BackHandler(onBack = done)
     Box(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.testTag("planRepeats")) {
         HostStepScaffold(
@@ -88,14 +94,14 @@ fun PlanRepeatsScreen(
             onLeading = done,
             footer = { Box(modifier = Modifier.testTag("planRepeatDone")) { HostFooterButton(title = "Done", onClick = done) } },
         ) {
-            FrequencyCard(selected = editor.freq, onSelect = { editor = editor.choose(it) })
+            FrequencyCard(selected = editor.freq, onSelect = { pick(editor.choose(it)) })
             when (editor.freq) {
-                PlanRepeatFreq.WEEKLY, PlanRepeatFreq.BIWEEKLY -> DaysField(editor, setup) { editor = editor.toggleDay(it, setup) }
+                PlanRepeatFreq.WEEKLY, PlanRepeatFreq.BIWEEKLY -> DaysField(editor, setup) { pick(editor.toggleDay(it, setup)) }
                 PlanRepeatFreq.MONTHLY ->
                     MonthDaysField(
                         editor = editor,
                         setup = setup,
-                        onRemove = { editor = editor.remove(it, setup) },
+                        onRemove = { pick(editor.remove(it, setup)) },
                         onAdd = { picker = RepeatPicker.AddDay },
                     )
                 null -> Unit
@@ -103,46 +109,54 @@ fun PlanRepeatsScreen(
             if (editor.freq != null) {
                 EndsField(
                     editor = editor,
-                    onDateRow = { if (editor.endsOnDate) picker = RepeatPicker.Until else editor = editor.endOnDate(true) },
-                    onCountRow = { if (editor.endsOnDate) editor = editor.endOnDate(false) else picker = RepeatPicker.Count },
+                    onDateRow = { if (editor.endsOnDate) picker = RepeatPicker.Until else pick(editor.endOnDate(true)) },
+                    onCountRow = { if (editor.endsOnDate) pick(editor.endOnDate(false)) else picker = RepeatPicker.Count },
                 )
                 editor.pattern(setup)?.let { SummaryWell(it, setup) }
                 HowItWorks()
             }
         }
     }
+    picker?.let { open ->
+        RepeatPickerDialog(
+            picker = open,
+            setup = setup,
+            editor = editor,
+            onPick = { next ->
+                pick(next)
+                picker = null
+            },
+            onDismiss = { picker = null },
+        )
+    }
+}
+
+/** The picker that is open: another day of the month, the end date, or the number of times. A cancel changes nothing. */
+@Composable
+private fun RepeatPickerDialog(
+    picker: RepeatPicker,
+    setup: PlanRepeatSetup,
+    editor: PlanRepeatEditor,
+    onPick: (PlanRepeatEditor) -> Unit,
+    onDismiss: () -> Unit,
+) {
     when (picker) {
         RepeatPicker.AddDay ->
-            PlanAddMonthDayDialog(
-                setup = setup,
-                taken = editor.monthDays,
-                onAdd = { day ->
-                    editor = editor.add(day)
-                    picker = null
-                },
-                onDismiss = { picker = null },
-            )
+            PlanAddMonthDayDialog(setup = setup, taken = editor.monthDays, onAdd = { onPick(editor.add(it)) }, onDismiss = onDismiss)
         RepeatPicker.Until ->
             PlanRepeatUntilDialog(
                 setup = setup,
                 current = editor.until,
-                onPick = { date ->
-                    editor = editor.withUntil(date, setup)
-                    picker = null
-                },
-                onDismiss = { picker = null },
+                onPick = { onPick(editor.withUntil(it, setup)) },
+                onDismiss = onDismiss,
             )
         RepeatPicker.Count ->
             PlanRepeatCountDialog(
                 setup = setup,
                 current = editor.count,
-                onPick = { times ->
-                    editor = editor.withCount(times, setup)
-                    picker = null
-                },
-                onDismiss = { picker = null },
+                onPick = { onPick(editor.withCount(it, setup)) },
+                onDismiss = onDismiss,
             )
-        null -> Unit
     }
 }
 
