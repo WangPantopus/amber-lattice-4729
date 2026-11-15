@@ -163,19 +163,40 @@ struct PlansEmptyCard: View {
         return "\(matchup) \(when) at \(time)"
     }
 
-    private var otherKinds: some View {
-        let kinds = PlanKind.displayOrder.filter { $0 != .watchParty && ($0 != .playdate || flags.playdates) }
-        return HStack(spacing: Spacing.s2) {
-            ForEach(kinds) { kind in
-                Button { actions.host(PlansHostStart(kind: kind)) } label: {
-                    VStack(spacing: Spacing.s1) {
-                        PlanSwatch(kind: kind)
-                        Text(kind.title)
-                    }
-                }
-                .planButton(.tonal, size: .stack)
-                .accessibilityLabel("Host a \(kind.spokenTitle.lowercased())")
+    /// The other kinds as tonal buttons: a row of today's, or with `plans_kinds` on a 4-column grid of eight
+    /// (board Main).
+    @ViewBuilder private var otherKinds: some View {
+        let kinds = PlanKind.listed(withNewer: flags.kinds).filter { $0 != .watchParty && ($0 != .playdate || flags.playdates) }
+        if flags.kinds {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Spacing.s2), count: 4), spacing: Spacing.s2) {
+                ForEach(kinds) { kind in kindButton(kind) }
             }
+        } else {
+            HStack(spacing: Spacing.s2) {
+                ForEach(kinds) { kind in kindButton(kind) }
+            }
+        }
+    }
+
+    private func kindButton(_ kind: PlanKind) -> some View {
+        Button { actions.host(PlansHostStart(kind: kind)) } label: {
+            VStack(spacing: Spacing.s1) {
+                PlanSwatch(kind: kind)
+                Text(kind.title)
+            }
+        }
+        .planButton(.tonal, size: .stack)
+        .accessibilityLabel(hostLabel(kind))
+        .accessibilityIdentifier("planKind.\(kind.rawValue)")
+    }
+
+    private func hostLabel(_ kind: PlanKind) -> String {
+        switch kind {
+        case .foodDrinks: "Host food and drinks"
+        case .gameNight: "Host a game night"
+        case .outdoors: "Host an outing"
+        case .somethingElse: "Host something else"
+        default: "Host a \(kind.spokenTitle.lowercased())"
         }
     }
 }

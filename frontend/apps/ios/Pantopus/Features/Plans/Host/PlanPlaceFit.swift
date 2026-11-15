@@ -39,6 +39,7 @@ enum PlanPlaceFit {
         case .pickupGame: ["court", "park", "playground", "community_center"]
         case .walkCoffee: ["trail", "park", "cafe"]
         case .studyGroup: ["library", "cafe", "community_center"]
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.preferredCategories(kind)
         }
     }
 }

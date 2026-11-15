@@ -64,6 +64,7 @@ struct PlanComposerRoot: View {
                         } else {
                             PlanTypePicker(
                                 showsPlaydates: flags.playdates,
+                                showsNewer: flags.kinds,
                                 model: model,
                                 onClose: { onFinish(nil) },
                                 onPick: { kind in
@@ -130,6 +131,8 @@ struct PlanComposerRoot: View {
 
 struct PlanTypePicker: View {
     let showsPlaydates: Bool
+    /// Plans step 4: the four newer kinds (board Type), with `plans_kinds` on.
+    var showsNewer = false
     /// The draft: "Host as" (Plans with businesses, board B1) reads and sets its business.
     var model: PlanComposerModel?
     let onClose: () -> Void
@@ -153,8 +156,9 @@ struct PlanTypePicker: View {
                             .foregroundStyle(Theme.Color.appTextSecondary)
                     }
                     LazyVGrid(columns: columns, spacing: Spacing.s3) {
-                        ForEach(kinds) { kind in card(kind) }
+                        ForEach(kinds.filter { $0 != .somethingElse }) { kind in card(kind) }
                     }
+                    if kinds.contains(.somethingElse) { PlanSomethingElseRow { onPick(.somethingElse) } }
                     Text(business == nil
                         ? "Plans are free and for adults. Kids come with a parent."
                         : "These are the five kinds of plan people host. Yours keeps the same color and pin.")
@@ -176,7 +180,7 @@ struct PlanTypePicker: View {
     private var kinds: [PlanKind] {
         // A business posts only the kinds the server lists for it (kids' plans have their own switch).
         if let business { return PlanKind.displayOrder.filter { business.kind($0) != nil } }
-        return PlanKind.displayOrder.filter { $0 != .playdate || showsPlaydates }
+        return PlanKind.typeOrder(withNewer: showsNewer).filter { $0 != .playdate || showsPlaydates }
     }
 
     private var business: PlanHostAsBusinessDTO? {
@@ -194,7 +198,10 @@ struct PlanTypePicker: View {
         Button { onPick(kind) } label: {
             VStack(alignment: .leading, spacing: 10) {
                 PlanTile(kind: kind, size: 52, glyph: 28)
-                Text(business?.kind(kind)?.name ?? kind.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
+                HStack(spacing: 6) {
+                    Text(business?.kind(kind)?.name ?? kind.title).planFont(.h4).foregroundStyle(Theme.Color.appText)
+                    if kind.isNewer { PlanNewTag() }
+                }
                 Text(business == nil ? Self.blurb(kind) : Self.businessBlurb(kind))
                     .planFont(.small)
                     .foregroundStyle(Theme.Color.appTextSecondary)
@@ -230,6 +237,7 @@ struct PlanTypePicker: View {
         case .pickupGame: "A clinic, open play, league night"
         case .walkCoffee: "A meetup, a tasting, a group walk"
         case .studyGroup: "Tutoring, test prep, a workshop"
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.blurb(kind)
         }
     }
 
@@ -240,6 +248,7 @@ struct PlanTypePicker: View {
         case .pickupGame: "Need players, now or later"
         case .walkCoffee: "Walks, dog walks, coffee"
         case .studyGroup: "Study together at a library or café"
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.blurb(kind)
         }
     }
 }
