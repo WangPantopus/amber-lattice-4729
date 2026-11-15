@@ -87,13 +87,16 @@ class MomentsCameraController {
 
 /**
  * The live camera (board P1), CameraX under Compose: a preview, a photo capture and a video recorder at about 720p that
- * stops itself at 30 seconds. Calls [onCaptured] with what it made.
+ * stops itself at [maxVideoMs] (one Moment's video, contract v3.11), at [videoBitrate] so its file fits an upload.
+ * Calls [onCaptured] with what it made.
  */
 @Composable
 fun MomentsCameraPreview(
     controller: MomentsCameraController,
     front: Boolean,
     flash: Boolean,
+    maxVideoMs: Long,
+    videoBitrate: Int,
     onCaptured: (MomentMediaFile) -> Unit,
     onRecording: (Boolean) -> Unit,
     onFailed: (String) -> Unit,
@@ -104,11 +107,12 @@ fun MomentsCameraPreview(
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
     val imageCapture = remember { ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build() }
     val videoCapture =
-        remember {
+        remember(videoBitrate) {
             VideoCapture.withOutput(
                 Recorder
                     .Builder()
                     .setQualitySelector(QualitySelector.from(Quality.HD, FallbackStrategy.lowerQualityOrHigherThan(Quality.HD)))
+                    .setTargetVideoEncodingBitRate(videoBitrate)
                     .build(),
             )
         }
@@ -118,7 +122,7 @@ fun MomentsCameraPreview(
     val recordingChanged by rememberUpdatedState(onRecording)
     val failed by rememberUpdatedState(onFailed)
 
-    DisposableEffect(front, lifecycleOwner) {
+    DisposableEffect(front, lifecycleOwner, videoCapture) {
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
         future.addListener(
@@ -172,7 +176,7 @@ fun MomentsCameraPreview(
         val file = MomentMedia.newFile(context, "mp4")
         if (flash) camera?.cameraControl?.enableTorch(true)
         recording =
-            startRecording(context, videoCapture, file) { event ->
+            startRecording(context, videoCapture, file, maxVideoMs) { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> recordingChanged(true)
                     is VideoRecordEvent.Finalize -> {
@@ -205,10 +209,11 @@ private fun startRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
     file: File,
+    maxVideoMs: Long,
     onEvent: (VideoRecordEvent) -> Unit,
 ): Recording? =
     runCatching {
-        val options = FileOutputOptions.Builder(file).setDurationLimitMillis(MomentMedia.MAX_VIDEO_MS).build()
+        val options = FileOutputOptions.Builder(file).setDurationLimitMillis(maxVideoMs).build()
         val pending = videoCapture.output.prepareRecording(context, options)
         val withSound =
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
@@ -221,11 +226,12 @@ private fun startRecording(
 
 /**
  * The shutter (board P1): an 80 dp white ring. Tap for a photo; hold for a video, while the ring fills red over the
- * 30 seconds. The first hold asks for the microphone, so the video carries its sound.
+ * [maxVideoMs] a video may run. The first hold asks for the microphone, so the video carries its sound.
  */
 @Composable
 fun MomentsShutter(
     recording: Boolean,
+    maxVideoMs: Long,
     onPhoto: () -> Unit,
     onStartVideo: () -> Unit,
     onStopVideo: () -> Unit,
@@ -240,7 +246,7 @@ fun MomentsShutter(
         if (!recording) return@LaunchedEffect
         val started = System.currentTimeMillis()
         while (true) {
-            progress = ((System.currentTimeMillis() - started).toFloat() / MomentMedia.MAX_VIDEO_MS).coerceIn(0f, 1f)
+            progress = ((System.currentTimeMillis() - started).toFloat() / maxVideoMs).coerceIn(0f, 1f)
             delay(50)
         }
     }

@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "TooManyFunctions")
+@file:Suppress("MagicNumber", "TooManyFunctions", "TooGenericExceptionCaught")
 
 package app.pantopus.android.ui.screens.moments.compose
 
@@ -10,18 +10,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.moments.CreateMomentBody
 import app.pantopus.android.data.api.models.moments.MomentAltitudeBody
+import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentLocationBody
 import app.pantopus.android.data.api.models.moments.MomentPlaceChoiceDto
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
+import app.pantopus.android.data.api.models.moments.MomentSeriesDto
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.location.HeightReading
 import app.pantopus.android.data.moments.MomentHeight
+import app.pantopus.android.data.moments.MomentLimits
 import app.pantopus.android.data.moments.MomentMedia
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.data.moments.MomentsPosting
 import app.pantopus.android.data.moments.MomentsRepository
+import app.pantopus.android.data.moments.PreparedVideo
 import app.pantopus.android.data.moments.serverCode
 import app.pantopus.android.data.plans.PlanGpsFix
 import app.pantopus.android.data.plans.PlanLocationResolver
@@ -35,13 +39,17 @@ import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import javax.inject.Inject
 
@@ -81,6 +89,21 @@ internal const val HOME_CHIP = "Your home"
 
 /** What the chip and the place row say for a Moment with no location. */
 internal const val NO_LOCATION = "No location"
+
+/** A video made ready to post: its file (or its parts' files), or why it can't be posted. */
+private sealed interface VideoReady {
+    data class Ready(
+        val videos: List<PreparedVideo>,
+    ) : VideoReady
+
+    data class Failed(
+        val message: String,
+    ) : VideoReady
+}
+
+/** Worth another try: no connection, a timeout, the server busy or briefly failing. */
+private fun NetworkError.isPassing(): Boolean =
+    this is NetworkError.Transport || this is NetworkError.Server || this == NetworkError.RetriesExhausted || code == 408 || code == 429
 
 /** Before anything can be captured: location, then the one-time 18+ confirmation (contract v2). */
 enum class ComposeGate { Locating, NeedsLocation, NeedsAdult, NotEligible, Open }
@@ -125,6 +148,12 @@ data class MomentsComposeUiState(
     val hasConnections: Boolean? = null,
     /** "Show elevation" (board H1): the Moment says how high above sea level it was made. Kept for your next Moments. */
     val showHeight: Boolean = false,
+    /** What a Moment may be (contract v3.11), read as posting opens; an older server's until then. */
+    val limits: MomentLimits = MomentLimits(),
+    /** How many Moments the video on the sheet posts as: a library video longer than one Moment goes in parts. */
+    val videoParts: Int = 1,
+    /** Post is waiting for the video to be made ready: how far along, 0 to 1; null while it isn't waiting. */
+    val readying: Float? = null,
 ) {
     val kind: String
         get() =
@@ -232,6 +261,26 @@ class MomentsComposeViewModel
 
         /** One id per Moment being posted: a retry of the same Post gets back the Moment it made (contract v2+). */
         private var requestId: String = java.util.UUID.randomUUID().toString()
+
+        /** The limits, read once as posting opens (contract v3.11); the state carries them for the camera and the sheet. */
+        private val limitsRead: Deferred<MomentLimits> =
+            viewModelScope.async { repository.limits().also { read -> _state.update { it.copy(limits = read) } } }
+
+        /** The limits, waiting a little for the server's answer; what is known so far when it is slow. */
+        private suspend fun limits(): MomentLimits = withTimeoutOrNull(LIMITS_WAIT_MS) { limitsRead.await() } ?: _state.value.limits
+
+        /**
+         * The video on the sheet being made ready to post, from the moment it lands there: sized to fit an upload, split
+         * into parts when it is longer than one Moment, each with its poster and frames. Post waits for it, so a Moment is
+         * never made for a video that can't be sent.
+         */
+        private var preparation: Deferred<VideoReady>? = null
+
+        /** What [preparation] made, until Post hands it to the upload (or it's dropped and its files deleted). */
+        private var readyVideos: List<PreparedVideo>? = null
+
+        /** How far [preparation] has come, 0 to 1. */
+        private var readyProgress = 0f
 
         /** Opening (or coming back with location allowed): a fresh fix, the place it pins at, and the 18+ state. */
         fun start() {
@@ -362,7 +411,93 @@ class MomentsComposeViewModel
                     step = ComposeStep.Review,
                     caption = "",
                     notice = null,
+                    videoParts = 1,
                 )
+            }
+            prepare(media)
+        }
+
+        /**
+         * A video on the sheet starts getting ready to post at once, while the person picks its place, hours and caption:
+         * exported to about 720p at a bit rate that fits the largest upload, in parts of equal length when it runs longer
+         * than one Moment (contract v3.11), each with its poster and two frames. A photo is prepared as it uploads.
+         */
+        private fun prepare(media: MomentMediaFile) {
+            dropPreparation()
+            if (media !is MomentMediaFile.Video) return
+            readyProgress = 0f
+            preparation =
+                viewModelScope.async {
+                    val limits = limits()
+                    val parts = MomentMedia.parts(media.durationMs, limits)
+                    _state.update { if (it.media == media) it.copy(videoParts = parts.size) else it }
+                    val made = mutableListOf<PreparedVideo>()
+                    val ready =
+                        try {
+                            parts.forEachIndexed { at, part ->
+                                // A video posted as one Moment is exported whole (the camera's may go up as it is).
+                                made +=
+                                    MomentMedia.prepareVideo(context, media, part.takeIf { parts.size > 1 }, limits.videoBytes) { done ->
+                                        readyProgress = (at + done) / parts.size
+                                        _state.update { if (it.readying != null) it.copy(readying = readyProgress) else it }
+                                    }
+                            }
+                            // Said here, before any Moment is made, not after the upload is refused.
+                            if (made.any { it.video.length() > limits.videoBytes }) VideoReady.Failed(TOO_LARGE) else VideoReady.Ready(made)
+                        } catch (cancelled: CancellationException) {
+                            made.forEach { deleteFiles(it, keep = media.file) }
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            timber.log.Timber.tag("Moments").w(failure, "couldn't prepare the video")
+                            VideoReady.Failed(NOT_READY)
+                        }
+                    if (ready is VideoReady.Ready) readyVideos = ready.videos else made.forEach { deleteFiles(it, keep = media.file) }
+                    ready
+                }
+        }
+
+        /** The video's preparation is no longer wanted (Retake, another item, closing): it stops and its files go. */
+        private fun dropPreparation() {
+            preparation?.cancel()
+            preparation = null
+            readyVideos?.forEach { deleteFiles(it, keep = _state.value.media?.file) }
+            readyVideos = null
+        }
+
+        private fun deleteFiles(
+            video: PreparedVideo,
+            keep: java.io.File?,
+        ) {
+            runCatching {
+                (listOf(video.video, video.poster) + video.frames).filter { it != keep }.forEach { it.delete() }
+            }
+        }
+
+        /**
+         * Post waits for the video's preparation, showing how far along it is: the videos ready to upload, or null with
+         * the reason on the sheet (too large to post, or it couldn't be read).
+         */
+        private suspend fun awaitVideo(media: MomentMediaFile.Video): List<PreparedVideo>? {
+            if (preparation == null) prepare(media)
+            val job = preparation ?: return null
+            _state.update { it.copy(readying = readyProgress) }
+            val ready =
+                try {
+                    job.await()
+                } catch (cancelled: CancellationException) {
+                    // Retake or another item while Post waited: the sheet is free again.
+                    _state.update { it.copy(posting = false, readying = null) }
+                    throw cancelled
+                }
+            _state.update { it.copy(readying = null) }
+            return when (ready) {
+                is VideoReady.Ready -> ready.videos
+                is VideoReady.Failed -> {
+                    // One that couldn't be read is tried again on the next Post; one too large stays too large.
+                    if (ready.message != TOO_LARGE) preparation = null
+                    _state.update { it.copy(posting = false, notice = ready.message) }
+                    null
+                }
             }
         }
 
@@ -418,6 +553,17 @@ class MomentsComposeViewModel
             }
         }
 
+        /**
+         * A library video of [durationMs] can be posted: as one Moment, or as several up to the server's number of them
+         * (contract v3.11). One longer says so ("Videos can be up to 5 minutes.").
+         */
+        private suspend fun fitsLibrary(durationMs: Long): Boolean {
+            val limits = limits()
+            if (MomentMedia.fits(durationMs, limits)) return true
+            _state.update { it.copy(notice = limits.tooLongMessage) }
+            return false
+        }
+
         /** Puts one library item on the Post sheet; false when it can't be opened or runs too long (a notice says so). */
         private suspend fun open(uri: Uri): Boolean {
             val video = MomentMedia.isVideo(context, uri)
@@ -428,9 +574,8 @@ class MomentsComposeViewModel
                 return false
             }
             val duration = if (video) MomentMedia.videoDurationMs(copy) else 0L
-            if (video && duration > MomentMedia.MAX_VIDEO_MS + DURATION_SLACK_MS) {
+            if (video && !fitsLibrary(duration)) {
                 copy.delete()
-                _state.update { it.copy(notice = "Videos can be up to 30 seconds.") }
                 return false
             }
             val picked = withContext(Dispatchers.IO) { readPickedPlace(context, uri, mime) }
@@ -455,8 +600,10 @@ class MomentsComposeViewModel
                         step = ComposeStep.Review,
                         caption = "",
                         notice = null,
+                        videoParts = 1,
                     )
                 }
+                prepare(media)
             } else {
                 // Android hides where it was taken, or the file never said: it pins where you are, as the sheet shows.
                 captured(media, takenAt)
@@ -533,6 +680,7 @@ class MomentsComposeViewModel
         fun backFromReview() {
             requestId = java.util.UUID.randomUUID().toString()
             val current = _state.value
+            dropPreparation()
             current.media?.file?.delete()
             // The ones picked with it that were still waiting go too.
             waiting = emptyList()
@@ -599,6 +747,8 @@ class MomentsComposeViewModel
             val pin = current.pin ?: return
             _state.update { it.copy(posting = true, notice = null) }
             viewModelScope.launch {
+                // A video is ready first (sized, split into parts when long): no Moment for a file that can't be sent.
+                val videos = (current.media as? MomentMediaFile.Video)?.let { awaitVideo(it) ?: return@launch }
                 // A fix older than about 4 minutes is read again: the server takes one no older than 5.
                 val usable =
                     if (!pin.capture && Instant.now().toEpochMilli() - pin.at.toEpochMilli() > FIX_REFRESH_MS) {
@@ -632,21 +782,137 @@ class MomentsComposeViewModel
                         // The height of the pin that is sent, while "Show elevation" is on the sheet and switched on.
                         altitude = current.copy(pin = usable).shownHeight,
                     )
-                when (val result = repository.create(body)) {
-                    is NetworkResult.Success -> {
-                        val moment = result.data
-                        val media = current.media
-                        if (media != null) {
-                            posting.start(moment, media, moment.latitude ?: usable.latitude, moment.longitude ?: usable.longitude)
-                        } else {
-                            posting.posted(moment)
-                        }
-                        saveChoices(current)
-                        postedOne()
-                    }
-                    is NetworkResult.Failure -> handlePostFailure(result.error, retried)
+                if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
+                    saveChoices(current)
+                    postedOne()
                 }
             }
+        }
+
+        /**
+         * Makes the Moment and starts its upload: a text card is live at once. A video longer than one Moment is made as
+         * its parts, in order, all now (contract v3.11): the same series on each, the caption on the first; they then go up
+         * one after another. False when the server said no (the sheet says why; nothing is left half made).
+         */
+        private suspend fun publish(
+            body: CreateMomentBody,
+            current: MomentsComposeUiState,
+            videos: List<PreparedVideo>?,
+            pinned: Pair<Double, Double>?,
+            retried: Boolean,
+        ): Boolean {
+            val media = current.media
+            if (videos != null && videos.size > 1 && media is MomentMediaFile.Video) {
+                return publishParts(body, media, videos, pinned, retried)
+            }
+            return when (val result = repository.create(body)) {
+                is NetworkResult.Success -> {
+                    val moment = result.data
+                    val video = videos?.firstOrNull()
+                    when {
+                        media == null -> posting.posted(moment)
+                        video != null && media is MomentMediaFile.Video -> {
+                            handOff(media, videos)
+                            startUpload(moment, video, pinned)
+                        }
+                        else -> {
+                            val latitude = pinned?.let { moment.latitude ?: it.first }
+                            posting.start(moment, media, latitude, pinned?.let { moment.longitude ?: it.second })
+                        }
+                    }
+                    true
+                }
+                is NetworkResult.Failure -> {
+                    handlePostFailure(result.error, retried)
+                    false
+                }
+            }
+        }
+
+        /** The parts of a longer video, made in order; a part the server won't make undoes the ones made before it. */
+        private suspend fun publishParts(
+            body: CreateMomentBody,
+            media: MomentMediaFile.Video,
+            videos: List<PreparedVideo>,
+            pinned: Pair<Double, Double>?,
+            retried: Boolean,
+        ): Boolean {
+            val series = derivedId("$requestId:series")
+            val made = mutableListOf<MomentDto>()
+            for ((at, video) in videos.withIndex()) {
+                val index = at + 1
+                val part =
+                    body.copy(
+                        series = MomentSeriesDto(id = series, index = index, count = videos.size),
+                        // Each part is its own Post: a retry of it gets back the part it made.
+                        clientRequestId = if (index == 1) requestId else derivedId("$requestId:$index"),
+                        caption = body.caption.takeIf { index == 1 },
+                    )
+                when (val result = createPart(part)) {
+                    is NetworkResult.Success -> made += result.data
+                    is NetworkResult.Failure -> {
+                        undoParts(made, result.error, retried)
+                        return false
+                    }
+                }
+            }
+            handOff(media, videos)
+            made.zip(videos).forEach { (moment, video) -> startUpload(moment, video, pinned) }
+            return true
+        }
+
+        /** A prepared video's upload: it goes up as it is (it's sized already), pinned where the server put the Moment. */
+        private fun startUpload(
+            moment: MomentDto,
+            video: PreparedVideo,
+            pinned: Pair<Double, Double>?,
+        ) {
+            val file = MomentMediaFile.Video(video.video, video.durationMs, recordedHere = true)
+            posting.start(moment, file, pinned?.let { moment.latitude ?: it.first }, pinned?.let { moment.longitude ?: it.second }, video)
+        }
+
+        /** The same id from the same words each time: a part's retry key and the series id follow the Post's own. */
+        private fun derivedId(seed: String): String = java.util.UUID.nameUUIDFromBytes(seed.toByteArray()).toString()
+
+        /**
+         * The server wouldn't make a part: nobody has seen the parts made before it (they wait for their files), so they
+         * go and Post can be tapped again as a new Post. The first part's refusal is handled as any Moment's.
+         */
+        private suspend fun undoParts(
+            made: List<MomentDto>,
+            error: NetworkError,
+            retried: Boolean,
+        ) {
+            if (made.isNotEmpty()) {
+                made.forEach { repository.delete(it.id) }
+                requestId = java.util.UUID.randomUUID().toString()
+            }
+            handlePostFailure(error, retried || made.isNotEmpty())
+        }
+
+        /** One part's `POST /api/moments`, tried again a couple of times while the connection or the server is failing. */
+        private suspend fun createPart(body: CreateMomentBody): NetworkResult<MomentDto> {
+            var result = repository.create(body)
+            var tries = 1
+            while (result is NetworkResult.Failure && result.error.isPassing() && tries < PART_TRIES) {
+                kotlinx.coroutines.delay(PART_RETRY_MS * tries)
+                result = repository.create(body)
+                tries++
+            }
+            return result
+        }
+
+        /**
+         * The video's prepared files now belong to the upload: the composer stops tracking them, and the picked copy goes
+         * (each part is its own export) unless it uploads as it is.
+         */
+        private fun handOff(
+            media: MomentMediaFile.Video,
+            videos: List<PreparedVideo>,
+        ) {
+            preparation = null
+            readyVideos = null
+            if (videos.none { it.video == media.file }) runCatching { media.file.delete() }
         }
 
         /** The next sheet opens with this one's "How long", "Who sees it" and "Show elevation" (on this phone, per account). */
@@ -667,6 +933,7 @@ class MomentsComposeViewModel
         private fun postWithoutLocation(current: MomentsComposeUiState) {
             _state.update { it.copy(posting = true, notice = null) }
             viewModelScope.launch {
+                val videos = (current.media as? MomentMediaFile.Video)?.let { awaitVideo(it) ?: return@launch }
                 val body =
                     CreateMomentBody(
                         kind = current.kind,
@@ -680,15 +947,9 @@ class MomentsComposeViewModel
                         clientRequestId = requestId,
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
                     )
-                when (val result = repository.create(body)) {
-                    is NetworkResult.Success -> {
-                        val moment = result.data
-                        val media = current.media
-                        if (media != null) posting.start(moment, media, null, null) else posting.posted(moment)
-                        choices.edit().putInt("$accountId.hours", current.hours).apply()
-                        postedOne()
-                    }
-                    is NetworkResult.Failure -> handlePostFailure(result.error, retried = true)
+                if (publish(body, current, videos, pinned = null, retried = true)) {
+                    choices.edit().putInt("$accountId.hours", current.hours).apply()
+                    postedOne()
                 }
             }
         }
@@ -715,16 +976,20 @@ class MomentsComposeViewModel
                     }
                 "PLACE_NOT_NEARBY" -> _state.update { it.copy(venue = null, notice = FAR_PLACE) }
                 "NO_CONNECTIONS" -> _state.update { it.copy(hasConnections = false, noLocation = false, notice = NEEDS_CONNECTION) }
-                "MOMENTS_DAILY_LIMIT" -> _state.update { it.copy(notice = "You've posted 20 Moments today. Try again tomorrow.") }
-                "MEDIA_TOO_LONG" -> _state.update { it.copy(notice = "Videos can be up to 30 seconds.") }
+                "MOMENTS_DAILY_LIMIT" ->
+                    _state.update { it.copy(notice = "You've posted ${it.limits.dailyLimit} Moments today. Try again tomorrow.") }
+                "MEDIA_TOO_LONG" ->
+                    _state.update { it.copy(notice = "A Moment's video can be up to ${it.limits.spoken(it.limits.videoMs)}.") }
                 else -> _state.update { it.copy(notice = error.message) }
             }
         }
 
         override fun onCleared() {
-            // A capture that was never posted doesn't stay on the phone.
+            // A capture that was never posted doesn't stay on the phone, nor does what was made ready to post it.
             val current = _state.value
             if (!current.done) current.media?.file?.delete()
+            preparation?.cancel()
+            readyVideos?.forEach { deleteFiles(it, keep = null) }
             super.onCleared()
         }
 
@@ -736,8 +1001,12 @@ class MomentsComposeViewModel
             val ALLOWED_HOURS = setOf(1, 6, 24, 48)
             val ALLOWED_AUDIENCES = setOf("nearby", "connections")
             const val FIX_REFRESH_MS = 4 * 60 * 1000L
-            const val DURATION_SLACK_MS = 500L
             const val NOTICE_MS = 4_000L
+            const val LIMITS_WAIT_MS = 5_000L
+            const val PART_TRIES = 3
+            const val PART_RETRY_MS = 1_500L
+            const val TOO_LARGE = "This video is too large to post. Try a shorter one."
+            const val NOT_READY = "Couldn't get that video ready to post. Try another one."
             const val NO_FIX = "We couldn't find where you are. Try again in a moment."
             const val FAR_PLACE = "That place is too far from this Moment's pin. Pick one nearby."
             const val NEEDS_CONNECTION = "A Moment with no location goes only to your connections. Add a connection first."
