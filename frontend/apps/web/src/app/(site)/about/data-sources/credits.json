@@ -81,6 +81,15 @@
           "statement": "The Sedgwick County Appraiser is the origin of these records; the City of Wichita publishes this copy. Data users must comply with K.S.A. 45-230, which restricts selling, giving or receiving lists of names and addresses from public records for sales solicitation."
         },
         {
+          "id": "ak-ketchikan",
+          "publisher": "Ketchikan Gateway Borough, Alaska",
+          "url": "https://www.arcgis.com/home/item.html?id=2787be973b534a969d57bda80010eb0e",
+          "license": "Ketchikan Gateway Borough GIS web map services",
+          "license_url": "https://www.kgbak.us/196/GIS-Maps",
+          "dataset": "Address points with the Assessment Department's roll (2026 assessment year)",
+          "statement": "The borough's Assessment Department is the origin of these records; Ketchikan Gateway Borough GIS publishes them as web map services, hosted by its GIS contractor."
+        },
+        {
           "id": "va-charlottesville",
           "publisher": "City of Charlottesville, Virginia",
           "url": "https://opendata.charlottesville.org",
