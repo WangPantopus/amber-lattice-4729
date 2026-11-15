@@ -5,11 +5,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.PlanDto
+import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.PlanLocation
+import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanPlaceQuery
 import app.pantopus.android.data.plans.PlanRepeatPattern
 import app.pantopus.android.data.plans.PlanRepeatWords
@@ -160,13 +163,17 @@ data class PlanChangeUi(
      */
     val canChangePlace: Boolean get() = plan?.isAtHome == false && plan.business == null
 
-    /** Where H6 looks for places: around the plan's own place. */
+    /**
+     * Where H6 looks for places: around the plan's own place, else its area; an online plan with no area (Plans step 3)
+     * looks from the host's home or a fresh fix ([PlanChangeOnline.origin]).
+     */
     val placesOrigin: Pair<Double, Double>?
         get() {
             val place = plan?.place
             if (place?.latitude != null && place.longitude != null) return place.latitude to place.longitude
-            val area = plan?.area ?: return null
-            return if (area.latitude != null && area.longitude != null) area.latitude to area.longitude else null
+            val area = plan?.area
+            if (area?.latitude != null && area.longitude != null) return area.latitude to area.longitude
+            return online.origin
         }
 
     /** The start or the end moved: only then are the times sent (and checked), as on iOS. */
@@ -194,6 +201,7 @@ class PlanChangeViewModel
         savedStateHandle: SavedStateHandle,
         private val repository: PlansRepository,
         private val feature: PlansFeature,
+        private val locations: PlanLocationResolver,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val _ui = MutableStateFlow(PlanChangeUi())
@@ -237,10 +245,24 @@ class PlanChangeViewModel
                                     ),
                             )
                         }
+                        lookForOrigin()
                     }
                     is NetworkResult.Failure -> _ui.update { it.copy(error = result.error.planMessage) }
                 }
             }
+        }
+
+        /**
+         * An online plan with no area (a private one posted by a host with no home and no fix, Plans step 3) has nowhere
+         * for H6 to look from: the host's home, else a fresh fix, as the host flow finds its own. With neither, "A place"
+         * isn't offered and the screen says why ([noPlaceReason]).
+         */
+        private suspend fun lookForOrigin() {
+            val ui = _ui.value
+            if (ui.plan?.isOnline != true || ui.placesOrigin != null) return
+            val home = locations.home()?.takeIf { it.source == PlanLocation.Source.HOME }
+            val origin = home?.let { it.latitude to it.longitude } ?: locations.gpsFix()?.let { it.latitude to it.longitude }
+            _ui.update { it.copy(online = it.online.copy(origin = origin, originLooked = true)) }
         }
 
         /** A new start keeps the plan's length. */
@@ -417,14 +439,18 @@ class PlanChangeViewModel
             val start = ui.start ?: return
             val end = ui.end ?: return
             // A repeating plan's later date may already be further out than a new plan may start (a monthly one is
-            // posted up to 62 days ahead): the times are checked, and sent, only when they moved.
-            val problem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
+            // posted up to 62 days ahead): the times are checked, and sent, only when they moved. Where (an online plan's
+            // link, or the place it moves to) is checked whatever moved (Plans step 3).
+            val timesProblem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
+            val problem = timesProblem ?: ui.whereProblem()
             if (problem != null) {
                 _ui.update { it.copy(error = problem) }
                 return
             }
             _ui.update { it.copy(saving = true, error = null) }
             viewModelScope.launch {
+                // A move to a public place, or online, proves the host is nearby with a fresh fix, as posting does.
+                val fix = if (ui.sendsFix) locations.gpsFix() else null
                 val body =
                     UpdatePlanBody(
                         startsAt = start.atZone(ui.zone).toInstant().toString().takeIf { ui.timesMoved },
@@ -434,6 +460,7 @@ class PlanChangeViewModel
                         businessLocationId = ui.newLocationId.takeIf { ui.locationMoved },
                         // A new pattern from this date on (Plans step 2); "Doesn't repeat" adds `"repeat": null`, below.
                         repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
+                        gps = fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) },
                     )
                 // One request either way: "Doesn't repeat" goes with the other changes as a raw body.
                 val result = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
@@ -458,7 +485,7 @@ class PlanChangeViewModel
                 tooFar != null -> tooFar
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
-                else -> _ui.value.whereProblem()
+                else -> null
             }
         }
 

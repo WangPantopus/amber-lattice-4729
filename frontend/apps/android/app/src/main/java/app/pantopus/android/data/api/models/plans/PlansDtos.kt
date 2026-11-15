@@ -516,6 +516,11 @@ data class UpdatePlanBody(
     /** A business's plan: move it to another of the business's own locations (never a `place`). */
     @Json(name = "business_location_id") val businessLocationId: String? = null,
     @Json(name = "label") val label: String? = null,
+    /**
+     * A fresh fix with a move to a public place or online (Plans step 3), as the create body sends one: the server
+     * checks the host is nearby by their home, else this. Never for a private plan.
+     */
+    @Json(name = "gps") val gps: PlanGpsInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */

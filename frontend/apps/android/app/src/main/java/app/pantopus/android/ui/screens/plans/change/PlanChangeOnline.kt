@@ -5,6 +5,7 @@ import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.plans.PlanOnlineLink
 import app.pantopus.android.data.plans.PlanPlaceKind
 import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.screens.plans.components.PlanSegmented
 import app.pantopus.android.ui.screens.plans.host.HostWhere
@@ -25,6 +26,12 @@ data class PlanChangeOnline(
     val chosen: Boolean = false,
     /** The link field, starting from the plan's own link. */
     val link: String = "",
+    /**
+     * Where H6 looks from for an online plan with no area (a private one posted by a host with no home and no fix):
+     * the host's home, else a fresh fix; null when neither was found. [originLooked] is true once both were tried.
+     */
+    val origin: Pair<Double, Double>? = null,
+    val originLooked: Boolean = false,
 )
 
 /**
@@ -34,9 +41,26 @@ data class PlanChangeOnline(
 val PlanChangeUi.canGoOnline: Boolean
     get() = canChangePlace && plan?.planKind?.canBeOnline == true && (online.switchOn || plan?.isOnline == true)
 
+/** An online plan can move to a place only when H6 has a point to look from (its area, the host's home or a fix). */
+val PlanChangeUi.canMoveToPlace: Boolean
+    get() = plan?.isOnline != true || placesOrigin != null
+
+/** Why "A place" isn't offered for an online plan with no area, once the home and a fix were both looked for. */
+val PlanChangeUi.noPlaceReason: String?
+    get() = NO_PLACE_ORIGIN.takeIf { canGoOnline && online.originLooked && !canMoveToPlace }
+
+private const val NO_PLACE_ORIGIN = "To move it to a place, add your home or share your location."
+
+/**
+ * Save proves the host is nearby with a fresh fix, as posting does: a move to a public place, or online. Never for a
+ * private plan, which can be anywhere; nor for a new link, which keeps the plan's area.
+ */
+val PlanChangeUi.sendsFix: Boolean
+    get() = plan?.isPrivate == false && ((newPlace != null && !online.chosen) || movesOnline)
+
 /** An online plan staying online with a new link. */
 val PlanChangeUi.linkChanged: Boolean
-    get() = online.chosen && plan?.isOnline == true && online.link.trim() != plan?.place?.link
+    get() = online.chosen && plan?.isOnline == true && PlanOnlineLink.clean(online.link) != plan?.place?.link
 
 /** A plan at a public place moving online. */
 val PlanChangeUi.movesOnline: Boolean

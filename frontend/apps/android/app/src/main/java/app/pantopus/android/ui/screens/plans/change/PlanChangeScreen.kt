@@ -192,9 +192,18 @@ private fun WhereField(
     val name = ui.newPlace?.name ?: current ?: "Choose a place"
     val onClick = viewModel::openPlaces
     PlanField(label = "Where") {
-        if (ui.canGoOnline) ChangeWhereChoice(ui, onOnline = viewModel::setOnline)
+        // "A place" needs somewhere to look from: an online plan with no area and no home or fix keeps its link only.
+        if (ui.canGoOnline && ui.canMoveToPlace) ChangeWhereChoice(ui, onOnline = viewModel::setOnline)
         if (ui.online.chosen) {
             ChangeLinkField(ui, onLink = viewModel::setLink)
+            ui.noPlaceReason?.let {
+                Text(
+                    text = it,
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextSecondary,
+                    modifier = Modifier.testTag("planChangeNoPlace"),
+                )
+            }
             return@PlanField
         }
         PlanFormCard {
