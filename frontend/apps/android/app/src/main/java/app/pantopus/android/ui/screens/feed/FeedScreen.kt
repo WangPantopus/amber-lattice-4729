@@ -104,6 +104,7 @@ import app.pantopus.android.ui.components.toastDurationMillis
 import app.pantopus.android.ui.screens.feed.map.FeedMapQuery
 import app.pantopus.android.ui.screens.feed.map.FeedMapSection
 import app.pantopus.android.ui.screens.feed.map.FeedViewMode
+import app.pantopus.android.ui.screens.feed.pulse.PULSE_ACTION_TOAST_MILLIS
 import app.pantopus.android.ui.screens.feed.pulse.PulseAuthorLink
 import app.pantopus.android.ui.screens.feed.pulse.PulseFeedUiState
 import app.pantopus.android.ui.screens.feed.pulse.PulseFeedViewModel
@@ -111,11 +112,15 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
 import app.pantopus.android.ui.screens.feed.pulse.PulseLaunchTopicChips
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
+import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.feed.pulse.PulseSportsEventModule
 import app.pantopus.android.ui.screens.feed.pulse.PulseSportsMode
 import app.pantopus.android.ui.screens.feed.pulse.PulseSportsStarter
 import app.pantopus.android.ui.screens.feed.pulse.PulseSportsStarterRow
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
 import app.pantopus.android.ui.screens.feed.pulse.PulseTopicChipRow
+import app.pantopus.android.ui.screens.feed.pulse.toastButton
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
 import app.pantopus.android.ui.screens.shared.feed.FeedChipItem
 import app.pantopus.android.ui.screens.shared.feed.FeedChipRow
@@ -173,6 +178,10 @@ fun FeedScreen(
     onAsk: ((AIScreenContext) -> Unit)? = null,
     /** The feed's tab tapped again on this screen: the list goes back to its top, where the header is. */
     scrollToTop: Flow<Unit>? = null,
+    /** "View" on the "Saved." toast: My posts on its Saved tab. Null leaves the toast without it. */
+    onOpenSavedPosts: (() -> Unit)? = null,
+    /** "Repost with your words": the composer with this post quoted. Null leaves it out of the Repost chooser. */
+    onQuotePost: ((String) -> Unit)? = null,
     viewModel: PulseFeedViewModel = hiltViewModel(),
     contextBarViewModel: FeedContextBarViewModel = hiltViewModel(),
 ) {
@@ -195,7 +204,9 @@ fun FeedScreen(
     // itself selects.
     val activeSurface by viewModel.surface.collectAsStateWithLifecycle()
     val toast by viewModel.toastMessage.collectAsStateWithLifecycle()
+    val toastAction by viewModel.toastAction.collectAsStateWithLifecycle()
     val overflowPostId by viewModel.overflowPostId.collectAsStateWithLifecycle()
+    val repostChooserPostId by viewModel.repostChooserPostId.collectAsStateWithLifecycle()
     val reportingPostId by viewModel.reportingPostId.collectAsStateWithLifecycle()
     val deletingPostId by viewModel.deletingPostId.collectAsStateWithLifecycle()
     val closingAskId by viewModel.closingAskId.collectAsStateWithLifecycle()
@@ -295,9 +306,24 @@ fun FeedScreen(
     // Keep the suggestion ladder aligned with the server-side radius.
     LaunchedEffect(contextRadius) { viewModel.setViewingRadiusMiles(contextRadius) }
 
-    LaunchedEffect(toast) {
+    // "View" or "Undo" on the toast (contract §5–§7); "View" shows only where there is a My posts to open.
+    val shownToastAction =
+        toastAction
+            ?.takeIf { it.action !is PulseToastAction.ViewSaved || onOpenSavedPosts != null }
+            .toastButton(toast) { action ->
+                when (action) {
+                    PulseToastAction.ViewSaved -> {
+                        viewModel.dismissToast()
+                        onOpenSavedPosts?.invoke()
+                    }
+                    is PulseToastAction.UndoHide -> viewModel.undoHide(action.postId)
+                }
+            }
+    LaunchedEffect(toast, toastAction) {
         if (toast != null) {
-            delay(toastDurationMillis(toast.orEmpty(), minimumMillis = 2_500))
+            // A toast with a button stays long enough to reach it.
+            val minimum = if (shownToastAction != null) PULSE_ACTION_TOAST_MILLIS else 2_500L
+            delay(toastDurationMillis(toast.orEmpty(), minimumMillis = minimum))
             viewModel.dismissToast()
         }
     }
@@ -547,7 +573,8 @@ fun FeedScreen(
                                         onOverflow = viewModel::openOverflow,
                                         onDismissSeeded = viewModel::dismissSeededFact,
                                         onToggleSave = viewModel::toggleSave,
-                                        onToggleRepost = viewModel::toggleRepost,
+                                        // ↻ opens the Repost chooser (contract §2).
+                                        onToggleRepost = viewModel::openRepostChooser,
                                         onOpenAuthor = onOpenAuthor,
                                         onChooseReaction = viewModel::chooseReaction,
                                     ),
@@ -577,12 +604,16 @@ fun FeedScreen(
                         background = PantopusColors.appText,
                         foreground = PantopusColors.appTextInverse,
                         textStyle = TextStyle(fontSize = 13.sp),
+                        // Clear of the compose button beside it, so a long line ("Reposted. Your connections see
+                        // it, and it's on your profile.") wraps instead of running under the button.
+                        sideMargin = Spacing.s16 + Spacing.s2,
                     ),
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = Spacing.s16)
                         .testTag("pulseFeedToast"),
+                action = shownToastAction,
             )
         }
         if (showsIntentPicker) {
@@ -656,10 +687,8 @@ fun FeedScreen(
                     viewModel.dismissOverflow()
                     viewModel.toggleSave(row.id)
                 },
-                onToggleRepost = {
-                    viewModel.dismissOverflow()
-                    viewModel.toggleRepost(row.id)
-                },
+                // The menu's one Repost item opens the same chooser as ↻ (contract §2).
+                onToggleRepost = { viewModel.openRepostChooser(row.id) },
                 onShare = {
                     viewModel.dismissOverflow()
                     launchShareSheet(row.id)
@@ -693,6 +722,23 @@ fun FeedScreen(
                     viewModel.dismissOverflow()
                     DeepLinkRouter.handle("/plans/${row.id}")
                 },
+            )
+        }
+    }
+
+    repostChooserPostId?.let { id ->
+        loadedRows.firstOrNull { it.id == id }?.let { row ->
+            PulseRepostChooserSheet(
+                isReposted = row.actions.isReposted,
+                onToggleRepost = { viewModel.toggleRepost(row.id) },
+                onQuote =
+                    onQuotePost?.let { quote ->
+                        {
+                            viewModel.prepareQuote(row.id)
+                            quote(row.id)
+                        }
+                    },
+                onDismiss = { viewModel.dismissRepostChooser() },
             )
         }
     }
@@ -950,12 +996,12 @@ private fun PostOverflowSheet(
                 OverflowAction(label = "Open plan", testTag = "pulseFeedOverflowOpenPlan", onClick = onOpenPlan)
             }
             OverflowAction(
-                label = if (actions.isSaved) "Remove bookmark" else "Save post",
+                label = if (actions.isSaved) PulsePostCopy.REMOVE_SAVED_LABEL else PulsePostCopy.SAVE_LABEL,
                 testTag = "pulseFeedOverflowSave",
                 onClick = onToggleSave,
             )
             OverflowAction(
-                label = if (actions.isReposted) "Undo repost" else "Repost",
+                label = if (actions.isReposted) PulsePostCopy.UNDO_REPOST else PulsePostCopy.REPOST,
                 testTag = "pulseFeedOverflowRepost",
                 onClick = onToggleRepost,
             )
@@ -1748,5 +1794,7 @@ private fun FeedPostRow(
         onToggleSave = if (seeded) null else ({ rowActions.onToggleSave(row.id) }),
         onToggleRepost = if (seeded) null else ({ rowActions.onToggleRepost(row.id) }),
         onOpenAuthor = row.authorLink?.let { link -> rowActions.onOpenAuthor?.let { open -> { open(link) } } },
+        // The quoted card opens the original's page, as a tap on its own card would.
+        onOpenQuoted = onTapPost,
     )
 }

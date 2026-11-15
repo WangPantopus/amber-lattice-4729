@@ -25,7 +25,9 @@ import app.pantopus.android.data.api.models.posts.PostMediaLocation
 import app.pantopus.android.data.api.models.posts.PostPrecheckFinding
 import app.pantopus.android.data.api.models.posts.PostPrecheckRequest
 import app.pantopus.android.data.api.models.posts.PostUpdateRequest
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.api.net.refusesStoredCopy
 import app.pantopus.android.data.businesses.BusinessPostsRepository
 import app.pantopus.android.data.location.LocationProvider
 import app.pantopus.android.data.location.UserCoordinate
@@ -40,6 +42,9 @@ import app.pantopus.android.ui.screens.compose.listing.ListingPhotoProcessor
 import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
+import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedCard
+import app.pantopus.android.ui.screens.feed.pulse.pulseQuotedPreview
 import app.pantopus.android.ui.screens.shared.form.FormAggregate
 import app.pantopus.android.ui.screens.shared.form.FormFieldState
 import app.pantopus.android.ui.screens.shared.form.FormValidator
@@ -470,6 +475,44 @@ class PulseComposeViewModel
         val shouldDismiss: StateFlow<Boolean> = _shouldDismiss.asStateFlow()
 
         /**
+         * "Repost with your words" (contract §8): the post this new post quotes (the `quote` nav arg), sent as
+         * `quotedPostId`. Never on an edit, which must not send it.
+         */
+        val quotedPostId: String? =
+            savedStateHandle.get<String>(QUOTED_POST_KEY)?.takeIf { it.isNotBlank() && editingPostId == null }
+
+        /**
+         * Whether the AI assist card shows: not on an edit, and not on a quote (a few words about the post under
+         * them; the assist writes whole posts from photos).
+         */
+        val showsAssist: Boolean get() = !isEditing && quotedPostId == null
+
+        private val _quotedPost = MutableStateFlow<PulseQuotedCard?>(null)
+
+        /** The quoted post's compact card under the text box; null while it loads (or for an ordinary post). */
+        val quotedPost: StateFlow<PulseQuotedCard?> = _quotedPost.asStateFlow()
+
+        init {
+            quotedPostId?.let(::loadQuotedPost)
+        }
+
+        /**
+         * The quoted card from the post's stored copy (the card it was quoted from) at once, then from its page. A post
+         * that is gone or no longer yours to read shows "This post isn't available."; posting then says so too.
+         */
+        private fun loadQuotedPost(postId: String) {
+            repo.detailCopy(postId).data?.post?.let { _quotedPost.value = pulseQuotedPreview(it) }
+            viewModelScope.launch {
+                val stored = repo.detailStored(postId)
+                val post = stored.data?.post
+                when {
+                    stored.failure.refusesStoredCopy -> _quotedPost.value = PulseQuotedCard.Unavailable
+                    post != null -> _quotedPost.value = pulseQuotedPreview(post)
+                }
+            }
+        }
+
+        /**
          * Selector + identity baselines. Updated to the prefilled values
          * after a successful edit-mode fetch so `isDirty` compares against
          * the post's saved pose, not the create-mode defaults.
@@ -543,7 +586,11 @@ class PulseComposeViewModel
             target: PulsePostingTarget,
             purpose: PulseComposePurpose?,
         ) {
-            if (flowConfigured) return
+            // Coming back to the same draft (from an opened post) keeps what the person set, and an edit keeps the post's
+            // own purpose (read in `loadForEdit`); a new post's other target or purpose (a quote's "Change", back through
+            // the target picker) applies afresh. The words stay either way.
+            val sameDraft = target == postingTarget && purpose == composePurpose
+            if (flowConfigured && (isEditing || sameDraft)) return
             flowConfigured = true
             postingTarget = target
             composePurpose = purpose
@@ -641,6 +688,7 @@ class PulseComposeViewModel
                 when {
                     isEditing -> "Edit post"
                     isBusinessAuthored -> "Post as business"
+                    quotedPostId != null -> PulsePostCopy.REPOST_WITH_WORDS
                     else -> "New post"
                 }
 
@@ -965,10 +1013,13 @@ class PulseComposeViewModel
                         },
                     )
                 PulseComposeIntent.Announce ->
-                    if (composePurpose == PulseComposePurpose.Deal) {
-                        listOf(PulseComposeField.Title, PulseComposeField.Body, PulseComposeField.DealBusinessName)
-                    } else {
-                        listOf(PulseComposeField.Title, PulseComposeField.Body)
+                    when {
+                        composePurpose == PulseComposePurpose.Deal ->
+                            listOf(PulseComposeField.Title, PulseComposeField.Body, PulseComposeField.DealBusinessName)
+                        // "Repost with your words" on a plain post is the person's words about the post under them:
+                        // no headline (as on iPhone).
+                        quotedPostId != null && composePurpose == null -> listOf(PulseComposeField.Body)
+                        else -> listOf(PulseComposeField.Title, PulseComposeField.Body)
                     }
             }
 
@@ -1516,7 +1567,14 @@ class PulseComposeViewModel
                     )
                 }
                 is NetworkResult.Failure -> {
-                    val message = result.error.message.ifBlank { "Couldn't post. Try again." }
+                    val message =
+                        if (request.quotedPostId != null && result.error == NetworkError.NotFound) {
+                            // 404 QUOTED_POST_UNAVAILABLE: the quoted post went away while this was being written.
+                            _quotedPost.value = PulseQuotedCard.Unavailable
+                            PulsePostCopy.QUOTED_GONE
+                        } else {
+                            result.error.message.ifBlank { "Couldn't post. Try again." }
+                        }
                     _state.value = PulseComposeUiState.Error(message)
                     _toast.value = PulseComposeToast(message, isError = true)
                     Analytics.track(
@@ -1927,7 +1985,8 @@ class PulseComposeViewModel
                         )
                     }
                 }
-            return withMediaLocations(applyPlaceTag(mergeTargetContext(base)))
+            // "Repost with your words": the post it quotes (a new post only; [quotedPostId] is null on an edit).
+            return withMediaLocations(applyPlaceTag(mergeTargetContext(base))).copy(quotedPostId = quotedPostId)
         }
 
         /** A Place post carries where its attachments were taken: evidence that the author was there, like the GPS fix. */
@@ -2089,6 +2148,9 @@ class PulseComposeViewModel
 
             /** Nav arg carrying a Pantopus AI post draft's type and other fields ([PulseComposeDraftFields.encode]). */
             const val PREFILL_DRAFT_FIELDS_KEY = "prefillDraft"
+
+            /** Nav arg carrying the id of the post "Repost with your words" quotes. */
+            const val QUOTED_POST_KEY = "quote"
             private const val TITLE_MAX = 255
             private const val BODY_MAX = 5000
             private const val LOCATION_MAX = 255

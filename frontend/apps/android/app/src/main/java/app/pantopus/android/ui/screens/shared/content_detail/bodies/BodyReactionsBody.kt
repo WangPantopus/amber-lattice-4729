@@ -198,6 +198,8 @@ fun BodyReactionsBody(
      */
     commentsLoading: Boolean = false,
     loadingCommentCount: Int = 0,
+    /** Drawn under the text and media, above the reaction bar: a quote post's quoted card. Null for none. */
+    belowMedia: (@Composable () -> Unit)? = null,
 ) {
     val placeholders = commentsLoading && comments.isEmpty() && loadingCommentCount > 0
     Column(
@@ -237,6 +239,9 @@ fun BodyReactionsBody(
                 // An outlet's picture that's gone leaves no hole.
                 dropsFailedPictures = source != null,
             )
+        }
+        belowMedia?.let { slot ->
+            Box(modifier = Modifier.padding(horizontal = Spacing.s4)) { slot() }
         }
         ReactionsBar(
             counts = reactions,

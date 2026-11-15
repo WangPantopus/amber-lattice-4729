@@ -370,6 +370,8 @@ data class RowEngagementCta(
     val icon: PantopusIcon? = null,
     val accessibilityLabel: String = label,
     val onClick: () -> Unit,
+    /** The button's test tag (iPhone's accessibility identifier); null keeps the shared `rowEngagementCTA`. */
+    val testTag: String? = null,
 )
 
 /**

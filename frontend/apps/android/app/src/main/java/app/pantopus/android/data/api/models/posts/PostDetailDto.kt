@@ -1,6 +1,7 @@
 package app.pantopus.android.data.api.models.posts
 
 import app.pantopus.android.core.identity.MadeUpUsername
+import app.pantopus.android.data.api.models.feed.FeedQuotedPost
 import app.pantopus.android.data.api.models.pulse.PostLifecycleMetadata
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -156,6 +157,8 @@ data class PostDetailDto(
     /** When the post ends (S7). */
     @Json(name = "expires_at") val expiresAt: String? = null,
     @Json(name = "post_metadata") val lifecycleMetadata: PostLifecycleMetadata? = null,
+    /** "Repost with your words": the post this one quotes, or why it can't be shown; null on an ordinary post. */
+    @Json(name = "quoted_post") val quotedPost: FeedQuotedPost? = null,
 ) {
     /** A moderator removed the post: neighbors can't see it or reply. */
     val isRemovedByModerator: Boolean get() = archiveReason == "moderation"

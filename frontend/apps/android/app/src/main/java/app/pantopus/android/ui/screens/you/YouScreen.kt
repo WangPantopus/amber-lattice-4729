@@ -82,6 +82,10 @@ fun YouScreen(
     onOpenConnections: () -> Unit = {},
     onOpenSupportTrains: () -> Unit = {},
     onOpenSavedPlaces: () -> Unit = {},
+    /** "Repost with your words" on one of your profile's post cards: the composer with that post quoted. */
+    onQuotePost: ((String) -> Unit)? = null,
+    /** "View" on the "Saved." toast: My posts on its Saved tab. */
+    onOpenSavedPosts: (() -> Unit)? = null,
 ) {
     // The debug "Invite owner" dialog fills in the signed-in email.
     val signedIn = viewModel.authState.collectAsStateWithLifecycle().value as? AuthRepository.State.SignedIn
@@ -108,6 +112,8 @@ fun YouScreen(
         onEditProfile = onOpenEditProfile,
         ownerCover = true,
         expandMonthlyReceipt = expandMonthlyReceipt,
+        onQuotePost = onQuotePost,
+        onOpenSavedPosts = onOpenSavedPosts,
         ownerNavigation =
             OwnerNavigation(
                 onSeeAllPosts = onOpenMyPosts,
