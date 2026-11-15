@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
-import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
 import app.pantopus.android.data.api.net.NetworkResult
@@ -17,6 +16,7 @@ import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
@@ -80,6 +80,8 @@ data class PlanChangeUi(
     val repeatChosen: Boolean = false,
     /** The Repeats screen is open over this one. */
     val repeatsOpen: Boolean = false,
+    /** Online or a place, and the link (Plans step 3, PlanChangeOnline.kt). */
+    val online: PlanChangeOnline = PlanChangeOnline(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -148,8 +150,8 @@ data class PlanChangeUi(
             return abs(Duration.between(a, b).toMinutes()) > STILL_COMING_MINUTES
         }
 
-    /** Moving the start more than 30 minutes, or the place, asks everyone in "Still coming?" (brief section 5). */
-    val asksStillComing: Boolean get() = peopleIn > 0 && (timeMoved || newPlace != null || locationMoved)
+    /** Moving the start more than 30 minutes, or the place (or the link), asks everyone in "Still coming?" (brief section 5). */
+    val asksStillComing: Boolean get() = peopleIn > 0 && (timeMoved || newPlace != null || locationMoved || onlineChanged)
 
     /**
      * A public plan can move to another public place; a plan at home keeps its place (as on iOS). A business's plan
@@ -169,8 +171,8 @@ data class PlanChangeUi(
     /** The start or the end moved: only then are the times sent (and checked), as on iOS. */
     val timesMoved: Boolean get() = start != originalStart || end != originalEnd
 
-    /** Anything to save besides how it repeats. */
-    val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved
+    /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
+    val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
     val changed: Boolean get() = changedBesidesRepeat || repeatChanged
 
@@ -225,6 +227,12 @@ class PlanChangeViewModel
                                 currentLocationId = current?.id,
                                 repeatOn = feature.flags.value.repeatOn,
                                 originalRepeat = PlanRepeatPattern.from(plan.repeat),
+                                online =
+                                    PlanChangeOnline(
+                                        switchOn = feature.flags.value.onlineOn,
+                                        chosen = plan.isOnline,
+                                        link = plan.place?.link.orEmpty(),
+                                    ),
                             )
                         }
                     }
@@ -263,6 +271,17 @@ class PlanChangeViewModel
         /** A business's plan: another of the business's own locations. */
         fun pickLocation(id: String) {
             _ui.update { it.copy(newLocationId = id.takeIf { picked -> picked != it.currentLocationId }, error = null) }
+        }
+
+        /** Where (Plans step 3): online, or a public place; choosing Online drops a place picked here. */
+        fun setOnline(on: Boolean) {
+            if (on && !_ui.value.canGoOnline) return
+            _ui.update { it.copy(online = it.online.copy(chosen = on), newPlace = if (on) null else it.newPlace, error = null) }
+        }
+
+        /** An online plan's link, as typed or pasted. */
+        fun setLink(value: String) {
+            _ui.update { it.copy(online = it.online.copy(link = value), error = null) }
         }
 
         // ---- Where (H6 over H11, public plans only) ----
@@ -408,17 +427,8 @@ class PlanChangeViewModel
                     UpdatePlanBody(
                         startsAt = start.atZone(ui.zone).toInstant().toString().takeIf { ui.timesMoved },
                         endsAt = end.atZone(ui.zone).toInstant().toString().takeIf { ui.timesMoved },
-                        place =
-                            ui.newPlace?.let {
-                                PlanPlaceInput(
-                                    kind = "public",
-                                    name = it.name,
-                                    address = it.address,
-                                    latitude = it.latitude,
-                                    longitude = it.longitude,
-                                    placeId = it.placeId,
-                                )
-                            },
+                        // A new public place, or (Plans step 3) the link: moving online or changing it.
+                        place = ui.changedPlace(),
                         businessLocationId = ui.newLocationId.takeIf { ui.locationMoved },
                         // A new pattern from this date on (Plans step 2); "Doesn't repeat" adds `"repeat": null`, below.
                         repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
@@ -446,7 +456,7 @@ class PlanChangeViewModel
                 tooFar != null -> tooFar
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
-                else -> null
+                else -> _ui.value.whereProblem()
             }
         }
 

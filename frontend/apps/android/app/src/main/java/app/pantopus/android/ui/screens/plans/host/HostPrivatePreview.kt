@@ -39,6 +39,7 @@ import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanFormCard
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
@@ -134,9 +135,12 @@ private fun InvitedCard(
             else -> PlanFormat.whenLine(start.atZone(ui.zone), draft.end?.atZone(ui.zone), long = true)
         }
     val city = ui.previewArea?.removePrefix("Near ")?.takeIf(String::isNotBlank) ?: ui.home?.city?.takeIf { draft.atHome }
-    // At a home the address waits until they say they're in; a public place shows by name.
+    // At a home the address waits until they say they're in; a public place shows by name; an online plan says so and
+    // its link waits until they're in (Plans step 3).
     val place =
-        if (draft.atHome) {
+        if (ui.isOnline) {
+            previewOnlineWhere(ui)
+        } else if (draft.atHome) {
             listOfNotNull("${ui.hostName.substringBefore(' ')}'s place", city).joinToString(", ")
         } else {
             listOfNotNull(draft.place?.name, city).joinToString(", ")
@@ -148,6 +152,7 @@ private fun InvitedCard(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PlanTypeTag(kind)
             PlanPrivateChip()
+            if (ui.isOnline) PlanOnlineChip()
         }
         Text(text = draft.title.ifBlank { kind.label }, style = PantopusTextStyle.h3, color = PantopusColors.appText)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
