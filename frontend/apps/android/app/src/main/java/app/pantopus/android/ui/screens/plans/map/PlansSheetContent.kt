@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +63,7 @@ import app.pantopus.android.data.api.models.plans.PlansElsewhereDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanHostFilter
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.PlanWindow
@@ -72,6 +74,7 @@ import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -101,6 +104,9 @@ import app.pantopus.android.ui.screens.plans.components.PlanSwatch
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTypeTag
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesHostCard
 import app.pantopus.android.ui.screens.plans.teams.PlansSportsEmpty
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -194,7 +200,9 @@ internal fun rowSpoken(
     val business = PLAN_BUSINESS_SPOKEN.takeIf { plan.isBusiness }
     // A private plan says so after its kind, as its lock badge shows it (Plans step 1).
     val privateWord = PLAN_PRIVATE_SPOKEN.takeIf { plan.isPrivate }
-    return listOfNotNull(kind, business, privateWord, plan.title, PlanFormat.rowSubtitle(plan), endWords).joinToString(", ")
+    // A repeating plan says how (Plans step 2), as its row's third line shows it.
+    val repeatWords = PlanRepeatWords.cardLine(plan.repeat)
+    return listOfNotNull(kind, business, privateWord, plan.title, PlanFormat.rowSubtitle(plan), repeatWords, endWords).joinToString(", ")
 }
 
 /** One plan as a row of the list; at the sheet's lowest stop ([peek], board F1) a chevron ends it, as on iOS. */
@@ -209,6 +217,7 @@ internal fun PlanListRow(
     fold: PlanFoldScope? = null,
 ) {
     val status = rowEnd(plan, mine)
+    val repeatLine = PlanRepeatWords.cardLine(plan.repeat)
     PlanRow(
         title = plan.title,
         subtitle = PlanFormat.rowSubtitle(plan),
@@ -218,10 +227,37 @@ internal fun PlanListRow(
         // TalkBack still hears the status or spots a peek row doesn't show (as VoiceOver does on iOS).
         spoken = rowSpoken(plan, status),
         onClick = { onOpen(plan) },
+        below = if (repeatLine != null) ({ PlanRowRepeat(repeatLine) }) else null,
     )
     val more = plan.moreTimes?.takeIf { it.count > 0 && plan.isBusiness }
     if (fold != null && more != null) PlanFold(plan.id, more, fold)
 }
+
+/** A repeating plan's row (Plans step 2): "Every Tue and Thu until Feb 4" with the repeat glyph, under its when and where. */
+@Composable
+private fun PlanRowRepeat(text: String) {
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.ArrowsRepeat, contentDescription = null, size = 12.dp, tint = PantopusColors.appTextSecondary)
+        Text(
+            text = text,
+            style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = PantopusColors.appTextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A hosted plan that repeats and goes on, under Your plans: it shows as the host's card (board Regulars). */
+private val PlanDto.isHostedSeries: Boolean
+    get() {
+        val open = planState != PlanState.CANCELLED && planState != PlanState.ENDED
+        return open && standing == PlanViewerStanding.HOSTING && repeats && !isBusiness
+    }
 
 /** What a venue's fold needs from the list: the window it says "this week" by, and how to open a plan by id. */
 internal class PlanFoldScope(
@@ -478,6 +514,8 @@ internal fun PlansListContent(
     onRetry: () -> Unit,
     onOpenId: (String) -> Unit = {},
     onHostFilter: (PlanHostFilter) -> Unit = {},
+    /** A hosted repeating plan's Skip, Change and Stop repeating under Your plans (Plans step 2); null shows it as a row. */
+    seriesActions: ((PlanDto) -> PlanSeriesActions)? = null,
 ) {
     val sections = remember(state.others, state.mineShown) { daySections(state.others) }
     val fold = remember(state.window, onOpenId) { PlanFoldScope(state.window, onOpenId) }
@@ -495,7 +533,12 @@ internal fun PlansListContent(
         if (state.mineShown.isNotEmpty()) {
             item(key = "mine-title") { SectionTitle("Your plans", top = 10.dp) }
             items(state.mineShown, key = { "mine-${it.id}" }) { plan ->
-                PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen)
+                val series = seriesActions?.takeIf { plan.isHostedSeries }
+                if (series != null) {
+                    PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
+                } else {
+                    PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen)
+                }
             }
         }
         sections.forEach { (title, plans) ->
@@ -693,6 +736,7 @@ internal fun PlanCardContent(
                 modifier = Modifier.clickable(role = Role.Button, onClick = onDetails).semantics { heading() },
             )
             Text(text = cardWhereLine(plan), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+            PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat), strong = false)
         }
         plan.business?.let { business ->
             PlanHostRow(

@@ -103,6 +103,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanSwatch
 import app.pantopus.android.ui.screens.plans.components.aboveSheet
 import app.pantopus.android.ui.screens.plans.detail.PlanInviteSheet
 import app.pantopus.android.ui.screens.plans.planGlass
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevations
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -147,6 +148,8 @@ data class PlansMapActions(
     val onOpenMenu: (() -> Unit)? = null,
     /** "Plan with people you know" (Plans step 1): the host flow, starting on "Only people I invite". */
     val onHostPrivate: () -> Unit = {},
+    /** "Change" on a repeating plan's card under Your plans (Plans step 2): the change screen; the plan page without one. */
+    val onChangePlan: (String) -> Unit = onOpenPlan,
 )
 
 /**
@@ -168,6 +171,18 @@ fun PlansMapScreen(
     }
     RefreshOnStoreChange(viewModel::load)
     LaunchedEffect(online) { if (online) viewModel.load() }
+    // A repeating plan's Skip and Stop repeating under Your plans (Plans step 2): what they said, and the next date.
+    val context = LocalContext.current
+    LaunchedEffect(state.seriesNotice) {
+        val notice = state.seriesNotice ?: return@LaunchedEffect
+        android.widget.Toast.makeText(context, notice, android.widget.Toast.LENGTH_LONG).show()
+        viewModel.seriesNoticeShown()
+    }
+    LaunchedEffect(state.openPlanId) {
+        val next = state.openPlanId ?: return@LaunchedEffect
+        viewModel.nextDateOpened()
+        actions.onOpenPlan(next)
+    }
     val reduceMotion = rememberReduceMotion()
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
@@ -387,6 +402,14 @@ private fun PlansSheetHost(
                     onRetry = viewModel::refresh,
                     onOpenId = actions.onOpenPlan,
                     onHostFilter = viewModel::setHostFilter,
+                    seriesActions = { plan ->
+                        PlanSeriesActions(
+                            onSkip = { viewModel.skipDate(plan) },
+                            onChange = { actions.onChangePlan(plan.id) },
+                            onStop = { viewModel.stopRepeating(plan) },
+                            busy = state.seriesBusy,
+                        )
+                    },
                 )
         }
     }

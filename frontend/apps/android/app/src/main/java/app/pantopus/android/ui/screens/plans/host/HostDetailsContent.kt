@@ -220,7 +220,14 @@ private fun ColumnScope.PlaydateFields(
     }
     TitleField(draft.title, vm::setTitle)
     PlanField(label = "When") {
-        PlanWhenCard(start = draft.start, end = draft.end, onStart = vm::setStart, onEnd = vm::setEnd)
+        PlanWhenCard(
+            start = draft.start,
+            end = draft.end,
+            onStart = vm::setStart,
+            onEnd = vm::setEnd,
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
+        )
         // "Tomorrow morning", as others will see it (and as on iOS).
         val shown = draft.start?.let { "“${PlanFormat.dayPartPhrase(it.atZone(ui.zone))}”" } ?: "the part of the day"
         // A private playdate is seen only by the families invited (Plans step 1): nobody else to hide it from.
@@ -302,6 +309,8 @@ private fun ColumnScope.PickupFields(
             onEnd = vm::setEnd,
             showStart = !draft.pickupNow,
             endLabel = if (draft.pickupNow) "Until" else "Ends",
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
         )
     }
     PlanField(label = "Where") {
@@ -473,7 +482,15 @@ private fun WhenField(
     vm: HostFlowViewModel,
 ) {
     PlanField(label = "When") {
-        PlanWhenCard(start = ui.draft.start, end = ui.draft.end, onStart = vm::setStart, onEnd = vm::setEnd)
+        // The Repeats row (Plans step 2) on a person's own plan; never on a business's.
+        PlanWhenCard(
+            start = ui.draft.start,
+            end = ui.draft.end,
+            onStart = vm::setStart,
+            onEnd = vm::setEnd,
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
+        )
     }
 }
 

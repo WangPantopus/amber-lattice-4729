@@ -47,6 +47,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanTypeTag
 import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.detail.PlanInfoLine
 import app.pantopus.android.ui.screens.plans.detail.PlanInviteLines
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -151,6 +152,8 @@ private fun InvitedCard(
         Text(text = draft.title.ifBlank { kind.label }, style = PantopusTextStyle.h3, color = PantopusColors.appText)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
             if (whenText.isNotBlank()) PlanInfoLine(PantopusIcon.Calendar, whenText)
+            // "Every Tue and Thu until Feb 4" (board Preview, Plans step 2).
+            PlanRepeatLine(ui.repeatLine)
             if (place.isNotBlank()) PlanInfoLine(if (draft.atHome) PantopusIcon.Home else PantopusIcon.MapPin, place)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

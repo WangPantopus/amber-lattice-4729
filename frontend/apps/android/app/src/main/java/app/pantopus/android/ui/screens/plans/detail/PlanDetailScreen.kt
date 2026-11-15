@@ -42,6 +42,7 @@ import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.GhostButton
@@ -52,6 +53,7 @@ import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.Spacing
@@ -85,6 +87,8 @@ fun PlanDetailScreen(
     onSeeAllPlans: () -> Unit,
     /** Ask Pantopus about this plan (AI assistant phase 1); null hides the button. */
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
+    /** A repeating plan's next date, opened in place of the date its host just skipped (Plans step 2). */
+    onOpenNextDate: (String) -> Unit = onOpenPlan,
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -103,6 +107,12 @@ fun PlanDetailScreen(
             toast.info(it)
             viewModel.noticeShown()
         }
+    }
+    // A skipped date's next one (Plans step 2) opens in its place.
+    LaunchedEffect(ui.nextPlanId) {
+        val next = ui.nextPlanId ?: return@LaunchedEffect
+        viewModel.nextDateOpened()
+        onOpenNextDate(next)
     }
     // "Bring a friend" (Plans step 1): the guest's one link goes out from their own phone, with the words to send.
     val context = LocalContext.current
@@ -237,6 +247,13 @@ private fun PlanReady(
                     onChange = onChange,
                     onCancel = viewModel::openCancel,
                     onRemove = { person -> person.requestId?.let(viewModel::removeGuest) },
+                    series =
+                        PlanSeriesActions(
+                            onSkip = viewModel::skipDate,
+                            onChange = onChange,
+                            onStop = viewModel::stopRepeating,
+                            busy = ui.busy || (ui.state as? PlanDetailUiState.Ready)?.fresh != true,
+                        ),
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -291,6 +308,8 @@ private fun PlanReady(
             onNote = viewModel::editCancelNote,
             onCancel = viewModel::cancelPlan,
             onKeep = viewModel::closeCancel,
+            // A repeating plan with dates after this one asks which (Plans step 2): this date, or the rest too.
+            onCancelDate = if (plan.seriesContinues) viewModel::cancelThisDate else null,
         )
     }
     confirmLeave?.let { kind ->

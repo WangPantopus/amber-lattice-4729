@@ -232,6 +232,8 @@ data class PlanDto(
      * the people invited and the people in). Absent from an older server, which means `nearby`.
      */
     @Json(name = "audience") val audience: String? = null,
+    /** How it repeats (Plans step 2), for everyone who can read the card; null when it doesn't repeat or from an older server. */
+    @Json(name = "repeat") val repeat: PlanRepeatDto? = null,
     // PlanDetail: the host and people who are in. A private plan at a public place also sends `place` to the person
     // invited before they answer.
     @Json(name = "place") val place: PlanPlaceDto? = null,
@@ -267,6 +269,54 @@ data class PlanDto(
     @Json(name = "invite_results") val inviteResults: List<PlanInviteResultDto>? = null,
     /** Posting a private plan: the invitations couldn't be sent at all (the plan is posted either way), in words to show. */
     @Json(name = "invite_error") val inviteError: String? = null,
+)
+
+/**
+ * One of a monthly pattern's days (Plans step 2): a weekday of one week of the month (`week` 1 to 4, or -1 for the last,
+ * and `weekday` Monday 1 to Sunday 7: "the 1st Saturday") or a date (`day` 1 to 31: "the 15th"). Sent the same way.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanMonthDayDto(
+    @Json(name = "week") val week: Int? = null,
+    @Json(name = "weekday") val weekday: Int? = null,
+    @Json(name = "day") val day: Int? = null,
+)
+
+/**
+ * `repeat` on a card (Plans step 2): the pattern (`freq` weekly, biweekly or monthly; `weekdays` Monday 1 to Sunday 7;
+ * `month_days`; `until` or `count`), its words ("Every Tuesday and Thursday", short "Every Tue and Thu"), which date of
+ * the series this plan is of how many, and the series' last date (`YYYY-MM-DD`).
+ */
+@Suppress("LongParameterList")
+@JsonClass(generateAdapter = true)
+data class PlanRepeatDto(
+    @Json(name = "freq") val freq: String? = null,
+    @Json(name = "weekdays") val weekdays: List<Int>? = null,
+    @Json(name = "month_days") val monthDays: List<PlanMonthDayDto>? = null,
+    @Json(name = "until") val until: String? = null,
+    @Json(name = "count") val count: Int? = null,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "short") val shortText: String? = null,
+    @Json(name = "index") val index: Int? = null,
+    @Json(name = "total") val total: Int? = null,
+    @Json(name = "last_on") val lastOn: String? = null,
+)
+
+/** `repeat` in the create and change bodies (Plans step 2): one of [until] and [count] is sent, never both. */
+@JsonClass(generateAdapter = true)
+data class PlanRepeatInput(
+    @Json(name = "freq") val freq: String,
+    @Json(name = "weekdays") val weekdays: List<Int>? = null,
+    @Json(name = "month_days") val monthDays: List<PlanMonthDayDto>? = null,
+    @Json(name = "until") val until: String? = null,
+    @Json(name = "count") val count: Int? = null,
+)
+
+/** `POST /api/plans/:id/cancel` with `repeat: "keep"` (Plans step 2): the date that took its place, or null when the series is over. */
+@JsonClass(generateAdapter = true)
+data class PlanCancelReply(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "next_plan_id") val nextPlanId: String? = null,
 )
 
 /** `nearest_elsewhere` (F4): the closest town with plans 5 to 15 miles away when the page is empty. */
@@ -409,6 +459,8 @@ data class CreatePlanBody(
     @Json(name = "gps") val gps: PlanGpsInput? = null,
     /** A5 "Host again": the plan this one copies (records the funnel). */
     @Json(name = "hosted_again_from") val hostedAgainFrom: String? = null,
+    /** How it repeats (Plans step 2); left out for a plan that doesn't repeat, as before. */
+    @Json(name = "repeat") val repeat: PlanRepeatInput? = null,
     @Json(name = "host_as") val hostAs: PlanHostAsInput? = null,
     /** One of the business's own locations (`host_as` only). */
     @Json(name = "business_location_id") val businessLocationId: String? = null,
@@ -435,6 +487,11 @@ data class UpdatePlanBody(
     @Json(name = "auto_rules") val autoRules: List<String>? = null,
     @Json(name = "details") val details: PlanDetailsDto? = null,
     @Json(name = "guest_note") val guestNote: String? = null,
+    /**
+     * A new pattern from this date on (Plans step 2). Stopping a series sends `"repeat": null`, which this body can't
+     * say (nulls are left out): `PlansRepository.stopRepeating` sends that one by itself.
+     */
+    @Json(name = "repeat") val repeat: PlanRepeatInput? = null,
     /** A business's plan: move it to another of the business's own locations (never a `place`). */
     @Json(name = "business_location_id") val businessLocationId: String? = null,
     @Json(name = "label") val label: String? = null,
@@ -444,6 +501,8 @@ data class UpdatePlanBody(
 @JsonClass(generateAdapter = true)
 data class CancelPlanBody(
     @Json(name = "note") val note: String? = null,
+    /** `keep` cancels this date of a repeating plan only and posts the next one (Plans step 2); left out, a cancel stops the series. */
+    @Json(name = "repeat") val repeat: String? = null,
 )
 
 /** `POST /api/plans/:id/requests` body. The kids fields are for playdates only. */

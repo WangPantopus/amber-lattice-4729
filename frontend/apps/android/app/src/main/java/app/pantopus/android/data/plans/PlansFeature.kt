@@ -22,17 +22,25 @@ import javax.inject.Singleton
 
 /**
  * The server flags (brief section 3). [playdates] only counts when [plans] is on; so does [privatePlans] (`plans_private`
- * and `plans_invites` both on, Plans step 1: invite-only plans), which shows none of its controls while off.
+ * and `plans_invites` both on, Plans step 1: invite-only plans), which shows none of its controls while off, and [repeat]
+ * (`plans_repeat`, Plans step 2).
  */
 data class PlansFlags(
     val plans: Boolean = false,
     val playdates: Boolean = false,
     val privatePlans: Boolean = false,
+    val repeat: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
     /** Private plans can be posted: the empty state's row, "Who can see this" and the private preview show. */
     val privateOn: Boolean get() = plans && privatePlans
+
+    /**
+     * A plan can be set to repeat: the Repeats row shows on a person's new plan and on the change screen. A plan that
+     * already repeats keeps its lines and its host's controls with this off.
+     */
+    val repeatOn: Boolean get() = plans && repeat
 }
 
 /**
@@ -155,10 +163,12 @@ class PlansFeature
                     val playdates = async { read(FLAG_PLAYDATES) }
                     val privatePlans = async { read(FLAG_PRIVATE) }
                     val invites = async { read(FLAG_INVITES) }
+                    val repeat = async { read(FLAG_REPEAT) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
                     val privateOn = bothOn(privatePlans.await(), invites.await())
+                    val repeatOn = repeat.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -166,6 +176,7 @@ class PlansFeature
                             plans = plansOn ?: current.plans,
                             playdates = playdatesOn ?: current.playdates,
                             privatePlans = privateOn ?: current.privatePlans,
+                            repeat = repeatOn ?: current.repeat,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -189,13 +200,18 @@ class PlansFeature
                 is NetworkResult.Failure -> null
             }
 
-        /** One character a flag, in order: plans, playdates, private ("11" from before private plans reads private off). */
+        /**
+         * One character a flag, in order: plans, playdates, private, repeat ("11" from before private plans reads private
+         * and repeat off).
+         */
+        @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
             val raw = prefs.getString(id, null) ?: return PlansFlags()
             return PlansFlags(
                 plans = raw.getOrNull(0) == '1',
                 playdates = raw.getOrNull(1) == '1',
                 privatePlans = raw.getOrNull(2) == '1',
+                repeat = raw.getOrNull(3) == '1',
             )
         }
 
@@ -203,7 +219,7 @@ class PlansFeature
             id: String,
             flags: PlansFlags,
         ) {
-            val raw = listOf(flags.plans, flags.playdates, flags.privatePlans).joinToString("") { if (it) "1" else "0" }
+            val raw = listOf(flags.plans, flags.playdates, flags.privatePlans, flags.repeat).joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
 
@@ -214,5 +230,6 @@ class PlansFeature
             const val FLAG_PLAYDATES = "plans_playdates"
             const val FLAG_PRIVATE = "plans_private"
             const val FLAG_INVITES = "plans_invites"
+            const val FLAG_REPEAT = "plans_repeat"
         }
     }

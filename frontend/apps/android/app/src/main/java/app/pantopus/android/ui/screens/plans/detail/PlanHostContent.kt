@@ -41,10 +41,12 @@ import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.ui.components.DestructiveButton
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusTextField
@@ -65,6 +67,9 @@ import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.map.planH3
 import app.pantopus.android.ui.screens.plans.opensPlanProfile
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesHostCard
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -84,11 +89,13 @@ internal fun ColumnScope.PlanHostBody(
     onChange: () -> Unit,
     onCancel: () -> Unit,
     onRemove: (PlanPersonDto) -> Unit,
+    series: PlanSeriesActions? = null,
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
+    HostSeries(plan, closed, series)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
     val waitingCount = requests?.waitlisted?.size ?: plan.waitlistCount
@@ -120,6 +127,20 @@ internal fun ColumnScope.PlanHostBody(
     }
 }
 
+/**
+ * A repeating plan that is still open (board Regulars, Plans step 2): the series, Skip, Change and Stop repeating,
+ * whatever the switch says.
+ */
+@Composable
+private fun HostSeries(
+    plan: PlanDto,
+    closed: Boolean,
+    series: PlanSeriesActions?,
+) {
+    if (closed || series == null || !plan.repeats) return
+    PlanSeriesHostCard(plan, series)
+}
+
 /** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
 @Composable
 private fun HostHeading(plan: PlanDto) {
@@ -140,6 +161,7 @@ private fun HostHeading(plan: PlanDto) {
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
 }
 
@@ -453,6 +475,7 @@ internal fun PlanCancelSheet(
     onNote: (String) -> Unit,
     onCancel: () -> Unit,
     onKeep: () -> Unit,
+    onCancelDate: (() -> Unit)? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // People in count with their parties ("Chris + 1" is two), as on H9 and H11; everyone asking or waiting is told too.
@@ -484,7 +507,21 @@ internal fun PlanCancelSheet(
                 placeholder = "Sorry, something came up.",
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                DestructiveButton(title = "Cancel plan", onClick = onCancel, modifier = Modifier.height(50.dp))
+                if (onCancelDate != null) {
+                    // A repeating plan (Plans step 2): this date only (the next one is posted now), or the rest too.
+                    DestructiveButton(
+                        title = "Cancel this date",
+                        onClick = onCancelDate,
+                        modifier = Modifier.height(50.dp).testTag("planCancelThisDate"),
+                    )
+                    DestructiveButton(
+                        title = "Cancel and stop repeating",
+                        onClick = onCancel,
+                        modifier = Modifier.height(50.dp).testTag("planCancelStopRepeating"),
+                    )
+                } else {
+                    DestructiveButton(title = "Cancel plan", onClick = onCancel, modifier = Modifier.height(50.dp))
+                }
                 GhostButton(title = "Keep plan", onClick = onKeep, modifier = Modifier.height(50.dp))
             }
             PlanWell {

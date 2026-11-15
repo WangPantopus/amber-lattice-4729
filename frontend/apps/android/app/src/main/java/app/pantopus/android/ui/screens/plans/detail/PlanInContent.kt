@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
@@ -53,6 +54,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanStackButton
 import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.map.planH2
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -110,6 +112,7 @@ internal fun ColumnScope.PlanInBody(
             }
         }
         PlanInfoLine(PantopusIcon.Calendar, PlanFormat.whenLine(plan, long = true))
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {

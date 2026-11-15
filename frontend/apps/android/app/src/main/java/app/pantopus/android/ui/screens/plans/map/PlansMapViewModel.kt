@@ -20,6 +20,7 @@ import app.pantopus.android.data.plans.PlanLocation
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanOrigin
 import app.pantopus.android.data.plans.PlanPostedInvite
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewport
 import app.pantopus.android.data.plans.PlanWindow
@@ -29,6 +30,7 @@ import app.pantopus.android.data.plans.PlansFlags
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.planKind
+import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.planState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -93,6 +95,12 @@ data class PlansMapUiState(
      * shows only when true, so Plans looks exactly as before until then.
      */
     val hasBusinessPlans: Boolean? = null,
+    /** A repeating plan's Skip or Stop repeating from its card under Your plans is on its way (Plans step 2). */
+    val seriesBusy: Boolean = false,
+    /** What Skip or Stop repeating said, once (a refusal is the server's sentence). */
+    val seriesNotice: String? = null,
+    /** The next date to open once Skip posted it. */
+    val openPlanId: String? = null,
 ) {
     /** The filter in effect: the person's choice while businesses have plans here, else all. */
     val hostShown: PlanHostFilter
@@ -192,6 +200,48 @@ class PlansMapViewModel
         /** The invite sheet a private plan's preview asked for has opened. */
         fun postedInviteOpened() {
             _state.update { it.copy(postedInvite = null) }
+        }
+
+        /** "Skip Thursday" on a repeating plan's card under Your plans (Plans step 2): the next date opens and says so. */
+        fun skipDate(plan: PlanDto) {
+            if (_state.value.seriesBusy) return
+            _state.update { it.copy(seriesBusy = true) }
+            viewModelScope.launch {
+                when (val result = repository.cancelThisDate(plan.id, null)) {
+                    is NetworkResult.Success -> {
+                        val next = result.data
+                        next?.let { events.noteOnArrival(it, PlanRepeatWords.SKIPPED_NEXT) }
+                        val notice = PlanRepeatWords.CANCELLED_NO_NEXT.takeIf { next == null }
+                        _state.update { it.copy(seriesBusy = false, openPlanId = next, seriesNotice = notice) }
+                    }
+                    is NetworkResult.Failure -> _state.update { it.copy(seriesBusy = false, seriesNotice = result.error.planMessage) }
+                }
+                refreshAll(force = true)
+            }
+        }
+
+        /** "Stop repeating" on a repeating plan's card under Your plans: this date stays, none follows. */
+        fun stopRepeating(plan: PlanDto) {
+            if (_state.value.seriesBusy) return
+            _state.update { it.copy(seriesBusy = true) }
+            viewModelScope.launch {
+                val notice =
+                    when (val result = repository.stopRepeating(plan.id)) {
+                        is NetworkResult.Success -> PlanRepeatWords.STOPPED
+                        is NetworkResult.Failure -> result.error.planMessage
+                    }
+                _state.update { it.copy(seriesBusy = false, seriesNotice = notice) }
+                refreshAll(force = true)
+            }
+        }
+
+        fun seriesNoticeShown() {
+            _state.update { it.copy(seriesNotice = null) }
+        }
+
+        /** The next date Skip posted has opened. */
+        fun nextDateOpened() {
+            _state.update { it.copy(openPlanId = null) }
         }
 
         /** First appearance and every return: show what's stored, then refresh what's out of date. */

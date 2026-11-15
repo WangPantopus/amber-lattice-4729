@@ -13,6 +13,7 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -100,7 +101,9 @@ class PlansTodayViewModel
                                 (p.viewer?.feedbackGiven != true || p.id in it.answered) &&
                                 p.id !in dismissed
                         },
-                    hostAgain = mine.recent.filter { p -> p.standing == PlanViewerStanding.HOSTING && p.id !in dismissed },
+                    // Not for a date of a repeating plan that goes on (Plans step 2): its next date is already posted.
+                    hostAgain =
+                        mine.recent.filter { p -> p.standing == PlanViewerStanding.HOSTING && p.id !in dismissed && !p.seriesContinues },
                     upcoming =
                         (mine.hosting.map { p -> p to true } + mine.going.map { p -> p to false })
                             .filter { (p, _) -> p.planState != PlanState.ENDED && p.planState != PlanState.CANCELLED },

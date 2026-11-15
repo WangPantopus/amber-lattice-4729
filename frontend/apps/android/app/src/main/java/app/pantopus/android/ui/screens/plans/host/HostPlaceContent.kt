@@ -66,6 +66,7 @@ import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.detail.PlanAreaPreviewMap
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
 import app.pantopus.android.ui.screens.plans.map.planH3
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -973,6 +974,8 @@ private fun NeighborsCard(
                 style = PantopusTextStyle.small,
                 color = PantopusColors.appTextSecondary,
             )
+            // "Every Tue and Thu until Feb 4" (Plans step 2), as others will see it under the date.
+            PlanRepeatLine(ui.repeatLine, strong = false)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PlanAvatar(name = ui.hostName, avatarUrl = ui.hostAvatar, size = 30.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {

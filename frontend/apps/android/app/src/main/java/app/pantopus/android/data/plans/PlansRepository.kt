@@ -43,7 +43,10 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreKeys
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.data.store.Stored
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.delay
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import retrofit2.Response
 import javax.inject.Inject
@@ -69,6 +72,7 @@ class PlansRepository
         private val api: PlansApi,
         private val store: ScreenStore,
         private val tokens: TokenStorage,
+        private val moshi: Moshi,
     ) {
         /** Public cards seen lately, so a plan opened from the map or a list shows its card at once. */
         private val cards =
@@ -359,6 +363,38 @@ class PlansRepository
             note: String?,
         ): NetworkResult<Unit> = write(id, chats = true) { api.cancel(id, CancelPlanBody(note?.takeIf(String::isNotBlank))) }
 
+        /**
+         * Cancels this date of a repeating plan only and posts the next one now (Plans step 2: "Skip Thursday", "Cancel
+         * this date"). Success carries the next date's id, or null when the series is over.
+         */
+        suspend fun cancelThisDate(
+            id: String,
+            note: String?,
+        ): NetworkResult<String?> {
+            val body = CancelPlanBody(note?.takeIf(String::isNotBlank), repeat = REPEAT_KEEP)
+            return when (val result = write(id, chats = true) { api.cancelThisDate(id, body) }) {
+                is NetworkResult.Success -> NetworkResult.Success(result.data.nextPlanId?.takeIf(String::isNotBlank))
+                is NetworkResult.Failure -> result
+            }
+        }
+
+        /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateStoppingRepeat(id, UpdatePlanBody())
+
+        /**
+         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and `"repeat": null`: the change screen's
+         * other changes and "Doesn't repeat" together, so either both go through or neither does.
+         */
+        suspend fun updateStoppingRepeat(
+            id: String,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
+            val session = cacheSession()
+            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body)).put(REPEAT_FIELD, JSONObject.NULL)
+            val raw = fields.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
+        }
+
         suspend fun ask(
             id: String,
             body: AskToJoinBody,
@@ -635,6 +671,9 @@ class PlansRepository
         private companion object {
             const val CARD_CACHE = 64
             const val GPS_MAX_AGE_SECONDS = 300L
+            const val REPEAT_KEEP = "keep"
+            const val REPEAT_FIELD = "repeat"
+            const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }
 
