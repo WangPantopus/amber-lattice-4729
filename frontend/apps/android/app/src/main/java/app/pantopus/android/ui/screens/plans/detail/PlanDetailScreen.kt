@@ -239,7 +239,7 @@ private fun PlanReady(
                     onRemove = { person -> person.requestId?.let(viewModel::removeGuest) },
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
-            standing == PlanViewerStanding.IN && plan.hasPrivatePart ->
+            standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
                 PlanInBody(
                     plan = plan,
                     reveal = ui.reveal,
@@ -248,8 +248,12 @@ private fun PlanReady(
                     viewerId = ui.viewerId,
                     onStillComing = { coming -> if (coming) viewModel.stillComing(true) else confirmLeave = LeaveKind.Plan },
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
+                )
+                PlanFriendInviteRow(
+                    plan = plan,
                     friend = PlanFriendInvite(invited = ui.friendInvited, making = ui.makingFriendLink, onBring = viewModel::bringFriend),
                 )
+            }
             standing == PlanViewerStanding.REQUESTED -> PlanRequestedBody(plan)
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
             // A private plan's invitation goes under its title (board Invited, Plans step 1).

@@ -81,7 +81,8 @@ enum class PlanHostFilter(
     val label: String,
 ) {
     ALL("all", "All"),
-    // "People" since November 14 (no "neighbor" in Plans); the remembered value stays `neighbors`.
+
+    /** "People" since November 14 (no "neighbor" in Plans); the remembered value stays `neighbors`. */
     NEIGHBORS("neighbors", "People"),
     BUSINESSES("businesses", "Businesses"),
     ;

@@ -87,24 +87,7 @@ internal fun ColumnScope.PlanHostBody(
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            PlanStatusChip(
-                text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
-                icon = PantopusIcon.Flag,
-                iconTint = PantopusColors.primary600,
-            )
-            // A private plan says so (Plans step 1): only the people the host invites see it.
-            if (plan.isPrivate) PlanPrivateChip()
-        }
-        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
-        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
-        Text(
-            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
-            style = PantopusTextStyle.small,
-            color = PantopusColors.appTextStrong,
-        )
-    }
+    HostHeading(plan)
     if (closed) HostClosedBanner(plan)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
@@ -134,6 +117,29 @@ internal fun ColumnScope.PlanHostBody(
             PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
+    }
+}
+
+/** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
+@Composable
+private fun HostHeading(plan: PlanDto) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            PlanStatusChip(
+                text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
+                icon = PantopusIcon.Flag,
+                iconTint = PantopusColors.primary600,
+            )
+            // A private plan says so: only the people the host invites see it.
+            if (plan.isPrivate) PlanPrivateChip()
+        }
+        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
+        Text(
+            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
+            style = PantopusTextStyle.small,
+            color = PantopusColors.appTextStrong,
+        )
     }
 }
 

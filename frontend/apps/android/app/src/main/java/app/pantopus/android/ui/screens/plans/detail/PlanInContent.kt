@@ -23,8 +23,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -61,16 +61,6 @@ import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 
 /**
- * "Bring a friend" on a private plan whose host allows it (Plans step 1): [invited] once the guest made their link on
- * this visit, [making] while it is being made.
- */
-internal data class PlanFriendInvite(
-    val invited: Boolean,
-    val making: Boolean,
-    val onBring: () -> Unit,
-)
-
-/**
  * J7: you're in. The exact place, the host's note, the people going and the group chat, only for people who are
  * in. [reveal] slides "You're in" up 8 dp and fades it in (300 to 450 ms of the reveal; a crossfade under Reduce
  * Motion).
@@ -84,7 +74,6 @@ internal fun ColumnScope.PlanInBody(
     viewerId: String?,
     onStillComing: (Boolean) -> Unit,
     onOpenChat: () -> Unit,
-    friend: PlanFriendInvite? = null,
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -138,16 +127,26 @@ internal fun ColumnScope.PlanInBody(
             PlanStackButton(title = "Group chat", icon = PantopusIcon.MessageCircle, onClick = onOpenChat, modifier = Modifier.weight(1f))
         }
     }
-    if (friend != null) FriendInviteRow(plan, friend)
     PeopleLine(plan, viewerId)
 }
 
 /**
- * "Bring a friend" (Plans step 1): for a guest whose host lets guests bring one friend to a private plan. It opens the
- * share sheet with a one-person link; after that, or when the card says it was used, the row reads "You invited a friend".
+ * "Bring a friend" on a private plan whose host allows it (Plans step 1): [invited] once the guest made their link on
+ * this visit, [making] while it is being made.
+ */
+internal data class PlanFriendInvite(
+    val invited: Boolean,
+    val making: Boolean,
+    val onBring: () -> Unit,
+)
+
+/**
+ * "Bring a friend" (Plans step 1): for a guest whose host lets guests bring one friend to a private plan, under J7. It
+ * opens the share sheet with a one-person link; after that, or when the card says it was used, the row reads "You
+ * invited a friend".
  */
 @Composable
-private fun FriendInviteRow(
+internal fun PlanFriendInviteRow(
     plan: PlanDto,
     friend: PlanFriendInvite,
 ) {

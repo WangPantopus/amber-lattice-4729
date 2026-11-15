@@ -283,56 +283,22 @@ class HostFlowViewModel
                 start = start.plusWeeks(1)
                 end = end.plusWeeks(1)
             }
-            val place =
-                plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
-                    val lat = p.latitude
-                    val lng = p.longitude
-                    if (lat != null && lng != null) PickedPlace(p.name ?: "The same place", p.address, lat, lng, null, null) else null
-                }
-            val rules = plan.autoRules.orEmpty()
-            val d = plan.details
-            _ui.update {
-                it.copy(
-                    zone = zone,
-                    step = HostStep.Details,
-                    draft =
-                        HostDraft(
-                            kind = kind,
-                            title = plan.title,
-                            titleEdited = true,
-                            about = plan.about.orEmpty(),
-                            start = start,
-                            end = end,
-                            atHome = plan.placeKind == "home",
-                            place = place,
-                            spots = plan.spots.coerceIn(1, 30),
-                            approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
-                            autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
-                            hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
-                            note = plan.place?.note.orEmpty(),
-                            sport = d?.sport ?: "pickleball",
-                            level = d?.level ?: "any",
-                            extraGear = d?.extraGear == true,
-                            kidsAgeBands = d?.kidsAgeBands.orEmpty().toSet(),
-                            walkKind = d?.walkKind ?: "walk",
-                            pace = d?.pace ?: "easy",
-                            dogsWelcome = d?.dogsWelcome == true,
-                            pickupNow = false,
-                            subject = d?.subject.orEmpty(),
-                            studyStyle = PlanStudyStyle.from(d?.studyStyle),
-                            // A private plan is hosted again as a private one, with nobody invited yet.
-                            isPrivate = plan.isPrivate && it.privateOn,
-                            guestsCanInvite = plan.isPrivate && plan.guestsCanInvite == true,
-                        ),
-                    privateChoice = plan.isPrivate && it.privateOn,
-                )
-            }
-            // A private plan copied while private plans are off is never posted for everyone without a word.
+            // A private plan is hosted again as a private one, with nobody invited yet.
+            val keepPrivate = plan.isPrivate && _ui.value.privateOn
+            val draft = copiedDraft(plan, kind, start, end, keepPrivate)
+            _ui.update { it.copy(zone = zone, step = HostStep.Details, draft = draft, privateChoice = keepPrivate) }
+            showCopy(plan)
+        }
+
+        /**
+         * "Host again" opens the preview (board A5 → H7, as on iOS); a copy that needs a fix opens its details. A private
+         * plan copied while private plans are off is never posted for everyone without a word.
+         */
+        private fun showCopy(plan: PlanDto) {
             if (plan.isPrivate && !_ui.value.privateOn) {
                 _ui.update { it.copy(error = "Private plans aren't available right now. This copy would be seen by people nearby.") }
                 return
             }
-            // "Host again" opens the preview (board A5 → H7, as on iOS); a copy that needs a fix opens its details.
             if (validate(_ui.value.draft) == null) {
                 _ui.update { it.copy(step = HostStep.Preview) }
                 loadPreviewArea()
@@ -972,7 +938,7 @@ class HostFlowViewModel
             val end = draft.end
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
-            val tooFar = start?.let { tooFarAhead(it, now, invitedOnly = _ui.value.showsAudience && draft.isPrivate) }
+            val tooFar = tooFarAhead(draft, now)
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
                 start == null || end == null -> "Pick when it starts and ends."
@@ -989,15 +955,17 @@ class HostFlowViewModel
 
         /** A start too far ahead: 14 days for a plan anyone nearby can see, 60 for a private one (Plans step 1); else null. */
         private fun tooFarAhead(
-            start: LocalDateTime,
+            draft: HostDraft,
             now: LocalDateTime,
-            invitedOnly: Boolean,
-        ): String? =
-            when {
+        ): String? {
+            val start = draft.start ?: return null
+            val invitedOnly = _ui.value.showsAudience && draft.isPrivate
+            return when {
                 invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
                 !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
                 else -> null
             }
+        }
 
         /** What the chosen kind still needs: a playdate's kids' ages, a study group's subject; null when nothing. */
         private fun kindProblem(draft: HostDraft): String? =
@@ -1062,3 +1030,48 @@ class HostFlowViewModel
             }
         }
     }
+
+/** "Host again" (A5): a person's own plan as a new draft starting [start]; [keepPrivate] keeps a private plan private. */
+private fun copiedDraft(
+    plan: PlanDto,
+    kind: PlanKind,
+    start: LocalDateTime,
+    end: LocalDateTime,
+    keepPrivate: Boolean,
+): HostDraft {
+    val place =
+        plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
+            val lat = p.latitude
+            val lng = p.longitude
+            if (lat != null && lng != null) PickedPlace(p.name ?: "The same place", p.address, lat, lng, null, null) else null
+        }
+    val rules = plan.autoRules.orEmpty()
+    val d = plan.details
+    return HostDraft(
+        kind = kind,
+        title = plan.title,
+        titleEdited = true,
+        about = plan.about.orEmpty(),
+        start = start,
+        end = end,
+        atHome = plan.placeKind == "home",
+        place = place,
+        spots = plan.spots.coerceIn(1, 30),
+        approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
+        autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
+        hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
+        note = plan.place?.note.orEmpty(),
+        sport = d?.sport ?: "pickleball",
+        level = d?.level ?: "any",
+        extraGear = d?.extraGear == true,
+        kidsAgeBands = d?.kidsAgeBands.orEmpty().toSet(),
+        walkKind = d?.walkKind ?: "walk",
+        pace = d?.pace ?: "easy",
+        dogsWelcome = d?.dogsWelcome == true,
+        pickupNow = false,
+        subject = d?.subject.orEmpty(),
+        studyStyle = PlanStudyStyle.from(d?.studyStyle),
+        isPrivate = keepPrivate,
+        guestsCanInvite = keepPrivate && plan.guestsCanInvite == true,
+    )
+}

@@ -60,14 +60,6 @@ import app.pantopus.android.ui.theme.Spacing
  * the invite sheet over it), and who never sees it.
  */
 
-/** What [PrivatePreview] does when tapped. */
-internal data class PrivatePreviewActions(
-    val onToggle: (String) -> Unit,
-    val onRetry: () -> Unit,
-    val onTextLink: () -> Unit,
-    val onEmail: () -> Unit,
-)
-
 /** H7 for a private plan. */
 @Composable
 internal fun PrivatePreview(
@@ -115,6 +107,14 @@ internal fun PrivatePreview(
         }
     }
 }
+
+/** What [PrivatePreview] does when tapped. */
+internal data class PrivatePreviewActions(
+    val onToggle: (String) -> Unit,
+    val onRetry: () -> Unit,
+    val onTextLink: () -> Unit,
+    val onEmail: () -> Unit,
+)
 
 /** The card as the people invited read it: kind and "Private", the title, when, the place by name, and the host. */
 @OptIn(ExperimentalLayoutApi::class)
