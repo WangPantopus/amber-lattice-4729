@@ -7,6 +7,8 @@
 // is drawn before its button is pressed: phones only open their share sheet
 // straight from a press. The note and name stay off until the person asks for
 // them, an address never shows, and a sealed card shares as the sealed envelope.
+// A card that isn't sealed can also go as a video of it arriving (launch key
+// card_share_video): one film per picture, made ahead, with no note or name in it.
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,6 +20,9 @@ import { drawSharePicture, drawShareSet, type ShareDetails, type ShareFormat } f
 import styles from './CardShareSheet.module.css';
 
 type Picture = { url: string; file: File };
+type Mode = 'picture' | 'video';
+/** The picture's video: where it plays from, and the file once it has been fetched for sharing. */
+type Film = { src: string; file: File | null; url: string | null; failed: boolean };
 type Action = 'instagram' | 'facebook' | 'email' | 'link' | 'save' | 'more' | 'all';
 
 const SIZES: { format: ShareFormat; label: string }[] = [
@@ -80,6 +85,8 @@ export default function CardShareSheet({
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState('');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>('picture');
+  const [film, setFilm] = useState<Film | null>(null);
   const pictures = useRef(new Map<string, Picture>());
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -127,6 +134,34 @@ export default function CardShareSheet({
     return () => { made.forEach((item) => URL.revokeObjectURL(item.url)); };
   }, []);
 
+  // Whether this picture has a video (the server says so only while card_share_video is on). A sealed card never does.
+  useEffect(() => {
+    if (card.sealed) return undefined;
+    let live = true;
+    api.mailbox.getHolidayCardShareVideo(card.design)
+      .then((answer) => { if (live && answer.url) setFilm({ src: answer.url, file: null, url: null, failed: false }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [card.design, card.sealed]);
+
+  // The file is fetched once Video is chosen, so a button can hand it to the phone's share sheet straight from the press.
+  const filmSrc = film?.src;
+  const filmReady = Boolean(film?.file) || Boolean(film?.failed);
+  useEffect(() => {
+    if (mode !== 'video' || !filmSrc || filmReady) return undefined;
+    let live = true;
+    fetch(filmSrc).then((answer) => {
+      if (!answer.ok) throw new Error(`Couldn't load the video: ${answer.status}`);
+      return answer.blob();
+    }).then((blob) => {
+      const file = new File([blob], `pantopus-christmas-card-${card.design}.mp4`, { type: 'video/mp4' });
+      if (live) setFilm((was) => (was ? { ...was, file, url: URL.createObjectURL(file) } : was));
+    }).catch(() => { if (live) setFilm((was) => (was ? { ...was, failed: true } : was)); });
+    return () => { live = false; };
+  }, [mode, filmSrc, filmReady, card.design]);
+  const filmUrl = film?.url;
+  useEffect(() => () => { if (filmUrl) URL.revokeObjectURL(filmUrl); }, [filmUrl]);
+
   // Focus stays in the sheet while it's open, and goes back where it was when it closes. Escape closes it.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
@@ -158,8 +193,9 @@ export default function CardShareSheet({
   // a Post, and Share all as the share sheet (More) or Save.
   const count = useCallback((kind: Action, sharedAll = false) => {
     const counted = kind === 'all' ? (sharedAll ? 'more' : 'save') : kind;
-    api.mailbox.recordHolidayCardShare({ design: card.design, kind: counted, format: format === 'open' ? 'post' : format, with_note: noteInPicture }).catch(() => {});
-  }, [card.design, format, noteInPicture]);
+    const shared = mode === 'video' ? 'video' : format === 'open' ? 'post' : format;
+    api.mailbox.recordHolidayCardShare({ design: card.design, kind: counted, format: shared, with_note: mode === 'video' ? false : noteInPicture }).catch(() => {});
+  }, [card.design, format, mode, noteInPicture]);
 
   const canSheet = Boolean(picture) && inTheHand() && Boolean(picture && navigator.canShare?.({ files: [picture.file] }));
 
@@ -222,8 +258,38 @@ export default function CardShareSheet({
     setSaid(files.length === 1 ? 'Saved to your downloads.' : `Saved ${files.length} pictures to your downloads.`);
   };
 
+  /** The video's buttons: the phone's share sheet with the file where it takes one, else the file saved. */
+  const actVideo = async (action: Action) => {
+    if (action === 'link') { void copyLink(); return; }
+    const file = film?.file;
+    if (!file || !film?.url) {
+      // It couldn't be fetched here: open it, where it can be saved from the browser.
+      if (film?.src) clickLink({ href: film.src, target: '_blank', rel: 'noopener noreferrer' });
+      count(action === 'more' ? 'save' : action);
+      setSaid('The video opened in a new tab. Save it from there.');
+      return;
+    }
+    const sheetTakesIt = inTheHand() && Boolean(navigator.canShare?.({ files: [file] }));
+    if (action !== 'save' && sheetTakesIt) {
+      try {
+        await navigator.share({ files: [file], ...(action === 'more' ? { title: words.subject, text: words.body } : {}) });
+        count(action);
+      } catch (error) {
+        if ((error as { name?: string } | null)?.name === 'AbortError') return;
+        clickLink({ href: film.url, download: file.name });
+        count('save');
+        setSaid('Couldn\'t open the share sheet, so the video went to your downloads. Post it from there.');
+      }
+      return;
+    }
+    clickLink({ href: film.url, download: file.name });
+    count(action === 'more' ? 'save' : action);
+    setSaid(action === 'save' ? 'Saved to your downloads.' : `Saved to your downloads. Post it on ${action === 'instagram' ? 'Instagram' : 'Facebook'} from there.`);
+  };
+
   const act = (action: Action) => {
     setSaid('');
+    if (mode === 'video') { void actVideo(action); return; }
     if (action === 'all') { void shareAll(); return; }
     if (action === 'link') { void copyLink(); return; }
     if (action === 'facebook' && format === 'link') {
@@ -260,6 +326,10 @@ export default function CardShareSheet({
   if (canSheet) actions.push('more');
   actions.push('all');
   const shown = failed ? actions.filter((action) => !needsPicture(action)) : actions;
+  const videoActions: Action[] = ['instagram', 'facebook', 'save', 'link'];
+  if (film?.file && inTheHand() && navigator.canShare?.({ files: [film.file] })) videoActions.splice(3, 0, 'more');
+  const videoBusy = !film?.file && !film?.failed;
+  const showVideo = mode === 'video' && Boolean(film);
 
   return createPortal(
     <div className={styles.wrap} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -270,7 +340,30 @@ export default function CardShareSheet({
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </div>
-        <div className={styles.preview}>
+        {film ? (
+          <div className={styles.seg} role="group" aria-label="Share as" data-testid="cardShareMode">
+            {(['picture', 'video'] as Mode[]).map((each) => (
+              <button key={each} type="button" aria-pressed={mode === each} data-testid={`cardShareMode.${each}`} onClick={() => { setMode(each); setSaid(''); }}>
+                {each === 'picture' ? 'Picture' : 'Video'}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {showVideo && film ? (
+          <div className={styles.preview}>
+            <video
+              className={styles.film}
+              src={film.url ?? film.src}
+              autoPlay
+              muted
+              loop
+              playsInline
+              aria-label="The video that would be shared: the card arriving and opening, with no note or name in it"
+              data-testid="cardShareVideoPreview"
+            />
+          </div>
+        ) : null}
+        <div className={styles.preview} hidden={showVideo}>
           {picture ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={picture.url} alt="The picture that would be shared" data-testid="cardSharePicture" />
@@ -281,12 +374,13 @@ export default function CardShareSheet({
             </div>
           ) : <div className={styles.drawing} data-format={format} role="status" aria-label="Drawing the picture" />}
         </div>
-        <div className={styles.seg} role="group" aria-label="Size">
+        {showVideo ? <p className={styles.filmNote}>The card arriving and opening, with the paper sounds. Nobody&apos;s note or name is in it.</p> : null}
+        <div className={styles.seg} role="group" aria-label="Size" hidden={showVideo}>
           {SIZES.map((size) => (
             <button key={size.format} type="button" aria-pressed={format === size.format} onClick={() => { setFormat(size.format); setSaid(''); }}>{size.label}</button>
           ))}
         </div>
-        {hasNote && format !== 'link' ? (
+        {hasNote && format !== 'link' && !showVideo ? (
           <div className={styles.noteRow}>
             <label htmlFor="cardShareNote">
               <b>Show the note</b>
@@ -300,8 +394,8 @@ export default function CardShareSheet({
           </div>
         ) : null}
         <div className={styles.acts}>
-          {shown.map((action) => (
-            <button key={action} type="button" data-action={action} disabled={needsPicture(action) && !picture} onClick={() => act(action)}>
+          {(showVideo ? videoActions : shown).map((action) => (
+            <button key={action} type="button" data-action={action} disabled={showVideo ? action !== 'link' && videoBusy : needsPicture(action) && !picture} onClick={() => act(action)}>
               <span className={styles.ic}><svg viewBox="0 0 24 24" aria-hidden="true">{ICONS[action]}</svg></span>
               {ACTION_LABELS[action]}
             </button>

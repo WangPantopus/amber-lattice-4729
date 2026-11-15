@@ -234,6 +234,10 @@ class HolidayCardsRepository
             safeApiCall { api.shared(HolidayCardSharedBody(design, kind, format, withNote)) }
         }
 
+        /** The picture's share video in public storage, or null while the server has none (`card_share_video` off). */
+        suspend fun shareVideoUrl(design: String): String? =
+            (safeApiCall { api.shareVideo(design) } as? NetworkResult.Success)?.data?.url?.takeIf { it.isNotBlank() }
+
         /** `POST /api/mailbox/cards`: today's card, to a person by their user id or by email. */
         @Suppress("LongParameterList") // The card's choices, its request ID and its signature (plan 8.2), as the body has them.
         suspend fun send(

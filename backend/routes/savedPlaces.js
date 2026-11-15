@@ -110,6 +110,45 @@ router.post('/area/today', verifyToken, geocodeLimiter, async (req, res) => {
   }
 });
 
+// GET /api/saved-places/:id/around — Around you (Today's second half) for a saved address: local headlines that link
+// to their outlets (services/aroundYouService.js). `available` false means the apps show no switch.
+router.get('/:id/around', verifyToken, async (req, res) => {
+  if (Joi.string().uuid().validate(req.params.id).error) {
+    return res.status(400).json({ error: 'Invalid saved place id' });
+  }
+  try {
+    const { data: place, error } = await supabaseAdmin
+      .from('SavedPlace')
+      .select('id, latitude, longitude')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!place) return res.status(404).json({ error: 'Saved place not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json(await require('../services/aroundYouService').aroundYou(place));
+  } catch (err) {
+    logger.error('Failed to load Around you for a saved place:', { error: err.message });
+    return res.status(500).json({ error: 'Failed to load what is around this saved place' });
+  }
+});
+
+// POST /api/saved-places/area/around { latitude, longitude } — Around you for the city Today shows before the person
+// has a Home, a saved address or a claim. Like POST /area/today: the point comes in the body, is rounded to two
+// decimal places, and is neither stored nor logged.
+router.post('/area/around', verifyToken, async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const { latitude, longitude } = req.body || {};
+  if (!Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+    !Number.isFinite(longitude) || Math.abs(longitude) > 180) {
+    return res.status(400).json({ error: 'A valid latitude and longitude are required' });
+  }
+  const { coordinates } = require('../utils/timezone');
+  const point = coordinates(Number(latitude.toFixed(2)), Number(longitude.toFixed(2)));
+  if (!point) return res.status(400).json({ error: 'A valid latitude and longitude are required' });
+  return res.json(await require('../services/aroundYouService').aroundYou(point));
+});
+
 // GET /api/saved-places/:id/preview — the public address preview for the
 // saved point itself. The web used to look the place up again by its label,
 // and a label can be a name ("Gym", "City Hall") that geocodes to another state.

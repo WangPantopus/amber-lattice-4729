@@ -3,6 +3,7 @@
 // Aggregated hub payload for Mission Control + Discovery
 // ============================================================
 
+import type { AroundYou } from './savedPlaces';
 import { get, post, put } from '../client';
 import type { UserNotificationPreferences, HubToday } from '@pantopus/types';
 
@@ -202,6 +203,11 @@ export function isHubTodayPayload(payload: unknown): payload is HubToday {
       && 'display_mode' in payload
       && 'summary' in payload
   );
+}
+
+/** GET /api/hub/today/around: Around you (Today's second half) for the place GET /api/hub/today resolves. */
+export async function getHubAround(): Promise<AroundYou> {
+  return get<AroundYou>('/api/hub/today/around');
 }
 
 /**

@@ -20,6 +20,16 @@ function isPersonaBroadcastEnabled() {
   return isPersonaEnabled() && enabled('PERSONA_BROADCAST_ENABLED');
 }
 
+// Around you (founder decision 2026-11-14): Today's second half lists local headlines that link to their outlets
+// (services/aroundYouService.js), and the curator account's posts leave the Pulse list and map. AROUND_YOU is '1' (on)
+// or '0' (off); unset, it is on for hosted staging and off everywhere else.
+function aroundYouEnabled(env = process.env) {
+  const value = String(env.AROUND_YOU || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // First-launch scope (founder direction, 2026-09-27). These features are
 // hidden for the first launch; their code stays. A feature is OFF unless its
 // key is listed in LAUNCH_FEATURES (comma-separated, or "all"). The same keys
@@ -40,6 +50,7 @@ const LAUNCH_FEATURE_KEYS = [
   'card_table', // 13. The Christmas card on the table: full screen, sharing, sending by link, public card pages (2026-11-06); needs `mailbox` and `holiday_cards` on too
   'holiday_card_memories', // 14. A card's own photo and voice greeting (memories plan 2026-11-02, built 2026-11-10); needs `mailbox` on too
   'card_note_help', // 15. "Help me write it" on a Christmas card: three AI-written notes to pick from and edit (2026-11-11); needs `mailbox` and `holiday_cards` on too
+  'card_share_video', // 16. Sharing a Christmas card as a video of it arriving (2026-11-14): one film per picture, never a note or a name; needs `mailbox`, `holiday_cards` and `card_table` on too
 ];
 
 function isLaunchFeatureEnabled(key) {
@@ -200,6 +211,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 }
 
 module.exports = {
+  aroundYouEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
   areLaunchFeaturesEnabled,

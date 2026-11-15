@@ -3,6 +3,8 @@
 //
 // GET  /api/homes/:id/intelligence   — the Place dashboard contract
 //      (the PlaceIntelligence section envelopes, W0.1) for a claimed home.
+// GET  /api/homes/:id/around         — Around you: local headlines for the
+//      Home's area (Today's second half).
 // GET  /api/homes/:id/changes        — what changed since the viewer's last
 //      look at this Home's Place ("Worth a look").
 // PUT  /api/homes/:id/systems/:key   — record what the household knows
@@ -28,6 +30,8 @@ const logger = require('../utils/logger');
 const homeListService = require('../services/homeListService');
 const homeChanges = require('../services/place/homeChanges');
 const { stableEtag } = require('../utils/stableEtag');
+const supabaseAdmin = require('../config/supabaseAdmin');
+const { aroundYou } = require('../services/aroundYouService');
 
 const VALID_SECTION_IDS = new Set(PLACE_SECTION_IDS);
 
@@ -105,6 +109,28 @@ router.get('/:id/intelligence', verifyToken, async (req, res) => {
     logger.error('Place intelligence error', { error: err.message, homeId: id });
     if (['HOME_LIST_UNAVAILABLE', 'HOME_LIST_ACCESS_CHANGED'].includes(err.code)) return homeListService.sendError(res, err);
     return res.status(500).json({ error: 'Failed to load place intelligence' });
+  }
+});
+
+// GET /api/homes/:id/around — Around you (Today's second half) for this Home: local headlines that link to their
+// outlets (services/aroundYouService.js). Anyone who can read the Home's Today can read it; `available` false means
+// the apps show no switch.
+router.get('/:id/around', verifyToken, async (req, res) => {
+  const { id } = req.params;
+  if (!isHomeId(id)) return res.status(400).json({ error: 'Invalid Home id' });
+  try {
+    const [reader, home] = await Promise.all([
+      placeIntelligenceService.readAccess(id, req.user.id),
+      supabaseAdmin.from('Home').select('map_center_lat, map_center_lng').eq('id', id).maybeSingle(),
+    ]);
+    if (!reader) return res.status(403).json({ error: 'You do not have access to this place.' });
+    if (home.error) throw home.error;
+    if (!home.data) return res.status(404).json({ error: 'Home not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json(await aroundYou({ latitude: home.data.map_center_lat, longitude: home.data.map_center_lng }));
+  } catch (err) {
+    logger.error('Around you error', { error: err.message, homeId: id });
+    return res.status(500).json({ error: 'Failed to load what is around this place' });
   }
 });
 

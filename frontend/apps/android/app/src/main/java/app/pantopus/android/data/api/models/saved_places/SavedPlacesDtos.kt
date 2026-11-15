@@ -92,3 +92,35 @@ data class AreaTodayBody(
     val latitude: Double,
     val longitude: Double,
 )
+
+/**
+ * Today's second half, "Around you" (`backend/services/aroundYouService.js`): local headlines for the place Today
+ * shows. `available` false: Today shows no switch (the feature is off, or the area has nothing to show).
+ */
+@JsonClass(generateAdapter = true)
+data class AroundYouDto(
+    val available: Boolean = false,
+    /** The content region's name ("Clark County, WA"). */
+    val area: String? = null,
+    val sections: List<AroundYouSectionDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class AroundYouSectionDto(
+    val id: String,
+    val title: String,
+    val items: List<AroundYouItemDto> = emptyList(),
+)
+
+/** An outlet's own headline, the outlet's name and where to read it. */
+@JsonClass(generateAdapter = true)
+data class AroundYouItemDto(
+    val id: String,
+    val title: String,
+    /** Who published it ("The Columbian"). */
+    val source: String? = null,
+    /** The story at its outlet; null for a tip that is its own text. */
+    val url: String? = null,
+    /** When Pantopus first saw it (ISO 8601). */
+    @Json(name = "seen_at") val seenAt: String,
+)

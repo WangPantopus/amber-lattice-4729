@@ -5,6 +5,7 @@
 //  Share opens a sheet over the table (launch key `card_table`): a picture
 //  preview, then the size, the switch, and the actions. Actions the phone can't do
 //  are hidden. If a picture can't be drawn it says so and offers Copy link.
+//  Picture | Video shows when the server has the picture's video (CardTableShareVideo.swift).
 //
 
 import Photos
@@ -41,6 +42,7 @@ enum CardTableShareLinks {
     }
 }
 
+// swiftlint:disable:next type_body_length
 struct CardTableShareSheet: View {
     let content: CardTableContent
     let art: CardTableArt
@@ -55,6 +57,8 @@ struct CardTableShareSheet: View {
     @State private var say: String?
     @State private var request: SystemSheetRequest?
     @State private var contentHeight: CGFloat = 0
+    @State private var mode: CardShareMode = .picture
+    @State private var filmURL: URL?
     @ScaledMetric(relativeTo: .title2) private var titleSize: CGFloat = 21
     @ScaledMetric(relativeTo: .footnote) private var sizeLabel: CGFloat = 13.5
     @ScaledMetric(relativeTo: .subheadline) private var noteTitle: CGFloat = 14.5
@@ -79,12 +83,15 @@ struct CardTableShareSheet: View {
         ScrollView {
             VStack(spacing: 12) {
                 header
-                preview
-                sizes
-                if !content.sealed, format != .link {
-                    noteRow
+                if filmURL != nil { CardShareModeChoice(mode: $mode) }
+                if let filmURL, mode == .video {
+                    CardShareVideoSection(content: content, filmURL: filmURL, cardPage: cardPage, say: $say, request: $request)
+                } else {
+                    preview
+                    sizes
+                    if !content.sealed, format != .link { noteRow }
+                    actions
                 }
-                actions
                 if let say {
                     Text(say)
                         .font(.system(size: 13))
@@ -109,6 +116,7 @@ struct CardTableShareSheet: View {
         .preferredColorScheme(.dark)
         .sheet(item: $request) { $0.makeView() }
         .task(id: key) { draw() }
+        .task { filmURL = await CardShareVideoSection.find(content) }
         .accessibilityIdentifier("cardShareSheet")
     }
 

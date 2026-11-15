@@ -7,6 +7,7 @@ import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
 import app.pantopus.android.data.api.models.mailbox.HolidayCardNoteHelpBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardNoteIdeas
 import app.pantopus.android.data.api.models.mailbox.HolidayCardPreview
+import app.pantopus.android.data.api.models.mailbox.HolidayCardShareVideo
 import app.pantopus.android.data.api.models.mailbox.HolidayCardSharedBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardWaitingResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardsResponse
@@ -126,6 +127,16 @@ interface HolidayCardsApi {
         @Part("kind") kind: RequestBody,
         @Part file: MultipartBody.Part,
     ): CardMediaUploaded
+
+    /**
+     * `GET /api/mailbox/cards/share-video/:design` — route `backend/routes/mailbox.js` (next to `POST /cards/shared`).
+     * The video a card shares as (the server's launch key `card_share_video`; 404 while it's off): the picture's card
+     * arriving on the table, the same for everyone, with no note or name in it.
+     */
+    @GET("api/mailbox/cards/share-video/{design}")
+    suspend fun shareVideo(
+        @Path("design") design: String,
+    ): HolidayCardShareVideo
 
     /** `POST /api/mailbox/cards/shared` — counts what was shared (launch key `card_table`). Answers 204. */
     @POST("api/mailbox/cards/shared")
