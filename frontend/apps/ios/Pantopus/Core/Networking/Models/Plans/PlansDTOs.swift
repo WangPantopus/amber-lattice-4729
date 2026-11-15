@@ -21,14 +21,19 @@ import Foundation
 
 // MARK: - Values
 
-/// The five kinds of plan (decision D3; study groups added by the founder
-/// on 2026-10-17).
+/// The kinds of plan (decision D3; study groups added by the founder on
+/// 2026-10-17; the last four by Plans steps 3 and 4, read only with `more=1`).
+/// A kind this build doesn't know fails its card, so lists drop that one row.
 public enum PlanKind: String, Codable, Sendable, Hashable, CaseIterable, Identifiable {
     case watchParty = "watch_party"
     case playdate
     case pickupGame = "pickup_game"
     case walkCoffee = "walk_coffee"
     case studyGroup = "study_group"
+    case foodDrinks = "food_drinks"
+    case gameNight = "game_night"
+    case outdoors
+    case somethingElse = "something_else"
 
     public var id: String {
         rawValue
@@ -70,10 +75,12 @@ public enum PlanState: String, Sendable, Hashable {
 
 extension PlanState: Codable {}
 
-/// A public place, or the host's home (never for playdates).
+/// A public place, the host's home (never for playdates), or online: people
+/// join with a link (Plans step 3, read only with `more=1`).
 public enum PlanPlaceKind: String, Codable, Sendable, Hashable {
     case publicPlace = "public"
     case home
+    case online
 }
 
 /// One person's request to join, as the server keeps it.
@@ -141,8 +148,9 @@ public enum PlanKidsAgeBand: String, Codable, Sendable, Hashable, CaseIterable, 
 /// The public area of a plan: about 500 m, or about 1 km for playdates.
 public struct PlanAreaDTO: Codable, Sendable, Hashable {
     public let label: String
-    public let latitude: Double
-    public let longitude: Double
+    /// Nil for an online plan posted with no area (label "Online").
+    public let latitude: Double?
+    public let longitude: Double?
     /// `area`, or `neighborhood` for playdates.
     public let precision: String?
     /// "Camas".
@@ -231,6 +239,12 @@ public struct PlanDetailsDTO: Codable, Sendable, Hashable {
     public var subject: String?
     /// A study group's style: `quiet` or `together`.
     public var studyStyle: String?
+    /// Food & drinks: `dinner`, `potluck`, `drinks`, `brunch`, `bbq`, `other`.
+    public var foodKind: String?
+    /// Game night: `board_games`, `cards`, `trivia`, `video_games`, `other`.
+    public var gameKind: String?
+    /// Outdoors: `hike`, `bike_ride`, `run`, `other` (with `pace`).
+    public var outdoorKind: String?
 
     enum CodingKeys: String, CodingKey {
         case game, sport, level, pace, subject
@@ -239,6 +253,9 @@ public struct PlanDetailsDTO: Codable, Sendable, Hashable {
         case walkKind = "walk_kind"
         case dogsWelcome = "dogs_welcome"
         case studyStyle = "study_style"
+        case foodKind = "food_kind"
+        case gameKind = "game_kind"
+        case outdoorKind = "outdoor_kind"
     }
 
     public init() {}
@@ -261,6 +278,9 @@ public struct PlanDetailsDTO: Codable, Sendable, Hashable {
         dogsWelcome = try? container.decodeIfPresent(Bool.self, forKey: .dogsWelcome)
         subject = try? container.decodeIfPresent(String.self, forKey: .subject)
         studyStyle = try? container.decodeIfPresent(String.self, forKey: .studyStyle)
+        foodKind = try? container.decodeIfPresent(String.self, forKey: .foodKind)
+        gameKind = try? container.decodeIfPresent(String.self, forKey: .gameKind)
+        outdoorKind = try? container.decodeIfPresent(String.self, forKey: .outdoorKind)
     }
 }
 
@@ -347,7 +367,8 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
         timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
         area = try container.decode(PlanAreaDTO.self, forKey: .area)
         distanceBand = try? container.decodeIfPresent(PlanDistanceBand.self, forKey: .distanceBand)
-        placeKind = try? container.decodeIfPresent(PlanPlaceKind.self, forKey: .placeKind)
+        // A place kind this build can't draw fails the card, as an unknown kind does: a list drops that row.
+        placeKind = try container.decodeIfPresent(PlanPlaceKind.self, forKey: .placeKind)
         host = try container.decode(PlanHostDTO.self, forKey: .host)
         spots = try container.decodeIfPresent(Int.self, forKey: .spots) ?? 0
         goingCount = try container.decodeIfPresent(Int.self, forKey: .goingCount) ?? 0
@@ -471,26 +492,5 @@ public struct MyPlansResponse: Decodable, Sendable, Hashable {
 
     var carriesPrivateTimes: Bool {
         (hosting + going + asked + waitlisted + invited + recent).contains(where: \.carriesPrivateTime)
-    }
-}
-
-// MARK: - Helpers
-
-/// ISO 8601 times from the Plans API, with or without fractional seconds.
-enum PlanTime {
-    static func parse(_ raw: String?) -> Date? {
-        guard let raw, !raw.isEmpty else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: raw)
-    }
-
-    static func string(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
     }
 }
