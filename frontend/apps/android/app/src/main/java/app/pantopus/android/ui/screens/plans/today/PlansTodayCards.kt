@@ -31,6 +31,7 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanState
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
@@ -43,7 +44,10 @@ import app.pantopus.android.ui.screens.plans.components.PlanKindLeading
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanTonalButton
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.detail.PlanJoinButton
+import app.pantopus.android.ui.screens.plans.detail.joinLink
 import app.pantopus.android.ui.screens.plans.detail.openDirections
+import app.pantopus.android.ui.screens.plans.detail.openPlanLink
 import app.pantopus.android.ui.screens.plans.map.planH4
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -90,7 +94,13 @@ fun PlansTodayCards(
         ui.hosting.forEach { card -> HostingTodayCard(ui.details[card.id] ?: card, actions) }
         ui.going.forEach { card ->
             val plan = ui.details[card.id] ?: card
-            GoingTodayCard(plan, working = plan.id in ui.working, onMyWay = { viewModel.onMyWay(plan) }, actions = actions)
+            GoingTodayCard(
+                plan,
+                working = plan.id in ui.working,
+                onMyWay = { viewModel.onMyWay(plan) },
+                actions = actions,
+                onLinkUnopened = viewModel::linkUnopened,
+            )
         }
         ui.howWasIt.forEach { plan ->
             HowWasItCard(
@@ -168,12 +178,15 @@ private fun GoingTodayCard(
     working: Boolean,
     onMyWay: () -> Unit,
     actions: PlansTodayActions,
+    onLinkUnopened: () -> Unit,
 ) {
     val context = LocalContext.current
     val kind = plan.planKind
     val title = todayTitle(plan)
     val start = if (plan.planState == PlanState.LIVE) "Happening now" else startClock(plan)
-    val caption = listOfNotNull(start, PlanFormat.distance(plan.distanceBand), "${plan.goingCount} going").joinToString(" · ")
+    // An online plan says so where the others give the distance (Plans step 3).
+    val where = if (plan.isOnline) PlanFormat.ONLINE else PlanFormat.distance(plan.distanceBand)
+    val caption = listOfNotNull(start, where, "${plan.goingCount} going").joinToString(" · ")
     Column(
         modifier =
             Modifier
@@ -183,6 +196,10 @@ private fun GoingTodayCard(
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
         TodayCardHeader(plan, "Going today", title, caption) { actions.onOpenPlan(plan.id) }
+        if (plan.isOnline) {
+            OnlineTodayButtons(plan, actions, onLinkUnopened)
+            return@Column
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PlanTonalButton(
                 title = "Directions",
@@ -201,6 +218,31 @@ private fun GoingTodayCard(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+/** A1 for an online plan (Plans step 3, as on iPhone): no directions and no "On my way"; "Open plan" and "Join". */
+@Composable
+private fun OnlineTodayButtons(
+    plan: PlanDto,
+    actions: PlansTodayActions,
+    onLinkUnopened: () -> Unit,
+) {
+    val context = LocalContext.current
+    val link = plan.joinLink
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        PlanTonalButton(
+            title = "Open plan",
+            onClick = { actions.onOpenPlan(plan.id) },
+            height = 44.dp,
+            modifier = Modifier.weight(1f).testTag("plansTodayOpenOnline"),
+        )
+        PlanJoinButton(
+            onClick = { if (link == null || !context.openPlanLink(link)) onLinkUnopened() },
+            enabled = link != null,
+            modifier = Modifier.weight(1f),
+            tag = "plansTodayJoinOnline",
+        )
     }
 }
 
@@ -260,12 +302,14 @@ private fun HowWasItCard(
 ) {
     val kind = plan.planKind ?: return
     val day = recentDay(plan)
+    val hostName = PlanFormat.firstName(plan.host?.displayName)
     Column(modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4), verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             PlanKindLeading(kind)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "How was ${day?.let { "$it's " } ?: "the "}${kind.noun} with ${PlanFormat.firstName(plan.host?.displayName)}?",
+                    // The plan's own noun ("potluck", "hike"), as the server's notices say it.
+                    text = "How was ${day?.let { "$it's " } ?: "the "}${PlanFormat.noun(plan)} with $hostName?",
                     style = planH4,
                     color = PantopusColors.appText,
                     modifier = Modifier.semantics { heading() },
@@ -330,7 +374,7 @@ private fun HostAgainCard(
             PlanKindLeading(kind)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Host your ${kind.noun} again?",
+                    text = "Host your ${PlanFormat.noun(plan)} again?",
                     style = planH4,
                     color = PantopusColors.appText,
                     modifier = Modifier.semantics { heading() },

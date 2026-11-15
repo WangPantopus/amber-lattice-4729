@@ -44,6 +44,7 @@ import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
@@ -96,6 +97,8 @@ internal fun ColumnScope.PlanHostBody(
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
     HostSeries(plan, closed, series)
+    // An online plan's link, as the people in see it (Plans step 3); "Join" is in the footer. Nothing once it's over.
+    PlanOnlineLinkCard(plan, hosting = true)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
     val waitingCount = requests?.waitlisted?.size ?: plan.waitlistCount
@@ -121,7 +124,7 @@ internal fun ColumnScope.PlanHostBody(
             if (!plan.isPrivate) GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
         }
         Column {
-            PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)
+            PlanTextButton(title = changeTitle(plan), onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
     }
@@ -141,6 +144,9 @@ private fun HostSeries(
     PlanSeriesHostCard(plan, series)
 }
 
+/** H9's way to H11: "Change the time or place", or for an online plan "Change the time or link" (as on iPhone). */
+private fun changeTitle(plan: PlanDto): String = if (plan.isOnline) "Change the time or link" else "Change the time or place"
+
 /** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
 @Composable
 private fun HostHeading(plan: PlanDto) {
@@ -155,7 +161,13 @@ private fun HostHeading(plan: PlanDto) {
             if (plan.isPrivate) PlanPrivateChip()
         }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
-        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
+        // An online plan says "Online" also while its private parts are being read again (it has no place to name).
+        val where =
+            when {
+                plan.isAtHome -> "Your place"
+                plan.isOnline -> PlanFormat.ONLINE
+                else -> plan.place?.name ?: plan.area?.label
+            }
         Text(
             text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
             style = PantopusTextStyle.small,

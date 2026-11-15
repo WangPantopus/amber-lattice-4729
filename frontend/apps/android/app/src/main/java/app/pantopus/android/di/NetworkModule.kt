@@ -244,7 +244,8 @@ object NetworkModule {
             .addInterceptor(chatMediaInterceptor)
             // Outermost: UTC timestamps reach Moshi as "Z", which Android 8–13 can parse.
             .addInterceptor(UtcTimestampInterceptor())
-            // `biz=1` on the Plans routes: this build can draw a business's plan (Plans with businesses).
+            // `biz=1` and `more=1` on the Plans routes: this build can draw a business's plan (Plans with businesses),
+            // an online plan and the four newer kinds (Plans steps 3 and 4).
             .addInterceptor(PlansBizInterceptor())
             // X-Client-Platform + X-Device-Id on every API request (both clients).
             // This client also loads Coil images; other hosts get neither header nor the bearer.

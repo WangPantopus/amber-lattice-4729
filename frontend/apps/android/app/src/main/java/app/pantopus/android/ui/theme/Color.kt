@@ -676,6 +676,32 @@ object PantopusColors {
     val catPlanStudyDark = Color(0xFFF472B6)
     val catPlanStudyTintDark = Color(0xFF3A1A2C)
 
+    // The four kinds of Plans step 4 (canvas "Plans: private, repeating, online", more.css), light and dark.
+
+    /** `cat-plan-food` — `#B91C1C` (red-700); food & drinks. */
+    val catPlanFood = Color(0xFFB91C1C)
+    val catPlanFoodTint = Color(0xFFFEE2E2)
+    val catPlanFoodDark = Color(0xFFF87171)
+    val catPlanFoodTintDark = Color(0xFF3A1717)
+
+    /** `cat-plan-game` — `#2563EB` (blue-600); game nights. */
+    val catPlanGame = Color(0xFF2563EB)
+    val catPlanGameTint = Color(0xFFDBEAFE)
+    val catPlanGameDark = Color(0xFF60A5FA)
+    val catPlanGameTintDark = Color(0xFF172A4D)
+
+    /** `cat-plan-outdoors` — `#0F766E` (teal-700); outdoors. */
+    val catPlanOutdoors = Color(0xFF0F766E)
+    val catPlanOutdoorsTint = Color(0xFFCCFBF1)
+    val catPlanOutdoorsDark = Color(0xFF2DD4BF)
+    val catPlanOutdoorsTintDark = Color(0xFF0F2F2C)
+
+    /** `cat-plan-else` — `#475569` (slate-600); something else. */
+    val catPlanElse = Color(0xFF475569)
+    val catPlanElseTint = Color(0xFFE2E8F0)
+    val catPlanElseDark = Color(0xFF94A3B8)
+    val catPlanElseTintDark = Color(0xFF262D38)
+
     /** A plan pin's glyph on its colored head in dark mode — `#0B1220` (light mode uses white). */
     val planPinInkDark = Color(0xFF0B1220)
 

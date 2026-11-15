@@ -335,6 +335,8 @@ class IconTest {
             "ball",
             "coffee",
             "book-open",
+            // Plans step 4: game night's die.
+            "dice-4",
             // Pantopus Moments: the tab and a video's sound toggle.
             "circle-dashed",
             "volume-2",

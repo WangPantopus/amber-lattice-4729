@@ -30,6 +30,10 @@ data class PlansFlags(
     val playdates: Boolean = false,
     val privatePlans: Boolean = false,
     val repeat: Boolean = false,
+    /** `plans_online` (Plans step 3): online plans can be posted. An online plan already posted reads either way. */
+    val onlinePlans: Boolean = false,
+    /** `plans_kinds` (Plans step 4): the four newer kinds can be posted. A plan of one already posted reads either way. */
+    val newKinds: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
@@ -41,6 +45,12 @@ data class PlansFlags(
      * already repeats keeps its lines and its host's controls with this off.
      */
     val repeatOn: Boolean get() = plans && repeat
+
+    /** The Where control's "Online" choice shows (never for a playdate, a pickup game, outdoors or a business's plan). */
+    val onlineOn: Boolean get() = plans && onlinePlans
+
+    /** The type picker, the empty state and the map's chips show nine kinds rather than five. */
+    val kindsOn: Boolean get() = plans && newKinds
 }
 
 /**
@@ -164,11 +174,15 @@ class PlansFeature
                     val privatePlans = async { read(FLAG_PRIVATE) }
                     val invites = async { read(FLAG_INVITES) }
                     val repeat = async { read(FLAG_REPEAT) }
+                    val onlinePlans = async { read(FLAG_ONLINE) }
+                    val newKinds = async { read(FLAG_KINDS) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
                     val privateOn = bothOn(privatePlans.await(), invites.await())
                     val repeatOn = repeat.await()
+                    val onlineOn = onlinePlans.await()
+                    val kindsOn = newKinds.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -177,6 +191,8 @@ class PlansFeature
                             playdates = playdatesOn ?: current.playdates,
                             privatePlans = privateOn ?: current.privatePlans,
                             repeat = repeatOn ?: current.repeat,
+                            onlinePlans = onlineOn ?: current.onlinePlans,
+                            newKinds = kindsOn ?: current.newKinds,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -201,8 +217,8 @@ class PlansFeature
             }
 
         /**
-         * One character a flag, in order: plans, playdates, private, repeat ("11" from before private plans reads private
-         * and repeat off).
+         * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`) and kinds
+         * (`plans_kinds`). A shorter string from before a flag existed reads that flag off ("11" reads the rest off).
          */
         @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
@@ -212,6 +228,8 @@ class PlansFeature
                 playdates = raw.getOrNull(1) == '1',
                 privatePlans = raw.getOrNull(2) == '1',
                 repeat = raw.getOrNull(3) == '1',
+                onlinePlans = raw.getOrNull(INDEX_ONLINE) == '1',
+                newKinds = raw.getOrNull(INDEX_KINDS) == '1',
             )
         }
 
@@ -219,7 +237,9 @@ class PlansFeature
             id: String,
             flags: PlansFlags,
         ) {
-            val raw = listOf(flags.plans, flags.playdates, flags.privatePlans, flags.repeat).joinToString("") { if (it) "1" else "0" }
+            val raw =
+                listOf(flags.plans, flags.playdates, flags.privatePlans, flags.repeat, flags.onlinePlans, flags.newKinds)
+                    .joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
 
@@ -231,5 +251,9 @@ class PlansFeature
             const val FLAG_PRIVATE = "plans_private"
             const val FLAG_INVITES = "plans_invites"
             const val FLAG_REPEAT = "plans_repeat"
+            const val FLAG_ONLINE = "plans_online"
+            const val FLAG_KINDS = "plans_kinds"
+            const val INDEX_ONLINE = 4
+            const val INDEX_KINDS = 5
         }
     }

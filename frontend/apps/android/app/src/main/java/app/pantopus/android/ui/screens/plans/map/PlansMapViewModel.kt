@@ -114,9 +114,12 @@ data class PlansMapUiState(
     val hostFiltered: Boolean
         get() = showsHostFilter && hostShown != PlanHostFilter.ALL
 
-    /** The kinds the chips offer: playdates only while their flag is on. */
+    /** The kinds the chips and the empty state offer: playdates only while their flag is on, the newer four with theirs. */
     val kinds: List<PlanKind>
-        get() = PlanKind.entries.filter { it != PlanKind.PLAYDATE || (flags.playdatesOn && mine?.viewer?.seesPlaydates != false) }
+        get() =
+            PlanKind.entries.filter {
+                (it != PlanKind.PLAYDATE || (flags.playdatesOn && mine?.viewer?.seesPlaydates != false)) && (!it.isNew || flags.kindsOn)
+            }
 
     /** Nothing this week around here (board F4). A filtered list says so itself, with "Show all plans". */
     val isEmpty: Boolean

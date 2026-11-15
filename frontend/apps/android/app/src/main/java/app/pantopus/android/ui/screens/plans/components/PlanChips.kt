@@ -196,6 +196,55 @@ fun PlanPrivateChip(modifier: Modifier = Modifier) {
     }
 }
 
+/** What an online plan's chip says, and TalkBack with it (Plans step 3). */
+const val PLAN_ONLINE_SPOKEN = "Online"
+
+/**
+ * "Online" (Plans step 3, board Online): the video glyph and the word on the same sunken pill as "Private", beside an
+ * online plan's kind on its page, its preview and its card.
+ */
+@Composable
+fun PlanOnlineChip(modifier: Modifier = Modifier) {
+    val pill = RoundedCornerShape(Radii.pill)
+    Row(
+        modifier =
+            modifier
+                .heightIn(min = 30.dp)
+                .clip(pill)
+                .background(PantopusColors.appSurfaceSunken)
+                .border(1.dp, PantopusColors.appBorderStrong, pill)
+                .padding(start = 10.dp, end = Spacing.s3)
+                .testTag("planOnlineChip")
+                .clearAndSetSemantics { contentDescription = PLAN_ONLINE_SPOKEN },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Video, contentDescription = null, size = 14.dp, tint = PantopusColors.appTextStrong)
+        Text(
+            text = PLAN_ONLINE_SPOKEN,
+            style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.appTextStrong,
+            maxLines = 1,
+        )
+    }
+}
+
+/** "New" beside a kind of Plans step 4 on the type picker (board Type): a small sky pill. */
+@Composable
+fun PlanNewBadge(modifier: Modifier = Modifier) {
+    Text(
+        text = "New",
+        style = PantopusTextStyle.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium),
+        color = PantopusColors.primary700,
+        maxLines = 1,
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(Radii.pill))
+                .background(PantopusColors.primary100)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
 /**
  * The lock badge (Plans step 1): a small sunken square with a white ring and the lock, on a private plan's kind tile
  * (a row) or on its pin's shoulder, so it reads "private" beside the kind without a word.

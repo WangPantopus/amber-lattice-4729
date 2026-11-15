@@ -302,6 +302,8 @@ fun PlanSegmented(
     modifier: Modifier = Modifier,
     /** A test id per option, in order (the list's host filter); none otherwise. */
     optionTags: List<String>? = null,
+    /** A glyph before an option's words, in order (Where's "Online", Plans step 3); none otherwise. */
+    optionIcons: List<PantopusIcon?>? = null,
 ) {
     val large = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
     if (large) {
@@ -336,12 +338,22 @@ fun PlanSegmented(
                         .semantics { this.selected = on },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label,
-                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
-                    modifier = Modifier.padding(horizontal = Spacing.s1),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+                    optionIcons?.getOrNull(index)?.let { icon ->
+                        PantopusIconImage(
+                            icon = icon,
+                            contentDescription = null,
+                            size = 14.dp,
+                            tint = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
+                        )
+                    }
+                    Text(
+                        text = label,
+                        style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
+                        modifier = Modifier.padding(horizontal = Spacing.s1),
+                    )
+                }
             }
         }
     }

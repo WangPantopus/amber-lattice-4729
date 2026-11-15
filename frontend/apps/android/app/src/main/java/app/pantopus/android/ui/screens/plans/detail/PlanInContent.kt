@@ -38,6 +38,7 @@ import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
@@ -79,7 +80,40 @@ internal fun ColumnScope.PlanInBody(
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
-    InBanner(plan, reveal, reduceMotion)
+    if (plan.isOnline) {
+        // Board Online: the kind and "Online", the title, when and "Online · hosted from Camas", then "You're in" and
+        // the link's card. No place, no map, no directions (Plans step 3).
+        PlanTitleBlock(plan)
+        InBanner(plan, reveal, reduceMotion)
+        PlanOnlineLinkCard(plan, hosting = false)
+    } else {
+        InBanner(plan, reveal, reduceMotion)
+        InPlaceTitle(plan)
+    }
+    plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        if (!plan.isOnline) {
+            PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
+                context.openDirections(plan)
+            }, modifier = Modifier.weight(1f))
+        }
+        PlanStackButton(
+            title = "Calendar",
+            icon = PantopusIcon.Calendar,
+            onClick = { context.addToCalendar(plan) },
+            modifier = Modifier.weight(1f),
+            spoken = "Add to calendar",
+        )
+        if (plan.chatRoomId != null) {
+            PlanStackButton(title = "Group chat", icon = PantopusIcon.MessageCircle, onClick = onOpenChat, modifier = Modifier.weight(1f))
+        }
+    }
+    PeopleLine(plan, viewerId)
+}
+
+/** J7's title, the exact place (with its address) and when. */
+@Composable
+private fun InPlaceTitle(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (plan.isPrivate) PlanPrivateChip()
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
@@ -114,23 +148,6 @@ internal fun ColumnScope.PlanInBody(
         PlanInfoLine(PantopusIcon.Calendar, PlanFormat.whenLine(plan, long = true))
         PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
-    plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
-            context.openDirections(plan)
-        }, modifier = Modifier.weight(1f))
-        PlanStackButton(
-            title = "Calendar",
-            icon = PantopusIcon.Calendar,
-            onClick = { context.addToCalendar(plan) },
-            modifier = Modifier.weight(1f),
-            spoken = "Add to calendar",
-        )
-        if (plan.chatRoomId != null) {
-            PlanStackButton(title = "Group chat", icon = PantopusIcon.MessageCircle, onClick = onOpenChat, modifier = Modifier.weight(1f))
-        }
-    }
-    PeopleLine(plan, viewerId)
 }
 
 /**
@@ -206,15 +223,27 @@ private fun InBanner(
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
-        if (!reveal) return@LaunchedEffect
+        if (!reveal) {
+            // No reveal, or it just ended (an online plan's header ends it on its own clock): the banner shows in full,
+            // even when its own fade was still waiting to start.
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
         progress.snapTo(0f)
         if (!reduceMotion) kotlinx.coroutines.delay(300)
         progress.animateTo(1f, tween(150))
     }
     val mine = plan.myRequest
-    // "Sam said yes · just now" (board J7), "· 12 min ago" later; a rule's yes gets its time too, as on iOS.
-    val said = if (mine?.decidedBy == "rule") "You got in right away" else "${plan.hostFirst} said yes"
-    val subtitle = listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
+    // "Sam said yes · just now" (board J7), "· 12 min ago" later; a rule's yes gets its time too, as on iOS. An online
+    // plan points at its link (board Online): "Sam let you in. The link is below."
+    val rule = mine?.decidedBy == "rule"
+    val said = if (rule) "You got in right away" else "${plan.hostFirst} said yes"
+    val subtitle =
+        when {
+            plan.isOnline && rule -> "You got in right away. The link is below."
+            plan.isOnline -> "${plan.hostFirst} let you in. The link is below."
+            else -> listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
+        }
     PlanBanner(
         title = "You're in",
         subtitle = subtitle,
@@ -334,10 +363,14 @@ private fun StillComingCard(
     ) {
         val host = plan.hostFirst
         val noun = PlanFormat.noun(plan)
+        // An online plan's new place is its link, in the server's push words (Plans step 3, as on iPhone).
+        val placeTitle = if (plan.isOnline) "$host changed the link" else "$host changed the place"
+        val newPlace = if (plan.isOnline) "It has a new link now." else "It's at a new place now."
+        val atNewPlace = if (plan.isOnline) "with a new link" else "at a new place"
         val (title, message) =
             when (plan.myRequest?.reconfirmReason) {
-                "place" -> "$host changed the place" to "It's at a new place now. Still coming?"
-                "both" -> "$host changed the $noun" to "Now ${PlanFormat.dayAt(plan)}, at a new place. Still coming?"
+                "place" -> placeTitle to "$newPlace Still coming?"
+                "both" -> "$host changed the $noun" to "Now ${PlanFormat.dayAt(plan)}, $atNewPlace. Still coming?"
                 else -> "$host moved the $noun" to "Now ${PlanFormat.dayAt(plan)}. Still coming?"
             }
         Text(

@@ -96,6 +96,11 @@ private fun ColumnScope.NeighborFields(
         PlanKind.PICKUP_GAME -> PickupFields(ui, vm)
         PlanKind.WALK_COFFEE -> WalkFields(ui, vm)
         PlanKind.STUDY_GROUP -> StudyFields(ui, vm)
+        // Plans step 4 (HostMoreFields.kt).
+        PlanKind.FOOD_DRINKS -> FoodFields(ui, vm)
+        PlanKind.GAME_NIGHT -> GameNightFields(ui, vm)
+        PlanKind.OUTDOORS -> OutdoorsFields(ui, vm)
+        PlanKind.SOMETHING_ELSE -> SomethingElseFields(ui, vm)
     }
 }
 
@@ -181,7 +186,13 @@ private fun ColumnScope.WatchFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = if (draft.atHome) "Park on the street. The side gate is open." else "We'll be at the big table by the window.",
+        placeholder =
+            when {
+                // An online plan's own hint (Plans step 3, as on iPhone).
+                ui.isOnline -> ONLINE_NOTE_HINT
+                draft.atHome -> "Park on the street. The side gate is open."
+                else -> "We'll be at the big table by the window."
+            },
     ) { text ->
         vm.edit { it.copy(note = text) }
     }
@@ -385,7 +396,7 @@ private fun ColumnScope.WalkFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Meet at the trailhead sign. Coffee after.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Meet at the trailhead sign. Coffee after.",
         singleLine = true,
     ) { text ->
         vm.edit { it.copy(note = text) }
@@ -417,9 +428,9 @@ private fun ColumnScope.StudyFields(
     }
     TitleField(draft.title, vm::setTitle, placeholder = "Spanish practice at the library")
     WhenField(ui, vm)
-    // Always a public place, so no "A public place / My place" choice (and, as for a watch party, no line under it).
+    // A public place, so no "My place" choice (and, as for a watch party, no line under it); or online (Plans step 3).
     PlanField(label = "Where") {
-        PlaceRow(ui, onClick = vm::openPlaces)
+        PlaceOrOnline(ui, vm)
     }
     AudienceField(ui, vm)
     PlanStepperRow(
@@ -433,15 +444,15 @@ private fun ColumnScope.StudyFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Second floor, the long table by the windows.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Second floor, the long table by the windows.",
     ) { text ->
         vm.edit { it.copy(note = text) }
     }
 }
 
-private const val MAX_SPOTS = 30
+internal const val MAX_SPOTS = 30
 private const val MAX_FAMILIES = 10
-private const val ABOUT_MAX = 500
+internal const val ABOUT_MAX = 500
 private const val NOTE_MAX = 500
 
 private val semibold = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold)
@@ -466,7 +477,7 @@ private val walkKinds =
     )
 
 @Composable
-private fun TitleField(
+internal fun TitleField(
     title: String,
     onTitle: (String) -> Unit,
     placeholder: String = "Give it a short title",
@@ -477,7 +488,7 @@ private fun TitleField(
 }
 
 @Composable
-private fun WhenField(
+internal fun WhenField(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
@@ -494,21 +505,22 @@ private fun WhenField(
     }
 }
 
-/** "A public place" or "My place" (H2) / "My porch" (H5), with the place or home row and its promise. */
+/**
+ * "A public place" or "My place" (H2) / "My porch" (H5), with the place or home row and its promise; with "Online"
+ * (Plans step 3, board Details: "A place / My place / Online") the link field instead.
+ */
 @Composable
-private fun WhereField(
+internal fun WhereField(
     ui: HostUi,
     vm: HostFlowViewModel,
     homeLabel: String,
 ) {
     val draft = ui.draft
     PlanField(label = "Where") {
-        PlanSegmented(
-            options = listOf("public" to "A public place", "home" to homeLabel),
-            selected = if (draft.atHome) "home" else "public",
-            onSelect = { vm.setAtHome(it == "home") },
-        )
-        if (draft.atHome) {
+        WhereChoice(ui, vm, homeLabel)
+        if (ui.isOnline) {
+            OnlineLinkField(ui, vm)
+        } else if (draft.atHome) {
             PlanFormCard {
                 PlanOptionRow(first = true) {
                     PlanIconTile(
@@ -546,7 +558,7 @@ private fun WhereField(
 
 /** The chosen public place, or "Choose a place", opening H6. */
 @Composable
-private fun PlaceRow(
+internal fun PlaceRow(
     ui: HostUi,
     onClick: () -> Unit,
 ) {
@@ -579,7 +591,14 @@ private fun PlaceRow(
 
 /** The place row's second line before a place is picked: the places that suit the kind. */
 private fun placeHint(kind: PlanKind): String =
-    if (kind == PlanKind.STUDY_GROUP) "Libraries, cafés, community centers" else "Parks, courts, trails, libraries, cafés"
+    when (kind) {
+        PlanKind.STUDY_GROUP -> "Libraries, cafés, community centers"
+        // Plans step 4, the places the server suggests for each (planPlaces.js).
+        PlanKind.FOOD_DRINKS -> "Restaurants, cafés, bars"
+        PlanKind.GAME_NIGHT -> "Cafés, community centers, libraries"
+        PlanKind.OUTDOORS -> "Trails and parks"
+        else -> "Parks, courts, trails, libraries, cafés"
+    }
 
 /** "Also let in people I've hosted" with its second line under it, as board H2 draws the row (and iOS). */
 @Composable
@@ -640,7 +659,7 @@ private const val METERS_PER_MILE = 1609.344
 
 /** How people get in (H2, H4, H5), by the rules in decisions D6 and D7. */
 @Composable
-private fun HowPeopleGetIn(
+internal fun HowPeopleGetIn(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
@@ -693,7 +712,7 @@ private fun HowPeopleGetIn(
  * private plan allows under it. Only with `plans_private`, and never on a business's plan.
  */
 @Composable
-private fun AudienceField(
+internal fun AudienceField(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
@@ -704,7 +723,13 @@ private fun AudienceField(
                 first = true,
                 selected = !ui.draft.isPrivate,
                 title = "Anyone nearby",
-                caption = "On the map and the list. People ask to join.",
+                // An online plan has no pin, ever (Plans step 3).
+                caption =
+                    if (ui.isOnline) {
+                        "On the list for people nearby. People ask to join."
+                    } else {
+                        "On the map and the list. People ask to join."
+                    },
                 lock = false,
                 tag = "plansAudienceNearby",
                 onClick = { vm.setPrivate(false) },
@@ -799,7 +824,7 @@ private fun RuleOption(
 }
 
 @Composable
-private fun NoteField(
+internal fun NoteField(
     note: String,
     label: String,
     placeholder: String,

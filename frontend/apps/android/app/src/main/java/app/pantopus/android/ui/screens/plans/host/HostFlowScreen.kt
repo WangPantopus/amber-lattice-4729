@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +48,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanBusinessShape
 import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
+import app.pantopus.android.ui.screens.plans.components.PlanNewBadge
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
@@ -200,12 +203,12 @@ private fun HostTypeStep(
     onHostAs: (String?) -> Unit,
 ) {
     val business = ui.chosenBusiness
-    // A business posts the kinds the server lists for it (a kids' class only with its own switch).
+    // A business posts the kinds the server lists for it (a kids' class only with its own switch), never the newer four.
     val kinds =
         if (business != null) {
-            business.kinds.mapNotNull { PlanKind.from(it.kind) }
+            business.kinds.mapNotNull { PlanKind.from(it.kind) }.filterNot { it.isNew }
         } else {
-            PlanKind.entries.filter { it != PlanKind.PLAYDATE || ui.playdatesOn }
+            hostKinds(ui)
         }
     val large = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
     HostStepScaffold(title = "Host a plan", step = "1 of 3", leadingClose = true, onLeading = onClose, footer = null) {
@@ -223,7 +226,9 @@ private fun HostTypeStep(
                 color = PantopusColors.appTextSecondary,
             )
         }
-        val rows = if (large) kinds.map { listOf(it) } else kinds.chunked(2)
+        // "Something else" is a wide row under the grid (board Type, Plans step 4).
+        val grid = kinds.filter { it != PlanKind.SOMETHING_ELSE }
+        val rows = if (large) grid.map { listOf(it) } else grid.chunked(2)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             rows.forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
@@ -232,17 +237,22 @@ private fun HostTypeStep(
                             kind = kind,
                             modifier = Modifier.weight(1f),
                             title = business?.kinds?.firstOrNull { it.kind == kind.wire }?.name?.takeIf(String::isNotBlank),
-                            blurb = if (business != null) businessBlurb(kind) else null,
+                            blurb = if (business != null) businessBlurb(kind) else typeBlurb(kind, ui.kindsOn),
                         ) { onChoose(kind) }
                     }
                     if (row.size == 1 && !large) Spacer(modifier = Modifier.weight(1f))
                 }
             }
+            if (PlanKind.SOMETHING_ELSE in kinds) SomethingElseCard { onChoose(PlanKind.SOMETHING_ELSE) }
+        }
+        // Why a kind asked for can't be hosted now (a newer kind while its switch is off).
+        ui.error?.let {
+            Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error, modifier = Modifier.testTag("planHostError"))
         }
         PlanScopeLine(
             text =
                 if (business != null) {
-                    "These are the five kinds of plan people host. Yours keeps the same color and pin."
+                    "A business hosts these five kinds of plan. Yours keeps the same color and pin."
                 } else {
                     "Plans are free and for adults. Kids come with a parent."
                 },
@@ -322,7 +332,7 @@ private fun HostAsRow(
     }
 }
 
-/** What each kind reads as for a business (board B1). */
+/** What each kind reads as for a business (board B1). A business never hosts the newer four. */
 private fun businessBlurb(kind: PlanKind): String =
     when (kind) {
         PlanKind.WATCH_PARTY -> "A game on your screens"
@@ -330,23 +340,38 @@ private fun businessBlurb(kind: PlanKind): String =
         PlanKind.PICKUP_GAME -> "A clinic, open play, league night"
         PlanKind.WALK_COFFEE -> "A meetup, a tasting, a group walk"
         PlanKind.STUDY_GROUP -> "Tutoring, test prep, a workshop"
+        else -> typeBlurb(kind, kindsOn = true)
     }
 
-private fun typeBlurb(kind: PlanKind): String =
+/** H1's words for a kind; with the nine kinds of Plans step 4, board Type's words. */
+private fun typeBlurb(
+    kind: PlanKind,
+    kindsOn: Boolean,
+): String =
     when (kind) {
-        PlanKind.WATCH_PARTY -> "Watch a game together, at home or out"
+        PlanKind.WATCH_PARTY -> if (kindsOn) "A game, a show, a film" else "Watch a game together, at home or out"
         PlanKind.PLAYDATE -> "Kids play, parents meet"
         PlanKind.PICKUP_GAME -> "Need players, now or later"
         PlanKind.WALK_COFFEE -> "Walks, dog walks, coffee"
-        PlanKind.STUDY_GROUP -> "Study together at a library or café"
+        PlanKind.STUDY_GROUP -> if (kindsOn) "Quiet or together" else "Study together at a library or café"
+        PlanKind.FOOD_DRINKS -> "Dinner, potluck, happy hour"
+        PlanKind.GAME_NIGHT -> "Board games, cards, trivia"
+        PlanKind.OUTDOORS -> "Hike, bike ride, run"
+        PlanKind.SOMETHING_ELSE -> "You name it: book club, craft night, a trip"
     }
 
+/** The kinds H1 offers a person's own plan: nine in board Type's order with `plans_kinds`, else the five as always. */
+private fun hostKinds(ui: HostUi): List<PlanKind> =
+    (if (ui.kindsOn) PlanKind.PICKER_ORDER else PlanKind.entries.filterNot { it.isNew })
+        .filter { it != PlanKind.PLAYDATE || ui.playdatesOn }
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TypeCard(
     kind: PlanKind,
     modifier: Modifier,
     title: String? = null,
-    blurb: String? = null,
+    blurb: String,
     onClick: () -> Unit,
 ) {
     Column(
@@ -356,15 +381,52 @@ private fun TypeCard(
                 .planCard()
                 .clickable(role = Role.Button, onClick = onClick)
                 .padding(Spacing.s4)
-                .semantics(mergeDescendants = true) { role = Role.Button },
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .testTag("planKind.${kind.wire}"),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         PlanTile(kind, size = 52.dp, glyph = 28.dp, corner = 15.dp)
-        Text(text = title ?: kind.label, style = planH4, color = PantopusColors.appText)
-        Text(text = blurb ?: typeBlurb(kind), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+        if (kind.isNew && title == null) {
+            // Board Type: "New" beside the four kinds of Plans step 4.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+                Text(text = kind.label, style = planH4, color = PantopusColors.appText)
+                PlanNewBadge(modifier = Modifier.align(Alignment.CenterVertically))
+            }
+        } else {
+            Text(text = title ?: kind.label, style = planH4, color = PantopusColors.appText)
+        }
+        Text(text = blurb, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
         if (kind == PlanKind.PLAYDATE && title == null) {
             PlanLockLine("You approve each family", icon = PantopusIcon.ShieldCheck)
         }
+    }
+}
+
+/** "Something else" (board Type, Plans step 4): a wide row under the grid, the plus on its slate tile and "New". */
+@Composable
+private fun SomethingElseCard(onClick: () -> Unit) {
+    val kind = PlanKind.SOMETHING_ELSE
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .planCard()
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(14.dp)
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .testTag("planKind.${kind.wire}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        PlanTile(kind)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text = kind.label, style = planH4, color = PantopusColors.appText)
+                PlanNewBadge()
+            }
+            Text(text = typeBlurb(kind, kindsOn = true), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+        }
+        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
     }
 }
 
