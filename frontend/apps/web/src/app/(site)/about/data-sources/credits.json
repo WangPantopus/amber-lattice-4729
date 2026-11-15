@@ -297,6 +297,14 @@
           "dataset": "Parcels (bedrooms, baths, finished area, year built)"
         },
         {
+          "id": "nc-brunswick",
+          "publisher": "Brunswick County, North Carolina (GIS and Tax Office)",
+          "url": "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1",
+          "license": "Public record under North Carolina's Public Records Law, as the county's site states; no terms posted on the layer",
+          "license_url": "https://www.brunswickcountync.gov/privacy",
+          "dataset": "Parcels with the Tax Office's building facts (bedrooms, full and half baths, heated area, year built)"
+        },
+        {
           "id": "mn-wright",
           "publisher": "Wright County, Minnesota",
           "url": "https://services2.arcgis.com/CiQCvRGImIxsaFnM/arcgis/rest/services/Buildings_Current_MapIt/FeatureServer/0",
