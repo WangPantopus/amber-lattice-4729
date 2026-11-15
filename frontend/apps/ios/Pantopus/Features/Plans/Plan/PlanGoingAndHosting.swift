@@ -390,7 +390,7 @@ struct PlanHostingSection: View {
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .padding(.vertical, Spacing.s2)
             } else if guests.isEmpty {
-                Text((card.requestsCount ?? 0) > 0 ? "Nobody's in yet." : "Nobody yet. We'll tell you when someone asks.")
+                Text((card.requestsCount ?? 0) > 0 ? "Nobody's in yet." : PlanPrivateCopy.nobodyYet(isPrivate: card.isPrivate))
                     .planFont(.small)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .padding(.vertical, Spacing.s2)

@@ -136,6 +136,11 @@ enum PlanPrivateCopy {
         isPrivate ? homeScope : "Only people you accept see your address. Everyone else sees the area."
     }
 
+    /// The host's page with nobody in yet: a private plan's people say they're in, nobody asks.
+    static func nobodyYet(isPrivate: Bool) -> String {
+        isPrivate ? "Nobody yet. We'll tell you when someone says they're in." : "Nobody yet. We'll tell you when someone asks."
+    }
+
     static let mapPickHint = "Tap a park, café or other place the map shows. A private plan can be anywhere."
 
     /// "Heritage Park, Camas · about 2 mi" (board Invited), for the person invited to a private plan at a public place.
