@@ -139,9 +139,29 @@ val PlanDto.standing: PlanViewerStanding
 
 /**
  * True when the private part (place, note, people) came with this copy: the viewer hosts it or is in. A business's
- * plan carries its place for everyone (it is the business's own address), so only the people count there.
+ * plan carries its place for everyone (it is the business's own address), so only the people count there; so does a
+ * private plan's place shown to the person invited before they answer.
  */
-val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null) || people != null
+val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null && !placeShownToInvitee) || people != null
+
+/** `audience` values (Plans step 1). An older server sends none, which is a plan anyone nearby can see. */
+object PlanAudience {
+    const val NEARBY = "nearby"
+    const val INVITED = "invited"
+}
+
+/** A private plan (Plans step 1): only its host, the people invited and the people in see it. */
+val PlanDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/** A private plan's pin. */
+val PlanPinDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/**
+ * A private plan's place as the person invited reads it before answering (at a public place the server sends it to
+ * them): not the private part of someone who is in.
+ */
+val PlanDto.placeShownToInvitee: Boolean
+    get() = isPrivate && place != null && standing != PlanViewerStanding.HOSTING && standing != PlanViewerStanding.IN
 
 /** A business hosts this plan (Plans with businesses): the server sends `business` only then. */
 val PlanDto.isBusiness: Boolean get() = business != null

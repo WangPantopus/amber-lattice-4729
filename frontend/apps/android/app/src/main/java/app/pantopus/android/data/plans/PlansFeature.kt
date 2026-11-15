@@ -20,12 +20,19 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** The two server flags (brief section 3). [playdates] only counts when [plans] is on. */
+/**
+ * The server flags (brief section 3). [playdates] only counts when [plans] is on; so does [privatePlans] (`plans_private`,
+ * Plans step 1: invite-only plans), which shows none of its controls while off.
+ */
 data class PlansFlags(
     val plans: Boolean = false,
     val playdates: Boolean = false,
+    val privatePlans: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
+
+    /** Private plans can be posted: the empty state's row, "Who can see this" and the private preview show. */
+    val privateOn: Boolean get() = plans && privatePlans
 }
 
 /**
@@ -133,12 +140,12 @@ class PlansFeature
             DeepLinkRouter.bindPlansEnabledProvider { kept }
         }
 
-        /** The app came to the foreground: re-check both flags. */
+        /** The app came to the foreground: re-check the flags. */
         fun foregrounded() {
             if (userId != null) refresh()
         }
 
-        /** Re-reads both flags now. */
+        /** Re-reads the flags now. */
         fun refresh() {
             val id = userId ?: return
             if (reading?.isActive == true) return
@@ -146,14 +153,17 @@ class PlansFeature
                 scope.launch {
                     val plans = async { read(FLAG_PLANS) }
                     val playdates = async { read(FLAG_PLAYDATES) }
+                    val privatePlans = async { read(FLAG_PRIVATE) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
+                    val privateOn = privatePlans.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
                         PlansFlags(
                             plans = plansOn ?: current.plans,
                             playdates = playdatesOn ?: current.playdates,
+                            privatePlans = privateOn ?: current.privatePlans,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -166,16 +176,22 @@ class PlansFeature
                 is NetworkResult.Failure -> null
             }
 
+        /** One character a flag, in order: plans, playdates, private ("11" from before private plans reads private off). */
         private fun remembered(id: String): PlansFlags {
             val raw = prefs.getString(id, null) ?: return PlansFlags()
-            return PlansFlags(plans = raw.startsWith("1"), playdates = raw.endsWith("1"))
+            return PlansFlags(
+                plans = raw.getOrNull(0) == '1',
+                playdates = raw.getOrNull(1) == '1',
+                privatePlans = raw.getOrNull(2) == '1',
+            )
         }
 
         private fun remember(
             id: String,
             flags: PlansFlags,
         ) {
-            prefs.edit().putString(id, "${if (flags.plans) 1 else 0}${if (flags.playdates) 1 else 0}").apply()
+            val raw = listOf(flags.plans, flags.playdates, flags.privatePlans).joinToString("") { if (it) "1" else "0" }
+            prefs.edit().putString(id, raw).apply()
         }
 
         private companion object {
@@ -183,5 +199,6 @@ class PlansFeature
             const val PREFS = "pantopus.plans.flags"
             const val FLAG_PLANS = "plans"
             const val FLAG_PLAYDATES = "plans_playdates"
+            const val FLAG_PRIVATE = "plans_private"
         }
     }

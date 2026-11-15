@@ -515,6 +515,10 @@ class PlansRepository
         ): NetworkResult<PlanInvitePeopleResponse> =
             safeApiCall(surfaceForbiddenBody = true) { api.invitePeople(id, query.takeIf(String::isNotBlank)) }
 
+        /** The people to invite before a private plan exists (its preview). */
+        suspend fun invitePeopleBefore(query: String = ""): NetworkResult<PlanInvitePeopleResponse> =
+            safeApiCall(surfaceForbiddenBody = true) { api.invitePeopleBefore(query.takeIf(String::isNotBlank)) }
+
         suspend fun invite(
             id: String,
             body: PlanInviteBody,
@@ -621,6 +625,8 @@ class PlansRepository
                 invites = null,
                 requestsCount = null,
                 autoRules = null,
+                inviteResults = null,
+                inviteError = null,
                 startsAt = plan.startsAt.takeUnless { plan.kind == "playdate" },
                 endsAt = plan.endsAt.takeUnless { plan.kind == "playdate" },
                 askingClosesAt = plan.askingClosesAt.takeUnless { plan.kind == "playdate" },
