@@ -164,6 +164,11 @@ export async function sendHolidayCardList(data: HolidayCardList): Promise<Awaite
   return call(() => mailbox.sendHolidayCardList(data));
 }
 
+/** Email it again: one more try of a card's email that didn't go out (Sent's `email_status`). */
+export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: true }> {
+  return call(() => mailbox.emailHolidayCardAgain(cardId));
+}
+
 export async function takeBackHolidayCard(cardId: string): Promise<{ taken_back: true }> {
   return call(() => mailbox.takeBackHolidayCard(cardId));
 }

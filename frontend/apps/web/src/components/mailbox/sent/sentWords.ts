@@ -33,6 +33,9 @@ export function sentToLine(piece: SentPiece): string {
 
 /** Where it is now, in a line. Their 7 a.m. mail comes by their clock, so only their day is said. */
 export function sentStatusLine(piece: SentPiece): string {
+  // A card by email whose email hasn't gone out (the server keeps trying for about an hour, then gives up).
+  if (piece.email_status === 'retrying') return 'The email didn’t go out yet. Trying again';
+  if (piece.email_status === 'failed') return 'The email didn’t go out';
   if (piece.by_link) {
     if (piece.status === 'claimed') return `${sentFirst(piece)} opened your link and has your card`;
     if (piece.status === 'expired') return 'Nobody opened your link in 90 days';
@@ -129,7 +132,11 @@ export function trailLabel(step: SentTrailStep, piece: SentPiece): string {
   switch (step.step) {
     case 'sealed': label = 'Sealed by you'; break;
     case 'not_delivered': return 'Couldn’t be delivered';
-    case 'emailed': label = `${piece.kind === 'letter' ? 'Sent' : 'Emailed'} to ${piece.status === 'claimed' ? 'them' : piece.to_name || 'them'}`; break;
+    case 'emailed':
+      if (!step.done && piece.email_status === 'failed') return 'The email didn’t go out';
+      if (!step.done && piece.email_status === 'retrying') return 'Emailing them · trying again';
+      label = `${piece.kind === 'letter' ? 'Sent' : 'Emailed'} to ${piece.status === 'claimed' ? 'them' : piece.to_name || 'them'}`;
+      break;
     case 'picked_up': label = 'Picked up by the carrier'; break;
     case 'delivered':
       label = piece.arrival === 'christmas_morning' ? `Delivered with ${first}’s Christmas morning mail` : `Delivered with ${first}’s 7 a.m. mail`;
