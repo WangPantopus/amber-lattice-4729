@@ -28,6 +28,8 @@ struct PlanChangeScreen: View {
     @State private var business: PlanHostAsBusinessDTO?
     @State private var newLocationId: String?
     @State private var choosingLocation = false
+    /// How it repeats (Plans step 2), sent only when the host changed it; nil where repeating isn't offered.
+    @State private var repeating: PlanRepeatDraft?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -133,6 +135,8 @@ struct PlanChangeScreen: View {
     }
 
     private func load() async {
+        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
+        guard plan == nil else { return }
         guard let detail = try? await PlansStoreReads.detail(id: planId) else {
             error = "We couldn't load this plan."
             return
@@ -141,6 +145,7 @@ struct PlanChangeScreen: View {
         plan = detail
         start = detail.card.startsAtDate ?? Date()
         end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
+        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
     }
 
     private func when(_ card: PlanCardDTO) -> some View {
@@ -149,7 +154,11 @@ struct PlanChangeScreen: View {
             VStack(spacing: 0) {
                 DatePicker(
                     selection: $start,
-                    in: Date()...Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? (card.isPrivate ? 60 : 14)) * 86400),
+                    // A repeating plan's later date may already be further out (a monthly one): the picker keeps it.
+                    in: Date()...max(
+                        Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? (card.isPrivate ? 60 : 14)) * 86400),
+                        card.startsAtDate ?? Date()
+                    ),
                     displayedComponents: [.date, .hourAndMinute]
                 ) {
                     Text("Starts").planFont(.body)
@@ -169,6 +178,10 @@ struct PlanChangeScreen: View {
                     Text("Ends").planFont(.body)
                 }
                 .padding(.vertical, 10)
+                if let repeating {
+                    Divider().overlay(Theme.Color.appBorder)
+                    PlanChangeRepeatsRow(draft: repeating, card: card, start: start, end: end)
+                }
             }
             .padding(.horizontal, 14)
             .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurface))
@@ -287,8 +300,12 @@ struct PlanChangeScreen: View {
         isSaving = true
         error = nil
         var body = UpdatePlanBody()
-        body.startsAt = PlanTime.string(start)
-        body.endsAt = PlanTime.string(end)
+        // The times go only when they changed: a change to how it repeats alone moves nothing.
+        if start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
+            body.startsAt = PlanTime.string(start)
+            body.endsAt = PlanTime.string(end)
+        }
+        body.repeatChange = repeating?.change
         if let newPlace {
             body.place = PlanPlaceBody(
                 kind: .publicPlace,

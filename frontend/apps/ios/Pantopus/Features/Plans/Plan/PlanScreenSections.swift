@@ -108,6 +108,7 @@ struct PlanTitleBlock: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 PlanFactRow(icon: .calendar, text: PlanScreenLines.when(card))
+                if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
                 PlanFactRow(icon: .mapPin, text: PlanScreenLines.whereLine(card))
                 if card.kind == .playdate, let ages = PlanRowModel.ages(card.details?.kidsAgeBands) {
                     PlanFactRow(icon: .planPlaydate, text: "Kids \(ages)")
@@ -269,6 +270,7 @@ struct PlanBrowsingSection: View {
                 if !card.isBusiness { PlanFactRow(icon: .shieldCheck, text: "Free, and for adults") }
             }
         }
+        if card.isRepeating, card.myInvite?.isOpen == true { PlanFactRow(icon: .check, text: PlanRepeatCopy.invitedLine) }
     }
 }
 
@@ -315,6 +317,7 @@ struct PlanRequestedSection: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if let partySize = myRequest?.partySize {
             PlanCardBox {
@@ -380,6 +383,7 @@ struct PlanWaitlistSection: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
             if let details = PlanScreenLines.details(card) {
                 Text(details).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
             }

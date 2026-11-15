@@ -106,6 +106,8 @@ struct PlanPreviewScreen: View {
                     .planFont(.small)
                     .monospacedDigit()
                     .foregroundStyle(Theme.Color.appTextSecondary)
+                // A repeating plan (Plans step 2): "Every Tue and Thu until Feb 4".
+                if let line = model.repeatLine { PlanRepeatLine(text: line, spoken: model.repeatSpoken) }
                 HStack(spacing: 10) {
                     PlanAvatar(name: model.hostName, size: 30)
                     Text(model.hostName).fontWeight(.semibold).planFont(.small).foregroundStyle(Theme.Color.appText)

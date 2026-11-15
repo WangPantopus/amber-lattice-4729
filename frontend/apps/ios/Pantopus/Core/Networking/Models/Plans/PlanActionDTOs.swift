@@ -173,9 +173,12 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var audience: PlanAudience?
     public var guestsCanInvite: Bool?
     public var inviteUserIds: [String]?
+    /// Repeating plans (step 2): how it repeats. Left out for a plan that doesn't (never for a business's).
+    public var repeatPattern: PlanRepeatBody?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience
+        case repeatPattern = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case autoRules = "auto_rules"
@@ -233,9 +236,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     /// A business's plan: what guests see it called, and which of its locations.
     public var label: String?
     public var businessLocationId: String?
+    /// Repeating plans (step 2): a new pattern from this date on, or `.stop` (sent as `null`). Nil leaves it.
+    public var repeatChange: PlanRepeatChange?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label
+        case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case autoRules = "auto_rules"
@@ -246,12 +252,20 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public init() {}
 }
 
-/// `POST /api/plans/:id/cancel`.
+/// `POST /api/plans/:id/cancel`. On a repeating plan, `repeat: "keep"` cancels this date only and posts the
+/// next one now ("Skip Thursday"); without it the series stops too.
 public struct CancelPlanBody: Encodable, Sendable {
     public let note: String?
+    public let afterwards: String?
 
-    public init(note: String?) {
+    enum CodingKeys: String, CodingKey {
+        case note
+        case afterwards = "repeat"
+    }
+
+    public init(note: String?, keepRepeating: Bool = false) {
         self.note = note
+        afterwards = keepRepeating ? "keep" : nil
     }
 }
 

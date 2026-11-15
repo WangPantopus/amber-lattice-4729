@@ -9,7 +9,10 @@
 //  the team permissions "Post plans" and "Run plans". Inside Plans the server
 //  decides, by sending a business's plan or not. A fourth, `plans_private`
 //  (step 1's private plans), shows the controls for posting one; a private plan
-//  already posted shows as private either way. The app reads them at launch and on
+//  already posted shows as private either way. A fifth, `plans_repeat` (step 2's
+//  repeating plans), shows the Repeats row for a plan that doesn't repeat yet; a
+//  plan that already repeats keeps its lines and its host's controls either
+//  way. The app reads them at launch and on
 //  foreground through `GET /api/feature-flags/:flagName`, which honors
 //  `enabled_for_internal_team` and `beta_user_ids`, so pilot testers can have
 //  Plans before everyone else.
@@ -37,6 +40,8 @@ final class PlansFlags {
     private(set) var business = false
     /// Private plans can be posted (never without `plans`).
     private(set) var privatePlans = false
+    /// Plans can be set to repeat (never without `plans`).
+    private(set) var repeating = false
 
     /// Checks closer together than this reuse the last answer.
     static let recheckAfter: TimeInterval = 30
@@ -58,7 +63,7 @@ final class PlansFlags {
         guard let newAccount else {
             account = nil
             lastChecked = nil
-            apply(plans: false, playdates: false, business: false, privatePlans: false)
+            apply(Answers(plans: false, playdates: false, business: false, privatePlans: false, repeating: false))
             return
         }
         if newAccount != account {
@@ -102,34 +107,55 @@ final class PlansFlags {
         async let playdatesAnswer = Self.read("plans_playdates", api: api)
         async let businessAnswer = Self.read("plans_business", api: api)
         async let privateAnswer = Self.read("plans_private", api: api)
-        let answers = await (plans: plansAnswer, playdates: playdatesAnswer, business: businessAnswer, privatePlans: privateAnswer)
+        async let repeatAnswer = Self.read("plans_repeat", api: api)
+        let answers = await (
+            plans: plansAnswer,
+            playdates: playdatesAnswer,
+            business: businessAnswer,
+            privatePlans: privateAnswer,
+            repeating: repeatAnswer
+        )
         // An account switch while the check ran: its answers aren't this account's.
         guard account == checked else { return }
         let plansOn = answers.plans ?? plans
-        let playdatesOn = answers.playdates ?? playdates
-        let businessOn = answers.business ?? business
-        let privateOn = answers.privatePlans ?? privatePlans
         if answers.plans != nil || answers.playdates != nil { lastChecked = Date() }
-        apply(plans: plansOn, playdates: plansOn && playdatesOn, business: plansOn && businessOn, privatePlans: plansOn && privateOn)
-        defaults.set([plans, playdates, business, privatePlans], forKey: Self.key(checked))
+        apply(Answers(
+            plans: plansOn,
+            playdates: plansOn && (answers.playdates ?? playdates),
+            business: plansOn && (answers.business ?? business),
+            privatePlans: plansOn && (answers.privatePlans ?? privatePlans),
+            repeating: plansOn && (answers.repeating ?? repeating)
+        ))
+        defaults.set([plans, playdates, business, privatePlans, repeating], forKey: Self.key(checked))
     }
 
     private func restore(for account: String) {
         let saved = defaults.array(forKey: Self.key(account)) as? [Bool] ?? []
         let plansOn = saved.first ?? false
-        apply(
+        apply(Answers(
             plans: plansOn,
             playdates: plansOn && saved.dropFirst().first == true,
             business: plansOn && saved.dropFirst(2).first == true,
-            privatePlans: plansOn && saved.dropFirst(3).first == true
-        )
+            privatePlans: plansOn && saved.dropFirst(3).first == true,
+            repeating: plansOn && saved.dropFirst(4).first == true
+        ))
     }
 
-    private func apply(plans plansOn: Bool, playdates playdatesOn: Bool, business businessOn: Bool, privatePlans privateOn: Bool) {
-        if plans != plansOn { plans = plansOn }
-        if playdates != playdatesOn { playdates = playdatesOn }
-        if business != businessOn { business = businessOn }
-        if privatePlans != privateOn { privatePlans = privateOn }
+    /// Each switch's answer, every one already off without `plans`.
+    private struct Answers {
+        let plans: Bool
+        let playdates: Bool
+        let business: Bool
+        let privatePlans: Bool
+        let repeating: Bool
+    }
+
+    private func apply(_ answers: Answers) {
+        if plans != answers.plans { plans = answers.plans }
+        if playdates != answers.playdates { playdates = answers.playdates }
+        if business != answers.business { business = answers.business }
+        if privatePlans != answers.privatePlans { privatePlans = answers.privatePlans }
+        if repeating != answers.repeating { repeating = answers.repeating }
     }
 
     /// The flag's answer, or nil when it couldn't be read (offline, 5xx).

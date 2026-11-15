@@ -208,21 +208,16 @@ struct PlanCancelSheet: View {
                     Text(error).planFont(.small).foregroundStyle(Theme.Color.error)
                 }
                 VStack(spacing: Spacing.s2) {
-                    Button {
-                        Task {
-                            isCancelling = true
-                            let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let done = await viewModel.cancelPlan(note: trimmed.isEmpty ? nil : trimmed)
-                            isCancelling = false
-                            if done { onClose() }
-                        }
-                    } label: {
-                        PlanButtonLabel(title: "Cancel plan", kind: .danger, isLoading: isCancelling)
+                    // A repeating plan whose series goes on asks which (Plans step 2): this date only (the next one is
+                    // posted), or the series too. Its last date has nothing after it: the plain cancel.
+                    if viewModel.card?.seriesGoesOn == true {
+                        cancelButton("Cancel this date", kind: .danger, keepRepeating: true, identifier: "planCancelThisDate")
+                        cancelButton("Cancel and stop repeating", kind: .secondary, keepRepeating: false, identifier: "planCancelConfirm")
+                    } else {
+                        cancelButton("Cancel plan", kind: .danger, keepRepeating: false, identifier: "planCancelConfirm")
                     }
-                    .planButton(.danger)
-                    .accessibilityIdentifier("planCancelConfirm")
                     Button("Keep plan", action: onClose)
-                        .planButton(.secondary)
+                        .planButton(viewModel.card?.seriesGoesOn == true ? .text : .secondary)
                 }
                 VStack(alignment: .leading, spacing: Spacing.s1) {
                     Text("Removing one guest instead?").planFont(.smallStrong).foregroundStyle(Theme.Color.appText)
@@ -249,6 +244,23 @@ struct PlanCancelSheet: View {
         // Opaque, as the boards draw the modal: the plan behind must not show through.
         .presentationBackground(Theme.Color.appSurface)
         .accessibilityIdentifier("planCancelSheet")
+    }
+
+    private func cancelButton(_ title: String, kind: PlanButtonStyle.Kind, keepRepeating: Bool, identifier: String) -> some View {
+        Button {
+            Task {
+                isCancelling = true
+                let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                let done = await viewModel.cancelPlan(note: trimmed.isEmpty ? nil : trimmed, keepRepeating: keepRepeating)
+                isCancelling = false
+                if done { onClose() }
+            }
+        } label: {
+            PlanButtonLabel(title: title, kind: kind, isLoading: isCancelling)
+        }
+        .planButton(kind)
+        .disabled(isCancelling)
+        .accessibilityIdentifier(identifier)
     }
 
     /// "We'll tell the 5 people who are in and the 2 who asked. The pin comes off the map and the chat closes."

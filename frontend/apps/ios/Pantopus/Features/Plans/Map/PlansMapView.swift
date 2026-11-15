@@ -223,6 +223,8 @@ struct PlansMapActions {
     var ask: (@MainActor () -> Void)?
     /// "Plan with people you know" (Plans step 1): the host flow on "Only people I invite".
     var hostPrivate: (@MainActor () -> Void)?
+    /// "Change" on the host's repeating plan under Your plans (Plans step 2): the Change screen.
+    var openChange: (@MainActor (String) -> Void)?
 }
 
 /// Where the composer starts: a kind, and for a watch party maybe a game.

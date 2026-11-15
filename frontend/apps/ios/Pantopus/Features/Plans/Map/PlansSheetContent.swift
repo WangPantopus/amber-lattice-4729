@@ -200,7 +200,9 @@ extension PlanRowModel {
             subtitle: subtitle,
             trailing: trailing,
             accessibilityLabel: accessibilityLabel,
-            isBusiness: isBusiness
+            isBusiness: isBusiness,
+            isPrivate: isPrivate,
+            repeatLine: repeatLine
         )
     }
 }
@@ -318,14 +320,27 @@ struct PlansListSheet: View {
                 .padding(.bottom, 2)
                 .hiddenUnderPlansTabBar()
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                PlanRow(
-                    model: mine ? .mine(card, requestsCount: card.requestsCount) : .listed(card),
-                    showsDivider: index > 0
-                ) {
-                    actions.openPlan(card, card.id, .view)
+                if mine, PlanSeriesHostCard.shows(card) {
+                    // The host's repeating plan (board Regulars, Plans step 2): skip, change or stop it here.
+                    PlanSeriesListCard(
+                        card: card,
+                        onOpen: { actions.openPlan(card, card.id, .view) },
+                        onChange: { openChange(card) },
+                        onOpenNext: { actions.openPlan(nil, $0, .view) }
+                    )
+                    .padding(.vertical, Spacing.s2)
+                    .itemZoomSource(.plan, id: card.id)
+                    .hiddenUnderPlansTabBar()
+                } else {
+                    PlanRow(
+                        model: mine ? .mine(card, requestsCount: card.requestsCount) : .listed(card),
+                        showsDivider: index > 0
+                    ) {
+                        actions.openPlan(card, card.id, .view)
+                    }
+                    .itemZoomSource(.plan, id: card.id)
+                    .hiddenUnderPlansTabBar()
                 }
-                .itemZoomSource(.plan, id: card.id)
-                .hiddenUnderPlansTabBar()
                 // A venue's later plans fold under its soonest one (board P3), "Your plans" too: the plan you're
                 // in comes from your own plans, which don't carry the fold, so it is read from the list's row.
                 if let more = card.moreTimes ?? viewModel.cards.first(where: { $0.id == card.id })?.moreTimes,
@@ -344,6 +359,11 @@ struct PlansListSheet: View {
                 }
             }
         }
+    }
+
+    /// The Change screen for a repeating plan's "Change"; the plan itself where there is no such route.
+    private func openChange(_ card: PlanCardDTO) {
+        if let openChange = actions.openChange { openChange(card.id) } else { actions.openPlan(card, card.id, .view) }
     }
 
     private func moreNearby(

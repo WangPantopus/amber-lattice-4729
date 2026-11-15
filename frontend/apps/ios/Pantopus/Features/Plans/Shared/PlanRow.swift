@@ -31,6 +31,8 @@ struct PlanRowModel: Identifiable, Equatable {
     var isBusiness = false
     /// A private plan: the lock on the kind tile (Plans step 1).
     var isPrivate = false
+    /// A repeating plan (Plans step 2): "Every Tue and Thu until Feb 4", under the when line.
+    var repeatLine: String?
 
     /// A row in a public list (the map's sheet, Today and Tomorrow, J8).
     static func listed(_ card: PlanCardDTO, trailing: PlanRowTrailing? = nil, now: Date = Date()) -> PlanRowModel {
@@ -80,7 +82,8 @@ struct PlanRowModel: Identifiable, Equatable {
             subtitle: parts.joined(separator: " · "),
             trailing: trailing ?? spotsTrailing(card),
             accessibilityLabel: spoken(card, now: now),
-            isPrivate: card.isPrivate
+            isPrivate: card.isPrivate,
+            repeatLine: PlanRepeatCopy.line(card)
         )
     }
 
@@ -102,7 +105,8 @@ struct PlanRowModel: Identifiable, Equatable {
                 trailing: trailing,
                 accessibilityLabel: "You're hosting. " + row.accessibilityLabel,
                 isBusiness: row.isBusiness,
-                isPrivate: row.isPrivate
+                isPrivate: row.isPrivate,
+                repeatLine: row.repeatLine
             )
         }
         // An invitation not answered yet: "Sam invited you · Sun 1:25 PM".
@@ -117,7 +121,8 @@ struct PlanRowModel: Identifiable, Equatable {
                 trailing: row.trailing,
                 accessibilityLabel: "\(host) invited you. " + row.accessibilityLabel,
                 isBusiness: row.isBusiness,
-                isPrivate: row.isPrivate
+                isPrivate: row.isPrivate,
+                repeatLine: row.repeatLine
             )
         }
         let status: PlanRowTrailing = switch viewer?.requestStatus {
@@ -185,6 +190,7 @@ struct PlanRowModel: Identifiable, Equatable {
         if let distance = PlanFormat.spokenDistance(card.distanceBand) { parts.append(distance) }
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")
+        if let line = PlanRepeatCopy.spoken(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
         if card.isBusiness { parts.append("Free") }
         return parts.joined(separator: ", ")
     }
@@ -246,6 +252,7 @@ struct PlanRow: View {
                 .planFont(.footnote)
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .lineLimit(lines)
+            if let repeatLine = model.repeatLine { PlanRepeatLine(text: repeatLine, compact: true).padding(.top, 1) }
         }
     }
 
