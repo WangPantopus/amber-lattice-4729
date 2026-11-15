@@ -50,7 +50,14 @@ const ICON_BY_KIND = {
   pickup_game: '🏓',
   walk_coffee: '☕',
   study_group: '📚',
+  food_drinks: '🍽️',
+  game_night: '🎲',
+  outdoors: '🥾',
+  something_else: '📅',
 };
+
+const FOOD_NOUNS = { dinner: 'dinner', potluck: 'potluck', drinks: 'drinks', brunch: 'brunch', bbq: 'barbecue' };
+const OUTDOOR_NOUNS = { hike: 'hike', bike_ride: 'bike ride', run: 'run' };
 
 // ── Words ────────────────────────────────────────────────────
 
@@ -72,6 +79,10 @@ function noun(plan) {
       return 'walk';
     }
     case 'study_group': return 'study group';
+    // A detail not chosen is its default (planActions.normalizeDetails): dinner, a hike.
+    case 'food_drinks': return FOOD_NOUNS[plan.details?.food_kind || 'dinner'] || 'get-together';
+    case 'game_night': return 'game night';
+    case 'outdoors': return OUTDOOR_NOUNS[plan.details?.outdoor_kind || 'hike'] || 'outing';
     default: return 'plan';
   }
 }
@@ -129,9 +140,16 @@ function areaPhrase(plan) {
   return /^near\s/i.test(label) ? `near ${label.slice(5)}` : `in ${label}`;
 }
 
-/** Where, as a notice may say it: "at Sam's place" at home, else the area. */
+/** Where, as a notice may say it: "at Sam's place" at home, "online", else the area. Never a link. */
 function placePhrase(plan, hostFirst) {
+  if (plan.place_kind === 'online') return 'online';
   return plan.place_kind === 'home' ? `at ${hostFirst}'s place` : areaPhrase(plan);
+}
+
+/** After "Now Sunday at 2:00 PM, " or "Sam moved the plan to …, ": "with a new link", "online" or "at a new place". */
+function newPlaceWords(plan, linkChanged = false) {
+  if (linkChanged) return 'with a new link';
+  return plan.place_kind === 'online' ? 'online' : 'at a new place';
 }
 
 const AGE_TEXT = { under_2: 'under 2', '2_3': '2–3', '4_5': '4–5', '6_8': '6–8', '9_12': '9–12' };
@@ -412,21 +430,25 @@ async function declined({ plan, request, hostFirst }) {
   });
 }
 
-async function changed({ plan, request, hostFirst, timeMoved, placeChanged }) {
+async function changed({ plan, request, hostFirst, timeMoved, placeChanged, linkChanged = false }) {
   // Board H11: "Now Sunday at 2:00 PM. Still coming?" (the apps preview the same words).
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true, at: true });
   let title;
   let body;
   if (timeMoved && placeChanged) {
     title = `${hostFirst} changed the ${noun(plan)}`;
-    body = `Now ${when}, at a new place. Still coming?`;
+    body = `Now ${when}, ${newPlaceWords(plan, linkChanged)}. Still coming?`;
   } else if (timeMoved) {
     title = `${hostFirst} moved the ${noun(plan)}`;
     body = `Now ${when}. Still coming?`;
+  } else if (linkChanged) {
+    // Never the link itself: it is in the plan, for the people in.
+    title = `${hostFirst} changed the link`;
+    body = 'It has a new link now. Still coming?';
   } else {
     // The apps preview this push on H11 before saving; the new area's name isn't known until then.
     title = `${hostFirst} changed the place`;
-    body = "It's at a new place now. Still coming?";
+    body = plan.place_kind === 'online' ? "It's online now. Still coming?" : "It's at a new place now. Still coming?";
   }
   return notify({
     userId: request.user_id,
@@ -496,7 +518,8 @@ async function reminder({ plan, request, goingCount, band }) {
   const when = sameDay
     ? `at ${timeText(startsAt, tz).replace(/\s?[AP]M$/, '')}`
     : whenText(plan.post.event_date, tz, { long: true, at: true });
-  const parts = [band ? band.replace(/ away$/, '') : null, `${goingCount} going`].filter(Boolean);
+  // No distance for an online plan (one moved online may still have a band from when it was in person).
+  const parts = [band && plan.place_kind !== 'online' ? band.replace(/ away$/, '') : null, `${goingCount} going`].filter(Boolean);
   return notify({
     userId: request.user_id,
     type: 'plan_reminder',
@@ -612,10 +635,16 @@ async function guestAutoJoined({ plan, request, guestName, rule, goingCount, via
 
 // ── Invitations (planInvites.js) ─────────────────────────────
 
-/** "Sam invited you to a watch party", "Sam invited you for coffee". */
+/** "Sam invited you to a watch party", "Sam invited you for coffee", "… to dinner", "… to an outing". */
 function invitedTitle(plan, hostFirst) {
   const what = noun(plan);
-  return what === 'coffee' ? `${hostFirst} invited you for coffee` : `${hostFirst} invited you to a ${what}`;
+  if (what === 'coffee') return `${hostFirst} invited you for coffee`;
+  if (rules.NEW_KINDS.includes(plan.kind) && !plan.business_user_id) {
+    if (what === 'drinks') return `${hostFirst} invited you for drinks`;
+    if (what === 'dinner' || what === 'brunch') return `${hostFirst} invited you to ${what}`;
+    if (/^[aeiou]/.test(what)) return `${hostFirst} invited you to an ${what}`;
+  }
+  return `${hostFirst} invited you to a ${what}`;
 }
 
 /**
@@ -688,9 +717,11 @@ async function inviteDeclined({ plan, userId, guestName, goingCount }) {
  */
 async function stillComingReminder({ plan, request, hostFirst }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true, at: true });
+  // For an online plan, "a new place" is a new link (or the move online): said without the link.
+  const online = plan.place_kind === 'online';
   let what = `Now ${when}.`;
-  if (request.reconfirm_reason === 'place') what = "It's at a new place now.";
-  else if (request.reconfirm_reason === 'both') what = `Now ${when}, at a new place.`;
+  if (request.reconfirm_reason === 'place') what = online ? 'It has a new link now.' : "It's at a new place now.";
+  else if (request.reconfirm_reason === 'both') what = `Now ${when}, ${online ? 'with a new link' : 'at a new place'}.`;
   return notify({
     userId: request.user_id,
     type: 'plan_still_coming_reminder',
@@ -716,6 +747,7 @@ module.exports = {
   bandText,
   areaPhrase,
   placePhrase,
+  newPlaceWords,
   inQuietHours,
   nextQuietEnd,
   isNearPlan,

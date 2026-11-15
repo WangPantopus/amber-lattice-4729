@@ -80,6 +80,31 @@ async function areaLabelFor(area, { fallbackCity = null } = {}) {
   return result;
 }
 
+// What an online plan's place is called, on the plan and wherever its area would be.
+const ONLINE_NAME = 'Online';
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/**
+ * The link people join an online plan with, as the host typed it (trimmed): an https URL of at most 300 characters
+ * whose host is a name with a dot, not an IP address or localhost. Returns { link, host } ("meet.google.com", the
+ * host name without a leading www.), or null.
+ */
+function parseOnlineLink(raw, maxLength) {
+  if (typeof raw !== 'string') return null;
+  const link = raw.trim();
+  if (!link || link.length > maxLength || /[\s\u0000-\u001f\u007f]/.test(link)) return null;
+  let url;
+  try {
+    url = new URL(link);
+  } catch (_) {
+    return null;
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (url.protocol !== 'https:' || !host.includes('.') || host.startsWith('[') || IPV4.test(host)) return null;
+  if (host === 'localhost' || host.endsWith('.localhost')) return null;
+  return { link, host: host.replace(/^www\./, '') };
+}
+
 /** A home's one-line street address, as people who are in see it. */
 function homeAddressLine(home) {
   if (!home) return null;
@@ -89,6 +114,8 @@ function homeAddressLine(home) {
 }
 
 module.exports = {
+  ONLINE_NAME,
+  parseOnlineLink,
   areaPointFor,
   locationPrecisionFor,
   timezoneFor,

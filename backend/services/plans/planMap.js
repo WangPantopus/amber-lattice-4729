@@ -45,11 +45,16 @@ async function planPins(user, box, query = {}) {
   const gps = gpsLat != null && gpsLng != null && query.gps_timestamp
     ? { latitude: gpsLat, longitude: gpsLng, timestamp: String(query.gps_timestamp) }
     : null;
-  // `biz=1`: this app can draw a business's pin (Plans with businesses); see routes/plans.js.
-  const viewer = await loadViewer({ ...user, plansBiz: query.biz === '1' }, { point, gps });
+  // `biz=1`: this app can draw a business's pin (Plans with businesses); `more=1`: the newer kinds' pins. See
+  // routes/plans.js.
+  const viewer = await loadViewer({ ...user, plansBiz: query.biz === '1', plansMore: query.more === '1' }, { point, gps });
 
-  const asked = String(query.kinds || '').split(',').map((k) => k.trim()).filter((k) => rules.KINDS.includes(k));
-  let kinds = asked.length ? asked : rules.KINDS;
+  const known = viewer.more ? rules.ALL_KINDS : rules.KINDS;
+  const askedAny = String(query.kinds || '').split(',').map((k) => k.trim()).filter(Boolean);
+  const asked = askedAny.filter((k) => known.includes(k));
+  // Only kinds this app can't draw: no pins, not every pin.
+  if (askedAny.length > 0 && asked.length === 0 && askedAny.every((k) => rules.ALL_KINDS.includes(k))) return [];
+  let kinds = asked.length ? asked : known;
   if (!viewer.seesPlaydates) kinds = kinds.filter((k) => k !== 'playdate');
   // Only kinds this viewer can't see (kinds=playdate with plans_playdates off): no pins, not every pin.
   if (kinds.length === 0) return [];
@@ -58,13 +63,15 @@ async function planPins(user, box, query = {}) {
   // A little wider than the box: a plan the viewer is in shows at its exact place.
   const pad = 0.02;
   const [publicRows, ownPrivate] = await Promise.all([
+    // Never an online plan: it has no place to pin, whoever is looking.
     planService.queryOpenPlansInBox({
       south: box.south - pad, north: box.north + pad, west: box.west - pad, east: box.east + pad,
-    }, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz }),
+    }, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz, more: viewer.more, online: false }),
     // The viewer's own private plans (host, invited, in or waiting): pins for them alone.
-    planService.ownPrivatePlans(viewer, { kinds }),
+    planService.ownPrivatePlans(viewer, { kinds, online: false }),
   ]);
-  const rows = [...publicRows.filter((plan) => planService.isVisibleTo(plan, viewer)), ...ownPrivate];
+  const rows = [...publicRows.filter((plan) => planService.isVisibleTo(plan, viewer)), ...ownPrivate]
+    .filter((plan) => !rules.isOnline(plan));
   // One pin for a venue: a business's later plans there fold under its soonest (the list does the same), and
   // the list's filter (host=all|neighbors|businesses) filters the pins too.
   const wanted = viewer.biz ? planService.hostFilter(query.host) : 'all';

@@ -250,6 +250,18 @@ function view(plan) {
 
 // ── Posting the next date ────────────────────────────────────
 
+/** The next date's place, as a request would give it: the same home, public place, or link. */
+function placeOf(plan) {
+  // An online date keeps its link; its area point and time zone ride along in the series (postNext).
+  if (plan.place_kind === 'online') return { kind: 'online', link: plan.online_link };
+  if (plan.place_kind === 'home') return { kind: 'home', home_id: plan.place_home_id };
+  return {
+    kind: 'public', name: plan.place_name, address: plan.place_address,
+    latitude: Number(plan.place_latitude), longitude: Number(plan.place_longitude),
+    place_id: plan.place_ref || undefined,
+  };
+}
+
 /** The next date's plan, copied from this one with new times (the host's edits carry forward). */
 async function nextInput(plan, times, host) {
   const { repeatDetailsForViewer } = require('./planGames');
@@ -262,13 +274,7 @@ async function nextInput(plan, times, host) {
     starts_at: times.startsAt,
     ends_at: times.endsAt,
     spots: plan.spots,
-    place: plan.place_kind === 'home'
-      ? { kind: 'home', home_id: plan.place_home_id }
-      : {
-        kind: 'public', name: plan.place_name, address: plan.place_address,
-        latitude: Number(plan.place_latitude), longitude: Number(plan.place_longitude),
-        place_id: plan.place_ref || undefined,
-      },
+    place: placeOf(plan),
     auto_rules: Array.isArray(plan.auto_rules) ? plan.auto_rules : [],
     join_requirement: plan.join_requirement,
     details,
@@ -342,11 +348,22 @@ async function postNext(plan, { now = Date.now() } = {}) {
     await planNotify.seriesNotice({ plan, what: 'ended' });
     return { posted: null, reason: 'ended' };
   }
-  const host = { id: String(plan.host_user_id), role: null };
+  // Posted as the host, by the server, which can read every plan it posts: an online date or one of the newer kinds
+  // is copied too (`plansMore`), whatever app its host uses.
+  const host = { id: String(plan.host_user_id), role: null, plansMore: true };
   let created;
   try {
     created = await actions().createPlan(host, await nextInput(plan, times, host), {
-      series: { id: plan.series_id || plan.post_id, index: (plan.series_index || 1) + 1, repeat: plan.repeat },
+      series: {
+        id: plan.series_id || plan.post_id,
+        index: (plan.series_index || 1) + 1,
+        repeat: plan.repeat,
+        // An online date stays in the same area (or none) and the same time zone as the one before.
+        ...(plan.place_kind === 'online' ? {
+          point: { latitude: Number(plan.place_latitude), longitude: Number(plan.place_longitude) },
+          timezone: rules.timezoneForPlan(plan),
+        } : {}),
+      },
     });
   } catch (err) {
     if (!(err instanceof actions().PlanError)) {
