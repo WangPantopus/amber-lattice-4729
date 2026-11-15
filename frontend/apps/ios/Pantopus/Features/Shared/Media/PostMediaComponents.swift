@@ -510,7 +510,7 @@ struct PostMediaTileView: View {
 /// opens `MediaViewerView` paged across **all** items (including the
 /// ones hidden behind the "+N" cap). A screen that is made anew when the
 /// iPhone Duo folds presents the viewer itself (`PostPresentationHost`), so
-/// the open picture stays through the fold.
+/// the viewer stays open through the fold.
 ///
 /// A post whose pictures are an outlet's own files (it names where it was
 /// published, `PostSource`) leaves out a picture that cannot load

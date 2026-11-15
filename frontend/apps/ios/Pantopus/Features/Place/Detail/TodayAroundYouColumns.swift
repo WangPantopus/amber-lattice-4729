@@ -19,7 +19,8 @@
 //
 //  The open post's model and what it presents live in `TodayAroundYouModel`,
 //  so a fold or a turn moves the post between the stack and the page beside
-//  the list with its reply, its place and its pictures as they were.
+//  the list with its reply and its place as they were, and the picture viewer
+//  or the story sheet still open.
 //
 
 import Observation

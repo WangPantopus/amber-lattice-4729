@@ -16,17 +16,11 @@
 import Observation
 import SwiftUI
 
-/// The pictures open in the viewer, and the one the reader is on.
+/// The pictures open in the viewer, and the one it opened on.
 struct PostMediaViewerPresentation: Identifiable {
     let id = UUID()
     let items: [PostMediaItem]
-    let page: MediaViewerPage
-
-    @MainActor
-    init(items: [PostMediaItem], index: Int) {
-        self.items = items
-        page = MediaViewerPage(index)
-    }
+    let index: Int
 }
 
 /// What is presented for the posts under one screen.
@@ -60,7 +54,7 @@ extension View {
         @Bindable var host = host
         return environment(\.postPresentationHost, host)
             .fullScreenCover(item: $host.viewer) { viewer in
-                MediaViewerView(items: viewer.items, page: viewer.page)
+                MediaViewerView(items: viewer.items, startIndex: viewer.index)
             }
             .postSourceBrowser($host.source)
     }
