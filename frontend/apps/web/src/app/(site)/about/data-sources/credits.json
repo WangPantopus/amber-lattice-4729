@@ -72,6 +72,15 @@
           "statement": "All data is believed to be correct, but is not guaranteed by James City County. The county is not responsible for its accuracy or how current it may be."
         },
         {
+          "id": "ks-sedgwick",
+          "publisher": "City of Wichita, Kansas (copy of the Sedgwick County Appraiser's records)",
+          "url": "https://www.arcgis.com/home/item.html?id=cc370e96c9944bb2be62fe15964f9cba",
+          "license": "Open Data Commons Public Domain Dedication and License (PDDL) 1.0",
+          "license_url": "https://opendatacommons.org/licenses/pddl/1-0/",
+          "dataset": "City of Wichita Parcels, with the Sedgwick County Appraiser's building facts and appraised values; lot sizes are the county's mapped parcel acres",
+          "statement": "The Sedgwick County Appraiser is the origin of these records; the City of Wichita publishes this copy. Data users must comply with K.S.A. 45-230, which restricts selling, giving or receiving lists of names and addresses from public records for sales solicitation."
+        },
+        {
           "id": "va-charlottesville",
           "publisher": "City of Charlottesville, Virginia",
           "url": "https://opendata.charlottesville.org",
