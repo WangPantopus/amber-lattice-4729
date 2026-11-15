@@ -35,6 +35,7 @@ export type {
   PostComment,
   PostingIdentity,
   Post,
+  QuotedPost,
   MatchedBusiness,
 } from './post';
 

@@ -149,6 +149,8 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   const [userPosts, setUserPosts] = useState<Post[]>(() => kept.posts?.posts || []);
   // More posts than the first page: the tab offers the rest and leaves the count off.
   const [postsHasMore, setPostsHasMore] = useState<boolean>(() => Boolean(kept.posts?.pagination?.hasMore));
+  // Where the next page starts, as the server said (opaque: with reposts listed, a row's own time isn't its place).
+  const [postsNextCursor, setPostsNextCursor] = useState<{ createdAt: string; id: string } | null>(() => kept.posts?.pagination?.nextCursor ?? null);
   const [postsMoreLoading, setPostsMoreLoading] = useState(false);
   // Posts are requested once per profile, reviews once per profile and viewer (the pending-review
   // check needs the viewer); the load effect re-runs on every profile or portfolio update.
@@ -420,6 +422,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     if (!getAuthToken()) {
       setUserPosts([]);
       setPostsHasMore(false);
+      setPostsNextCursor(null);
       return;
     }
     const id = profile.id;
@@ -427,14 +430,16 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     setPostsFailed(false);
     if (queryClient.getQueryData(key) === undefined) setPostsLoading(true);
     try {
-      const res = await read(key, () => api.posts.getUserPosts(id, { limit: POSTS_PAGE }));
+      // A profile's Posts also lists the posts the person reposted (the owner and their connections get them).
+      const res = await read(key, () => api.posts.getUserPosts(id, { limit: POSTS_PAGE, include_reposts: true }));
       if (!current()) return;
       setUserPosts(res.posts || []);
       setPostsHasMore(Boolean(res.pagination?.hasMore));
+      setPostsNextCursor(res.pagination?.nextCursor ?? null);
     } catch (err) {
       if (!current()) return;
       console.error('Failed to load user posts:', err);
-      if (queryClient.getQueryData(key) === undefined) { setUserPosts([]); setPostsHasMore(false); setPostsFailed(true); }
+      if (queryClient.getQueryData(key) === undefined) { setUserPosts([]); setPostsHasMore(false); setPostsNextCursor(null); setPostsFailed(true); }
       postsRequested.current = null; // the next visit to the tab tries again
     } finally {
       if (current()) setPostsLoading(false);
@@ -450,10 +455,15 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     const current = () => actionCurrent() && generation === postsReadGeneration.current;
     setPostsMoreLoading(true);
     try {
-      const res = await api.posts.getUserPosts(profile.id, { limit: POSTS_PAGE, cursorCreatedAt: last.created_at, cursorId: last.id });
+      // The server's cursor, sent back unchanged; the last row's own time only when an older answer gave none.
+      const cursor = postsNextCursor ?? { createdAt: last.created_at, id: last.id };
+      const res = await api.posts.getUserPosts(profile.id, {
+        limit: POSTS_PAGE, cursorCreatedAt: cursor.createdAt, cursorId: cursor.id, include_reposts: true,
+      });
       if (!current()) return;
-      setUserPosts((prev) => [...prev, ...(res.posts || []).filter((post) => !prev.some((p) => p.id === post.id))]);
+      setUserPosts((prev) => [...prev, ...(res.posts || []).filter((post) => !prev.some((p) => p.id === post.id && p.reposted_at === post.reposted_at))]);
       setPostsHasMore(Boolean(res.pagination?.hasMore));
+      setPostsNextCursor(res.pagination?.nextCursor ?? null);
     } catch {
       if (current()) toast.error('Couldn’t load more posts. Try again.');
     } finally {
@@ -559,7 +569,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     void (async () => {
       const [read, posts] = await Promise.allSettled([
         api.users.getProfileById(ownerId, { as: audience }),
-        api.posts.getUserPosts(ownerId, { limit: POSTS_PAGE, as: audience }),
+        api.posts.getUserPosts(ownerId, { limit: POSTS_PAGE, as: audience, include_reposts: true }),
       ]);
       if (!current() || generation !== previewGeneration.current) return;
       if (read.status === 'rejected') {
@@ -667,6 +677,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   const reloadAsNewAudience = async (targetId: string, current: () => boolean) => {
     postsReadGeneration.current++;
     setUserPosts([]);
+    setPostsNextCursor(null);
     setProfile(null);
     setLoading(true);
     await queryClient.cancelQueries({ queryKey: queryKeys.personPosts(targetId) });
@@ -834,6 +845,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       // Nothing of theirs stays on the page: the posts list empties at once.
       postsReadGeneration.current++;
       setUserPosts([]);
+      setPostsNextCursor(null);
       queryClient.removeQueries({ queryKey: queryKeys.personPosts(targetId) });
       toast.success(`${fullName} blocked`);
     } catch (err: unknown) {
@@ -1097,6 +1109,8 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     || (launchFeatures.openGigs && hasReliabilityHistory);
   // A preview shows that audience's posts; everyone else sees the posts the server gave them.
   const shownPosts = previewing ? preview?.posts ?? [] : userPosts;
+  // Your own posts among the listed ones (the rest are posts you reposted).
+  const ownListedPosts = userPosts.filter((post) => !post.reposted_at);
   const postsCount = previewing
     ? (shownPosts.length > 0 && shownPosts.length < POSTS_PAGE ? shownPosts.length : null)
     : (!postsHasMore && !postsLoading && !postsFailed && userPosts.length > 0 ? userPosts.length : null);
@@ -1308,7 +1322,8 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
       detail: 'Give neighbors an easy way to start a conversation. Only you see this tip.',
       onOpen: () => router.push('/app/profile/edit#prompts'),
     },
-    ownPinned.status === 'success' && (ownPinned.data?.posts ?? []).length === 0 && userPosts.length > 0 && {
+    // Reposts can't be pinned: the tip is for a person with a post of their own.
+    ownPinned.status === 'success' && (ownPinned.data?.posts ?? []).length === 0 && ownListedPosts.length > 0 && {
       key: 'pin', icon: <Pin className="w-5 h-5" />, title: 'Pin a post',
       detail: 'Keep up to 3 posts at the top of your profile, from a post’s ⋯ menu. Only you see this tip.',
       onOpen: () => router.push('/app/my-pulse'),
@@ -1317,7 +1332,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
 
   const ownerPostsLink = showOwnerOnly && userPosts.length > 0 ? (
     <button type="button" onClick={() => router.push('/app/my-pulse')} className={`mt-3 w-full ${secondaryButton} !text-app-link`}>
-      {postsHasMore ? 'See all your posts' : userPosts.length > 2 ? `See all ${userPosts.length} posts` : 'Manage your posts'}
+      {postsHasMore ? 'See all your posts' : ownListedPosts.length > 2 ? `See all ${ownListedPosts.length} posts` : 'Manage your posts'}
     </button>
   ) : null;
 

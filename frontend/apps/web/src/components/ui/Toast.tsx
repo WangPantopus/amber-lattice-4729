@@ -54,7 +54,7 @@ export default function Toast({
     return () => clearTimeout(timerRef.current);
   }, [toast.id, toast.duration, onDismiss]);
 
-  // Pause on hover
+  // Pause on hover (and, for a toast with a button, while the keyboard is on it)
   const handleMouseEnter = () => clearTimeout(timerRef.current);
   const handleMouseLeave = () => {
     timerRef.current = setTimeout(() => {
@@ -69,6 +69,8 @@ export default function Toast({
       aria-live="polite"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onFocus={toast.action ? handleMouseEnter : undefined}
+      onBlur={toast.action ? handleMouseLeave : undefined}
       className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg max-w-sm w-full
         transition-all duration-200 ease-out
         ${visible && !exiting ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0'}
@@ -76,6 +78,21 @@ export default function Toast({
     >
       <span className="flex-shrink-0">{icon}</span>
       <p className="flex-1 text-sm font-medium min-w-0">{toast.message}</p>
+      {toast.action && (
+        <button
+          type="button"
+          data-testid={toast.action.testId}
+          onClick={() => {
+            const { onClick } = toast.action!;
+            setExiting(true);
+            setTimeout(() => onDismiss(toast.id), 200);
+            onClick();
+          }}
+          className="flex-shrink-0 rounded-lg px-2 py-0.5 text-sm font-semibold underline-offset-2 hover:underline hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => {

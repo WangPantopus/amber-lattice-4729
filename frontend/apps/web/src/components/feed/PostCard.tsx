@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import React, { useState, type CSSProperties, type ReactNode } from 'react';
+import React, { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   MessageCircle, Star, CalendarDays, Search, Megaphone,
   AlertTriangle, PenLine, Pencil, Siren, Tag, Wrench, Newspaper, X,
@@ -26,6 +26,10 @@ import { confirmStore } from '@/components/ui/confirm-store';
 import PostMetadata from './PostMetadata';
 import { PostReactionPill } from './PostReactions';
 import { canSharePost, sharePostLink } from './sharePostLink';
+import RepostChooser from './RepostChooser';
+import QuotedPostCard from './QuotedPostCard';
+import { readQuotedPost, repostedByText } from './repost';
+import { openQuoteComposer } from '@/lib/feedComposerEvents';
 import type { AudienceProfile, Post } from '@pantopus/types';
 import { launchFeatures } from '@/lib/featureFlags';
 import { canOfferProfilePin } from '@/hooks/useProfilePin';
@@ -92,17 +96,6 @@ function photoProvenanceLabel(post: Post, hydrated: boolean): string | null {
   return `Photo taken here ${sameYear ? 'on' : 'in'} ${day}`;
 }
 
-/** Connections: "Ben C. reposted", "Ben C. and Eve H. reposted", "Ben C. and 2 others reposted". */
-function repostedByText(repostedBy: Post['reposted_by']): string | null {
-  const first = repostedBy?.names?.[0];
-  if (!repostedBy || !first || repostedBy.count < 1) return null;
-  if (repostedBy.count === 1) return `${first} reposted`;
-  const second = repostedBy.names[1];
-  if (repostedBy.count === 2 && second) return `${first} and ${second} reposted`;
-  const others = repostedBy.count - 1;
-  return `${first} and ${others} ${others === 1 ? 'other' : 'others'} reposted`;
-}
-
 interface PostCardProps {
   post: Post;
   /** Going on an event (a like). */
@@ -123,7 +116,17 @@ interface PostCardProps {
   onProfilePin?: (post: Post, pin: boolean) => void;
   onHide?: (postId: string) => void;
   onMute?: (target: Parameters<typeof api.posts.muteEntity>[0]) => void;
+  /** "Not helpful here" (Nearby only, not on your own posts): the host flags it, hides it and says so. */
   onNotHelpful?: (postId: string) => void;
+  /**
+   * Repost (true) or Undo repost (false), from Repost's chooser: ↻ on the card or Repost in its ⋯ menu. Without it the
+   * card offers no repost. "Repost with your words" opens the Pulse composer (AppShell) on its own.
+   */
+  onRepost?: (postId: string, reposted: boolean) => void;
+  /** A repost is waiting for the server: ↻ shows it as pending. */
+  isReposting?: boolean;
+  /** My posts → Reposts: "Undo repost" at the end of the card's "You reposted" line. */
+  onUndoRepostRow?: (postId: string) => void;
   onSolved?: (postId: string) => void;
   /** Dismisses a cold-start tip (a seeded fact, not a post). */
   onDismissSeeded?: (factId: string) => void;
@@ -154,6 +157,9 @@ function PostCard({
   onHide,
   onMute,
   onNotHelpful,
+  onRepost,
+  isReposting,
+  onUndoRepostRow,
   onSolved,
   onDismissSeeded,
   currentUserId,
@@ -164,6 +170,10 @@ function PostCard({
   authorColorSeed,
 }: PostCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Repost's chooser, opened from ↻ in the action bar or from Repost in the ⋯ menu (it opens where the menu was).
+  const [chooserFrom, setChooserFrom] = useState<'bar' | 'menu' | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const repostButtonRef = useRef<HTMLButtonElement>(null);
   const [solving, setSolving] = useState(false);
   const hydrated = useHydrated();
   const config = getPostTypeConfig(post.post_type || 'general');
@@ -216,17 +226,49 @@ function PostCard({
   const tapClass = seeded ? '' : ' cursor-pointer';
   const openFullPost = () => { if (!seeded) onOpenDetail(post.id); };
   const repostedBy = repostedByText(post.reposted_by);
+  // A moderator's removal leaves the post to its author alone: nothing offers to spread it (as on its page).
+  const canRepost = Boolean(onRepost) && !seeded && post.archive_reason !== 'moderation';
+  const reposted = Boolean(post.userHasReposted);
+  const repostCount = post.share_count > 0 ? post.share_count : 0;
+  const quoted = readQuotedPost(post.quoted_post);
+  const repostChooser = (from: 'bar' | 'menu') => chooserFrom === from && (
+    <RepostChooser
+      reposted={reposted}
+      onRepost={() => onRepost?.(post.id, !reposted)}
+      onQuote={() => openQuoteComposer(post)}
+      onClose={() => setChooserFrom(null)}
+      triggerRef={from === 'bar' ? repostButtonRef : menuButtonRef}
+      // Above ↻, centred on it (the card clips what leaves it); where the ⋯ menu opens.
+      positionClassName={from === 'bar' ? 'left-1/2 -translate-x-1/2 bottom-full mb-1' : 'right-0 top-full mt-1'}
+    />
+  );
 
   return (
     <article
       className="group bg-surface rounded-2xl shadow-sm border transition-all duration-200 hover:shadow-md overflow-hidden"
       style={{ borderColor: config.borderColor }}
     >
-      {/* ─── Who among your connections reposted it (Connections) ── */}
+      {/* ─── Who reposted it: you and your connections (every list), or a profile's owner ── */}
       {repostedBy && (
-        <div className={`flex items-center gap-1.5 px-4 pt-3 text-[11px] font-medium text-app-muted${tapClass}`} onClick={openFullPost}>
+        <div
+          data-testid={`pulsePostRepostedBy_${post.id}`}
+          className={`flex items-center gap-1.5 px-4 pt-3 text-[11px] font-medium text-app-muted${tapClass}`}
+          onClick={openFullPost}
+        >
           <Repeat2 className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
           <span className="truncate">{repostedBy}</span>
+          {onUndoRepostRow && (
+            <button
+              type="button"
+              data-testid={`myPostsUndoRepost_${post.id}`}
+              onClick={(e) => { e.stopPropagation(); onUndoRepostRow(post.id); }}
+              disabled={isReposting}
+              aria-busy={isReposting || undefined}
+              className="ml-auto flex-shrink-0 px-2 py-0.5 rounded-lg text-[11px] font-semibold text-primary-600 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-500/10 transition disabled:opacity-50"
+            >
+              Undo repost
+            </button>
+          )}
         </div>
       )}
 
@@ -344,7 +386,8 @@ function PostCard({
         ) : (
         <div className="relative">
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
+            ref={menuButtonRef}
+            onClick={() => { setChooserFrom(null); setMenuOpen(!menuOpen); }}
             aria-label="More actions"
             aria-expanded={menuOpen}
             className="p-1.5 rounded-lg hover-bg-app transition sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
@@ -365,6 +408,17 @@ function PostCard({
                 >
                   Open plan
                 </Link>
+              )}
+              {canRepost && (
+                <button
+                  type="button"
+                  data-testid="pulseFeedOverflowRepost"
+                  aria-haspopup="menu"
+                  onClick={() => { setMenuOpen(false); setChooserFrom('menu'); }}
+                  className="w-full text-left px-3 py-2 text-xs text-app-muted hover-bg-app"
+                >
+                  {reposted ? 'Undo repost' : 'Repost'}
+                </button>
               )}
               {isOwn && !isPlanPost && onEdit && (
                 <button
@@ -416,6 +470,7 @@ function PostCard({
               )}
             </div>
           )}
+          {repostChooser('menu')}
         </div>
         )}
       </div>
@@ -518,9 +573,16 @@ function PostCard({
         </div>
       )}
 
-      {/* ─── Action bar (none on a tip) ──────────────── */}
+      {/* ─── The post it quotes ("Repost with your words"): its own tap opens the original ── */}
+      {quoted && (
+        <div className="px-4 pb-3">
+          <QuotedPostCard state={quoted} testId={`pulseQuotedPost_${post.id}`} onOpen={seeded ? undefined : onOpenDetail} />
+        </div>
+      )}
+
+      {/* ─── Action bar (none on a tip); on a narrow card its call to action moves to a second row ── */}
       {!seeded && (
-      <div className="flex items-center gap-1 px-3 py-2 border-t border-app">
+      <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-t border-app">
         {/* Going on an event; an emoji on every other kind */}
         {isEvent ? (
           <button
@@ -555,18 +617,42 @@ function PostCard({
           {post.comment_count > 0 && <span>{post.comment_count}</span>}
         </button>
 
-        {/* Bookmark */}
+        {/* Save */}
         <button
           onClick={() => onSave?.(post.id)}
           disabled={isSaving}
           aria-busy={isSaving || undefined}
-          aria-label={post.userHasSaved ? 'Remove from saved' : 'Save post'}
+          aria-label={post.userHasSaved ? 'Remove from Saved' : 'Save post'}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${isSaving ? 'opacity-60 ' : ''}${
             post.userHasSaved ? 'text-sky-600 bg-sky-50 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-300' : 'text-app-muted hover-bg-app'
           }`}
         >
           <BookmarkIcon className={`w-4 h-4 ${post.userHasSaved ? 'fill-current' : ''}`} />
         </button>
+
+        {/* Repost: opens the chooser (Repost or Undo repost, Repost with your words) */}
+        {canRepost && (
+          <div className="relative">
+            <button
+              ref={repostButtonRef}
+              type="button"
+              data-testid={`pulsePostRepost_${post.id}`}
+              onClick={() => { setMenuOpen(false); setChooserFrom((from) => (from === 'bar' ? null : 'bar')); }}
+              disabled={isReposting}
+              aria-busy={isReposting || undefined}
+              aria-haspopup="menu"
+              aria-expanded={chooserFrom === 'bar'}
+              aria-label={`${reposted ? 'Undo repost' : 'Repost'}${repostCount > 0 ? `, ${repostCount}` : ''}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${isReposting ? 'opacity-60 ' : ''}${
+                reposted ? 'text-green-600 bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300' : 'text-app-muted hover-bg-app'
+              }`}
+            >
+              <Repeat2 className="w-4 h-4" aria-hidden="true" />
+              {repostCount > 0 && <span>{repostCount}</span>}
+            </button>
+            {repostChooser('bar')}
+          </div>
+        )}
 
         {/* Share */}
         {canSharePost(post) && (
@@ -588,19 +674,13 @@ function PostCard({
           </button>
         )}
 
-        {/* Not Helpful — only on Place surface, not own posts */}
-        {surface === 'place' && !isOwn && (
+        {/* Not helpful here — only on Nearby, not own posts; the host flags and hides it */}
+        {surface === 'place' && !isOwn && onNotHelpful && (
           <button
-            onClick={async () => {
-              try {
-                // Map surface tab name to DB-valid value
-                const dbSurface = surface === 'place' ? 'nearby' : surface;
-                await api.posts.markNotHelpful(post.id, dbSurface);
-                onNotHelpful?.(post.id);
-                showToast?.('Thanks — we\'ll show fewer posts like this here.');
-              } catch {}
-            }}
-            title="Not helpful for this area"
+            type="button"
+            onClick={() => onNotHelpful(post.id)}
+            title="Not helpful here"
+            aria-label="Not helpful here"
             className="p-1.5 rounded-lg text-app-muted hover:text-app hover-bg-app transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
@@ -651,7 +731,7 @@ function PostCard({
             disabled={ctaSaves && isSaving}
             aria-pressed={ctaSaves ? Boolean(post.userHasSaved) : undefined}
             aria-busy={(ctaSaves && isSaving) || undefined}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 hover:shadow-sm active:scale-95 ${ctaSaves && isSaving ? 'opacity-60 ' : ''}${POST_TYPE_THEMED_TEXT}`}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 hover:shadow-sm active:scale-95 ${ctaSaves && isSaving ? 'opacity-60 ' : ''}${POST_TYPE_THEMED_TEXT}`}
             style={{
               background: `${config.color}10`,
               border: `1px solid ${config.color}25`,
@@ -677,10 +757,14 @@ export default React.memo(PostCard, (prev, next) => {
     && prev.post.reactions === next.post.reactions
     && prev.post.comment_count === next.post.comment_count
     && prev.post.userHasSaved === next.post.userHasSaved
+    && prev.post.userHasReposted === next.post.userHasReposted
+    && prev.post.share_count === next.post.share_count
+    && prev.post.quoted_post === next.post.quoted_post
     && prev.post.profile_pinned === next.post.profile_pinned
     && repostedByText(prev.post.reposted_by) === repostedByText(next.post.reposted_by)
     && prev.isLiking === next.isLiking
     && prev.isSaving === next.isSaving
+    && prev.isReposting === next.isReposting
     && prev.currentUserId === next.currentUserId
     && prev.surface === next.surface
     && prev.onLike === next.onLike
@@ -694,5 +778,8 @@ export default React.memo(PostCard, (prev, next) => {
     && prev.onProfilePin === next.onProfilePin
     && prev.onHide === next.onHide
     && prev.onMute === next.onMute
+    && prev.onNotHelpful === next.onNotHelpful
+    && prev.onRepost === next.onRepost
+    && prev.onUndoRepostRow === next.onUndoRepostRow
     && prev.onDismissSeeded === next.onDismissSeeded;
 });
