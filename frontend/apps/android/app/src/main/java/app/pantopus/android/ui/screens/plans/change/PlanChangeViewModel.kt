@@ -184,8 +184,9 @@ data class PlanChangeUi(
 
 /**
  * Change the time, or a public plan's place (board H11, as on iOS). The server sends "Still coming?" when the start
- * moves more than 30 minutes or the place changes.
+ * moves more than 30 minutes or the place changes. Plans step 2 adds the Repeats screen's calls and step 3 the link's.
  */
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class PlanChangeViewModel
     @Inject
