@@ -212,6 +212,23 @@
           "license": "County of Berks GIS Data General Agreement and Terms",
           "license_url": "https://services3.arcgis.com/dGYe1jDYrTw1wwpc/arcgis/rest/services/Berks_Assessment_CAMA_Residential_File/FeatureServer",
           "dataset": "Information is based on geospatial data from the County of Berks (CAMA residential file)"
+        },
+        {
+          "id": "ri-newport",
+          "publisher": "City of Newport, Rhode Island",
+          "url": "https://services2.arcgis.com/URasD5e1uL7MfVOn/arcgis/rest/services/Planning_Pop_Denisty_WFL1/FeatureServer/6",
+          "license": "City of Newport GIS notice (provided as is; no license or limit on use posted)",
+          "license_url": "https://www.arcgis.com/home/item.html?id=e798d82de52c489c96ed8fd2eb04c24a",
+          "dataset": "Tax Assessor's CAMA extract (City of Newport only)"
+        },
+        {
+          "id": "or-hood-river",
+          "publisher": "Hood River County, Oregon",
+          "url": "https://www.arcgis.com/home/item.html?id=d364be9861c54e27bacfcd973193bc28",
+          "license": "Hood River County open data disclaimer",
+          "license_url": "https://opendata-hrcgis.hub.arcgis.com/",
+          "dataset": "Tax lots with the Assessor's facts (published each October)",
+          "statement": "The County of Hood River makes no representation or warranty of any kind as to this product or its accuracy."
         }
       ]
     },
