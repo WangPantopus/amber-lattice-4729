@@ -122,9 +122,41 @@ extension EnvironmentValues {
 extension View {
     /// Presents the assistant thread about `topic` while it is set.
     func askPantopus(_ topic: Binding<AIAskTopic?>) -> some View {
-        sheet(item: topic) { topic in
+        sheet(item: topic, onDismiss: AskPantopusThreads.forget) { topic in
             AskPantopusThread(topic: topic)
         }
+    }
+}
+
+/// The sheet's thread, kept while the sheet is up. A tab gives its sheets new
+/// content whenever the app is interrupted (the notification shade, the Face ID
+/// or passcode sheet), and a thread made by the view started over each time:
+/// a reply on its way, or the answer after "Verify it's me", went to a thread
+/// nobody could see. `InboxTabRoot` keeps its thread the same way.
+@MainActor
+private enum AskPantopusThreads {
+    private struct Kept {
+        let topic: UUID
+        let userId: String
+        let model: ChatConversationViewModel
+    }
+
+    private static var kept: Kept?
+
+    static func model(for topic: AIAskTopic, userId: String) -> ChatConversationViewModel {
+        if let kept, kept.topic == topic.id, kept.userId == userId { return kept.model }
+        let model = ChatConversationViewModel(
+            mode: .ai,
+            counterparty: .ai(name: "Pantopus AI"),
+            currentUserId: userId,
+            aiTopic: topic
+        )
+        kept = Kept(topic: topic.id, userId: userId, model: model)
+        return model
+    }
+
+    static func forget() {
+        kept = nil
     }
 }
 
@@ -143,12 +175,7 @@ private struct AskPantopusThread: View {
     var body: some View {
         NavigationStack(path: $path) {
             ChatConversationView(
-                viewModel: ChatConversationViewModel(
-                    mode: .ai,
-                    counterparty: .ai(name: "Pantopus AI"),
-                    currentUserId: currentUserId,
-                    aiTopic: topic
-                ),
+                viewModel: AskPantopusThreads.model(for: topic, userId: currentUserId),
                 mode: .aiAssistant,
                 onUseAIDraft: { draft in
                     if let route = Self.route(for: draft) { path.append(route) }
