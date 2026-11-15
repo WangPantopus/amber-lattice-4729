@@ -92,6 +92,47 @@ function mediaStampOf(server: { state: MediaStamp } | null | undefined,
   return live.sales_open === false ? 'unavailable' : 'buy';
 }
 
+/** Vercel's proxy in front of the API (pantopus.com/api) refuses a body over 4.5 MB, short of the server's 10 MiB. */
+const PROXY_SAFE_BYTES = 4_000_000;
+
+/**
+ * The photo as the web sends it: as chosen when it fits through the proxy, else redrawn as the card keeps it (a JPEG at
+ * most `longSide` px, its EXIF left behind on the canvas). As chosen when this browser can't decode it (HEIC outside
+ * Safari), so the server's or the proxy's answer still shows.
+ */
+async function cardPhotoToSend(file: File, longSide: number): Promise<Blob> {
+  if (file.size <= PROXY_SAFE_BYTES) return file;
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, longSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) { bitmap.close(); return file; }
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return (await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))) ?? file;
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * Why a photo or greeting didn't upload: the server's own sentence, else plain words. A proxy's refusal carries no
+ * sentence (Vercel's 413 has `error: { code, message }`), and an object here would crash the page when drawn.
+ */
+function cardUploadFailure(error: unknown, kind: 'photo' | 'voice'): string {
+  const { data, statusCode } = (error ?? {}) as { data?: { error?: unknown }; statusCode?: number };
+  if (typeof data?.error === 'string' && data.error) return data.error;
+  if (statusCode === 413) {
+    return kind === 'photo' ? 'This photo is too large. Choose a smaller copy.' : 'This recording is too large. Record a shorter greeting.';
+  }
+  return kind === 'photo' ? 'The photo didn’t upload. Check your connection.' : 'The greeting didn’t upload. Check your connection.';
+}
+
 function lookIsUnavailable(error: MailboxApiError | null): boolean {
   return error?.status === 404 && !error.serverCode;
 }
@@ -1682,11 +1723,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
       return { status: 'uploading', progress: 0, file, localUrl: URL.createObjectURL(file), ref: null, error: null };
     });
     const mine = (draft: PhotoDraft | null) => Boolean(draft && draft.file === file);
-    mailbox.uploadHolidayCardMedia('photo', file)
+    cardPhotoToSend(file, data?.media?.photo.long_side || 1600)
+      .then((body) => mailbox.uploadHolidayCardMedia('photo', body))
       .then(({ media }) => setPhoto((d) => (mine(d) ? { ...d!, status: 'ready', progress: 1, ref: media } : d)))
-      // The API client's error carries the server's words (`data.error`), or none when the network failed.
-      .catch((error: { data?: { error?: string } }) => setPhoto((d) => (mine(d)
-        ? { ...d!, status: 'failed', error: error?.data?.error || 'The photo didn’t upload. Check your connection.' } : d)));
+      .catch((error: unknown) => setPhoto((d) => (mine(d)
+        ? { ...d!, status: 'failed', error: cardUploadFailure(error, 'photo') } : d)));
   };
   const removePhoto = () => {
     setPhoto((before) => { if (before?.localUrl) URL.revokeObjectURL(before.localUrl); return null; });
@@ -1702,8 +1743,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
     const mine = (draft: VoiceDraft | null) => Boolean(draft && draft.blob === blob);
     mailbox.uploadHolidayCardMedia('voice', blob)
       .then(({ media }) => setVoice((d) => (mine(d) ? { ...d!, status: 'ready', ref: media } : d)))
-      .catch((error: { data?: { error?: string } }) => setVoice((d) => (mine(d)
-        ? { ...d!, status: 'failed', error: error?.data?.error || 'The greeting didn’t upload. Check your connection.' } : d)));
+      .catch((error: unknown) => setVoice((d) => (mine(d)
+        ? { ...d!, status: 'failed', error: cardUploadFailure(error, 'voice') } : d)));
   };
   const removeVoice = () => setVoice((before) => { if (before?.localUrl) URL.revokeObjectURL(before.localUrl); return null; });
   const voiceReady = voice?.status === 'ready' && voice.ref ? voice.ref : null;
