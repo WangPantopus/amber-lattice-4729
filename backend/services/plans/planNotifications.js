@@ -622,19 +622,48 @@ function invitedTitle(plan, hostFirst) {
  * The host invited someone on Pantopus: the push has I'm in / Can't make it (not for a playdate, which asks the
  * kids' ages first). Like every notice, the area only; a playdate's title stays in the app.
  */
-async function invited({ plan, invite, userId, hostFirst }) {
+async function invited({ plan, invite, userId, hostFirst, series = false }) {
   const tz = rules.timezoneForPlan(plan);
   const playdate = plan.kind === 'playdate';
   const when = whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
+  // The next date of a repeating plan, to someone who came before: "Thursday's walk is posted".
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(new Date(plan.post.event_date));
   return notify({
     userId,
     type: 'plan_invite',
-    title: invitedTitle(plan, hostFirst),
+    title: series ? `${weekday}’s ${noun(plan)} is posted` : invitedTitle(plan, hostFirst),
     body: [playdate ? null : plan.post.title, playdate ? capitalized(when) : when, placePhrase(plan, hostFirst)].filter(Boolean).join(' · '),
     link: `/plans/${plan.post_id}`,
     plan,
-    metadata: { invite_id: invite.id, host_name: hostFirst, ...(plan.kind === 'playdate' ? { category: null } : {}) },
+    metadata: { invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(plan.kind === 'playdate' ? { category: null } : {}) },
     idempotencyKey: `plan_invite:${invite.id}`,
+  });
+}
+
+/**
+ * To the host of a repeating plan: its last date is near ("keep it going?"), it has finished, or its next date
+ * couldn't be posted (a limit, or the place no longer fits the rules), which stops it.
+ */
+async function seriesNotice({ plan, what, reason = null, lastOn = null }) {
+  const what_ = noun(plan);
+  const lastDay = lastOn
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${lastOn}T12:00:00Z`))
+    : null;
+  const words = {
+    ending: { title: `Your repeating ${what_} ends soon`, body: `The last one is ${lastDay}. Open it to keep it going.` },
+    ended: { title: `Your repeating ${what_} has finished`, body: 'That was the last one. Host it again any time.' },
+    stopped: { title: `Your repeating ${what_} stopped`, body: `The next one couldn’t be posted. ${reason || ''}`.trim() },
+  }[what];
+  if (!words) return null;
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_series',
+    title: words.title,
+    body: `${plan.post.title} · ${words.body}`,
+    link: `/plans/${plan.post_id}`,
+    plan,
+    metadata: { series_id: plan.series_id || plan.post_id, what },
+    idempotencyKey: `plan_series:${what}:${plan.post_id}`,
   });
 }
 
@@ -676,6 +705,7 @@ async function stillComingReminder({ plan, request, hostFirst }) {
 }
 
 module.exports = {
+  seriesNotice,
   hostSummaryLetter,
   CATEGORY_BY_TYPE,
   ICON_BY_KIND,

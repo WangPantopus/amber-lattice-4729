@@ -36,7 +36,7 @@ const PLAN_NOTICE_TYPES = [
   'plan_request', 'plan_accepted', 'plan_declined', 'plan_reminder', 'plan_changed',
   'plan_cancelled', 'plan_spot_opened', 'plan_host_summary',
   'plan_guest_left', 'plan_guest_auto_joined', 'plan_still_coming_reminder',
-  'plan_invite', 'plan_invite_declined',
+  'plan_invite', 'plan_invite_declined', 'plan_series',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -84,6 +84,8 @@ function isStale(row, plan, request, invite = null) {
     case 'plan_invite': return !invite || invite.status !== 'pending'
       || !rules.isAskingOpen(plan, plan.post.event_date, plan.post.event_end_date);
     case 'plan_invite_declined': return ended;
+    // About the series, not this date: it is still news after the date has ended.
+    case 'plan_series': return false;
     case 'plan_request': return !request || request.status !== 'pending' || ended;
     case 'plan_accepted': return !request || request.status !== 'accepted' || ended;
     case 'plan_changed': return !request || request.status !== 'accepted' || request.reconfirmed != null || ended;
@@ -405,6 +407,13 @@ async function runPlansTick() {
     logger.warn('plans.tick.gone_business_failed', { error: err.message });
   }
   const lifecycle = await closeAskingAndEnd();
+  // Repeating plans that just ended: their next date is posted, and the people who came are asked to it.
+  let series = 0;
+  try {
+    series = await require('../services/plans/planSeries').runDue();
+  } catch (err) {
+    logger.warn('plans.tick.series_failed', { error: err.message });
+  }
   // Before reminders: asked again at a plan's reminder time, the reminder isn't sent as well.
   const askedAgain = await sendStillComingReminders();
   const reminders = await sendReminders();
@@ -432,10 +441,10 @@ async function runPlansTick() {
   }
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
-    ...(goneCancelled ? { goneCancelled } : {}),
+    ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
-    || (nudges && nudges.sent) || alerts || repeats) {
+    || (nudges && nudges.sent) || alerts || repeats || series) {
     logger.info('plans.tick', result);
   }
   return result;

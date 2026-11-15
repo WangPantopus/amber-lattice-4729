@@ -24,6 +24,7 @@ const planChat = require('./planChat');
 const planNotify = require('./planNotifications');
 const planInvites = require('./planInvites');
 const planBusiness = require('./planBusiness');
+const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
 const { findGame } = require('./planGames');
 
@@ -342,7 +343,7 @@ function assertHostNear(viewer, place) {
 }
 
 /** A host's limits. Public and private plans are counted apart: a dinner with friends never uses a public slot. */
-async function assertHostLimits(userId, { isPrivate = false } = {}) {
+async function assertHostLimits(userId, { isPrivate = false, seriesDate = false } = {}) {
   const audience = isPrivate ? 'invited' : 'nearby';
   const limits = isPrivate ? rules.PRIVATE_LIMITS : rules.LIMITS;
   const [upcoming, today] = await Promise.all([
@@ -357,7 +358,9 @@ async function assertHostLimits(userId, { isPrivate = false } = {}) {
       ? `You can host ${limits.upcomingPlansPerHost} upcoming private plans at a time.`
       : 'You can host 3 upcoming plans at a time.');
   }
-  if ((today.count || 0) >= limits.newPlansPerDay) {
+  // The day's limit is on what a person posts themselves. A series' own next date isn't one of those: the plan
+  // it follows has ended, so the series still holds one upcoming slot, as it did.
+  if (!seriesDate && (today.count || 0) >= limits.newPlansPerDay) {
     fail(429, 'too_many_plans', isPrivate ? `You can post ${limits.newPlansPerDay} private plans a day.` : 'You can post 5 plans a day.');
   }
 }
@@ -377,7 +380,7 @@ function checkedAudience(viewer, input, hostAs) {
 // ── Create ───────────────────────────────────────────────────
 
 /** A new plan's input checked by the hosting rules: what createPlan would save, or a PlanError. */
-async function checkedPlanInput(viewer, input) {
+async function checkedPlanInput(viewer, input, internal = {}) {
   const kind = input.kind;
   if (!rules.KINDS.includes(kind)) fail(422, 'validation', 'Choose what kind of plan this is.');
   // Posting as a business (`host_as`): who may, for which business, where, and what it is called
@@ -390,14 +393,17 @@ async function checkedPlanInput(viewer, input) {
   const title = cleanTitle(input.title);
   const about = cleanText(input.about, 500, 'About') || '';
   const guestNote = cleanText(input.guest_note, 500, 'The note');
+  // A series posts its own next date: up to two months out (a monthly plan), at a place its host already posted at.
+  const series = internal.series || null;
   validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead }
-    : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
+    : series ? { maxDaysAhead: planSeries.LIMITS.maxDaysAhead }
+      : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
   const spots = Number(input.spots);
   if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
   // A business's plan is at one of its own locations: no home guard and no 3-mile rule.
   const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place);
   // A private plan may be anywhere: the 3-mile rule keeps the public map honest, and this one isn't on it.
-  if (!hostAs && !isPrivate) assertHostNear(viewer, place);
+  if (!hostAs && !isPrivate && !series) assertHostNear(viewer, place);
   // The people invited to a private plan get in by their invitation: it has no rules of its own.
   const autoRules = hostAs ? hostAs.autoRules : isPrivate ? [] : normalizeAutoRules(kind, place.kind, input.auto_rules);
   // Since November 7 no plan asks for a verified address, whatever this says (askEligibility). A playdate keeps
@@ -411,9 +417,20 @@ async function checkedPlanInput(viewer, input) {
     fail(409, 'game_unavailable', 'This game is no longer available. Choose another game or enter your own.');
   }
   const details = normalizeDetails(kind, input.details, resolvedGame);
+  // How it repeats: a series' next date carries the series' own pattern; a new plan's comes from the body.
+  let repeat = null;
+  if (series) {
+    repeat = series.repeat;
+  } else if (input.repeat !== undefined && input.repeat !== null) {
+    if (hostAs) fail(422, 'validation', "A business's plan can't repeat yet. Post each date.");
+    if (!viewer.repeatFlag) fail(422, 'repeat_unavailable', "Repeating plans aren't available yet.");
+    repeat = planSeries.checkedRepeat(input.repeat, {
+      startsAt: input.starts_at, timezone: planPlace.timezoneFor(place.latitude, place.longitude),
+    });
+  }
   if (hostAs) await planBusiness.assertBusinessLimits(hostAs.business.id);
-  else await assertHostLimits(viewer.id, { isPrivate });
-  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite };
+  else await assertHostLimits(viewer.id, { isPrivate, seriesDate: Boolean(series) });
+  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat };
 }
 
 /**
@@ -454,15 +471,21 @@ async function previewPlan(user, input) {
   };
 }
 
-async function createPlan(user, input) {
+/**
+ * @param {object} user   who posts
+ * @param {object} input  the request body
+ * @param {{ series?: { id: string, index: number, repeat: object } }} [internal]  never from a request: a series
+ *   posting its own next date (planSeries.postNext), which skips the second-tap check and the 3-mile rule.
+ */
+async function createPlan(user, input, internal = {}) {
   const viewer = await loadViewer(user, { gps: input.gps });
   // A second tap on the same "Post plan": a neighbor's is caught before the checks, as before; a business's
   // after them, once the person is known to post for that business.
-  const repeat = input.host_as == null ? await recentSamePlan(viewer.id, input) : null;
-  if (repeat) return planBodyFor(repeat, viewer);
+  const secondTap = input.host_as == null && !internal.series ? await recentSamePlan(viewer.id, input) : null;
+  if (secondTap) return planBodyFor(secondTap, viewer);
   const {
-    kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite,
-  } = await checkedPlanInput(viewer, input);
+    kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat,
+  } = await checkedPlanInput(viewer, input, internal);
   // The host: the person, or the business they post for. The business's own account is the plan's host and its
   // post's author, so nothing a guest reads names the staff member (who is kept in posted_by_user_id).
   const hostId = hostAs ? hostAs.business.id : viewer.id;
@@ -527,6 +550,11 @@ async function createPlan(user, input) {
     } : {}),
     audience,
     ...(audience === 'invited' ? { guests_can_invite: guestsCanInvite } : {}),
+    ...(repeat ? {
+      repeat,
+      series_id: internal.series ? internal.series.id : post.id,
+      series_index: internal.series ? internal.series.index : 1,
+    } : {}),
     kind,
     spots,
     auto_rules: autoRules,
@@ -552,6 +580,7 @@ async function createPlan(user, input) {
 
   recordFunnelEvent('plan_created', { userId: viewer.id, meta: {
     plan_id: post.id, kind, ...(hostAs ? { business: true } : {}), ...(audience === 'invited' ? { private: true } : {}),
+    ...(repeat ? { repeats: repeat.freq, series_index: internal.series ? internal.series.index : 1 } : {}),
   } });
   if (hostAs) {
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
@@ -703,6 +732,21 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   } else if (patch.auto_rules !== undefined || patch.place !== undefined) {
     planUpdate.auto_rules = normalizeAutoRules(plan.kind, placeKind, patch.auto_rules !== undefined ? patch.auto_rules : plan.auto_rules);
   }
+  // How it repeats, from this date on: a new pattern, or null to stop (this date stays; none follows).
+  if (patch.repeat !== undefined) {
+    if (patch.repeat === null) {
+      planUpdate.repeat = null;
+    } else {
+      if (plan.business_user_id) fail(422, 'validation', "A business's plan can't repeat yet. Post each date.");
+      if (!plan.repeat && !viewer.repeatFlag) fail(422, 'repeat_unavailable', "Repeating plans aren't available yet.");
+      planUpdate.repeat = planSeries.checkedRepeat(patch.repeat, {
+        startsAt: postUpdate.event_date || plan.post.event_date,
+        timezone: planUpdate.timezone || rules.timezoneForPlan(plan),
+        existing: plan.repeat,
+      });
+      if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
+    }
+  }
   if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id && !isPrivate) {
     planUpdate.join_requirement = oneOf(patch.join_requirement, ['located', 'verified'], 'who can ask');
   }
@@ -771,7 +815,11 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
 
 // ── Cancel ───────────────────────────────────────────────────
 
-async function cancelPlan(user, postId, { note, sports_revision: sportsRevision } = {}) {
+/**
+ * `repeat` (a repeating plan): 'keep' cancels this date only and posts the next one now ("Skip Thursday"); anything
+ * else, and every app from before repeating plans, cancels this date and stops the series.
+ */
+async function cancelPlan(user, postId, { note, sports_revision: sportsRevision, repeat: afterwards } = {}) {
   const viewer = await loadViewer(user);
   const plan = await loadHostedPlan(postId, viewer);
   if (plan.status === 'cancelled') return planBodyFor(postId, viewer);
@@ -781,6 +829,18 @@ async function cancelPlan(user, postId, { note, sports_revision: sportsRevision 
   const cancelNote = cleanText(note, 280, 'The note');
   if (await cancelOpenPlan(plan, { hostFirst: await hostFirstOf(plan), cancelNote })) {
     await auditBusinessPlan(plan, viewer, 'plans.cancel');
+    if (plan.repeat && afterwards === 'keep') {
+      const next = await planSeries.postNext(plan).catch((err) => {
+        logger.warn('plans.cancel.next_failed', { planId: postId, error: err.message });
+        return { posted: null };
+      });
+      // The app opens the date that took its place.
+      return { ...(await planBodyFor(postId, viewer)), next_plan_id: next.posted || null };
+    }
+    if (plan.repeat) {
+      const { error } = await supabaseAdmin.from('Plan').update({ repeat: null, updated_at: nowIso() }).eq('post_id', postId);
+      if (error) logger.warn('plans.cancel.stop_failed', { planId: postId, error: error.message });
+    }
   }
   return planBodyFor(postId, viewer);
 }

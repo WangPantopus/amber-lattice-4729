@@ -38,6 +38,8 @@ const PLAN_COLUMNS = [
   'business_user_id', 'posted_by_user_id', 'business_location_id', 'label', 'guests_can_invite',
   // 'nearby', or 'invited' for a private plan (planRules.isPrivate).
   'audience',
+  // A repeating plan (planSeries.js): its pattern, its series and which date of it this is.
+  'repeat', 'series_id', 'series_index', 'series_next_at',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -569,6 +571,8 @@ function buildCard(plan, viewer, ctx) {
     // 'invited': a private plan. The app says "Private" and offers Invite where a public plan offers Share.
     audience: rules.isPrivate(plan) ? 'invited' : 'nearby',
     guests_can_invite: Boolean(plan.guests_can_invite),
+    // A repeating plan: how often, which date of the series this is and when it ends. Null when it doesn't repeat.
+    repeat: require('./planSeries').view(plan),
     host: {
       user_id: hostId,
       display_name: hostName(plan, host),
