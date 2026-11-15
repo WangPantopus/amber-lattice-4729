@@ -77,8 +77,8 @@ object PlanOnlineLink {
 
     fun parse(raw: String?): Parsed? {
         val link = raw?.trim().orEmpty()
-        if (link.isEmpty() || link.length > MAX_LENGTH || link.any { it.isWhitespace() || it.isISOControl() }) return null
-        val url = link.toHttpUrlOrNull() ?: return null
+        val plain = link.none { it.isWhitespace() || it.isISOControl() }
+        val url = link.takeIf { it.isNotEmpty() && it.length <= MAX_LENGTH && plain }?.toHttpUrlOrNull() ?: return null
         val host = url.host.lowercase(Locale.US).trimEnd('.')
         val refused =
             url.scheme != "https" ||
