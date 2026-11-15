@@ -898,6 +898,8 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false, more 
   let query = supabaseAdmin
     .from('Plan')
     .select(PLAN_SELECT)
+    // Never a private plan: those reach their own people through ownPrivatePlans, once.
+    .eq('audience', 'nearby')
     .eq('status', 'open')
     .is('post.archived_at', null)
     .eq('post.moderation_state', 'live')

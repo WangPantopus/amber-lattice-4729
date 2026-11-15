@@ -88,25 +88,34 @@ function* datesAfter(repeat, after, zone) {
   }
 }
 
-/** How many dates the series has in all: its count, or its dates from the first through the end date. */
+/**
+ * The pattern's own run: how many dates it has from its first (`anchor`) on, and its last date. A count that
+ * can't fit in the year ends with the year, so the numbers a card shows are the dates that will be posted.
+ */
+function runOf(repeat, zone) {
+  let last = day(repeat.anchor, zone);
+  let dates = 1;
+  if (!repeat.count || repeat.count > 1) {
+    for (const date of datesAfter(repeat, last, zone)) {
+      last = date;
+      dates += 1;
+      if (repeat.count && dates >= repeat.count) break;
+    }
+  }
+  return { dates, lastOn: last.toISODate() };
+}
+
+/** The series' dates before the pattern's first: a pattern changed on a later date starts there (`before`). */
+const beforeOf = (repeat) => (Number.isInteger(repeat.before) && repeat.before > 0 ? repeat.before : 0);
+
+/** How many dates the series has in all, the ones before a changed pattern's first date included. */
 function totalOf(repeat, zone) {
-  if (repeat.count) return repeat.count;
-  let total = 1;
-  // eslint-disable-next-line no-unused-vars
-  for (const _ of datesAfter(repeat, day(repeat.anchor, zone), zone)) total += 1;
-  return total;
+  return beforeOf(repeat) + runOf(repeat, zone).dates;
 }
 
 /** The series' last date: its end date's last matching day, or the date its count lands on. */
 function lastOn(repeat, zone) {
-  let last = day(repeat.anchor, zone);
-  let seen = 1;
-  for (const date of datesAfter(repeat, last, zone)) {
-    if (repeat.count && seen >= repeat.count) break;
-    last = date;
-    seen += 1;
-  }
-  return last.toISODate();
+  return runOf(repeat, zone).lastOn;
 }
 
 /** "Every Tuesday and Thursday", "Every 2 weeks on Friday", "The 1st and 3rd Saturday of each month". */
@@ -152,17 +161,19 @@ function cleanMonthDays(value) {
 
 /**
  * The pattern as a plan saves it, from the body, checked against the plan's own start. Null for "doesn't repeat".
+ * The pattern starts at this plan's date (`anchor`), also when it replaces the pattern of a later date of a
+ * series: its days, the every-2-weeks rhythm, the one-year limit and the count are all measured from here.
  * @param {object|null} input  { freq, weekdays?, month_days?, until?, count? }
- * @param {{ startsAt: string, timezone: string, existing?: object|null }} at  the plan's start and time zone, and
- *   the pattern the plan already has (a change keeps the series' first date and what was skipped)
+ * @param {{ startsAt: string, timezone: string, before?: number }} at  the plan's start and time zone, and how
+ *   many dates of its series came before it (kept so "5 of 16" stays true after a change)
  */
-function checkedRepeat(input, { startsAt, timezone, existing = null }) {
+function checkedRepeat(input, { startsAt, timezone, before = 0 }) {
   if (input === null || input === undefined) return null;
   if (typeof input !== 'object' || Array.isArray(input)) fail('Choose how often it repeats.');
   if (!FREQS.includes(input.freq)) fail('Choose how often it repeats.');
   const zone = zoneOf(timezone);
   const start = DateTime.fromISO(new Date(startsAt).toISOString(), { zone: 'utc' }).setZone(zone);
-  const anchor = existing?.anchor && DATE_RE.test(existing.anchor) ? existing.anchor : start.toISODate();
+  const anchor = start.toISODate();
   const repeat = { freq: input.freq, anchor };
 
   if (input.freq === 'monthly') {
@@ -197,8 +208,7 @@ function checkedRepeat(input, { startsAt, timezone, existing = null }) {
     repeat.until = until.toISODate();
     repeat.count = null;
   }
-  if (existing?.skip?.length) repeat.skip = existing.skip.filter((d) => DATE_RE.test(d)).slice(-60);
-  if (existing?.end_notice) repeat.end_notice = true;
+  if (Number.isInteger(before) && before > 0) repeat.before = before;
   return repeat;
 }
 
@@ -209,7 +219,8 @@ function checkedRepeat(input, { startsAt, timezone, existing = null }) {
 function nextTimes(plan, now = Date.now()) {
   const repeat = plan.repeat;
   if (!repeat || !FREQS.includes(repeat.freq) || !DATE_RE.test(repeat.anchor || '')) return null;
-  const index = plan.series_index || 1;
+  // The count is the pattern's own: dates before a changed pattern's first one don't use it up.
+  const index = (plan.series_index || 1) - beforeOf(repeat);
   if (repeat.count && index >= repeat.count) return null;
   const zone = zoneOf(rules.timezoneForPlan(plan));
   const start = DateTime.fromISO(new Date(plan.post.event_date).toISOString(), { zone: 'utc' }).setZone(zone);
@@ -228,19 +239,24 @@ function view(plan) {
   if (!repeat || !FREQS.includes(repeat.freq) || !DATE_RE.test(repeat.anchor || '')) return null;
   try {
     const zone = zoneOf(rules.timezoneForPlan(plan));
+    const run = runOf(repeat, zone);
+    const index = plan.series_index || 1;
+    const total = Math.max(index, beforeOf(repeat) + run.dates);
     return {
       freq: repeat.freq,
       weekdays: repeat.weekdays || null,
       month_days: repeat.month_days || null,
       until: repeat.until || null,
-      count: repeat.count || null,
+      // How many dates from this one through the last, for a series that ends after a number of times: sent
+      // back with a changed pattern, the series still ends where it did.
+      count: repeat.count ? total - index + 1 : null,
       // "Every Tuesday and Thursday" and "Every Tue and Thu".
       text: patternText(repeat),
       short: patternText(repeat, { short: true }),
       // Which date of the series this plan is, of how many, and the series' last date.
-      index: plan.series_index || 1,
-      total: totalOf(repeat, zone),
-      last_on: lastOn(repeat, zone),
+      index,
+      total,
+      last_on: run.lastOn,
     };
   } catch (err) {
     logger.warn('plans.series.view_failed', { planId: plan.post_id, error: err.message });
