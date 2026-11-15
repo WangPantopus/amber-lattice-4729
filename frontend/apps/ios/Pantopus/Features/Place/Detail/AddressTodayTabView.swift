@@ -177,7 +177,7 @@ struct AddressTodayTabView: View {
                 TodayAroundYouPage(page: page, model: aroundYou) {
                     await aroundYou.load(for: detail, viewerId: currentUserID)
                 }
-                    .background(Theme.Color.appBg)
+                .background(Theme.Color.appBg)
             }
         }
     }
