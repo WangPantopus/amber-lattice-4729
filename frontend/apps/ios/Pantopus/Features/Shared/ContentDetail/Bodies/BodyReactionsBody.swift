@@ -425,15 +425,6 @@ public struct BodyReactionsBody: View {
         }
     }
 
-    private var visibleCommentCount: Int {
-        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
-    }
-
-    /// No comments, as far as anyone on screen knows.
-    private var threadIsEmpty: Bool {
-        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
-    }
-
     /// Opened from a list's copy: placeholders while the comments load, a
     /// short line if that failed.
     @ViewBuilder private var pendingThread: some View {
@@ -480,8 +471,20 @@ public struct BodyReactionsBody: View {
             EmptyView()
         }
     }
+}
 
-    private var composerPlaceholder: String {
+/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
+private extension BodyReactionsBody {
+    var visibleCommentCount: Int {
+        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
+    }
+
+    /// No comments, as far as anyone on screen knows.
+    var threadIsEmpty: Bool {
+        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
+    }
+
+    var composerPlaceholder: String {
         if let replyingToName { return "Reply to \(replyingToName)..." }
         return threadIsEmpty ? "Be the first to reply..." : "Add a comment"
     }
