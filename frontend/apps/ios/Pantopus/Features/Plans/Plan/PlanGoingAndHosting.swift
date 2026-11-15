@@ -7,8 +7,6 @@
 //  host (requests, who's going, message guests, share, change, cancel).
 //
 
-import EventKit
-import EventKitUI
 import MapKit
 import SwiftUI
 
@@ -42,18 +40,22 @@ struct PlanGoingSection: View {
             reconfirm
         }
         VStack(alignment: .leading, spacing: 6) {
-            if card.isPrivate { PlanPrivateChip() }
+            // Board Online: the kind and "Online" (and "Private" for a private one) over the title.
+            if card.isOnline { PlanCardTag(card: card) } else if card.isPrivate { PlanPrivateChip() }
             Text(card.title)
                 .planFont(.h2)
                 .foregroundStyle(Theme.Color.appText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
-            if let place = viewModel.plan?.place {
+            if card.isOnline {
+                PlanFactRow(icon: .mapPin, text: PlanOnlineCopy.whereLine(card))
+            } else if let place = viewModel.plan?.place {
                 placeLine(place)
             }
             PlanFactRow(icon: .calendar, text: PlanScreenLines.when(card))
             if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
+        if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) } // board Online
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 HStack(spacing: Spacing.s2) {
@@ -70,10 +72,12 @@ struct PlanGoingSection: View {
             .accessibilityElement(children: .combine)
         }
         HStack(spacing: Spacing.s2) {
-            Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
-                .planButton(.tonal, size: .stack)
-                .disabled(viewModel.plan?.place == nil)
-                .accessibilityIdentifier("planDirections")
+            if !card.isOnline { // nowhere to go for an online plan
+                Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
+                    .planButton(.tonal, size: .stack)
+                    .disabled(viewModel.plan?.place?.coordinate == nil)
+                    .accessibilityIdentifier("planDirections")
+            }
             Button { showsCalendar = true } label: {
                 PlanButtonLabel(title: "Calendar", icon: .calendar, kind: .tonal, stacked: true)
             }
@@ -134,7 +138,7 @@ struct PlanGoingSection: View {
         return VStack(alignment: .leading, spacing: 10) {
             PlanBanner(tone: .warning, icon: .alertTriangle, title: words.title, message: words.message)
             HStack(spacing: 10) {
-                Button("Can't make it") { onConfirm(.notComing(host: PlanCardLines.hostName(card))) }
+                Button("Can't make it") { onConfirm(.notComing(host: PlanCardLines.hostName(card), online: card.isOnline)) }
                     .planButton(.secondary, size: .small)
                 Button("Still coming") { Task { _ = await viewModel.stillComing(true) } }
                     .planButton(.primary, size: .small)
@@ -146,7 +150,10 @@ struct PlanGoingSection: View {
     /// The "Still coming?" push's words for what the host changed (board H11; H11's preview and Android say the same).
     private var stillComingWords: (title: String, message: String) {
         let noun = PlanCardLines.noun(card)
+        // An online plan's new place is a new link (the server's "Still coming?" words).
         switch viewModel.plan?.myRequest?.reconfirmReason {
+        case .place where card.isOnline: return ("\(hostFirst) changed the link", "It has a new link now. Still coming?")
+        case .both where card.isOnline: return ("\(hostFirst) changed the \(noun)", "Now \(movedTo), with a new link. Still coming?")
         case .place: return ("\(hostFirst) changed the place", "It's at a new place now. Still coming?")
         case .both: return ("\(hostFirst) changed the \(noun)", "Now \(movedTo), at a new place. Still coming?")
         case .time, nil: return ("\(hostFirst) moved the \(noun)", "Now \(movedTo). Still coming?")
@@ -173,55 +180,10 @@ struct PlanGoingSection: View {
     }
 
     private func openDirections() {
-        guard let place = viewModel.plan?.place else { return }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(
-            latitude: place.latitude,
-            longitude: place.longitude
-        )))
+        guard let place = viewModel.plan?.place, let point = place.coordinate else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: point))
         item.name = place.name ?? card.title
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
-    }
-}
-
-/// Adds the plan to the calendar with the system editor (no calendar access needed).
-struct PlanCalendarEditor: UIViewControllerRepresentable {
-    let card: PlanCardDTO
-    let place: PlanPlaceDTO?
-    let onDone: () -> Void
-
-    func makeUIViewController(context: Context) -> EKEventEditViewController {
-        let store = EKEventStore()
-        let event = EKEvent(eventStore: store)
-        event.title = card.title
-        event.startDate = card.startsAtDate ?? Date()
-        event.endDate = card.endsAtDate ?? event.startDate.addingTimeInterval(7200)
-        if let place {
-            event.location = [place.name, place.address].compactMap { $0 }.joined(separator: ", ")
-        }
-        event.url = card.shareUrl.flatMap(URL.init(string:))
-        let controller = EKEventEditViewController()
-        controller.eventStore = store
-        controller.event = event
-        controller.editViewDelegate = context.coordinator
-        return controller
-    }
-
-    func updateUIViewController(_: EKEventEditViewController, context _: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onDone: onDone)
-    }
-
-    final class Coordinator: NSObject, EKEventEditViewDelegate {
-        let onDone: () -> Void
-
-        init(onDone: @escaping () -> Void) {
-            self.onDone = onDone
-        }
-
-        func eventEditViewController(_: EKEventEditViewController, didCompleteWith _: EKEventEditViewAction) {
-            onDone()
-        }
     }
 }
 
@@ -246,6 +208,7 @@ struct PlanHostingSection: View {
             HStack(spacing: Spacing.s2) {
                 StatusChip(chip, variant: .neutral, icon: .flag).accessibilityLabel(chip)
                 if card.isPrivate { PlanPrivateChip() }
+                if card.isOnline { PlanOnlineChip() }
             }
             Text(card.title)
                 .planFont(.h2)
@@ -267,6 +230,7 @@ struct PlanHostingSection: View {
                 onOpenChat: viewModel.plan?.chatRoomId == nil ? nil : onOpenChat
             )
         } else {
+            if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) }
             // Board Regulars (Plans step 2): skip this date, change it, or stop repeating.
             if PlanSeriesHostCard.shows(card) {
                 let skip = PlanRepeatCopy.skipQuestion(card)
@@ -298,7 +262,7 @@ struct PlanHostingSection: View {
                 }
             }
             VStack(spacing: 0) {
-                Button("Change the time or place", action: onChange)
+                Button(card.isOnline ? "Change the time or link" : "Change the time or place", action: onChange)
                     .planButton(.text, size: .small)
                     .accessibilityIdentifier("planChange")
                 Button("Cancel plan", action: onCancel)
@@ -310,6 +274,7 @@ struct PlanHostingSection: View {
 
     private var placeName: String {
         if card.placeKind == .home { return "Your place" }
+        if card.isOnline { return PlanOnlineCopy.word }
         return viewModel.plan?.place?.name ?? card.area.label
     }
 
@@ -444,7 +409,12 @@ struct PlanHostingSection: View {
                 Menu {
                     if let requestId = viewModel.requestId(for: person) {
                         Button("Remove from plan", role: .destructive) {
-                            onConfirm(.removeGuest(name: person.displayName, requestId: requestId, atHome: card.placeKind == .home))
+                            onConfirm(.removeGuest(
+                                name: person.displayName,
+                                requestId: requestId,
+                                atHome: card.placeKind == .home,
+                                online: card.isOnline
+                            ))
                         }
                     }
                 } label: {

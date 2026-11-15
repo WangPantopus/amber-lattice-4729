@@ -73,6 +73,7 @@ struct PlanDetailsForm: View {
         case .pickupGame: ""
         case .walkCoffee: "Coffee walk around the lake"
         case .studyGroup: "Spanish practice at the library"
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.titlePlaceholder(model.kind)
         }
     }
 
@@ -134,17 +135,10 @@ struct PlanDetailsForm: View {
 
     private var whereSection: some View {
         PlanFormField(label: "Where") {
-            if model.canHostAtHome {
-                PlanSegmented(
-                    options: [
-                        (PlanComposerModel.Where.publicPlace, "A public place"),
-                        (.home, model.kind == .walkCoffee ? "My porch" : "My place")
-                    ],
-                    selection: Binding(get: { model.whereKind }, set: { model.setWhere($0) }),
-                    label: "Where"
-                )
-            }
-            if model.whereKind == .home {
+            PlanWhereChoices(model: model)
+            if model.whereKind == .online {
+                PlanOnlineLinkField(model: model)
+            } else if model.whereKind == .home {
                 PlanFormCard {
                     HStack(spacing: Spacing.s3) {
                         smallTile(.home, tint: Theme.Color.appSurfaceSunken, ink: Theme.Color.appTextStrong)
@@ -223,7 +217,7 @@ struct PlanDetailsForm: View {
     private var spotsTitle: String {
         if model.isBusiness { return "Spots" }
         return switch model.kind {
-        case .watchParty, .studyGroup: "Spots"
+        case .watchParty, .studyGroup, .foodDrinks, .gameNight, .outdoors, .somethingElse: "Spots"
         case .playdate: "Families"
         case .pickupGame: "Players needed"
         case .walkCoffee: "People"
@@ -233,7 +227,7 @@ struct PlanDetailsForm: View {
     private var spotsSubtitle: String {
         if model.isBusiness { return "Guests see how many are left" }
         return switch model.kind {
-        case .watchParty, .studyGroup: "People who can join, besides you"
+        case .watchParty, .studyGroup, .foodDrinks, .gameNight, .outdoors, .somethingElse: "People who can join, besides you"
         case .playdate: "Besides yours"
         case .pickupGame: "Shown as \u{201C}need \(model.spots)\u{201D}"
         case .walkCoffee: "Besides you"
@@ -268,13 +262,15 @@ struct PlanDetailsForm: View {
     }
 
     private var notePlaceholder: String {
-        switch model.kind {
+        if model.isOnline || model.kind.isNewer { return PlanKindsMore.notePlaceholder(model.kind, online: model.isOnline) }
+        return switch model.kind {
         case .watchParty:
             model.whereKind == .home ? "Park on the street. The side gate is open." : "We'll be at the big table by the window."
         case .playdate: "Meet by the big slide. We'll bring bubbles."
         case .pickupGame: "Court 3, by the fence."
         case .walkCoffee: "Meet at the trailhead sign. Coffee after."
         case .studyGroup: "Second floor, the long table by the windows."
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: ""
         }
     }
 
@@ -377,6 +373,8 @@ struct PlanKindFields: View {
                     label: "How you'll study"
                 )
             }
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse:
+            PlanMoreKindFields(model: model)
         }
     }
 }

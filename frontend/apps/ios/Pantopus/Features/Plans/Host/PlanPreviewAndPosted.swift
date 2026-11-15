@@ -30,10 +30,14 @@ struct PlanPreviewScreen: View {
                     .padding(.top, Spacing.s1)
                     // A business's place is public: guests see it before they're in, so its card starts with the note.
                     if model.isBusiness { businessPrivate } else { PlanFormCard {
-                        privateRow(
-                            icon: model.whereKind == .home ? .home : .mapPin,
-                            text: model.whereKind == .home ? "Your address" : "The exact spot: \(model.place?.name ?? "your place")"
-                        )
+                        if model.isOnline {
+                            privateRow(icon: .video, text: "The link: \(model.onlineLink?.host ?? "the link you added")")
+                        } else {
+                            privateRow(
+                                icon: model.whereKind == .home ? .home : .mapPin,
+                                text: model.whereKind == .home ? "Your address" : "The exact spot: \(model.place?.name ?? "your place")"
+                            )
+                        }
                         if !model.guestNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Divider().overlay(Theme.Color.appBorder)
                             privateRow(
@@ -49,7 +53,7 @@ struct PlanPreviewScreen: View {
                         privateRow(icon: .users, text: "Who's going, and the group chat")
                     } }
                     Text(
-                        "You can change or cancel it any time. If you move the time or the place, "
+                        "You can change or cancel it any time. If you move the time or the \(model.isOnline ? "link" : "place"), "
                             + "everyone who's in is asked \u{201C}Still coming?\u{201D}"
                     )
                     .planFont(.caption)
@@ -100,7 +104,10 @@ struct PlanPreviewScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             areaMap
             VStack(alignment: .leading, spacing: Spacing.s2) {
-                PlanTypeTag(kind: model.kind)
+                HStack(spacing: Spacing.s2) {
+                    PlanTypeTag(kind: model.kind)
+                    if model.isOnline { PlanOnlineChip() }
+                }
                 Text(model.effectiveTitle).planFont(.h3).foregroundStyle(Theme.Color.appText).fixedSize(horizontal: false, vertical: true)
                 Text(whenLine)
                     .planFont(.small)
@@ -142,6 +149,9 @@ struct PlanPreviewScreen: View {
             .mapStyle(.standard(pointsOfInterest: .excludingAll))
             .frame(height: 120)
             .allowsHitTesting(false)
+        } else if model.isOnline {
+            // No area to show for an online plan: the kind's tile with the video glyph (board Online).
+            PlanOnlineHero(kind: model.kind, height: 120)
         }
     }
 
@@ -155,7 +165,7 @@ struct PlanPreviewScreen: View {
         } else {
             when = PlanFormat.when(start: model.effectiveStart, end: model.end)
         }
-        return [when, model.previewArea].compactMap { $0 }.joined(separator: " · ")
+        return [when, model.isOnline ? PlanOnlineCopy.word : model.previewArea].compactMap { $0 }.joined(separator: " · ")
     }
 
     private func privateRow(icon: PantopusIcon, text: String) -> some View {
@@ -193,7 +203,15 @@ struct PlanPostedScreen: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
-                map
+                if plan.card.isOnline || (plan.place?.coordinate == nil && plan.card.area.coordinate == nil) {
+                    // An online plan has no pin: the kind's tile with the video glyph above the sheet (board Online).
+                    // Nor does a plan with no point at all: nothing is drawn at 0, 0.
+                    PlanOnlineHero(kind: plan.card.kind, height: geo.size.height * 0.47)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .background(plan.card.kind.tint.ignoresSafeArea())
+                } else {
+                    map
+                }
                 sheet
                     .frame(height: max(geo.size.height * 0.53, 420))
             }
@@ -208,8 +226,7 @@ struct PlanPostedScreen: View {
     }
 
     private var point: CLLocationCoordinate2D {
-        if let place = plan.place { return CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude) }
-        return CLLocationCoordinate2D(latitude: plan.card.area.latitude, longitude: plan.card.area.longitude)
+        plan.place?.coordinate ?? plan.card.area.coordinate ?? CLLocationCoordinate2D(latitude: 0, longitude: 0)
     }
 
     private var map: some View {
@@ -249,12 +266,14 @@ struct PlanPostedScreen: View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             Capsule().fill(Theme.Color.appBorderStrong).frame(width: 36, height: 5).frame(maxWidth: .infinity).padding(.top, Spacing.s2)
             VStack(alignment: .leading, spacing: 6) {
-                Text(plan.card.isPrivate ? "Your plan is posted" : "Your plan is on the map")
+                Text(plan.card.isPrivate || plan.card.isOnline ? "Your plan is posted" : "Your plan is on the map")
                     .planFont(.h2)
                     .foregroundStyle(Theme.Color.appText)
                     .accessibilityAddTraits(.isHeader)
                 Text(plan.card.isPrivate
                     ? "Only the people you invite can see it. We'll tell you when they say they're in."
+                    : plan.card.isOnline
+                    ? "People nearby can see it in the list now. We'll tell you when someone asks to join."
                     : "People nearby can see it now. We'll tell you when someone asks to join.")
                     .planFont(.body)
                     .foregroundStyle(Theme.Color.appTextSecondary)

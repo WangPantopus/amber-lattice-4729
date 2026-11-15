@@ -28,7 +28,7 @@ struct PlanAfterCard: View {
             if calendar.isDateInYesterday(start) { return "yesterday's" }
             return "\(PlanFormat.dayHeading(start, calendar: calendar))'s"
         } ?? "the"
-        return "\(possessive) \(card.kind.title.lowercased()) with \(PlanCardLines.hostName(card))"
+        return "\(possessive) \(PlanKindsMore.sentenceName(card)) with \(PlanCardLines.hostName(card))"
     }
 
     // MARK: - Guest
@@ -80,7 +80,7 @@ struct PlanAfterCard: View {
             HStack(spacing: Spacing.s3) {
                 PlanTile(kind: card.kind)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Host your \(card.kind.title.lowercased()) again?").planFont(.h4).foregroundStyle(Theme.Color.appText)
+                    Text("Host your \(PlanKindsMore.sentenceName(card)) again?").planFont(.h4).foregroundStyle(Theme.Color.appText)
                     Text(cameLine).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

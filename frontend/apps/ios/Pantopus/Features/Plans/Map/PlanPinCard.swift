@@ -196,8 +196,8 @@ enum PlanCardLines {
         } else {
             parts.append(PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, calendar: calendar))
         }
-        // A business's plan is at its place, by name (board G3); a neighbor's at its area.
-        parts.append(card.isBusiness ? businessPlaceName(card) : card.area.label)
+        // A business's plan is at its place, by name (board G3); a person's at its area, or "Online".
+        parts.append(card.isBusiness ? businessPlaceName(card) : card.areaWord)
         if let distance = PlanFormat.distance(card.distanceBand) { parts.append(distance) }
         return parts.joined(separator: " · ")
     }
@@ -238,6 +238,7 @@ enum PlanCardLines {
             default: "walk"
             }
         case .studyGroup: "study group"
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.noun(card.kind, details: card.details) ?? "plan"
         }
     }
 

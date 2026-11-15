@@ -463,6 +463,9 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
     case planPickup = "plan-pickup"
     case planWalk = "plan-walk"
     case planStudy = "plan-study"
+    /// Game night (Plans step 4): a die. Food & drinks, outdoors and something
+    /// else reuse `utensils`, `mountain` and `plus`.
+    case planGame = "plan-game"
     /// The outlined location arrow (Plans: "Show my location", Directions).
     case locationArrow = "location-arrow"
     /// Moments: the tab, the empty map's mark.
@@ -849,6 +852,7 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
         case .planPickup: "tennisball"
         case .planWalk: "cup.and.saucer"
         case .planStudy: "book"
+        case .planGame: "die.face.5"
         case .locationArrow: "location"
         case .circleDashed: "circle.dashed"
         case .volume2: "speaker.wave.2"

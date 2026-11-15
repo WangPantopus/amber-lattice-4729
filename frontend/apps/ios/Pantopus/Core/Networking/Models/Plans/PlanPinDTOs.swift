@@ -61,6 +61,7 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
         case placeName = "place_name"
         case moreTimes = "more_times"
         case audience
+        case placeKind = "place_kind"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -71,6 +72,10 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
         }
         id = try container.decode(String.self, forKey: .id)
         kind = try container.decode(PlanKind.self, forKey: .kind)
+        // An online plan has no place to pin (the server sends none); an unknown place kind drops the pin too.
+        if try container.decodeIfPresent(PlanPlaceKind.self, forKey: .placeKind) == .online {
+            throw DecodingError.dataCorruptedError(forKey: .placeKind, in: container, debugDescription: "An online plan has no pin")
+        }
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
         precision = try container.decodeIfPresent(String.self, forKey: .precision)

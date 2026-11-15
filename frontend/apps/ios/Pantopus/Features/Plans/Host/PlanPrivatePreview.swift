@@ -32,6 +32,7 @@ struct PlanPrivatePreviewScreen: View {
                     }
                     PlanScopeLine(text: PlanPrivateCopy.previewScope)
                     if model.whereKind == .home { PlanScopeLine(text: PlanPrivateCopy.homeScope, icon: .home) }
+                    if model.isOnline { PlanScopeLine(text: PlanOnlineCopy.linkScope) }
                     if let error = model.postError {
                         Text(error)
                             .planFont(.small)
@@ -60,6 +61,7 @@ struct PlanPrivatePreviewScreen: View {
             HStack(spacing: Spacing.s2) {
                 PlanTypeTag(kind: model.kind)
                 PlanPrivateChip()
+                if model.isOnline { PlanOnlineChip() }
             }
             Text(model.effectiveTitle)
                 .planFont(.h3)
@@ -68,7 +70,7 @@ struct PlanPrivatePreviewScreen: View {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 PlanFactRow(icon: .calendar, text: whenLine)
                 if let line = model.repeatLine { PlanRepeatLine(text: line, spoken: model.repeatSpoken) }
-                PlanFactRow(icon: model.whereKind == .home ? .home : .mapPin, text: whereLine)
+                PlanFactRow(icon: model.whereKind == .home ? .home : model.isOnline ? .video : .mapPin, text: whereLine)
             }
             HStack(spacing: 10) {
                 PlanAvatar(name: model.hostName, size: 30)
@@ -95,6 +97,7 @@ struct PlanPrivatePreviewScreen: View {
 
     /// "Heritage Park, Camas" (the place by name); at the host's home, the area until they're in.
     private var whereLine: String {
+        if model.isOnline { return PlanOnlineCopy.word }
         let city = model.previewArea.map { $0.hasPrefix("Near ") ? String($0.dropFirst(5)) : $0 }
         if model.whereKind == .home {
             let first = PlanCardLines.firstName(model.hostName)

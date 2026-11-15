@@ -52,8 +52,9 @@ struct PlanRowModel: Identifiable, Equatable {
             )
         }
         let distance = PlanFormat.distance(card.distanceBand)
-        // The row says just the place's name ("Downtown", "Prune Hill"), as on the board and Android.
-        let area = card.area.label.hasPrefix("Near ") ? String(card.area.label.dropFirst(5)) : card.area.label
+        // The row says just the place's name ("Downtown", "Prune Hill"), as on the board and Android; "Online" for
+        // an online plan.
+        let area = card.areaWord.hasPrefix("Near ") ? String(card.areaWord.dropFirst(5)) : card.areaWord
         var parts: [String] = []
         if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
             parts.append(when)
@@ -74,6 +75,9 @@ struct PlanRowModel: Identifiable, Equatable {
             parts.append(contentsOf: study)
         } else if let distance {
             parts.append(distance)
+        } else if card.isOnline, !parts.contains(area) {
+            // No distance to an online plan: it says "Online" instead.
+            parts.append(area)
         }
         return PlanRowModel(
             id: card.id,
@@ -186,7 +190,7 @@ struct PlanRowModel: Identifiable, Equatable {
             // A playdate before you're in: "Saturday morning".
             parts.append(PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, now: now, calendar: calendar))
         }
-        parts.append(card.business.map { "hosted by \($0.name)" } ?? card.area.label)
+        parts.append(card.business.map { "hosted by \($0.name)" } ?? card.areaWord)
         if let distance = PlanFormat.spokenDistance(card.distanceBand) { parts.append(distance) }
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")

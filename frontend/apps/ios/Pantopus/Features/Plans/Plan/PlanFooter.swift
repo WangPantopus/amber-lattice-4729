@@ -60,12 +60,22 @@ struct PlanFooter: View {
                     .accessibilityIdentifier("planLeaveWaitlist")
                 caption(waitlistCaption(card))
             })
+        case .going where card.isOnline:
+            // Board Online: "Join" opens the link; leaving stays under it.
+            AnyView(VStack(spacing: Spacing.s2) {
+                PlanOnlineJoin(place: viewModel.plan?.place)
+                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card), online: true)) }
+                    .planButton(.textDanger, size: .extraSmall)
+                    .accessibilityIdentifier("planCantMakeIt")
+            })
         case .going:
             AnyView(
                 Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
             )
+        case .hosting where card.isOnline && card.state != .cancelled && card.state != .ended:
+            AnyView(VStack(spacing: Spacing.s2) { PlanOnlineJoin(place: viewModel.plan?.place) })
         case .hosting, .closed, .notThisTime:
             nil
         }
@@ -223,7 +233,8 @@ enum PlanInviteCopy {
     /// The banner over the plan: "Sam invited you".
     static func banner(card: PlanCardDTO, invite: PlanMyInviteDTO) -> (title: String, message: String) {
         let host = PlanCardLines.hostName(card)
-        let place = card.kind == .playdate ? "the time and the exact place" : card.placeKind == .home ? "the address" : "the exact place"
+        let place = card.kind == .playdate ? "the time and the exact place"
+            : card.placeKind == .home ? "the address" : card.isOnline ? "the link" : "the exact place"
         if invite.needsHostOk {
             return ("\(host) invited you", "Say you're in and \(host) gets a request. You see \(place) once they say yes.")
         }
@@ -235,11 +246,12 @@ enum PlanInviteCopy {
 enum PlanConfirmation: Identifiable, Equatable {
     case withdraw(host: String)
     case leaveWaitlist
-    case cantMakeIt(host: String)
+    /// `online`: an online plan, whose guests lose its link (Plans step 3).
+    case cantMakeIt(host: String, online: Bool = false)
     /// "Can't make it" to the host's "Still coming?" (H11): answers it and leaves.
-    case notComing(host: String)
+    case notComing(host: String, online: Bool = false)
     case blockHost(name: String)
-    case removeGuest(name: String, requestId: String, atHome: Bool)
+    case removeGuest(name: String, requestId: String, atHome: Bool, online: Bool = false)
     /// A repeating plan's date skipped (Plans step 2): "Skip Thursday's walk?", and the button's "Skip Thursday".
     case skipDate(title: String, message: String, label: String)
     case stopRepeating
@@ -251,7 +263,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .cantMakeIt: "cantMakeIt"
         case .notComing: "notComing"
         case .blockHost: "blockHost"
-        case let .removeGuest(_, requestId, _): "remove.\(requestId)"
+        case let .removeGuest(_, requestId, _, _): "remove.\(requestId)"
         case .skipDate: "skipDate"
         case .stopRepeating: "stopRepeating"
         }
@@ -263,7 +275,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .leaveWaitlist: "Leave the waitlist?"
         case .cantMakeIt, .notComing: "Can't make it?"
         case let .blockHost(name): "Block \(name)?"
-        case let .removeGuest(name, _, _): "Remove \(PlanCardLines.firstName(name))?"
+        case let .removeGuest(name, _, _, _): "Remove \(PlanCardLines.firstName(name))?"
         case let .skipDate(title, _, _): title
         case .stopRepeating: "Stop repeating?"
         }
@@ -275,14 +287,15 @@ enum PlanConfirmation: Identifiable, Equatable {
             "\(host) won't see it anymore."
         case .leaveWaitlist:
             "You'll lose your place in line."
-        case let .cantMakeIt(host), let .notComing(host):
+        case let .cantMakeIt(host, online), let .notComing(host, online):
             "We'll tell \(host), and your spot goes to the next person waiting. "
-                + "You'll lose the exact place, the note and the chat."
+                + "You'll lose \(online ? "the link" : "the exact place"), the note and the chat."
         case .blockHost:
             "You won't see each other's plans, requests or messages."
-        case let .removeGuest(name, _, atHome):
-            atHome
-                ? "\(PlanCardLines.firstName(name)) has already seen the address. They lose the plan, the note and the chat from now on."
+        case let .removeGuest(name, _, atHome, online):
+            atHome || online
+                ? "\(PlanCardLines.firstName(name)) has already seen the \(online ? "link" : "address"). "
+                + "They lose the plan, the note and the chat from now on."
                 : "They lose the plan, the exact place, the note and the chat from now on."
         case let .skipDate(_, message, _):
             message
@@ -310,13 +323,13 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.withdraw() ? "Request withdrawn" : nil
         case .leaveWaitlist:
             await viewModel.withdraw() ? "You left the waitlist" : nil
-        case let .cantMakeIt(host):
+        case let .cantMakeIt(host, _):
             await viewModel.withdraw() ? "We told \(host)" : nil
-        case let .notComing(host):
+        case let .notComing(host, _):
             await viewModel.stillComing(false) ? "We told \(host)" : nil
         case .blockHost:
             await viewModel.blockHost() ? "Blocked. You won't see each other's plans." : nil
-        case let .removeGuest(_, requestId, _):
+        case let .removeGuest(_, requestId, _, _):
             await viewModel.remove(requestId: requestId) ? "Removed. They no longer see the plan." : nil
         case .skipDate:
             await viewModel.skipDate()

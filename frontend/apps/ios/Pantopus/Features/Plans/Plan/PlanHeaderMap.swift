@@ -35,6 +35,16 @@ struct PlanHeaderMap: View {
     static let height: CGFloat = 236
 
     var body: some View {
+        // An online plan has no place to map: the kind's tile with the video glyph (board Online). So does any plan
+        // with no point at all, so nothing is ever drawn at 0, 0.
+        if card.isOnline || (place?.coordinate == nil && card.area.coordinate == nil) {
+            PlanOnlineHero(kind: card.kind)
+        } else {
+            map
+        }
+    }
+
+    private var map: some View {
         MapReader { proxy in
             Map(position: $camera, interactionModes: []) {
                 if showsArea {
@@ -46,12 +56,8 @@ struct PlanHeaderMap: View {
                     }
                     .annotationTitles(.hidden)
                 }
-                if let place {
-                    Annotation(
-                        "",
-                        coordinate: CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude),
-                        anchor: .center
-                    ) {
+                if let place, let point = place.coordinate {
+                    Annotation("", coordinate: point, anchor: .center) {
                         PlanPinView(look: PlanPinLook(
                             kind: card.kind,
                             tag: pinTag(place),
@@ -100,7 +106,7 @@ struct PlanHeaderMap: View {
     }
 
     private var areaCoordinate: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: card.area.latitude, longitude: card.area.longitude)
+        card.area.coordinate ?? CLLocationCoordinate2D(latitude: 0, longitude: 0)
     }
 
     private var isNeighborhood: Bool {
@@ -158,7 +164,7 @@ struct PlanHeaderMap: View {
     private static let focusY: CGFloat = 150
 
     private func frame() {
-        let target = place.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) } ?? areaCoordinate
+        let target = place?.coordinate ?? areaCoordinate
         // The area's diameter in meters over the share of the header it fills.
         let meters = isNeighborhood ? 1000.0 / 1.27 : 500.0 / 0.72
         // The region fills the header's height, so the camera's center sits
@@ -169,8 +175,7 @@ struct PlanHeaderMap: View {
     }
 
     private func reveal(_ proxy: MapProxy) {
-        guard let place else { return }
-        let exact = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+        guard let exact = place?.coordinate else { return }
         guard !reduceMotion else {
             withAnimation(.easeInOut(duration: 0.15)) { frame() }
             landed += 1
