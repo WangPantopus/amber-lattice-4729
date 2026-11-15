@@ -17,7 +17,9 @@ interface RepostChooserProps {
   positionClassName?: string;
 }
 
-const ITEM = 'w-full text-left px-3 py-2 text-xs text-app-muted hover-bg-app';
+// The two things Repost can do are the chooser's whole content, so they read as the card's own text does (the ⋯
+// menu's smaller, greyer items are secondary actions).
+const ITEM = 'w-full text-left px-3.5 py-2.5 text-sm font-medium text-app hover-bg-app';
 
 /**
  * Repost's small chooser (PULSEREPOST contract §2): Repost (or Undo repost) and Repost with your words, drawn as the
@@ -71,7 +73,7 @@ export default function RepostChooser({
       onKeyDown={onKeyDown}
       // A click inside the chooser never reaches the card under it (which opens the post).
       onClick={(event) => event.stopPropagation()}
-      className={`absolute ${positionClassName} w-48 bg-surface rounded-xl shadow-xl border border-app py-1 z-30`}
+      className={`absolute ${positionClassName} w-56 bg-surface rounded-xl shadow-xl border border-app py-1 z-30`}
     >
       {reposted ? (
         <button type="button" role="menuitem" data-testid="pulseRepostChooserUndo" className={ITEM} onClick={() => { close(); onRepost(); }}>
