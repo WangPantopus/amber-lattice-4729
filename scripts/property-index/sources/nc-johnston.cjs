@@ -7,7 +7,8 @@
 // OneMap's Johnston file holds the owner's mailing city and ZIP where the property's should be (one home in ten carries a ZIP outside the
 // county, a third of those another state's), so every record's city and ZIP are left blank, as nc-iredell's and nc-lincoln's are, and
 // the ZIP codes that reach into the county (the Census Bureau's ZCTA-to-county file) are where a person's ZIP looks: a list of places to
-// look, never a fact on a record.
+// look, never a fact on a record. OneMap's entry grouped condominium units into buildings by street number and that mailing ZIP, so one
+// building could be split by where its owners get mail: those buildings are made again from the blanked addresses (street number alone).
 
 const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
@@ -16,6 +17,7 @@ const { positive } = require('../lib/values.cjs');
 const { fillHomes, bathFacts, describe, monthOf } = require('../lib/fill.cjs');
 const { log } = require('../lib/log.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
+const { condoBuildings } = require('../lib/condos.cjs');
 const { countyParcels } = require('./nc-onemap.cjs');
 
 const FIPS = '37101';
@@ -55,6 +57,12 @@ async function* build({ work }) {
   log(`${COUNTY}: ${dwellings.size} parcel numbers with building facts in the county's appraisal layer`);
   const entry = await countyParcels(work, FIPS);
   for (const record of entry.records) if (record.address) record.address = { ...record.address, city: '', zip: null };
+  const isBuilding = (record) => record.kind === 'building' && record.home_type === 'condo';
+  const before = { units: entry.records.filter((record) => record.kind === 'unit').length, buildings: entry.records.filter(isBuilding).length };
+  entry.records = entry.records.filter((record) => !isBuilding(record));
+  for (const record of entry.records) if (record.kind === 'unit') delete record.parent;
+  for (const building of condoBuildings(entry.records, { fips: FIPS, county: COUNTY })) entry.records.push(building);
+  log(`${COUNTY}: ${before.units} condominium units in ${before.buildings} buildings grouped by mailing ZIP; now ${entry.records.filter(isBuilding).length} buildings by street number`);
   const counts = fillHomes(entry.records, dwellings, { keyOf: (record) => key(record.facts.parcel_number) });
   log(describe(COUNTY, counts));
   yield {
