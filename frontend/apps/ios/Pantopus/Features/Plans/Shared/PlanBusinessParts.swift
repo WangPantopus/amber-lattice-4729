@@ -341,6 +341,7 @@ struct PlanCardTag: View {
             HStack(spacing: Spacing.s2) {
                 PlanTypeTag(kind: card.kind)
                 if card.isPrivate { PlanPrivateChip() }
+                if card.isOnline { PlanOnlineChip() }
             }
         }
     }
@@ -457,7 +458,10 @@ struct PlanHeaderChip: View {
     let mode: PlanScreenMode
 
     var body: some View {
-        if card.isBusiness, mode != .closed, let address = card.businessPlace?.address ?? place?.address, !address.isEmpty {
+        if card.isOnline {
+            // Board Online: the link, not a place, waits until you're in.
+            if place == nil, mode == .browsing { PlanScopeChip(text: PlanOnlineCopy.sharedWhenIn) }
+        } else if card.isBusiness, mode != .closed, let address = card.businessPlace?.address ?? place?.address, !address.isEmpty {
             PlanPlaceAddressChip(text: address)
         } else if place == nil, mode == .browsing {
             PlanScopeChip(text: card.kind == .playdate

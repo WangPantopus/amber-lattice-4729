@@ -60,12 +60,22 @@ struct PlanFooter: View {
                     .accessibilityIdentifier("planLeaveWaitlist")
                 caption(waitlistCaption(card))
             })
+        case .going where card.isOnline:
+            // Board Online: "Join" opens the link; leaving stays under it.
+            AnyView(VStack(spacing: Spacing.s2) {
+                PlanOnlineJoin(place: viewModel.plan?.place)
+                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
+                    .planButton(.textDanger, size: .extraSmall)
+                    .accessibilityIdentifier("planCantMakeIt")
+            })
         case .going:
             AnyView(
                 Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
             )
+        case .hosting where card.isOnline && card.state != .cancelled && card.state != .ended:
+            AnyView(VStack(spacing: Spacing.s2) { PlanOnlineJoin(place: viewModel.plan?.place) })
         case .hosting, .closed, .notThisTime:
             nil
         }
@@ -223,7 +233,8 @@ enum PlanInviteCopy {
     /// The banner over the plan: "Sam invited you".
     static func banner(card: PlanCardDTO, invite: PlanMyInviteDTO) -> (title: String, message: String) {
         let host = PlanCardLines.hostName(card)
-        let place = card.kind == .playdate ? "the time and the exact place" : card.placeKind == .home ? "the address" : "the exact place"
+        let place = card.kind == .playdate ? "the time and the exact place"
+            : card.placeKind == .home ? "the address" : card.isOnline ? "the link" : "the exact place"
         if invite.needsHostOk {
             return ("\(host) invited you", "Say you're in and \(host) gets a request. You see \(place) once they say yes.")
         }

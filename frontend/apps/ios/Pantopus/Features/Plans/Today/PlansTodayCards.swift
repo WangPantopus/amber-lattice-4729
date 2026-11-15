@@ -101,14 +101,11 @@ final class PlansTodayModel {
     func directions(_ card: PlanCardDTO) async {
         working.insert(card.id)
         defer { working.remove(card.id) }
-        guard let place = try? await PlansStoreReads.detail(id: card.id).place else {
+        guard let place = try? await PlansStoreReads.detail(id: card.id).place, let point = place.coordinate else {
             error = "We couldn't load the place. Open the plan and try again."
             return
         }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(
-            latitude: place.latitude,
-            longitude: place.longitude
-        )))
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: point))
         item.name = place.name ?? card.title
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
     }
@@ -161,6 +158,17 @@ struct PlansTodayCards: View {
         // "Movie night at Morgan's" already says whose place it is (as on Android).
         let title = card.placeKind == .home && !short.localizedCaseInsensitiveContains("\(host)'s") ? "\(short) at \(host)'s" : short
         return cardShell(card, overline: "Going today", title: title, line: goingLine(card)) {
+            if card.isOnline {
+                // An online plan: nowhere to go, nobody on their way. "Join" opens the link, read fresh.
+                PlansTodayOnlineButtons(card: card, model: model) { open(card, intent: .view) }
+            } else {
+                goingButtons(card)
+            }
+        }
+    }
+
+    private func goingButtons(_ card: PlanCardDTO) -> some View {
+        Group {
             HStack(spacing: 10) {
                 Button { Task { await model.directions(card) } } label: {
                     PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal)
@@ -193,6 +201,7 @@ struct PlansTodayCards: View {
             parts.append(PlanFormat.time(start, calendar: PlanFormat.calendar(for: card.timezone)))
         }
         if let distance = PlanFormat.distance(card.distanceBand) { parts.append(distance) }
+        if card.isOnline { parts.append(PlanOnlineCopy.word) }
         parts.append("\(card.goingCount) going")
         return parts.joined(separator: " · ")
     }

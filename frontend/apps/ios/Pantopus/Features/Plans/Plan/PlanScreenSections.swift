@@ -211,13 +211,15 @@ enum PlanScreenLines {
     /// "Near Prune Hill · about 1 mi · at Sam's place" / "· a public place".
     static func whereLine(_ card: PlanCardDTO) -> String {
         if card.isBusiness { return PlanCardLines.businessWhere(card) }
+        // An online plan: "Online · hosted from Camas", no distance (board Online).
+        if card.isOnline { return PlanOnlineCopy.whereLine(card) }
         if let place = card.invitedPlace { return PlanPrivateCopy.whereLine(card, place: place) }
         var parts = [card.area.label]
         if let distance = PlanFormat.distance(card.distanceBand) { parts.append(distance) }
         switch card.placeKind {
         case .home: parts.append("at \(PlanCardLines.hostName(card))'s place")
         case .publicPlace: parts.append("a public place")
-        case nil: break
+        case .online, nil: break
         }
         return parts.joined(separator: " · ")
     }
@@ -235,6 +237,8 @@ enum PlanScreenLines {
             if details.dogsWelcome == true { parts.append("dogs welcome") }
         case .studyGroup:
             parts.append(contentsOf: PlanCardLines.study(details))
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse:
+            parts.append(contentsOf: PlanKindsMore.details(card.kind, details))
         case .watchParty, .playdate:
             break
         }
