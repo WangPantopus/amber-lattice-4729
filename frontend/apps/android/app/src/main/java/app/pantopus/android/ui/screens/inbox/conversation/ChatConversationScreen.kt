@@ -144,6 +144,9 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.routing.DeepLinkRouter
+import app.pantopus.android.core.security.AppLockManager
+import app.pantopus.android.core.security.findFragmentActivity
+import app.pantopus.android.core.security.rememberAppLockManager
 import app.pantopus.android.data.ai.AIPdfCheck
 import app.pantopus.android.data.links.LinkPreview
 import app.pantopus.android.ui.components.GhostButton
@@ -455,13 +458,31 @@ fun ChatConversationScreen(
     val isCreatorQuotaLocked = isCreatorThread && resolvedCreatorContext.quota?.isMaxed == true
 
     // AI assistant phase 1: action cards send through the view model; links open with the deep-link router.
+    // "Verify it's me" under a reply: the check Mail and the Wallet ask for (it needs the host activity), and once it
+    // passes the view model sends the question again. A cancelled or failed check sends nothing.
+    val appLock = rememberAppLockManager()
+    val lockContext = LocalContext.current
+    val lockHost = remember(lockContext) { lockContext.findFragmentActivity() }
+    val identityScope = rememberCoroutineScope()
     val aiReplyActions =
-        remember(viewModel) {
+        remember(viewModel, appLock, lockHost) {
             ChatAIReplyActions(
                 onAction = viewModel::runAIAction,
                 onDismiss = viewModel::dismissAIAction,
                 onOpenLink = { url -> if (DeepLinkRouter.canRoute(url)) DeepLinkRouter.handle(url) },
                 canOpen = DeepLinkRouter::canRoute,
+                onVerifyIdentity = {
+                    identityScope.launch {
+                        if (!viewModel.canAskIdentity()) return@launch
+                        // A tap asks every time, even right after a cancel.
+                        appLock.forgetSensitiveCancel()
+                        when (val outcome = appLock.verifySensitiveScreen(lockHost, AI_IDENTITY_REASON)) {
+                            is AppLockManager.SensitiveActionOutcome.Verified -> viewModel.askAgainAfterIdentityCheck()
+                            is AppLockManager.SensitiveActionOutcome.Cancelled -> Unit
+                            is AppLockManager.SensitiveActionOutcome.Failed -> viewModel.noteIdentityCheckFailed(outcome.message)
+                        }
+                    }
+                },
             )
         }
 
@@ -2647,7 +2668,10 @@ private fun TrustPill(text: String) {
     }
 }
 
-/** A15.3 "Empty AI" frame: big avatar, "Ask me anything", trust pill, 2×2 prompt grid. */
+/** The reason on the system sheet when "Verify it's me" under an assistant reply is tapped. Mirrors iOS `identityAskReason`. */
+private const val AI_IDENTITY_REASON = "Verify it\u2019s you so Pantopus AI can look in your Mail and Wallet"
+
+/** A15.3 "Empty AI" frame: big avatar, the headline (what the assistant is for), trust pill, 2×2 prompt grid. */
 @Composable
 private fun AiWelcomeFrame(
     onCapabilityTap: (ChatPromptChip) -> Unit,
@@ -2666,16 +2690,17 @@ private fun AiWelcomeFrame(
         ChatAiAvatar(size = 88.dp)
         Spacer(modifier = Modifier.size(Spacing.s4))
         Text(
-            text = "Ask me anything",
+            text = "Ask about your home and what\u2019s nearby",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = PantopusColors.appText,
+            textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading() },
         )
         Spacer(modifier = Modifier.size(6.dp))
-        // Launch cuts #3 (Marketplace) / #4 (Open Gigs): it names only what can still be drafted.
+        // Launch cuts #3 (Marketplace) / #4 (Open Gigs) / #10 (Mailbox): it names only what can be looked into and drafted.
         Text(
-            text = "I can draft ${aiDraftables()}, and I use your saved places to fit answers to your area.",
+            text = aiWelcomeLine(),
             fontSize = 13.sp,
             lineHeight = 18.sp,
             color = PantopusColors.appTextSecondary,
@@ -2741,8 +2766,8 @@ private val AI_PROMPT_CARDS =
     listOf(
         AiPromptCardFixture("tasks", "Tasks", "What's a fair price to mount a 55\" TV?", PantopusIcon.Hammer),
         AiPromptCardFixture("pulse", "Pulse", "Draft a post asking for a dog-sitter this weekend.", PantopusIcon.Pencil),
-        // It summarizes a letter you give it; it can't read the inbox.
-        AiPromptCardFixture("mailbox", "Mailbox", "Help me understand a letter I got.", PantopusIcon.Mailbox),
+        // It looks in their Mail (after the app's identity check).
+        AiPromptCardFixture("mailbox", "Mail", "What\u2019s due in my mail?", PantopusIcon.Mailbox),
         AiPromptCardFixture("marketplace", "Marketplace", "Price my mid-century sofa for a quick sale.", PantopusIcon.ShoppingBag),
     )
 
@@ -2763,6 +2788,15 @@ private fun launchPromptCards(): List<AiPromptCardFixture> =
             else -> card
         }
     }
+
+/**
+ * What the assistant looks into and drafts, under the empty thread's headline. Mail is named only while the Mailbox is
+ * on (launch cut #10). Mirrors iOS `aiWelcomeLine`.
+ */
+private fun aiWelcomeLine(): String {
+    val looks = if (LaunchFeatures.mailbox) "your mail, your wallet and the days ahead" else "your wallet and the days ahead"
+    return "I can look in $looks, and draft ${aiDraftables()} for you."
+}
 
 /**
  * First-launch scope: what the assistant can draft (launch cut #4 hides open
@@ -5117,7 +5151,9 @@ private fun AiReplyBubble(
                     AiDraftCard(draft = draft, onUse = onUseDraft)
                 }
             }
-            if (body.links.isNotEmpty()) AiLinkButtons(links = body.links, onOpen = actions.onOpenLink)
+            if (body.links.isNotEmpty()) {
+                AiLinkButtons(links = body.links, onOpen = actions.onOpenLink, onVerifyIdentity = actions.onVerifyIdentity)
+            }
         }
     }
 }

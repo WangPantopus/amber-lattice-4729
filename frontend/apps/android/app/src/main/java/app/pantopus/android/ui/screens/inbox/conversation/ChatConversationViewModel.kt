@@ -1921,12 +1921,15 @@ class ChatConversationViewModel
         private fun newClientMessageId(): String = UUID.randomUUID().toString()
 
         /** Launch the AI reply stream on its own cancellable job. */
-        private fun startAiStream(text: String) {
+        private fun startAiStream(
+            text: String,
+            sentAgain: Boolean = false,
+        ) {
             _isAiStreaming.value = true
             aiStreamJob =
                 viewModelScope.launch {
                     try {
-                        streamAiMessage(text)
+                        streamAiMessage(text, sentAgain)
                     } finally {
                         _isAiStreaming.value = false
                     }
@@ -2054,14 +2057,56 @@ class ChatConversationViewModel
             rebuild()
         }
 
-        private suspend fun streamAiMessage(text: String) {
+        /**
+         * "Verify it's me" passed (the screen ran the check): the question the last reply couldn't answer goes again, so
+         * the answer comes in this thread. It is already in the thread, so it isn't shown a second time. Mirrors iOS
+         * `verifyIdentityAndAskAgain`.
+         */
+        fun askAgainAfterIdentityCheck() {
+            if (_isSending.value || _isAiStreaming.value || _isDeletingAi.value) return
+            val question = identityAskMessageId()?.let(::questionBefore) ?: return
+            startAiStream(question, sentAgain = true)
+        }
+
+        /** Whether "Verify it's me" can run now: nothing is being sent, and the button's reply is still the last one. */
+        fun canAskIdentity(): Boolean =
+            !_isSending.value && !_isAiStreaming.value && !_isDeletingAi.value && identityAskMessageId() != null
+
+        /** The identity check couldn't run (not a cancel): its reason shows above the composer. */
+        fun noteIdentityCheckFailed(message: String) {
+            _sendLimitNotice.value = message
+        }
+
+        /**
+         * The reply that shows "Verify it's me": the thread's last message, when the server put that button under it.
+         * An earlier one has been answered or passed by, so its button is gone.
+         */
+        private fun identityAskMessageId(): String? {
+            if (mode !is ChatThreadMode.Ai) return null
+            val last = messages.lastOrNull() ?: return null
+            if (last.resolvedType != "ai_reply" || aiLinksByMessageId[last.id].orEmpty().none { it.asksIdentity }) return null
+            return last.id.takeIf { questionBefore(it) != null }
+        }
+
+        /** What the person asked just before a reply: their words, when they wrote any. */
+        private fun questionBefore(messageId: String): String? {
+            val index = messages.indexOfFirst { it.id == messageId }
+            if (index <= 0) return null
+            return messages.subList(0, index).lastOrNull { it.resolvedType != "ai_reply" }?.resolvedText?.trim()?.ifEmpty { null }
+        }
+
+        /** [sentAgain]: the question goes again after the identity check; it shows no second bubble and carries no files. */
+        private suspend fun streamAiMessage(
+            text: String,
+            sentAgain: Boolean = false,
+        ) {
             // A refusal shown for the last Send.
             _sendLimitNotice.value = null
             // What the upload sends, taken before it starts: where each photo is on the phone, and each PDF's name and size.
-            val queued = _queuedAttachments.value.filter { it.bytes != null }
+            val queued = if (sentAgain) emptyList() else _queuedAttachments.value.filter { it.bytes != null }
             val photos = queued.filter { it.mimeType.startsWith("image/") }.mapNotNull { it.sourceUri }
             val files = queued.filter { it.mimeType == PDF_MIME }.map { ChatSentFile(it.filename, it.bytes?.size?.let(::fileSizeLabel)) }
-            val imageUrls = uploadAIMessageFiles(text, queued) ?: return
+            val imageUrls = if (sentAgain) emptyList() else uploadAIMessageFiles(text, queued) ?: return
             val userMessage =
                 localMessage(
                     id = "ai_user_${UUID.randomUUID()}",
@@ -2075,7 +2120,7 @@ class ChatConversationViewModel
             }
             val assistantId = "ai_assistant_${UUID.randomUUID()}"
             streamingAssistantId = assistantId
-            messages.add(userMessage)
+            if (!sentAgain) messages.add(userMessage)
             messages.add(localMessage(id = assistantId, text = "", userId = "ai", type = "ai_reply"))
             // Files picked while the upload ran stay.
             _queuedAttachments.value = _queuedAttachments.value.filterNot { attachment -> queued.any { it.id == attachment.id } }
@@ -4458,8 +4503,11 @@ class ChatConversationViewModel
                         estimate = null,
                         drafts = aiDraftsByMessageId[message.id].orEmpty(),
                         status = aiStatus.takeIf { message.id == streamingAssistantId },
-                        // A link this version can't open shows no button.
-                        links = aiLinksByMessageId[message.id].orEmpty().filter { DeepLinkRouter.canRoute(it.url) },
+                        // A link this version can't open shows no button; "Verify it's me" shows under the last reply only.
+                        links =
+                            aiLinksByMessageId[message.id].orEmpty().filter { link ->
+                                if (link.asksIdentity) message.id == identityAskMessageId() else DeepLinkRouter.canRoute(link.url)
+                            },
                     )
                 "text" -> {
                     val imageUrls =

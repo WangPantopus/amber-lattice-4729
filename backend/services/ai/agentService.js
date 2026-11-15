@@ -41,7 +41,9 @@ const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
 const { isFeatureEnabled } = require('../featureFlagService');
 const { readToolDefinitions, playdateReadToolDefinitions, PLAN_TOOLS } = require('./readTools');
 const { actionCardDefinitions, playdateCardDefinitions, PLAN_CARD_TOOLS, draftPlanDefinition } = require('./actionCards');
-const { appGuide, buttonRule, buttonLink, needsDefaultHome, replyWithoutButtons, splitButtonLines } = require('./appGuide');
+const {
+  appGuide, buttonRule, buttonLink, needsDefaultHome, replyWithoutButtons, splitButtonLines, VERIFY_LINK, VERIFIED_SCREEN_URLS,
+} = require('./appGuide');
 const { homesOf } = require('./assistantKit');
 const { screenContextText, screenName } = require('./screenContext');
 const { checkChatBudget } = require('./assistantBudget');
@@ -81,6 +83,9 @@ const PLAYDATE_TOOLS = new Map([...playdateReadToolDefinitions, ...playdateCardD
 // their identity check (Face ID or the passcode: Mail, the Wallet and Payments, since November 6): those
 // lookups go only to an app that says the check has passed (`cards` lists "identity"), so asking the
 // assistant is never a way around it. The web's Mail and Wallet open with the sign-in, and it says so.
+// An app that asks for that check in the thread (`cards` lists "identity_ask", with "link") is offered those lookups
+// either way: one called before the check has passed reads nothing and says so (tools.js), and the reply gets a
+// "Verify it's me" button, so the person is asked only when a question really needs their Mail or their Wallet.
 function launchScopedChatTools({
   pickupSchedule = false, actionCards = false, links = false, plans = false, playdates = false, remembers = false, checksBack = false,
   standingRules = false, sports = false, identity = false, moments = false,
@@ -144,7 +149,7 @@ function withoutGiftFunds(tool) {
 
 function launchScopedChatInstructions({
   pickupSchedule = false, actionCards = false, links = false, plans = false, playdates = false, remembers = false, checksBack = false,
-  standingRules = false, sports = false, identity = false, moments = false,
+  standingRules = false, sports = false, identity = false, identityAsk = false, moments = false,
 } = {}) {
   return prompts.chatAgentSystem({
     openGigs: isLaunchFeatureEnabled('open_gigs'),
@@ -160,6 +165,7 @@ function launchScopedChatInstructions({
     standingRules: standingRules && actionCards,
     pantopusOnly: scope.pantopusOnly(),
     identity,
+    identityAsk,
     chats: chatReading(),
     moments,
     buttons: links ? buttonRule({ plansEnabled: plans, momentsEnabled: moments, memory: remembers, rules: standingRules }) : '',
@@ -578,6 +584,8 @@ async function streamChat({
     rules: shown.has('rules'),
     // The app's identity check for Mail and the Wallet has passed (or, on the web, the sign-in is that check).
     identity: shown.has('identity'),
+    // The app asks for that check in the thread: a refused Mail or Wallet lookup says so (tools.js).
+    identityAsk: shown.has('identity_ask') && shown.has('link'),
     momentsEnabled,
   };
   if (images?.length && photos.length === 0) {
@@ -630,7 +638,10 @@ async function streamChat({
     remembers: shown.has('memory'),
     checksBack: shown.has('follow_up'),
     standingRules: shown.has('rules'),
-    identity: shown.has('identity'),
+    // For an app that asks for the check in the thread, the lookups and the prompt are the same before and after the
+    // check (one cached prompt); whether a lookup reads anything is `toolContext.identity`, the check itself.
+    identity: shown.has('identity') || toolContext.identityAsk,
+    identityAsk: toolContext.identityAsk,
     moments: momentsEnabled,
   };
   const tools = launchScopedChatTools(capabilities);
@@ -774,6 +785,10 @@ async function streamChat({
   // what is kept of the reply, so the history shows what the person saw.
   const buttonLines = shownText.flush();
   let buttonsDropped = 0;
+  // A Mail or Wallet lookup was refused because the phone's identity check hasn't passed, in an app that asks for it
+  // in the thread: the reply ends with "Verify it's me", and never also with a button to Mail or the Wallet.
+  const askIdentity = turn.outcome === 'complete' && toolContext.identityAsk
+    && [...ran.values()].some((call) => call.result?.identity_needed);
   if (turn.outcome === 'complete' && buttonLines.length) {
     // A home's screen named without its home opens their default home (the one Today shows).
     const defaultHomeId = capabilities.links && buttonLines.some(needsDefaultHome)
@@ -784,16 +799,17 @@ async function streamChat({
     };
     for (const line of buttonLines) {
       const made = capabilities.links ? buttonLink(line, { ...toolContext, defaultHomeId }) : { error: 'This app shows no link buttons.' };
-      if (made.link) {
+      if (made.link && !(askIdentity && VERIFIED_SCREEN_URLS.has(made.link.url))) {
         links.push(made.link);
         if (made.line !== line) kept(line, made.line);
         continue;
       }
       buttonsDropped += 1;
-      logger.warn('AI chat button line dropped', { userId, error: String(made.error).slice(0, 80) });
+      logger.warn('AI chat button line dropped', { userId, error: String(made.error || 'the reply asks for the identity check instead').slice(0, 80) });
       kept(line, '');
     }
   }
+  if (askIdentity) links.push({ ...VERIFY_LINK });
 
   const logged = {
     inputTokens: usage.inputTokens,
@@ -1774,7 +1790,13 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
   const buttonContext = { plansEnabled: true, momentsEnabled: true, memory: shown.has('memory'), rules: shown.has('rules') };
   let turnStart = 0;
   let turnLinks = [];
+  // "Verify it's me" (a turn whose Mail or Wallet lookup was refused before the phone's identity check): the button
+  // goes to apps that ask in the thread, and the question the app sent again after the check isn't shown twice.
+  const asksIdentity = shown.has('identity_ask') && shown.has('link');
+  let turnAsked = false;
+  let lastSaid = null;
   const flushLinks = () => {
+    if (turnAsked && asksIdentity) turnLinks.push({ ...VERIFY_LINK });
     if (!turnLinks.length) return;
     const own = items.slice(turnStart).reverse().find((item) => item.role === 'assistant' && typeof item.text === 'string');
     if (own) own.links = [...(own.links || []), ...turnLinks];
@@ -1803,6 +1825,12 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
       const said = personText(texts.join('\n'));
       // Only app lines (a nudge's): nothing the person said.
       if (!said && !photos && !documents) continue;
+      // The same question again, right after a reply that asked for the identity check: the app sent it once the
+      // check passed. The answer follows the reply that asked, as it did on the phone.
+      const sentAgain = turnAsked && said && said === lastSaid && !photos && !documents;
+      turnAsked = false;
+      lastSaid = said;
+      if (sentAgain) continue;
       const onlyAttached = (photos || documents) && ONLY_ATTACHED_QUESTIONS.has(said);
       items.push({ role: 'user', text: onlyAttached ? '' : said, photos, ...(documents ? { documents } : {}), at });
       continue;
@@ -1826,6 +1854,7 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
       }
       if (block.type !== 'tool_use') continue;
       const result = results.get(block.id);
+      if (result?.identity_needed) turnAsked = true;
       // A link button (show_link) goes with this reply's text.
       if (block.name === 'show_link' && result?.link?.url && shown.has('link')) turnLinks.push(result.link);
       // An action card is what its tool returned: the exact request the app sends.

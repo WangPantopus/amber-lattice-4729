@@ -52,7 +52,12 @@ public struct AIChatStreamRequest: Encodable, Sendable {
     /// `memory` offers the Remember card and what the person saved (§5),
     /// `follow_up` the check-back cards (§7) and `rules` the standing-rule
     /// cards (§18).
-    public static let supportedCards = ["pickup_schedule", "action", "link", "state", "memory", "follow_up", "rules"]
+    /// `identity_ask`: this app runs the identity check for Mail and the Wallet
+    /// from the thread ("Verify it's me" under a reply whose lookup needed it),
+    /// then sends the question again.
+    public static let supportedCards = [
+        "pickup_schedule", "action", "link", "state", "memory", "follow_up", "rules", "identity_ask"
+    ]
     /// Added to `cards` when this phone's identity check for Mail and the
     /// Wallet (Face ID or the passcode) would pass right now. The server reads
     /// Mail and the Wallet for the assistant only with it; without it the
@@ -2082,16 +2087,24 @@ public final class ChatConversationViewModel {
         )
     }
 
-    private func sendAIMessage(_ text: String) async {
+    /// `sentAgain`: the question a reply couldn't answer before the identity
+    /// check, sent once the check passed. It is already in the thread, so it
+    /// isn't shown a second time, and it carries no files.
+    private func sendAIMessage(_ text: String, sentAgain: Bool = false) async {
         // A refusal shown for the last Send.
         sendLimitNotice = nil
-        guard let outgoing = await outgoingAIMessage(text) else { return }
-        let userMessage = outgoing.message
-        let references = outgoing.references
-        let files = outgoing.files
+        let outgoing: AIOutgoing?
+        if sentAgain {
+            outgoing = nil
+        } else {
+            guard let made = await outgoingAIMessage(text) else { return }
+            outgoing = made
+        }
+        let references = outgoing?.references ?? []
+        let files = outgoing?.files ?? []
         let assistantId = "ai_assistant_\(UUID().uuidString)"
         let assistantMessage = localMessage(id: assistantId, text: "", userId: "ai", type: "ai_reply")
-        messages.append(userMessage)
+        if let userMessage = outgoing?.message { messages.append(userMessage) }
         messages.append(assistantMessage)
         // Files picked while the upload ran stay.
         queuedAttachments.removeAll { sent in files.contains { $0.id == sent.id } }
@@ -2099,7 +2112,7 @@ public final class ChatConversationViewModel {
 
         let request = AIChatStreamRequest(
             message: text.isEmpty
-                ? (outgoing.documentsOnly ? "What can you tell me about this document?" : "What can you tell me about this image?")
+                ? (outgoing?.documentsOnly == true ? "What can you tell me about this document?" : "What can you tell me about this image?")
                 : text,
             conversationId: aiConversationId,
             // PDF references go with the photos' (phase 2 contract §7.1).
@@ -2177,6 +2190,51 @@ public final class ChatConversationViewModel {
         aiStreamTask = nil
         aiStatus = nil
         isAIStreaming = false
+    }
+
+    /// "Verify it's me" under a reply that couldn't look into Mail or the
+    /// Wallet: the same check those screens ask for (Face ID, Touch ID or the
+    /// passcode), and once it passes the question goes again, so the answer
+    /// comes in this thread. A cancelled or failed check sends nothing.
+    public func verifyIdentityAndAskAgain(messageId: String) async {
+        guard case .ai = mode, !isSending, !isAIStreaming, !isDeletingAIConversation,
+              identityAskMessageId(in: messages) == messageId,
+              let question = questionAnswered(by: messageId, in: messages) else { return }
+        isSending = true
+        defer { isSending = false }
+        sendLimitNotice = nil
+        switch await AppLockManager.shared.verifySensitiveScreen(reason: Self.identityAskReason) {
+        case .verified:
+            break
+        case .cancelled:
+            return
+        case let .failed(message):
+            sendLimitNotice = message
+            return
+        }
+        // The thread may have moved on while the check was up ("New chat").
+        guard identityAskMessageId(in: messages) == messageId else { return }
+        await sendAIMessage(question, sentAgain: true)
+    }
+
+    static let identityAskReason = "Verify it\u{2019}s you so Pantopus AI can look in your Mail and Wallet"
+
+    /// The reply that shows "Verify it's me": the thread's last message, when
+    /// the server put that button under it. An earlier one has been answered
+    /// or passed by, so its button is gone.
+    private func identityAskMessageId(in thread: [ChatMessageDTO]) -> String? {
+        guard case .ai = mode, let last = thread.last, last.messageType == "ai_reply",
+              (aiLinksByMessageId[last.id] ?? []).contains(where: \.asksIdentity),
+              questionAnswered(by: last.id, in: thread) != nil else { return nil }
+        return last.id
+    }
+
+    /// What the person asked just before a reply: their words, when they wrote any.
+    private func questionAnswered(by messageId: String, in thread: [ChatMessageDTO]) -> String? {
+        guard let index = thread.firstIndex(where: { $0.id == messageId }) else { return nil }
+        guard let asked = thread[..<index].last(where: { $0.messageType != "ai_reply" }) else { return nil }
+        let text = (asked.messageText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
 
     /// A15.3 stop button — cancel the in-flight AI reply stream. Text
@@ -4493,6 +4551,8 @@ public final class ChatConversationViewModel {
         let combined = combinedMessages()
         let messagesById = Dictionary(uniqueKeysWithValues: combined.map { ($0.id, $0) })
         notePeerPhoto(in: combined)
+        // "Verify it's me" shows under the thread's last reply only.
+        let identityAskId = identityAskMessageId(in: messages)
         if combined.isEmpty {
             state = .empty
             return
@@ -4569,7 +4629,9 @@ public final class ChatConversationViewModel {
                 senderName: side == .incoming ? roomSenderName(for: message) : nil,
                 senderUserId: side == .incoming ? roomSenderUserId(for: message) : nil,
                 senderAvatarURL: side == .incoming ? message.sender?.photoURL : nil,
-                aiLinks: message.messageType == "ai_reply" ? aiLinksByMessageId[message.id] ?? [] : [],
+                aiLinks: message.messageType == "ai_reply"
+                    ? (aiLinksByMessageId[message.id] ?? []).filter { !$0.asksIdentity || message.id == identityAskId }
+                    : [],
                 attachments: message.attachments,
                 momentQuote: ChatMomentQuote(message.moment, side: side)
             )))
