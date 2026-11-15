@@ -48,7 +48,7 @@ pantopus-seeder/
 Five Lambda functions share a common Python package:
 
 - **Fetcher** (every 2 hours): Pulls content from RSS feeds, NOAA, and a seasonal engine into a `seeder_content_queue` table in Supabase.
-- **Poster** (hourly, self-selects 3 slots/day at ~7am, 12pm, 5pm PT): Picks the best queued item, humanizes it via Claude Sonnet 5.5, and posts to the Pantopus API as the curator account.
+- **Poster** (hourly, self-selects 3 slots/day at ~7am, 12pm, 5pm PT): Picks the best queued item, humanizes it via Claude Sonnet 5.5, and posts to the Pantopus API as the curator account. Off since November 14, 2026 (`SeederPostingEnabled=false`): local news shows on Today's "Around you" straight from the fetched list, with the outlet's own headline and a link, so nothing is rewritten or posted to Pulse. The fetcher stays on.
 - **Discovery** (daily): Detects user clusters and auto-provisions new seeder regions.
 - **Briefing Scheduler** (every minute): Finds users whose morning or evening briefing time is now and sends personalized push notifications (see below).
 - **Briefing Cleanup** (daily): Purges old delivery logs, cleans expired context cache, and resets stale composing attempts. Failed briefings retry on the minute scheduler only within their original local delivery window.

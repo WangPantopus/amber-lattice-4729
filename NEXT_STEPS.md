@@ -367,6 +367,15 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] The example card's "A home in Camas, WA" label is gone; signed-in people see the sentence "Your flood risk, today's air, your home's value, and who your verified neighbors are."
 - [x] No new launch key, table or migration. Two new server routes: `GET /api/mailbox/cards/waiting` and `POST /api/saved-places/area/today`.
 
+**Made by the founder on November 14 (local news leaves Pulse; Today gets two halves).** You showed the curator account filling the staging Pulse feed with rewritten news posts and asked whether to keep it. Detail and what is left are in the section "Around you" at the end of this file.
+
+- [x] The curator account's posts leave Pulse: the list and the map show people's posts only. The Sports lane keeps its own.
+- [x] Today has two halves under a big switch, drawn as Pulse's List | Map: **At home** (Today as it was) and **Around you** (local headlines). You asked for the split top tab on Place or Today; it is on Today, because Place is the private page about a home and Today already works from a city alone.
+- [x] Around you shows the outlet's own headline, the outlet's name and a link to the story. Nothing is rewritten, no photo is carried, and no Claude call is made.
+- [x] The switch shows only where there is something to list; elsewhere Today is unchanged.
+- [x] One backend switch, `AROUND_YOU` (on for staging, off in production until you set it). No new table or migration.
+- [ ] Asked the same evening, not built: every Around you item as a real post that people can react to and comment on.
+
 **Still open. The brief builds the default until you decide.**
 
 - [ ] Confirm the September 26 promise and pilot shape: "Know what matters for your home, and stay on top of it"; first-time homeowners in Vancouver, Camas and Washougal; five households, then 30 to 50, for eight weeks each. Default: as written.
@@ -1056,3 +1065,17 @@ Decided November 13 (section 0). Built the same night by one builder per platfor
 - [ ] Not checked anywhere: real phones (real GPS, Face ID or a screen lock on Android, pushes), the hosted staging and production sites, the iPhone Duo layout, screen readers speaking aloud, Location Services switched off for the whole phone, and a real 7 a.m. delivery (test cards were delivered by hand in the local database).
 - [ ] Known and left: on phone-width web the floating "+" button sits over the right end of the countdown's button; logging out of the web clears the browser's storage, so a card still sealed until Christmas opens again after signing back in; if a link arrives after a waiting card has already opened, the link opens over the card.
 - [ ] Yours: promote `dev` to `master` when staging looks right, then cut and release new iPhone and Android store builds; phones show none of this until then. Still undecided from November 11: a card to someone new outside the daily limit (Part 11.8), and whether Mail should ask "who's holding the phone" before the card flow.
+
+## Around you (added November 14)
+
+Decided November 14 (section 0). Built that day and checked in a browser, the iPhone simulator and the Android emulator against a local backend and database, with the project's own fetcher run once against the live feeds (301 real items for Clark County and Portland metro).
+
+- [x] Server ([#4094](https://github.com/WangPantopus/skinny-pantopus/pull/4094) into `dev`, [#4095](https://github.com/WangPantopus/skinny-pantopus/pull/4095) into `master`): `backend/services/aroundYouService.js` reads the list the content fetcher already fills every two hours and answers sections (Alerts, Headlines, Events, Around town, This season, On this day) for the content regions that cover the place. Four routes, one beside each Today: a Home, a saved address, a city point, and the web's briefing. With the switch on, the Pulse list and map leave out the curator account's posts.
+- [x] Web, iPhone and Android: the switch on Today and the Around you page. A headline opens the story at its outlet (a new tab on the web, the in-app browser on the phones). At home stays as it was, and the switch is absent where the server has nothing to show.
+- [x] What the checks showed: real headlines with outlet names (The Columbian, OPB, KGW, and the outlet Google News names) for a Vancouver, WA home, for a saved-city Today after "Use my location", and on the web's Today; a point in Miami (no region) answers "nothing to show"; signed out 401, someone else's home 403, someone else's saved place 404; a post marked as the curator's leaves the Pulse list and map with the switch on and returns with it off; a relaunch keeps Today working and opens on At home.
+- Left out on purpose: local sports (the regions' sports sources are mostly league-wide feeds and team searches; a memorabilia listing and a trade elsewhere came up in the check). They still feed the Pulse Sports lane.
+- The time under a headline is when Pantopus first saw the story (the fetcher runs every two hours), not the outlet's publishing time, which the list does not keep.
+- A word list keeps crime, obituaries and party politics off the page (the fetcher's own, plus a second pass on the server). A charged story can still get through as the outlet's own headline.
+- [ ] Not checked anywhere: the hosted staging and production sites, real phones, the iPhone Duo layout, a screen reader speaking aloud, and an area whose only region was made automatically when a home was added.
+- [ ] Yours: staging shows Around you once the web and the store builds carry it. For production, set `AROUND_YOU=1` on the production backend when you want it there. Run `sam deploy --config-env prod` (and `--config-env staging`) from `pantopus-seeder/deploy` to stop the posting job: the template now has `SeederPostingEnabled`, off by default, so the fetcher keeps running and the poster stops (it has failed in production since October 26, when the Anthropic account behind it ran out of credit, and its alarm has fired three times a day since). Hold that deploy if you decide the next step should keep the rewritten posts. The staging posting schedule was left running for the same reason; its posts no longer show in Pulse. Cut new iPhone and Android store builds; phones show none of this until then.
+- [ ] Asked November 14, not built: each Around you item as a real post with reactions and comment threads, as Pulse posts have.

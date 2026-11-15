@@ -42,6 +42,12 @@ PRs, screenshots and chat. Preserve unrelated local work.
   and Plans while their switches are on) and Place · Today · Mail · Pulse on
   phone-width web; the desktop web sidebar keeps its order, and the apps still
   open on Place.
+  On November 14 the founder took the curator account's news posts out of
+  Pulse and gave Today two halves under a big At home | Around you switch
+  (drawn as Pulse's List | Map): At home is Today as it was, and Around you
+  lists local headlines that open at their outlets. The switch shows only
+  where there is something to list, and all of it is behind the backend's
+  `AROUND_YOU` switch (on for staging, off in production until set).
   The founder doesn't want "Neighborhood" as a name in the app. The side menu
   (☰) is on the top screen of every tab on iOS and Android; web keeps its
   sidebar and menu. New tabs and redesigned tab screens keep the menu button,

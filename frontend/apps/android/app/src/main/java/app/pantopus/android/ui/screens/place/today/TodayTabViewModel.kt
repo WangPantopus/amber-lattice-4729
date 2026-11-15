@@ -17,6 +17,7 @@ import app.pantopus.android.data.api.models.homes.OwnershipClaimDto
 import app.pantopus.android.data.api.models.homes.showsCopyBeforeRecheck
 import app.pantopus.android.data.api.models.hub.NotificationPreferencesPatch
 import app.pantopus.android.data.api.models.place.PlaceIntelligence
+import app.pantopus.android.data.api.models.saved_places.AroundYouDto
 import app.pantopus.android.data.api.models.saved_places.SavedPlaceDto
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -27,6 +28,8 @@ import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.hub.HubRepository
 import app.pantopus.android.data.hub.NotificationPreferencesRepository
 import app.pantopus.android.data.place.PlaceRepository
+import app.pantopus.android.data.saved_places.AroundYouPlace
+import app.pantopus.android.data.saved_places.AroundYouRepository
 import app.pantopus.android.data.saved_places.SavedPlacesRepository
 import app.pantopus.android.data.saved_places.TodayArea
 import app.pantopus.android.data.saved_places.TodayAreaStore
@@ -97,6 +100,9 @@ class TodayTabViewModel
         /** The city kept before an address (TABCARD §4a; unit tests build this without Hilt, and Today starts at the card). */
         @Inject lateinit var areas: TodayAreaStore
 
+        /** Around you's reads (unit tests build this without Hilt, and Today then shows no switch). */
+        @Inject lateinit var aroundYou: AroundYouRepository
+
         private val _locating = MutableStateFlow(false)
 
         /** "Use my location" is reading a fix, or loading the city's day it found. */
@@ -123,6 +129,27 @@ class TodayTabViewModel
          */
         private val _pullFailed = MutableStateFlow(false)
         val pullFailed: StateFlow<Boolean> = _pullFailed.asStateFlow()
+
+        /**
+         * Around you, Today's second half (2026-11-14): local headlines for the place shown. Null until read; the last
+         * answer for a place stays when a read fails, and another place starts blank.
+         */
+        private val _around = MutableStateFlow<AroundYouDto?>(null)
+        val around: StateFlow<AroundYouDto?> = _around.asStateFlow()
+        private var aroundPlace: AroundYouPlace? = null
+
+        /** Reads Around you for [place] (null: nothing is shown, so nothing is kept). */
+        fun readAround(place: AroundYouPlace?) {
+            if (place != aroundPlace) {
+                aroundPlace = place
+                _around.value = null
+            }
+            if (place == null || !::aroundYou.isInitialized) return
+            viewModelScope.launch {
+                val result = aroundYou.read(place)
+                if (result is NetworkResult.Success && aroundPlace == place) _around.value = result.data
+            }
+        }
 
         /** The home this tab shows, once resolved. */
         var homeId: String? = null
@@ -805,3 +832,17 @@ sealed interface TodayTabUiState {
 
     data class Error(val message: String) : TodayTabUiState
 }
+
+/** The place this Today shows, as Around you asks about it; null when it shows none. */
+val TodayTabUiState.aroundPlace: AroundYouPlace?
+    get() {
+        val loaded = this as? TodayTabUiState.Loaded ?: return null
+        val area = loaded.area
+        return when {
+            area != null -> AroundYouPlace.Area(area.latitude, area.longitude)
+            loaded.savedPlace != null -> AroundYouPlace.Saved(loaded.savedPlace.id)
+            loaded.claim != null -> AroundYouPlace.Home(loaded.claim.homeId)
+            loaded.calendarHomeId != null -> AroundYouPlace.Home(loaded.calendarHomeId)
+            else -> null
+        }
+    }
