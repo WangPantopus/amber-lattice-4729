@@ -42,6 +42,8 @@ async function newPlans(now) {
     .is('business_user_id', null)
     // A private plan is told to nobody but the people its host invites.
     .eq('audience', 'nearby')
+    // A repeating plan is news once: its later dates are told to the people who came, not to everyone again.
+    .or('series_index.is.null,series_index.eq.1')
     .gte('created_at', new Date(now - POSTED_WITHIN_MS).toISOString())
     .order('created_at', { ascending: true })
     .limit(PLANS_PER_TICK);

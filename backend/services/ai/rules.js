@@ -359,6 +359,7 @@ async function draftPlanRule(args, ctx) {
   if (!plan || String(plan.host_user_id) !== String(ctx.userId)) return { error: 'Only a plan they host can repeat. Use find_plans for the plans they host.' };
   // A weekly repost is posted for people nearby, so it never copies a plan that was only for the people invited.
   if (planRules.isPrivate(plan)) return { error: "That plan is private (only the people they invited see it), and Pantopus can't repeat a private plan yet. Say so in a sentence; no rule card." };
+  if (plan.repeat) return { error: 'That plan already repeats: they set it in the plan itself (Repeats). Say so in a sentence; no rule card. They change or stop it from the plan.' };
   if (plan.status === 'cancelled') return { error: 'That plan was cancelled. Say so: they can host it again, then ask for it every week.' };
   if (Date.parse(plan.post.event_end_date) < Date.now() - RECENT_MS) {
     return { error: 'That plan ended more than a week ago. Say so: they can host it again, then ask for it every week.' };
@@ -807,6 +808,12 @@ async function runPlanRepeat(rule, now) {
   if (!latest || String(latest.host_user_id) !== String(rule.user_id)) {
     return pause(rule, 'cannot_post', {
       title: `Couldn't post your weekly ${noun}`, body: "The plan it copies isn't available anymore, so Pantopus paused it.",
+    });
+  }
+  // The plan repeats by itself now (planSeries.js): one of the two posts it, not both.
+  if (latest.repeat) {
+    return pause(rule, 'cannot_post', {
+      title: `Paused: your weekly ${noun}`, body: 'This plan now repeats by itself (Repeats, in the plan), so Pantopus paused this rule.',
     });
   }
   const latestEnd = Date.parse(latest.post.event_end_date);

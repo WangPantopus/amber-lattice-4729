@@ -115,7 +115,7 @@ async function loadViewer(user, opts = {}) {
   const userId = String(user.id);
   const bizMarker = user.plansBiz === true;
   const planBusiness = require('./planBusiness');
-  const [playdatesFlag, filters, homes, savedPlaces, scopeAccess, sportsFlag, invitesFlag, bizFlag, bizKidsFlag, privateFlag] = await Promise.all([
+  const [playdatesFlag, filters, homes, savedPlaces, scopeAccess, sportsFlag, invitesFlag, bizFlag, bizKidsFlag, privateFlag, repeatFlag] = await Promise.all([
     isFeatureEnabled('plans_playdates', user),
     getMuteAndHideFilters(userId),
     loadHomes(userId),
@@ -126,6 +126,7 @@ async function loadViewer(user, opts = {}) {
     bizMarker ? isFeatureEnabled(planBusiness.FLAG, user) : false,
     bizMarker ? isFeatureEnabled(planBusiness.KIDS_FLAG, user) : false,
     isFeatureEnabled(PRIVATE_FLAG, user),
+    isFeatureEnabled('plans_repeat', user),
   ]);
   // Plans with businesses: on only for a person who has the switch, in an app that can draw a business's plan.
   const biz = Boolean(bizMarker && bizFlag);
@@ -170,6 +171,8 @@ async function loadViewer(user, opts = {}) {
     invitesFlag: Boolean(invitesFlag),
     // May post a private plan (planRules.PRIVATE_FLAG); it needs invitations too, or nobody could come.
     privateFlag: Boolean(privateFlag && invitesFlag),
+    // May set a plan to repeat (planSeries.js).
+    repeatFlag: Boolean(repeatFlag),
     // Plans with businesses (planBusiness.js): whether a business's plan exists for this viewer, whether one
     // for kids does, and the businesses whose plans they post or run.
     biz,
