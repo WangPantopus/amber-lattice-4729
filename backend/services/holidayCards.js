@@ -176,10 +176,42 @@ function requestRowId(senderId, requestId) {
  * same one as services/mailEnclosures, under its own label), so its sender can ask for the link again while the Mail row
  * keeps only the token's hash. Empty when the server has no secret.
  */
-function cardLinkToken(mailId) {
+function cardLinkToken(mailId, label = 'card-link') {
   const secret = process.env.MAIL_ENCLOSURE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (!secret) return '';
-  return crypto.createHmac('sha256', secret).update(`pantopus:card-link:v1:${mailId}`).digest('base64url');
+  return crypto.createHmac('sha256', secret).update(`pantopus:${label}:v1:${mailId}`).digest('base64url');
+}
+
+/**
+ * A card by email's token, made the same way under its own label, so a retry of its email (services/cardEmail) carries
+ * the same link as the first try. Empty when the server has no secret.
+ */
+function cardEmailToken(mailId) {
+  return cardLinkToken(mailId, 'card-email');
+}
+
+// ---- A card by email's email (services/cardEmail) ----
+// The Mail row of a card by email keeps where its email is in mail_extracted.card.email: { state, tries, at, sent_at }.
+// `state` is 'sending' while a try runs, 'sent' once the mail server took it, 'failed' after a try didn't go. Cards sent
+// before this was kept have none and are read as emailed. A link goes to no address, so it has none.
+const EMAIL_TRIES = 5;
+const EMAIL_GIVE_UP_MS = 60 * 60 * 1000;
+
+/** Where a card's email is: null (it went, or the card has no email record), 'retrying', or 'failed'. */
+function emailTrouble(mail, now = new Date()) {
+  const email = mail?.mail_extracted?.card?.email;
+  if (!email || email.state === 'sent' || !mail.escrow_status) return null;
+  // Its first try runs as it's sent; a card still sending a while later lost its try, which the retry job picks up.
+  if (email.state === 'sending' && !(Number(email.tries) > 0)
+    && now.getTime() - Date.parse(email.at || mail.created_at) < 10 * 60 * 1000) return null;
+  const old = now.getTime() - Date.parse(mail.created_at) >= EMAIL_GIVE_UP_MS;
+  return Number(email.tries) >= EMAIL_TRIES || old ? 'failed' : 'retrying';
+}
+
+/** Whether a card's email went out (or it never kept a record, before this was kept). */
+function emailWent(mail) {
+  const email = mail?.mail_extracted?.card?.email;
+  return !email || email.state === 'sent';
 }
 
 /** Whether this card went out as a link: it waits like a card by email, for whoever opens it first. */
@@ -468,6 +500,9 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
   const view = cardView(mail, now) || {};
   const byEmail = Boolean(mail.escrow_status);
   const status = sentStatus(mail, now);
+  // A card whose email didn't go out while it waits: 'retrying' while the retry job keeps trying, then 'failed', with the
+  // address they typed whole, so they can see a mistake in it (Email it again, or take it back and the stamp comes back).
+  const trouble = isHolidayCard && status === 'email_waiting' ? emailTrouble(mail, now) : null;
   return {
     id: mail.id,
     kind: isHolidayCard ? 'card' : 'letter',
@@ -477,6 +512,7 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
     to_household: Boolean(toHousehold),
     by_email: byEmail,
     ...(card.by_link ? { by_link: true } : {}),
+    ...(trouble ? { email_status: trouble, email_to: mail.escrow_recipient_contact || null } : {}),
     arrival: card.arrival || null,
     status,
     arrives_at: byEmail ? null : instant(mail.delivered_at),
@@ -509,7 +545,11 @@ function sentTrail(mail, { zone, now = new Date() }) {
   const reached = (at) => Boolean(at) && Date.parse(at) <= now.getTime();
   const trail = [{ step: 'sealed', at: instant(mail.created_at), done: true }];
   if (mail.escrow_status) {
-    trail.push({ step: 'emailed', at: instant(mail.created_at), done: true });
+    // A link is "ready" as it's sealed. An email is done once the mail server took it (older cards: as they were sent).
+    const email = card.by_link ? null : card.email;
+    trail.push(email && email.state !== 'sent'
+      ? { step: 'emailed', at: null, done: false }
+      : { step: 'emailed', at: instant(email?.sent_at || mail.created_at), done: true });
     const status = sentStatus(mail, now);
     if (status === 'claimed') trail.push({ step: 'joined', at: instant(mail.delivered_at), done: true });
     else if (status === 'expired') trail.push({ step: 'returned', on: dayIn(mail.escrow_expires_at, zone), done: true });
@@ -549,7 +589,7 @@ async function sentLine(userId, now = new Date()) {
 module.exports = {
   CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
-  designById, isCard, isByLink, cardLinkToken, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
+  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailWent, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,
   personDelivery, cardView, pickupAt, sentSummary, sentCards, notDeliveredOf, sentStatus, sentPiece, sentTrail, sentLine,
 };
