@@ -414,11 +414,15 @@ private fun stacksButtons(
     return fontScale > LARGE_TEXT_SCALE || actions.any { it.label.length > SIDE_BY_SIDE_LABEL_MAX }
 }
 
-/** Buttons to screens of the app under an assistant reply (contract section 5). */
+/**
+ * Buttons to screens of the app under an assistant reply (contract section 5). "Verify it's me"
+ * ([ChatAILink.asksIdentity]) opens nothing: it runs the identity check, after which the thread asks the question again.
+ */
 @Composable
 internal fun AiLinkButtons(
     links: List<ChatAILink>,
     onOpen: (String) -> Unit,
+    onVerifyIdentity: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         links.forEach { link ->
@@ -429,13 +433,16 @@ internal fun AiLinkButtons(
                         .heightIn(min = 40.dp)
                         .clip(RoundedCornerShape(Radii.md))
                         .background(PantopusColors.primary50)
-                        .clickable { onOpen(link.url) }
+                        .clickable { if (link.asksIdentity) onVerifyIdentity() else onOpen(link.url) }
                         .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
                         .semantics(mergeDescendants = true) { role = Role.Button }
-                        .testTag("chatAILink"),
+                        .testTag(if (link.asksIdentity) "chatAIVerifyIdentity" else "chatAILink"),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
             ) {
+                if (link.asksIdentity) {
+                    PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = 13.dp, tint = PantopusColors.primary600)
+                }
                 Text(
                     text = link.label,
                     fontSize = 12.5.sp,
@@ -443,7 +450,14 @@ internal fun AiLinkButtons(
                     color = PantopusColors.primary600,
                     modifier = Modifier.weight(1f),
                 )
-                PantopusIconImage(icon = PantopusIcon.ArrowRight, contentDescription = null, size = 12.dp, tint = PantopusColors.primary600)
+                if (!link.asksIdentity) {
+                    PantopusIconImage(
+                        icon = PantopusIcon.ArrowRight,
+                        contentDescription = null,
+                        size = 12.dp,
+                        tint = PantopusColors.primary600,
+                    )
+                }
             }
         }
     }

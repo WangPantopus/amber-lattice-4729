@@ -158,7 +158,17 @@ data class ChatAIActionCard(
 data class ChatAILink(
     val label: String,
     val url: String,
-)
+) {
+    /**
+     * "Verify it's me": the server puts it under a reply that couldn't look into Mail or the Wallet before the identity
+     * check. It opens no screen: the thread runs the check and asks the question again. Mirrors iOS `asksIdentity`.
+     */
+    val asksIdentity: Boolean get() = url == VERIFY_IDENTITY_URL
+
+    companion object {
+        const val VERIFY_IDENTITY_URL = "pantopus://assistant/verify"
+    }
+}
 
 /** What an assistant reply's action cards and link buttons do; threaded from the screen to each reply. */
 class ChatAIReplyActions(
@@ -170,4 +180,6 @@ class ChatAIReplyActions(
     val onOpenLink: (String) -> Unit = {},
     /** True when the app can open the link; links it can't open show no button. */
     val canOpen: (String) -> Boolean = { false },
+    /** "Verify it's me": the identity check, then the question again. */
+    val onVerifyIdentity: () -> Unit = {},
 )
