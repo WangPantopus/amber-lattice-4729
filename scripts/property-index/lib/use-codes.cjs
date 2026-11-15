@@ -163,7 +163,7 @@ const SOURCES = {
   'mi-oakland': 'mi-stc',
   ...Object.fromEntries(['tx-atascosa', 'tx-bastrop', 'tx-bell', 'tx-bexar', 'tx-brazos', 'tx-cameron', 'tx-collin', 'tx-dallas', 'tx-denton', 'tx-ector',
     'tx-fort-bend', 'tx-grayson', 'tx-gregg', 'tx-harris', 'tx-hidalgo', 'tx-johnson', 'tx-kaufman', 'tx-liberty', 'tx-montgomery', 'tx-nueces', 'tx-smith',
-    'tx-tarrant', 'tx-taylor', 'tx-travis'].map((source) => [source, 'tx-ptad'])),
+    'tx-tarrant', 'tx-taylor', 'tx-travis', 'tx-bandera', 'tx-galveston', 'tx-guadalupe', 'tx-medina', 'tx-wilson'].map((source) => [source, 'tx-ptad'])),
 };
 
 /**
