@@ -819,7 +819,7 @@ private fun NeighborPreview(
 ) {
     val draft = ui.draft
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-        PlanOverline("What neighbors see")
+        PlanOverline("What others see")
         NeighborsCard(ui, kind)
         PlanOverline(
             if (kind == PlanKind.PLAYDATE) "Families you accept also see" else "People you accept also see",

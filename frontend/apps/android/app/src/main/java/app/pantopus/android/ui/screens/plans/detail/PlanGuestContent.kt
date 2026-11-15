@@ -181,7 +181,7 @@ internal fun PlanHostCard(
     val host = plan.host ?: return
     // The host's card opens their profile, as on iOS.
     PlanHostRow(
-        name = host.displayName ?: "Neighbor",
+        name = host.displayName ?: "Someone",
         verified = host.verifiedAddress && ruleCaption == null,
         caption = ruleCaption ?: hostCaption(plan),
         seed = host.userId,
@@ -287,7 +287,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Verify your address to join",
                 enabled = true,
-                caption = "This plan is for verified neighbors.",
+                caption = "This plan is for people with a verified address.",
                 action = AskAction.Verify,
             )
         PlanCannotAsk.NEEDS_LOCATION ->
@@ -301,7 +301,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Too far to join",
                 enabled = false,
-                caption = "This plan is for neighbors who live or are close by.",
+                caption = "This plan is for people who live or are close by.",
                 action = AskAction.None,
             )
         PlanCannotAsk.FULL_USE_WAITLIST ->
@@ -522,7 +522,7 @@ internal fun PlaydateLocked(
         Column(modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4), verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             PlanIconTile(PantopusIcon.Lock, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 48.dp, glyph = 22.dp)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-                Text(text = "Playdates are for verified neighbors", style = planH4, color = PantopusColors.appText)
+                Text(text = "Playdates are for people with a verified address", style = planH4, color = PantopusColors.appText)
                 Text(
                     text =
                         "Verify your address to see the time, the place and who's going, and to " +

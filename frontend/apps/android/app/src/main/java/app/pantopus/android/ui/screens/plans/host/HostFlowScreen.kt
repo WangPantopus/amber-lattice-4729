@@ -211,7 +211,7 @@ private fun HostTypeStep(
         PlanScopeLine(
             text =
                 if (business != null) {
-                    "These are the five kinds of plan neighbors host. Yours keeps the same color and pin."
+                    "These are the five kinds of plan people host. Yours keeps the same color and pin."
                 } else {
                     "Plans are free and for adults. Kids come with a parent."
                 },
@@ -237,7 +237,7 @@ private fun HostAsSection(
                 first = true,
                 selected = ui.hostAsChoice == null,
                 title = "You, ${ui.hostName}",
-                caption = "A plan with neighbors. Always free.",
+                caption = "A plan with people nearby. Always free.",
                 leading = { PlanAvatar(name = ui.hostName, avatarUrl = ui.hostAvatar, size = 36.dp) },
                 onClick = { onHostAs(null) },
                 modifier = Modifier.testTag("planHostAsYou"),

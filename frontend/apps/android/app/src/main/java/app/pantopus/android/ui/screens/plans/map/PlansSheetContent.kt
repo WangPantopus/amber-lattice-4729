@@ -336,7 +336,7 @@ private fun PlanFoldLine(
 private val FOLD_INDENT = 56.dp
 
 /**
- * The All / Neighbors / Businesses filter under the list's title (boards G1, G2 and P3): only once a business has a
+ * The All / People / Businesses filter under the list's title (boards G1, G2 and P3): only once a business has a
  * plan in the area, so Plans looks as it always has until then.
  */
 @Composable
@@ -371,7 +371,7 @@ private fun PlansHostFilterEmpty(
                 if (state.hostShown == PlanHostFilter.BUSINESSES) {
                     "No ${other}businesses have plans here ${state.window.phrase}."
                 } else {
-                    "No ${other}neighbors have plans here ${state.window.phrase}."
+                    "No ${other}people have plans here ${state.window.phrase}."
                 },
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextSecondary,
@@ -696,7 +696,7 @@ internal fun PlanCardContent(
             )
         } ?: plan.host?.let { host ->
             PlanHostRow(
-                name = host.displayName ?: "Neighbor",
+                name = host.displayName ?: "Someone",
                 verified = host.verifiedAddress,
                 caption = hostCaption(plan),
                 seed = host.userId,
@@ -829,8 +829,8 @@ internal fun mainAction(plan: PlanDto): PlanMainAction? {
 /** "Join" for a business's plan that lets people in right away (board G3), "Ask to join" otherwise. */
 internal fun askWord(plan: PlanDto): String = if (plan.isBusiness && !plan.hostApproves) "Join" else "Ask to join"
 
-/** What "Invite a neighbor" shares (board F4, the same words as iOS). */
-const val PLANS_INVITE_MESSAGE = "I'm on Pantopus to make small plans with neighbors. Join me."
+/** What "Invite a friend" shares (board F4, the same words as iOS). */
+const val PLANS_INVITE_MESSAGE = "I'm on Pantopus to make plans with people nearby. Join me."
 
 /** Nothing planned this week (board F4): a game to host if there is one, the other types, and an invite. */
 @Composable
@@ -861,7 +861,7 @@ internal fun PlansEmptyContent(
                     modifier = Modifier.semantics { heading() },
                 )
                 Text(
-                    text = "Plans here start with one neighbor. Yours could be the first.",
+                    text = "Plans here start with one person. Yours could be the first.",
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appTextSecondary,
                 )
@@ -918,7 +918,7 @@ internal fun PlansEmptyContent(
                 )
             }
         }
-        GhostButton(title = "Invite a neighbor", onClick = onInvite)
+        GhostButton(title = "Invite a friend", onClick = onInvite)
         Spacer(modifier = Modifier.height(Spacing.s2))
     }
 }
@@ -993,7 +993,7 @@ internal fun PlansNoLocationContent(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(text = "See plans near you", style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
             Text(
-                text = "Pantopus uses your location to show what neighbors are planning close by.",
+                text = "Pantopus uses your location to show what people are planning close by.",
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )
@@ -1165,7 +1165,7 @@ internal fun PlanPostedContent(
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                text = "Neighbors near you can see it now. We'll tell you when someone asks to join.",
+                text = "People nearby can see it now. We'll tell you when someone asks to join.",
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )

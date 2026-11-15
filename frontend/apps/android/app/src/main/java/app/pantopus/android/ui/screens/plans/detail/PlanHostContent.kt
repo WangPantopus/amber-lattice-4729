@@ -341,7 +341,7 @@ private fun GuestRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    val name = person.displayName ?: "Neighbor"
+    val name = person.displayName ?: "Someone"
     val title = if (person.partySize > 1) "$name + ${person.partySize - 1}" else name
     val kids =
         person.kidsCount?.let { count ->

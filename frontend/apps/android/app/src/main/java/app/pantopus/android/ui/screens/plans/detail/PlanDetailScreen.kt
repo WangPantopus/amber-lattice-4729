@@ -474,7 +474,7 @@ private fun PlanGone(
                 color = PantopusColors.appText,
             )
             Text(
-                text = "It may have ended, been cancelled, or be just for neighbors closer by.",
+                text = "It may have ended, been cancelled, or be just for people closer by.",
                 style = app.pantopus.android.ui.theme.PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )

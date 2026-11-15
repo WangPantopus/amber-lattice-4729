@@ -72,7 +72,7 @@ enum class PlanWindow(
 }
 
 /**
- * The list's All / Neighbors / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
+ * The list's All / People / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
  * business has a plan in the area. It filters the list and the pins on the phone, as the kind chips do, so the
  * requests stay as they were (as on iOS); [wire] is how the choice is remembered.
  */
@@ -81,7 +81,8 @@ enum class PlanHostFilter(
     val label: String,
 ) {
     ALL("all", "All"),
-    NEIGHBORS("neighbors", "Neighbors"),
+    // "People" since November 14 (no "neighbor" in Plans); the remembered value stays `neighbors`.
+    NEIGHBORS("neighbors", "People"),
     BUSINESSES("businesses", "Businesses"),
     ;
 

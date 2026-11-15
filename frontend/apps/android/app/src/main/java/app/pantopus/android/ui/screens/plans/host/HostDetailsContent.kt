@@ -210,13 +210,13 @@ private fun ColumnScope.PlaydateFields(
     TitleField(draft.title, vm::setTitle)
     PlanField(label = "When") {
         PlanWhenCard(start = draft.start, end = draft.end, onStart = vm::setStart, onEnd = vm::setEnd)
-        // "Tomorrow morning", as neighbors will see it (and as on iOS).
+        // "Tomorrow morning", as others will see it (and as on iOS).
         val shown = draft.start?.let { "“${PlanFormat.dayPartPhrase(it.atZone(ui.zone))}”" } ?: "the part of the day"
-        PlanScopeLine("Neighbors see $shown until you accept them.")
+        PlanScopeLine("Others see $shown until you accept them.")
     }
     PlanField(label = "Where") {
         PlaceRow(ui, onClick = vm::openPlaces)
-        PlanScopeLine("Families you accept see the exact spot. Others see the neighborhood.")
+        PlanScopeLine("Families you accept see the exact spot. Others see the general area.")
     }
     PlanStepperRow(
         title = "Families",
@@ -617,7 +617,7 @@ private fun HowPeopleGetIn(
                     if (rule == PlanAutoRule.ANYONE_NEARBY) {
                         "Anyone nearby gets in right away" to "Until the spots fill"
                     } else {
-                        "Verified neighbors get in right away" to "Others ask, and you approve"
+                        "People with a verified address get in right away" to "Others ask, and you approve"
                     }
                 RuleOption(title, caption, selected = !draft.approveEach, first = true) {
                     vm.edit { it.copy(approveEach = false, autoRule = rule) }

@@ -722,7 +722,7 @@ private fun PlansTopChrome(
                     PlanScopeChip(
                         text =
                             if (selected?.planKind == PlanKind.PLAYDATE) {
-                                "Neighborhood only until you're in"
+                                "General area only until you're in"
                             } else {
                                 "Area only until you're in"
                             },

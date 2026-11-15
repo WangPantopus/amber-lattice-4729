@@ -388,7 +388,7 @@ object PlanFormat {
             // A business's own rule, as its team reads it: anyone gets in right away.
             PlanAutoRule.OPEN in plan.autoRules.orEmpty() -> "Anyone gets in right away"
             !plan.hostApproves && PlanAutoRule.ANYONE_NEARBY in rules -> "Lets in anyone nearby automatically"
-            !plan.hostApproves && PlanAutoRule.VERIFIED in rules -> "Lets in verified neighbors automatically"
+            !plan.hostApproves && PlanAutoRule.VERIFIED in rules -> "Lets in people with a verified address automatically"
             !plan.hostApproves -> "You can get in right away"
             plan.isPlaydate -> "$host approves each family"
             else -> "$host approves each person"
