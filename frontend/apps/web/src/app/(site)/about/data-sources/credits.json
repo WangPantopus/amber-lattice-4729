@@ -1,5 +1,5 @@
 {
-  "updated": "November 8, 2026",
+  "updated": "November 15, 2026",
   "groups": [
     {
       "title": "National sources",
@@ -109,7 +109,7 @@
           "url": "https://www.arcgis.com/home/item.html?id=1181deaadec047478dd7e91f3d94c69d",
           "license": "CC BY 4.0",
           "license_url": "https://creativecommons.org/licenses/by/4.0/",
-          "dataset": "Tax parcels"
+          "dataset": "Tax parcels and 2024 building records"
         },
         {
           "id": "dc-dc",
@@ -229,6 +229,43 @@
           "license_url": "https://opendata-hrcgis.hub.arcgis.com/",
           "dataset": "Tax lots with the Assessor's facts (published each October)",
           "statement": "The County of Hood River makes no representation or warranty of any kind as to this product or its accuracy."
+        },
+        {
+          "id": "nc-johnston",
+          "publisher": "Johnston County, North Carolina (GIS and Tax Administration)",
+          "url": "https://services.arcgis.com/klfX5Vz1Hy74tGIF/arcgis/rest/services/Appraisal_Map_Layers/FeatureServer/0",
+          "license": "Free to use, as the county's GIS data page states",
+          "license_url": "https://www.johnstonnc.gov/gis2/content.cfm?pd=data",
+          "dataset": "Appraisal Map Layers (bedrooms, baths, heated area, year built)"
+        },
+        {
+          "id": "nc-lenoir",
+          "publisher": "Lenoir County, North Carolina",
+          "url": "https://services3.arcgis.com/bDx73HOFAO3oSeDq/arcgis/rest/services/OpenGov/FeatureServer/2",
+          "license": "No terms posted",
+          "dataset": "Parcels (bedrooms, baths, finished area, year built)"
+        },
+        {
+          "id": "mn-wright",
+          "publisher": "Wright County, Minnesota",
+          "url": "https://services2.arcgis.com/CiQCvRGImIxsaFnM/arcgis/rest/services/Buildings_Current_MapIt/FeatureServer/0",
+          "license": "Public data, with the county's disclaimer under Minnesota Statutes 466.03, subd. 21",
+          "license_url": "https://wright-county-gis-wrightgis.hub.arcgis.com/",
+          "dataset": "Buildings Current (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "wv-jefferson",
+          "publisher": "Jefferson County, West Virginia",
+          "url": "https://gisarcweb.jeffersoncountywv.org/gisarcweb/rest/services/Base/Base_Parcels/MapServer/0",
+          "license": "No terms posted",
+          "dataset": "Parcels (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "co-summit",
+          "publisher": "Summit County Assessor, Colorado, as published by the Town of Breckenridge",
+          "url": "https://maps.townofbreckenridge.com/arcgis/rest/services/CountyParcel/FeatureServer/0",
+          "license": "No terms posted",
+          "dataset": "County parcels (bedrooms, baths, living area, year built)"
         }
       ]
     },
