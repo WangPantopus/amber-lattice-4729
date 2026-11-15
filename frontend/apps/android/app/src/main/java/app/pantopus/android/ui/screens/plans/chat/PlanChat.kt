@@ -124,7 +124,8 @@ fun PlanChatStrip(
     val plan = state.plan ?: return
     val kind = plan.planKind ?: return
     val start = PlanFormat.rowWhen(plan)
-    val where = plan.place?.name ?: plan.area?.label
+    // An online plan's place is "Online" for everyone (Plans step 3), never its host's area.
+    val where = plan.place?.name ?: PlanFormat.areaLabel(plan)
     Row(
         modifier =
             Modifier

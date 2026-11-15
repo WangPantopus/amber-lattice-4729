@@ -346,6 +346,11 @@ class PlanDetailViewModel
             _ui.update { it.copy(reveal = false) }
         }
 
+        /** An online plan's "Join" couldn't open its link (no browser): say so (Plans step 3). */
+        fun linkUnopened() {
+            _ui.update { it.copy(notice = PLAN_LINK_UNOPENED) }
+        }
+
         fun noticeShown() {
             _ui.update { it.copy(notice = null) }
         }

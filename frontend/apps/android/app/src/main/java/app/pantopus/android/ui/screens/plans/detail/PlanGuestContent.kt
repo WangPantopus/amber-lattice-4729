@@ -21,16 +21,19 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanCannotAsk
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanKindDetails
 import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
@@ -46,6 +49,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanHostRow
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanNote
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsCaption
@@ -88,6 +92,8 @@ internal fun answerTime(plan: PlanDto): String? {
  * mi"; a private plan's place shown to the person invited: "Heritage Park, Camas · about 2 mi" (board Invited).
  */
 internal fun whereLine(plan: PlanDto): String {
+    // An online plan (Plans step 3, board Online): "Online · hosted from Camas", no distance, no place.
+    if (plan.isOnline) return PlanFormat.onlineWhere(plan)
     if (plan.isBusiness) {
         return listOfNotNull(plan.place?.name ?: plan.host?.displayName, PlanFormat.distance(plan.distanceBand)).joinToString(" · ")
     }
@@ -131,10 +137,30 @@ internal fun detailsLine(plan: PlanDto): String? {
                     if (d.dogsWelcome == true) "dogs welcome" else null,
                 )
             PlanKind.STUDY_GROUP -> PlanFormat.studyParts(plan)
-            else -> emptyList()
+            else -> newKindParts(plan.planKind, d)
         }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
+
+/** Plans step 4's facts: "Potluck", "Trivia", "Hike · Easy pace"; none for something else or a choice of "Other". */
+private fun newKindParts(
+    kind: PlanKind?,
+    d: PlanDetailsDto,
+): List<String> =
+    when (kind) {
+        PlanKind.FOOD_DRINKS -> listOfNotNull(PlanKindDetails.label(PlanKindDetails.FOOD, d.foodKind))
+        PlanKind.GAME_NIGHT -> listOfNotNull(PlanKindDetails.label(PlanKindDetails.GAMES, d.gameKind))
+        PlanKind.OUTDOORS ->
+            listOfNotNull(
+                PlanKindDetails.label(PlanKindDetails.OUTDOORS, d.outdoorKind),
+                when (d.pace) {
+                    "easy" -> "Easy pace"
+                    "brisk" -> "Brisk pace"
+                    else -> null
+                },
+            )
+        else -> emptyList()
+    }
 
 /** "paddles", "rackets", "balls" or "gear": what a pickup host brings extra (H4 "I have extra paddles"). */
 internal fun extraGearWord(sport: String?): String =
@@ -154,6 +180,8 @@ internal fun PlanHeading(plan: PlanDto) {
             // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
             plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
             if (plan.isPrivate) PlanPrivateChip()
+            // Board Online (Plans step 3).
+            if (plan.isOnline) PlanOnlineChip()
         }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
     }
@@ -383,7 +411,7 @@ internal fun ColumnScope.PlanRequestedBody(plan: PlanDto) {
             text =
                 listOfNotNull(
                     PlanFormat.whenLine(plan, long = true),
-                    plan.area?.label,
+                    PlanFormat.areaLabel(plan),
                     PlanFormat.distance(plan.distanceBand),
                 ).joinToString(" · "),
             style = PantopusTextStyle.small,
@@ -452,8 +480,11 @@ internal fun ColumnScope.PlanWaitlistBody(plan: PlanDto) {
         // "Sunday, Oct 18 · 5:30–7:30 PM · …", the long date as J5 and iOS write it.
         Text(
             text =
-                listOfNotNull(PlanFormat.whenLine(plan, long = true), plan.area?.label, PlanFormat.distance(plan.distanceBand))
-                    .joinToString(" · "),
+                listOfNotNull(
+                    PlanFormat.whenLine(plan, long = true),
+                    PlanFormat.areaLabel(plan),
+                    PlanFormat.distance(plan.distanceBand),
+                ).joinToString(" · "),
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )

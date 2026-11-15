@@ -15,6 +15,7 @@ import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.ui.screens.plans.detail.PLAN_LINK_UNOPENED
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -153,6 +154,11 @@ class PlansTodayViewModel
 
         fun noticeShown() {
             _ui.update { it.copy(notice = null) }
+        }
+
+        /** An online plan's "Join" couldn't open its link (Plans step 3): say so. */
+        fun linkUnopened() {
+            _ui.update { it.copy(notice = PLAN_LINK_UNOPENED) }
         }
 
         private fun act(

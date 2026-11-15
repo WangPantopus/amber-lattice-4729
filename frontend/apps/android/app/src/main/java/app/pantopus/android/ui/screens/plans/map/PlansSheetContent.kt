@@ -70,6 +70,7 @@ import app.pantopus.android.data.plans.PlanWindow
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
@@ -90,6 +91,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanGuestsSeeCard
 import app.pantopus.android.ui.screens.plans.components.PlanHostRow
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanKindLeading
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
@@ -554,7 +556,7 @@ internal fun PlansListContent(
             // Only your own plans nearby (as on iOS): say so instead of ending the list in silence.
             item(key = "no-others") {
                 Text(
-                    text = "No other ${state.kind?.label?.lowercase() ?: "plans"} near you yet.",
+                    text = "No other ${otherKindWords(state.kind)} near you yet.",
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appTextSecondary,
                     modifier = Modifier.padding(vertical = Spacing.s3),
@@ -636,6 +638,17 @@ private fun MoreNearbyRow(
         onClick = onClick,
     )
 }
+
+/** "No other … near you yet.": the five kinds as before, the newer four (Plans step 4) in words a sentence can use. */
+private fun otherKindWords(kind: PlanKind?): String =
+    when (kind) {
+        null -> "plans"
+        PlanKind.FOOD_DRINKS -> "get-togethers"
+        PlanKind.GAME_NIGHT -> "game nights"
+        PlanKind.OUTDOORS -> "outings"
+        PlanKind.SOMETHING_ELSE -> "plans like this"
+        else -> kind.label.lowercase()
+    }
 
 /** The window inside a sentence: "right now", "today", "this week", "this weekend" (as on iOS). */
 private val PlanWindow.phrase: String
@@ -726,6 +739,7 @@ internal fun PlanCardContent(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 PlanTypeTag(kind, label = plan.labelText.takeIf { plan.isBusiness })
                 if (plan.isPrivate) PlanPrivateChip()
+                if (plan.isOnline) PlanOnlineChip()
                 Spacer(modifier = Modifier.weight(1f))
                 CardCloseButton(onClose)
             }
@@ -822,7 +836,12 @@ private fun CardCloseButton(onClose: () -> Unit) {
 internal fun cardWhereLine(plan: PlanDto): String =
     listOfNotNull(
         PlanFormat.whenLine(plan),
-        if (plan.isBusiness || plan.isPrivate) plan.place?.name ?: plan.area?.label else plan.area?.label,
+        when {
+            // An online plan says "Online" where the others say the area (Plans step 3).
+            plan.isOnline -> PlanFormat.ONLINE
+            plan.isBusiness || plan.isPrivate -> plan.place?.name ?: plan.area?.label
+            else -> plan.area?.label
+        },
         PlanFormat.distance(plan.distanceBand),
     ).joinToString(" · ")
 
@@ -931,30 +950,51 @@ internal fun PlansEmptyContent(
             }
         }
         if (state.flags.privateOn) PrivatePlanStart(onClick = onHostPrivate)
-        val others = state.kinds.filter { it != PlanKind.WATCH_PARTY }
         Text(
             text = "Or start something else",
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextSecondary,
             modifier = Modifier.padding(top = 2.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            others.forEach { kind ->
-                PlanStackButton(
-                    title = kind.label,
-                    onClick = { onHost(kind, null) },
-                    modifier = Modifier.weight(1f),
-                    leading = { PlanSwatch(kind) },
-                    spoken = "Host a ${kind.noun}",
-                )
-            }
-        }
+        OtherKinds(state.kinds.filter { it != PlanKind.WATCH_PARTY }, onHost = { kind -> onHost(kind, null) })
         PlanDivider(modifier = Modifier.padding(top = Spacing.s1))
         state.elsewhere?.takeIf { it.count > 0 && !it.city.isNullOrBlank() }?.let { other -> ElsewhereRow(other, onShowElsewhere) }
         GhostButton(title = "Invite a friend", onClick = onInvite)
         Spacer(modifier = Modifier.height(Spacing.s2))
     }
 }
+
+/**
+ * F4's other kinds, as stacked buttons: one row of up to four as always, or (with the newer kinds of Plans step 4,
+ * board Main) rows of four.
+ */
+@Composable
+private fun OtherKinds(
+    kinds: List<PlanKind>,
+    onHost: (PlanKind) -> Unit,
+) {
+    val rows = if (kinds.size <= KINDS_PER_ROW) listOf(kinds) else kinds.chunked(KINDS_PER_ROW)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                row.forEach { kind ->
+                    val noun = kind.noun
+                    PlanStackButton(
+                        title = kind.label,
+                        onClick = { onHost(kind) },
+                        modifier = Modifier.weight(1f).testTag("planKind.${kind.wire}"),
+                        leading = { PlanSwatch(kind) },
+                        spoken = "Host ${if (noun.first() in "aeiou") "an" else "a"} $noun",
+                    )
+                }
+                // A short last row keeps the grid's columns.
+                if (rows.size > 1) repeat(KINDS_PER_ROW - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+private const val KINDS_PER_ROW = 4
 
 /** "3 plans in Vancouver, 8 mi away" with "Show" (board F4): the closest town with plans, when nothing is near. */
 @Composable
@@ -1277,17 +1317,23 @@ internal fun PlanPostedContent(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = if (plan.isPrivate) "Your private plan is posted" else "Your plan is on the map",
+                text =
+                    when {
+                        plan.isPrivate -> "Your private plan is posted"
+                        // An online plan has no pin (Plans step 3): it is in the list for people nearby.
+                        plan.isOnline -> "Your online plan is posted"
+                        else -> "Your plan is on the map"
+                    },
                 style = planH2,
                 color = PantopusColors.appText,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
                 text =
-                    if (plan.isPrivate) {
-                        "Only the people you invite can see it. We'll tell you when they answer."
-                    } else {
-                        "People nearby can see it now. We'll tell you when someone asks to join."
+                    when {
+                        plan.isPrivate -> "Only the people you invite can see it. We'll tell you when they answer."
+                        plan.isOnline -> "People nearby can see it in their list. We'll tell you when someone asks to join."
+                        else -> "People nearby can see it now. We'll tell you when someone asks to join."
                     },
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
@@ -1339,6 +1385,7 @@ private fun PostedInviteCard(
                                 "People you invite are in when they say yes, and see your address then."
                             onInvite != null -> "People you invite are in as soon as they say yes."
                             plan.isAtHome -> "They see the plan's card, never your address."
+                            plan.isOnline -> "They see the plan's card. The link shows only to people who are in."
                             else -> "They see the plan's card and its area."
                         },
                     style = PantopusTextStyle.small,

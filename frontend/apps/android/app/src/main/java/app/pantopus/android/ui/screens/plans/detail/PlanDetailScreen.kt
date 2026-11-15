@@ -38,6 +38,7 @@ import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
@@ -223,7 +224,8 @@ private fun PlanReady(
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     PlanPageScaffold(
         header = {
-            PlanMiniMap(plan = plan, reveal = ui.reveal, reduceMotion = reduceMotion, onRevealDone = viewModel::revealShown)
+            // The map, or an online plan's tile (Plans step 3).
+            PlanPageHeader(plan = plan, reveal = ui.reveal, reduceMotion = reduceMotion, onRevealDone = viewModel::revealShown)
         },
         onBack = onBack,
         scope = scopeChip(plan),
@@ -363,6 +365,8 @@ private fun scopeChip(plan: PlanDto): String? {
         plan.isBusiness -> if (closed || !browsing) null else plan.place?.address ?: plan.place?.name
         // A private plan shows the person invited its place by name already (Plans step 1).
         plan.hasPrivatePart || plan.placeShownToInvitee || !browsing || closed -> null
+        // An online plan's link goes only to people who are in (Plans step 3).
+        plan.isOnline -> "The link is shared when you're in"
         plan.isPlaydate -> "Exact place and time shared when you're in"
         else -> "Exact place shared when you're in"
     }
@@ -382,13 +386,15 @@ private fun footerFor(
     val ready = (ui.state as? PlanDetailUiState.Ready)?.fresh == true
     val busy = ui.busy || !ready
     return when {
-        standing == PlanViewerStanding.HOSTING -> null
+        // An online plan's host joins the call from here too (Plans step 3); nothing else for a host, as before.
+        standing == PlanViewerStanding.HOSTING -> if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened)
         closed -> {
             { GhostButton(title = "See other plans", onClick = onSeeAll, modifier = Modifier.height(50.dp)) }
         }
-        standing == PlanViewerStanding.IN -> {
-            { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
-        }
+        // Board Online: "Join" for someone in, with "Can't make it" under it.
+        standing == PlanViewerStanding.IN ->
+            onlineJoinFooter(plan, viewModel::linkUnopened, leave = { confirm(LeaveKind.Plan) }, busy = busy)
+                ?: leaveFooter(busy, confirm)
         standing == PlanViewerStanding.REQUESTED -> {
             {
                 GhostButton(
@@ -414,6 +420,13 @@ private fun footerFor(
         else -> askFooterContent(askFooter(plan), viewModel, onVerify, onLocation, ready)
     }
 }
+
+/** J7's footer: "Can't make it". */
+private fun leaveFooter(
+    busy: Boolean,
+    confirm: (LeaveKind) -> Unit,
+): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit =
+    { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
 
 /** J1 and J2's footer: "Ask to join" (or why not) and its caption. */
 private fun askFooterContent(

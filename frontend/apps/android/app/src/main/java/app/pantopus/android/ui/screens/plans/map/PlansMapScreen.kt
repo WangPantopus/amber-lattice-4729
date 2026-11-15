@@ -83,6 +83,7 @@ import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
@@ -488,7 +489,8 @@ private fun PlansMap(
     val nearbyPoints =
         remember(state.pins, state.list) {
             state.pins.mapNotNull { latLngOf(it.latitude, it.longitude) } +
-                state.list.mapNotNull { latLngOf(it.area?.latitude, it.area?.longitude) }
+                // An online plan has no pin, so the map doesn't frame its area (Plans step 3).
+                state.list.filterNot { it.isOnline }.mapNotNull { latLngOf(it.area?.latitude, it.area?.longitude) }
         }
     LaunchedEffect(location, nearbyPoints.isNotEmpty(), googleMap != null) {
         val loc = location ?: return@LaunchedEffect
@@ -770,8 +772,8 @@ private fun PlansTopChrome(
                 Spacer(modifier = Modifier.weight(1f))
                 val inOrHosting = selected?.standing == PlanViewerStanding.IN || selected?.standing == PlanViewerStanding.HOSTING
                 // A business's plan is at its own public address, and a private plan shows the person invited its
-                // place by name: no "area only" promise to make.
-                if (!inOrHosting && selected?.isBusiness != true && selected?.placeShownToInvitee != true) {
+                // place by name: no "area only" promise to make. Nor for an online plan, which has no area on the map.
+                if (!inOrHosting && selected?.isBusiness != true && selected?.placeShownToInvitee != true && selected?.isOnline != true) {
                     PlanScopeChip(
                         text =
                             if (selected?.planKind == PlanKind.PLAYDATE) {
