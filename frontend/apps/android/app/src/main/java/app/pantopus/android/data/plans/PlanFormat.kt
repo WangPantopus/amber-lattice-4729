@@ -187,8 +187,33 @@ object PlanFormat {
                     else -> "walk"
                 }
             PlanKind.STUDY_GROUP -> "study group"
-            null -> "plan"
+            // Plans step 4, as the server's notices say them (a detail not chosen is its default: dinner, a hike).
+            PlanKind.FOOD_DRINKS -> FOOD_NOUNS[plan.details?.foodKind ?: "dinner"] ?: "get-together"
+            PlanKind.GAME_NIGHT -> "game night"
+            PlanKind.OUTDOORS -> OUTDOOR_NOUNS[plan.details?.outdoorKind ?: "hike"] ?: "outing"
+            PlanKind.SOMETHING_ELSE, null -> "plan"
         }
+
+    /** "Happy hour" for drinks: a noun a sentence can use, as the server's notices (planNotifications.js). */
+    private val FOOD_NOUNS =
+        mapOf(
+            "dinner" to "dinner",
+            "potluck" to "potluck",
+            "drinks" to "happy hour",
+            "brunch" to "brunch",
+            "bbq" to "barbecue",
+        )
+    private val OUTDOOR_NOUNS = mapOf("hike" to "hike", "bike_ride" to "bike ride", "run" to "run")
+
+    /** What an online plan says where others say the area (Plans step 3). */
+    const val ONLINE = "Online"
+
+    /** Where a row, a card or a list says a plan is: "Online" for an online plan, else its area ("Near Prune Hill"). */
+    fun areaLabel(plan: PlanDto): String? = if (plan.isOnline) ONLINE else plan.area?.label
+
+    /** "Online · hosted from Camas" (board Online), or just "Online" when the plan has no town (a private plan with no area). */
+    fun onlineWhere(plan: PlanDto): String =
+        listOfNotNull(ONLINE, plan.area?.city?.trim()?.takeIf(String::isNotEmpty)?.let { "hosted from $it" }).joinToString(" · ")
 
     /** "Seahawks game" for a game's watch party (boards J3, H10, A4), else the plan's title. */
     fun shortTitle(plan: PlanDto): String = plan.details?.game?.label?.let { "$it game" } ?: plan.title
@@ -317,6 +342,8 @@ object PlanFormat {
             PlanViewerStanding.HOSTING -> {
                 parts += "You're hosting"
                 parts += whenText
+                // An online plan says so, as it does where others give the area (Plans step 3).
+                if (plan.isOnline) parts += ONLINE
             }
             else -> {
                 // An invitation not answered yet: "Sam invited you · Sun 1:25 PM" (as on iOS).
@@ -327,6 +354,10 @@ object PlanFormat {
                 if (plan.isBusiness) {
                     // A business's row names the business where a neighbor's names an area (board G2).
                     (plan.place?.name ?: plan.host?.displayName)?.let { parts += it }
+                } else if (plan.isOnline) {
+                    // An online plan says "Online" where others give the area and the distance (Plans step 3).
+                    parts += ONLINE
+                    parts += studyParts(plan)
                 } else if (plan.isPlaydate) {
                     area?.let { parts += it }
                     KidsAgeBand.rangeLabel(plan.details?.kidsAgeBands)?.let { parts += it }

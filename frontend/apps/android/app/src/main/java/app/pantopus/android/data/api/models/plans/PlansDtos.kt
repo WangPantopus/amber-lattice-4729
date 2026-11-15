@@ -68,6 +68,13 @@ data class PlanDetailsDto(
     @Json(name = "subject") val subject: String? = null,
     /** A study group's `quiet` or `together` ([app.pantopus.android.data.plans.PlanStudyStyle]). */
     @Json(name = "study_style") val studyStyle: String? = null,
+    // Plans step 4 (the four newer kinds, `PlanKindDetails`). Outdoors also sends `pace`.
+    /** Food & drinks: `dinner` (the server's default), `potluck`, `drinks`, `brunch`, `bbq` or `other`. */
+    @Json(name = "food_kind") val foodKind: String? = null,
+    /** Game night: `board_games` (the default), `cards`, `trivia`, `video_games` or `other`. */
+    @Json(name = "game_kind") val gameKind: String? = null,
+    /** Outdoors: `hike` (the default), `bike_ride`, `run` or `other`. */
+    @Json(name = "outdoor_kind") val outdoorKind: String? = null,
 )
 
 /**
@@ -99,7 +106,10 @@ data class PlanFriendInviteDto(
     @Json(name = "used") val used: Boolean = false,
 )
 
-/** `place`: the exact place. Only in a host's or an accepted guest's [PlanDto]. */
+/**
+ * `place`: the exact place. Only in a host's or an accepted guest's [PlanDto]. An online plan's (Plans step 3) is
+ * `{ name: "Online", address: null, latitude: null, longitude: null, note, link, link_host }`: no point, ever.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanPlaceDto(
     @Json(name = "name") val name: String? = null,
@@ -107,6 +117,10 @@ data class PlanPlaceDto(
     @Json(name = "latitude") val latitude: Double? = null,
     @Json(name = "longitude") val longitude: Double? = null,
     @Json(name = "note") val note: String? = null,
+    /** An online plan only: the link people join with. Only the host and people who are in get it. */
+    @Json(name = "link") val link: String? = null,
+    /** An online plan only: the link's host name without a leading `www.` ("meet.google.com"). */
+    @Json(name = "link_host") val linkHost: String? = null,
 )
 
 /** One of `people`: who's going. Only in a host's or an accepted guest's [PlanDto]. */
@@ -413,7 +427,10 @@ data class PlanPinsResponse(
     @Json(name = "markers") val markers: List<PlanPinDto> = emptyList(),
 )
 
-/** `place` in the create body. `home_id` only for `kind = home`. */
+/**
+ * `place` in the create body. `home_id` only for `kind = home`; an online plan (Plans step 3) sends only `kind:
+ * "online"`, `link` and `timezone`.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanPlaceInput(
     @Json(name = "kind") val kind: String,
@@ -424,6 +441,10 @@ data class PlanPlaceInput(
     @Json(name = "home_id") val homeId: String? = null,
     /** The place picker's id for a public place it listed (`osm:node/123`): the venue's key. Left out otherwise. */
     @Json(name = "place_id") val placeId: String? = null,
+    /** An online plan: the link people join with (https, at most 300 characters). */
+    @Json(name = "link") val link: String? = null,
+    /** An online plan: the phone's own IANA time zone, used when the plan has no area to read one from. */
+    @Json(name = "timezone") val timezone: String? = null,
 )
 
 /** `gps` in the create body: proves the host is nearby; never the pin. */

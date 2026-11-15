@@ -4,8 +4,9 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 
 /**
- * The kinds of plan (decision D3, and study groups from 2026-10-17), in the order the chips and the host grid show
- * them. [wire] is the API value, [label] the name people see.
+ * The kinds of plan (decision D3, study groups from 2026-10-17, and the four of Plans step 4 from 2026-11-14), in the
+ * order the chips and the empty state show them. [wire] is the API value, [label] the name people see. A kind this
+ * app doesn't know reads as null ([from]), and its plan is left out wherever plans are listed.
  */
 enum class PlanKind(
     val wire: String,
@@ -16,13 +17,45 @@ enum class PlanKind(
     PICKUP_GAME("pickup_game", "Pickup game"),
     WALK_COFFEE("walk_coffee", "Walk & coffee"),
     STUDY_GROUP("study_group", "Study group"),
+
+    // Plans step 4, while `plans_kinds` is on for posting new ones; a plan of these kinds already posted always reads.
+    FOOD_DRINKS("food_drinks", "Food & drinks"),
+    GAME_NIGHT("game_night", "Game night"),
+    OUTDOORS("outdoors", "Outdoors"),
+    SOMETHING_ELSE("something_else", "Something else"),
     ;
 
-    /** The noun used in sentences: "Host your own watch party", "How was Sunday's pickup game?". */
-    val noun: String get() = label.lowercase()
+    /**
+     * The noun used in sentences: "Host your own watch party", "How was Sunday's pickup game?". The newer kinds use
+     * the server's word for them when no detail says more ("get-together", "outing", "plan").
+     */
+    val noun: String
+        get() =
+            when (this) {
+                FOOD_DRINKS -> "get-together"
+                OUTDOORS -> "outing"
+                SOMETHING_ELSE -> "plan"
+                else -> label.lowercase()
+            }
+
+    /** One of the four kinds of Plans step 4 (`plans_kinds`); a business never hosts these. */
+    val isNew: Boolean get() = this in NEW
+
+    /** It can meet online (Plans step 3): not a playdate, a pickup game or an outdoor plan, which meet in person. */
+    val canBeOnline: Boolean get() = this != PLAYDATE && this != PICKUP_GAME && this != OUTDOORS
 
     companion object {
         fun from(wire: String?): PlanKind? = entries.firstOrNull { it.wire == wire }
+
+        /** The four newer kinds (Plans step 4). */
+        val NEW: List<PlanKind> = listOf(FOOD_DRINKS, GAME_NIGHT, OUTDOORS, SOMETHING_ELSE)
+
+        /**
+         * The type picker's order with the newer kinds (board Type): the grid, then "Something else" as a wide row.
+         * Without them it keeps the five in [entries] order, as it always was.
+         */
+        val PICKER_ORDER: List<PlanKind> =
+            listOf(WATCH_PARTY, PICKUP_GAME, WALK_COFFEE, STUDY_GROUP, FOOD_DRINKS, GAME_NIGHT, OUTDOORS, PLAYDATE, SOMETHING_ELSE)
     }
 }
 

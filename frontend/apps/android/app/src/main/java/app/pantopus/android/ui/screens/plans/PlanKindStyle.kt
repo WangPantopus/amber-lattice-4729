@@ -62,7 +62,40 @@ val PlanKind.colors: PlanKindColors
                 } else {
                     PlanKindColors(PantopusColors.catPlanStudy, PantopusColors.catPlanStudyTint)
                 }
+            else -> newKindColors(this, dark)
         }
+    }
+
+/** The four kinds of Plans step 4 (more.css), light and dark. */
+private fun newKindColors(
+    kind: PlanKind,
+    dark: Boolean,
+): PlanKindColors =
+    when (kind) {
+        PlanKind.FOOD_DRINKS ->
+            if (dark) {
+                PlanKindColors(PantopusColors.catPlanFoodDark, PantopusColors.catPlanFoodTintDark)
+            } else {
+                PlanKindColors(PantopusColors.catPlanFood, PantopusColors.catPlanFoodTint)
+            }
+        PlanKind.GAME_NIGHT ->
+            if (dark) {
+                PlanKindColors(PantopusColors.catPlanGameDark, PantopusColors.catPlanGameTintDark)
+            } else {
+                PlanKindColors(PantopusColors.catPlanGame, PantopusColors.catPlanGameTint)
+            }
+        PlanKind.OUTDOORS ->
+            if (dark) {
+                PlanKindColors(PantopusColors.catPlanOutdoorsDark, PantopusColors.catPlanOutdoorsTintDark)
+            } else {
+                PlanKindColors(PantopusColors.catPlanOutdoors, PantopusColors.catPlanOutdoorsTint)
+            }
+        else ->
+            if (dark) {
+                PlanKindColors(PantopusColors.catPlanElseDark, PantopusColors.catPlanElseTintDark)
+            } else {
+                PlanKindColors(PantopusColors.catPlanElse, PantopusColors.catPlanElseTint)
+            }
     }
 
 /** The light-theme accent, for places outside composition (a border built in a modifier). */
@@ -74,9 +107,16 @@ val PlanKind.accentLight: Color
             PlanKind.PICKUP_GAME -> PantopusColors.catPlanPickup
             PlanKind.WALK_COFFEE -> PantopusColors.catPlanWalk
             PlanKind.STUDY_GROUP -> PantopusColors.catPlanStudy
+            PlanKind.FOOD_DRINKS -> PantopusColors.catPlanFood
+            PlanKind.GAME_NIGHT -> PantopusColors.catPlanGame
+            PlanKind.OUTDOORS -> PantopusColors.catPlanOutdoors
+            PlanKind.SOMETHING_ELSE -> PantopusColors.catPlanElse
         }
 
-/** Board P1: the type's glyph (Material Tv, EscalatorWarning, SportsBaseball, LocalCafe, MenuBook). */
+/**
+ * Board P1: the type's glyph (Material Tv, EscalatorWarning, SportsBaseball, LocalCafe, MenuBook); Plans step 4's are
+ * the boards' fork and knife, a die, a mountain and a plus.
+ */
 val PlanKind.icon: PantopusIcon
     get() =
         when (this) {
@@ -85,6 +125,10 @@ val PlanKind.icon: PantopusIcon
             PlanKind.PICKUP_GAME -> PantopusIcon.Ball
             PlanKind.WALK_COFFEE -> PantopusIcon.Coffee
             PlanKind.STUDY_GROUP -> PantopusIcon.BookOpen
+            PlanKind.FOOD_DRINKS -> PantopusIcon.Utensils
+            PlanKind.GAME_NIGHT -> PantopusIcon.Dice4
+            PlanKind.OUTDOORS -> PantopusIcon.Mountain
+            PlanKind.SOMETHING_ELSE -> PantopusIcon.Plus
         }
 
 /** The glyph's ink on a colored pin head or swatch: white in light, near-black in dark. */
