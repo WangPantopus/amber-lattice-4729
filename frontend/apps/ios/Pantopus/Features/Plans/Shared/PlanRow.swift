@@ -190,7 +190,7 @@ struct PlanRowModel: Identifiable, Equatable {
         if let distance = PlanFormat.spokenDistance(card.distanceBand) { parts.append(distance) }
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")
-        if let line = PlanRepeatCopy.line(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
+        if let line = PlanRepeatCopy.spoken(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
         if card.isBusiness { parts.append("Free") }
         return parts.joined(separator: ", ")
     }

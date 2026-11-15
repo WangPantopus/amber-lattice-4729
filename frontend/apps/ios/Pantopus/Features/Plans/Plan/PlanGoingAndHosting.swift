@@ -52,7 +52,7 @@ struct PlanGoingSection: View {
                 placeLine(place)
             }
             PlanFactRow(icon: .calendar, text: PlanScreenLines.when(card))
-            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line) }
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
@@ -257,7 +257,7 @@ struct PlanHostingSection: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
-            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line) }
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if card.state == .cancelled || card.state == .ended {
             PlanClosedSection(
@@ -272,6 +272,7 @@ struct PlanHostingSection: View {
                 let skip = PlanRepeatCopy.skipQuestion(card)
                 PlanSeriesHostCard(
                     card: card,
+                    isWorking: viewModel.isWorking,
                     onSkip: { onConfirm(.skipDate(title: skip.title, message: skip.message, label: PlanRepeatCopy.skipTitle(card))) },
                     onStop: { onConfirm(.stopRepeating) },
                     onChange: onChange

@@ -38,6 +38,8 @@ final class PlansNavigator {
     var pendingHost: PlansHostRequest?
     /// A sentence for the next Plans screen that opens (a push button that didn't go through).
     var notice: String?
+    /// A confirmation for the next plan screen that opens, as its toast (a skipped date's next one, Plans step 2).
+    var toast: String?
 
     private init() {}
 }

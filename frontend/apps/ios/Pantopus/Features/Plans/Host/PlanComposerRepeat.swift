@@ -80,10 +80,22 @@ final class PlanRepeatDraft {
         startDay...PlanRepeatRules.add(days: PlanRepeatRules.maxDays, to: startDay, calendar)
     }
 
-    /// "After a number of times": 2 to 100 in all, the dates before this one included.
+    /// "After a number of times": 2 to 100 in all (the dates before this one included), and no more than the
+    /// chosen days give within the year a series may run (this date and the days after it).
     var countRange: ClosedRange<Int> {
-        let most = max(PlanRepeatRules.countRange.upperBound - (index - 1), 2)
-        return (index > 1 ? 1 : 2)...most
+        let least = index > 1 ? 1 : 2
+        var most = PlanRepeatRules.countRange.upperBound - (index - 1)
+        if let days = chosenDays {
+            most = min(most, PlanRepeatRules.days(after: start, pattern: days, anchor: start, limit: most, calendar).count + 1)
+        }
+        return least...max(most, least)
+    }
+
+    /// A count the days chosen can't reach comes down to what they can.
+    private func fitCount() {
+        let range = countRange
+        let fitted = min(max(count, range.lowerBound), range.upperBound)
+        if fitted != count { count = fitted }
     }
 
     // MARK: - Choosing
@@ -92,11 +104,13 @@ final class PlanRepeatDraft {
         choice = newChoice
         if !weekdays.contains(lockedWeekday) { weekdays.insert(lockedWeekday) }
         if monthDays.isEmpty { monthDays = [PlanRepeatRules.monthDay(for: start, byDate: false, calendar)] }
+        fitCount()
     }
 
     func toggle(weekday: Int) {
         guard weekday != lockedWeekday, (1...7).contains(weekday) else { return }
         if weekdays.contains(weekday) { weekdays.remove(weekday) } else { weekdays.insert(weekday) }
+        fitCount()
     }
 
     var canAddMonthDay: Bool {
@@ -106,6 +120,7 @@ final class PlanRepeatDraft {
     func add(_ rule: PlanMonthDay) {
         guard canAddMonthDay, !monthDays.contains(rule) else { return }
         monthDays = Self.ordered(monthDays + [rule])
+        fitCount()
     }
 
     /// A day can go while another one still falls on the plan's own date.
@@ -116,6 +131,7 @@ final class PlanRepeatDraft {
     func remove(_ rule: PlanMonthDay) {
         guard canRemove(rule) else { return }
         monthDays.removeAll { $0 == rule }
+        fitCount()
     }
 
     /// The month's order ("the 1st and 3rd Saturday", "the 1st Monday and 15th"): the server keeps the order it
@@ -161,13 +177,19 @@ final class PlanRepeatDraft {
         } else if until < range.lowerBound || until > range.upperBound {
             until = min(max(until, range.lowerBound), range.upperBound)
         }
-        let fitted = min(max(count, countRange.lowerBound), countRange.upperBound)
-        if fitted != count { count = fitted }
+        fitCount()
     }
 
     // MARK: - What it says and sends
 
     var pattern: PlanRepeatPattern? {
+        guard var pattern = chosenDays else { return nil }
+        if ends == .onDate { pattern.until = until } else { pattern.count = count }
+        return pattern
+    }
+
+    /// How often and on which days, with no end yet.
+    private var chosenDays: PlanRepeatPattern? {
         let freq: PlanRepeatFreq
         switch choice {
         case .none: return nil
@@ -177,7 +199,6 @@ final class PlanRepeatDraft {
         }
         var pattern = PlanRepeatPattern(freq: freq)
         if freq == .monthly { pattern.monthDays = monthDays } else { pattern.weekdays = weekdays.sorted() }
-        if ends == .onDate { pattern.until = until } else { pattern.count = count }
         return pattern
     }
 
@@ -213,6 +234,12 @@ final class PlanRepeatDraft {
     var line: String? {
         guard let pattern, let span else { return nil }
         return PlanRepeatCopy.line(short: PlanRepeatRules.text(pattern, short: true), lastOn: span.last, calendar: calendar)
+    }
+
+    /// What VoiceOver reads for the line: "Every Tuesday and Thursday until February 4".
+    var spokenLine: String? {
+        guard let pattern, let span else { return nil }
+        return PlanRepeatCopy.spoken(text: PlanRepeatRules.text(pattern), lastOn: span.last, calendar: calendar)
     }
 
     /// The summary's bold line: "Every Tuesday and Thursday, 6:30–7:30 AM".
@@ -267,6 +294,11 @@ extension PlanComposerModel {
     /// The preview's repeat line ("Every Tue and Thu until Feb 4"), or nil when it doesn't repeat.
     var repeatLine: String? {
         offersRepeat ? repeating.line : nil
+    }
+
+    /// What VoiceOver reads for it, with the days' full names.
+    var repeatSpoken: String? {
+        offersRepeat ? repeating.spokenLine : nil
     }
 
     /// `repeat` on `POST /api/plans`, from the plan's start.

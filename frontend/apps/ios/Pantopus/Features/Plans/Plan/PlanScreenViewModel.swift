@@ -327,6 +327,7 @@ final class PlanScreenViewModel {
     /// posts in its place opens next. Without it a repeating plan stops repeating too.
     func cancelPlan(note: String?, keepRepeating: Bool = false) async -> Bool {
         var next: String?
+        let wasLast = card.map { $0.isRepeating && !$0.seriesGoesOn } ?? false
         let done = await perform {
             let reply: PlanCancelResponse = try await api.request(PlansEndpoints.cancel(
                 id: planId,
@@ -337,9 +338,14 @@ final class PlanScreenViewModel {
             await load()
         }
         guard done else { return false }
-        notice = !keepRepeating ? "Plan cancelled. Everyone has been told."
-            : next == nil ? "Cancelled. That was the last date." : "Cancelled. The next date is posted."
-        nextPlanId = next
+        if !keepRepeating {
+            notice = "Plan cancelled. Everyone has been told."
+        } else if next == nil {
+            notice = wasLast ? PlanRepeatCopy.lastDateToast : PlanRepeatCopy.notPostedToast
+        } else {
+            // The next date's screen opens at once and says it (PlanScreen.openNext).
+            nextPlanId = next
+        }
         return true
     }
 

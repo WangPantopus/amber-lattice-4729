@@ -51,6 +51,32 @@ enum PlanRepeatCopy {
         return line(short: short(repeats), lastOn: PlanRepeatRules.day(from: repeats.lastOn, calendar), calendar: calendar)
     }
 
+    /// What VoiceOver reads for a line: the full words, "Every Tuesday and Thursday until February 4".
+    static func spoken(text: String, lastOn: Date?, calendar: Calendar) -> String {
+        guard let lastOn else { return text }
+        return "\(text) until \(PlanRepeatRules.longDate(lastOn, PlanRepeatRules.calendar(calendar)))"
+    }
+
+    /// A card's line as VoiceOver reads it: the server's `text` (the days' full names), until its last date.
+    static func spoken(_ card: PlanCardDTO) -> String? {
+        guard let repeats = card.repeats else { return nil }
+        let calendar = PlanRepeatRules.calendar(PlanFormat.calendar(for: card.timezone))
+        return spoken(text: text(repeats), lastOn: PlanRepeatRules.day(from: repeats.lastOn, calendar), calendar: calendar)
+    }
+
+    /// The server's full words, or the phone's when an older answer has none.
+    static func text(_ repeats: PlanRepeatDTO) -> String {
+        if let text = repeats.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+        return PlanRepeatRules.text(pattern(repeats))
+    }
+
+    /// The host line as VoiceOver reads it: "Every Tuesday and Thursday, 6:30 AM".
+    static func hostSpoken(_ card: PlanCardDTO) -> String {
+        let words = card.repeats.map { text($0) } ?? ""
+        guard let start = card.startsAtDate else { return words }
+        return "\(words), \(PlanFormat.time(start, calendar: PlanFormat.calendar(for: card.timezone)))"
+    }
+
     /// The board Regulars line on the host's card: "Every Tue and Thu · 6:30 AM".
     static func hostLine(_ card: PlanCardDTO) -> String {
         let words = card.repeats.map { short($0) } ?? ""
@@ -75,6 +101,13 @@ enum PlanRepeatCopy {
     static let eachDateLine = "Each date is its own plan. The next one is posted when the last one ends."
     static let askedLine = "People who came before are asked each time: "
         + "\u{201C}I'm in\u{201D} or \u{201C}Can't make it\u{201D}."
+
+    /// After a date is skipped or cancelled on its own (`repeat: "keep"`): on the next date's screen when one was
+    /// posted; otherwise whether that was the series' last date (the card said so) or the next one wasn't posted
+    /// (the server answers no `next_plan_id` for a limit or an error too).
+    static let skippedToast = "Cancelled. The next date is posted."
+    static let lastDateToast = "Cancelled. That was the last date."
+    static let notPostedToast = "Cancelled. The next date wasn't posted."
 
     /// The confirm before "Stop repeating".
     static let stopMessage = "This date stays. No more are posted after it."
@@ -112,6 +145,8 @@ enum PlanRepeatCopy {
 /// The repeat glyph and "Every Tue and Thu until Feb 4", under a date line.
 struct PlanRepeatLine: View {
     let text: String
+    /// What VoiceOver reads instead, with the days' full names ("Every Tuesday and Thursday until February 4").
+    var spoken: String?
     /// A list row's smaller, quieter line.
     var compact = false
 
@@ -127,7 +162,7 @@ struct PlanRepeatLine: View {
                 .fixedSize(horizontal: false, vertical: !compact)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Repeats: \(text)")
+        .accessibilityLabel("Repeats: \(spoken ?? text)")
         .accessibilityIdentifier("planRepeatLine")
     }
 }

@@ -35,9 +35,12 @@ struct PlanSeriesHostCard: View {
                 if showsTitle { titleRow }
                 well
                 HStack(spacing: 10) {
-                    Button(PlanRepeatCopy.skipTitle(card), action: onSkip)
-                        .planButton(.secondary, size: .small)
-                        .accessibilityIdentifier("planSkipDate")
+                    // The series' last date has nothing after it to post: no Skip there.
+                    if card.seriesGoesOn {
+                        Button(PlanRepeatCopy.skipTitle(card), action: onSkip)
+                            .planButton(.secondary, size: .small)
+                            .accessibilityIdentifier("planSkipDate")
+                    }
                     Button("Change", action: onChange)
                         .planButton(.secondary, size: .small)
                         .accessibilityIdentifier("planSeriesChange")
@@ -63,11 +66,14 @@ struct PlanSeriesHostCard: View {
                         .foregroundStyle(Theme.Color.appText)
                         .multilineTextAlignment(.leading)
                         .lineLimit(2)
+                    // A long monthly pattern takes a second line rather than being cut.
                     Text(PlanRepeatCopy.hostLine(card))
                         .planFont(.small)
                         .monospacedDigit()
                         .foregroundStyle(Theme.Color.appTextSecondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(PlanRepeatCopy.hostSpoken(card))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if card.isPrivate { PlanPrivateChip() }
@@ -182,7 +188,11 @@ struct PlanSeriesListCard: View {
                     PlansEndpoints.cancel(id: card.id, note: nil, keepRepeating: true)
                 )
                 PlansStoreReads.changed(planId: card.id)
-                if let next = reply.nextPlanId { onOpenNext(next) }
+                if let next = reply.nextPlanId {
+                    // Said on the next date's screen, which opens at once.
+                    PlansNavigator.shared.toast = PlanRepeatCopy.skippedToast
+                    onOpenNext(next)
+                }
             case .stop:
                 var body = UpdatePlanBody()
                 body.repeatChange = .stop

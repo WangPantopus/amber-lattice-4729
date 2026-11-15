@@ -201,6 +201,11 @@ enum PlanRepeatRules {
         formatted(day, "MMM d", calendar)
     }
 
+    /// "February 4", for VoiceOver.
+    static func longDate(_ day: Date, _ calendar: Calendar) -> String {
+        formatted(day, "MMMM d", calendar)
+    }
+
     /// "Thursday".
     static func weekdayName(_ day: Date, _ calendar: Calendar) -> String {
         weekdayNames[weekday(day, calendar) - 1]

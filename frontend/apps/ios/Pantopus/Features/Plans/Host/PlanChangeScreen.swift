@@ -135,6 +135,8 @@ struct PlanChangeScreen: View {
     }
 
     private func load() async {
+        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
+        guard plan == nil else { return }
         guard let detail = try? await PlansStoreReads.detail(id: planId) else {
             error = "We couldn't load this plan."
             return

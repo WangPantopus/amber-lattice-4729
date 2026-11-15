@@ -208,16 +208,16 @@ struct PlanCancelSheet: View {
                     Text(error).planFont(.small).foregroundStyle(Theme.Color.error)
                 }
                 VStack(spacing: Spacing.s2) {
-                    // A repeating plan asks which (Plans step 2): this date only (the next one is posted), or the
-                    // series too.
-                    if viewModel.card?.isRepeating == true {
+                    // A repeating plan whose series goes on asks which (Plans step 2): this date only (the next one is
+                    // posted), or the series too. Its last date has nothing after it: the plain cancel.
+                    if viewModel.card?.seriesGoesOn == true {
                         cancelButton("Cancel this date", kind: .danger, keepRepeating: true, identifier: "planCancelThisDate")
                         cancelButton("Cancel and stop repeating", kind: .secondary, keepRepeating: false, identifier: "planCancelConfirm")
                     } else {
                         cancelButton("Cancel plan", kind: .danger, keepRepeating: false, identifier: "planCancelConfirm")
                     }
                     Button("Keep plan", action: onClose)
-                        .planButton(viewModel.card?.isRepeating == true ? .text : .secondary)
+                        .planButton(viewModel.card?.seriesGoesOn == true ? .text : .secondary)
                 }
                 VStack(alignment: .leading, spacing: Spacing.s1) {
                     Text("Removing one guest instead?").planFont(.smallStrong).foregroundStyle(Theme.Color.appText)

@@ -67,7 +67,7 @@ struct PlanPrivatePreviewScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 PlanFactRow(icon: .calendar, text: whenLine)
-                if let line = model.repeatLine { PlanRepeatLine(text: line) }
+                if let line = model.repeatLine { PlanRepeatLine(text: line, spoken: model.repeatSpoken) }
                 PlanFactRow(icon: model.whereKind == .home ? .home : .mapPin, text: whereLine)
             }
             HStack(spacing: 10) {
