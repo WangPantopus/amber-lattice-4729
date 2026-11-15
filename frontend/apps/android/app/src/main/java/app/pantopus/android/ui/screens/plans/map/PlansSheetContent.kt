@@ -58,6 +58,7 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanMoreTimeDto
 import app.pantopus.android.data.api.models.plans.PlanMoreTimesDto
+import app.pantopus.android.data.api.models.plans.PlansElsewhereDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanHostFilter
 import app.pantopus.android.data.plans.PlanKind
@@ -905,36 +906,43 @@ internal fun PlansEmptyContent(
             }
         }
         PlanDivider(modifier = Modifier.padding(top = Spacing.s1))
-        state.elsewhere?.takeIf { it.count > 0 && !it.city.isNullOrBlank() }?.let { other ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PantopusIconImage(
-                    icon = PantopusIcon.MapPin,
-                    contentDescription = null,
-                    size = 16.dp,
-                    tint = PantopusColors.appTextSecondary,
-                )
-                Text(
-                    text =
-                        "${other.count} plan${if (other.count == 1) "" else "s"} in ${other.city}" +
-                            (other.miles?.let { ", $it mi away" } ?: ""),
-                    style = PantopusTextStyle.small,
-                    color = PantopusColors.appText,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "Show",
-                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
-                    color = PantopusColors.primary700,
-                    modifier =
-                        Modifier
-                            .heightIn(min = 44.dp)
-                            .clickable(role = Role.Button, onClick = onShowElsewhere)
-                            .padding(horizontal = Spacing.s1, vertical = 12.dp),
-                )
-            }
-        }
+        state.elsewhere?.takeIf { it.count > 0 && !it.city.isNullOrBlank() }?.let { other -> ElsewhereRow(other, onShowElsewhere) }
         GhostButton(title = "Invite a friend", onClick = onInvite)
         Spacer(modifier = Modifier.height(Spacing.s2))
+    }
+}
+
+/** "3 plans in Vancouver, 8 mi away" with "Show" (board F4): the closest town with plans, when nothing is near. */
+@Composable
+private fun ElsewhereRow(
+    other: PlansElsewhereDto,
+    onShow: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        PantopusIconImage(
+            icon = PantopusIcon.MapPin,
+            contentDescription = null,
+            size = 16.dp,
+            tint = PantopusColors.appTextSecondary,
+        )
+        Text(
+            text =
+                "${other.count} plan${if (other.count == 1) "" else "s"} in ${other.city}" +
+                    (other.miles?.let { ", $it mi away" } ?: ""),
+            style = PantopusTextStyle.small,
+            color = PantopusColors.appText,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "Show",
+            style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.primary700,
+            modifier =
+                Modifier
+                    .heightIn(min = 44.dp)
+                    .clickable(role = Role.Button, onClick = onShow)
+                    .padding(horizontal = Spacing.s1, vertical = 12.dp),
+        )
     }
 }
 
@@ -1249,47 +1257,57 @@ internal fun PlanPostedContent(
                 )
             }
         }
-        Column(
-            modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-                PlanIconTile(
-                    icon = if (onInvite != null) PantopusIcon.UserPlus else PantopusIcon.Link,
-                    background = PantopusColors.primary100,
-                    tint = PantopusColors.primary700,
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Invite friends",
-                        style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
-                        color = PantopusColors.appText,
-                    )
-                    Text(
-                        text =
-                            when {
-                                // People invited are in when they say yes (planInvites.js), as on iOS.
-                                onInvite != null && plan.isAtHome ->
-                                    "People you invite are in when they say yes, and see your address then."
-                                onInvite != null -> "People you invite are in as soon as they say yes."
-                                plan.isAtHome -> "They see the plan's card, never your address."
-                                else -> "They see the plan's card and its area."
-                            },
-                        style = PantopusTextStyle.small,
-                        color = PantopusColors.appTextSecondary,
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (onInvite != null) {
-                    GhostButton(title = "Invite", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planPostedInvite"))
-                }
-                // A private plan is never shared by link: each invitation is for one person (Plans step 1).
-                if (!plan.isPrivate) GhostButton(title = "Share link", onClick = onShare, modifier = Modifier.weight(1f))
-            }
-        }
+        PostedInviteCard(plan, onShare, onInvite)
         PrimaryButton(title = "See your plan", onClick = onSeePlan, modifier = Modifier.height(50.dp))
         PlanTextButton(title = "Done", onClick = onDone)
         Spacer(modifier = Modifier.height(Spacing.s2))
+    }
+}
+
+/** H8's "Invite friends": Invite, and for a plan anyone nearby can see, its link to share. */
+@Composable
+private fun PostedInviteCard(
+    plan: PlanDto,
+    onShare: () -> Unit,
+    onInvite: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+            PlanIconTile(
+                icon = if (onInvite != null) PantopusIcon.UserPlus else PantopusIcon.Link,
+                background = PantopusColors.primary100,
+                tint = PantopusColors.primary700,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Invite friends",
+                    style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.appText,
+                )
+                Text(
+                    text =
+                        when {
+                            // People invited are in when they say yes (planInvites.js), as on iOS.
+                            onInvite != null && plan.isAtHome ->
+                                "People you invite are in when they say yes, and see your address then."
+                            onInvite != null -> "People you invite are in as soon as they say yes."
+                            plan.isAtHome -> "They see the plan's card, never your address."
+                            else -> "They see the plan's card and its area."
+                        },
+                    style = PantopusTextStyle.small,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (onInvite != null) {
+                GhostButton(title = "Invite", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planPostedInvite"))
+            }
+            // A private plan is never shared by link: each invitation is for one person (Plans step 1).
+            if (!plan.isPrivate) GhostButton(title = "Share link", onClick = onShare, modifier = Modifier.weight(1f))
+        }
     }
 }

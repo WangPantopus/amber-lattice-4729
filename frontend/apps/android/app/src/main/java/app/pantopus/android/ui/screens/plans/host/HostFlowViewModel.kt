@@ -972,14 +972,12 @@ class HostFlowViewModel
             val end = draft.end
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
-            // A private plan can start up to 60 days ahead (Plans step 1).
-            val invitedOnly = _ui.value.showsAudience && draft.isPrivate
+            val tooFar = start?.let { tooFarAhead(it, now, invitedOnly = _ui.value.showsAudience && draft.isPrivate) }
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
-                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
-                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                tooFar != null -> tooFar
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
                 kindProblem != null -> kindProblem
@@ -988,6 +986,18 @@ class HostFlowViewModel
                 else -> null
             }
         }
+
+        /** A start too far ahead: 14 days for a plan anyone nearby can see, 60 for a private one (Plans step 1); else null. */
+        private fun tooFarAhead(
+            start: LocalDateTime,
+            now: LocalDateTime,
+            invitedOnly: Boolean,
+        ): String? =
+            when {
+                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
+                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                else -> null
+            }
 
         /** What the chosen kind still needs: a playdate's kids' ages, a study group's subject; null when nothing. */
         private fun kindProblem(draft: HostDraft): String? =
