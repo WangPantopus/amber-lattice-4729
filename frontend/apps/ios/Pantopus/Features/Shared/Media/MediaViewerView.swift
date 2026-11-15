@@ -24,13 +24,19 @@ final class MediaViewerPage {
     }
 }
 
+/// When the reader last dragged the viewer sideways. Not observed: it changes all through a drag.
+@MainActor
+final class SidewaysDrag {
+    var at = Date.distantPast
+}
+
 /// Full-screen, horizontally paged gallery over a post's media.
 public struct MediaViewerView: View {
     private let items: [PostMediaItem]
     private let page: MediaViewerPage?
     @State private var selection: Int
     /// When the reader last dragged sideways: a page that turns just after is theirs (`KeepsReadersPage`).
-    @State private var pagedAt = Date.distantPast
+    @State private var sideways = SidewaysDrag()
     /// How far the media has been pulled down: past a short pull the viewer
     /// closes (founder request 2026-10-29). 0 at rest.
     @State private var pullDown: CGFloat = 0
@@ -85,7 +91,7 @@ public struct MediaViewerView: View {
         .statusBarHidden()
         .accessibilityAction(.escape) { dismiss() }
         .accessibilityIdentifier("mediaViewer")
-        .modifier(KeepsReadersPage(page: page, selection: $selection, pagedAt: pagedAt))
+        .modifier(KeepsReadersPage(page: page, selection: $selection, sideways: sideways))
         .onReceive(NotificationCenter.default.publisher(for: ChatLocalStore.historyRetired)) { _ in
             if items.contains(where: { ChatMediaURL.isChatFile($0.url) }) { dismiss() }
         }
@@ -140,13 +146,14 @@ public struct MediaViewerView: View {
                 if pullAxis == .undecided {
                     pullAxis = value.translation.height > abs(value.translation.width) ? .vertical : .horizontal
                 }
+                // A sideways drag turns the page, as it goes or as it ends.
+                if pullAxis == .horizontal { sideways.at = Date() }
                 guard pullAxis == .vertical, closesOnPull else { return }
                 pullDown = max(0, value.translation.height)
             }
             .onEnded { value in
                 defer { pullAxis = .undecided }
-                // A sideways drag turns the page as it ends.
-                if pullAxis == .horizontal { pagedAt = Date() }
+                if pullAxis == .horizontal { sideways.at = Date() }
                 guard pullAxis == .vertical, closesOnPull else { return }
                 if value.translation.height > 120 || value.predictedEndTranslation.height > 260 {
                     dismiss()
@@ -353,7 +360,7 @@ private struct PostPDFView: UIViewRepresentable {
 private struct KeepsReadersPage: ViewModifier {
     let page: MediaViewerPage?
     @Binding var selection: Int
-    let pagedAt: Date
+    let sideways: SidewaysDrag
     /// VoiceOver turns pages with its own gestures, which are not drags: there every page turn is the reader's.
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
@@ -365,7 +372,7 @@ private struct KeepsReadersPage: ViewModifier {
             content
                 .onChange(of: selection) { _, now in
                     guard now != page.index else { return }
-                    if voiceOverEnabled || Date().timeIntervalSince(pagedAt) < Self.afterDrag {
+                    if voiceOverEnabled || Date().timeIntervalSince(sideways.at) < Self.afterDrag {
                         page.index = now
                     } else {
                         // After this update: the paging view is still settling on its new size.
