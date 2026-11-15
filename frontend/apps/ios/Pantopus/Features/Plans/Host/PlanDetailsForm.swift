@@ -169,7 +169,8 @@ struct PlanDetailsForm: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("planChoosePlace")
-                if let placeScope { PlanScopeLine(text: placeScope) }
+                // Those lines are about people nearby and the area; a private plan's people see the place itself.
+                if let placeScope, !model.isPrivate { PlanScopeLine(text: placeScope) }
             }
         }
     }
