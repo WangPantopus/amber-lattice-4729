@@ -537,6 +537,8 @@ async function recentSamePlan(hostId, input, { more = false } = {}) {
     .select('post_id, post:Post!inner(title, event_date)')
     .eq('host_user_id', hostId)
     .eq('kind', input.kind)
+    // A private plan posted right after a public one of the same name (or the other way) is its own plan.
+    .eq('audience', input.audience === 'invited' ? 'invited' : 'nearby')
     .eq('status', 'open')
     .eq('post.title', title)
     .eq('post.event_date', start.toISOString())
@@ -858,10 +860,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     } else {
       if (plan.business_user_id) fail(422, 'validation', "A business's plan can't repeat yet. Post each date.");
       if (!plan.repeat && !viewer.repeatFlag) fail(422, 'repeat_unavailable', "Repeating plans aren't available yet.");
+      // The new pattern starts at this date, whichever date of its series it is: its days, its year and its
+      // count are measured from here, and the dates before it stay counted ("5 of 16").
       planUpdate.repeat = planSeries.checkedRepeat(patch.repeat, {
         startsAt: postUpdate.event_date || plan.post.event_date,
         timezone: planUpdate.timezone || rules.timezoneForPlan(plan),
-        existing: plan.repeat,
+        before: plan.series_id ? (plan.series_index || 1) - 1 : 0,
       });
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
