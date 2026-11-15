@@ -221,7 +221,10 @@ private fun WhereField(
                         color = if (ui.newPlace != null) PantopusColors.primary700 else PantopusColors.appText,
                     )
                     Text(
-                        text = ui.newPlace?.let(::placeCaption) ?: "Choose another place",
+                        // An online plan moving to a place has none to replace yet: the row says what can be chosen.
+                        text =
+                            ui.newPlace?.let(::placeCaption)
+                                ?: if (current == null) "Parks, cafés and other public places" else "Choose another place",
                         style = PantopusTextStyle.small,
                         color = PantopusColors.appTextSecondary,
                     )
