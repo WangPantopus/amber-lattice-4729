@@ -2,8 +2,8 @@
 
 // Today's two halves and the second one's page (founder decision 2026-11-14): "At home" is Today as it was;
 // "Around you" lists local headlines, each the outlet's own with a link to the story at the outlet. Each headline is a
-// post by the Pantopus curator account, drawn with the Pulse card: emoji reactions, replies in threads (and Repost) on
-// its post panel, which opens at once from the card, and "Read at <outlet>" opening the story
+// post by the Pantopus curator account, drawn with the Pulse card: emoji reactions, Repost (or Repost with your words),
+// replies in threads on its post panel, which opens at once from the card, and "Read at <outlet>" opening the story
 // (components/feed/PostMetadata.tsx).
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import type { AroundYou, AroundYouItem } from '@pantopus/api';
 import type { Post } from '@pantopus/types';
 import { PostCard, PostDetailPanel } from '@/components/feed';
 import { reactedPostPatch, reactionFieldsOf, serverReactionPatch } from '@/components/feed/PostReactions';
+import { useRepostToggle } from '@/components/feed/repost';
 import ReportModal from '@/components/ui/ReportModal';
 import { toast } from '@/components/ui/toast-store';
 import { patchPostInFeedCaches } from '@/hooks/useFeedData';
@@ -134,6 +135,17 @@ function AroundYouPosts({ data, queryKey }: { data: AroundYou; queryKey: QueryKe
     onError: () => toast.error('Failed to save post'),
   });
 
+  // Repost or Undo repost from the card's chooser (its "Repost with your words" opens the Pulse composer on its own):
+  // shown at once, put back if refused. A repost shows the post to the reposter's connections in Pulse.
+  const { toggleRepost, repostingIds } = useRepostToggle({
+    findPost: find,
+    applyPatch: (postId, changes) => queryClient.setQueryData<AroundYou>(
+      queryKey, (prev) => (prev ? patchAroundYouPost(prev, postId, changes) : prev),
+    ),
+    onConfirmed: (postId, changes) => patchPostInFeedCaches(queryClient, postId, changes),
+    showToast: (message) => toast.info(message),
+  });
+
   const handleSave = (postId: string) => {
     if (savingIds.current.has(postId)) return;
     savingIds.current.add(postId);
@@ -157,6 +169,8 @@ function AroundYouPosts({ data, queryKey }: { data: AroundYou; queryKey: QueryKe
                 onComment={setDetailPostId}
                 onOpenDetail={setDetailPostId}
                 onSave={handleSave}
+                onRepost={currentUserId ? (postId, reposted) => { void toggleRepost(postId, reposted); } : undefined}
+                isReposting={repostingIds.has(post.id)}
                 onReport={setReportPostId}
                 currentUserId={currentUserId}
                 isLiking={busyIds.has(post.id)}
