@@ -161,7 +161,13 @@ private fun HostHeading(plan: PlanDto) {
             if (plan.isPrivate) PlanPrivateChip()
         }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
-        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
+        // An online plan says "Online" also while its private parts are being read again (it has no place to name).
+        val where =
+            when {
+                plan.isAtHome -> "Your place"
+                plan.isOnline -> PlanFormat.ONLINE
+                else -> plan.place?.name ?: plan.area?.label
+            }
         Text(
             text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
             style = PantopusTextStyle.small,

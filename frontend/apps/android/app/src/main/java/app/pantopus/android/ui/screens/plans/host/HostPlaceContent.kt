@@ -949,8 +949,9 @@ private fun NeighborPreview(
         }
         Text(
             text =
-                "You can change or cancel it any time. If you move the time or the place, everyone who's in is asked " +
-                    "“Still coming?”",
+                // An online plan has a link where the others have a place.
+                "You can change or cancel it any time. If you move the time or the ${if (ui.isOnline) "link" else "place"}, " +
+                    "everyone who's in is asked “Still coming?”",
             style = PantopusTextStyle.caption,
             color = PantopusColors.appTextSecondary,
         )
