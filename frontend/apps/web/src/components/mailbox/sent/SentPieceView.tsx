@@ -189,7 +189,8 @@ export default function SentPieceView({ id }: { id: string }) {
             <div className="mt-4 max-w-2xl">
               <section aria-label={piece.email_status === 'failed' ? 'The email didn’t go out' : 'The email hasn’t gone out yet'} data-testid="mailSentEmailTrouble" className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e7dcc6] bg-[#fbf6ec] px-4 py-3.5 text-[#111827] [@media(prefers-color-scheme:dark)]:brightness-[0.94]">
                 <MailWarning className="h-5 w-5 flex-shrink-0 text-[#8b1d1d]" aria-hidden />
-                <div className="min-w-0 flex-1">
+                {/* Wide enough to read: on a phone the button goes under the words. */}
+                <div className="min-w-0 flex-1 basis-[240px]">
                   <p className="text-sm font-semibold leading-5">{piece.email_status === 'failed' ? 'The email didn’t go out' : 'The email hasn’t gone out yet'}</p>
                   <p className="break-words text-[13px] leading-[18px] text-[#4e5563]">
                     {piece.email_status === 'failed'
