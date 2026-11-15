@@ -18,6 +18,21 @@ import Observation
 
 // swiftlint:disable file_length type_body_length
 
+/// The button on a feed toast (PULSEREPOST contract §5–§7).
+public enum PulseFeedToastAction: Sendable, Equatable {
+    /// "View": My posts, on the Saved tab.
+    case viewSaved
+    /// "Undo": the hide (Hide, or "Not helpful here") is taken back.
+    case undoHide(postId: String)
+
+    public var title: String {
+        switch self {
+        case .viewSaved: "View"
+        case .undoHide: "Undo"
+        }
+    }
+}
+
 /// Render state for the Pulse feed screen.
 public enum PulseFeedState: Sendable {
     case loading
@@ -197,8 +212,20 @@ public final class PulseFeedViewModel {
     /// Where the server looked when no area was given ("Near Camas, WA"), or nil.
     var onFallbackArea: (@MainActor (String?) -> Void)?
 
-    /// Transient banner text — mirrors RN's `showToast` calls.
-    public var toastMessage: String?
+    /// Transient banner text — mirrors RN's `showToast` calls. A new message
+    /// drops the last one's button.
+    public var toastMessage: String? {
+        didSet { toastAction = nil }
+    }
+
+    /// The toast's button ("View", "Undo"), set with its message by `showToast`.
+    public private(set) var toastAction: PulseFeedToastAction?
+
+    /// The post the Repost chooser is open for (contract §2).
+    public var repostChooser: PulseRepostTarget?
+
+    /// "Repost with your words" picked: the composer is open with this post quoted (contract §8).
+    public var quoteDraft: PulseComposeQuote?
 
     /// The post whose overflow menu is open, if any.
     public var overflowPostId: String?
@@ -311,6 +338,16 @@ public final class PulseFeedViewModel {
     /// deleted post is gone from Connections too, and Nearby keeps it gone
     /// after a trip there. Hides live in `moderation` instead — they are app-wide.
     private var removedPostIds: Set<String> = []
+    /// Each post hidden here, where it was and in which list, so Undo puts it back in its place even after a
+    /// read dropped it.
+    private var hiddenRows: [String: HiddenRow] = [:]
+
+    private struct HiddenRow {
+        let post: FeedPostDTO
+        let index: Int
+        let query: FeedQuery?
+    }
+
     /// App-wide mute / hide layer shared by every feed surface, mirroring
     /// RN's `PantopusProvider` (`mutedEntities` + `hiddenPostIds`).
     private let moderation: FeedModerationStore
@@ -589,8 +626,9 @@ public final class PulseFeedViewModel {
         }
     }
 
-    /// `POST /api/posts/:id/save` — optimistic bookmark toggle with
-    /// rollback (RN `useFeedData.ts:126`).
+    /// `POST /api/posts/:id/save` — optimistic Save toggle with rollback
+    /// (RN `useFeedData.ts:126`). "Saved." offers View, which opens My posts
+    /// on the Saved tab (PULSEREPOST contract §5).
     public func toggleSave(postId: String) async {
         guard let item = loadedItems.first(where: { $0.id == postId }),
               beginAction(.save, postId: postId) else { return }
@@ -608,15 +646,21 @@ public final class PulseFeedViewModel {
             )
             overrides[postId, default: PulsePostOverride()].isSaved = response.saved
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
-            toastMessage = response.saved ? "Saved to your bookmarks." : "Removed from bookmarks."
+            if response.saved {
+                showToast("Saved.", action: .viewSaved)
+            } else {
+                toastMessage = "Removed from Saved."
+            }
         } catch {
             overrides[postId, default: PulsePostOverride()].isSaved = original
-            toastMessage = "Couldn't update your bookmark."
+            toastMessage = "Couldn't update Saved. Try again."
         }
     }
 
     /// `POST /api/posts/:id/share` with `shareType: "repost"` — optimistic
-    /// toggle + count, rolled back on failure (RN `useFeedData.ts:140`).
+    /// toggle + count, rolled back on failure (RN `useFeedData.ts:140`). The
+    /// card stays where it is; its "reposted" line gains or loses "You" at
+    /// once (PULSEREPOST contract §1). Reached from the Repost chooser.
     public func toggleRepost(postId: String) async {
         guard let item = loadedItems.first(where: { $0.id == postId }),
               beginAction(.repost, postId: postId) else { return }
@@ -638,12 +682,33 @@ public final class PulseFeedViewModel {
             overrides[postId, default: PulsePostOverride()].isReposted = reposted
             overrides[postId, default: PulsePostOverride()].shareCount = response.shareCount ?? originalCount
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
-            toastMessage = reposted ? "Reposted to your network." : "Repost removed."
+            toastMessage = reposted ? Self.repostedToast : "Repost removed."
         } catch {
             overrides[postId, default: PulsePostOverride()].isReposted = original
             overrides[postId, default: PulsePostOverride()].shareCount = originalCount
             toastMessage = "Could not update repost."
         }
+    }
+
+    /// Contract §1's words after a repost.
+    static let repostedToast = "Reposted. Your connections see it, and it's on your profile."
+
+    /// A toast with a button.
+    private func showToast(_ text: String, action: PulseFeedToastAction) {
+        toastMessage = text
+        toastAction = action
+    }
+
+    /// ↻ on a card, or Repost in its ⋯ menu: the Repost chooser opens (contract §2).
+    public func openRepostChooser(postId: String) {
+        guard let item = loadedItems.first(where: { $0.id == postId }), !item.isSeeded else { return }
+        repostChooser = PulseRepostTarget(postId: postId, isReposted: effectiveIsReposted(item))
+    }
+
+    /// "Repost with your words": the composer opens with this post quoted (contract §8).
+    public func beginQuote(postId: String) {
+        guard let item = loadedItems.first(where: { $0.id == postId }) else { return }
+        quoteDraft = PulseComposeQuote(card: PulseQuotedCard(post: item))
     }
 
     private func beginAction(_ action: PulsePendingAction, postId: String) -> Bool {
@@ -708,7 +773,9 @@ public final class PulseFeedViewModel {
     /// `POST /api/posts/hide/:id` — drops the row immediately, restores it
     /// if the call fails. The hide is recorded app-wide (RN's
     /// `addHiddenPost`), so the post stays gone on every other surface too.
+    /// "Post hidden." offers Undo (PULSEREPOST contract §6).
     public func hidePost(postId: String) async {
+        rememberHiddenRow(postId)
         moderation.addHiddenPost(postId)
         rebuildLoadedState()
         do {
@@ -716,24 +783,61 @@ public final class PulseFeedViewModel {
                 FeedActionsEndpoints.hidePost(id: postId),
                 as: PostActionAckResponse.self
             )
-            toastMessage = "Post hidden from your feed."
+            showToast("Post hidden.", action: .undoHide(postId: postId))
             await refreshSavedOpeningPage()
         } catch {
             moderation.removeHiddenPost(postId)
+            hiddenRows[postId] = nil
             toastMessage = "Couldn't hide that post."
             rebuildLoadedState()
         }
     }
 
-    /// `POST /api/posts/:id/not-helpful` — ranking signal only; the row
-    /// stays put (RN `useFeedData.ts:187`).
+    /// Undo on "Post hidden." (and on "Not helpful here"'s toast):
+    /// `DELETE /api/posts/hide/:id`, then the post leaves the app's hidden
+    /// list and its card goes back where it was. An older server's 404 is a
+    /// failure like any other (contract §6).
+    public func undoHide(postId: String) async {
+        do {
+            _ = try await api.request(FeedActionsEndpoints.unhidePost(id: postId), as: PostActionAckResponse.self)
+        } catch {
+            toastMessage = "Couldn't undo. Try again."
+            return
+        }
+        moderation.removeHiddenPost(postId)
+        if let hidden = hiddenRows.removeValue(forKey: postId), hidden.query == lastQuery,
+           !loadedItems.contains(where: { $0.id == postId }) {
+            // A read of the same list since the hide no longer lists it: back in its old place.
+            loadedItems.insert(hidden.post, at: min(hidden.index, loadedItems.count))
+        }
+        rebuildLoadedState()
+        await refreshSavedOpeningPage()
+    }
+
+    private func rememberHiddenRow(_ postId: String) {
+        guard let index = loadedItems.firstIndex(where: { $0.id == postId }) else { return }
+        hiddenRows[postId] = HiddenRow(post: loadedItems[index], index: index, query: lastQuery)
+    }
+
+    /// `POST /api/posts/:id/not-helpful`. A newer server also hides the post
+    /// for the viewer (`hidden: true`): the card leaves as Hide does and the
+    /// toast offers Undo (the flag stays). An older server leaves the card
+    /// where it is (PULSEREPOST contract §7).
     public func markNotHelpful(postId: String) async {
         do {
-            _ = try await api.request(
+            let response = try await api.request(
                 FeedActionsEndpoints.notHelpful(id: postId, surface: surface.moderationSurface),
                 as: FeedNotHelpfulResponse.self
             )
-            toastMessage = "Thanks! We'll show fewer posts like this."
+            guard response.hidden == true else {
+                toastMessage = "Thanks for telling us."
+                return
+            }
+            rememberHiddenRow(postId)
+            moderation.addHiddenPost(postId)
+            rebuildLoadedState()
+            showToast("Thanks. You won't see this post again.", action: .undoHide(postId: postId))
+            await refreshSavedOpeningPage()
         } catch {
             toastMessage = "Couldn't send that feedback."
         }
@@ -1495,9 +1599,15 @@ public final class PulseFeedViewModel {
             // Topics on cards are the redesign's (Pulse S4, launch cut #11).
             pulseTopic: LaunchFeatures.pulseRedesign ? PulseTopic(stored: post.topic) : nil,
             status: Self.status(of: post, solved: isSolved, going: likeCount, expiresAt: expiresAt),
-            repostedBy: Self.repostedByText(post.repostedBy),
+            // The viewer's repost or undo here changes the line at once, before the next read.
+            repostedBy: Self.repostedByText(FeedRepostedBy.live(
+                post.repostedBy,
+                serverReposted: post.userHasReposted,
+                reposted: live.isReposted
+            )),
             authorLink: Self.authorLink(for: post),
-            source: post.source
+            source: post.source,
+            quoted: PulseQuotedPost(post.quotedPost)
         )
     }
 
@@ -1516,7 +1626,7 @@ public final class PulseFeedViewModel {
         }
     }
 
-    /// Connections: "Ben C. reposted", "Ben C. and Eve H. reposted", "Ben C. and 2 others reposted" (as on web).
+    /// "You reposted", "You and Ben C. reposted", "You and 2 others reposted" (contract §1, as on web).
     private static func repostedByText(_ repostedBy: FeedRepostedBy?) -> String? {
         guard let repostedBy, let first = repostedBy.names.first, repostedBy.count >= 1 else { return nil }
         if repostedBy.count == 1 { return "\(first) reposted" }
@@ -1561,7 +1671,7 @@ public final class PulseFeedViewModel {
         return parts.joined(separator: " · ")
     }
 
-    private static func relative(timestamp: String) -> String {
+    nonisolated static func relative(timestamp: String) -> String {
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let date = parser.date(from: timestamp) ?? ISO8601DateFormatter().date(from: timestamp) ?? Date()
@@ -1572,7 +1682,7 @@ public final class PulseFeedViewModel {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private static func initials(from name: String) -> String {
+    nonisolated static func initials(from name: String) -> String {
         let parts = name.split(separator: " ").prefix(2)
         return parts.compactMap { $0.first.map(String.init) }.joined().uppercased()
     }

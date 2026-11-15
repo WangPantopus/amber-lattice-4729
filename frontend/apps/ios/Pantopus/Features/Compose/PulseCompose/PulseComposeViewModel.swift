@@ -458,6 +458,11 @@ public final class PulseComposeViewModel {
     /// title + body and rides `refTaskId` on `POST /api/posts`.
     public let taskShare: PulseTaskShare?
 
+    /// "Repost with your words" (PULSEREPOST contract §8): the post shown
+    /// under the text box, sent as `quotedPostId` with the new post. Never
+    /// sent on an edit.
+    public let quote: PulseComposeQuote?
+
     init(
         intent: PulseComposeIntent = .ask,
         identity: PulseComposeIdentity = .personal,
@@ -469,11 +474,13 @@ public final class PulseComposeViewModel {
         prefillTitle: String? = nil,
         prefillBody: String? = nil,
         prefillDraft: PulseComposeDraft? = nil,
+        quote: PulseComposeQuote? = nil,
         api: APIClient = .shared,
         multipartUploader: MultipartUploader = .shared,
         locationProvider: any LocationProviding = DeviceLocationProvider.shared
     ) {
         self.taskShare = taskShare
+        self.quote = postId == nil ? quote : nil
         self.businessAuthorId = businessAuthorId
         self.locationProvider = locationProvider
         // A Connections post is stored as "general" (effectivePostType), so a new one starts on the
@@ -567,9 +574,11 @@ public final class PulseComposeViewModel {
     }
 
     /// Top-bar title — "Edit post" in edit mode, "Post as business" when
-    /// composing from the Business owner dashboard, "New post" otherwise.
+    /// composing from the Business owner dashboard, "Repost with your words"
+    /// for a quote, "New post" otherwise.
     public var displayTitle: String {
         if isEditing { return "Edit post" }
+        if quote != nil { return "Repost with your words" }
         return businessAuthorId == nil ? "New post" : "Post as business"
     }
 
@@ -886,7 +895,12 @@ public final class PulseComposeViewModel {
                 ? [.body, .lostLastSeenLocation, .lostLastSeenDate]
                 : [.body, .lostLastSeenLocation, .lostLastSeenDate, .contactPhone]
         case .announce:
-            composePurpose == .deal ? [.title, .body, .dealBusinessName] : [.title, .body]
+            // "Repost with your words" on a plain post is the person's words about the post under them: no headline.
+            if quote != nil, composePurpose == nil {
+                [.body]
+            } else {
+                composePurpose == .deal ? [.title, .body, .dealBusinessName] : [.title, .body]
+            }
         }
     }
 
@@ -1031,7 +1045,7 @@ public final class PulseComposeViewModel {
             Analytics.track(.formPulseComposeSubmit(intent: activeIntent.rawValue, result: .success))
             return true
         } catch {
-            let message = (error as? APIError)?.errorDescription ?? (
+            let message = quoteRefusal(error) ?? (error as? APIError)?.errorDescription ?? (
                 isEditing ? "Couldn't save. Try again." : "Couldn't post. Try again."
             )
             state = .error(message)
@@ -1295,6 +1309,8 @@ public final class PulseComposeViewModel {
         // lands with `ref_task_id` and renders a "View task" ref card.
         var request = mergeTargetContext(into: base)
         request.refTaskId = taskShare?.taskId
+        // "Repost with your words": the quoted post rides along; an edit never sends it.
+        request.quotedPostId = isEditing ? nil : quote?.id
         // LAST step — an explicitly tagged place overrides the flow
         // target's location so the picked venue wins.
         applyPlaceTag(to: &request)
@@ -1304,6 +1320,15 @@ public final class PulseComposeViewModel {
             request.mediaLocations = draftMediaLocations
         }
         return request
+    }
+
+    /// A quote the server refused: `404 QUOTED_POST_UNAVAILABLE` carries no
+    /// readable body through the client (`APIError.notFound`), so its words
+    /// are the contract's; `400 QUOTED_POST_NOT_ALLOWED` shows the server's
+    /// own `error` text through `errorDescription` (contract §8).
+    private func quoteRefusal(_ error: any Error) -> String? {
+        guard quote != nil, !isEditing, case .notFound = error as? APIError else { return nil }
+        return "This post isn't available anymore."
     }
 
     /// Stamp the picked venue onto the outgoing request. GPS attestation

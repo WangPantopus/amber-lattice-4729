@@ -5,7 +5,8 @@
 //  The modals behind a profile's Pulse cards (`ProfilePostCardsModel`): the
 //  card's "Post options" menu (Open plan on your own plan's post, Share…,
 //  Pin to profile on your own posts, Report post), Pulse's report-reason
-//  picker and the system share sheet.
+//  picker, the Repost chooser and the composer its "Repost with your words"
+//  opens (PULSEREPOST contract §2, §8), and the system share sheet.
 //  Copy and ids follow the Pulse feed's (`FeedPostActionSurfaces`).
 //
 
@@ -48,6 +49,14 @@ struct ProfilePostCardSurfaces: ViewModifier {
                 Button("Cancel", role: .cancel) { model.reportingPostId = nil }
             } message: {
                 Text("Reports are reviewed by the Pantopus team. The author isn't told who reported.")
+            }
+            // The Repost chooser is presented by each card's ↻ (PulseCardRepostChooser).
+            .fullScreenCover(item: Binding(get: { model.quoteDraft }, set: { model.quoteDraft = $0 })) { quote in
+                PulseComposeFlowView(
+                    quoting: quote,
+                    onCancel: { model.quoteDraft = nil },
+                    onPosted: { _ in model.quoteDraft = nil }
+                )
             }
             .sheet(item: $shareTarget) { target in
                 SystemShareSheet(items: [target.url]) {

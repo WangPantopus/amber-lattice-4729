@@ -183,6 +183,9 @@ public struct BodyReactionsBody: View {
     /// every other caller leaves it nil. Type-erased so adding the slot
     /// doesn't make this shared body generic.
     private let belowReactions: AnyView?
+    /// Between the post's words and media and its reactions (a quote post's
+    /// quoted card); type-erased like `belowReactions`.
+    private let aboveReactions: AnyView?
     /// Shown in place of the composer when nobody can reply (a post a
     /// moderator removed); nil keeps the composer and the empty-thread prompts.
     private let repliesClosedNote: String?
@@ -214,10 +217,12 @@ public struct BodyReactionsBody: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        aboveReactions: AnyView? = nil,
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
         onCommentAvatarTap: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        self.aboveReactions = aboveReactions
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
         self.source = source
@@ -300,6 +305,11 @@ public struct BodyReactionsBody: View {
                         usesSharpPreviews: true,
                         edgeToEdge: true
                     )
+                }
+
+                if let aboveReactions {
+                    aboveReactions
+                        .padding(.horizontal, Spacing.s4)
                 }
 
                 ReactionsBar(
