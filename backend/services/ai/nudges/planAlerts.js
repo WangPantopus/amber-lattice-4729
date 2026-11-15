@@ -40,6 +40,8 @@ async function newPlans(now) {
     .eq('status', 'open')
     // A business's plan is told only to an app that can draw it; a nudge can't know that, so it stays out.
     .is('business_user_id', null)
+    // A private plan is told to nobody but the people its host invites.
+    .eq('audience', 'nearby')
     .gte('created_at', new Date(now - POSTED_WITHIN_MS).toISOString())
     .order('created_at', { ascending: true })
     .limit(PLANS_PER_TICK);

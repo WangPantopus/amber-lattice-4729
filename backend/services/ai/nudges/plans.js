@@ -510,8 +510,8 @@ async function sameNextWeekCard(plan) {
       line(playdate ? 'Note for families' : 'Note for guests', checked.guestNote),
     ],
     warnings: [checked.place.kind === 'home'
-      ? 'Neighbors see the title and about. Only people you accept see your address.'
-      : 'Neighbors see the title, about and area; they see the exact place once they get in.'],
+      ? 'Others see the title and about. Only people you accept see your address.'
+      : 'Others see the title, about and area; they see the exact place once they get in.'],
     actions: [action('confirm', 'Post plan', { method: 'POST', path: '/api/plans', body },
       { label: 'Plan posted', link: linkFor('plan', '{{response.id}}') })],
     expiresAt: checked.startsAt,

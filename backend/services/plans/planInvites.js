@@ -188,7 +188,9 @@ async function hostPlan(user, postId) {
 async function hostedPlanRow(postId, viewer) {
   if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
   const plan = await planService.loadPlanRow(postId);
-  if (!plan || !planService.isVisibleTo(plan, viewer)) fail(404, 'not_found', "This plan isn't available.");
+  if (!plan || !planService.isVisibleTo(plan, viewer, { involved: await planService.isInvolved(plan, viewer) })) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
   if (!require('./planBusiness').runsPlan(plan, viewer)) fail(403, 'not_host', 'Only the host can do that.');
   return plan;
 }
@@ -370,6 +372,29 @@ async function peopleToInvite(user, postId, q) {
     || (reasonOrder[a.reason] - reasonOrder[b.reason])
     || a.display_name.localeCompare(b.display_name));
   return { people: out.slice(0, LIMITS.people), plan_id: plan.post_id };
+}
+
+/**
+ * GET /api/plans/invites/people[?q=]: the people this person can invite, before the plan exists (a private plan's
+ * preview picks its first guests). The same people, names and order as peopleToInvite, without a plan's state.
+ */
+async function peopleBeforePosting(user, q) {
+  const viewer = await loadViewer(user);
+  if (!viewer.invitesFlag) fail(404, 'not_found', "Invitations aren't available right now.");
+  const reasons = await knownPeople(viewer.id);
+  for (const id of viewer.blockedUserIds) reasons.delete(String(id));
+  const people = await names([...reasons.keys()]);
+  const query = typeof q === 'string' ? q.trim().toLowerCase().slice(0, 60) : '';
+  const out = [];
+  for (const [id, reason] of reasons) {
+    const entry = people.get(id);
+    if (!entry) continue;
+    if (query && !entry.search_name.includes(query) && !entry.display_name.toLowerCase().includes(query)) continue;
+    out.push({ ...person(entry), reason });
+  }
+  const reasonOrder = { both: 0, came_before: 1, connection: 2 };
+  out.sort((a, b) => (reasonOrder[a.reason] - reasonOrder[b.reason]) || a.display_name.localeCompare(b.display_name));
+  return { people: out.slice(0, LIMITS.people) };
 }
 
 // ── Sending ──────────────────────────────────────────────────
@@ -620,7 +645,15 @@ async function createInvites(user, postId, body = {}) {
  * ("Text an invite"). Answers the link and the words to send with it, in the host's voice.
  */
 async function createLinkInvite(user, postId, body = {}) {
-  const { viewer, plan } = await hostPlan(user, postId);
+  const viewer = await loadViewer(user);
+  if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
+  const found = await planService.loadPlanRow(postId);
+  if (!found || !planService.isVisibleTo(found, viewer, { involved: await planService.isInvolved(found, viewer) })) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
+  // A guest on a private plan whose host allowed it brings one friend; everything else is the host's.
+  if (!require('./planBusiness').runsPlan(found, viewer)) return createFriendLink(viewer, found);
+  const plan = found;
   assertInvitable(plan, viewer);
   await assertSharesAddressConfirmed(plan, body);
   const existing = await loadInvites(postId);
@@ -643,6 +676,57 @@ async function createLinkInvite(user, postId, body = {}) {
     // Sent from the host's own phone, so it's in their voice.
     message: `${ask} on ${dateText(plan)}? “${plan.post.title}”. Tap to say you’re in:`,
   };
+}
+
+/**
+ * "Bring a friend" on a private plan (Plan.guests_can_invite): a guest the host invited, who is in, makes one
+ * one-person link. The friend who opens it is in as the host's own guests are; they can't bring anyone in turn
+ * (their invitation isn't the host's). The host sees the link and the friend in their list, and can take it back.
+ */
+async function createFriendLink(viewer, plan) {
+  const notYours = () => fail(403, 'not_host', 'Only the host can do that.');
+  if (!rules.isPrivate(plan) || !plan.guests_can_invite) notYours();
+  const [{ data: mine, error }, myInvites] = await Promise.all([
+    supabaseAdmin.from('PlanRequest').select('status').eq('post_id', plan.post_id).eq('user_id', viewer.id).maybeSingle(),
+    viewerInvites(viewer.id, [plan.post_id]),
+  ]);
+  if (error) throw new Error(`Failed to load your request: ${error.message}`);
+  const invite = myInvites.get(plan.post_id);
+  if (!mine || mine.status !== 'accepted' || !invite || String(invite.host_user_id) !== String(plan.host_user_id)) notYours();
+  assertInvitable(plan, viewer);
+  if ((await friendLinkPlanIds(viewer.id, [plan.post_id])).has(plan.post_id)) {
+    fail(409, 'friend_invite_used', 'You’ve already invited a friend to this plan.');
+  }
+  const existing = await loadInvites(plan.post_id);
+  if (existing.length >= LIMITS.invitesPerPlan) fail(429, 'too_many_invites', `A plan can have up to ${LIMITS.invitesPerPlan} invitations.`);
+  const token = newToken();
+  const { data, error: insertError } = await supabaseAdmin.from('PlanInvite')
+    .insert({ post_id: plan.post_id, host_user_id: viewer.id, channel: 'link', token_hash: hashToken(token) })
+    .select('id').single();
+  if (insertError) throw new Error(`Failed to make the invitation: ${insertError.message}`);
+  recordFunnelEvent('plan_invited', { userId: viewer.id, meta: { plan_id: plan.post_id, kind: plan.kind, channel: 'link', by: 'guest' } });
+  const hostFirst = await actions().hostFirstOf(plan);
+  const noun = planNotify.noun(plan);
+  const ask = noun === 'coffee' ? `Want to get coffee with ${hostFirst} and me` : `Want to come to ${hostFirst}’s ${noun} with me`;
+  return {
+    invite_id: data.id,
+    url: inviteUrl(plan.post_id, token),
+    message: `${ask} on ${dateText(plan)}? “${plan.post.title}”. Tap to say you’re in:`,
+  };
+}
+
+/** Of these plans, the ones where this person, as a guest, already made their "Bring a friend" link. */
+async function friendLinkPlanIds(userId, postIds) {
+  const ids = [...new Set((postIds || []).filter(Boolean))];
+  if (!userId || ids.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin.from('PlanInvite').select('post_id')
+    .in('post_id', ids).eq('host_user_id', userId).eq('channel', 'link').neq('status', 'cancelled');
+  if (error) {
+    logger.warn('plans.invites.friend_links_unavailable', { error: error.message });
+    // Unknown counts as used: the card never offers a second link by mistake, and the route checks again.
+    return new Set(ids);
+  }
+  return new Set((data || []).map((row) => row.post_id));
 }
 
 /** DELETE /api/plans/:id/invites/:inviteId: take back an invitation nobody has said yes to. */
@@ -786,17 +870,23 @@ async function claimInvite(user, postId, token) {
   const viewer = await loadViewer(user);
   if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
   const plan = await planService.loadPlanRow(postId);
-  if (!plan || !planService.isVisibleTo(plan, viewer)) fail(404, 'not_found', "This plan isn't available.");
   const { data: row, error } = await supabaseAdmin.from('PlanInvite').select(INVITE_COLUMNS)
     .eq('token_hash', hashToken(token)).eq('post_id', postId).maybeSingle();
   if (error) throw new Error(`Failed to load the invitation: ${error.message}`);
-  if (!row || row.status === 'cancelled') fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
+  const live = Boolean(row && row.status !== 'cancelled');
+  // A private plan exists for whoever holds a live invitation to it, and for nobody else who has its link.
+  if (!plan || !planService.isVisibleTo(plan, viewer, { involved: rules.isPrivate(plan) && live })) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
+  if (!live) fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
   if (require('./planBusiness').runsPlan(plan, viewer)) return { plan: await planBody(postId, viewer) };
   if (row.invitee_user_id && String(row.invitee_user_id) !== viewer.id) {
     // The address's verified owner takes their invitation back from whoever opened a forwarded copy.
     const owner = row.channel === 'email' && row.needs_host_ok && (await hasVerifiedEmail(user, row.email));
     if (!owner || !(await takeInvite(row, viewer.id))) {
-      fail(409, 'invite_used', 'Someone else already used this invitation. You can still ask to join.');
+      fail(409, 'invite_used', rules.isPrivate(plan)
+        ? 'Someone else already used this invitation. Ask the host for a new one.'
+        : 'Someone else already used this invitation. You can still ask to join.');
     }
     await supabaseAdmin.from('PlanInvite').update({ opened_at: nowIso(), updated_at: nowIso() }).eq('id', row.id);
     return { plan: await planBody(postId, viewer) };
@@ -850,7 +940,9 @@ async function declineInvite(user, postId, { io = null } = {}) {
   const viewer = await loadViewer(user);
   if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
   const plan = await planService.loadPlanRow(postId);
-  if (!plan || !planService.isVisibleTo(plan, viewer)) fail(404, 'not_found', "This plan isn't available.");
+  if (!plan || !planService.isVisibleTo(plan, viewer, { involved: await planService.isInvolved(plan, viewer) })) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
   const invites = await viewerInvites(viewer.id, [postId]);
   const invite = invites.get(postId);
   if (!invite) fail(404, 'not_found', 'You don’t have an invitation to this plan.');
@@ -888,7 +980,10 @@ async function nextInvite(user) {
   const plans = new Map((await planService.loadPlanRows(data.map((r) => r.post_id))).map((p) => [p.post_id, p]));
   for (const row of data) {
     const plan = plans.get(row.post_id);
-    if (plan && planService.isVisibleTo(plan, viewer) && isOpenForAnswers(plan)) return { plan_id: plan.post_id };
+    // These are this person's own invitations, which is what a private plan asks for.
+    if (plan && planService.isVisibleTo(plan, viewer, { involved: rules.isPrivate(plan) }) && isOpenForAnswers(plan)) {
+      return { plan_id: plan.post_id };
+    }
   }
   return { plan_id: null };
 }
@@ -953,6 +1048,14 @@ async function publicInvite(postId, token) {
   };
 }
 
+/** Is `token` a live invitation to this plan? (The signed-out page of a private plan shows its card only then.) */
+async function isLiveToken(postId, token) {
+  if (!isToken(token) || !planService.isUuid(postId)) return false;
+  const { data: row, error } = await supabaseAdmin.from('PlanInvite').select('status')
+    .eq('token_hash', hashToken(token)).eq('post_id', postId).maybeSingle();
+  return !error && Boolean(row) && row.status !== 'cancelled';
+}
+
 /** "Don't send me invitations": every invitation row for the address stops emails to it. */
 async function unsubscribe(token) {
   if (!isToken(token)) return null;
@@ -975,6 +1078,9 @@ module.exports = {
   inviteUrl,
   listForHost,
   peopleToInvite,
+  peopleBeforePosting,
+  friendLinkPlanIds,
+  isLiveToken,
   createInvites,
   createLinkInvite,
   cancelInvite,

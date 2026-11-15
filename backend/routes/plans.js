@@ -223,6 +223,16 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
   }
 });
 
+// GET /api/plans/invites/people[?q=]: the people this person can invite, before the plan exists (a private plan's
+// preview): { people: [{ user_id, display_name, avatar_url, reason }] }.
+router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planInvites.peopleBeforePosting(req.user, req.query.q));
+  } catch (err) {
+    return serverError(res, err, 'invites_people_before', req);
+  }
+});
+
 // GET /api/plans/invites/next: right after signing in, the newest invitation the person hasn't opened, so the app
 // opens that plan ({ plan_id } or { plan_id: null }). An email invitation reaches them by their verified address.
 router.get('/invites/next', async (req, res) => {
