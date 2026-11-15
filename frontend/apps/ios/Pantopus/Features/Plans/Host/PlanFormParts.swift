@@ -137,12 +137,12 @@ struct PlanSegmented<Value: Hashable>: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 38)
-                    .background(
-                        RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
-                            .fill(isOn ? Theme.Color.appSurface : Color.clear)
-                            .shadow(color: .black.opacity(isOn ? 0.06 : 0), radius: 3, x: 0, y: 2)
-                    )
-                    .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
+                        .fill(isOn ? Theme.Color.appSurface : Color.clear)
+                        .shadow(color: .black.opacity(isOn ? 0.06 : 0), radius: 3, x: 0, y: 2)
+                )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(option.1)
