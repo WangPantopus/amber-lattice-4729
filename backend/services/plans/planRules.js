@@ -20,6 +20,10 @@ const WALK_KINDS = ['walk', 'dog_walk', 'stroller_walk', 'coffee'];
 const PACES = ['easy', 'brisk'];
 const STUDY_STYLES = ['quiet', 'together'];
 const WINDOWS = ['now', 'today', 'week', 'weekend'];
+// Who a plan is for: people nearby, who ask to join (every plan until November 2026), or only the people its
+// host invites (a private plan: Plan.audience).
+const AUDIENCES = ['nearby', 'invited'];
+const PRIVATE_FLAG = 'plans_private';
 
 const MILE_METERS = 1609.344;
 // Hosting: within the existing 5 km canPostToPlace proximity (about 3 miles) of
@@ -54,6 +58,19 @@ const LIMITS = Object.freeze({
   // A plan may start "now": a small grace for the time it took to post.
   startGraceMinutes: 10,
 });
+
+// A private plan is among people who know each other: it may be anywhere (no 3-mile rule) and further ahead,
+// and it doesn't count against the three public plans a host may have upcoming.
+const PRIVATE_LIMITS = Object.freeze({
+  upcomingPlansPerHost: 10,
+  newPlansPerDay: 10,
+  maxDaysAhead: 60,
+});
+
+/** Is this plan private (only its host, the people invited and the people in or waiting may read it)? */
+function isPrivate(plan) {
+  return plan?.audience === 'invited';
+}
 
 // ── A business's plans (Plans with businesses, the build contract's sections 4.4 and 4.5) ──
 
@@ -224,6 +241,10 @@ module.exports = {
   PACES,
   STUDY_STYLES,
   WINDOWS,
+  AUDIENCES,
+  PRIVATE_FLAG,
+  PRIVATE_LIMITS,
+  isPrivate,
   LIMITS,
   BUSINESS_LIMITS,
   BUSINESS_KIND_NAMES,

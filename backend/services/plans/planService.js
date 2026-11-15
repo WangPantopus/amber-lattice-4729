@@ -11,6 +11,9 @@
  *  - Playdates don't exist for viewers with plans_playdates off, and hide their
  *    time behind day_part until the viewer is in.
  *  - Blocks hide plans and requests both ways; mutes and hidden posts hide plans.
+ *  - A private plan (Plan.audience 'invited') exists only for its host, the people invited and the people in or
+ *    waiting: isVisibleTo refuses it unless the caller has checked that (`involved`), and the nearby query
+ *    never reads one.
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -33,6 +36,8 @@ const PLAN_COLUMNS = [
   'chat_closed_at', 'host_summary_sent_at', 'created_at', 'updated_at', 'cancelled_at', 'ended_at',
   // Plans with businesses: empty on a neighbor's plan.
   'business_user_id', 'posted_by_user_id', 'business_location_id', 'label', 'guests_can_invite',
+  // 'nearby', or 'invited' for a private plan (planRules.isPrivate).
+  'audience',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -46,6 +51,8 @@ const USER_COLUMNS = 'id, name, first_name, last_name, profile_picture_url, crea
 const ACTIVE_REQUEST_STATUSES = ['pending', 'waitlisted', 'accepted'];
 const OPEN_REQUEST_STATUSES = ['pending', 'waitlisted'];
 const NEW_ACCOUNT_DAYS = 30;
+// What someone with no name is called, everywhere in Plans.
+const NO_NAME = 'Someone';
 const PAGE_SIZE = 30;
 
 function webBaseUrl() {
@@ -68,7 +75,7 @@ function cleanText(value) {
 function displayName(user) {
   const full = cleanText(user?.local_display_name) || cleanText(user?.name)
     || [cleanText(user?.first_name), cleanText(user?.last_name)].filter(Boolean).join(' ');
-  if (!full) return 'A neighbor';
+  if (!full) return NO_NAME;
   const words = full.split(' ');
   if (words.length === 1) return words[0];
   const last = words[words.length - 1].replace(/[^\p{L}\p{N}]/gu, '');
@@ -87,8 +94,8 @@ function hostAvatar(plan, host) {
 
 function firstName(user) {
   const name = displayName(user);
-  // "A neighbor" stays whole ("A neighbor's place", not "A's place").
-  return name === 'A neighbor' ? name : name.split(' ')[0];
+  // "Someone" stays whole ("Someone's place", not "S's place").
+  return name === NO_NAME ? name : name.split(' ')[0];
 }
 
 /**
@@ -139,6 +146,9 @@ function exactPoint(plan) {
  * May this viewer know the plan exists? (PlanCard at least.)
  * The host always may. Cancelled and ended plans stay visible by id so
  * people can see what happened; the lists and the map leave them out.
+ *
+ * `involved`: the caller knows this viewer is part of the plan (isInvolved: invited, in or waiting). A private
+ * plan is shown to nobody else, so a caller that doesn't say hides it: a new read path fails closed.
  */
 function isVisibleTo(plan, viewer, { involved = false } = {}) {
   if (!plan || !plan.post) return false;
@@ -147,6 +157,7 @@ function isVisibleTo(plan, viewer, { involved = false } = {}) {
   // longer host, only the people already involved keep reading it, so a guest can leave and the team can cancel:
   // whoever runs it, and anyone `involved` (the caller knows they are in or waiting).
   const runsIt = planBusiness.runsPlan(plan, viewer);
+  if (rules.isPrivate(plan) && !runsIt && !involved) return false;
   if (plan.business_user_id && !planBusiness.shownTo(plan, viewer, { involved: runsIt || involved })) return false;
   // A held or removed plan is read by its author; for a business's plan that is whoever runs it.
   if (!canReadPostModeration(plan.post, runsIt ? String(plan.post.user_id) : viewer.id, viewer.role === 'admin')) return false;
@@ -203,11 +214,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     inviteCountsByPlan: new Map(),
     // A venue's later plans, folded under its soonest one (listNearby): the lead plan's id → the others.
     moreTimesByPlan: new Map(),
+    // Private plans where the viewer, a guest, has already made their one "Bring a friend" link.
+    friendLinkPlans: new Set(),
   };
   if (planIds.length === 0) return ctx;
 
   const hostedIds = plans.filter((p) => planBusiness.runsPlan(p, viewer)).map((p) => p.post_id);
-  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts] = await Promise.all([
+  const friendPlanIds = plans.filter((p) => rules.isPrivate(p) && p.guests_can_invite && !hostedIds.includes(p.post_id)).map((p) => p.post_id);
+  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).in('status', ACTIVE_REQUEST_STATUSES),
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).eq('user_id', viewer.id),
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true }).eq('user_id', viewer.id).in('status', OPEN_REQUEST_STATUSES),
@@ -220,12 +234,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
       .eq('plan.status', 'ended'),
     invites().viewerInvites(viewer.id, planIds.filter((id) => !hostedIds.includes(id))),
     invites().hostInviteCounts(hostedIds),
+    invites().friendLinkPlanIds(viewer.id, friendPlanIds),
   ]);
   for (const result of [activeRequests, myRequests, openCount, hostedRows, myHistory]) {
     if (result.error) throw new Error(`Failed to load plan details: ${result.error.message}`);
   }
   ctx.myInviteByPlan = myInvites;
   ctx.inviteCountsByPlan = inviteCounts;
+  ctx.friendLinkPlans = friendLinks;
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -550,6 +566,9 @@ function buildCard(plan, viewer, ctx) {
     },
     distance_band: distanceFrom && area ? rules.distanceBandFromMeters(rules.distanceMeters(distanceFrom, area)) : null,
     place_kind: plan.place_kind,
+    // 'invited': a private plan. The app says "Private" and offers Invite where a public plan offers Share.
+    audience: rules.isPrivate(plan) ? 'invited' : 'nearby',
+    guests_can_invite: Boolean(plan.guests_can_invite),
     host: {
       user_id: hostId,
       display_name: hostName(plan, host),
@@ -600,7 +619,33 @@ function buildCard(plan, viewer, ctx) {
     };
   }
   if (plan.business_user_id) addBusinessFields(card, plan, viewer, ctx);
+  if (rules.isPrivate(plan)) addPrivateFields(card, plan, viewer, ctx, { role, myInvite });
   return card;
+}
+
+/**
+ * What a private plan adds to its card. The person invited reads where it is before they answer, when it is a
+ * public place and the invitation is the host's yes (not an email opened by another account, which waits for the
+ * host); a home's address still arrives only once they are in (buildDetail). A guest the host invited may bring
+ * one friend when the host allowed it.
+ */
+function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
+  if (role === 'none' && myInvite && !myInvite.needs_host_ok && plan.place_kind === 'public') {
+    const exact = exactPoint(plan);
+    card.place = {
+      name: plan.place_name || plan.area_label,
+      address: plan.place_address || null,
+      latitude: exact.latitude,
+      longitude: exact.longitude,
+    };
+    if (viewer.origin) card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
+  }
+  card.viewer.friend_invite = null;
+  if (role === 'guest' && plan.guests_can_invite && myInvite && String(myInvite.host_user_id) === String(plan.host_user_id)) {
+    const used = ctx.friendLinkPlans?.has(plan.post_id) || false;
+    const open = plan.status === 'open' && rules.isAskingOpen(plan, startsAt(plan), endsAt(plan));
+    card.viewer.friend_invite = { can_invite: Boolean(viewer.invitesFlag) && open && !used, used };
+  }
 }
 
 /**
@@ -827,6 +872,35 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false } = {}
   return biz ? planBusiness.attachBusinessHosts(data || []) : data || [];
 }
 
+/**
+ * The viewer's own private plans that are still open: the ones they host, are invited to (not taken back, not
+ * answered "can't make it") or are in or waiting on. These join the nearby list and the map for this viewer
+ * only; queryOpenPlansInBox never reads a private plan.
+ */
+async function ownPrivatePlans(viewer, { kinds } = {}) {
+  const [requests, invited] = await Promise.all([
+    supabaseAdmin.from('PlanRequest').select('post_id').eq('user_id', viewer.id).in('status', ACTIVE_REQUEST_STATUSES).limit(200),
+    supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted']).limit(200),
+  ]);
+  if (requests.error || invited.error) throw new Error(`Failed to load your plans: ${(requests.error || invited.error).message}`);
+  const ids = [...new Set([...(requests.data || []), ...(invited.data || [])].map((row) => row.post_id))];
+  const open = (query) => {
+    let q = query.eq('audience', 'invited').eq('status', 'open')
+      .is('post.archived_at', null).eq('post.moderation_state', 'live')
+      .gt('post.event_end_date', new Date().toISOString());
+    if (kinds && kinds.length > 0) q = q.in('kind', kinds);
+    return q.limit(200);
+  };
+  const [hosted, others] = await Promise.all([
+    open(supabaseAdmin.from('Plan').select(PLAN_SELECT).eq('host_user_id', viewer.id)),
+    ids.length ? open(supabaseAdmin.from('Plan').select(PLAN_SELECT).in('post_id', ids)) : { data: [] },
+  ]);
+  if (hosted.error || others.error) throw new Error(`Failed to load your plans: ${(hosted.error || others.error).message}`);
+  const byId = new Map();
+  for (const plan of [...(hosted.data || []), ...(others.data || [])]) byId.set(plan.post_id, plan);
+  return [...byId.values()].filter((plan) => isVisibleTo(plan, viewer, { involved: true }));
+}
+
 function encodeCursor(plan) {
   return Buffer.from(`${startsAt(plan)}|${plan.post_id}`).toString('base64url');
 }
@@ -865,10 +939,12 @@ function hostedBy(plan, host) {
  */
 async function listNearby(viewer, { point, window = 'week', kinds = [], cursor = null, host = 'all' }) {
   const box = boundingBox(point, rules.LIST_RADIUS_METERS);
-  const rows = await queryOpenPlansInBox(box, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz });
+  const [publicRows, ownPrivate] = await Promise.all([
+    queryOpenPlansInBox(box, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz }),
+    ownPrivatePlans(viewer, { kinds }),
+  ]);
   const after = decodeCursor(cursor);
-  const inWindow = rows
-    .filter((plan) => isVisibleTo(plan, viewer))
+  const inWindow = [...publicRows.filter((plan) => isVisibleTo(plan, viewer)), ...ownPrivate]
     .filter((plan) => {
       const area = areaPoint(plan);
       const d = area ? rules.distanceMeters(point, area) : null;
@@ -962,13 +1038,17 @@ async function listMine(viewer) {
 
   // The plans the viewer is in or waiting on: they keep reading those even when a business may no longer host.
   const involvedIds = new Set((requests.data || []).map((r) => r.post_id));
+  // A private plan is read by the people invited to it too.
+  const invitedSet = new Set(invitedIds);
   const requestedRows = await loadPlanRows([...involvedIds, ...invitedIds]);
   const all = new Map();
   for (const plan of [...(hosting.data || []), ...await planBusiness.attachBusinessHosts(businessHosting.data || []), ...requestedRows]) {
     all.set(plan.post_id, plan);
   }
   const visible = [...all.values()]
-    .filter((plan) => isVisibleTo(plan, viewer, { involved: involvedIds.has(plan.post_id) }) && plan.status !== 'cancelled');
+    .filter((plan) => isVisibleTo(plan, viewer, {
+      involved: involvedIds.has(plan.post_id) || (rules.isPrivate(plan) && invitedSet.has(plan.post_id)),
+    }) && plan.status !== 'cancelled');
   const ctx = await loadCardContext(visible, viewer);
 
   const out = {
@@ -1006,6 +1086,7 @@ async function listMine(viewer) {
  * No read for a neighbor's plan, a business in good standing, or a viewer businesses' plans don't exist for.
  */
 async function isInvolved(plan, viewer) {
+  if (rules.isPrivate(plan)) return isPartOfPrivatePlan(plan, viewer);
   if (!plan || !plan.business_user_id || !viewer.biz || planBusiness.shownTo(plan, viewer)) return false;
   // Nothing to look up where the answer can't change: the viewer's own side doesn't hold, or they run the plan.
   if (!planBusiness.shownTo(plan, viewer, { involved: true }) || planBusiness.runsPlan(plan, viewer)) return false;
@@ -1015,6 +1096,23 @@ async function isInvolved(plan, viewer) {
     .eq('post_id', plan.post_id).eq('user_id', viewer.id).in('status', statuses).limit(1);
   if (error) throw new Error(`Failed to load your request: ${error.message}`);
   return Boolean(data && data.length);
+}
+
+/**
+ * Is this viewer part of this private plan: its host, someone invited (an invitation not taken back; one answered
+ * "can't make it" still counts, so they can change their mind), or someone in or waiting? Someone the host said no
+ * to or removed is not: their invitations ended with it (planInvites.cancelForPerson).
+ */
+async function isPartOfPrivatePlan(plan, viewer) {
+  if (String(plan.host_user_id) === String(viewer.id)) return true;
+  const [invite, request] = await Promise.all([
+    supabaseAdmin.from('PlanInvite').select('id').eq('post_id', plan.post_id).eq('invitee_user_id', viewer.id)
+      .in('status', ['pending', 'accepted', 'declined']).limit(1),
+    supabaseAdmin.from('PlanRequest').select('id').eq('post_id', plan.post_id).eq('user_id', viewer.id)
+      .in('status', ACTIVE_REQUEST_STATUSES).limit(1),
+  ]);
+  if (invite.error || request.error) throw new Error(`Failed to check the plan: ${(invite.error || request.error).message}`);
+  return Boolean((invite.data && invite.data.length) || (request.data && request.data.length));
 }
 
 const BUSINESS_PAGE_PLANS = 20;
@@ -1066,6 +1164,7 @@ module.exports = {
   USER_COLUMNS,
   ACTIVE_REQUEST_STATUSES,
   OPEN_REQUEST_STATUSES,
+  NO_NAME,
   displayName,
   hostName,
   hostAvatar,
@@ -1099,6 +1198,7 @@ module.exports = {
   listMine,
   getForViewer,
   queryOpenPlansInBox,
+  ownPrivatePlans,
   windowMatches,
   boundingBox,
   soonestFirst,

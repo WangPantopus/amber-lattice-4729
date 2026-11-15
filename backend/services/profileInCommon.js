@@ -115,7 +115,8 @@ async function plansInCommon(viewerUser, targetId) {
   return rows
     .filter((plan) => plan.status === 'open'
       && new Date(planService.endsAt(plan) || 0).getTime() > now
-      && planService.isVisibleTo(plan, viewer))
+      // Both of them are in it (hosting or accepted), which is what a private plan asks for.
+      && planService.isVisibleTo(plan, viewer, { involved: plan.audience === 'invited' }))
     .sort((a, b) => new Date(planService.startsAt(a)) - new Date(planService.startsAt(b)))
     .slice(0, MAX_PLANS)
     .map((plan) => ({

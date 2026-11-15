@@ -43,9 +43,12 @@ const planInvites = require('../services/plans/planInvites');
 router.get('/plans/:id', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const plan = await publicPlan(req.params.id);
+    const token = typeof req.query.invite === 'string' ? req.query.invite : null;
+    const plan = await publicPlan(req.params.id, { inviteToken: token });
     if (!plan) return res.status(404).json({ error: 'not_found', message: "This plan isn't available." });
-    const invite = typeof req.query.invite === 'string' ? await planInvites.publicInvite(req.params.id, req.query.invite) : null;
+    // A private plan without a live invitation: the page says it is private, and nothing else is read or counted.
+    if (plan.private && !plan.kind) return res.json({ private: true });
+    const invite = token ? await planInvites.publicInvite(req.params.id, token) : null;
     recordFunnelEvent('plan_share_opened', { meta: { plan_id: req.params.id, kind: plan.kind, ...(invite ? { invite: invite.channel } : {}) } });
     return res.json(invite ? { ...plan, invite } : plan);
   } catch (err) {

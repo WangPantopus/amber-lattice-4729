@@ -568,7 +568,7 @@ async function hostSummaryLetter({ plan, comingCount, spotsLeft, requestsCount, 
 
 // How a rule let someone in, as the host set it (who gets in), or the host's own invitation.
 const RULE_TEXT = {
-  verified: 'Verified neighbor',
+  verified: 'Verified address',
   hosted_before: "You've hosted them before",
   anyone_nearby: 'Anyone nearby can join',
   invite: 'You invited them',

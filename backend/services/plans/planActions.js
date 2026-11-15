@@ -133,8 +133,8 @@ async function userNames(userIds) {
 
 function firstOf(name) {
   const text = String(name || '').trim();
-  // Someone with no name is "A neighbor" (planService.displayName): kept whole, never "A asked to join…".
-  return !text || text === 'A neighbor' ? 'A neighbor' : text.split(' ')[0];
+  // Someone with no name is "Someone" (planService.displayName): kept whole, never "S asked to join…".
+  return !text || text === planService.NO_NAME ? planService.NO_NAME : text.split(' ')[0];
 }
 
 function partyLabel(name, partySize) {
@@ -151,13 +151,15 @@ async function planBodyFor(postId, viewer) {
 
 // ── Validation ───────────────────────────────────────────────
 
-function validateTimes(startsAt, endsAt, { allowPastStart = false, maxDaysAhead = rules.LIMITS.maxDaysAhead } = {}) {
+function validateTimes(startsAt, endsAt, { allowPastStart = false, maxDaysAhead = rules.LIMITS.maxDaysAhead, isPrivate = false } = {}) {
   const start = new Date(startsAt).getTime();
   const end = new Date(endsAt).getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end)) fail(422, 'validation', 'Choose when the plan starts and ends.');
   const now = Date.now();
   if (!allowPastStart && start < now - rules.LIMITS.startGraceMinutes * 60 * 1000) fail(422, 'validation', "A plan can't start in the past.");
-  if (start > now + maxDaysAhead * 24 * 60 * 60 * 1000) fail(422, 'validation', `Plans can start up to ${maxDaysAhead} days ahead.`);
+  if (start > now + maxDaysAhead * 24 * 60 * 60 * 1000) {
+    fail(422, 'validation', `${isPrivate ? 'Private plans' : 'Plans'} can start up to ${maxDaysAhead} days ahead.`);
+  }
   const minutes = (end - start) / 60000;
   if (minutes < rules.LIMITS.minDurationMinutes) fail(422, 'validation', 'A plan lasts at least 15 minutes.');
   if (minutes > rules.LIMITS.maxDurationMinutes) fail(422, 'validation', 'A plan lasts at most 8 hours.');
@@ -339,20 +341,37 @@ function assertHostNear(viewer, place) {
   fail(403, 'not_near', 'You can host within 3 miles of where you live or where you are now.');
 }
 
-async function assertHostLimits(userId) {
+/** A host's limits. Public and private plans are counted apart: a dinner with friends never uses a public slot. */
+async function assertHostLimits(userId, { isPrivate = false } = {}) {
+  const audience = isPrivate ? 'invited' : 'nearby';
+  const limits = isPrivate ? rules.PRIVATE_LIMITS : rules.LIMITS;
   const [upcoming, today] = await Promise.all([
     supabaseAdmin.from('Plan').select('post_id, post:Post!inner(event_end_date)', { count: 'exact', head: true })
-      .eq('host_user_id', userId).eq('status', 'open').gt('post.event_end_date', nowIso()),
+      .eq('host_user_id', userId).eq('audience', audience).eq('status', 'open').gt('post.event_end_date', nowIso()),
     supabaseAdmin.from('Plan').select('post_id', { count: 'exact', head: true })
-      .eq('host_user_id', userId).gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      .eq('host_user_id', userId).eq('audience', audience).gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
   ]);
   if (upcoming.error || today.error) throw new Error(`Failed to count plans: ${(upcoming.error || today.error).message}`);
-  if ((upcoming.count || 0) >= rules.LIMITS.upcomingPlansPerHost) {
-    fail(429, 'too_many_plans', 'You can host 3 upcoming plans at a time.');
+  if ((upcoming.count || 0) >= limits.upcomingPlansPerHost) {
+    fail(429, 'too_many_plans', isPrivate
+      ? `You can host ${limits.upcomingPlansPerHost} upcoming private plans at a time.`
+      : 'You can host 3 upcoming plans at a time.');
   }
-  if ((today.count || 0) >= rules.LIMITS.newPlansPerDay) {
-    fail(429, 'too_many_plans', 'You can post 5 plans a day.');
+  if ((today.count || 0) >= limits.newPlansPerDay) {
+    fail(429, 'too_many_plans', isPrivate ? `You can post ${limits.newPlansPerDay} private plans a day.` : 'You can post 5 plans a day.');
   }
+}
+
+/**
+ * Who the plan is for, from the body: people nearby (the default), or only the people the host invites. A private
+ * plan needs its switch and invitations, and is never a business's.
+ */
+function checkedAudience(viewer, input, hostAs) {
+  const audience = oneOf(input.audience, rules.AUDIENCES, 'who can see the plan') || 'nearby';
+  if (audience !== 'invited') return 'nearby';
+  if (hostAs) fail(422, 'validation', "A business's plan can't be private.");
+  if (!viewer.privateFlag) fail(422, 'private_unavailable', "Private plans aren't available yet.");
+  return 'invited';
 }
 
 // ── Create ───────────────────────────────────────────────────
@@ -366,20 +385,26 @@ async function checkedPlanInput(viewer, input) {
   const hostAs = input.host_as != null ? await planBusiness.checkedHostAs(viewer, input) : null;
   if (!hostAs && kind === 'playdate' && !viewer.playdatesFlag) fail(404, 'not_found', "Playdates aren't available yet.");
 
+  const audience = checkedAudience(viewer, input, hostAs);
+  const isPrivate = audience === 'invited';
   const title = cleanTitle(input.title);
   const about = cleanText(input.about, 500, 'About') || '';
   const guestNote = cleanText(input.guest_note, 500, 'The note');
-  validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead } : {});
+  validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead }
+    : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
   const spots = Number(input.spots);
   if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
   // A business's plan is at one of its own locations: no home guard and no 3-mile rule.
   const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place);
-  if (!hostAs) assertHostNear(viewer, place);
-  const autoRules = hostAs ? hostAs.autoRules : normalizeAutoRules(kind, place.kind, input.auto_rules);
+  // A private plan may be anywhere: the 3-mile rule keeps the public map honest, and this one isn't on it.
+  if (!hostAs && !isPrivate) assertHostNear(viewer, place);
+  // The people invited to a private plan get in by their invitation: it has no rules of its own.
+  const autoRules = hostAs ? hostAs.autoRules : isPrivate ? [] : normalizeAutoRules(kind, place.kind, input.auto_rules);
   // Since November 7 no plan asks for a verified address, whatever this says (askEligibility). A playdate keeps
   // 'verified' because the table's plan_playdate_rules check requires it of a neighbor's.
-  const joinRequirement = hostAs ? 'located' : kind === 'playdate' ? 'verified'
+  const joinRequirement = hostAs ? 'located' : kind === 'playdate' ? 'verified' : isPrivate ? 'located'
     : (oneOf(input.join_requirement, ['located', 'verified'], 'who can ask') || 'located');
+  const guestsCanInvite = isPrivate && bool(input.guests_can_invite, 'Guests can bring a friend') === true;
   const resolvedGame = viewer.sportsFlag && kind === 'watch_party'
     ? await require('./planGames').resolveGame(input.details?.game?.id, input.details?.game?.team) : null;
   if (viewer.sportsFlag && kind === 'watch_party' && /^(tsdb|cfbd):/.test(input.details?.game?.id || '') && !resolvedGame) {
@@ -387,8 +412,8 @@ async function checkedPlanInput(viewer, input) {
   }
   const details = normalizeDetails(kind, input.details, resolvedGame);
   if (hostAs) await planBusiness.assertBusinessLimits(hostAs.business.id);
-  else await assertHostLimits(viewer.id);
-  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs };
+  else await assertHostLimits(viewer.id, { isPrivate });
+  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite };
 }
 
 /**
@@ -435,7 +460,9 @@ async function createPlan(user, input) {
   // after them, once the person is known to post for that business.
   const repeat = input.host_as == null ? await recentSamePlan(viewer.id, input) : null;
   if (repeat) return planBodyFor(repeat, viewer);
-  const { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs } = await checkedPlanInput(viewer, input);
+  const {
+    kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite,
+  } = await checkedPlanInput(viewer, input);
   // The host: the person, or the business they post for. The business's own account is the plan's host and its
   // post's author, so nothing a guest reads names the staff member (who is kept in posted_by_user_id).
   const hostId = hostAs ? hostAs.business.id : viewer.id;
@@ -498,6 +525,8 @@ async function createPlan(user, input) {
       label: hostAs.label,
       guests_can_invite: hostAs.guestsCanInvite,
     } : {}),
+    audience,
+    ...(audience === 'invited' ? { guests_can_invite: guestsCanInvite } : {}),
     kind,
     spots,
     auto_rules: autoRules,
@@ -521,7 +550,9 @@ async function createPlan(user, input) {
     throw new Error(`Failed to save the plan: ${planError.message}`);
   }
 
-  recordFunnelEvent('plan_created', { userId: viewer.id, meta: { plan_id: post.id, kind, ...(hostAs ? { business: true } : {}) } });
+  recordFunnelEvent('plan_created', { userId: viewer.id, meta: {
+    plan_id: post.id, kind, ...(hostAs ? { business: true } : {}), ...(audience === 'invited' ? { private: true } : {}),
+  } });
   if (hostAs) {
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
     return planBodyFor(post.id, viewer);
@@ -531,7 +562,19 @@ async function createPlan(user, input) {
       .eq('post_id', input.hosted_again_from).eq('host_user_id', viewer.id).maybeSingle();
     if (earlier) recordFunnelEvent('plan_hosted_again', { userId: viewer.id, meta: { plan_id: post.id, from_plan_id: earlier.post_id, kind } });
   }
-  return planBodyFor(post.id, viewer);
+  // A private plan's first invitations go out as it is posted (the preview's "Post and invite 2"). The plan is
+  // posted either way; what happened to each invitation rides along on the answer, so the app can say.
+  const inviteIds = audience === 'invited' && Array.isArray(input.invite_user_ids) ? input.invite_user_ids.slice(0, 30) : [];
+  if (inviteIds.length === 0) return planBodyFor(post.id, viewer);
+  let invited;
+  try {
+    const sent = await planInvites.createInvites(user, post.id, { user_ids: inviteIds, confirm_shares_address: true });
+    invited = { invite_results: sent.results };
+  } catch (err) {
+    logger.warn('plans.create.invites_failed', { planId: post.id, error: err.message });
+    invited = { invite_results: [], invite_error: err instanceof PlanError ? err.message : "We couldn't send the invitations. Invite them from the plan." };
+  }
+  return { ...(await planBodyFor(post.id, viewer)), ...invited };
 }
 
 // Schedule cards are snapshots. A later provider update or host edit requires
@@ -569,6 +612,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const planUpdate = {};
   let timeMoved = false;
   let placeChanged = false;
+  const isPrivate = rules.isPrivate(plan);
+  // Making a private plan public would put it on the map for people it was never meant for, and making a public
+  // one private would drop the people already asking: who a plan is for is set when it is posted.
+  if (patch.audience !== undefined && patch.audience !== (isPrivate ? 'invited' : 'nearby')) {
+    fail(422, 'audience_fixed', 'Who can see a plan can’t change after it’s posted.');
+  }
 
   if (patch.title !== undefined) postUpdate.title = cleanTitle(patch.title);
   if (patch.about !== undefined) postUpdate.content = cleanText(patch.about, 500, 'About') || '';
@@ -581,6 +630,7 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     validateTimes(startsAt, endsAt, {
       allowPastStart: state === 'live' && !startChanged,
       ...(plan.business_user_id ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead } : {}),
+      ...(isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {}),
     });
     postUpdate.event_date = new Date(startsAt).toISOString();
     postUpdate.event_end_date = new Date(endsAt).toISOString();
@@ -598,7 +648,7 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     const place = movingBusiness
       ? await planBusiness.placeAt(plan.business, patch.business_location_id)
       : resolvePlace(viewer, plan.kind, patch.place, { moving: true });
-    if (!movingBusiness) assertHostNear(viewer, place);
+    if (!movingBusiness && !isPrivate) assertHostNear(viewer, place);
     placeKind = place.kind;
     placeChanged = place.kind !== plan.place_kind
       || String(place.home_id || '') !== String(plan.place_home_id || '')
@@ -646,10 +696,14 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (patch.guests_can_invite !== undefined) {
       planUpdate.guests_can_invite = planBusiness.checkedGuestsCanInvite(patch.guests_can_invite) === true;
     }
+  } else if (isPrivate) {
+    if (patch.guests_can_invite !== undefined) {
+      planUpdate.guests_can_invite = bool(patch.guests_can_invite, 'Guests can bring a friend') === true;
+    }
   } else if (patch.auto_rules !== undefined || patch.place !== undefined) {
     planUpdate.auto_rules = normalizeAutoRules(plan.kind, placeKind, patch.auto_rules !== undefined ? patch.auto_rules : plan.auto_rules);
   }
-  if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id) {
+  if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id && !isPrivate) {
     planUpdate.join_requirement = oneOf(patch.join_requirement, ['located', 'verified'], 'who can ask');
   }
   if (patch.details !== undefined) {
@@ -1129,7 +1183,7 @@ async function listRequests(user, postId) {
       id: r.id,
       user: {
         user_id: id,
-        display_name: forBusiness ? firstOf(names.get(id)) : names.get(id) || 'A neighbor',
+        display_name: forBusiness ? firstOf(names.get(id)) : names.get(id) || planService.NO_NAME,
         avatar_url: planService.avatarUrl(planService.withLocalAvatar(row || { id }, people)),
         verified_address: forBusiness ? false : verified.has(id),
         distance_band: forBusiness ? null : r.distance_band || null,
