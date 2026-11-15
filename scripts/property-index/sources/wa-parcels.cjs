@@ -3,7 +3,8 @@
 // the Department of Revenue's land use code, and the assessor's land and building values (Washington assesses at 100% of
 // market value). "For informational purposes only", no use limit (read November 7, 2026). The Geoportal's file geodatabase
 // is read; it holds no owner columns. King, Snohomish and Spokane limit their own files, so their rows here wait until
-// someone asks whether the state's copy is different; Clark, Pierce, Skagit, Kitsap and Walla Walla keep their own connectors, which have building facts.
+// someone asks whether the state's copy is different; Clark, Pierce, Skagit, Kitsap and Walla Walla keep their own connectors, which have building facts,
+// and Mason's (wa-mason) adds its Assessor's building facts to this file's records through countyParcels.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,8 +26,8 @@ const NAMES = {
   '041': 'Lewis', '043': 'Lincoln', '045': 'Mason', '047': 'Okanogan', '049': 'Pacific', '051': 'Pend Oreille', '053': 'Pierce', '055': 'San Juan', '057': 'Skagit', '059': 'Skamania',
   '061': 'Snohomish', '063': 'Spokane', '065': 'Stevens', '067': 'Thurston', '069': 'Wahkiakum', '071': 'Walla Walla', '073': 'Whatcom', '075': 'Whitman', '077': 'Yakima',
 };
-// Clark, Pierce, Skagit, Kitsap and Walla Walla have their own connectors; King, Snohomish and Spokane wait for an answer about their terms.
-const SKIPPED = new Set(['53011', '53053', '53057', '53035', '53071', '53033', '53061', '53063']);
+// Clark, Pierce, Skagit, Kitsap, Walla Walla and Mason have their own connectors; King, Snohomish and Spokane wait for an answer about their terms.
+const SKIPPED = new Set(['53011', '53053', '53057', '53035', '53071', '53045', '53033', '53061', '53063']);
 
 // The Department of Revenue's land use codes: 11 single-family homes, 12 two to four units, 13 five or more, 14 condominiums,
 // 18 other residential, 19 vacation homes and cabins, 91 undeveloped land.
@@ -78,9 +79,8 @@ function geodatabase(folder) {
   return null;
 }
 
-async function* build({ work, compare = null }) {
-  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
-  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+/** The Geoportal's file read once: each wanted county's records by FIPS, with the file's date. */
+async function readCounties(work, wanted) {
   const about = await (await fetch(ITEM, { signal: AbortSignal.timeout(60000) })).json();
   if (!about.modified) throw new Error('The Geoportal\'s item no longer says when it changed');
   const asOf = new Date(about.modified).toISOString().slice(0, 10);
@@ -101,7 +101,7 @@ async function* build({ work, compare = null }) {
     const named = String(row.COUNTY_NM ?? '').trim();
     const code = String(row.FIPS_NR ?? '').trim() || (/^\d{1,3}$/.test(named) ? named : '');
     const fips = `53${code.slice(-3).padStart(3, '0')}`;
-    if (!/^53\d{3}$/.test(fips) || (SKIPPED.has(fips) && !compare) || (only.length && !only.includes(fips))) continue;
+    if (!/^53\d{3}$/.test(fips) || !wanted(fips)) continue;
     if (!NAMES[fips.slice(2)]) continue;
     if (!counties.has(fips)) counties.set(fips, { name: `${NAMES[fips.slice(2)]} County`, records: new Map(), noAddress: 0 });
     const county = counties.get(fips);
@@ -110,16 +110,38 @@ async function* build({ work, compare = null }) {
     else if (!county.records.has(record.id)) county.records.set(record.id, record);
   }
   fs.rmSync(dir, { recursive: true, force: true });
-  for (const [fips, { name, records: byId, noAddress }] of [...counties].sort()) {
-    const records = [...byId.values()];
-    log(`${name}: ${records.length} records, ${noAddress} without a street number`);
-    if (!records.length) continue;
-    for (const building of condoBuildings(records, { fips, county: name })) records.push(building);
-    yield {
-      fips, state: 'WA', name, publisher: `${name} Assessor, through the Washington State Geoportal (WaTech)`, dataset: 'Current Parcels', method: 'state', source: 'wa-parcels', title: 'State records', as_of: asOf, stale_after_days: 450, records,
-    };
+  return { asOf, counties };
+}
+
+/** One county's entry, or null when none of its rows has a street number. */
+function entryOf(fips, { name, records: byId, noAddress }, asOf) {
+  const records = [...byId.values()];
+  log(`${name}: ${records.length} records, ${noAddress} without a street number`);
+  if (!records.length) return null;
+  for (const building of condoBuildings(records, { fips, county: name })) records.push(building);
+  return {
+    fips, state: 'WA', name, publisher: `${name} Assessor, through the Washington State Geoportal (WaTech)`, dataset: 'Current Parcels', method: 'state', source: 'wa-parcels', title: 'State records', as_of: asOf, stale_after_days: 450, records,
+  };
+}
+
+async function* build({ work, compare = null }) {
+  // A county build comparing its own record with this file (lib/agreement.cjs) asks for counties it otherwise leaves out.
+  const only = compare || (process.env.PROPERTY_INDEX_ONLY || '').split(',').filter(Boolean);
+  const { asOf, counties } = await readCounties(work, (fips) => !(SKIPPED.has(fips) && !compare) && !(only.length && !only.includes(fips)));
+  for (const [fips, county] of [...counties].sort()) {
+    const entry = entryOf(fips, county, asOf);
+    if (!entry) continue;
+    yield entry;
     counties.set(fips, null);
   }
 }
 
-module.exports = { build };
+/** One county's entry from the state's file, for a connector that adds the county's own facts to it (as mn-parcels' countyParcels). */
+async function countyParcels(work, fips) {
+  const { asOf, counties } = await readCounties(work, (code) => code === fips);
+  const entry = counties.has(fips) ? entryOf(fips, counties.get(fips), asOf) : null;
+  if (!entry) throw new Error(`The Geoportal's file has no records with a street number for ${fips}`);
+  return entry;
+}
+
+module.exports = { build, countyParcels };
