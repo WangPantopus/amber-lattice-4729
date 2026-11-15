@@ -63,3 +63,39 @@ export type AreaToday = PlaceIntelligence & {
 export async function getAreaToday(point: { latitude: number; longitude: number }) {
   return post<AreaToday>('/api/saved-places/area/today', { latitude: point.latitude, longitude: point.longitude });
 }
+
+/** One line on Today's "Around you" half: an outlet's own headline and where to read it. */
+export interface AroundYouItem {
+  id: string;
+  title: string;
+  /** Who published it ("The Columbian"); null when unknown. */
+  source: string | null;
+  /** The story at its outlet; null for a tip that is its own text. */
+  url: string | null;
+  /** When Pantopus first saw it (ISO). */
+  seen_at: string;
+}
+
+export interface AroundYouSection {
+  id: string;
+  title: string;
+  items: AroundYouItem[];
+}
+
+/** Today's second half. `available` false: show no switch (the feature is off, or the area has nothing to show). */
+export interface AroundYou {
+  available: boolean;
+  /** The content region's name ("Clark County, WA"); null when unavailable. */
+  area: string | null;
+  sections: AroundYouSection[];
+}
+
+/** POST /api/saved-places/area/around: Around you for the city around a point (rounded here and again on the server; nothing is stored). */
+export async function getAreaAround(point: { latitude: number; longitude: number }) {
+  return post<AroundYou>('/api/saved-places/area/around', { latitude: point.latitude, longitude: point.longitude });
+}
+
+/** GET /api/saved-places/:id/around: Around you for a saved address. */
+export async function getSavedPlaceAround(id: string) {
+  return get<AroundYou>(`/api/saved-places/${id}/around`);
+}

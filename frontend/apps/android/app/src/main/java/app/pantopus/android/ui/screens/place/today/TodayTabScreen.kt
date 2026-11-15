@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -152,6 +153,14 @@ fun TodayTabScreen(
     val plansViewModel: PlansTodayViewModel? = plans?.let { hiltViewModel() }
     val plansUi = plansViewModel?.ui?.collectAsStateWithLifecycle()?.value
     val scroll = rememberScrollState()
+    // Around you (2026-11-14): Today's second half for the place shown. Without something to show there is no switch,
+    // and Today is the page it was.
+    val around by viewModel.around.collectAsStateWithLifecycle()
+    val aroundPlace = state.aroundPlace
+    LaunchedEffect(aroundPlace) { viewModel.readAround(aroundPlace) }
+    var half by rememberSaveable { mutableStateOf(TodayHalf.Home) }
+    val aroundPage = around?.takeIf { it.showsSwitch && aroundPlace != null }
+    val showsAround = half == TodayHalf.Around && aroundPage != null
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { scroll.animateScrollTo(0) } }
     LaunchedEffect(radonHomeId, state) {
         val shown = state
@@ -179,6 +188,7 @@ fun TodayTabScreen(
     val pullAll = {
         viewModel.pull()
         needsYou.pull()
+        viewModel.readAround(aroundPlace)
     }
     // Pull to refresh, like iOS's Today tab (`.refreshable`): it always reads now, with the pull indicator
     // over the content instead of placeholders. The indicator shows only for a pull, not the first load.
@@ -189,7 +199,7 @@ fun TodayTabScreen(
     // The day scrolls under the title, which slides away while it scrolls down and comes back near the top (founder
     // request 2026-11-07, as on iPhone).
     ScrollAwayHeaderLayout(
-        header = { TodayHeader(placeNow, state, onOpenMenu) },
+        header = { TodayHeader(placeNow, state, onOpenMenu, half.takeIf { aroundPage != null }) { half = it } },
         modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("todayTab"),
     ) { top ->
         PullToRefreshUnderHeader(
@@ -209,6 +219,10 @@ fun TodayTabScreen(
                     modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp),
                     topGap = 0.dp,
                 )
+            }
+            if (showsAround && aroundPage != null) {
+                TodayAroundYouPage(aroundPage, top = top, nowMs = nowMs)
+                return@PullToRefreshUnderHeader
             }
             when (val current = state) {
                 TodayTabUiState.Loading -> TodayPlaceholders(Modifier.padding(top = top))
@@ -325,9 +339,26 @@ private fun TodayHeader(
     placeNow: ZonedDateTime,
     state: TodayTabUiState,
     onOpenMenu: (() -> Unit)?,
+    /** At home | Around you, only where there is something around to show (null: no switch). */
+    half: TodayHalf? = null,
+    onHalf: (TodayHalf) -> Unit = {},
+) {
+    Column(modifier = Modifier.padding(top = 10.dp, bottom = 10.dp)) {
+        TodayTitleRow(placeNow, state, onOpenMenu)
+        if (half != null) {
+            TodayHalfSwitch(half, onHalf, Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp))
+        }
+    }
+}
+
+@Composable
+private fun TodayTitleRow(
+    placeNow: ZonedDateTime,
+    state: TodayTabUiState,
+    onOpenMenu: (() -> Unit)?,
 ) {
     // ☰ first, the chat button last (founder decisions 2026-10-20 and 2026-11-08).
-    Row(modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
+    Row(modifier = Modifier.padding(start = 4.dp, end = 6.dp)) {
         onOpenMenu?.let { NavigationMenuButton(onClick = it, testTag = "today.menu", modifier = Modifier.offset(y = (-10).dp)) }
         Column(modifier = Modifier.weight(1f).padding(start = if (onOpenMenu != null) 2.dp else 14.dp)) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

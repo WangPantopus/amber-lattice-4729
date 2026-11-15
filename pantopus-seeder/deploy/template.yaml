@@ -25,7 +25,12 @@ Parameters:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Enable local content fetching, posting and region discovery. Requires curator credentials and seeded regions; excludes national sports.
+    Description: Enable local content fetching and region discovery (and, with SeederPostingEnabled, posting). Requires curator credentials and seeded regions; excludes national sports.
+  SeederPostingEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Let the curator account post fetched items to Pulse. Off since 2026-11-14 - local news shows on Today's "Around you" straight from the fetched list (backend AROUND_YOU), so fetching stays on and posting stays off. Requires SeederEnabled or SchedulesEnabled.
   HomeRemindersEnabled:
     Type: String
     Default: 'false'
@@ -103,6 +108,9 @@ Conditions:
   RunSeeder: !Or
     - !Equals [!Ref SchedulesEnabled, 'true']
     - !Equals [!Ref SeederEnabled, 'true']
+  RunSeederPosting: !And
+    - !Condition RunSeeder
+    - !Equals [!Ref SeederPostingEnabled, 'true']
   RunHomeReminders: !Or
     - !Equals [!Ref SchedulesEnabled, 'true']
     - !Equals [!Ref HomeRemindersEnabled, 'true']
@@ -461,7 +469,7 @@ Resources:
             # The handler selects 7 AM/noon/5 PM independently per region.
             Schedule: cron(0 * * * ? *)
             Description: !Sub 'Hourly during posting windows [${Environment}]'
-            State: !If [RunSeeder, ENABLED, DISABLED]
+            State: !If [RunSeederPosting, ENABLED, DISABLED]
       Policies:
         - Statement:
             - Effect: Allow
@@ -1205,7 +1213,7 @@ Resources:
     Properties:
       AlarmName: !Sub pantopus-seeder-poster-missing-runs-${Environment}
       AlarmDescription: 'No scheduled invocation in the expected window. Check schedule state, invocation permissions, throttles and Lambda logs.'
-      ActionsEnabled: !If [RunSeeder, true, false]
+      ActionsEnabled: !If [RunSeederPosting, true, false]
       Namespace: AWS/Lambda
       MetricName: Invocations
       Dimensions:

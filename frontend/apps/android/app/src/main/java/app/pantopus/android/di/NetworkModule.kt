@@ -16,6 +16,7 @@ import app.pantopus.android.data.api.net.UtcTimestampInterceptor
 import app.pantopus.android.data.api.services.AIApi
 import app.pantopus.android.data.api.services.AccountDeletionApi
 import app.pantopus.android.data.api.services.AdminApi
+import app.pantopus.android.data.api.services.AroundYouApi
 import app.pantopus.android.data.api.services.AudienceProfileApi
 import app.pantopus.android.data.api.services.AuthApi
 import app.pantopus.android.data.api.services.BeaconProfileApi
@@ -599,6 +600,9 @@ object NetworkModule {
 
     @Provides @Singleton
     fun provideSavedPlacesApi(retrofit: Retrofit): SavedPlacesApi = retrofit.create(SavedPlacesApi::class.java)
+
+    @Provides @Singleton
+    fun provideAroundYouApi(retrofit: Retrofit): AroundYouApi = retrofit.create(AroundYouApi::class.java)
 
     @Provides @Singleton
     fun provideBlocksApi(retrofit: Retrofit): BlocksApi = retrofit.create(BlocksApi::class.java)

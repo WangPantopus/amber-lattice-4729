@@ -46,5 +46,7 @@ resolve_s3 = true
 # Matches production after the founder-approved Mailbox activation on 2026-11-06.
 # Preserve the existing capacity monitoring and backend instance on later deploys.
 # Sports and no-bid remain off; all other launch-cut features keep their own flags.
+# SeederPostingEnabled is left at its default (false) since 2026-11-14: the fetcher keeps filling the list that
+# Today's "Around you" reads, and the curator account no longer posts to Pulse.
 parameter_overrides = "Environment=production SchedulesEnabled=false BriefingsEnabled=true SeederEnabled=true HomeRemindersEnabled=true AlertsEnabled=true MailEnabled=true MaintenanceJobsEnabled=true PaymentJobsEnabled=true HealthMonitoringEnabled=true CapacityMonitoringEnabled=true BackendInstanceId=i-0e2c5c6441718bc4c"
 disable_rollback = false
