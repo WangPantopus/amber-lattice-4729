@@ -115,6 +115,10 @@ struct HolidayCardEnvelopePiece: View {
                     .resizable()
                     .scaledToFill()
                     .clipped()
+                    // Filled past the envelope's edges, it's clipped only where it's drawn: untouchable, it no
+                    // longer takes the taps meant for what lies just above or below (Sent's Email it again).
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         } else {
             CardGrain(color: .white.opacity(0.05))

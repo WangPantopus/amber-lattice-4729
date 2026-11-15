@@ -560,6 +560,11 @@ public struct TakeBackHolidayCardResponse: Decodable, Sendable, Hashable {
     }
 }
 
+/// `POST /api/mailbox/cards/:id/email-again` → 200.
+public struct EmailAgainHolidayCardResponse: Decodable, Sendable, Hashable {
+    public let emailed: Bool
+}
+
 /// `POST /api/mailbox/cards/preview` → 200: what the other person will see,
 /// before anything is stored or sent. The card as their Mailbox will show
 /// it, when it comes and opens by their clock, and for an email address the
