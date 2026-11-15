@@ -172,6 +172,8 @@ export type PublicPlan = {
   place?: { name: string; address: string | null } | null;
   /** A business's plan: null is Free. */
   price?: PublicPlanPrice | null;
+  /** A repeating plan: how often ("Every Tue and Thu") and its last date (YYYY-MM-DD). */
+  repeat?: { text: string; short: string; last_on: string } | null;
   /** A private plan. Without a live invitation in the link this is the only key, and there is no card to show. */
   private?: boolean;
 };

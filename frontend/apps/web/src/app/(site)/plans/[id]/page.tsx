@@ -180,6 +180,16 @@ function MiniMap({ kind, placeName = null }: { kind: Kind; placeName?: string | 
   );
 }
 
+/** A repeating plan's line: "Every Tue and Thu until Feb 4". Null when it doesn't repeat or the plan is over. */
+function repeatText(plan: PublicPlan): string | null {
+  if (!plan.repeat?.short || plan.state === 'cancelled' || plan.state === 'ended') return null;
+  const last = /^\d{4}-\d{2}-\d{2}$/.test(plan.repeat.last_on || '') ? new Date(`${plan.repeat.last_on}T12:00:00Z`) : null;
+  const until = last
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(last)
+    : null;
+  return until ? `${plan.repeat.short} until ${until}` : plan.repeat.short;
+}
+
 /** "Private": only the people the host invites can see this plan. */
 function PrivateChip() {
   return (
@@ -743,6 +753,9 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
                   <p className="text-sm leading-5 text-app-text-strong [font-variant-numeric:tabular-nums]">
                     {[when, whereText(plan)].filter(Boolean).join(' · ')}
                   </p>
+                  {repeatText(plan) ? (
+                    <p className="text-sm leading-5 text-app-text-secondary [font-variant-numeric:tabular-nums]">{repeatText(plan)}</p>
+                  ) : null}
                   <div className="flex items-center gap-[10px]">
                     <HostAvatar name={hostName} avatarUrl={plan.host?.avatar_url ?? null} />
                     <span className="flex flex-wrap items-center gap-x-2 text-sm leading-5">
