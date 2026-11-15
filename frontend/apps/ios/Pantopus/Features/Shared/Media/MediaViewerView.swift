@@ -12,10 +12,25 @@ import AVKit
 import PDFKit
 import SwiftUI
 
+/// The picture a viewer is on, kept by the screen that presents the viewer (`PostPresentationHost`). A fold or a turn
+/// of the iPhone Duo lays the viewer's pages out again, or makes the viewer anew, and either put it back on the
+/// picture it opened on; with this it stays on the one the reader paged to.
+@MainActor
+final class MediaViewerPage {
+    var index: Int
+
+    init(_ index: Int) {
+        self.index = index
+    }
+}
+
 /// Full-screen, horizontally paged gallery over a post's media.
 public struct MediaViewerView: View {
     private let items: [PostMediaItem]
+    private let page: MediaViewerPage?
     @State private var selection: Int
+    /// When the reader last dragged sideways: a page that turns just after is theirs (`KeepsReadersPage`).
+    @State private var pagedAt = Date.distantPast
     /// How far the media has been pulled down: past a short pull the viewer
     /// closes (founder request 2026-10-29). 0 at rest.
     @State private var pullDown: CGFloat = 0
@@ -33,7 +48,15 @@ public struct MediaViewerView: View {
 
     public init(items: [PostMediaItem], startIndex: Int = 0) {
         self.items = items
+        page = nil
         _selection = State(initialValue: min(max(0, startIndex), max(0, items.count - 1)))
+    }
+
+    /// A viewer whose presenter keeps the reader's page (`MediaViewerPage`).
+    init(items: [PostMediaItem], page: MediaViewerPage) {
+        self.items = items
+        self.page = page
+        _selection = State(initialValue: min(max(0, page.index), max(0, items.count - 1)))
     }
 
     public var body: some View {
@@ -62,6 +85,7 @@ public struct MediaViewerView: View {
         .statusBarHidden()
         .accessibilityAction(.escape) { dismiss() }
         .accessibilityIdentifier("mediaViewer")
+        .modifier(KeepsReadersPage(page: page, selection: $selection, pagedAt: pagedAt))
         .onReceive(NotificationCenter.default.publisher(for: ChatLocalStore.historyRetired)) { _ in
             if items.contains(where: { ChatMediaURL.isChatFile($0.url) }) { dismiss() }
         }
@@ -121,6 +145,8 @@ public struct MediaViewerView: View {
             }
             .onEnded { value in
                 defer { pullAxis = .undecided }
+                // A sideways drag turns the page as it ends.
+                if pullAxis == .horizontal { pagedAt = Date() }
                 guard pullAxis == .vertical, closesOnPull else { return }
                 if value.translation.height > 120 || value.predictedEndTranslation.height > 260 {
                     dismiss()
@@ -318,5 +344,39 @@ private struct PostPDFView: UIViewRepresentable {
 
     func updateUIView(_ view: PDFView, context _: Context) {
         if view.document !== document { view.document = document }
+    }
+}
+
+/// Keeps the viewer on the picture the reader paged to through a fold or a turn of the iPhone Duo. The paging view
+/// goes back to the picture it opened on when it is laid out again at another size. A page the reader turned comes
+/// with a sideways drag; one that turns with no drag is the layout's doing, and the reader's page is put back.
+private struct KeepsReadersPage: ViewModifier {
+    let page: MediaViewerPage?
+    @Binding var selection: Int
+    let pagedAt: Date
+    /// VoiceOver turns pages with its own gestures, which are not drags: there every page turn is the reader's.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+
+    /// How long after a sideways drag ends its page turn can still arrive.
+    private static let afterDrag: TimeInterval = 1.5
+
+    func body(content: Content) -> some View {
+        if let page {
+            content
+                .onChange(of: selection) { _, now in
+                    guard now != page.index else { return }
+                    if voiceOverEnabled || Date().timeIntervalSince(pagedAt) < Self.afterDrag {
+                        page.index = now
+                    } else {
+                        // After this update: the paging view is still settling on its new size.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(50))
+                            if selection != page.index { selection = page.index }
+                        }
+                    }
+                }
+        } else {
+            content
+        }
     }
 }

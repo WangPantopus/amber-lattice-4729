@@ -82,6 +82,9 @@ struct PulseSplitView<Feed: View, Destination: View>: View {
 
 /// The post column before a post is picked.
 struct PulsePostPlaceholder: View {
+    /// Where to tap; Today's Around you says its own.
+    var message = "Tap a post in Pulse to read it and its comments here."
+
     var body: some View {
         VStack(spacing: 14) {
             Icon(.fileText, size: 30, strokeWidth: 1.8, color: Theme.Color.primaryInk)
@@ -91,7 +94,7 @@ struct PulsePostPlaceholder: View {
             Text("Pick a post")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
-            Text("Tap a post in Pulse to read it and its comments here.")
+            Text(message)
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)

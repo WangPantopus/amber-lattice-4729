@@ -29,6 +29,8 @@ struct MediaStillImage: View {
     var keepsOnDisk = true
     var maxPixelSize: Int?
     var fallbackURL: URL?
+    /// The picture, and its fallback, could not load: a grid that leaves such pictures out hears it here.
+    var onFailure: (@MainActor () -> Void)?
 
     var body: some View {
         Color.clear
@@ -50,14 +52,15 @@ struct MediaStillImage: View {
                                     } else {
                                         image.resizable().scaledToFit()
                                     }
+                                } else if case .failure = fallback {
+                                    failedTile
                                 } else {
                                     Theme.Color.appSurfaceSunken
                                         .overlay(Icon(.alertCircle, size: 22, color: Theme.Color.appTextMuted))
                                 }
                             }
                         } else {
-                            Theme.Color.appSurfaceSunken
-                                .overlay(Icon(.alertCircle, size: 22, color: Theme.Color.appTextMuted))
+                            failedTile
                         }
                     case .empty:
                         Theme.Color.appSurfaceSunken.overlay(ProgressView())
@@ -67,6 +70,13 @@ struct MediaStillImage: View {
                 }
             }
             .clipped()
+    }
+
+    /// The tile of a picture that could not load.
+    private var failedTile: some View {
+        Theme.Color.appSurfaceSunken
+            .overlay(Icon(.alertCircle, size: 22, color: Theme.Color.appTextMuted))
+            .onAppear { onFailure?() }
     }
 }
 
@@ -414,6 +424,8 @@ struct PostMediaTileView: View {
     let item: PostMediaItem
     var usesSharpPreview = false
     var onTap: (() -> Void)?
+    /// A still picture that could not load (`PostMediaGridView.dropsFailed`).
+    var onFailure: (@MainActor () -> Void)?
 
     var body: some View {
         switch item.kind {
@@ -422,7 +434,8 @@ struct PostMediaTileView: View {
                 url: usesSharpPreview ? item.url : (item.thumbnailURL ?? item.url),
                 keepsOnDisk: true,
                 maxPixelSize: usesSharpPreview ? 2400 : nil,
-                fallbackURL: item.thumbnailURL
+                fallbackURL: item.thumbnailURL,
+                onFailure: onFailure
             )
             .contentShape(Rectangle())
             .onTapGesture { onTap?() }
@@ -495,7 +508,15 @@ struct PostMediaTileView: View {
 /// Pulse media grid — the design's 1 (16:9) / 2 / 3 / 4+ ("+N" overflow)
 /// layouts. Owns the full-screen viewer presentation: tapping any tile
 /// opens `MediaViewerView` paged across **all** items (including the
-/// ones hidden behind the "+N" cap).
+/// ones hidden behind the "+N" cap). A screen that is made anew when the
+/// iPhone Duo folds presents the viewer itself (`PostPresentationHost`), so
+/// the open picture stays through the fold.
+///
+/// A post whose pictures are an outlet's own files (it names where it was
+/// published, `PostSource`) leaves out a picture that cannot load
+/// (`dropsFailed`): the outlet moved or removed it, and a gray tile with a
+/// warning would stand where the story's picture was. The pictures that did
+/// load take the layout for their number, and with none there is no grid.
 public struct PostMediaGridView: View {
     /// Tile heights differ between the feed card and the detail screen.
     public enum Style: Sendable {
@@ -511,15 +532,19 @@ public struct PostMediaGridView: View {
         }
     }
 
-    private let items: [PostMediaItem]
+    private let allItems: [PostMediaItem]
     private let style: Style
     private let accessibilityID: String
     /// Place label drawn on the last visible tile (A10.4 map-pin badge).
     private let locationBadge: String?
     private let usesSharpPreviews: Bool
     private let edgeToEdge: Bool
+    private let dropsFailed: Bool
 
     @State private var viewerSelection: MediaViewerSelection?
+    /// The pictures that could not load, left out when `dropsFailed`.
+    @State private var failed: Set<URL> = []
+    @Environment(\.postPresentationHost) private var host
 
     public init(
         items: [PostMediaItem],
@@ -527,14 +552,21 @@ public struct PostMediaGridView: View {
         accessibilityID: String = "postMediaGrid",
         locationBadge: String? = nil,
         usesSharpPreviews: Bool = false,
-        edgeToEdge: Bool = false
+        edgeToEdge: Bool = false,
+        dropsFailed: Bool = false
     ) {
-        self.items = items
+        allItems = items
         self.style = style
         self.accessibilityID = accessibilityID
         self.locationBadge = locationBadge
         self.usesSharpPreviews = usesSharpPreviews
         self.edgeToEdge = edgeToEdge
+        self.dropsFailed = dropsFailed
+    }
+
+    /// The pictures shown: all of them, or, for an outlet's, the ones that didn't fail.
+    private var items: [PostMediaItem] {
+        dropsFailed && !failed.isEmpty ? allItems.filter { !failed.contains($0.url) } : allItems
     }
 
     public var body: some View {
@@ -603,9 +635,27 @@ public struct PostMediaGridView: View {
     }
 
     private func tile(_ index: Int) -> some View {
-        PostMediaTileView(item: items[index], usesSharpPreview: usesSharpPreviews) {
-            viewerSelection = MediaViewerSelection(index: index)
+        let item = items[index]
+        let shown = items
+        var onFailure: (@MainActor () -> Void)?
+        if dropsFailed {
+            // Offline, every picture fails for a while: only a link that fails with a connection is a dead one.
+            onFailure = { if NetworkMonitor.shared.isOnline { failed.insert(item.url) } }
         }
+        return PostMediaTileView(
+            item: item,
+            usesSharpPreview: usesSharpPreviews,
+            onTap: {
+                if let host {
+                    host.viewer = PostMediaViewerPresentation(items: shown, index: index)
+                } else {
+                    viewerSelection = MediaViewerSelection(index: index)
+                }
+            },
+            onFailure: onFailure
+        )
+        // A tile that takes a dropped picture's place is that picture's own, not the dropped one's.
+        .id(item.url)
     }
 
     /// Pins the tile's geometry to the visible cell so badge overlays

@@ -303,7 +303,9 @@ public struct BodyReactionsBody: View {
                         accessibilityID: "pulsePostDetail-media",
                         locationBadge: mediaLocationBadge,
                         usesSharpPreviews: true,
-                        edgeToEdge: true
+                        edgeToEdge: true,
+                        // An outlet's own pictures: one that can't load is left out.
+                        dropsFailed: source != nil
                     )
                 }
 
