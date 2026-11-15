@@ -81,6 +81,15 @@
           "statement": "The Sedgwick County Appraiser is the origin of these records; the City of Wichita publishes this copy. Data users must comply with K.S.A. 45-230, which restricts selling, giving or receiving lists of names and addresses from public records for sales solicitation."
         },
         {
+          "id": "oh-union",
+          "publisher": "Union County Auditor, Ohio",
+          "url": "https://www.unioncountyohio.gov/property-search-tools",
+          "license": "Union County GIS services and real estate extract files (no license stated)",
+          "license_url": "https://www.unioncountyohio.gov/gis-mapping",
+          "dataset": "Parcels with appraisal data, and the land table of the Auditor's weekly real estate extract",
+          "statement": "The Union County Auditor is the origin and publisher of these records, on the county's GIS server and its GIS Enterprise Portal."
+        },
+        {
           "id": "ak-ketchikan",
           "publisher": "Ketchikan Gateway Borough, Alaska",
           "url": "https://www.arcgis.com/home/item.html?id=2787be973b534a969d57bda80010eb0e",
