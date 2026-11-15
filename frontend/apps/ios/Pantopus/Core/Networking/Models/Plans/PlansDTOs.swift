@@ -307,6 +307,8 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
     public let invites: PlanHostInvitesDTO?
     /// Plans with businesses (only with `biz=1`): the business's parts. Nil on a neighbor's plan.
     public let businessPart: PlanCardBusinessPart?
+    /// Private plans (step 1): who the plan is for, "Bring a friend", and the place for the person invited.
+    public let privatePart: PlanCardPrivatePart
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, about, timezone, area, host, spots, details, state, viewer
@@ -365,6 +367,7 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
         myInvite = try? container.decodeIfPresent(PlanMyInviteDTO.self, forKey: .myInvite)
         invites = try? container.decodeIfPresent(PlanHostInvitesDTO.self, forKey: .invites)
         businessPart = try? PlanCardBusinessPart(from: decoder)
+        privatePart = (try? PlanCardPrivatePart(from: decoder)) ?? .nearby
     }
 
     /// The exact start, parsed. Nil when hidden (a playdate before you're in).
