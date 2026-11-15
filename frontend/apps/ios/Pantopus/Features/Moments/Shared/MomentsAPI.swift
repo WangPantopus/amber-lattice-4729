@@ -35,12 +35,16 @@ enum MomentsFailure: Error, Equatable {
     case notFound
     /// 403: the author doesn't take replies (the Pantopus curator).
     case replyUnavailable
-    /// 413, or a photo or video the server can't read.
+    /// 413: the file is larger than the server or its storage takes.
+    case mediaTooLarge
+    /// A photo or video the server can't read.
     case mediaRejected
     /// 400: reacting to, replying to or reporting your own Moment.
     case ownMoment
     /// No connection, or the server didn't answer.
     case offline
+    /// 5xx: the server answered that it couldn't do it.
+    case server
     case other(String)
 
     var message: String {
@@ -56,16 +60,23 @@ enum MomentsFailure: Error, Equatable {
         case .unavailable: "Moments aren't available right now."
         case .notFound: "This Moment isn't available."
         case .replyUnavailable: "This account doesn't take replies."
+        case .mediaTooLarge: "This video is too large to post. Try a shorter one."
         case .mediaRejected: "This photo or video can't be posted. Try another one."
         case .ownMoment: "That's your own Moment."
         case .offline: "Can't reach Pantopus. Check your connection."
+        case .server: "Pantopus is having trouble right now. Try again in a little while."
         case let .other(message): message
         }
     }
 
-    /// Worth trying again by itself (a weak connection, a busy server).
-    var isTransient: Bool {
-        self == .offline
+    /// How many more times an upload tries by itself: a weak connection comes back, so it keeps at it; a server
+    /// that answered "can't" gets two more tries, then the person is told (it answered the same 53 times once).
+    var retries: Int {
+        switch self {
+        case .offline: 8
+        case .server: 2
+        default: 0
+        }
     }
 
     init(status: Int, body: Data) {
@@ -103,7 +114,7 @@ enum MomentsFailure: Error, Equatable {
         "MOMENT_ENDED": .ended,
         "MOMENTS_UNAVAILABLE": .unavailable,
         "MOMENT_REPLY_UNAVAILABLE": .replyUnavailable,
-        "MEDIA_TOO_LARGE": .mediaRejected,
+        "MEDIA_TOO_LARGE": .mediaTooLarge,
         "PHOTO_UNREADABLE": .mediaRejected,
         "VIDEO_UNREADABLE": .mediaRejected,
         "MOMENT_POSTER_REQUIRED": .mediaRejected,
@@ -117,10 +128,11 @@ enum MomentsFailure: Error, Equatable {
         // The server gave up waiting for the rest of a slow upload: the same as a dropped connection.
         case 408: return .offline
         case 410: return .ended
-        case 413, 415: return .mediaRejected
+        case 413: return .mediaTooLarge
+        case 415: return .mediaRejected
         // The 20-a-day limit comes with its code; a bare 429 is the server's rate limit.
         case 429: return .other("That was a lot at once. Wait a minute and try again.")
-        case 500...: return .offline
+        case 500...: return .server
         default:
             // A sentence from the server reads as is; a machine word ("Forbidden") doesn't.
             if let error, error.contains(" "), error.count <= 160 { return .other(error) }

@@ -159,6 +159,16 @@ extension MomentsViewer {
             } message: {
                 Text("Reports go to the Pantopus team. The person isn't told who reported.")
             }
+            .alert(
+                "Delete this Moment?",
+                isPresented: Binding(get: { confirmsDelete && active }, set: { if active { confirmsDelete = $0 } })
+            ) {
+                Button("Delete", role: .destructive) { Task { _ = await model.delete() } }
+                    .accessibilityIdentifier("moments.menu.deleteConfirm")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("It leaves the map for everyone.")
+            }
     }
 
     /// The post report reasons (`reportPostSchema`), as Pulse offers them.
@@ -171,8 +181,27 @@ extension MomentsViewer {
         ("other", "Something else")
     ]
 
+    /// Your own Moment: what Seen by also offers, where a person looks for it first.
+    @ViewBuilder
+    private var ownMenu: some View {
+        Button("Save to Photos") {
+            let moment = model.moment
+            let card = moment?.kind == .text ? MomentsCardPicture.render(text: moment?.text ?? "", background: moment?.background) : nil
+            Task { await model.save(card: card) }
+        }
+        .accessibilityIdentifier("moments.menu.save")
+        Button("Delete", role: .destructive) { confirmsDelete = true }
+            .accessibilityIdentifier("moments.menu.delete")
+        Button("Cancel", role: .cancel) {}
+    }
+
     @ViewBuilder
     var menu: some View {
+        if model.isMine { ownMenu } else { theirMenu }
+    }
+
+    @ViewBuilder
+    private var theirMenu: some View {
         Button("Report", role: .destructive) { showsReport = true }
             .accessibilityIdentifier("moments.menu.report")
         Button(muteLabel) {

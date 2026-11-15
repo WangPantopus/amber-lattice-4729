@@ -158,7 +158,8 @@ struct MomentsViewerHeader: View {
                         action: onSound
                     )
                 }
-                if !isMine, author != nil {
+                // Yours has Save to Photos and Delete behind it; someone else's Report, Mute and Block.
+                if isMine || author != nil {
                     headerButton(
                         .moreHorizontal,
                         width: isVideo ? 40 : 44,

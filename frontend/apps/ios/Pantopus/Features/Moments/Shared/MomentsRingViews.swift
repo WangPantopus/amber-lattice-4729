@@ -10,6 +10,7 @@
 //  your own ring while a Moment posts.
 //
 
+import ImageIO
 import SwiftUI
 
 // MARK: - Face
@@ -284,6 +285,8 @@ struct MomentPostingRing: View {
     let avatar: MomentAuthorDTO?
     /// The map's pin (64 pt, with a tail) or the strip's face (56 pt).
     var asPin = true
+    /// What is posting (the photo, or the video's poster), shown in place of your face in the strip.
+    var picture: URL?
 
     var body: some View {
         let size: CGFloat = asPin ? 64 : 56
@@ -303,13 +306,54 @@ struct MomentPostingRing: View {
                     .trim(from: 0, to: max(0.02, min(progress, 1)))
                     .stroke(Theme.Color.primarySolid, style: StrokeStyle(lineWidth: line, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                MomentSelfFace(author: avatar, size: face)
+                if let picture {
+                    MomentPostingPicture(url: picture, author: avatar, size: face)
+                } else {
+                    MomentSelfFace(author: avatar, size: face)
+                }
             }
             .frame(width: size, height: size)
         }
         .frame(width: size, height: asPin ? 72 : 56, alignment: .top)
         .compositingGroup()
         .shadow(color: .black.opacity(asPin ? 0.3 : 0), radius: 1.5, x: 0, y: 2)
+    }
+}
+
+/// The photo or the video's poster from a posting's outbox folder, in the circle; your face until it is read (and
+/// when it can't be).
+struct MomentPostingPicture: View {
+    let url: URL
+    let author: MomentAuthorDTO?
+    let size: CGFloat
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            MomentSelfFace(author: author, size: size)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            }
+        }
+        .task(id: url) { image = await Self.small(url, points: size) }
+    }
+
+    /// A copy a few times the circle's size, made off the main thread: the photo itself is up to 2048 px.
+    private static func small(_ url: URL, points: CGFloat) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: points * 3
+            ]
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let small = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            return UIImage(cgImage: small)
+        }.value
     }
 }
 

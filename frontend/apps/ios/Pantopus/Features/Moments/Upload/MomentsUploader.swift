@@ -43,6 +43,8 @@ struct MomentPosting: Identifiable, Equatable {
     var hours = 24
     /// Posted with no location: only the strip shows it while it posts, never the map (contract v3.4).
     var noLocation = false
+    /// The photo, or the video's poster, in the outbox: the strip shows what is posting.
+    var picture: URL?
 }
 
 /// What a waiting upload needs after a relaunch.
@@ -109,7 +111,8 @@ final class MomentsUploader {
             progress: 0,
             phase: .uploading,
             hours: moment.hours,
-            noLocation: moment.noLocation
+            noLocation: moment.noLocation,
+            picture: Self.picture(folderId, media: prepared)
         )
         postings.insert(posting, at: 0)
         media[folderId] = prepared
@@ -163,7 +166,7 @@ final class MomentsUploader {
             do {
                 try await step(id)
                 return
-            } catch let failure as MomentsFailure where failure.isTransient && attempt < 8 {
+            } catch let failure as MomentsFailure where attempt < failure.retries {
                 attempt += 1
                 let delay = min(30.0, pow(2, Double(attempt)))
                 try? await Task.sleep(for: .seconds(delay))
@@ -300,7 +303,7 @@ final class MomentsUploader {
     private func fail(_ id: String, _ failure: MomentsFailure) {
         logger.warning("Moment upload stopped: \(failure.message)")
         switch failure {
-        case .mediaTooLong, .mediaRejected, .unavailable, .ended, .notFound:
+        case .mediaTooLong, .mediaTooLarge, .mediaRejected, .unavailable, .ended, .notFound:
             // Trying again won't help: say why and let it go.
             notice = failure == .ended || failure == .notFound ? "Your Moment ended before its file went up." : failure.message
             discard(id)
@@ -327,6 +330,12 @@ final class MomentsUploader {
     private func update(_ id: String, _ change: (inout MomentPosting) -> Void) {
         guard let index = postings.firstIndex(where: { $0.id == id }) else { return }
         change(&postings[index])
+    }
+
+    /// The picture of what's in outbox folder `id`: the photo itself, or the video's poster.
+    private static func picture(_ id: String, media: MomentPreparedMedia) -> URL? {
+        guard let folder = try? outboxRoot().appendingPathComponent(id, isDirectory: true) else { return nil }
+        return folder.appendingPathComponent(media.poster ?? media.file)
     }
 
     private static var signedInAccount: String? {
@@ -359,7 +368,8 @@ final class MomentsUploader {
                 progress: 0,
                 phase: .uploading,
                 hours: saved.hours ?? 24,
-                noLocation: saved.noLocation ?? false
+                noLocation: saved.noLocation ?? false,
+                picture: Self.picture(id, media: saved.media)
             ))
             pickedUp.insert(id)
             run(id)
