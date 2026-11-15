@@ -12,7 +12,7 @@
 import SwiftUI
 
 struct PlanRepeatsScreen: View {
-    @Bindable var draft: PlanRepeatDraft
+    let draft: PlanRepeatDraft
     /// The plan's start and end: the summary's times, and the day the pattern has to include.
     let start: Date
     let end: Date

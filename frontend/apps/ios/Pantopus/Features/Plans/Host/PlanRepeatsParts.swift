@@ -76,7 +76,7 @@ struct PlanRepeatMonthField: View {
 /// "Ends": on a date (12 weeks after the start until one is picked, at most a year) or after a number of times.
 /// Tapping the chosen row opens its picker under it.
 struct PlanRepeatEndsField: View {
-    @Bindable var draft: PlanRepeatDraft
+    let draft: PlanRepeatDraft
     @State private var editing: PlanRepeatDraft.Ends?
 
     var body: some View {
@@ -89,11 +89,16 @@ struct PlanRepeatEndsField: View {
                     identifier: "planRepeatEndsDate"
                 )
                 if draft.ends == .onDate, editing == .onDate {
-                    DatePicker("Ends on", selection: $draft.until, in: draft.untilRange, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .tint(Theme.Color.primary700)
-                        .environment(\.timeZone, draft.calendar.timeZone)
-                        .accessibilityIdentifier("planRepeatUntilPicker")
+                    DatePicker(
+                        "Ends on",
+                        selection: Binding(get: { draft.until }, set: { draft.setUntil($0) }),
+                        in: draft.untilRange,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                    .tint(Theme.Color.primary700)
+                    .environment(\.timeZone, draft.calendar.timeZone)
+                    .accessibilityIdentifier("planRepeatUntilPicker")
                 }
                 Divider().overlay(Theme.Color.appBorder)
                 row(
@@ -106,7 +111,11 @@ struct PlanRepeatEndsField: View {
                     HStack {
                         Text("Times").planFont(.body).foregroundStyle(Theme.Color.appText)
                         Spacer()
-                        PlanStepper(value: $draft.count, range: draft.countRange, label: "Times")
+                        PlanStepper(
+                            value: Binding(get: { draft.count }, set: { draft.setCount($0) }),
+                            range: draft.countRange,
+                            label: "Times"
+                        )
                     }
                     .padding(.vertical, Spacing.s2)
                     .accessibilityIdentifier("planRepeatCountStepper")
@@ -123,7 +132,7 @@ struct PlanRepeatEndsField: View {
             if isOn {
                 editing = editing == ends ? nil : ends
             } else {
-                draft.ends = ends
+                draft.setEnds(ends)
                 editing = ends
             }
         } label: {

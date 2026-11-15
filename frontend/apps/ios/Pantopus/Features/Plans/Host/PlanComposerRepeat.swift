@@ -28,22 +28,23 @@ final class PlanRepeatDraft {
     private(set) var weekdays: Set<Int> = []
     /// Every month: 1 to 4 days in the month's order; one of them is always the start's own.
     private(set) var monthDays: [PlanMonthDay] = []
-    var ends: Ends = .onDate
+    private(set) var ends: Ends = .onDate
     /// The last local day it may fall on (12 weeks after the start until the host picks one).
-    var until: Date {
+    private(set) var until: Date {
         didSet { untilChosen = true }
     }
 
     /// "After a number of times", counted from this plan's date.
-    var count = 6
+    private(set) var count = 6
     /// The plan's start, and the calendar of its time zone.
     private(set) var start: Date
     private(set) var calendar: Calendar
-    /// Which date of its series the plan is (1 for a new plan): the server counts `count` from the first date.
-    private(set) var index = 1
     /// What the plan repeated as when the Change screen opened (nil: it didn't).
     private(set) var original: PlanRepeatBody?
     @ObservationIgnored private var untilChosen = false
+    /// The host changed something on the Repeats screen: only then does the Change screen send `repeat` (a new
+    /// time or day alone doesn't restart the pattern).
+    @ObservationIgnored private var edited = false
 
     init(start: Date = Date(), calendar: Calendar = .current) {
         let days = PlanRepeatRules.calendar(calendar)
@@ -80,11 +81,11 @@ final class PlanRepeatDraft {
         startDay...PlanRepeatRules.add(days: PlanRepeatRules.maxDays, to: startDay, calendar)
     }
 
-    /// "After a number of times": 2 to 100 in all (the dates before this one included), and no more than the
-    /// chosen days give within the year a series may run (this date and the days after it).
+    /// "After a number of times", from this date on (this one included): 2 to 100, and no more than the chosen
+    /// days give in the year after this date, where the server ends a longer count too.
     var countRange: ClosedRange<Int> {
-        let least = index > 1 ? 1 : 2
-        var most = PlanRepeatRules.countRange.upperBound - (index - 1)
+        let least = PlanRepeatRules.countRange.lowerBound
+        var most = PlanRepeatRules.countRange.upperBound
         if let days = chosenDays {
             most = min(most, PlanRepeatRules.days(after: start, pattern: days, anchor: start, limit: most, calendar).count + 1)
         }
@@ -102,6 +103,7 @@ final class PlanRepeatDraft {
 
     func choose(_ newChoice: Choice) {
         choice = newChoice
+        edited = true
         if !weekdays.contains(lockedWeekday) { weekdays.insert(lockedWeekday) }
         if monthDays.isEmpty { monthDays = [PlanRepeatRules.monthDay(for: start, byDate: false, calendar)] }
         fitCount()
@@ -110,7 +112,24 @@ final class PlanRepeatDraft {
     func toggle(weekday: Int) {
         guard weekday != lockedWeekday, (1...7).contains(weekday) else { return }
         if weekdays.contains(weekday) { weekdays.remove(weekday) } else { weekdays.insert(weekday) }
+        edited = true
         fitCount()
+    }
+
+    /// "Ends": on a date or after a number of times, and the date or the number the host picks.
+    func setEnds(_ newEnds: Ends) {
+        ends = newEnds
+        edited = true
+    }
+
+    func setUntil(_ day: Date) {
+        until = day
+        edited = true
+    }
+
+    func setCount(_ number: Int) {
+        count = number
+        edited = true
     }
 
     var canAddMonthDay: Bool {
@@ -120,6 +139,7 @@ final class PlanRepeatDraft {
     func add(_ rule: PlanMonthDay) {
         guard canAddMonthDay, !monthDays.contains(rule) else { return }
         monthDays = Self.ordered(monthDays + [rule])
+        edited = true
         fitCount()
     }
 
@@ -131,6 +151,7 @@ final class PlanRepeatDraft {
     func remove(_ rule: PlanMonthDay) {
         guard canRemove(rule) else { return }
         monthDays.removeAll { $0 == rule }
+        edited = true
         fitCount()
     }
 
@@ -202,7 +223,8 @@ final class PlanRepeatDraft {
         return pattern
     }
 
-    /// `repeat` for `POST /api/plans` and `PATCH`: `count` is how many in all, the dates before this one included.
+    /// `repeat` for `POST /api/plans` and `PATCH`. A change starts the pattern at this date: its day is one of
+    /// them, every 2 weeks counts from it, and `count` is the dates from this one on.
     var body: PlanRepeatBody? {
         guard let pattern else { return nil }
         return PlanRepeatBody(
@@ -210,13 +232,13 @@ final class PlanRepeatDraft {
             weekdays: pattern.freq == .monthly ? nil : pattern.weekdays,
             monthDays: pattern.freq == .monthly ? pattern.monthDays : nil,
             until: pattern.until.map { PlanRepeatRules.iso($0, calendar) },
-            count: pattern.count.map { $0 + index - 1 }
+            count: pattern.count
         )
     }
 
     /// The Change screen's `repeat`: nil when it is as it was, `.stop` when it no longer repeats.
     var change: PlanRepeatChange? {
-        guard body != original else { return nil }
+        guard edited, body != original else { return nil }
         return body.map { .set($0) } ?? .stop
     }
 
@@ -258,7 +280,6 @@ final class PlanRepeatDraft {
     // MARK: - Reading a plan's pattern
 
     private func load(_ repeats: PlanRepeatDTO) {
-        index = repeats.index
         switch repeats.freq {
         case .weekly: choice = .weekly
         case .biweekly: choice = .biweekly
@@ -266,9 +287,11 @@ final class PlanRepeatDraft {
         }
         weekdays = Set(repeats.weekdays)
         monthDays = Self.ordered(Array(repeats.monthDays.prefix(PlanRepeatRules.monthDayLimit)))
+        // As the card has them: `count` is the dates from this one through the last (1 on the last date, which the
+        // screen's minimum of 2 makes one more if the host keeps "After a number of times" and changes something).
         if let total = repeats.count {
             ends = .afterCount
-            count = total - (index - 1)
+            count = total
         } else if let day = PlanRepeatRules.day(from: repeats.until ?? repeats.lastOn, calendar) {
             ends = .onDate
             until = day
@@ -282,6 +305,7 @@ final class PlanRepeatDraft {
         follow(start: start)
         // What it is now, so saving sends `repeat` only when the host changed it.
         original = body
+        edited = false
     }
 }
 
