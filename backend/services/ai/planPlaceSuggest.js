@@ -37,12 +37,14 @@ const MIN_WHY = 12;
 
 const KIND_WORDS = {
   watch_party: 'watch party', pickup_game: 'pickup game', walk_coffee: 'walk and coffee', study_group: 'study group', playdate: 'playdate',
+  food_drinks: 'food and drinks get-together', game_night: 'game night', outdoors: 'outdoor outing', something_else: 'get-together',
 };
 const CATEGORY_WORDS = {
   bar: 'bar', restaurant: 'restaurant', cafe: 'café', community_center: 'community center', playground: 'playground',
   park: 'park', court: 'court or field', trail: 'trail', library: 'library',
 };
-const DETAIL_KEYS = ['sport', 'level', 'walk_kind', 'pace', 'dogs_welcome', 'study_style', 'subject', 'kids_age_bands', 'game'];
+const DETAIL_KEYS = ['sport', 'level', 'walk_kind', 'pace', 'dogs_welcome', 'study_style', 'subject', 'kids_age_bands', 'game',
+  'food_kind', 'game_kind', 'outdoor_kind'];
 
 /** "0.4 mi", as the apps write a place's distance. */
 function milesWords(meters) {
