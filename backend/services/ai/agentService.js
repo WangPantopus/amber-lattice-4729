@@ -1795,6 +1795,15 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
   const asksIdentity = shown.has('identity_ask') && shown.has('link');
   let turnAsked = false;
   let lastSaid = null;
+  // The person's messages whose own turn was refused for the identity check: one of those is a question they
+  // asked again themselves before the check, so it shows.
+  const refused = new Set();
+  let asked = null;
+  for (const message of history) {
+    if (message.role === 'user' && Array.isArray(message.content) ? message.content.some((block) => block.type !== 'tool_result') : message.role === 'user') asked = message;
+    if (message.role !== 'assistant' || !Array.isArray(message.content)) continue;
+    if (message.content.some((block) => block.type === 'tool_use' && results.get(block.id)?.identity_needed)) refused.add(asked);
+  }
   const flushLinks = () => {
     if (turnAsked && asksIdentity) turnLinks.push({ ...VERIFY_LINK });
     if (!turnLinks.length) return;
@@ -1827,7 +1836,7 @@ function displayMessages(stored, { cards = [], startedAt } = {}) {
       if (!said && !photos && !documents) continue;
       // The same question again, right after a reply that asked for the identity check: the app sent it once the
       // check passed. The answer follows the reply that asked, as it did on the phone.
-      const sentAgain = turnAsked && said && said === lastSaid && !photos && !documents;
+      const sentAgain = turnAsked && said && said === lastSaid && !photos && !documents && !refused.has(message);
       turnAsked = false;
       lastSaid = said;
       if (sentAgain) continue;

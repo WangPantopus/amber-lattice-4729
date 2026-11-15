@@ -1417,49 +1417,56 @@ extension ChatConversationView {
     /// A15.3 `.prompt-grid` — 2×2 categorized prompt cards; tapping one
     /// sends its question as the thread's first message.
     private var aiPromptGrid: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: Spacing.s2), GridItem(.flexible(), spacing: Spacing.s2)],
-            spacing: Spacing.s2
-        ) {
-            // Launch cut #3 (Marketplace): a Home prompt takes the Marketplace card's place.
-            ForEach(Self.launchPromptCards) { card in
-                Button {
-                    Task {
-                        await viewModel.sendCapabilityPrompt(
-                            ChatPromptChip(id: card.id, label: card.question, icon: card.icon)
-                        )
+        // Launch cut #3 (Marketplace): a Home prompt takes the Marketplace card's place.
+        let cards = Self.launchPromptCards
+        // Two to a row, each as tall as the taller one, whatever their questions' lengths.
+        return Grid(horizontalSpacing: Spacing.s2, verticalSpacing: Spacing.s2) {
+            ForEach(Array(stride(from: 0, to: cards.count, by: 2)), id: \.self) { start in
+                GridRow {
+                    ForEach(cards[start..<min(start + 2, cards.count)]) { card in
+                        aiPromptCardButton(card)
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Icon(card.icon, size: 14, color: Theme.Color.appTextInverse)
-                            .frame(width: 26, height: 26)
-                            .background(card.tint)
-                            .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
-                        Text(card.category.uppercased())
-                            .font(.system(size: 9.5, weight: .bold))
-                            .tracking(0.6)
-                            .foregroundStyle(Theme.Color.appTextMuted)
-                        Text(card.question)
-                            .font(.system(size: 12.5, weight: .medium))
-                            .foregroundStyle(Theme.Color.appText)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .background(Theme.Color.appSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Theme.Color.appBorder, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: .black.opacity(0.04), radius: 1.5, y: 1)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(card.question)
-                .accessibilityIdentifier("chatAIPromptCard_\(card.id)")
             }
         }
+    }
+
+    private func aiPromptCardButton(_ card: AIPromptCard) -> some View {
+        Button {
+            Task {
+                await viewModel.sendCapabilityPrompt(
+                    ChatPromptChip(id: card.id, label: card.question, icon: card.icon)
+                )
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Icon(card.icon, size: 14, color: Theme.Color.appTextInverse)
+                    .frame(width: 26, height: 26)
+                    .background(card.tint)
+                    .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+                Text(card.category.uppercased())
+                    .font(.system(size: 9.5, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(Theme.Color.appTextMuted)
+                Text(card.question)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Theme.Color.appSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Theme.Color.appBorder, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.04), radius: 1.5, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(card.question)
+        .accessibilityIdentifier("chatAIPromptCard_\(card.id)")
     }
 
     /// Ask on a screen: that screen's starter prompts, in the suggestion

@@ -2093,13 +2093,8 @@ public final class ChatConversationViewModel {
     private func sendAIMessage(_ text: String, sentAgain: Bool = false) async {
         // A refusal shown for the last Send.
         sendLimitNotice = nil
-        let outgoing: AIOutgoing?
-        if sentAgain {
-            outgoing = nil
-        } else {
-            guard let made = await outgoingAIMessage(text) else { return }
-            outgoing = made
-        }
+        let outgoing: AIOutgoing? = sentAgain ? nil : await outgoingAIMessage(text)
+        guard sentAgain || outgoing != nil else { return }
         let references = outgoing?.references ?? []
         let files = outgoing?.files ?? []
         let assistantId = "ai_assistant_\(UUID().uuidString)"

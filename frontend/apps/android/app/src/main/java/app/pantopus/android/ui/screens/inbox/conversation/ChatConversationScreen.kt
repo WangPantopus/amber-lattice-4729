@@ -35,10 +35,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -2726,7 +2728,8 @@ private fun AiWelcomeFrame(
             if (starters.isEmpty()) {
                 launchPromptCards().chunked(2).forEach { rowCards ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        // The two cards of a row are as tall as the taller one, whatever their questions' lengths.
+                        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
                     ) {
                         rowCards.forEach { card ->
@@ -2739,7 +2742,7 @@ private fun AiWelcomeFrame(
                                         ChatPromptChip(id = tapped.id, label = tapped.question, icon = tapped.icon),
                                     )
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
                             )
                         }
                         if (rowCards.size == 1) Spacer(modifier = Modifier.weight(1f))

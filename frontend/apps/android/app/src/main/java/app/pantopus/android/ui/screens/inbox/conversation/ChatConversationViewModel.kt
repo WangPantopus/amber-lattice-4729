@@ -2069,8 +2069,7 @@ class ChatConversationViewModel
         }
 
         /** Whether "Verify it's me" can run now: nothing is being sent, and the button's reply is still the last one. */
-        fun canAskIdentity(): Boolean =
-            !_isSending.value && !_isAiStreaming.value && !_isDeletingAi.value && identityAskMessageId() != null
+        fun canAskIdentity(): Boolean = !_isSending.value && !_isAiStreaming.value && !_isDeletingAi.value && identityAskMessageId() != null
 
         /** The identity check couldn't run (not a cancel): its reason shows above the composer. */
         fun noteIdentityCheckFailed(message: String) {
@@ -2106,7 +2105,7 @@ class ChatConversationViewModel
             val queued = if (sentAgain) emptyList() else _queuedAttachments.value.filter { it.bytes != null }
             val photos = queued.filter { it.mimeType.startsWith("image/") }.mapNotNull { it.sourceUri }
             val files = queued.filter { it.mimeType == PDF_MIME }.map { ChatSentFile(it.filename, it.bytes?.size?.let(::fileSizeLabel)) }
-            val imageUrls = if (sentAgain) emptyList() else uploadAIMessageFiles(text, queued) ?: return
+            val imageUrls = uploadAIMessageFiles(text, queued) ?: return
             val userMessage =
                 localMessage(
                     id = "ai_user_${UUID.randomUUID()}",
@@ -2120,7 +2119,8 @@ class ChatConversationViewModel
             }
             val assistantId = "ai_assistant_${UUID.randomUUID()}"
             streamingAssistantId = assistantId
-            if (!sentAgain) messages.add(userMessage)
+            // The question sent again is already in the thread.
+            messages.addAll(listOfNotNull(userMessage.takeUnless { sentAgain }))
             messages.add(localMessage(id = assistantId, text = "", userId = "ai", type = "ai_reply"))
             // Files picked while the upload ran stay.
             _queuedAttachments.value = _queuedAttachments.value.filterNot { attachment -> queued.any { it.id == attachment.id } }
