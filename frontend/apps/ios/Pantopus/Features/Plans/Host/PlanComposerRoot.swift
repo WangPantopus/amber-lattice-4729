@@ -130,7 +130,7 @@ struct PlanTypePicker: View {
                     }
                     Text(business == nil
                         ? "Plans are free and for adults. Kids come with a parent."
-                        : "These are the five kinds of plan neighbors host. Yours keeps the same color and pin.")
+                        : "These are the five kinds of plan people host. Yours keeps the same color and pin.")
                         .planFont(.small)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .multilineTextAlignment(.center)

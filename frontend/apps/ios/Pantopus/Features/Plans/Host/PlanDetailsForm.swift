@@ -99,7 +99,7 @@ struct PlanDetailsForm: View {
             }
             if model.kind == .playdate {
                 PlanScopeLine(
-                    text: "Neighbors see \u{201C}\(PlanFormat.dayPartPhrase(dayPart, day: model.start))\u{201D} until you accept them."
+                    text: "Others see \u{201C}\(PlanFormat.dayPartPhrase(dayPart, day: model.start))\u{201D} until you accept them."
                 )
             }
         }
@@ -188,7 +188,7 @@ struct PlanDetailsForm: View {
     /// Boards H2 and H5 draw no line under a public place (as on Android).
     private var placeScope: String? {
         switch model.kind {
-        case .playdate: "Families you accept see the exact spot. Others see the neighborhood."
+        case .playdate: "Families you accept see the exact spot. Others see the general area."
         case .pickupGame: "Your location only proves you're nearby. The pin shows the place's area."
         default: nil
         }
@@ -424,7 +424,7 @@ struct PlanApprovalOptions: View {
     private func title(_ option: PlanApproval) -> String {
         switch option {
         case .approveEach: "I approve each person"
-        case .verifiedAuto: "Verified neighbors get in right away"
+        case .verifiedAuto: "People with a verified address get in right away"
         case .anyoneNearby: "Anyone nearby gets in right away"
         }
     }

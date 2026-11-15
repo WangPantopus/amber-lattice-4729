@@ -178,7 +178,7 @@ struct PlanBusinessHostRow: View {
 
 // MARK: - P3: the filter
 
-/// All · Neighbors · Businesses, under the list's title once a business has
+/// All · People · Businesses, under the list's title once a business has
 /// a plan in the area (`has_business_plans`). It filters the pins too, and
 /// the app remembers the choice.
 enum PlansHostFilter: String, CaseIterable, Hashable {
@@ -187,7 +187,7 @@ enum PlansHostFilter: String, CaseIterable, Hashable {
     var title: String {
         switch self {
         case .all: "All"
-        case .neighbors: "Neighbors"
+        case .neighbors: "People"
         case .businesses: "Businesses"
         }
     }

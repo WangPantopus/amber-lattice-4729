@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  Board F4 "Nothing planned yet": the next game as a watch-party nudge,
-//  the other kinds to start, and "Invite a neighbor". Board F5 "See plans
+//  the other kinds to start, and "Invite a friend". Board F5 "See plans
 //  near you": the location ask, with the home as the other choice.
 //
 
@@ -27,7 +27,7 @@ struct PlansEmptyCard: View {
                             .planFont(.h3)
                             .foregroundStyle(Theme.Color.appText)
                             .accessibilityAddTraits(.isHeader)
-                        Text("Plans here start with one neighbor. Yours could be the first.")
+                        Text("Plans here start with one person. Yours could be the first.")
                             .planFont(.small)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -57,12 +57,12 @@ struct PlansEmptyCard: View {
                     }
                     .hiddenUnderPlansTabBar()
                 }
-                // The person's own invite link, so the neighbor sees who asked them.
+                // The person's own invite link, so the friend sees who asked them.
                 ShareLink(
                     item: PersonalInviteLink.shared.url,
-                    message: Text("I'm on Pantopus to make small plans with neighbors. Join me.")
+                    message: Text("I'm on Pantopus to make plans with people nearby. Join me.")
                 ) {
-                    PlanButtonLabel(title: "Invite a neighbor", icon: .share, kind: .secondary)
+                    PlanButtonLabel(title: "Invite a friend", icon: .share, kind: .secondary)
                 }
                 .planButton(.secondary, size: .small)
                 .accessibilityIdentifier("plansInviteNeighbor")
@@ -103,7 +103,7 @@ struct PlansEmptyCard: View {
         PlanFormCard {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 HStack {
-                    Text("Watch games with neighbors?").planFont(.bodyStrong)
+                    Text("Watch games with people nearby?").planFont(.bodyStrong)
                     Spacer()
                     Button("×") { sportsAskDismissed = true }
                         .frame(minWidth: 44, minHeight: 44).accessibilityLabel("Dismiss sports suggestions")
@@ -193,7 +193,7 @@ struct PlansLocationCard: View {
                         .planFont(.h2)
                         .foregroundStyle(Theme.Color.appText)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Pantopus uses your location to show what neighbors are planning close by.")
+                    Text("Pantopus uses your location to show what people are planning close by.")
                         .planFont(.body)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .fixedSize(horizontal: false, vertical: true)

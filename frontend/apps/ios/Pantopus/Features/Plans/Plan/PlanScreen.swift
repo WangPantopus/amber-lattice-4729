@@ -304,7 +304,7 @@ struct PlanScreen: View {
     private var unavailable: some View {
         PlanMessageScreen(
             title: "This plan isn't available",
-            message: "It may have ended, been cancelled, or be just for neighbors closer by.",
+            message: "It may have ended, been cancelled, or be just for people closer by.",
             onBack: close
         ) {
             // A way on, as on Android (J8's "See all plans" goes back the same way).

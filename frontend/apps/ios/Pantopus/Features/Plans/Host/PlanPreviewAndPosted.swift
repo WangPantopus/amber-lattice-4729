@@ -2,7 +2,7 @@
 //  PlanPreviewAndPosted.swift
 //  Pantopus
 //
-//  Board H7 "Preview": what neighbors see (area only), what people you
+//  Board H7 "Preview": what others see (area only), what people you
 //  accept also see, and "Post plan". Board H8 "Posted": the new pin drops
 //  onto the map (16 pt, 220 ms, a small bounce, then its area fades in, a
 //  success haptic), with "Share link", "See your plan" and "Done".
@@ -21,7 +21,7 @@ struct PlanPreviewScreen: View {
             PlanNavBar(title: "Preview", leading: .back, trailing: step, onLeading: onBack)
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s4) {
-                    Text.planOverline(model.isBusiness ? "What guests see" : "What neighbors see")
+                    Text.planOverline(model.isBusiness ? "What guests see" : "What others see")
                     if model.isBusiness { PlanBusinessPreviewCard(model: model) } else { neighborsCard }
                     Text.planOverline(
                         model.isBusiness ? "People who are in also see"
@@ -246,7 +246,7 @@ struct PlanPostedScreen: View {
                     .planFont(.h2)
                     .foregroundStyle(Theme.Color.appText)
                     .accessibilityAddTraits(.isHeader)
-                Text("Neighbors near you can see it now. We'll tell you when someone asks to join.")
+                Text("People nearby can see it now. We'll tell you when someone asks to join.")
                     .planFont(.body)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
