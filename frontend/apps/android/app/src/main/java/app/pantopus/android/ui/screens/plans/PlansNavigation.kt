@@ -177,6 +177,8 @@ fun NavGraphBuilder.plansRoutes(
                 onOpenVerification = external.openVerification,
                 onSeeAllPlans = external.openNearby,
                 onAskPantopus = external.askPantopus,
+                // A skipped date's next one (Plans step 2) takes its place, so Back goes where the skipped one came from.
+                onOpenNextDate = { id -> nav.navigate(PlansRoutes.plan(id)) { popUpTo(PlansRoutes.PLAN) { inclusive = true } } },
             )
         }
     }

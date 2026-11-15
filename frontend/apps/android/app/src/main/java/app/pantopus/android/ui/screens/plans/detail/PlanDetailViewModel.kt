@@ -17,6 +17,7 @@ import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanOrigin
 import app.pantopus.android.data.plans.PlanRead
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.PlansEvents
@@ -94,6 +95,8 @@ data class PlanDetailUi(
     /** The guest made their friend link on this visit (the card's `used` says so after the next read too). */
     val friendInvited: Boolean = false,
     val makingFriendLink: Boolean = false,
+    /** A repeating plan's next date to open in this one's place, once skipping it posted one (Plans step 2). */
+    val nextPlanId: String? = null,
 )
 
 /**
@@ -141,6 +144,8 @@ class PlanDetailViewModel
                 storedCardOnly = true
                 _ui.update { it.copy(state = PlanDetailUiState.Ready(card, fresh = false)) }
             }
+            // Opened in place of a date its host skipped (Plans step 2): this page says so.
+            events.takeArrivalNote(planId)?.let { note -> _ui.update { it.copy(notice = note) } }
         }
 
         /** Every appearance: read the plan fresh (opening an invitation first, once). */
@@ -469,6 +474,56 @@ class PlanDetailViewModel
         }
 
         fun removeGuest(requestId: String) = act(done = "Removed. They no longer see the plan.") { repository.remove(planId, requestId) }
+
+        // ---- A repeating plan (Plans step 2, board Regulars) ----
+
+        /** "Skip Thursday": cancels this date only; the next date, posted at once, opens in its place and says so. */
+        fun skipDate() = cancelOneDate(note = null, opensNext = true)
+
+        /** "Cancel this date" on the cancel sheet: the same, with the host's note, staying on this (now cancelled) date. */
+        fun cancelThisDate() {
+            val note = _ui.value.cancelNote
+            _ui.update { it.copy(cancelOpen = false) }
+            cancelOneDate(note = note, opensNext = false)
+        }
+
+        private fun cancelOneDate(
+            note: String?,
+            opensNext: Boolean,
+        ) {
+            if (_ui.value.busy) return
+            _ui.update { it.copy(busy = true) }
+            viewModelScope.launch {
+                when (val result = repository.cancelThisDate(planId, note)) {
+                    is NetworkResult.Success -> {
+                        val next = result.data
+                        if (opensNext && next != null) {
+                            events.noteOnArrival(next, PlanRepeatWords.SKIPPED_NEXT)
+                            _ui.update { it.copy(busy = false, nextPlanId = next) }
+                        } else {
+                            val said = if (next != null) PlanRepeatWords.CANCELLED_NEXT else PlanRepeatWords.CANCELLED_NO_NEXT
+                            _ui.update { it.copy(busy = false, notice = said) }
+                        }
+                    }
+                    is NetworkResult.Failure -> _ui.update { it.copy(busy = false, notice = result.error.planMessage) }
+                }
+                read()
+            }
+        }
+
+        /** The next date opened in this one's place. */
+        fun nextDateOpened() {
+            _ui.update { it.copy(nextPlanId = null) }
+        }
+
+        /** "Stop repeating": `repeat: null`; this date stays and none follows. */
+        fun stopRepeating() =
+            act(done = PlanRepeatWords.STOPPED) {
+                when (val result = repository.stopRepeating(planId)) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
+            }
 
         // ---- Bring a friend (a guest on a private plan, Plans step 1) ----
 

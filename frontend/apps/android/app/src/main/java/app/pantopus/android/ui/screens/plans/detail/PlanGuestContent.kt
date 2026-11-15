@@ -26,6 +26,7 @@ import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanCannotAsk
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.hostApproves
@@ -35,6 +36,7 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenBusiness
@@ -58,6 +60,8 @@ import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.map.planH4
 import app.pantopus.android.ui.screens.plans.opensPlanBusiness
 import app.pantopus.android.ui.screens.plans.opensPlanProfile
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatInvitedLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -162,6 +166,8 @@ internal fun PlanTitleBlock(plan: PlanDto) {
         PlanHeading(plan)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
             PlanInfoLine(PantopusIcon.Calendar, PlanFormat.whenLine(plan, long = true))
+            // "Every Tue and Thu until Feb 4" (boards Preview and Invited, Plans step 2).
+            PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
             PlanInfoLine(PantopusIcon.MapPin, whereLine(plan))
             if (plan.isPlaydate) {
                 KidsAgeBand.rangeLabel(plan.details?.kidsAgeBands)?.let { PlanInfoLine(PantopusIcon.AdultChild, "Kids $it") }
@@ -244,6 +250,8 @@ internal fun ColumnScope.PlanBeforeInBody(
     PlanSpots(plan, note = if (plan.isPlaydate) null else "Names show once you're in")
     plan.about?.takeIf(String::isNotBlank)?.let { Text(text = it, style = PantopusTextStyle.body, color = PantopusColors.appText) }
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
+    // Invited to a repeating plan (board Invited, Plans step 2): one answer is for this date only.
+    if (plan.openInvite != null && plan.repeats) PlanRepeatInvitedLine()
     if (plan.isPlaydate) {
         PlanNote(
             if (plan.isPrivate) {
@@ -381,6 +389,7 @@ internal fun ColumnScope.PlanRequestedBody(plan: PlanDto) {
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
     YourRequestCard(plan)
     PlanSpots(plan)
@@ -448,6 +457,7 @@ internal fun ColumnScope.PlanWaitlistBody(plan: PlanDto) {
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
         detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
     }
     PlanSpots(plan, note = if (plan.waitlistCount > 0) "${plan.waitlistCount} waiting" else null)
