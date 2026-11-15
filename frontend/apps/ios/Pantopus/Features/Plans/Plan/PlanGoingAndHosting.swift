@@ -42,6 +42,7 @@ struct PlanGoingSection: View {
             reconfirm
         }
         VStack(alignment: .leading, spacing: 6) {
+            if card.isPrivate { PlanPrivateChip() }
             Text(card.title)
                 .planFont(.h2)
                 .foregroundStyle(Theme.Color.appText)
@@ -84,6 +85,7 @@ struct PlanGoingSection: View {
                 .disabled(viewModel.plan?.chatRoomId == nil)
                 .accessibilityIdentifier("planGroupChat")
         }
+        PlanBringFriendRow(viewModel: viewModel, card: card)
         if let people = viewModel.plan?.people, !people.isEmpty {
             PlanPeopleLine(
                 people: people,
@@ -240,7 +242,10 @@ struct PlanHostingSection: View {
         VStack(alignment: .leading, spacing: 6) {
             // "Cancelled" once it is (board P2's status chip, as on Android).
             let chip = card.state == .cancelled ? "Cancelled" : "You're hosting"
-            StatusChip(chip, variant: .neutral, icon: .flag).accessibilityLabel(chip)
+            HStack(spacing: Spacing.s2) {
+                StatusChip(chip, variant: .neutral, icon: .flag).accessibilityLabel(chip)
+                if card.isPrivate { PlanPrivateChip() }
+            }
             Text(card.title)
                 .planFont(.h2)
                 .foregroundStyle(Theme.Color.appText)
@@ -271,7 +276,8 @@ struct PlanHostingSection: View {
                         .disabled(viewModel.plan?.chatRoomId == nil)
                         .accessibilityIdentifier("planMessageGuests")
                 }
-                if let url = card.shareUrl.flatMap(URL.init(string:)) {
+                // A private plan is shared by invitation only: "Invite friends" above (Plans step 1).
+                if !card.isPrivate, let url = card.shareUrl.flatMap(URL.init(string:)) {
                     ShareLink(item: url, message: Text(card.title)) {
                         PlanButtonLabel(title: "Share", icon: .share, kind: .secondary)
                     }

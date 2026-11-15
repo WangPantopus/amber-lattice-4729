@@ -227,8 +227,8 @@ struct PlanScreen: View {
                     .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
                     .contentShape(Circle())
             }
-            // Nothing to share once it's cancelled or over (as on Android).
-            if card.state != .cancelled, card.state != .ended, let url = card.shareUrl.flatMap(URL.init(string:)) {
+            // Nothing to share once it's cancelled or over (as on Android), nor ever for a private plan (invitations only).
+            if !card.isPrivate, card.state != .cancelled, card.state != .ended, let url = card.shareUrl.flatMap(URL.init(string:)) {
                 ShareLink(item: url, message: Text(card.title)) {
                     PlanGlassIcon(icon: .share)
                 }

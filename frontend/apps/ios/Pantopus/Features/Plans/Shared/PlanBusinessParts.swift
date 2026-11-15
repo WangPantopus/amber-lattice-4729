@@ -38,17 +38,21 @@ struct PlanBusinessBadge: View {
     }
 }
 
-/// The kind tile of a row, with the business badge on its corner for a business's plan.
+/// The kind tile of a row, with the business badge on its corner for a business's plan, or the
+/// lock for a private plan (Plans step 1).
 struct PlanKindTile: View {
     let kind: PlanKind
     var isBusiness = false
     var size: CGFloat = 44
+    var isPrivate = false
 
     var body: some View {
         PlanTile(kind: kind, size: size, glyph: size / 2)
             .overlay(alignment: .bottomTrailing) {
                 if isBusiness {
                     PlanBusinessBadge(size: size * 0.36).offset(x: 5, y: 5)
+                } else if isPrivate {
+                    PlanPrivateBadge(size: size * 0.36).offset(x: 5, y: 5)
                 }
             }
     }
@@ -334,7 +338,10 @@ struct PlanCardTag: View {
                 PlanPriceChip()
             }
         } else {
-            PlanTypeTag(kind: card.kind)
+            HStack(spacing: Spacing.s2) {
+                PlanTypeTag(kind: card.kind)
+                if card.isPrivate { PlanPrivateChip() }
+            }
         }
     }
 }

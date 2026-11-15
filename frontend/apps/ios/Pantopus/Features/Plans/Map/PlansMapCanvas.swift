@@ -129,7 +129,8 @@ struct PlansMapCanvas: View {
             isFull: pin.isFull && !pin.isIn && !pin.isHosting,
             isLive: pin.state == .live,
             badge: badge,
-            isBusiness: pin.business != nil
+            isBusiness: pin.business != nil,
+            isPrivate: pin.isPrivate
         )
     }
 
@@ -144,6 +145,7 @@ struct PlansMapCanvas: View {
         .accessibilityLabel(
             PlansPinSpeech.label(for: pin, card: card(for: pin.id), center: viewModel.center)
                 + (pin.business.map { ", hosted by \($0.name)" } ?? "")
+                + (pin.isPrivate ? ", private" : "")
         )
         .accessibilityHint(pinHint)
         .accessibilityIdentifier("planPin.\(pin.id)")

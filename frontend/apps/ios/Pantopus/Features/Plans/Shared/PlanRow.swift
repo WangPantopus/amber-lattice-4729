@@ -29,6 +29,8 @@ struct PlanRowModel: Identifiable, Equatable {
     let accessibilityLabel: String
     /// A business hosts it: the badge on the kind tile (board P1).
     var isBusiness = false
+    /// A private plan: the lock on the kind tile (Plans step 1).
+    var isPrivate = false
 
     /// A row in a public list (the map's sheet, Today and Tomorrow, J8).
     static func listed(_ card: PlanCardDTO, trailing: PlanRowTrailing? = nil, now: Date = Date()) -> PlanRowModel {
@@ -77,7 +79,8 @@ struct PlanRowModel: Identifiable, Equatable {
             title: card.title,
             subtitle: parts.joined(separator: " · "),
             trailing: trailing ?? spotsTrailing(card),
-            accessibilityLabel: spoken(card, now: now)
+            accessibilityLabel: spoken(card, now: now),
+            isPrivate: card.isPrivate
         )
     }
 
@@ -98,7 +101,8 @@ struct PlanRowModel: Identifiable, Equatable {
                 subtitle: ["You're hosting", when].compactMap { $0 }.joined(separator: " · "),
                 trailing: trailing,
                 accessibilityLabel: "You're hosting. " + row.accessibilityLabel,
-                isBusiness: row.isBusiness
+                isBusiness: row.isBusiness,
+                isPrivate: row.isPrivate
             )
         }
         // An invitation not answered yet: "Sam invited you · Sun 1:25 PM".
@@ -112,7 +116,8 @@ struct PlanRowModel: Identifiable, Equatable {
                 subtitle: "\(host) invited you · \(row.subtitle)",
                 trailing: row.trailing,
                 accessibilityLabel: "\(host) invited you. " + row.accessibilityLabel,
-                isBusiness: row.isBusiness
+                isBusiness: row.isBusiness,
+                isPrivate: row.isPrivate
             )
         }
         let status: PlanRowTrailing = switch viewer?.requestStatus {
@@ -167,7 +172,7 @@ struct PlanRowModel: Identifiable, Equatable {
     /// a study group adds its subject and style ("Spanish, Quiet study").
     static func spoken(_ card: PlanCardDTO, now: Date = Date()) -> String {
         let calendar = PlanFormat.calendar(for: card.timezone)
-        var parts = [card.kind.spokenTitle, card.title]
+        var parts = [card.isPrivate ? "Private \(card.kind.spokenTitle.lowercased())" : card.kind.spokenTitle, card.title]
         if card.state == .live {
             parts.append("happening now")
         } else if let start = card.startsAtDate {
@@ -197,7 +202,7 @@ struct PlanRow: View {
             VStack(spacing: 0) {
                 if showsDivider { Divider().overlay(Theme.Color.appBorder) }
                 HStack(spacing: Spacing.s3) {
-                    PlanKindTile(kind: model.kind, isBusiness: model.isBusiness)
+                    PlanKindTile(kind: model.kind, isBusiness: model.isBusiness, isPrivate: model.isPrivate)
                     if typeSize.isAccessibilitySize {
                         // At the largest text sizes the status goes under the words, which keep the width.
                         stacked(lines: 4)
