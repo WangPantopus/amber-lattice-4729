@@ -348,6 +348,13 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] A list still sends one note to everyone, so for three or more people the helper writes a note that names no one. A different note per person is not built.
 - [ ] Not this season: AI-made card pictures. "Draw our photo in this card's style" would need a picture vendor and your decision on sending family photos to it.
 
+**Made by the founder on November 15 (one card to many people by email).** You asked whether a Christmas card can go to several people who aren't on Pantopus by email, to make sure it does and works, and what happens when it fails.
+
+- [x] A list (digital stamps on) can go to as many new email addresses as there are stamps for. Before, only 3 new addresses a week went and the rest showed "Won't be sent". Cards taken back still count as new addresses for that week, so the 3 free stamps can't be sent, taken back and sent again to email stranger after stranger. With stamps off the old rule stays (3 new addresses a week). The same address still gets one card in 30 days, unless the earlier card was taken back before its email went out.
+- [x] Each person gets their own email with only their own address in it; nobody on a list sees who else got one (unchanged).
+- [x] An email that doesn't go out is no longer silent. The card keeps whether its email went; the first send gets a second try a moment later, then the server tries every 10 minutes, 5 tries in all within about an hour, then tells the sender once (one notice for several cards). Sent says "The email didn't go out" with the address as typed, and offers Email it again or Take it back (the stamp comes back). No new table, no migration, no new key.
+- [ ] Not covered: an address that the mail server accepts but later bounces (a typo at a real domain). Pantopus doesn't receive Postmark's bounce reports, so such a card looks emailed. Catching those needs a Postmark bounce webhook, which needs your Postmark settings.
+
 **Made by the founder on November 14 (sharing a Christmas card as a video).** You asked for a second way to share a card, a video of the whole experience, and worried about people sharing a private note. You approved one "Share this card" button with Picture | Video in its sheet, videos that never show a note or a name, and the build ("Yes, plan the build", then "yes, finish them please" after the first three videos).
 
 - [x] Picture | Video at the top of "Share this card" on web, iPhone and Android, for a card that isn't sealed. Video plays the picture's film in the sheet, with Instagram, Facebook, Save, More and Copy link. A sealed card stays picture-only.
@@ -914,7 +921,7 @@ Decided October 30 (section 0). Christmas cards are built behind `holiday_cards`
   - [ ] Look over [all 49 pictures with their table colours](docs/product/christmas-card-table/reference/all-49-pictures-with-table-colours.jpg). Changing one is a small server and web update.
   - [ ] Switch it on: `card_table` on the production server and worker and on Vercel together, then in `PANTOPUS_LAUNCH_FEATURES` on `ios-release` and `android-release`, then cut and release the store builds. With the key on, `/cards` and the picture pages are public and search engines can find them.
   - [ ] Optional, any time: a free Meta app ID (developers.facebook.com) in the iOS build setting `PANTOPUS_META_APP_ID` makes Instagram Story one tap. Until then it opens the share sheet with the picture.
-  - [ ] Worth a thought, not needed: cards by email keep today's limits (3 new addresses a week, the same address once in 30 days). Links have only the one-card-a-day limit.
+  - [x] Worth a thought, not needed: cards by email keep today's limits (3 new addresses a week, the same address once in 30 days). Links have only the one-card-a-day limit. (Changed November 15 with digital stamps on: see "one card to many people by email" above.)
 - [ ] After the store release, not before (agents): add `/cards/*` to `apple-app-site-association` and Android's link filters, so a shared card link opens the app. Older apps would open a page they don't know.
 
 **Help me write it (added November 11).** Behind `card_note_help`, which is off. The server and the web came first; progress here.
