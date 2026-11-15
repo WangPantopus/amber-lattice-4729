@@ -160,25 +160,25 @@ class PlanDetailViewModel
          * invitation wasn't found.
          */
         private suspend fun claimInviteOnce(): Boolean {
-            val token = inviteToken ?: return false
-            if (inviteClaimed) return false
+            val token = inviteToken?.takeUnless { inviteClaimed } ?: return false
             val generation = readGeneration
             val result = repository.claimInvite(planId, token)
             if (!active || generation != readGeneration) return false
             inviteClaimed = true
-            when (result) {
-                is NetworkResult.Success ->
+            return when (result) {
+                is NetworkResult.Success -> {
                     result.data.plan?.let { plan ->
                         storedCardOnly = false
                         _ui.update { it.copy(state = PlanDetailUiState.Ready(plan, fresh = false)) }
                     }
+                    false
+                }
                 is NetworkResult.Failure -> {
-                    // Taken back, or never this plan's: said once the plan is read (see [inviteMissedNotice]).
-                    if (result.error == NetworkError.NotFound) return true
                     if (result.error.planCode == "invite_used") _ui.update { it.copy(notice = result.error.planMessage) }
+                    // Taken back, or never this plan's: said once the plan is read (see [inviteMissedNotice]).
+                    result.error == NetworkError.NotFound
                 }
             }
-            return false
         }
 
         /**
