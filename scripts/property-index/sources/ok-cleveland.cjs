@@ -1,6 +1,7 @@
 'use strict';
 // Cleveland County, Oklahoma: the Cleveland County Assessor's own tax parcels joined to its appraisal records, published by the Assessor's office
-// on ArcGIS Online (a dated copy; the layer's name carries the month). No terms are stated on the layer or the Assessor's site. Owner, mailing,
+// on ArcGIS Online (a dated copy; the layer's name carries the month and year, and each run reads the newest such copy the Assessor's organization
+// shares publicly, dated by the layer's own edit date). No terms are stated on the layer or the Assessor's site. Owner, mailing,
 // grantor and grantee columns are in the layer and never asked for. TotalValue is the Assessor's fair cash value; TotalArea is the account's land
 // in acres as the Assessor records it (the parcel map's own measured area is a different column and isn't read). Baths are one total in which a
 // half bath is .5 and a three-quarter bath .75, as the Assessor writes them.
@@ -16,7 +17,11 @@ const { log } = require('../lib/log.cjs');
 
 const FIPS = '40027';
 const COUNTY = 'Cleveland County';
-const LAYER = 'https://services1.arcgis.com/kxHJSF07PF5lbQ3z/arcgis/rest/services/ClevelandTaxParcelsJune2026/FeatureServer/0';
+const ORG = 'kxHJSF07PF5lbQ3z';
+// The copy read in November 2026, for the dictionary check only: builds look for the newest copy.
+const LAYER = `https://services1.arcgis.com/${ORG}/arcgis/rest/services/ClevelandTaxParcelsJune2026/FeatureServer/0`;
+const COPY = /^ClevelandTaxParcels(January|February|March|April|May|June|July|August|September|October|November|December)((?:19|20)\d{2})$/;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const COLUMNS = ['UserAccount', 'AccountType', 'LandUseCode', 'PropertyStatus', 'BuildingTypeDescription', 'FormattedLocation', 'LocationCity', 'LocationZip', 'Subdivision', 'Lot', 'Neighborhood', 'TotalArea', 'TotalAreaUOM', 'YearBuilt', 'TotalFinishedArea', 'Beds', 'Baths', 'TotalValue', 'TotalLandValue', 'TotalBuildingValue', 'TotalAssessedValue', 'SalePrice', 'SaleDate', 'InstrumentType', 'SoldAsVacant', 'LegalReference'];
 
 // Building types as the Assessor names them. A "Cancel" mobile home is one whose title was cancelled into the land: it is still the home on the
@@ -82,14 +87,31 @@ function fromRow(row) {
   return { id: `pp:${kind}:${FIPS}:${account}`, kind, home_type: homeType, address: { ...address, city: String(word(row.LocationCity) || '').toUpperCase(), zip: zipCode(row.LocationZip) }, facts };
 }
 
+/** The newest dated copy the Assessor's organization shares publicly that still has every column read here. */
+async function newestCopy() {
+  const query = new URLSearchParams({ q: `orgid:${ORG} type:"Feature Service" ClevelandTaxParcels`, num: '100', f: 'json' });
+  const found = await getJson(`https://www.arcgis.com/sharing/rest/search?${query}`, 'The Assessor\'s published layers');
+  const copies = (found.results || [])
+    .map((item) => ({ item, match: COPY.exec(String(item.title || '').trim()) }))
+    .filter(({ item, match }) => match && item.access === 'public' && /\/FeatureServer\/?$/.test(item.url || ''))
+    .map(({ item, match }) => ({ url: `${item.url.replace(/\/$/, '')}/0`, when: Number(match[2]) * 12 + MONTHS.indexOf(match[1]) }))
+    .sort((a, b) => b.when - a.when);
+  for (const copy of copies) {
+    const info = await getJson(`${copy.url}?f=json`, 'The copy\'s description');
+    const names = new Set((info.fields || []).map((field) => field.name));
+    if (COLUMNS.every((name) => names.has(name))) return { url: copy.url, info };
+  }
+  throw new Error('The Assessor no longer shares a dated tax parcel copy with these columns');
+}
+
 async function* build({ work }) {
-  const info = await getJson(`${LAYER}?f=json`, 'The layer\'s description');
+  const { url, info } = await newestCopy();
   const asOf = isoDate(info.editingInfo?.dataLastEditDate || info.editingInfo?.lastEditDate);
   if (!asOf) throw new Error('The layer no longer says when it changed');
   const records = [];
   const seen = new Set();
   let [noAddress, inactive] = [0, 0];
-  for await (const row of cached(path.join(work, 'ok-cleveland', 'parcels.jsonl.gz'), () => layerRows(LAYER, COLUMNS))) {
+  for await (const row of cached(path.join(work, 'ok-cleveland', 'parcels.jsonl.gz'), () => layerRows(url, COLUMNS))) {
     if (!/^A\b/i.test(String(row.PropertyStatus || '').trim())) {
       inactive += 1;
       continue;
@@ -101,6 +123,7 @@ async function* build({ work }) {
       records.push(record);
     }
   }
+  log(`${COUNTY}: read ${url.replace(/^.*\/services\//, '')}`);
   log(`${COUNTY}: ${records.length} accounts, ${noAddress} without a street number, ${inactive} inactive`);
   for (const building of condoBuildings(records, { fips: FIPS, county: COUNTY })) records.push(building);
   yield {
