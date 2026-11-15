@@ -358,12 +358,13 @@ private fun StillComingCard(
     ) {
         val host = plan.hostFirst
         val noun = PlanFormat.noun(plan)
-        // An online plan's new place is its link, as the server's reminder says it (Plans step 3).
+        // An online plan's new place is its link, in the server's push words (Plans step 3, as on iPhone).
+        val placeTitle = if (plan.isOnline) "$host changed the link" else "$host changed the place"
         val newPlace = if (plan.isOnline) "It has a new link now." else "It's at a new place now."
         val atNewPlace = if (plan.isOnline) "with a new link" else "at a new place"
         val (title, message) =
             when (plan.myRequest?.reconfirmReason) {
-                "place" -> "$host changed the place" to "$newPlace Still coming?"
+                "place" -> placeTitle to "$newPlace Still coming?"
                 "both" -> "$host changed the $noun" to "Now ${PlanFormat.dayAt(plan)}, $atNewPlace. Still coming?"
                 else -> "$host moved the $noun" to "Now ${PlanFormat.dayAt(plan)}. Still coming?"
             }

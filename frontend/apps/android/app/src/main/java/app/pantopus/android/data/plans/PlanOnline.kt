@@ -96,7 +96,8 @@ object PlanOnlineLink {
 
 /**
  * The details of the four newer kinds (Plans step 4): each choice's wire value and words, in the order the chips show
- * them, the first being the server's default. "Something else" has none: its title says what it is.
+ * them, the first being the server's default; the same words as on iPhone. "Something else" has none: its title says
+ * what it is.
  */
 object PlanKindDetails {
     val FOOD: List<Pair<String, String>> =
@@ -105,7 +106,7 @@ object PlanKindDetails {
             "potluck" to "Potluck",
             "drinks" to "Drinks",
             "brunch" to "Brunch",
-            "bbq" to "Barbecue",
+            "bbq" to "BBQ",
             "other" to "Other",
         )
 
@@ -134,34 +135,5 @@ object PlanKindDetails {
         wire: String?,
     ): String? = choices.firstOrNull { it.first == wire && it.first != OTHER }?.second
 
-    /** A new plan's title from its choice, until the host types their own ("Potluck", "Trivia night", "Group run"). */
-    fun title(
-        kind: PlanKind,
-        wire: String?,
-    ): String =
-        when (kind) {
-            PlanKind.FOOD_DRINKS -> FOOD_TITLES[wire] ?: "Get-together"
-            PlanKind.GAME_NIGHT -> GAME_TITLES[wire] ?: "Game night"
-            PlanKind.OUTDOORS -> OUTDOOR_TITLES[wire] ?: "Outing"
-            else -> ""
-        }
-
     private const val OTHER = "other"
-
-    private val FOOD_TITLES =
-        mapOf(
-            "dinner" to "Dinner together",
-            "potluck" to "Potluck",
-            "drinks" to "Happy hour",
-            "brunch" to "Brunch",
-            "bbq" to "Barbecue",
-        )
-    private val GAME_TITLES =
-        mapOf(
-            "board_games" to "Board game night",
-            "cards" to "Card night",
-            "trivia" to "Trivia night",
-            "video_games" to "Video game night",
-        )
-    private val OUTDOOR_TITLES = mapOf("hike" to "Group hike", "bike_ride" to "Bike ride", "run" to "Group run")
 }

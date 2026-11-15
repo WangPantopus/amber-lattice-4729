@@ -447,8 +447,8 @@ class HostFlowViewModel
                         HostDraft(kind = kind, spots = 6, approveEach = false, autoRule = PlanAutoRule.VERIFIED, title = "Coffee walk")
                     // A watch party's defaults (as on iOS), always at a public place.
                     PlanKind.STUDY_GROUP -> HostDraft(kind = kind, spots = 8)
-                    // Plans step 4: a public place or the host's home; the title follows the first chip until typed over.
-                    else -> newKindDraft(kind, _ui.value.home != null)
+                    // Plans step 4, with iPhone's defaults (HostOnline.kt).
+                    else -> newKindDraft(kind)
                 }
             val hours = hostedHours(kind)
             val timed =
@@ -474,8 +474,10 @@ class HostFlowViewModel
             val (earliest, latest, preferred) =
                 when (kind) {
                     PlanKind.PLAYDATE -> Triple(DAY_START, PLAYDATE_LATEST, PLAYDATE_HOUR)
-                    // An outing starts in the morning, as a walk does (Plans step 4).
-                    PlanKind.WALK_COFFEE, PlanKind.OUTDOORS -> Triple(WALK_EARLIEST, NIGHT_START, WALK_HOUR)
+                    PlanKind.WALK_COFFEE -> Triple(WALK_EARLIEST, NIGHT_START, WALK_HOUR)
+                    // Plans step 4, as on iPhone: an outing by day (9 AM next), food & drinks at dinner time (6 PM).
+                    PlanKind.OUTDOORS -> Triple(WALK_EARLIEST, OUTING_LATEST, OUTING_HOUR)
+                    PlanKind.FOOD_DRINKS -> Triple(DAY_START, NIGHT_START, DINNER_HOUR)
                     else -> Triple(DAY_START, NIGHT_START, EVENING_HOUR)
                 }
             if (soon.hour in earliest until latest) return soon
@@ -552,8 +554,8 @@ class HostFlowViewModel
             edit { it.copy(online = true, atHome = false) }
         }
 
-        /** An online plan's link, as typed or pasted. */
-        fun setLink(value: String) = edit { it.copy(link = value) }
+        /** An online plan's link, as typed or pasted (up to [LINK_INPUT_MAX]; the check refuses past 300). */
+        fun setLink(value: String) = edit { it.copy(link = value.take(LINK_INPUT_MAX)) }
 
         /** Now or later, for a pickup game (H4). */
         fun setPickupNow(now: Boolean) {
@@ -871,9 +873,8 @@ class HostFlowViewModel
         /** The city the place is in, for the preview's "Near Camas" (iOS reverse-geocodes the same point). */
         private fun loadPreviewArea() {
             val ui = _ui.value
-            // An online plan is hosted from the host's home, when there is one ("Online · hosted from Camas").
             val point =
-                if (ui.draft.atHome || ui.isOnline) {
+                if (ui.draft.atHome) {
                     ui.home?.let { h -> if (h.latitude != null && h.longitude != null) h.latitude to h.longitude else null }
                 } else {
                     ui.draft.place?.let { it.latitude to it.longitude }
@@ -1113,6 +1114,9 @@ class HostFlowViewModel
             const val PLAYDATE_LATEST = 18
             const val PLAYDATE_HOUR = 10
             const val WALK_HOUR = 8
+            const val OUTING_LATEST = 19
+            const val OUTING_HOUR = 9
+            const val DINNER_HOUR = 18
             const val EVENING_HOUR = 19
             const val MAX_DAYS_AHEAD = 14L
             const val MAX_PRIVATE_DAYS_AHEAD = 60L

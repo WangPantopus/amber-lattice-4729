@@ -31,6 +31,7 @@ import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.standing
@@ -147,6 +148,8 @@ private fun askScopeLine(
         plan.isBusiness -> "$host sees your first name, how many are coming and your note. Never your address."
         plan.isPlaydate ->
             "$host sees your first name, your verified badge, about how far away you live and your kids' ages. Never their names."
+        // No distance is kept for an online plan (Plans step 3); iPhone's words.
+        plan.isOnline -> "$host sees your first name and your verified badge. Never your address."
         else -> "$host sees your first name, your verified badge and about how far away you live. Never your address."
     }
 

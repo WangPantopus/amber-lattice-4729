@@ -973,8 +973,8 @@ private fun NeighborsCard(
             else -> PlanFormat.whenLine(start.atZone(ui.zone), end?.atZone(ui.zone))
         }
     // The place's city once looked up (as on iOS); a plan at home can use the home's city meanwhile. An online plan
-    // says "Online · hosted from Camas" (Plans step 3).
-    val near = if (ui.isOnline) previewOnlineWhere(ui) else ui.previewArea ?: ui.home?.city?.takeIf { draft.atHome }?.let { "Near $it" }
+    // says "Online" there (Plans step 3).
+    val near = if (ui.isOnline) PREVIEW_ONLINE_WHERE else ui.previewArea ?: ui.home?.city?.takeIf { draft.atHome }?.let { "Near $it" }
     val point = previewPoint(ui)
     Column(modifier = Modifier.fillMaxWidth().planCard()) {
         Box(modifier = Modifier.fillMaxWidth().height(120.dp).background(PantopusColors.appSurfaceSunken)) {

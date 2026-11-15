@@ -107,6 +107,8 @@ internal fun PrivatePreview(
         if (draft.atHome) {
             PlanScopeLine("People you invite see your address once they say they're in.", icon = PantopusIcon.Home)
         }
+        // An online plan's link waits until they're in (Plans step 3, as on iPhone).
+        if (ui.isOnline) PlanScopeLine("The link shows only to people who are in.")
     }
 }
 
@@ -139,7 +141,7 @@ private fun InvitedCard(
     // its link waits until they're in (Plans step 3).
     val place =
         if (ui.isOnline) {
-            previewOnlineWhere(ui)
+            PREVIEW_ONLINE_WHERE
         } else if (draft.atHome) {
             listOfNotNull("${ui.hostName.substringBefore(' ')}'s place", city).joinToString(", ")
         } else {

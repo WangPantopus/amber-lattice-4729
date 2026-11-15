@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanKindDetails
 import app.pantopus.android.ui.screens.plans.components.PlanChoice
 import app.pantopus.android.ui.screens.plans.components.PlanChoiceGroup
@@ -100,60 +99,39 @@ internal fun PlaceOrOnline(
     if (ui.isOnline) OnlineLinkField(ui, vm) else PlaceRow(ui, onClick = vm::openPlaces)
 }
 
-/** Food & drinks (Plans step 4): what kind of get-together, then the common fields. */
+/** Food & drinks (Plans step 4): its "Kind", then the common fields. */
 @Composable
 internal fun ColumnScope.FoodFields(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
-    val words =
-        NewKindWords(
-            title = "Tacos on the patio",
-            note = "We'll be at the long table by the window.",
-            about = "Bring a dish to share, or just come hungry.",
-        )
+    val words = NewKindWords(title = "Potluck dinner in the backyard", note = "Bring a side to share. We'll have drinks.")
     NewKindFields(ui = ui, vm = vm, words = words) {
-        DetailChips("Kind of get-together", PlanKindDetails.FOOD, ui.draft.foodKind, "planFoodKind") { id ->
-            vm.pickDetail(PlanKind.FOOD_DRINKS, id)
-        }
+        DetailChips(PlanKindDetails.FOOD, ui.draft.foodKind, "planFoodKind") { id -> vm.edit { it.copy(foodKind = id) } }
     }
 }
 
-/** Game night (Plans step 4): what kind of game, then the common fields. */
+/** Game night (Plans step 4): its "Kind", then the common fields. */
 @Composable
 internal fun ColumnScope.GameNightFields(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
-    val words =
-        NewKindWords(
-            title = "Thursday trivia night",
-            note = "Bring a game you love.",
-            about = "Six rounds, teams of two. Bring your own snacks.",
-        )
+    val words = NewKindWords(title = "Board games and snacks", note = "Bring a game if you like. Snacks are on me.")
     NewKindFields(ui = ui, vm = vm, words = words) {
-        DetailChips("Kind of game", PlanKindDetails.GAMES, ui.draft.gameKind, "planGameKind") { id ->
-            vm.pickDetail(PlanKind.GAME_NIGHT, id)
-        }
+        DetailChips(PlanKindDetails.GAMES, ui.draft.gameKind, "planGameKind") { id -> vm.edit { it.copy(gameKind = id) } }
     }
 }
 
-/** Outdoors (Plans step 4): what kind of outing and its pace, then the common fields. It always meets in person. */
+/** Outdoors (Plans step 4): its "Kind" and pace (the walk's), then the common fields. It always meets in person. */
 @Composable
 internal fun ColumnScope.OutdoorsFields(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
-    val words =
-        NewKindWords(
-            title = "Morning hike at the lake",
-            note = "Meet at the trailhead sign.",
-            about = "About 3 miles with a few hills. Bring water.",
-        )
+    val words = NewKindWords(title = "Saturday hike around the lake", note = "Meet at the trailhead lot. Bring water.")
     NewKindFields(ui = ui, vm = vm, words = words) {
-        DetailChips("Kind of outing", PlanKindDetails.OUTDOORS, ui.draft.outdoorKind, "planOutdoorKind") { id ->
-            vm.pickDetail(PlanKind.OUTDOORS, id)
-        }
+        DetailChips(PlanKindDetails.OUTDOORS, ui.draft.outdoorKind, "planOutdoorKind") { id -> vm.edit { it.copy(outdoorKind = id) } }
         PlanField(label = "Pace") {
             PlanSegmented(
                 options = listOf(PlanKindDetails.PACE_EASY to "Easy", "brisk" to "Brisk"),
@@ -170,37 +148,13 @@ internal fun ColumnScope.SomethingElseFields(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
-    val words =
-        NewKindWords(
-            title = "Book club at the library",
-            note = "Here's how to find us.",
-            about = "Tell people what it is and what to bring.",
-        )
-    NewKindFields(ui = ui, vm = vm, words = words)
+    NewKindFields(ui = ui, vm = vm, words = NewKindWords(title = "Book club at the café", note = "Meet by the front door."))
 }
 
-/** A newer kind's chip (Plans step 4): the choice, and the title it suggests until the host typed their own. */
-private fun HostFlowViewModel.pickDetail(
-    kind: PlanKind,
-    id: String,
-) {
-    edit { draft ->
-        val chosen =
-            when (kind) {
-                PlanKind.FOOD_DRINKS -> draft.copy(foodKind = id)
-                PlanKind.GAME_NIGHT -> draft.copy(gameKind = id)
-                PlanKind.OUTDOORS -> draft.copy(outdoorKind = id)
-                else -> draft
-            }
-        if (draft.titleEdited) chosen else chosen.copy(title = PlanKindDetails.title(kind, id))
-    }
-}
-
-/** A newer kind's placeholders: the title, the note for people who are in, and the about line everyone sees. */
+/** A newer kind's hints (as on iPhone): the title, and the note for people who are in (an online plan's is its own). */
 private data class NewKindWords(
     val title: String,
     val note: String,
-    val about: String,
 )
 
 /**
@@ -229,32 +183,36 @@ private fun ColumnScope.NewKindFields(
         onChange = { value -> vm.edit { it.copy(spots = value) } },
     )
     HowPeopleGetIn(ui, vm)
-    NoteField(draft.note, label = "Note for people who are in", placeholder = words.note) { text -> vm.edit { it.copy(note = text) } }
+    val note = if (ui.isOnline) ONLINE_NOTE_HINT else words.note
+    NoteField(draft.note, label = "Note for people who are in", placeholder = note) { text -> vm.edit { it.copy(note = text) } }
     PlanField(label = "About · everyone sees this") {
         PlanTextArea(
             value = draft.about,
             onValue = { text -> vm.edit { it.copy(about = text.take(ABOUT_MAX)) } },
-            placeholder = words.about,
+            // iPhone's hint for every person's plan.
+            placeholder = "Big screen in the backyard. Kids welcome.",
             label = "About, everyone sees this",
         )
     }
 }
 
-/** One detail's chips (a newer kind's `…_kind`), one chosen; each chip's test id is [tagPrefix] plus "." and its value. */
+/**
+ * One detail's chips under "Kind" (the walk's label, as on iPhone), one chosen; the group's test id is [tag] and each
+ * chip's [tag] plus "." and its value.
+ */
 @Composable
 private fun DetailChips(
-    label: String,
     choices: List<Pair<String, String>>,
     selected: String,
-    tagPrefix: String,
+    tag: String,
     onSelect: (String) -> Unit,
 ) {
-    PlanField(label = label) {
+    PlanField(label = "Kind", modifier = Modifier.testTag(tag)) {
         PlanChoiceGroup(
             choices = choices.map { (id, words) -> PlanChoice(id, words) },
             isSelected = { it.id == selected },
             onSelect = { choice -> onSelect(choice.id) },
-            tagPrefix = tagPrefix,
+            tagPrefix = tag,
         )
     }
 }

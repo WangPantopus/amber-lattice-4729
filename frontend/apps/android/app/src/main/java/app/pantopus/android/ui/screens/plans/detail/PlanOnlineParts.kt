@@ -150,12 +150,13 @@ internal fun onlineJoinFooter(
     }
 }
 
-/** "Join" (board Online's footer): the primary button with the video glyph. */
+/** "Join" (board Online's footer): the primary button with the video glyph. [tag] is its test id. */
 @Composable
 internal fun PlanJoinButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    tag: String = "planJoinOnline",
 ) {
     val shape = RoundedCornerShape(Radii.lg)
     Row(
@@ -169,7 +170,7 @@ internal fun PlanJoinButton(
                 .background(PantopusColors.primary600)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = Spacing.s4, vertical = 10.dp)
-                .testTag("planJoinOnline")
+                .testTag(tag)
                 .clearAndSetSemantics {
                     contentDescription = JOIN
                     role = Role.Button

@@ -186,7 +186,13 @@ private fun ColumnScope.WatchFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = if (draft.atHome) "Park on the street. The side gate is open." else "We'll be at the big table by the window.",
+        placeholder =
+            when {
+                // An online plan's own hint (Plans step 3, as on iPhone).
+                ui.isOnline -> ONLINE_NOTE_HINT
+                draft.atHome -> "Park on the street. The side gate is open."
+                else -> "We'll be at the big table by the window."
+            },
     ) { text ->
         vm.edit { it.copy(note = text) }
     }
@@ -390,7 +396,7 @@ private fun ColumnScope.WalkFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Meet at the trailhead sign. Coffee after.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Meet at the trailhead sign. Coffee after.",
         singleLine = true,
     ) { text ->
         vm.edit { it.copy(note = text) }
@@ -438,7 +444,7 @@ private fun ColumnScope.StudyFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Second floor, the long table by the windows.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Second floor, the long table by the windows.",
     ) { text ->
         vm.edit { it.copy(note = text) }
     }

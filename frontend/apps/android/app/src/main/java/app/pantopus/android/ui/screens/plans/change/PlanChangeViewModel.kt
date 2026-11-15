@@ -21,6 +21,7 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
 import app.pantopus.android.ui.screens.plans.host.PLACES_SLOW
 import app.pantopus.android.ui.screens.plans.host.PickedPlace
 import app.pantopus.android.ui.screens.plans.host.PlaceSuggestions
@@ -279,9 +280,9 @@ class PlanChangeViewModel
             _ui.update { it.copy(online = it.online.copy(chosen = on), newPlace = if (on) null else it.newPlace, error = null) }
         }
 
-        /** An online plan's link, as typed or pasted. */
+        /** An online plan's link, as typed or pasted (up to [LINK_INPUT_MAX]; the check refuses past 300). */
         fun setLink(value: String) {
-            _ui.update { it.copy(online = it.online.copy(link = value), error = null) }
+            _ui.update { it.copy(online = it.online.copy(link = value.take(LINK_INPUT_MAX)), error = null) }
         }
 
         // ---- Where (H6 over H11, public plans only) ----

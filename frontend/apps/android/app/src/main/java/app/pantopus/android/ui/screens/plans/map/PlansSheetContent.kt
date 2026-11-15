@@ -1320,8 +1320,8 @@ internal fun PlanPostedContent(
                 text =
                     when {
                         plan.isPrivate -> "Your private plan is posted"
-                        // An online plan has no pin (Plans step 3): it is in the list for people nearby.
-                        plan.isOnline -> "Your online plan is posted"
+                        // An online plan has no pin (Plans step 3): it is in the list for people nearby (iPhone's words).
+                        plan.isOnline -> "Your plan is posted"
                         else -> "Your plan is on the map"
                     },
                 style = planH2,
@@ -1332,7 +1332,7 @@ internal fun PlanPostedContent(
                 text =
                     when {
                         plan.isPrivate -> "Only the people you invite can see it. We'll tell you when they answer."
-                        plan.isOnline -> "People nearby can see it in their list. We'll tell you when someone asks to join."
+                        plan.isOnline -> "People nearby can see it in the list now. We'll tell you when someone asks to join."
                         else -> "People nearby can see it now. We'll tell you when someone asks to join."
                     },
                 style = PantopusTextStyle.body,

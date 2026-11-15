@@ -221,7 +221,7 @@ private fun GoingTodayCard(
     }
 }
 
-/** A1 for an online plan (Plans step 3): no directions and no "On my way"; the group chat and "Join", which opens the link. */
+/** A1 for an online plan (Plans step 3, as on iPhone): no directions and no "On my way"; "Open plan" and "Join". */
 @Composable
 private fun OnlineTodayButtons(
     plan: PlanDto,
@@ -232,17 +232,16 @@ private fun OnlineTodayButtons(
     val link = plan.joinLink
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         PlanTonalButton(
-            title = "Group chat",
-            icon = PantopusIcon.MessageCircle,
-            onClick = { plan.chatRoomId?.let { actions.onOpenChat(it, PlanFormat.shortTitle(plan), plan.id) } },
+            title = "Open plan",
+            onClick = { actions.onOpenPlan(plan.id) },
             height = 44.dp,
-            enabled = plan.chatRoomId != null,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).testTag("plansTodayOpenOnline"),
         )
         PlanJoinButton(
             onClick = { if (link == null || !context.openPlanLink(link)) onLinkUnopened() },
             enabled = link != null,
             modifier = Modifier.weight(1f),
+            tag = "plansTodayJoinOnline",
         )
     }
 }

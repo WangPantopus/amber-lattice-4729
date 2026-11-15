@@ -44,6 +44,7 @@ import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
@@ -123,7 +124,7 @@ internal fun ColumnScope.PlanHostBody(
             if (!plan.isPrivate) GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
         }
         Column {
-            PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)
+            PlanTextButton(title = changeTitle(plan), onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
     }
@@ -142,6 +143,9 @@ private fun HostSeries(
     if (closed || series == null || !plan.repeats) return
     PlanSeriesHostCard(plan, series)
 }
+
+/** H9's way to H11: "Change the time or place", or for an online plan "Change the time or link" (as on iPhone). */
+private fun changeTitle(plan: PlanDto): String = if (plan.isOnline) "Change the time or link" else "Change the time or place"
 
 /** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
 @Composable
