@@ -16,7 +16,8 @@ const MAX_PHOTO_BYTES = 10 * MB;
 // Supabase Storage refuses a file over 50 MB on the Free plan; 30 s of 720p H.264 is 15–25 MB.
 const MAX_VIDEO_BYTES = 50 * MB;
 const MAX_STILL_BYTES = 10 * MB;
-const MAX_VIDEO_MS = 30 * 1000;
+// One Moment's video; a longer one is posted as several, one after another (momentStore MAX_PARTS).
+const MAX_VIDEO_MS = 60 * 1000;
 // Exporters round the last frame up; a 30.0 s clip can read 30.04 s.
 const VIDEO_MS_TOLERANCE = 500;
 const PHOTO_TYPES = ['image/jpeg', 'image/heic', 'image/heif', 'image/png'];
@@ -50,6 +51,12 @@ async function privateBucket(expected) {
   }
   verifiedBucket = { name, limit, until: Date.now() + 5 * 60 * 1000 };
   return name;
+}
+
+/** The largest video file an upload may be: ours, or less when the bucket takes less. The apps size their videos to it. */
+async function maxVideoBytes() {
+  try { await privateBucket(); } catch (_) { return MAX_VIDEO_BYTES; }
+  return Math.min(MAX_VIDEO_BYTES, verifiedBucket?.limit || MAX_VIDEO_BYTES);
 }
 
 function sha256(buffer) {
@@ -298,7 +305,7 @@ async function download(bucket, key) {
 module.exports = {
   LINK_SECONDS, STORAGE_CONTRACT, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_STILL_BYTES, MAX_VIDEO_MS, VIDEO_MS_TOLERANCE,
   PHOTO_TYPES, VIDEO_TYPES,
-  failure, privateBucket, sha256, keyFor, isMomentKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
+  failure, privateBucket, maxVideoBytes, sha256, keyFor, isMomentKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
   removeAccountFiles, download,
   videoFacts, jpegFacts, photoFacts, thumbnail, checkImage,
 };
