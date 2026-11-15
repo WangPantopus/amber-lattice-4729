@@ -252,7 +252,7 @@ private fun HostTypeStep(
         PlanScopeLine(
             text =
                 if (business != null) {
-                    "These are the five kinds of plan people host. Yours keeps the same color and pin."
+                    "A business hosts these five kinds of plan. Yours keeps the same color and pin."
                 } else {
                     "Plans are free and for adults. Kids come with a parent."
                 },

@@ -45,11 +45,12 @@ internal fun hostedHours(kind: PlanKind): Long =
     }
 
 /**
- * An online plan's `place` (contract section 1): the link as typed, trimmed, and the phone's own IANA time zone, which
- * the server uses only when the plan has no area (a private plan by a host with no home and no fix).
+ * An online plan's `place` (contract section 1): the link as typed, without a paste's spaces or invisible characters
+ * at either end, and the phone's own IANA time zone, which the server uses only when the plan has no area (a private
+ * plan by a host with no home and no fix).
  */
 internal fun onlinePlaceInput(link: String): PlanPlaceInput =
-    PlanPlaceInput(kind = PlanPlaceKind.ONLINE, link = link.trim(), timezone = ZoneId.systemDefault().id)
+    PlanPlaceInput(kind = PlanPlaceKind.ONLINE, link = PlanOnlineLink.clean(link), timezone = ZoneId.systemDefault().id)
 
 /** H7's "People you accept also see": the address, the exact spot, or an online plan's link by its site's name. */
 internal fun acceptedSeeWhere(ui: HostUi): Pair<PantopusIcon, String> =

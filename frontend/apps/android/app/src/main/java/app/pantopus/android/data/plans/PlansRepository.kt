@@ -639,10 +639,15 @@ class PlansRepository
             }
         }
 
+        /** Keeps [plan]'s card, or forgets it when this app can't draw its kind or place (Plans steps 3 and 4). */
         private fun rememberCard(
             plan: PlanDto,
             session: CacheSession,
         ) {
+            if (!plan.isDrawable) {
+                forget(plan.id, session)
+                return
+            }
             synchronized(cards) {
                 if (isCurrent(session)) cards[plan.id] = publicCard(plan)
             }

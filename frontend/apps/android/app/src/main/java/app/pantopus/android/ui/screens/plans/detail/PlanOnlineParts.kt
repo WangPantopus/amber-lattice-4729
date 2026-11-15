@@ -56,6 +56,7 @@ import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import app.pantopus.android.ui.theme.pantopusShadow
+import kotlinx.coroutines.delay
 
 /*
  * An online plan's page once you're in, or as its host (Plans step 3, board Online): the link's card and the footer's
@@ -78,10 +79,19 @@ internal fun PlanPageHeader(
         return
     }
     PlanOnlineHero(plan.planKind ?: PlanKind.WATCH_PARTY, modifier = Modifier.fillMaxWidth().height(PLAN_MAP_HEIGHT), lowered = 26.dp)
-    // No pin to reveal: "You're in" still slides in on its own.
+    // No pin to reveal: the reveal ends after as long as the map's takes (450 ms, 150 under Reduce Motion), so "You're
+    // in" (300 ms wait, 150 ms fade) has slid in by then.
     val done by rememberUpdatedState(onRevealDone)
-    LaunchedEffect(reveal) { if (reveal) done() }
+    LaunchedEffect(reveal) {
+        if (!reveal) return@LaunchedEffect
+        delay(if (reduceMotion) ONLINE_REVEAL_REDUCED_MS else ONLINE_REVEAL_MS)
+        done()
+    }
 }
+
+/** As long as [PlanMiniMap]'s reveal (its `REVEAL_MS`, and 150 ms under Reduce Motion). */
+private const val ONLINE_REVEAL_MS = 450L
+private const val ONLINE_REVEAL_REDUCED_MS = 150L
 
 /** The link an online plan joins with, when this viewer may read it (the host and people who are in), else null. */
 internal val PlanDto.joinLink: String?

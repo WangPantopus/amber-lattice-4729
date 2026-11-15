@@ -367,6 +367,11 @@ class HostFlowViewModel
                 _ui.update { it.copy(error = "Private plans aren't available right now. This copy would be seen by people nearby.") }
                 return
             }
+            if (plan.isOnline && !_ui.value.showsOnline) {
+                // Online plans are off now (Plans step 3): the copy waits on its details for a place, saying why.
+                _ui.update { it.copy(error = ONLINE_COPY_OFF) }
+                return
+            }
             if (validate(_ui.value.draft) == null) {
                 _ui.update { it.copy(step = HostStep.Preview) }
                 loadPreviewArea()
@@ -1105,6 +1110,9 @@ class HostFlowViewModel
         private companion object {
             /** The server's sentence while `plans_kinds` is off (422 `kinds_unavailable`). */
             const val KINDS_UNAVAILABLE = "That kind of plan isn't available yet."
+
+            /** "Host again" of an online plan while `plans_online` is off. */
+            const val ONLINE_COPY_OFF = "Online plans aren't available yet. Choose a place for this one."
             const val TITLE_MAX = 80
             const val SUBJECT_MAX = 60
             const val PICKUP_LEAD_MINUTES = 15L

@@ -223,7 +223,12 @@ private fun InBanner(
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
-        if (!reveal) return@LaunchedEffect
+        if (!reveal) {
+            // No reveal, or it just ended (an online plan's header ends it on its own clock): the banner shows in full,
+            // even when its own fade was still waiting to start.
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
         progress.snapTo(0f)
         if (!reduceMotion) kotlinx.coroutines.delay(300)
         progress.animateTo(1f, tween(150))

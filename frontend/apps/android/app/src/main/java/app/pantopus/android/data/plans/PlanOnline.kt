@@ -75,8 +75,14 @@ object PlanOnlineLink {
         val host: String,
     )
 
+    /** Invisible characters a paste can bring along at either end (a byte-order mark, zero-width spaces). */
+    private val INVISIBLE = setOf('\uFEFF', '\u200B', '\u200C', '\u200D', '\u2060')
+
+    /** The link as typed or pasted, without the spaces and invisible characters a paste brings at either end. */
+    fun clean(raw: String?): String = raw?.trim { it.isWhitespace() || it in INVISIBLE }.orEmpty()
+
     fun parse(raw: String?): Parsed? {
-        val link = raw?.trim().orEmpty()
+        val link = clean(raw)
         val plain = link.none { it.isWhitespace() || it.isISOControl() }
         val url = link.takeIf { it.isNotEmpty() && it.length <= MAX_LENGTH && plain }?.toHttpUrlOrNull() ?: return null
         val host = url.host.lowercase(Locale.US).trimEnd('.')

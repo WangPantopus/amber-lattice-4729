@@ -302,12 +302,14 @@ private fun HowWasItCard(
 ) {
     val kind = plan.planKind ?: return
     val day = recentDay(plan)
+    val hostName = PlanFormat.firstName(plan.host?.displayName)
     Column(modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4), verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             PlanKindLeading(kind)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "How was ${day?.let { "$it's " } ?: "the "}${kind.noun} with ${PlanFormat.firstName(plan.host?.displayName)}?",
+                    // The plan's own noun ("potluck", "hike"), as the server's notices say it.
+                    text = "How was ${day?.let { "$it's " } ?: "the "}${PlanFormat.noun(plan)} with $hostName?",
                     style = planH4,
                     color = PantopusColors.appText,
                     modifier = Modifier.semantics { heading() },
@@ -372,7 +374,7 @@ private fun HostAgainCard(
             PlanKindLeading(kind)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Host your ${kind.noun} again?",
+                    text = "Host your ${PlanFormat.noun(plan)} again?",
                     style = planH4,
                     color = PantopusColors.appText,
                     modifier = Modifier.semantics { heading() },

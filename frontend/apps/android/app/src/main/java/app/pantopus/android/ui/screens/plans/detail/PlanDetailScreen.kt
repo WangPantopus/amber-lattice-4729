@@ -468,7 +468,7 @@ private fun LeaveDialog(
                 Triple(
                     "Can't make it?",
                     "We'll tell ${plan.hostFirst}, and your spot goes to the next person waiting. " +
-                        "You'll lose the exact place, the note and the chat.",
+                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat.",
                     "I can't make it",
                 )
         }

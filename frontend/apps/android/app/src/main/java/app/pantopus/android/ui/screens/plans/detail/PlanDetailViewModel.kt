@@ -24,6 +24,7 @@ import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.hasPrivatePart
+import app.pantopus.android.data.plans.isDrawable
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.standing
@@ -174,7 +175,10 @@ class PlanDetailViewModel
                 is NetworkResult.Success -> {
                     result.data.plan?.let { plan ->
                         storedCardOnly = false
-                        _ui.update { it.copy(state = PlanDetailUiState.Ready(plan, fresh = false)) }
+                        // A plan of a kind or place this app can't draw (a later server's) isn't available here, as a
+                        // read of it says (Plans steps 3 and 4): never drawn wrong for a moment.
+                        val state = if (plan.isDrawable) PlanDetailUiState.Ready(plan, fresh = false) else PlanDetailUiState.Gone
+                        _ui.update { it.copy(state = state) }
                     }
                     false
                 }

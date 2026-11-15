@@ -723,7 +723,13 @@ internal fun AudienceField(
                 first = true,
                 selected = !ui.draft.isPrivate,
                 title = "Anyone nearby",
-                caption = "On the map and the list. People ask to join.",
+                // An online plan has no pin, ever (Plans step 3).
+                caption =
+                    if (ui.isOnline) {
+                        "On the list for people nearby. People ask to join."
+                    } else {
+                        "On the map and the list. People ask to join."
+                    },
                 lock = false,
                 tag = "plansAudienceNearby",
                 onClick = { vm.setPrivate(false) },
