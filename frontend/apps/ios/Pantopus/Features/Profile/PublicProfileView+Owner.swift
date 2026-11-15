@@ -134,7 +134,8 @@ extension PublicProfileView {
                 pulseCards: viewModel.postCards,
                 onOpenPost: onOpenPost
             )
-            let count = viewModel.postCards.cards.count
+            // My posts lists the posts you wrote, not the ones you reposted.
+            let count = viewModel.postCards.writtenCount
             if count > 0 {
                 ProfileSeeAllPostsButton(count: count) { open(.myPosts) }
                     .padding(.horizontal, Spacing.s5)

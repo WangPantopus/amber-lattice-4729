@@ -120,6 +120,10 @@ public struct FeedView: View {
     /// Opens My posts on the Saved tab: "View" on the "Saved." toast
     /// (PULSEREPOST contract §5). Nil leaves the toast without it.
     private let onOpenSaved: (@MainActor () -> Void)?
+    /// "Repost with your words" opens the composer on the host's stack, as ✎ does (`onCompose`). Nil opens it over
+    /// the feed instead. A sheet opened from a composer the feed itself presents closes again at once, so the
+    /// photo picker never stayed up there.
+    private let onQuote: (@MainActor (PulseComposeQuote) -> Void)?
 
     init(
         viewModel: PulseFeedViewModel? = nil,
@@ -138,7 +142,8 @@ public struct FeedView: View {
         mapSwitchOnTop: Bool = false,
         scrollToTop: UUID? = nil,
         asksPantopus: Bool = false,
-        onOpenSaved: (@MainActor () -> Void)? = nil
+        onOpenSaved: (@MainActor () -> Void)? = nil,
+        onQuote: (@MainActor (PulseComposeQuote) -> Void)? = nil
     ) {
         // Swift 5.10 crashes while lowering PulseFeedViewModel() in a default-argument thunk.
         let resolved = viewModel ?? PulseFeedViewModel()
@@ -166,6 +171,7 @@ public struct FeedView: View {
         self.scrollToTop = scrollToTop
         self.asksPantopus = asksPantopus
         self.onOpenSaved = onOpenSaved
+        self.onQuote = onQuote
     }
 
     public var body: some View {
@@ -625,8 +631,8 @@ public struct FeedView: View {
                 .padding(.bottom, Spacing.s16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .accessibilityIdentifier("pulseFeedToast")
-                // A toast with a button stays long enough to reach it.
-                .dismissToast(after: toast, minimum: action == nil ? 2.5 : 5) {
+                // A toast with a button stays long enough to reach it, with VoiceOver too.
+                .dismissToast(after: toast, minimum: action == nil ? 2.5 : (voiceOverEnabled ? 12 : 5)) {
                     viewModel.toastMessage = nil
                 }
         }
@@ -1334,11 +1340,20 @@ public struct FeedView: View {
             repostChooser: seeded ? nil : PulseCardRepostChooser(
                 target: Binding(get: { viewModel.repostChooser }, set: { viewModel.repostChooser = $0 }),
                 onToggle: { postId in run { await viewModel.toggleRepost(postId: postId) } },
-                onQuote: { postId in viewModel.beginQuote(postId: postId) }
+                onQuote: beginQuote
             )
         )
         // The post opens out of this card and closes back into it.
         .itemZoomSource(.post, id: row.id)
+    }
+
+    /// "Repost with your words": the composer opens on the host's stack when it has one, over the feed otherwise.
+    private func beginQuote(_ postId: String) {
+        if let onQuote, let quote = viewModel.quote(for: postId) {
+            onQuote(quote)
+        } else {
+            viewModel.beginQuote(postId: postId)
+        }
     }
 
     private func errorFrame(message: String) -> some View {

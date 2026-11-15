@@ -705,10 +705,15 @@ public final class PulseFeedViewModel {
         repostChooser = PulseRepostTarget(postId: postId, isReposted: effectiveIsReposted(item))
     }
 
-    /// "Repost with your words": the composer opens with this post quoted (contract §8).
+    /// "Repost with your words": the composer opens over the feed with this post quoted (contract §8).
     public func beginQuote(postId: String) {
-        guard let item = loadedItems.first(where: { $0.id == postId }) else { return }
-        quoteDraft = PulseComposeQuote(card: PulseQuotedCard(post: item))
+        quoteDraft = quote(for: postId)
+    }
+
+    /// The quote "Repost with your words" opens the composer with; nil once the post has left the list.
+    public func quote(for postId: String) -> PulseComposeQuote? {
+        guard let item = loadedItems.first(where: { $0.id == postId }) else { return nil }
+        return PulseComposeQuote(card: PulseQuotedCard(post: item))
     }
 
     private func beginAction(_ action: PulsePendingAction, postId: String) -> Bool {
@@ -786,10 +791,8 @@ public final class PulseFeedViewModel {
             showToast("Post hidden.", action: .undoHide(postId: postId))
             await refreshSavedOpeningPage()
         } catch {
-            moderation.removeHiddenPost(postId)
-            hiddenRows[postId] = nil
             toastMessage = "Couldn't hide that post."
-            rebuildLoadedState()
+            putBackHiddenRow(postId)
         }
     }
 
@@ -820,27 +823,37 @@ public final class PulseFeedViewModel {
     }
 
     /// `POST /api/posts/:id/not-helpful`. A newer server also hides the post
-    /// for the viewer (`hidden: true`): the card leaves as Hide does and the
-    /// toast offers Undo (the flag stays). An older server leaves the card
-    /// where it is (PULSEREPOST contract §7).
+    /// for the viewer (`hidden: true`): the card leaves at once, as Hide's
+    /// does, and the toast offers Undo (the flag stays). An older server
+    /// only records the flag: the card comes back where it was
+    /// (PULSEREPOST contract §7), as it does when the call fails.
     public func markNotHelpful(postId: String) async {
+        rememberHiddenRow(postId)
+        moderation.addHiddenPost(postId)
+        rebuildLoadedState()
         do {
             let response = try await api.request(
                 FeedActionsEndpoints.notHelpful(id: postId, surface: surface.moderationSurface),
                 as: FeedNotHelpfulResponse.self
             )
             guard response.hidden == true else {
+                putBackHiddenRow(postId)
                 toastMessage = "Thanks for telling us."
                 return
             }
-            rememberHiddenRow(postId)
-            moderation.addHiddenPost(postId)
-            rebuildLoadedState()
             showToast("Thanks. You won't see this post again.", action: .undoHide(postId: postId))
             await refreshSavedOpeningPage()
         } catch {
+            putBackHiddenRow(postId)
             toastMessage = "Couldn't send that feedback."
         }
+    }
+
+    /// A removal the server didn't keep: the card shows where it was.
+    private func putBackHiddenRow(_ postId: String) {
+        moderation.removeHiddenPost(postId)
+        hiddenRows[postId] = nil
+        rebuildLoadedState()
     }
 
     /// `PATCH /api/posts/:id/solve` — author-only (RN

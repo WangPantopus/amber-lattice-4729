@@ -37,12 +37,22 @@ public final class PulseComposeSession {
         step = editing || quoting ? .draft(.connections, nil) : .targetPicker
     }
 
-    /// The draft for this step: the one made earlier, or a new one.
-    fileprivate func draftModel(for step: PulseComposeFlowStep, make: () -> PulseComposeViewModel) -> PulseComposeViewModel {
+    /// The draft for this step: the one made earlier, or a new one (`make` gets the one it replaces).
+    fileprivate func draftModel(
+        for step: PulseComposeFlowStep,
+        make: (PulseComposeViewModel?) -> PulseComposeViewModel
+    ) -> PulseComposeViewModel {
         if let draft, draft.step == step { return draft.model }
-        let model = make()
+        let model = make(draft?.model)
         draft = (step, model)
         return model
+    }
+
+    /// Back from the first step to the draft it was opened from ("Change" on a quote), as it was.
+    fileprivate func returnToDraft() {
+        guard let draft else { return }
+        leaveTargetPicker()
+        step = draft.step
     }
 
     /// The first step's homes for this visit: the ones read earlier, or new ones.
@@ -89,6 +99,11 @@ public struct PulseComposeFlowView: View {
     private let prefillPhotos: [PulseComposePhoto]
     /// "Repost with your words": the post shown under the text box and sent as `quotedPostId`.
     private let quoting: PulseComposeQuote?
+    /// The first two steps' title: a quote keeps its own through "Change".
+    private var flowTitle: String {
+        quoting == nil ? "New post" : "Repost with your words"
+    }
+
     private let onCancel: @MainActor () -> Void
     private let onPosted: @MainActor (String?) -> Void
 
@@ -134,7 +149,9 @@ public struct PulseComposeFlowView: View {
                     viewModel: current.targetPickerModel(),
                     onSelect: handleTargetSelected,
                     onCancel: onCancel,
-                    hidesNetworkTarget: taskShare != nil
+                    hidesNetworkTarget: taskShare != nil,
+                    title: flowTitle,
+                    onBack: backToQuoteDraft
                 )
             case let .purposePicker(target):
                 PulsePostPurposePickerView(
@@ -142,7 +159,8 @@ public struct PulseComposeFlowView: View {
                     onSelect: { purpose in
                         current.step = .draft(target, purpose)
                     },
-                    onBack: { current.step = .targetPicker }
+                    onBack: { current.step = .targetPicker },
+                    title: flowTitle
                 )
                 // Back returns to the first step; a swipe from the edge would close the composer.
                 .swipeBackDisabled()
@@ -163,7 +181,10 @@ public struct PulseComposeFlowView: View {
             ?? .ask
 
         PulseComposeView(
-            viewModel: current.draftModel(for: .draft(target, purpose)) {
+            viewModel: current.draftModel(for: .draft(target, purpose)) { replaced in
+                // A quote moved to another audience or kind keeps the words and photos written so far.
+                let carried = quoting == nil ? nil : replaced
+                let carriedBody = carried?.fields[.body]?.value.trimmingCharacters(in: .whitespacesAndNewlines)
                 let model = PulseComposeViewModel(
                     intent: initialIntent,
                     identity: identity(for: target),
@@ -172,11 +193,11 @@ public struct PulseComposeFlowView: View {
                     postId: editingPostId,
                     taskShare: taskShare,
                     prefillTitle: prefillTitle,
-                    prefillBody: prefillBody,
+                    prefillBody: carriedBody?.isEmpty == false ? carriedBody : prefillBody,
                     prefillDraft: prefillDraft,
                     quote: quoting
                 )
-                model.setPhotos(prefillPhotos)
+                model.setPhotos(carried?.photos.isEmpty == false ? carried?.photos ?? [] : prefillPhotos)
                 return model
             },
             managesDismiss: false,
@@ -184,6 +205,14 @@ public struct PulseComposeFlowView: View {
             onPosted: onPosted,
             onChangeTarget: changeTarget
         )
+    }
+
+    /// The first step reached by a quote's "Change": Back returns to the words, where X there would drop them. Nil for
+    /// every other post.
+    private var backToQuoteDraft: (@MainActor () -> Void)? {
+        guard quoting != nil else { return nil }
+        let session = current
+        return { session.returnToDraft() }
     }
 
     /// A quote opens on Connections; "Change" goes back to the first step, where the audience and the kind of post

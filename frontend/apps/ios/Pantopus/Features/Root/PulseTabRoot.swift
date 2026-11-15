@@ -29,6 +29,8 @@ import SwiftUI
 public enum PulseRoute: Hashable {
     case post(postId: String)
     case compose(intent: String)
+    /// "Repost with your words" from a feed card: the composer with the post quoted under the text box.
+    case quote(PulseComposeQuote)
     case editPost(postId: String)
     case publicProfile(userId: String)
     /// A DM opened from a profile's Message button.
@@ -237,7 +239,8 @@ public struct PulseTabRoot: View {
                 mapSwitchOnTop: mapSwitchOnTop,
                 scrollToTop: rootTabs.pulseHomeReselected,
                 asksPantopus: true,
-                onOpenSaved: savedOpener
+                onOpenSaved: savedOpener,
+                onQuote: quoteOpener
             )
         }
     }
@@ -361,6 +364,8 @@ public struct PulseTabRoot: View {
                 onCancel: { pop() },
                 onPosted: { _ in pop() }
             )
+        case let .quote(quote):
+            quoteComposer(quote, route: route)
         case let .editPost(postId):
             PulseComposeFlowView(
                 editingPostId: postId,
@@ -399,6 +404,21 @@ public struct PulseTabRoot: View {
 }
 
 extension PulseTabRoot {
+    /// "Repost with your words" from a feed card, on this stack as ✎'s composer is: a composer the feed presented
+    /// itself lost every sheet it opened (the photo picker closed again at once).
+    private var quoteOpener: @MainActor (PulseComposeQuote) -> Void {
+        { quote in path.append(.quote(quote)) }
+    }
+
+    private func quoteComposer(_ quote: PulseComposeQuote, route: PulseRoute) -> some View {
+        PulseComposeFlowView(
+            quoting: quote,
+            session: detailModels.composeSession(for: route, userId: currentUserId),
+            onCancel: { pop() },
+            onPosted: { _ in pop() }
+        )
+    }
+
     private func chatConversation(_ dest: InboxConversationDestination) -> some View {
         ChatConversationView(
             viewModel: detailModels.conversationModel(for: dest, userId: currentUserId) {
@@ -443,12 +463,13 @@ private final class PulseDetailModels {
         return model
     }
 
-    /// The composer open at this route (`.compose` or `.editPost`).
+    /// The composer open at this route (`.compose`, `.quote` or `.editPost`).
     func composeSession(for route: PulseRoute, userId: String) -> PulseComposeSession {
         if self.userId != userId { retain(routes: [], userId: userId) }
         if let session = composeSessions[route] { return session }
         let isEditing = if case .editPost = route { true } else { false }
-        let session = PulseComposeSession(editing: isEditing)
+        let isQuoting = if case .quote = route { true } else { false }
+        let session = PulseComposeSession(editing: isEditing, quoting: isQuoting)
         composeSessions[route] = session
         return session
     }

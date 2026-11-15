@@ -481,6 +481,8 @@ public final class PulseComposeViewModel {
     ) {
         self.taskShare = taskShare
         self.quote = postId == nil ? quote : nil
+        // "Repost with your words" opens with the keyboard in the text box, ready for the words.
+        if postId == nil, quote != nil { keyboardField = .body }
         self.businessAuthorId = businessAuthorId
         self.locationProvider = locationProvider
         // A Connections post is stored as "general" (effectivePostType), so a new one starts on the
@@ -571,6 +573,14 @@ public final class PulseComposeViewModel {
     /// True iff this view-model is wired to edit an existing post.
     public var isEditing: Bool {
         editingPostId != nil
+    }
+
+    /// The server said the quoted post is gone (`404 QUOTED_POST_UNAVAILABLE`): its card under the text box says so.
+    public private(set) var quotedPostIsGone = false
+
+    /// "Repost with your words" going out as a plain post (no Nearby kind picked): the text box is "Your words".
+    var isPlainQuote: Bool {
+        quote != nil && composePurpose == nil
     }
 
     /// Top-bar title — "Edit post" in edit mode, "Post as business" when
@@ -797,13 +807,17 @@ public final class PulseComposeViewModel {
                 .all([.required("Title"), .maxLength(FieldLimits.title)])
             }
         case .body:
+            // A plain quote's box is "Your words": its messages say so, not "Description".
             .all([
-                .required("Description"),
-                FormValidator { value in
+                isPlainQuote ? .required(message: "Add your words about this post.") : .required("Description"),
+                FormValidator { [isPlainQuote] value in
                     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.count < FieldLimits.bodyMin { return "Add a description." }
+                    if trimmed.count < FieldLimits.bodyMin {
+                        return isPlainQuote ? "Add your words about this post." : "Add a description."
+                    }
                     if trimmed.count > FieldLimits.bodyMax {
-                        return "Description must be \(FieldLimits.bodyMax) characters or fewer."
+                        let name = isPlainQuote ? "Your words" : "Description"
+                        return "\(name) must be \(FieldLimits.bodyMax) characters or fewer."
                     }
                     return nil
                 }
@@ -1328,6 +1342,7 @@ public final class PulseComposeViewModel {
     /// own `error` text through `errorDescription` (contract §8).
     private func quoteRefusal(_ error: any Error) -> String? {
         guard quote != nil, !isEditing, case .notFound = error as? APIError else { return nil }
+        quotedPostIsGone = true
         return "This post isn't available anymore."
     }
 

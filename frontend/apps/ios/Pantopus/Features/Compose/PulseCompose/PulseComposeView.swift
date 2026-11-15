@@ -382,7 +382,7 @@ public extension PulseComposeViewModel {
             assistPhotoCount: assistPhotoCount,
             assistCanUndo: canUndoSuggestion,
             canTakePhoto: UIImagePickerController.isSourceTypeAvailable(.camera),
-            quoted: isEditing ? nil : quote.map { PulseQuotedPost.available($0.card) }
+            quoted: isEditing ? nil : quote.map { quotedPostIsGone ? .unavailable : .available($0.card) }
         )
     }
 }
