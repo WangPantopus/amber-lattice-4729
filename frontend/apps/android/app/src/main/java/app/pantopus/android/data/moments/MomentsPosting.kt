@@ -99,6 +99,12 @@ class MomentsPosting
         /** Uploads the server refused for good (too long, unreadable, ended): a background job doesn't try them again. */
         private val refused = ConcurrentHashMap.newKeySet<String>()
 
+        /** The parts of longer videos still to go up, by Moment (contract v3.11). */
+        private val seriesParts = ConcurrentHashMap<String, Part>()
+
+        /** Counts each upload note removed: a part waiting for the parts before it looks again. */
+        private val notesChanged = MutableStateFlow(0)
+
         private val _posts = MutableStateFlow<List<MomentPosting>>(emptyList())
 
         /** Moments still posting, oldest first. */
@@ -109,14 +115,21 @@ class MomentsPosting
         /** Moments that finished posting: the map reads the area again and says so. */
         val outcomes: SharedFlow<MomentPostingOutcome> = _outcomes.asSharedFlow()
 
-        /** Starts uploading [file] for the Moment [moment], made a moment ago with `POST /api/moments`. */
+        /**
+         * Starts uploading [file] for the Moment [moment], made a moment ago with `POST /api/moments`; [ready] is the video
+         * as posting already prepared it (sized, with its poster and frames). The parts of a longer video are started in
+         * order, and each goes up only once the parts before it are in (contract v3.11).
+         */
         fun start(
             moment: MomentDto,
             file: MomentMediaFile,
             latitude: Double?,
             longitude: Double?,
+            ready: PreparedVideo? = null,
         ) {
             media[moment.id] = file
+            ready?.let { prepared[moment.id] = Prepared(it.video, MP4, it.poster, it.frames) }
+            moment.series?.let { seriesParts[moment.id] = Part(it.id, it.index) }
             writeNote(Note.of(moment, file, latitude, longitude))
             _posts.update { list ->
                 list.filterNot { it.momentId == moment.id } +
@@ -141,13 +154,37 @@ class MomentsPosting
             MomentUploadWorker.schedule(context, momentId)
         }
 
-        /** Gives up on a Moment that couldn't post: the server's copy (still uploading, so nobody saw it) goes too. */
+        /**
+         * Gives up on a Moment that couldn't post, or is still posting: the server's copy (still uploading, so nobody saw
+         * it) goes too. For a part of a longer video, the parts after it go as well; the ones before it stay.
+         */
         fun discard(momentId: String) {
+            (seriesParts[momentId] ?: readNotes().firstOrNull { it.momentId == momentId }?.part)?.let(::dropLaterParts)
+            drop(momentId)
+        }
+
+        private fun drop(momentId: String) {
             jobs.remove(momentId)?.cancel()
             MomentUploadWorker.cancel(context, momentId)
+            // A part not picked up yet after a restart has only its note and its file.
+            readNotes().firstOrNull { it.momentId == momentId }?.let { dropNote(it, deleteFile = true) }
             forget(momentId)
             _posts.update { list -> list.filterNot { it.momentId == momentId } }
             scope.launch { repository.delete(momentId) }
+        }
+
+        /** A part that won't go up: the parts of its video after it go too (contract v3.11), the ones before it stay. */
+        private fun dropLaterParts(part: Part) {
+            val later =
+                seriesParts.filterValues { it.after(part) }.keys +
+                    readNotes().filter { it.part?.after(part) == true }.map { it.momentId }
+            later.toSet().forEach(::drop)
+        }
+
+        /** A part of a longer video waits until the parts before it are in: they go up one after another, in order. */
+        private suspend fun awaitTurn(momentId: String) {
+            val part = seriesParts[momentId] ?: return
+            notesChanged.first { readNotes().none { note -> note.part?.let { part.after(it) } == true } }
         }
 
         /**
@@ -162,7 +199,11 @@ class MomentsPosting
                     val notes = readNotes()
                     // Another account's leftovers never go up as this one (sign-out clears them; this is the belt).
                     notes.filter { it.userId != userId }.forEach { dropNote(it, deleteFile = true) }
-                    val pending = notes.filter { it.userId == userId && !media.containsKey(it.momentId) }
+                    // A longer video's parts come back in part order, whatever order the folder lists their notes in.
+                    val pending =
+                        notes
+                            .filter { it.userId == userId && !media.containsKey(it.momentId) }
+                            .sortedWith(compareBy({ it.seriesId ?: it.momentId }, { it.seriesIndex }))
                     if (pending.isEmpty()) return@launch
                     val mine = (repository.mine() as? NetworkResult.Success)?.data
                     pending.forEach { note ->
@@ -172,8 +213,13 @@ class MomentsPosting
                             !file.exists() -> {
                                 dropNote(note, deleteFile = false)
                                 if (server?.state == UPLOADING) repository.delete(note.momentId)
+                                note.part?.let(::dropLaterParts)
                             }
-                            mine != null && server?.state != UPLOADING -> dropNote(note, deleteFile = true)
+                            mine != null && server?.state != UPLOADING -> {
+                                dropNote(note, deleteFile = true)
+                                // Deleted or ended meanwhile, never in: the parts after it don't go up on their own.
+                                if (server == null) note.part?.let(::dropLaterParts)
+                            }
                             else -> restore(note, file, server?.author)
                         }
                     }
@@ -191,6 +237,7 @@ class MomentsPosting
             media.clear()
             prepared.clear()
             refused.clear()
+            seriesParts.clear()
             _posts.value = emptyList()
             MomentMedia.clear(context)
         }
@@ -201,9 +248,14 @@ class MomentsPosting
             author: MomentAuthorDto?,
         ) {
             if (media.putIfAbsent(note.momentId, note.mediaFile(file)) != null) return
+            val part = note.part
+            part?.let { seriesParts[note.momentId] = it }
             _posts.update { list ->
-                list.filterNot { it.momentId == note.momentId } +
-                    MomentPosting(note.momentId, note.kind, note.latitude, note.longitude, author = author)
+                val others = list.filterNot { it.momentId == note.momentId }
+                val posting = MomentPosting(note.momentId, note.kind, note.latitude, note.longitude, author = author)
+                // A part picked up on its own (a background job) still shows before the later parts of its video.
+                val before = part?.let { p -> others.indexOfFirst { seriesParts[it.momentId]?.after(p) == true } } ?: -1
+                if (before < 0) others + posting else others.take(before) + posting + others.drop(before)
             }
             run(note.momentId)
             MomentUploadWorker.schedule(context, note.momentId)
@@ -277,6 +329,7 @@ class MomentsPosting
                 !file.exists() -> {
                     dropNote(note, deleteFile = false)
                     if (server?.state == UPLOADING) repository.delete(momentId)
+                    note.part?.let(::dropLaterParts)
                     BackgroundUpload.GAVE_UP
                 }
                 // It got in, ended or was deleted meanwhile.
@@ -321,13 +374,15 @@ class MomentsPosting
                         Prepared(photo, JPEG, null, emptyList())
                     }
                     is MomentMediaFile.Video -> {
+                        // Posting prepares a video before its Moment is made: this is one picked up after a restart.
                         val video =
-                            MomentMedia.prepareVideo(context, file) { exported ->
+                            MomentMedia.prepareVideo(context, file, maxBytes = repository.knownLimits.videoBytes) { exported ->
                                 update(momentId) { it.copy(progress = exported * EXPORT_SHARE) }
                             }
                         Prepared(video.video, MP4, video.poster, video.frames)
                     }
                 }.also { prepared[momentId] = it }
+            awaitTurn(momentId)
             var attempt = 0
             while (true) {
                 if (!network.isOnline.value) network.isOnline.first { it }
@@ -343,6 +398,8 @@ class MomentsPosting
                 val frameParts = parts.frames.map { MultipartBody.Part.createFormData(FRAMES_FIELD, it.name, it.asRequestBody(JPEG)) }
                 when (val result = repository.uploadMedia(momentId, filePart, posterPart, frameParts)) {
                     is NetworkResult.Success -> {
+                        // The file is in: nothing is left to pick up after a restart, and the next part may go up.
+                        removeNote(momentId)
                         finish(momentId, result.data)
                         return
                     }
@@ -367,7 +424,9 @@ class MomentsPosting
             val lasting = !error.isRetryable()
             if (!lasting && attempt < MAX_ATTEMPTS) return false
             if (lasting) refused += momentId
-            fail(momentId, error.postingMessage())
+            fail(momentId, error.postingMessage(repository.knownLimits))
+            // Refused for good: the parts of its video after it won't go up either (contract v3.11).
+            if (error.code in ENDS_PARTS) seriesParts[momentId]?.let(::dropLaterParts)
             return true
         }
 
@@ -416,14 +475,20 @@ class MomentsPosting
         /** The upload is over, one way or another: its files and its note leave the phone. */
         private fun forget(momentId: String) {
             refused.remove(momentId)
+            seriesParts.remove(momentId)
             media.remove(momentId)?.let { runCatching { it.file.delete() } }
-            prepared.remove(momentId)?.let { parts ->
-                runCatching { (listOfNotNull(parts.file, parts.poster) + parts.frames).forEach { it.delete() } }
+            prepared.remove(momentId)?.let { files ->
+                runCatching { (listOfNotNull(files.file, files.poster) + files.frames).forEach { it.delete() } }
             }
-            runCatching { noteFile(momentId).delete() }
+            removeNote(momentId)
         }
 
         private fun noteFile(momentId: String): File = File(MomentMedia.outbox(context), "$momentId.json")
+
+        private fun removeNote(momentId: String) {
+            runCatching { noteFile(momentId).delete() }
+            notesChanged.update { it + 1 }
+        }
 
         private fun writeNote(note: Note) {
             runCatching { noteFile(note.momentId).writeText(note.toJson()) }
@@ -442,8 +507,17 @@ class MomentsPosting
             note: Note,
             deleteFile: Boolean,
         ) {
-            runCatching { noteFile(note.momentId).delete() }
+            removeNote(note.momentId)
             if (deleteFile) runCatching { File(note.path).delete() }
+        }
+
+        /** A part of a longer video: its video's [seriesId] and which part it is, 1 first (contract v3.11). */
+        private data class Part(
+            val seriesId: String,
+            val index: Int,
+        ) {
+            /** A later part of the same video as [other]. */
+            fun after(other: Part): Boolean = seriesId == other.seriesId && index > other.index
         }
 
         private data class Prepared(
@@ -463,7 +537,12 @@ class MomentsPosting
             val recordedHere: Boolean,
             val latitude: Double?,
             val longitude: Double?,
+            /** A part of a longer video: its video and which part (0: not a part). */
+            val seriesId: String? = null,
+            val seriesIndex: Int = 0,
         ) {
+            val part: Part? get() = seriesId?.takeIf { seriesIndex > 0 }?.let { Part(it, seriesIndex) }
+
             fun mediaFile(file: File): MomentMediaFile =
                 if (kind == "video") MomentMediaFile.Video(file, durationMs, recordedHere) else MomentMediaFile.Photo(file)
 
@@ -477,6 +556,8 @@ class MomentsPosting
                     .put("recordedHere", recordedHere)
                     .put("latitude", latitude)
                     .put("longitude", longitude)
+                    .put("seriesId", seriesId)
+                    .put("seriesIndex", seriesIndex)
                     .toString()
 
             companion object {
@@ -496,6 +577,8 @@ class MomentsPosting
                         recordedHere = video?.recordedHere ?: false,
                         latitude = latitude,
                         longitude = longitude,
+                        seriesId = moment.series?.id,
+                        seriesIndex = moment.series?.index ?: 0,
                     )
                 }
 
@@ -510,6 +593,8 @@ class MomentsPosting
                         recordedHere = json.optBoolean("recordedHere"),
                         latitude = if (json.has("latitude")) json.getDouble("latitude") else null,
                         longitude = if (json.has("longitude")) json.getDouble("longitude") else null,
+                        seriesId = if (json.has("seriesId")) json.getString("seriesId") else null,
+                        seriesIndex = json.optInt("seriesIndex"),
                     )
                 }
             }
@@ -531,6 +616,9 @@ class MomentsPosting
             const val RING_WAIT_MS = 4_000L
             const val PICKUP_POLL_MS = 500L
             const val PICKUP_WAITS = 20
+
+            /** Refusals that end a longer video at that part: too large, wrong type, unreadable, ended, gone. */
+            val ENDS_PARTS = setOf(404, 410, 413, 415, 422)
         }
     }
 
@@ -539,9 +627,9 @@ private fun NetworkError.isRetryable(): Boolean =
     this is NetworkError.Transport || this is NetworkError.Server || this == NetworkError.RetriesExhausted || code == 408 || code == 429
 
 /** What the posting ring says when the upload gave up. */
-private fun NetworkError.postingMessage(): String =
+private fun NetworkError.postingMessage(limits: MomentLimits): String =
     when (serverCode) {
-        "MEDIA_TOO_LONG" -> "Videos can be up to 30 seconds."
+        "MEDIA_TOO_LONG" -> "A Moment's video can be up to ${limits.spoken(limits.videoMs)}."
         "MEDIA_TOO_LARGE" -> "That file is too large."
         "PHOTO_UNREADABLE", "VIDEO_UNREADABLE" -> "That file couldn't be read."
         "MOMENT_ENDED" -> "That Moment has ended."

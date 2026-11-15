@@ -408,9 +408,13 @@ fun MomentsPostSheet(
         SheetPrimaryButton(
             label =
                 when {
+                    // Post waits for the video to be made ready (sized, and split when it's long).
+                    state.posting && state.readying != null -> "Getting your video ready · ${(state.readying * 100).toInt()}%"
                     state.posting -> "Posting…"
                     // Several picked together: which one this is. The hours are on the sheet's own row either way.
                     state.pickedTogether > 1 -> "Post ${state.pickedAt} of ${state.pickedTogether}"
+                    // A video longer than one Moment posts as several, one after another (contract v3.11).
+                    state.videoParts > 1 -> "Post as ${state.videoParts} Moments"
                     else -> "Post · shows for ${if (state.hours == 1) "1 hour" else "${state.hours} hours"}"
                 },
             onClick = onPost,

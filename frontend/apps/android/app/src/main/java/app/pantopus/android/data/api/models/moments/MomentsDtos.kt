@@ -135,6 +135,39 @@ data class MomentDto(
     /** How high it was made, in feet above sea level, and whether in flight (contract v3.8); `height` is the picture's. */
     @Json(name = "altitude_ft") val altitudeFt: Double? = null,
     val flying: Boolean = false,
+    /** A part of a longer video posted as several Moments (contract v3.11); null for any other Moment. */
+    val series: MomentSeriesDto? = null,
+)
+
+/**
+ * A part of a video longer than one Moment, posted as several Moments in order (contract v3.11): the same [id] on every
+ * part, which part this is (1 first) and of how many.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentSeriesDto(
+    val id: String,
+    val index: Int,
+    val count: Int,
+)
+
+/**
+ * `GET /api/moments/limits` (contract v3.11): what a Moment may be, so a video is shaped before it goes up. Every field
+ * is optional here; an older server answers 404 and the app keeps to 30 seconds in one part.
+ */
+@JsonClass(generateAdapter = true)
+data class MomentLimitsResponse(
+    val video: MomentVideoLimitsDto? = null,
+    @Json(name = "daily_limit") val dailyLimit: Int? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class MomentVideoLimitsDto(
+    /** The longest one Moment's video runs. */
+    @Json(name = "max_seconds") val maxSeconds: Double? = null,
+    /** How many Moments a longer video may be posted as. */
+    @Json(name = "max_parts") val maxParts: Int? = null,
+    /** The largest video file an upload may be (less than 50 MB when storage takes less). */
+    @Json(name = "max_bytes") val maxBytes: Long? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -256,6 +289,8 @@ data class CreateMomentBody(
     @Json(name = "venue_id") val venueId: String? = null,
     /** "Show elevation" was on (contract v3.8); left out otherwise. */
     val altitude: MomentAltitudeBody? = null,
+    /** One part of a video posted as several Moments (contract v3.11); left out for a video posted as one. */
+    val series: MomentSeriesDto? = null,
 )
 
 /**

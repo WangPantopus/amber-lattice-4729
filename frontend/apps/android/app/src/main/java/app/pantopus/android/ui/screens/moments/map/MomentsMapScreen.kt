@@ -215,25 +215,35 @@ fun MomentsMapScreen(
             )
         }
 
-    // A Moment that couldn't post: try again, or let it go (nobody saw it).
-    var failedPosting by remember { mutableStateOf<MomentPosting?>(null) }
-    failedPosting?.let { item ->
+    // A Moment that couldn't post: try again, or let it go (nobody saw it). One still going up can be let go too, as
+    // on iPhone: nothing else on the screen stops it. The dialog reads how the tapped one stands now.
+    var askedPosting by remember { mutableStateOf<String?>(null) }
+    posts.firstOrNull { it.momentId == askedPosting && it.stage != MomentPosting.Stage.DONE }?.let { item ->
+        val failed = item.stage == MomentPosting.Stage.FAILED
         AlertDialog(
-            onDismissRequest = { failedPosting = null },
-            title = { Text("Your Moment didn't post") },
-            text = { Text(item.message ?: "Couldn't post your Moment.") },
+            onDismissRequest = { askedPosting = null },
+            title = { Text(if (failed) "Your Moment didn't post" else "Your Moment is posting") },
+            text = { Text(if (failed) item.message ?: "Couldn't post your Moment." else "It keeps posting while you use Pantopus.") },
             confirmButton = {
-                TextButton(onClick = {
-                    failedPosting = null
-                    viewModel.retryPosting(item.momentId)
-                }) { Text("Try again") }
+                if (failed) {
+                    TextButton(onClick = {
+                        askedPosting = null
+                        viewModel.retryPosting(item.momentId)
+                    }) { Text("Try again") }
+                } else {
+                    TextButton(onClick = { askedPosting = null }) { Text("Keep posting") }
+                }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    failedPosting = null
-                    viewModel.discardPosting(item.momentId)
-                }) { Text("Discard", color = PantopusColors.error) }
+                TextButton(
+                    onClick = {
+                        askedPosting = null
+                        viewModel.discardPosting(item.momentId)
+                    },
+                    modifier = Modifier.testTag("moments.posting.discard"),
+                ) { Text("Discard", color = PantopusColors.error) }
             },
+            modifier = Modifier.semantics { testTagsAsResourceId = true },
         )
     }
 
@@ -301,7 +311,7 @@ fun MomentsMapScreen(
                 if (moving) viewModel.closeHeightKey()
                 actions.onMapMoving(moving)
             },
-            onPosting = { item -> if (item.stage == MomentPosting.Stage.FAILED) failedPosting = item },
+            onPosting = { item -> if (item.stage != MomentPosting.Stage.DONE) askedPosting = item.momentId },
         )
         MomentsTopChrome(
             state = state,
@@ -386,7 +396,7 @@ fun MomentsMapScreen(
                     },
                     onPlayAll = playAll,
                     onRetry = viewModel::refresh,
-                    onPosting = { item -> if (item.stage == MomentPosting.Stage.FAILED) failedPosting = item },
+                    onPosting = { item -> if (item.stage != MomentPosting.Stage.DONE) askedPosting = item.momentId },
                 )
             } else {
                 // One person is tapped on the map: no row. Play all keeps a pill while something is new, beside + as

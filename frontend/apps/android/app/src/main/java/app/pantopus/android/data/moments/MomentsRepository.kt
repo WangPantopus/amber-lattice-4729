@@ -300,6 +300,23 @@ class MomentsRepository
 
         suspend fun adultConfirm(): NetworkResult<MomentAdultConfirmResponse> = safeApiCall { api.adultConfirm() }
 
+        /** The last limits the server gave in this run of the app. */
+        @Volatile
+        private var lastLimits: MomentLimits? = null
+
+        /** The limits as last read, without asking again (what an older server takes until then). */
+        val knownLimits: MomentLimits get() = lastLimits ?: MomentLimits()
+
+        /**
+         * What a Moment may be (contract v3.11), read as posting opens: the server's answer, else the last one it gave in
+         * this run of the app, else what an older server takes (30 seconds in one part).
+         */
+        suspend fun limits(): MomentLimits {
+            val read = (safeApiCall { api.limits() } as? NetworkResult.Success)?.data?.let(MomentLimits::from)
+            if (read != null) lastLimits = read
+            return read ?: lastLimits ?: MomentLimits()
+        }
+
         suspend fun create(body: CreateMomentBody): NetworkResult<MomentDto> =
             when (val result = safeApiCall { api.create(body) }) {
                 is NetworkResult.Success -> NetworkResult.Success(result.data.moment)

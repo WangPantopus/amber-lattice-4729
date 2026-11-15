@@ -5,6 +5,7 @@ package app.pantopus.android.data.api.services
 import app.pantopus.android.data.api.models.moments.CreateMomentBody
 import app.pantopus.android.data.api.models.moments.MomentAdultConfirmResponse
 import app.pantopus.android.data.api.models.moments.MomentEnvelope
+import app.pantopus.android.data.api.models.moments.MomentLimitsResponse
 import app.pantopus.android.data.api.models.moments.MomentPlacePreviewDto
 import app.pantopus.android.data.api.models.moments.MomentPointBody
 import app.pantopus.android.data.api.models.moments.MomentReactionResponse
@@ -157,6 +158,14 @@ interface MomentsApi {
     suspend fun placePreview(
         @Body body: MomentPointBody,
     ): MomentPlacePreviewDto
+
+    /**
+     * `GET /api/moments/limits` (contract v3.11): the longest one Moment's video runs, how many Moments a longer one is
+     * posted as, and the largest video file an upload may be. A server from before it answers 404.
+     * Route `backend/routes/moments.js` (limits).
+     */
+    @GET("api/moments/limits")
+    suspend fun limits(): MomentLimitsResponse
 
     /** `POST /api/moments/adult-confirm`: the one-time 18+ confirmation (shared with Pulse's). */
     @POST("api/moments/adult-confirm")
