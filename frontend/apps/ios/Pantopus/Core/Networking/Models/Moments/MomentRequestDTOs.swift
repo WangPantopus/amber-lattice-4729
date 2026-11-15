@@ -72,9 +72,11 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var venueId: String?
     /// "Show elevation" was on (contract v3.8, `MomentHeightDTOs.swift`); left out otherwise.
     public var altitude: MomentAltitudeBody?
+    /// A part of a video longer than one Moment (contract v3.11); left out for any other Moment.
+    public var series: MomentSeriesDTO?
 
     private enum CodingKeys: String, CodingKey {
-        case kind, hours, audience, caption, text, background, location, altitude
+        case kind, hours, audience, caption, text, background, location, altitude, series
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

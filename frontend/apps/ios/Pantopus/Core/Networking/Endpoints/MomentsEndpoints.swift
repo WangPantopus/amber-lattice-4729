@@ -30,6 +30,10 @@ public enum MomentsEndpoints {
     /// (shared with Pulse's). Route `backend/routes/moments.js` (adult-confirm).
     public static let adultConfirm = Endpoint(method: .post, path: "/api/moments/adult-confirm")
 
+    /// `GET /api/moments/limits` — how long a Moment's video may run, how many Moments a longer one is posted as,
+    /// and the largest video file an upload may be (contract v3.11). Route `backend/routes/moments.js` (limits).
+    public static let limits = Endpoint(method: .get, path: "/api/moments/limits")
+
     /// `POST /api/moments` — a new Moment; photos and videos start `uploading`.
     /// Route `backend/routes/moments.js` (create).
     public static func create(_ body: MomentCreateBody) -> Endpoint {

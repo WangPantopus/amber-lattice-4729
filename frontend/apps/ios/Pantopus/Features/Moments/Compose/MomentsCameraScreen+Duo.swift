@@ -220,7 +220,7 @@ struct MomentsRecentStrip: View {
     private func cell(_ item: MomentsRecentItem, index: Int) -> some View {
         let asset = item.asset
         let tooLong = asset.mediaType == .video
-            && asset.duration > MomentsMediaExport.maxVideoSeconds + MomentsMediaExport.videoSecondsTolerance
+            && asset.duration > MomentsMediaExport.longestVideoSeconds + MomentsMediaExport.videoSecondsTolerance
         return Button { choose(asset) } label: {
             Color(white: 0.067)
                 .frame(height: 150)

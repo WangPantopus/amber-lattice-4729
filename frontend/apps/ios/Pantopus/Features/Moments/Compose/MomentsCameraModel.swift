@@ -120,7 +120,7 @@ final class MomentsCameraModel {
         String(format: "0:%02d", min(Int(elapsed), 30))
     }
 
-    /// The video finished: by letting go, at 30 seconds, or because the camera stopped.
+    /// The video finished: by letting go, at the limit, or because the camera stopped.
     private func finishedVideo(_ url: URL?) {
         if recording { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
         recording = false
@@ -149,7 +149,7 @@ final class MomentsCameraModel {
 // MARK: - On a table (board T3)
 
 extension MomentsCameraModel {
-    /// The tripod's shutter: a photo, or a video started or stopped (tap to start, tap again to stop, 30 seconds at
+    /// The tripod's shutter: a photo, or a video started or stopped (tap to start, tap again to stop, the limit at
     /// most); with a timer, once it has counted down. A tap while it counts down stops the countdown.
     func tripodShutter() {
         if recording { return stopVideo() }

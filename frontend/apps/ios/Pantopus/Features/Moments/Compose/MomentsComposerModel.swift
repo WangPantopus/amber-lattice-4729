@@ -72,7 +72,7 @@ final class MomentsComposerModel {
     }
 
     /// A venue picked in the place picker (the Pulse composer's, around the pin): the Moment pins at it under its name.
-    private(set) var venue: MomentVenue?
+    var venue: MomentVenue?
     /// "Don't show where" (founder 2026-11-11): no pin, not on the map, connections only.
     var noLocation = false
     /// Whether the person has a connection (place-preview's `has_connections`); nil until known.
@@ -97,7 +97,7 @@ final class MomentsComposerModel {
 
     private(set) var preparing = false
     var error: String?
-    private(set) var isPosting = false
+    var isPosting = false
     /// The place names' sheet over the Post sheet, kept here so a fold on the iPhone Duo leaves it as it was.
     var picksPlace = false
     /// The place picker (search and the venues around the pin) over the Post sheet, kept here for the same reason.
@@ -110,18 +110,23 @@ final class MomentsComposerModel {
     static let backgrounds = ["teal", "sky", "green", "amber", "rose", "slate"]
 
     /// The fix the camera and text card pin at.
-    @ObservationIgnored private var fix: (coordinate: UserCoordinate, at: Date)?
+    @ObservationIgnored var fix: (coordinate: UserCoordinate, at: Date)?
     /// Where and when a library photo or video was taken.
     @ObservationIgnored private(set) var capture: MediaCaptureLocation?
     /// How high the fix, and the library photo or video, say it was (`+Height`).
     @ObservationIgnored var fixHeight: HeightReading?
     @ObservationIgnored var captureHeight: HeightReading?
-    @ObservationIgnored private var preparation: Task<(String, MomentPreparedMedia)?, Never>?
+    /// What's being made ready: one outbox folder and its files for each Moment (several for a long video's parts).
+    @ObservationIgnored var preparation: Task<[MomentsPreparedPart]?, Never>?
+    /// How many Moments the video on the sheet posts as (`+Parts`); 1 for anything else.
+    private(set) var parts = 1
+    /// The Moments a Post tap has made so far, should the tap stop half way (`+Posting`).
+    @ObservationIgnored var made: [MomentDTO] = []
     /// One id per text card sent to the Post sheet: tapping Post again after a lost answer returns the same Moment.
-    @ObservationIgnored private var textRequestId = UUID().uuidString
+    @ObservationIgnored var textRequestId = UUID().uuidString
     /// `start` runs once: a fold can show the composer again, and the place and choices must stay as they are.
     @ObservationIgnored private var started = false
-    private let location: any LocationProviding
+    let location: any LocationProviding
     let defaults: UserDefaults
 
     init(location: any LocationProviding = DeviceLocationProvider.shared, defaults: UserDefaults = .standard) {
@@ -150,6 +155,8 @@ final class MomentsComposerModel {
         guard !started else { return }
         started = true
         restoreChoices()
+        // How long a video may be now, and how large its file: asked once each time the composer opens.
+        Task { await MomentsLimits.refresh() }
         guard location.canLocateWithoutAsking else {
             locating = .unavailable
             return
@@ -221,7 +228,7 @@ final class MomentsComposerModel {
         capture = nil
         takenAt = nil
         draft = .photo(photo)
-        prepare { folder in try MomentsMediaExport.photo(photo, into: folder) }
+        prepare([{ folder in try MomentsMediaExport.photo(photo, into: folder) }])
     }
 
     func use(video url: URL) async {
@@ -243,7 +250,7 @@ final class MomentsComposerModel {
         }
         switch asset.mediaType {
         case .video:
-            guard asset.duration <= MomentsMediaExport.maxVideoSeconds + MomentsMediaExport.videoSecondsTolerance else {
+            guard asset.duration <= MomentsMediaExport.longestVideoSeconds + MomentsMediaExport.videoSecondsTolerance else {
                 error = MomentsFailure.mediaTooLong.message
                 return
             }
@@ -264,19 +271,23 @@ final class MomentsComposerModel {
             }
             capture = point
             draft = .photo(image)
-            prepare { folder in try MomentsMediaExport.photo(image, into: folder) }
+            prepare([{ folder in try MomentsMediaExport.photo(image, into: folder) }])
         }
         if let point { await preview(latitude: point.latitude, longitude: point.longitude) }
     }
 
     private func useVideo(_ url: URL) async {
         let seconds = await MomentsMediaExport.duration(of: url)
-        guard seconds <= MomentsMediaExport.maxVideoSeconds + MomentsMediaExport.videoSecondsTolerance else {
+        guard seconds <= MomentsMediaExport.longestVideoSeconds + MomentsMediaExport.videoSecondsTolerance else {
             error = MomentsFailure.mediaTooLong.message
             return
         }
         draft = .video(url)
-        prepare { folder in try await MomentsMediaExport.video(at: url, into: folder) }
+        // A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own.
+        let ranges = MomentsMediaExport.parts(of: seconds)
+        prepare(ranges.map { range in
+            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil) }
+        })
     }
 
     /// P2's Next: the text card goes to the Post sheet.
@@ -323,31 +334,45 @@ final class MomentsComposerModel {
         return false
     }
 
-    /// Exports in the background while the Post sheet is open.
-    private func prepare(_ work: @escaping @MainActor (URL) async throws -> MomentPreparedMedia) {
+    /// Exports in the background while the Post sheet is open: one outbox folder for each of `works`, in order.
+    private func prepare(_ works: [@MainActor (URL) async throws -> MomentPreparedMedia]) {
         discardPrepared()
         preparing = true
+        parts = works.count
         preparation = Task { [weak self] in
             defer { self?.preparing = false }
+            var ready: [MomentsPreparedPart] = []
             do {
-                let folder = try MomentsUploader.newFolder()
-                let media = try await work(folder.url)
-                return (folder.id, media)
+                for work in works {
+                    let folder = try MomentsUploader.newFolder()
+                    ready.append(MomentsPreparedPart(folderId: folder.id, media: nil))
+                    try Task.checkCancellation()
+                    ready[ready.count - 1].media = try await work(folder.url)
+                }
+                return ready
             } catch let failure as MomentsFailure {
                 self?.error = failure.message
-                return nil
+            } catch is CancellationError {
+                // Retake, or the composer closed: nothing to say.
             } catch {
                 self?.error = "Couldn't get that ready to post. Try another one."
-                return nil
             }
+            // One part that can't be made leaves no parts: a video with a hole in it isn't posted.
+            for part in ready {
+                MomentsUploader.discardFolder(part.folderId)
+            }
+            return nil
         }
     }
 
-    private func discardPrepared() {
+    func discardPrepared() {
+        dropMade()
         guard let preparation else { return }
         self.preparation = nil
         Task {
-            if let prepared = await preparation.value { MomentsUploader.discardFolder(prepared.0) }
+            for part in await preparation.value ?? [] {
+                MomentsUploader.discardFolder(part.folderId)
+            }
         }
     }
 
@@ -372,122 +397,5 @@ final class MomentsComposerModel {
     func clearVenue() {
         venue = nil
         findsPlace = false
-    }
-}
-
-// MARK: - Posting
-
-extension MomentsComposerModel {
-    /// Posts. The Moment is made here, while the sheet is still up, so what
-    /// can stop it ("20 Moments today", an old location, no connection) shows
-    /// where the person can act; then the sheet closes and only the file goes
-    /// up in the background. True when the composer can close.
-    func post() async -> Bool {
-        guard canPost, let draft else { return false }
-        isPosting = true
-        defer { isPosting = false }
-        error = nil
-        // No location: nothing to locate (connections only, no pin).
-        var located: MomentLocationBody? = .noLocation
-        if !noLocationOn { located = await pinLocation() }
-        guard let pinAt = located else {
-            error = "Turn on location to post a Moment."
-            return false
-        }
-        let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        let kind: MomentKind = switch draft {
-        case .photo: .photo
-        case .video: .video
-        case .text: .text
-        }
-        // A photo or video is made ready first: a Moment is never made for a file that can't be sent.
-        var prepared: (String, MomentPreparedMedia)?
-        if kind != .text {
-            guard let ready = await preparation?.value else {
-                if error == nil { error = "Couldn't get that ready to post. Try another one." }
-                return false
-            }
-            prepared = ready
-        }
-        let body = createBody(
-            kind: kind,
-            location: pinAt,
-            // The outbox folder's id (or the text card's) names this Post tap: a retry returns the same Moment.
-            requestId: (prepared?.0 ?? textRequestId).lowercased(),
-            caption: trimmedCaption
-        )
-        let created: MomentDTO
-        do {
-            created = try await MomentsAPI.send(MomentsEndpoints.create(body), as: MomentEnvelope.self).moment
-        } catch let failure as MomentsFailure {
-            refused(failure)
-            return false
-        } catch {
-            self.error = MomentsFailure.offline.message
-            return false
-        }
-        saveChoices()
-        if let prepared {
-            preparation = nil
-            MomentsUploader.shared.upload(created, media: prepared.1, folderId: prepared.0)
-        } else {
-            MomentsUploader.shared.wentLive(created)
-        }
-        return true
-    }
-
-    /// What the server said no to, where the person can act on it.
-    private func refused(_ failure: MomentsFailure) {
-        if failure == .placeNotNearby { venue = nil }
-        if failure == .noConnections {
-            hasConnections = false
-            noLocation = false
-        }
-        if failure == .adultConfirmRequired { asksAdult = true } else { error = failure.message }
-    }
-
-    /// The create request for what's on the Post sheet.
-    private func createBody(kind: MomentKind, location: MomentLocationBody, requestId: String, caption: String) -> MomentCreateBody {
-        MomentCreateBody(
-            kind: kind,
-            hours: hours,
-            // No location goes only to connections ("Everyone nearby" needs a place).
-            audience: noLocationOn ? .connections : audience,
-            showArea: showArea && !noLocationOn,
-            caption: kind == .text || caption.isEmpty ? nil : caption,
-            text: kind == .text ? text.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            background: kind == .text ? background : nil,
-            location: location,
-            clientRequestId: requestId,
-            // Only a name other than the automatic one is sent; the server checks it against the pin itself.
-            placeKey: pickedVenue == nil && !noLocationOn ? pickedPlace.flatMap { $0.key == placeChoices.first?.key ? nil : $0.key } : nil,
-            // An album item pinned where you are says when it was taken (a capture pin carries its own).
-            takenAt: kind != .text && capture == nil ? takenAt.map(MomentTime.string) : nil,
-            venueId: noLocationOn ? nil : pickedVenue?.placeId,
-            altitude: shownHeight
-        )
-    }
-
-    /// The pin: where a library item was taken, else a fix at most four and a half minutes old.
-    private func pinLocation() async -> MomentLocationBody? {
-        if let capture {
-            return MomentLocationBody(
-                source: .capture, latitude: capture.latitude, longitude: capture.longitude, at: capture.capturedAt ?? Date()
-            )
-        }
-        if fix == nil || Date().timeIntervalSince(fix?.at ?? .distantPast) > 270,
-           let fresh = await location.requestCurrent(timeoutSeconds: 6) {
-            fix = (fresh, Date())
-            fixHeight = location.cachedHeight()
-        }
-        guard let fix, Date().timeIntervalSince(fix.at) <= 290 else { return nil }
-        return MomentLocationBody(source: .gps, latitude: fix.coordinate.latitude, longitude: fix.coordinate.longitude, at: fix.at)
-    }
-
-    /// The composer closed without posting: nothing is left behind.
-    func abandon() {
-        camera.stop(discarding: true)
-        preparation?.cancel()
-        discardPrepared()
     }
 }

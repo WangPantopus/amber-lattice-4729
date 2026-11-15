@@ -25,7 +25,7 @@ enum MomentsFailure: Error, Equatable {
     case noConnections
     /// 429: 20 Moments today.
     case dailyLimit
-    /// 422: a video over 30 seconds.
+    /// 422: a video longer than can be posted.
     case mediaTooLong
     /// 410: the Moment has ended.
     case ended
@@ -55,7 +55,7 @@ enum MomentsFailure: Error, Equatable {
         case .placeNotNearby: "That place is too far from this Moment's pin. Pick one nearby."
         case .noConnections: "A Moment with no location goes only to your connections. Add a connection first."
         case .dailyLimit: "You've posted 20 Moments today. Try again tomorrow."
-        case .mediaTooLong: "Videos can be up to 30 seconds."
+        case .mediaTooLong: MomentsLimits.tooLongMessage
         case .ended: "This Moment has ended."
         case .unavailable: "Moments aren't available right now."
         case .notFound: "This Moment isn't available."

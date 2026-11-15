@@ -9,7 +9,7 @@
 //  Close, Photo | Video, the flash, the library, the shutter and the switch,
 //  a 3 or 10 second timer, and Library · Camera · Text. Nobody holds a
 //  button on a phone that stands up, so a video starts with a tap and stops
-//  with another (30 seconds at most); with a timer, big seconds count down
+//  with another (one Moment's length at most); with a timer, big seconds count down
 //  in the frame first. While recording, the time shows where the hint is.
 //
 
@@ -169,7 +169,7 @@ extension MomentsCameraScreen {
         }
     }
 
-    /// "Tap to start. Tap again to stop. Up to 30 seconds." for a video; while recording, the time.
+    /// "Tap to start. Tap again to stop. Up to 60 seconds." for a video; while recording, the time.
     private var tripodHint: some View {
         Group {
             if camera.recording {
@@ -177,7 +177,7 @@ extension MomentsCameraScreen {
                     .font(.system(size: 16, weight: .bold))
                     .monospacedDigit()
             } else if camera.tripodVideo {
-                Text("Tap to start. Tap again to stop. Up to 30 seconds.")
+                Text("Tap to start. Tap again to stop. Up to \(Int(MomentsMediaExport.maxVideoSeconds)) seconds.")
                     .font(.system(size: 14, weight: .medium))
             }
         }

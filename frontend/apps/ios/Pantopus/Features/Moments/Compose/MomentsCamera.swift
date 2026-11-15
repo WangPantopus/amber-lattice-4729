@@ -2,7 +2,7 @@
 //  MomentsCamera.swift
 //  Pantopus
 //
-//  Board P1, the camera: tap for a photo, hold for a video up to 30 seconds
+//  Board P1, the camera: tap for a photo, hold for a video up to one Moment's length
 //  with its sound. The place chip at the top shows where the Moment will pin
 //  before anything is taken. Flash, front or back camera, the library's
 //  newest photo, and Library · Camera · Text under it. Where there's no
@@ -24,7 +24,7 @@ final class MomentsCameraController: NSObject, @unchecked Sendable {
     private var photoContinuation: CheckedContinuation<UIImage?, Never>?
     /// The finger lifted before the recording had begun: it stops as soon as it starts.
     private var stopRequested = false
-    /// A video finished: by the finger lifting, or at 30 seconds.
+    /// A video finished: by the finger lifting, or at the longest a Moment runs.
     var onVideo: (@MainActor (URL?) -> Void)?
 
     static var hasCamera: Bool {
@@ -147,7 +147,7 @@ extension MomentsCameraController: AVCapturePhotoCaptureDelegate, AVCaptureFileO
     }
 
     func fileOutput(_: AVCaptureFileOutput, didStartRecordingTo _: URL, from _: [AVCaptureConnection]) {
-        // Let go in the instant before the recording began: stop it now, not at 30 seconds.
+        // Let go in the instant before the recording began: stop it now, not at the limit.
         queue.async { [self] in
             if stopRequested, movieOutput.isRecording { movieOutput.stopRecording() }
         }
@@ -156,7 +156,7 @@ extension MomentsCameraController: AVCapturePhotoCaptureDelegate, AVCaptureFileO
     func fileOutput(
         _: AVCaptureFileOutput, didFinishRecordingTo url: URL, from _: [AVCaptureConnection], error: (any Error)?
     ) {
-        // Stopping at 30 seconds reports an error that says the file is fine.
+        // Stopping at the limit reports an error that says the file is fine.
         let finished = error == nil || ((error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool) == true
         queue.async { [self] in torch(false) }
         let result = finished ? url : nil
