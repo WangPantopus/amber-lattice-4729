@@ -243,7 +243,7 @@ struct PlansTodayCards: View {
         VStack(alignment: .leading, spacing: Spacing.s3) {
             Button { open(card, intent: .view) } label: {
                 HStack(spacing: Spacing.s3) {
-                    PlanTile(kind: card.kind)
+                    PlanKindTile(kind: card.kind, isPrivate: card.isPrivate)
                     VStack(alignment: .leading, spacing: 1) {
                         Text.planOverline(overline)
                         Text(title).planFont(.h4).foregroundStyle(Theme.Color.appText).multilineTextAlignment(.leading)

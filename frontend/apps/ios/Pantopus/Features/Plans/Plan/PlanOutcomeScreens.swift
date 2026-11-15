@@ -118,7 +118,7 @@ struct PlanVerifyScreen: View {
                                 .overlay(Icon(.lock, size: 22, color: Theme.Color.appTextStrong))
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: Spacing.s1) {
-                                Text("Playdates are for verified neighbors").planFont(.h4).foregroundStyle(Theme.Color.appText)
+                                Text("Playdates are for people with a verified address").planFont(.h4).foregroundStyle(Theme.Color.appText)
                                 Text("Verify your address to see the time, the place and who's going, and to "
                                     + (invitedBy == nil ? "ask to join. " : "say you're in. Your invitation waits for you. ")
                                     + "Everyone at a playdate has done the same.")

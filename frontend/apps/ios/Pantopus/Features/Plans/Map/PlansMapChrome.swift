@@ -200,7 +200,7 @@ struct PlansMapTopBar: View {
             .accessibilityIdentifier("plansSelectedBack")
             Spacer(minLength: Spacing.s2)
             if showsAreaChip {
-                PlanScopeChip(text: selectedKind == .playdate ? "Neighborhood only until you're in" : "Area only until you're in")
+                PlanScopeChip(text: selectedKind == .playdate ? "General area only until you're in" : "Area only until you're in")
             }
             menuButton
         }

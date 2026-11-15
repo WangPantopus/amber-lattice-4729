@@ -7,7 +7,9 @@
 //  (playdates, on top of `plans`). A third, `plans_business` (Plans with
 //  businesses), only decides what the app shows outside Plans' own answers:
 //  the team permissions "Post plans" and "Run plans". Inside Plans the server
-//  decides, by sending a business's plan or not. The app reads them at launch and on
+//  decides, by sending a business's plan or not. A fourth, `plans_private`
+//  (step 1's private plans), shows the controls for posting one; a private plan
+//  already posted shows as private either way. The app reads them at launch and on
 //  foreground through `GET /api/feature-flags/:flagName`, which honors
 //  `enabled_for_internal_team` and `beta_user_ids`, so pilot testers can have
 //  Plans before everyone else.
@@ -33,6 +35,8 @@ final class PlansFlags {
     private(set) var playdates = false
     /// Plans with businesses is on too (never without `plans`).
     private(set) var business = false
+    /// Private plans can be posted (never without `plans`).
+    private(set) var privatePlans = false
 
     /// Checks closer together than this reuse the last answer.
     static let recheckAfter: TimeInterval = 30
@@ -48,13 +52,13 @@ final class PlansFlags {
         self.defaults = defaults
     }
 
-    /// Re-reads both flags for `account` (the signed-in user id); nil turns
+    /// Re-reads the flags for `account` (the signed-in user id); nil turns
     /// Plans off. `force` skips the 30-second reuse.
     func refresh(account newAccount: String?, force: Bool = false) async {
         guard let newAccount else {
             account = nil
             lastChecked = nil
-            apply(plans: false, playdates: false, business: false)
+            apply(plans: false, playdates: false, business: false, privatePlans: false)
             return
         }
         if newAccount != account {
@@ -97,15 +101,17 @@ final class PlansFlags {
         async let plansAnswer = Self.read("plans", api: api)
         async let playdatesAnswer = Self.read("plans_playdates", api: api)
         async let businessAnswer = Self.read("plans_business", api: api)
-        let answers = await (plans: plansAnswer, playdates: playdatesAnswer, business: businessAnswer)
+        async let privateAnswer = Self.read("plans_private", api: api)
+        let answers = await (plans: plansAnswer, playdates: playdatesAnswer, business: businessAnswer, privatePlans: privateAnswer)
         // An account switch while the check ran: its answers aren't this account's.
         guard account == checked else { return }
         let plansOn = answers.plans ?? plans
         let playdatesOn = answers.playdates ?? playdates
         let businessOn = answers.business ?? business
+        let privateOn = answers.privatePlans ?? privatePlans
         if answers.plans != nil || answers.playdates != nil { lastChecked = Date() }
-        apply(plans: plansOn, playdates: plansOn && playdatesOn, business: plansOn && businessOn)
-        defaults.set([plans, playdates, business], forKey: Self.key(checked))
+        apply(plans: plansOn, playdates: plansOn && playdatesOn, business: plansOn && businessOn, privatePlans: plansOn && privateOn)
+        defaults.set([plans, playdates, business, privatePlans], forKey: Self.key(checked))
     }
 
     private func restore(for account: String) {
@@ -114,14 +120,16 @@ final class PlansFlags {
         apply(
             plans: plansOn,
             playdates: plansOn && saved.dropFirst().first == true,
-            business: plansOn && saved.dropFirst(2).first == true
+            business: plansOn && saved.dropFirst(2).first == true,
+            privatePlans: plansOn && saved.dropFirst(3).first == true
         )
     }
 
-    private func apply(plans plansOn: Bool, playdates playdatesOn: Bool, business businessOn: Bool) {
+    private func apply(plans plansOn: Bool, playdates playdatesOn: Bool, business businessOn: Bool, privatePlans privateOn: Bool) {
         if plans != plansOn { plans = plansOn }
         if playdates != playdatesOn { playdates = playdatesOn }
         if business != businessOn { business = businessOn }
+        if privatePlans != privateOn { privatePlans = privateOn }
     }
 
     /// The flag's answer, or nil when it couldn't be read (offline, 5xx).

@@ -101,7 +101,7 @@ struct PlanFooter: View {
                 Button("Verify your address to join") { PlanVerification.open() }
                     .planButton(.primary)
                     .accessibilityIdentifier("planVerify")
-                caption("This plan is for verified neighbors.")
+                caption("This plan is for people with a verified address.")
             case .needsLocation:
                 Button { Task { await viewModel.shareLocation() } } label: {
                     PlanButtonLabel(title: "Share your location to join", kind: .primary, isLoading: viewModel.isWorking)
@@ -199,7 +199,7 @@ enum PlanCannotAskCopy {
     /// Why, under the greyed-out button.
     static func caption(_ reason: PlanCannotAskReason) -> String? {
         switch reason {
-        case .tooFar: "This plan is for neighbors who live or are close by."
+        case .tooFar: "This plan is for people who live or are close by."
         case .tooManyRequests: "You have 10 open requests. Withdraw one to ask here."
         case .declined, .removed: "This one didn't work out."
         case .blocked: "You can't join this plan."

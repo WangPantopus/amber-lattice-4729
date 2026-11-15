@@ -42,8 +42,10 @@ final class PlansNavigator {
     private init() {}
 }
 
-/// "Host a plan", optionally at a kind (and a game).
+/// "Host a plan", optionally at a kind (and a game), or a private plan (Plans step 1).
 struct PlansHostRequest: Identifiable, Hashable {
     let id = UUID()
     let start: PlansHostStart?
+    /// Opens on "Only people I invite" (the empty state's "Plan with people you know").
+    var isPrivate = false
 }

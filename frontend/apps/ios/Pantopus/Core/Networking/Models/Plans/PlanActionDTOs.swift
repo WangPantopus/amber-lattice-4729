@@ -168,9 +168,14 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var hostAs: PlanHostAsBody?
     public var businessLocationId: String?
     public var label: String?
+    /// Private plans (step 1): `invited` posts a private plan; whether each guest may bring a friend, and the
+    /// people invited as it is posted (ids from `GET /api/plans/invites/people`). Left out for a public plan.
+    public var audience: PlanAudience?
+    public var guestsCanInvite: Bool?
+    public var inviteUserIds: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label
+        case kind, title, about, place, spots, details, gps, label, audience
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case autoRules = "auto_rules"
@@ -179,6 +184,8 @@ public struct CreatePlanBody: Encodable, Sendable {
         case hostedAgainFrom = "hosted_again_from"
         case hostAs = "host_as"
         case businessLocationId = "business_location_id"
+        case guestsCanInvite = "guests_can_invite"
+        case inviteUserIds = "invite_user_ids"
     }
 
     public init(

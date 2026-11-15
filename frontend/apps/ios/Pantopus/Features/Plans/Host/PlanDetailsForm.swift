@@ -30,8 +30,12 @@ struct PlanDetailsForm: View {
                     if model.kind == .walkCoffee { PlanWalkExtras(model: model) }
                     when
                     if model.isBusiness { PlanBusinessWhereField(model: model) } else { whereSection }
+                    if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow
-                    if model.isBusiness { PlanWhoGetsInField(model: model) } else { approvalSection }
+                    // A private plan's people get in right away: "Guests can bring a friend" instead (board Details).
+                    if model.isBusiness { PlanWhoGetsInField(model: model) } else if model.isPrivate {
+                        PlanGuestsCanInviteRow(model: model)
+                    } else { approvalSection }
                     if model.kind == .pickupGame { gearSwitch }
                     noteField
                     if model.kind == .watchParty || model.isBusiness { aboutField }
@@ -85,8 +89,8 @@ struct PlanDetailsForm: View {
                         label: "Starts",
                         date: $model.start,
                         components: [.date, .hourAndMinute],
-                        // A business plans up to 60 days ahead (its limits); a neighbor 14.
-                        range: Date()...Date().addingTimeInterval(TimeInterval(model.hostAs?.limits.daysAhead ?? 14) * 86400)
+                        // A business plans up to 60 days ahead (its limits), a private plan 60; a person's public plan 14.
+                        range: Date()...Date().addingTimeInterval(TimeInterval(model.daysAhead) * 86400)
                     )
                     Divider().overlay(Theme.Color.appBorder)
                 }
@@ -99,7 +103,7 @@ struct PlanDetailsForm: View {
             }
             if model.kind == .playdate {
                 PlanScopeLine(
-                    text: "Neighbors see \u{201C}\(PlanFormat.dayPartPhrase(dayPart, day: model.start))\u{201D} until you accept them."
+                    text: "Others see \u{201C}\(PlanFormat.dayPartPhrase(dayPart, day: model.start))\u{201D} until you accept them."
                 )
             }
         }
@@ -147,7 +151,7 @@ struct PlanDetailsForm: View {
                     }
                     .padding(.vertical, 10)
                 }
-                PlanScopeLine(text: "Only people you accept see your address. Everyone else sees the area.")
+                PlanScopeLine(text: PlanPrivateCopy.homeLine(isPrivate: model.isPrivate))
             } else {
                 Button { showsPlacePicker = true } label: {
                     PlanFormCard {
@@ -165,7 +169,8 @@ struct PlanDetailsForm: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("planChoosePlace")
-                if let placeScope { PlanScopeLine(text: placeScope) }
+                // Those lines are about people nearby and the area; a private plan's people see the place itself.
+                if let placeScope, !model.isPrivate { PlanScopeLine(text: placeScope) }
             }
         }
     }
@@ -188,7 +193,7 @@ struct PlanDetailsForm: View {
     /// Boards H2 and H5 draw no line under a public place (as on Android).
     private var placeScope: String? {
         switch model.kind {
-        case .playdate: "Families you accept see the exact spot. Others see the neighborhood."
+        case .playdate: "Families you accept see the exact spot. Others see the general area."
         case .pickupGame: "Your location only proves you're nearby. The pin shows the place's area."
         default: nil
         }
@@ -424,7 +429,7 @@ struct PlanApprovalOptions: View {
     private func title(_ option: PlanApproval) -> String {
         switch option {
         case .approveEach: "I approve each person"
-        case .verifiedAuto: "Verified neighbors get in right away"
+        case .verifiedAuto: "People with a verified address get in right away"
         case .anyoneNearby: "Anyone nearby gets in right away"
         }
     }

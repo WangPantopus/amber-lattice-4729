@@ -89,7 +89,7 @@ public struct PlansTabRoot: View {
         }
         .askPantopus($askTopic)
         .fullScreenCover(item: $hostRequest, onDismiss: openPostedPlan) { request in
-            PlanComposerRoot(start: request.start) { posted in
+            PlanComposerRoot(start: request.start, isPrivate: request.isPrivate) { posted in
                 postedPlanId = posted
                 hostRequest = nil
             }
@@ -190,6 +190,7 @@ public struct PlansTabRoot: View {
             areaPicker: { showsAreaPicker = true }
         )
         actions.ask = { askTopic = .plans() }
+        actions.hostPrivate = { hostRequest = PlansHostRequest(start: nil, isPrivate: true) }
         if LaunchFeatures.pulseRedesign {
             actions.openPulse = { rootTabs.selected = .pulse }
             actions.openConnections = { DeepLinkRouter.shared.handle(path: "/connections") }

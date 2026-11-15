@@ -24,7 +24,10 @@ struct PlanScreenSections: View {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 switch viewModel.mode {
                 case .browsing:
-                    if let invite = viewModel.openInvite {
+                    if viewModel.openInvite != nil, card.isPrivate {
+                        // Board Invited: only the people the host invites can see a private plan.
+                        PlanInvitedBanner(card: card)
+                    } else if let invite = viewModel.openInvite {
                         let words = PlanInviteCopy.banner(card: card, invite: invite)
                         PlanBanner(tone: .success, icon: .partyPopper, title: words.title, message: words.message)
                             .accessibilityIdentifier("planInviteBanner")
@@ -207,6 +210,7 @@ enum PlanScreenLines {
     /// "Near Prune Hill · about 1 mi · at Sam's place" / "· a public place".
     static func whereLine(_ card: PlanCardDTO) -> String {
         if card.isBusiness { return PlanCardLines.businessWhere(card) }
+        if let place = card.invitedPlace { return PlanPrivateCopy.whereLine(card, place: place) }
         var parts = [card.area.label]
         if let distance = PlanFormat.distance(card.distanceBand) { parts.append(distance) }
         switch card.placeKind {

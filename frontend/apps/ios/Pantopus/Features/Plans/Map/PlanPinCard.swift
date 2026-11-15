@@ -210,11 +210,13 @@ enum PlanCardLines {
         if card.viewer?.isHost != true, let invite = card.myInvite, invite.isOpen {
             return invite.needsHostOk ? "\(first) says yes first" : "Invited by \(first) · no request needed"
         }
+        // A private plan lets in only the people its host invites (Plans step 1).
+        if card.isPrivate, card.viewer?.isHost != true { return "Only people \(first) invites" }
         if card.kind == .playdate { return "\(first) approves each family" }
         let rule = card.viewer?.isHost == true ? card.autoRules?.first : card.viewer?.autoRule
         switch rule {
         case .anyoneNearby: return "Lets in anyone nearby automatically"
-        case .verified: return "Lets in verified neighbors automatically"
+        case .verified: return "Lets in people with a verified address automatically"
         case .hostedBefore: return card.viewer?.isHost == true ? "Lets in people you've hosted automatically" : "You can get in right away"
         case .open: return card.viewer?.isHost == true ? "Lets anyone in right away" : "You can get in right away"
         case nil: return "\(first) approves each person"

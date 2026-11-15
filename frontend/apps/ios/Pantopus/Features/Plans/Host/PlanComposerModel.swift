@@ -74,6 +74,8 @@ final class PlanComposerModel {
     var businessLabel: String?
     var businessLocationId: String?
     var letsEveryoneIn = true
+    /// Private plans (step 1): who can see it, "Guests can bring a friend", the people invited.
+    let privacy = PlanPrivateDraft()
 
     private(set) var isPosting = false
     var postError: String?
@@ -219,7 +221,7 @@ final class PlanComposerModel {
         let span = end.timeIntervalSince(effectiveStart)
         if span < 15 * 60 { return "A plan lasts at least 15 minutes." }
         if span > 8 * 3600 { return "A plan lasts at most 8 hours." }
-        if effectiveStart > Date().addingTimeInterval(14 * 86400) { return "Plans can start up to 14 days from now." }
+        if effectiveStart > Date().addingTimeInterval(TimeInterval(daysAhead) * 86400) { return tooFarAheadProblem }
         if effectiveStart < Date().addingTimeInterval(-60), !(kind == .pickupGame && startsNow) { return "Pick a time that hasn't passed." }
         return nil
     }
@@ -244,9 +246,10 @@ final class PlanComposerModel {
         postError = nil
         defer { isPosting = false }
         do {
-            let created: PlanDetailDTO = try await api.request(PlansEndpoints.create(body))
-            posted = created
-            PlansStoreReads.changed(planId: created.id)
+            let reply: PlanCreatedResponse = try await api.request(PlansEndpoints.create(body))
+            privacy.noteInvites(reply)
+            posted = reply.plan
+            PlansStoreReads.changed(planId: reply.plan.id)
             return true
         } catch {
             postError = PlanErrors.sentence(for: error)
@@ -295,13 +298,15 @@ final class PlanComposerModel {
             endsAt: end,
             place: placeBody,
             spots: spots,
-            autoRules: autoRules,
+            // A private plan's invited people get in right away: no rules (the server ignores them too).
+            autoRules: isPrivate ? [] : autoRules,
             joinRequirement: kind == .playdate ? .verified : .located,
             details: details,
             guestNote: trimmedNote.isEmpty ? nil : trimmedNote,
             gps: gps
         )
         body.hostedAgainFrom = hostedAgainFrom
+        if isPrivate { privacy.apply(to: &body) }
         return body
     }
 
@@ -441,6 +446,8 @@ extension PlanComposerModel {
             studyStyle = details.studyStyle ?? studyStyle
         }
         let rules = Set(card.autoRules ?? [])
+        privacy.audience = card.isPrivate && PlansFlags.shared.privatePlans ? .invited : .nearby
+        privacy.guestsCanInvite = card.guestsCanInvite
         alsoHostedBefore = rules.contains(.hostedBefore)
         approval = rules.contains(.anyoneNearby) ? .anyoneNearby : rules.contains(.verified) ? .verifiedAuto : .approveEach
         if card.placeKind == .home {

@@ -70,6 +70,8 @@ struct PlanChangeScreen: View {
             Text.planOverline("Where")
             Button {
                 let draft = PlanComposerModel(start: PlansHostStart(kind: card.kind))
+                // A private plan moves anywhere (Plans step 1): the picker's map has no 3-mile circle.
+                draft.privacy.audience = card.privatePart.audience
                 draft.place = newPlace
                 // H6 reads each place's hours for the plan's time and orders by fit, as when hosting.
                 draft.title = card.title
@@ -147,7 +149,7 @@ struct PlanChangeScreen: View {
             VStack(spacing: 0) {
                 DatePicker(
                     selection: $start,
-                    in: Date()...Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? 14) * 86400),
+                    in: Date()...Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? (card.isPrivate ? 60 : 14)) * 86400),
                     displayedComponents: [.date, .hourAndMinute]
                 ) {
                     Text("Starts").planFont(.body)

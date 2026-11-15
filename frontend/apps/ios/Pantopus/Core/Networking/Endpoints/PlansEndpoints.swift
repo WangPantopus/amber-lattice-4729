@@ -211,7 +211,8 @@ public enum PlansEndpoints {
     // MARK: - Hosting
 
     /// `POST /api/plans` — returns PlanDetail (201). Errors: `not_near`
-    /// (403), `too_many_plans` (429), validation (422).
+    /// (403), `too_many_plans` (429), validation (422); a private plan
+    /// (`audience: invited`) with the switch off: `private_unavailable` (422).
     /// Route `backend/routes/plans.js`.
     public static func create(_ body: CreatePlanBody) -> Endpoint {
         Endpoint(method: .post, path: base, query: biz(), body: body)
@@ -307,6 +308,13 @@ public enum PlansEndpoints {
         Endpoint(method: .get, path: "\(base)/\(planId)/invites/people", query: biz(text.isEmpty ? [:] : ["q": text]))
     }
 
+    /// `GET /api/plans/invites/people?q=` — the same people as above before the plan exists (a private
+    /// plan's preview, "Invite"), `{ people: [{ user_id, display_name, avatar_url, reason }] }`, no `state`.
+    /// Needs `plans_invites`. Route `backend/routes/plans.js` (`GET /invites/people`).
+    public static func peopleToInvite(query text: String = "") -> Endpoint {
+        Endpoint(method: .get, path: "\(base)/invites/people", query: biz(text.isEmpty ? [:] : ["q": text]))
+    }
+
     /// `POST /api/plans/:id/invites` (host) — people on Pantopus and addresses.
     /// 409 `confirm_shares_address` the first time at a home; 429
     /// `too_many_invites`; 422 `invalid_email`. Route `backend/routes/plans.js`.
@@ -315,7 +323,8 @@ public enum PlansEndpoints {
     }
 
     /// `POST /api/plans/:id/invites/link` (host) — a one-person link to text,
-    /// `{ invite_id, url, message }`. Route `backend/routes/plans.js`.
+    /// `{ invite_id, url, message }`. On a private plan with `guests_can_invite`, a guest who is in may
+    /// call it once ("Bring a friend"); again: 409 `friend_invite_used`. Route `backend/routes/plans.js`.
     public static func inviteLink(planId: String, confirmSharesAddress: Bool?) -> Endpoint {
         Endpoint(
             method: .post,
