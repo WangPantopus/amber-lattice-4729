@@ -38,8 +38,10 @@ import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanOnlineLink
+import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.planKind
+import app.pantopus.android.data.plans.planState
 import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
@@ -91,13 +93,15 @@ internal val PlanDto.joinHost: String?
 
 /**
  * The link's card (board Online): its site on the kind's soft tile with the link glyph, who added it, and that only
- * people who are in see it. The host reads "The link you added".
+ * people who are in see it. The host reads "The link you added". Nothing for a plan that isn't online, has no link for
+ * this viewer, or is over.
  */
 @Composable
 internal fun PlanOnlineLinkCard(
     plan: PlanDto,
     hosting: Boolean,
 ) {
+    if (plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED) return
     val host = plan.joinHost ?: return
     val kind = plan.planKind ?: return
     Column(

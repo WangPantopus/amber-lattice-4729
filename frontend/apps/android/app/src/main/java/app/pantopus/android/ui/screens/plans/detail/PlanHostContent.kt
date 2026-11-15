@@ -96,8 +96,8 @@ internal fun ColumnScope.PlanHostBody(
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
     HostSeries(plan, closed, series)
-    // An online plan's link, as the people in see it (Plans step 3); "Join" is in the footer.
-    if (!closed) PlanOnlineLinkCard(plan, hosting = true)
+    // An online plan's link, as the people in see it (Plans step 3); "Join" is in the footer. Nothing once it's over.
+    PlanOnlineLinkCard(plan, hosting = true)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
     val waitingCount = requests?.waitlisted?.size ?: plan.waitlistCount
