@@ -101,20 +101,7 @@ fun PlanChangeScreen(
             }
             return@PlanPlainScaffold
         }
-        PlanField(label = "When") {
-            PlanWhenCard(
-                start = ui.start,
-                end = ui.end,
-                onStart = viewModel::setStart,
-                onEnd = viewModel::setEnd,
-                startHighlighted = ui.start != ui.originalStart,
-                repeats = ui.repeatsValue,
-                onRepeats = viewModel::openRepeats,
-            )
-            if (was != null && ui.start != ui.originalStart) {
-                Text(text = "Was $was", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
-            }
-        }
+        ChangeWhenField(ui, viewModel, was)
         if (ui.canChangePlace) WhereField(ui, onClick = viewModel::openPlaces)
         // A business's plan: one of its own locations (board B2), never a place picked here.
         ui.business?.takeIf { ui.canChangeLocation }?.let { business ->
@@ -124,6 +111,29 @@ fun PlanChangeScreen(
         if (ui.asksStillComing) {
             StillComingWarning(ui.peopleIn, placeChanged = ui.newPlace != null || ui.locationMoved)
             NotificationPreview(ui)
+        }
+    }
+}
+
+/** "When": the start and end ("Was 6:30 PM" under a moved start) and, on a person's plan, the Repeats row (Plans step 2). */
+@Composable
+private fun ChangeWhenField(
+    ui: PlanChangeUi,
+    viewModel: PlanChangeViewModel,
+    was: String?,
+) {
+    PlanField(label = "When") {
+        PlanWhenCard(
+            start = ui.start,
+            end = ui.end,
+            onStart = viewModel::setStart,
+            onEnd = viewModel::setEnd,
+            startHighlighted = ui.start != ui.originalStart,
+            repeats = ui.repeatsValue,
+            onRepeats = viewModel::openRepeats,
+        )
+        if (was != null && ui.start != ui.originalStart) {
+            Text(text = "Was $was", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
         }
     }
 }

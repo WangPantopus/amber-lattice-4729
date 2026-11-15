@@ -199,7 +199,7 @@ private fun DaysField(
 ) {
     PlanField(label = "On these days") {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            (1..7).forEach { day ->
+            for (day in 1..7) {
                 DayButton(
                     day = day,
                     on = day in editor.weekdays || day == setup.startWeekday,

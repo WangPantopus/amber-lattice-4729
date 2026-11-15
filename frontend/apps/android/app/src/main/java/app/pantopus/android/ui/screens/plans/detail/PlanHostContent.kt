@@ -95,8 +95,7 @@ internal fun ColumnScope.PlanHostBody(
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
-    // A repeating plan (board Regulars, Plans step 2): the series, Skip, Change and Stop repeating, whatever the switch says.
-    if (!closed && series != null && plan.repeats) PlanSeriesHostCard(plan, series)
+    HostSeries(plan, closed, series)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
     val waitingCount = requests?.waitlisted?.size ?: plan.waitlistCount
@@ -126,6 +125,20 @@ internal fun ColumnScope.PlanHostBody(
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
     }
+}
+
+/**
+ * A repeating plan that is still open (board Regulars, Plans step 2): the series, Skip, Change and Stop repeating,
+ * whatever the switch says.
+ */
+@Composable
+private fun HostSeries(
+    plan: PlanDto,
+    closed: Boolean,
+    series: PlanSeriesActions?,
+) {
+    if (closed || series == null || !plan.repeats) return
+    PlanSeriesHostCard(plan, series)
 }
 
 /** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
