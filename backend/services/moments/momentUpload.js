@@ -43,7 +43,7 @@ async function prepareFiles(kind, { file, poster: posterFile = null, frames: fra
     if (!posterFile) throw store.fail(400, 'MOMENT_POSTER_REQUIRED', 'Send the video with its poster picture.');
     const facts = media.videoFacts(file.buffer);
     if (facts.durationMs > media.MAX_VIDEO_MS + media.VIDEO_MS_TOLERANCE) {
-      throw store.fail(422, 'MEDIA_TOO_LONG', 'Videos can be up to 30 seconds.');
+      throw store.fail(422, 'MEDIA_TOO_LONG', `Videos can be up to ${media.MAX_VIDEO_MS / 1000} seconds.`);
     }
     await removeVideoMetadata(file.buffer);
     const poster = await cleanStill(posterFile);
