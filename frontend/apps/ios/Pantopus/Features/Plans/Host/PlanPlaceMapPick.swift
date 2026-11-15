@@ -252,6 +252,7 @@ struct PlanPlaceMapPickRow: View {
 
 extension View {
     /// The map pick for a draft: its kind, the host's homes, and whether it's private (anywhere).
+    @MainActor
     func planPlaceMapPick(
         isPresented: Binding<Bool>,
         model: PlanComposerModel,

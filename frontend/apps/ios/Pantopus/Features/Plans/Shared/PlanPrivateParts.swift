@@ -82,7 +82,7 @@ struct PlanInvitedBanner: View {
 /// Board Main: "Plan with people you know" under the watch-party nudge, opening the host flow on
 /// "Only people I invite".
 struct PlanPrivateStartRow: View {
-    let action: () -> Void
+    let action: @MainActor () -> Void
 
     var body: some View {
         Button(action: action) {
