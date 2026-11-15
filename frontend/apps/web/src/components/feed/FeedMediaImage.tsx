@@ -22,6 +22,8 @@ interface FeedMediaImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 
   unoptimized?: boolean;
   /** Optional recovery UI once every source has failed. */
   errorFallback?: ReactNode;
+  /** Called when every source has failed, so the caller can leave the picture out. */
+  onUnavailable?: () => void;
 }
 
 function normalizeBaseUrl(base: string): string {
@@ -121,6 +123,7 @@ export default function FeedMediaImage({
   priority,
   unoptimized = false,
   errorFallback,
+  onUnavailable,
   sizes = '(max-width: 768px) calc(100vw - 32px), 640px',
   ...props
 }: FeedMediaImageProps) {
@@ -154,6 +157,7 @@ export default function FeedMediaImage({
       setCandidateIdx((idx) => idx + 1);
     } else {
       setExhausted(true);
+      onUnavailable?.();
     }
   };
 

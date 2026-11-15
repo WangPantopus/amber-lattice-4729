@@ -3,15 +3,20 @@ import SwiftUI
 
 /// "Read at The Columbian": where a post's story was published (`PostSource`), under its text on the Pulse card and
 /// on the post page. A tap opens the story in the app's own browser sheet, as a link in a post's text does
-/// (`PostLinkText`); the view that shows the row owns that sheet (`postSourceBrowser`). Parity twin of Android's
-/// `PostSourceLink`.
+/// (`PostLinkText`); the view that shows the row owns that sheet (`postSourceBrowser`), or a screen above it does
+/// (`PostPresentationHost`). Parity twin of Android's `PostSourceLink`.
 struct PostSourceLink: View {
     let source: PostSource
     let accessibilityID: String
     let onOpen: @MainActor () -> Void
+    /// A screen above that presents the browser sheet itself, so it stays while this one is made anew
+    /// (`PostPresentationHost`).
+    @Environment(\.postPresentationHost) private var host
 
     var body: some View {
-        Button(action: onOpen) {
+        Button {
+            if let host { host.source = source } else { onOpen() }
+        } label: {
             HStack(spacing: Spacing.s2) {
                 Icon(.link, size: 14, strokeWidth: 2.2, color: Theme.Color.primary600)
                 Text(source.label)

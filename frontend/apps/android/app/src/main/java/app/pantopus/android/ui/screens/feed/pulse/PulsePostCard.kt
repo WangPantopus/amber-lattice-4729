@@ -286,6 +286,8 @@ fun PulsePostCard(
                 testTag = "pulsePostMedia_${content.id}",
                 usesSharpPreviews = true,
                 edgeToEdge = true,
+                // An outlet's picture that's gone leaves no hole.
+                dropsFailedPictures = content.source != null,
             )
         }
         Column(

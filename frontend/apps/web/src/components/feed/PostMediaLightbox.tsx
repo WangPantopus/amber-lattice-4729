@@ -2,7 +2,7 @@
 
 /** Shared Pulse and Beacon viewer for images, Live Photos, videos, and PDFs. */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import FeedMediaImage from './FeedMediaImage';
@@ -19,6 +19,11 @@ interface PostMediaLightboxProps {
   index: number | null;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  /**
+   * The slots to page through, as indexes into `urls` (`useShownMedia`: an outside source's pictures that couldn't
+   * load are left out). Every slot when absent.
+   */
+  shown?: number[];
 }
 
 export default function PostMediaLightbox({
@@ -28,18 +33,27 @@ export default function PostMediaLightbox({
   index,
   onIndexChange,
   onClose,
+  shown,
 }: PostMediaLightboxProps) {
   const [imageAttempt, setImageAttempt] = useState(0);
-  const count = urls.length;
-  const isOpen = index !== null && count > 0 && index >= 0 && index < count;
+  const order = useMemo(() => shown ?? urls.map((_, i) => i), [shown, urls]);
+  const count = order.length;
+  const position = index === null ? -1 : order.indexOf(index);
+  const isOpen = position >= 0;
+  // The picture on screen was left out (it couldn't load): close rather than show a hole.
+  const left = index !== null && !isOpen && index >= 0 && index < urls.length;
 
   const step = useCallback(
     (delta: number) => {
-      if (index === null || count === 0) return;
-      onIndexChange((index + delta + count) % count);
+      if (position < 0 || count === 0) return;
+      onIndexChange(order[(position + delta + count) % count]);
     },
-    [count, index, onIndexChange],
+    [count, position, order, onIndexChange],
   );
+
+  useEffect(() => {
+    if (left) onClose();
+  }, [left, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -176,7 +190,7 @@ export default function PostMediaLightbox({
 
       {count > 1 && (
         <div className="pointer-events-none absolute bottom-6 left-1/2 z-[102] -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
-          {index + 1} / {count}
+          {position + 1} / {count}
         </div>
       )}
     </div>,

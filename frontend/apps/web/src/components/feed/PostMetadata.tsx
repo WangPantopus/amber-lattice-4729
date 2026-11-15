@@ -19,7 +19,7 @@ function eventTime(value: string, plan: boolean): string {
  * Where a post's story was published: `post_metadata.source_url`, which only the server sets (an Official or curator
  * notice's source, or an Around you headline's outlet with its name in `source_name`). A web link only.
  */
-function postSource(post: Post): { url: string; label: string } | null {
+export function postSource(post: Post): { url: string; label: string } | null {
   const meta = post.post_metadata;
   const raw = typeof meta?.source_url === 'string' ? meta.source_url : null;
   if (!raw) return null;

@@ -234,6 +234,8 @@ fun BodyReactionsBody(
                 usesSharpPreviews = true,
                 edgeToEdge = true,
                 locationBadge = mediaLocationBadge,
+                // An outlet's picture that's gone leaves no hole.
+                dropsFailedPictures = source != null,
             )
         }
         ReactionsBar(

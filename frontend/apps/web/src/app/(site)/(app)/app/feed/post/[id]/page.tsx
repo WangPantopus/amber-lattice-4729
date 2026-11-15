@@ -15,7 +15,7 @@ import type { LucideIcon } from 'lucide-react';
 import { CommentThread, EditPostDialog } from '@/components/feed';
 import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
-import { PostMediaPreview, resolvePostMediaSlots } from '@/components/feed/PostMediaGrid';
+import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from '@/components/feed/PostMediaGrid';
 import PostMediaLightbox from '@/components/feed/PostMediaLightbox';
 import { PostLinkContent } from '@/components/feed/LinkPreviewCard';
 import {
@@ -102,6 +102,8 @@ export default function PostDetailPage() {
   // Loaded independently: a failed comments call must not hide a post that
   // loaded, and only a missing or hidden post (404/403) reads "not found".
   const { post, comments, postQuery, commentsQuery, setPost, setComments, loading, unavailable, commentsFailed } = usePostDetail(postId);
+  // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
+  const media = useShownMedia(post);
   // A failed load that isn't "this post is gone" (network, 5xx): retryable.
   const loadError = !post && postQuery.isError && !unavailable
     ? getErrorMessage(postQuery.error, "We couldn't load this post. Please try again.")
@@ -712,25 +714,25 @@ export default function PostDetailPage() {
           )}
 
           {/* Media grid with lightbox */}
-          {post.media_urls && post.media_urls.length > 0 && (
+          {media.shown.length > 0 && (
             <div
               className={`px-5 pb-4 grid gap-1.5 ${
-                post.media_urls.length === 1
+                media.shown.length === 1
                   ? 'grid-cols-1'
                   : 'grid-cols-2'
               }`}
             >
-              {post.media_urls.map((url: string, idx: number) => {
-                const slot = resolvePostMediaSlots(post.media_urls!, post.media_types, post.media_live_urls)[idx];
+              {media.shown.map((idx: number, pos: number) => {
+                const slot = resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx];
                 return (
                   <div
                     key={idx}
                     role={slot.kind === 'live' ? undefined : 'button'}
                     tabIndex={slot.kind === 'live' ? undefined : 0}
-                    aria-label={slot.kind === 'live' ? undefined : `View attachment ${idx + 1} full size`}
+                    aria-label={slot.kind === 'live' ? undefined : `View attachment ${pos + 1} full size`}
                     className={`relative overflow-hidden rounded-xl bg-surface-muted cursor-pointer hover:opacity-90 transition ${
-                      post.media_urls!.length === 1 ? 'aspect-video' : 'aspect-square'
-                    } ${post.media_urls!.length === 3 && idx === 0 ? 'row-span-2 aspect-auto' : ''}`}
+                      media.shown.length === 1 ? 'aspect-video' : media.shown.length === 3 && pos === 0 ? 'row-span-2' : 'aspect-square'
+                    }`}
                     onClick={() => setLightboxIdx(idx)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget || slot.kind === 'live') return;
@@ -740,7 +742,10 @@ export default function PostDetailPage() {
                       }
                     }}
                   >
-                    <PostMediaPreview url={url} thumbnailUrl={post.media_thumbnails?.[idx]} slot={slot} onPress={() => setLightboxIdx(idx)} />
+                    {/* Three pictures: the first fills both rows beside the other two, whatever its own shape. */}
+                    <PostMediaPreview url={post.media_urls[idx]} thumbnailUrl={post.media_thumbnails?.[idx]} slot={slot}
+                      onPress={() => setLightboxIdx(idx)} onUnavailable={media.onUnavailable}
+                      imageClassName={media.shown.length === 3 && pos === 0 ? 'absolute inset-0 h-full w-full object-cover' : undefined} />
                   </div>
                 );
               })}
@@ -945,7 +950,7 @@ export default function PostDetailPage() {
       {/* ─── Media Lightbox ───────────────────────────────── */}
       {post.media_urls && (
         <PostMediaLightbox urls={post.media_urls} mediaTypes={post.media_types} liveUrls={post.media_live_urls}
-          index={lightboxIdx} onIndexChange={setLightboxIdx} onClose={() => setLightboxIdx(null)} />
+          index={lightboxIdx} onIndexChange={setLightboxIdx} onClose={() => setLightboxIdx(null)} shown={media.shown} />
       )}
 
       {/* ─── Report Modal ─────────────────────────────────── */}

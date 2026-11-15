@@ -204,7 +204,9 @@ private struct PlaceHingeReader: ViewModifier {
 }
 #endif
 
-private extension View {
+extension View {
+    /// Keeps `hinge` at the Duo's hinge where it runs down this view (held sideways, open flat or half folded like
+    /// a book); nil everywhere else. Today's Around you reads it too, for its two pages.
     func readsPlaceHinge(_ hinge: Binding<PlaceHinge?>) -> some View {
         #if compiler(>=6.4)
         if #available(iOS 27.1, *) {

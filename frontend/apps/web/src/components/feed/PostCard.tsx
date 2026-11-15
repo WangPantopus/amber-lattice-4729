@@ -14,7 +14,7 @@ import * as api from '@pantopus/api';
 import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
 import { personColor, personInitials } from '@/lib/personColor';
-import { PostMediaPreview, resolvePostMediaSlots } from './PostMediaGrid';
+import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from './PostMediaGrid';
 import { PostLinkContent } from './LinkPreviewCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import {
@@ -231,6 +231,8 @@ function PostCard({
   const reposted = Boolean(post.userHasReposted);
   const repostCount = post.share_count > 0 ? post.share_count : 0;
   const quoted = readQuotedPost(post.quoted_post);
+  // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
+  const media = useShownMedia(post);
   const repostChooser = (from: 'bar' | 'menu') => chooserFrom === from && (
     <RepostChooser
       reposted={reposted}
@@ -542,30 +544,32 @@ function PostCard({
       )}
 
       {/* ─── Media grid ──────────────────────────────── */}
-      {post.media_urls && post.media_urls.length > 0 && (
+      {media.shown.length > 0 && (
         <div
           className={`px-4 pb-3 grid gap-1.5 ${
-            post.media_urls.length === 1
+            media.shown.length === 1
               ? 'grid-cols-1'
-              : post.media_urls.length === 2
+              : media.shown.length === 2
               ? 'grid-cols-2'
               : 'grid-cols-2'
           } cursor-pointer`}
           onClick={openFullPost}
         >
-          {post.media_urls.slice(0, 4).map((url: string, idx: number) => (
+          {media.shown.slice(0, 4).map((idx: number, pos: number) => (
             <div
               key={idx}
               className={`relative overflow-hidden rounded-xl bg-surface-muted ${
-                post.media_urls.length === 1 ? 'aspect-video' : 'aspect-square'
-              } ${post.media_urls.length === 3 && idx === 0 ? 'row-span-2 aspect-auto' : ''}`}
+                media.shown.length === 1 ? 'aspect-video' : media.shown.length === 3 && pos === 0 ? 'row-span-2' : 'aspect-square'
+              }`}
             >
-              <PostMediaPreview url={url} thumbnailUrl={post.media_thumbnails?.[idx]} slot={resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx]} onPress={openFullPost} />
+              {/* Three pictures: the first fills both rows beside the other two, whatever its own shape. */}
+              <PostMediaPreview url={post.media_urls[idx]} thumbnailUrl={post.media_thumbnails?.[idx]} slot={resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx]} onPress={openFullPost} onUnavailable={media.onUnavailable}
+                imageClassName={media.shown.length === 3 && pos === 0 ? 'absolute inset-0 h-full w-full object-cover' : undefined} />
 
 
-              {idx === 3 && post.media_urls.length > 4 && (
+              {pos === 3 && media.shown.length > 4 && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">+{post.media_urls.length - 4}</span>
+                  <span className="text-white font-bold text-lg">+{media.shown.length - 4}</span>
                 </div>
               )}
             </div>

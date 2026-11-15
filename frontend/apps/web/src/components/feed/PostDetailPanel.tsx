@@ -15,7 +15,7 @@ import * as api from '@pantopus/api';
 import CommentThread from './CommentThread';
 import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
-import { PostMediaPreview, resolvePostMediaSlots } from './PostMediaGrid';
+import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from './PostMediaGrid';
 import PostMediaLightbox from './PostMediaLightbox';
 import { PostLinkContent } from './LinkPreviewCard';
 import LinkPreviewCard from './LinkPreviewCard';
@@ -85,6 +85,8 @@ export default function PostDetailPanel({
   const repostButtonRef = useRef<HTMLButtonElement>(null);
   /** Index into `post.media_urls` when viewing full-screen image; `null` = closed */
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
+  const media = useShownMedia(post);
   const panelRef = useRef<HTMLDivElement>(null);
   const targetVersion = useRef(0);
 
@@ -520,9 +522,9 @@ export default function PostDetailPanel({
 
               {post.content && <LinkPreviewCard content={post.content} />}
 
-              {post.media_urls && post.media_urls.length > 0 && (
+              {media.shown.length > 0 && (
                 <div className="space-y-2 px-5 pb-4">
-                  {post.media_urls.map((url, idx) => (
+                  {media.shown.map((idx, pos) => (
                     <div
                       key={idx}
                       role="button"
@@ -535,11 +537,12 @@ export default function PostDetailPanel({
                       }}
                       onClick={() => setLightboxIndex(idx)}
                       className={`relative ${(post.media_types?.[idx] ?? "image") !== "image" ? "h-80" : ""} block w-full cursor-zoom-in overflow-hidden rounded-xl border-0 bg-transparent p-0 text-left transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`}
-                      aria-label={`View attachment ${idx + 1} full size`}
+                      aria-label={`View attachment ${pos + 1} full size`}
                     >
-                      <PostMediaPreview url={url} thumbnailUrl={post.media_thumbnails?.[idx]}
-                        slot={resolvePostMediaSlots(post.media_urls!, post.media_types, post.media_live_urls)[idx]}
-                        imageClassName="max-h-80 w-full rounded-xl object-cover" onPress={() => setLightboxIndex(idx)} />
+                      <PostMediaPreview url={post.media_urls[idx]} thumbnailUrl={post.media_thumbnails?.[idx]}
+                        slot={resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx]}
+                        imageClassName="max-h-80 w-full rounded-xl object-cover" onPress={() => setLightboxIndex(idx)}
+                        onUnavailable={media.onUnavailable} />
 
                     </div>
 
@@ -691,7 +694,8 @@ export default function PostDetailPanel({
       </aside>
 
       {post?.media_urls && <PostMediaLightbox urls={post.media_urls} mediaTypes={post.media_types}
-        liveUrls={post.media_live_urls} index={lightboxIndex} onIndexChange={setLightboxIndex} onClose={() => setLightboxIndex(null)} />}
+        liveUrls={post.media_live_urls} index={lightboxIndex} onIndexChange={setLightboxIndex} onClose={() => setLightboxIndex(null)}
+        shown={media.shown} />}
 
     </>,
     document.body

@@ -12,173 +12,31 @@
 //  post menu; a tap opens its post page with the reply threads, pushed on
 //  Today's own stack); "Read at <outlet>" opens the story. A server from
 //  before the posts sends rows, drawn as the first build drew them.
+//  On the iPhone Duo (founder, 2026-11-15): closed it is the phone's page;
+//  open and held sideways the list is the page left of the hinge and the
+//  open post the page right of it (`TodayAroundYouColumns`); open and
+//  upright the list and the post are a centered column of a phone's reading
+//  width, not rows and pictures stretched across the screen.
 //  Parity twin of Android's `TodayAroundYou.kt`.
 //
 
-import Observation
 import SafariServices
 import SwiftUI
-
-/// Which half of Today shows.
-enum TodayHalf: String, CaseIterable {
-    case home
-    case around
-
-    var label: String {
-        switch self {
-        case .home: "At home"
-        case .around: "Around you"
-        }
-    }
-
-    var icon: PantopusIcon {
-        switch self {
-        case .home: .home
-        case .around: .megaphone
-        }
-    }
-}
-
-/// The Around you page for the place Today shows. It keeps the last answer
-/// for that place; a failed read keeps it, and another place starts blank.
-@Observable
-@MainActor
-final class TodayAroundYouModel {
-    private(set) var page: AroundYouDTO?
-    /// The page's posts as Pulse cards and what the viewer's taps did to them
-    /// (the profile's card model: the same taps, endpoints and menus).
-    private(set) var cards: ProfilePostCardsModel
-    /// Who the cards are for: another account gets its own.
-    private(set) var viewerId: String?
-    /// Action feedback ("Saved to your bookmarks."), shown at the page's foot.
-    var toast: String?
-    private var placeKey: String?
-    private let api: APIClient
-    private let store: ScreenStore
-
-    init(api: APIClient = .shared) {
-        self.api = api
-        store = ScreenStore.store(for: api)
-        cards = ProfilePostCardsModel(viewerId: nil, client: api, store: store)
-    }
-
-    private func useCards(for viewer: String?) {
-        guard viewer != viewerId else { return }
-        viewerId = viewer
-        cards = ProfilePostCardsModel(viewerId: viewer, client: api, store: store)
-        cards.onToast = { [weak self] message in self?.toast = message }
-    }
-
-    /// Something to show for this place: Today offers the switch.
-    var available: Bool {
-        page?.available == true && page?.sections.isEmpty == false
-    }
-
-    func load(for detail: PlaceDetailViewModel?, viewerId viewer: String?) async {
-        useCards(for: viewer)
-        guard let detail else {
-            page = nil
-            placeKey = nil
-            return
-        }
-        if placeKey != detail.identity {
-            page = nil
-            placeKey = detail.identity
-        }
-        let endpoint: Endpoint
-        if let area = detail.area {
-            endpoint = AroundYouEndpoints.area(AreaTodayBody(latitude: area.latitude, longitude: area.longitude))
-        } else if let savedPlaceId = detail.savedPlaceId {
-            endpoint = AroundYouEndpoints.savedPlace(id: savedPlaceId)
-        } else if !detail.homeId.isEmpty {
-            endpoint = AroundYouEndpoints.home(id: detail.homeId)
-        } else {
-            return
-        }
-        let key = detail.identity
-        let cards = cards
-        // A tap made while this read is out keeps its value over the read's (`ProfilePostCardsModel.show`).
-        let revision = cards.actionRevision
-        do {
-            let answer: AroundYouDTO = try await api.request(endpoint)
-            guard placeKey == key, cards === self.cards else { return }
-            page = answer
-            cards.show(answer.posts, readRevision: revision)
-            // A post's page opens at once from its card's copy while the post and its replies load (as from Pulse).
-            for post in answer.posts {
-                store.seed(post, for: PostsEndpoints.detail(id: post.id))
-            }
-        } catch {
-            // The last answer for this place stays.
-        }
-    }
-
-    /// "3 hr ago", "Yesterday", "2 days ago": how long since the story was first seen.
-    static func seenAgo(_ iso: String, now: Date = Date()) -> String? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let seen = withFraction.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else { return nil }
-        let minutes = max(0, Int((now.timeIntervalSince(seen) / 60).rounded()))
-        if minutes < 60 { return minutes < 2 ? "Just now" : "\(minutes) min ago" }
-        let hours = Int((Double(minutes) / 60).rounded())
-        if hours < 24 { return "\(hours) hr ago" }
-        let days = Int((Double(hours) / 24).rounded())
-        return days == 1 ? "Yesterday" : "\(days) days ago"
-    }
-}
-
-/// The big two-part switch under Today's title, drawn as Pulse's List | Map.
-struct TodayHalfSwitch: View {
-    @Binding var half: TodayHalf
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(TodayHalf.allCases, id: \.rawValue) { option in
-                let active = half == option
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) { half = option }
-                } label: {
-                    HStack(spacing: 6) {
-                        Icon(
-                            option.icon,
-                            size: 17,
-                            strokeWidth: 2.2,
-                            color: active ? Theme.Color.appTextInverse : Theme.Color.appTextSecondary
-                        )
-                        Text(option.label)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(active ? Theme.Color.appTextInverse : Theme.Color.appTextSecondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
-                    .background(active ? Theme.Color.primarySolid : Color.clear)
-                    .clipShape(Capsule())
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("todayHalfSegment_\(option.rawValue)")
-                .accessibilityLabel(option.label)
-                .accessibilityAddTraits(active ? [.isSelected] : [])
-            }
-        }
-        .padding(3)
-        .background(Theme.Color.appSurfaceSunken)
-        .overlay(Capsule().stroke(Theme.Color.appBorder, lineWidth: 1))
-        .clipShape(Capsule())
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("todayHalfToggle")
-    }
-}
 
 /// The Around you page: under each section's name, its headlines as Pulse
 /// cards, or, from a server before the posts, a card of the first build's rows.
 struct TodayAroundYouPage: View {
     let page: AroundYouDTO
     let model: TodayAroundYouModel
+    /// The open post shows beside this page (the open iPhone Duo held sideways), where everywhere else it is
+    /// pushed over it.
+    var postBeside = false
     let onRefresh: () async -> Void
     @State private var opened: OpenedStory?
-    /// The post whose page is open on Today's stack.
-    @State private var openedPost: OpenedPost?
+    /// The post whose page is pushed on Today's stack: the open post, where it isn't beside the page.
+    @State private var pushedPost: OpenedPost?
+    /// A fold or a turn is under way (`TodayScreenSpace.isMoving`): the open post moves when it is over.
+    @Environment(\.todayScreenSpace) private var screenSpace
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -204,6 +62,9 @@ struct TodayAroundYouPage: View {
                 }
                 .padding(.top, Spacing.s2)
                 .padding(.bottom, Spacing.s10)
+                // Where the screen is wider (the open Duo upright), a centered column, as the post page is.
+                .frame(maxWidth: TodayAroundYouColumns.readingWidth)
+                .frame(maxWidth: .infinity)
             }
             .refreshable { await onRefresh() }
             if let toast = model.toast {
@@ -216,21 +77,99 @@ struct TodayAroundYouPage: View {
         .sheet(item: $opened) { story in
             StoryBrowser(url: story.url).ignoresSafeArea()
         }
-        // The cards' "Post options" (Share…, Report post) and the report reasons, as on a profile.
-        .modifier(ProfilePostCardSurfaces(model: model.cards))
-        .navigationDestination(item: $openedPost) { post in
-            PostPageDestination(postId: post.id, currentUserId: model.viewerId ?? "") {
-                openedPost = nil
+        // "Repost with your words" opens the composer over Today, once for the page's cards.
+        .modifier(ProfilePostQuoteComposer(model: model.cards))
+        // The card of the post open beside the list is tinted, as in Pulse.
+        .environment(\.selectedPulsePostId, postBeside ? model.openedPostId : nil)
+        // Two pages from the width that holds them, whatever the half under this one asks for.
+        .readableColumnWidens(from: TodayAroundYouColumns.minimumScreenWidth)
+        .navigationDestination(item: $pushedPost) { post in
+            PostPageDestination(
+                postId: post.id,
+                currentUserId: model.viewerId ?? "",
+                viewModel: model.model(forPost: post.id)
+            ) {
+                pushedPost = nil
             } onOpenProfile: { userId in
                 DeepLinkRouter.shared.handle(path: "/u/\(userId)")
             } onEdit: { _ in }
+                .id(model.postScreen)
+                .readableColumn(width: TodayAroundYouColumns.readingWidth)
                 .toolbar(.hidden, for: .navigationBar)
+                // A pushed screen doesn't inherit the pushing screen's environment.
+                .environment(\.postPresentationHost, model.presentations)
         }
-        // Back from a post page: its replies and reactions show on the cards.
-        .onChange(of: openedPost) { previous, now in
-            if previous != nil, now == nil { Task { await onRefresh() } }
+        .onChange(of: pushedPost) { previous, now in
+            guard previous != nil, now == nil else { return }
+            // Off the stack because there is room beside the list now: the post goes there, still open.
+            if postBeside {
+                model.postMoved(beside: true)
+                return
+            }
+            // Back from a post page: it is closed, and its replies and reactions show on the cards.
+            model.closePost()
+            Task { await onRefresh() }
+        }
+        .onChange(of: postBeside, initial: true) { _, _ in placePost() }
+        .onChange(of: isMoving) { _, _ in placePost() }
+        .onChange(of: model.openedPostId) { previous, _ in
+            // Beside the list, the post that was open shows what was done on it once another takes its place.
+            if postBeside, previous != nil { Task { await onRefresh() } }
         }
         .accessibilityIdentifier("aroundYouPanel")
+    }
+
+    /// Opens a card's post: pushed over the list, or in the page beside it.
+    private func open(_ postId: String) {
+        model.open(postId: postId)
+        if postBeside {
+            model.postMoved(beside: true)
+        } else {
+            pushedPost = OpenedPost(id: postId)
+        }
+    }
+
+    private var isMoving: Bool {
+        screenSpace?.isMoving ?? false
+    }
+
+    /// Puts the open post where the room is: on the page beside the list, or pushed over it. During a fold or a
+    /// turn it waits until the screens have settled, then moves with no slide; the reply box keeps its keyboard.
+    private func placePost() {
+        model.noteKeyboard()
+        guard !isMoving else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        if postBeside {
+            guard pushedPost != nil else {
+                keepKeyboard(model.handKeyboardOn())
+                model.postMoved(beside: true)
+                return
+            }
+            // Off the stack first; the page beside the list takes it once it has left (`onChange(of: pushedPost)`).
+            model.postScreenMoved()
+            keepKeyboard(model.handKeyboardOn())
+            withTransaction(transaction) { pushedPost = nil }
+        } else {
+            let open = model.openedPostId.map { OpenedPost(id: $0) }
+            guard pushedPost != open else {
+                keepKeyboard(model.handKeyboardOn())
+                return
+            }
+            model.postScreenMoved()
+            keepKeyboard(model.handKeyboardOn())
+            model.postMoved(beside: false)
+            withTransaction(transaction) { pushedPost = open }
+        }
+    }
+
+    /// The reply box had the keyboard: once the post's new screen has had its chance, check that it has it back.
+    private func keepKeyboard(_ had: Bool) {
+        guard had else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1300))
+            model.giveKeyboardAgainIfLost()
+        }
     }
 
     private func sectionHeading(_ title: String) -> some View {
@@ -254,6 +193,17 @@ struct TodayAroundYouPage: View {
                 LazyVStack(spacing: Spacing.s0) {
                     ForEach(cards) { card in
                         pulseCard(card)
+                            // "Post options" (Share…, Report post) and the report reasons, as on a profile, from
+                            // the card's own options button: on a wide screen they are a bubble that points at it.
+                            .overlay(alignment: .topTrailing) {
+                                Color.clear
+                                    .frame(width: 28, height: 28)
+                                    .padding(.top, 29)
+                                    .padding(.trailing, Spacing.s4)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                                    .modifier(ProfilePostCardSurfaces(model: model.cards, postId: card.id))
+                            }
                     }
                 }
                 .overlay(alignment: .top) {
@@ -281,16 +231,23 @@ struct TodayAroundYouPage: View {
         }
         let going: @MainActor () -> Void = { Task { await cards.tapReaction(postId: postId) } }
         let save: @MainActor () -> Void = { Task { await cards.toggleSave(postId: postId) } }
-        let repost: @MainActor () -> Void = { Task { await cards.toggleRepost(postId: postId) } }
+        // ↻ opens the Repost chooser, as on every Pulse card: "Repost", or "Repost with your words".
+        let repost: @MainActor () -> Void = { cards.openRepostChooser(postId: postId) }
         let rsvp: (@MainActor () -> Void)? = card.attendees == nil ? nil : going
         return PulsePostCard(
             content: card,
-            onTap: { openedPost = OpenedPost(id: postId) },
+            onTap: { open(postId) },
             onPickReaction: react,
             onRSVP: rsvp,
             onOverflow: options,
             onToggleSave: save,
-            onToggleRepost: repost
+            onToggleRepost: repost,
+            // The chooser opens from this card's ↻, pointing at it.
+            repostChooser: PulseCardRepostChooser(
+                target: Binding(get: { cards.repostChooser }, set: { cards.repostChooser = $0 }),
+                onToggle: { postId in Task { await cards.toggleRepost(postId: postId) } },
+                onQuote: { postId in cards.beginQuote(postId: postId) }
+            )
         )
     }
 

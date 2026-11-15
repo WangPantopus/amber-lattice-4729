@@ -156,6 +156,10 @@ struct CommentRow: View {
                             .pantopusTextStyle(.caption)
                             .foregroundStyle(Theme.Color.appTextStrong)
                             .lineSpacing(3)
+                            // Every line of the reply, whatever height the row is offered: in the post's page
+                            // beside a list (Today's Around you on the open iPhone Duo) a reply was cut to one line
+                            // with "…", where the same reply wrapped in Pulse's column and on a pushed page.
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if !comment.attachmentURLs.isEmpty {
                         attachmentStrip

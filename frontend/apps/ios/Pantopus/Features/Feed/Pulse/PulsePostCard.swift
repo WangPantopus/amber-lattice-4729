@@ -865,7 +865,9 @@ private extension PulsePostCard {
                     style: .compact,
                     accessibilityID: "pulsePostMedia_\(content.id)",
                     usesSharpPreviews: true,
-                    edgeToEdge: true
+                    edgeToEdge: true,
+                    // An outlet's own pictures: one that can't load is left out.
+                    dropsFailed: content.source != nil
                 )
             }
             // "Repost with your words": the quoted post, under this post's own words and media.
