@@ -15,6 +15,8 @@ struct PlanDetailsForm: View {
     let step: String
     let onBack: () -> Void
     let onPreview: () -> Void
+    /// Plans step 2: the Repeats screen, from the When card's Repeats row.
+    var onRepeats: () -> Void = {}
 
     @State private var showsPlacePicker = false
 
@@ -100,6 +102,11 @@ struct PlanDetailsForm: View {
                     components: [.hourAndMinute],
                     range: model.effectiveStart.addingTimeInterval(15 * 60)...model.effectiveStart.addingTimeInterval(8 * 3600)
                 )
+                // Board Details (Plans step 2): a person's plan, with `plans_repeat` on.
+                if model.offersRepeat {
+                    Divider().overlay(Theme.Color.appBorder)
+                    PlanRepeatsRow(value: model.repeating.rowValue, action: onRepeats)
+                }
             }
             if model.kind == .playdate {
                 PlanScopeLine(
@@ -109,7 +116,10 @@ struct PlanDetailsForm: View {
         }
         .onChange(of: model.start) { old, new in
             model.end = model.end.addingTimeInterval(new.timeIntervalSince(old))
+            // A repeating plan's own day moves with its start (Plans step 2).
+            model.repeating.follow(start: model.effectiveStart)
         }
+        .onAppear { model.repeating.follow(start: model.effectiveStart) }
     }
 
     private var dayPart: PlanDayPart {

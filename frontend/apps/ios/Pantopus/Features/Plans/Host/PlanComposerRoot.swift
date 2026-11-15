@@ -12,6 +12,8 @@ import SwiftUI
 enum PlanComposerStep: Hashable {
     case details
     case preview
+    /// Plans step 2: how it repeats, from the Details form's Repeats row.
+    case repeats
 }
 
 struct PlanComposerRoot: View {
@@ -56,7 +58,8 @@ struct PlanComposerRoot: View {
                                 model: model,
                                 step: "2 of 3",
                                 onBack: { onFinish(nil) },
-                                onPreview: { openPreview() }
+                                onPreview: { openPreview() },
+                                onRepeats: { path.append(.repeats) }
                             )
                         } else {
                             PlanTypePicker(
@@ -81,10 +84,19 @@ struct PlanComposerRoot: View {
                                 model: model,
                                 step: "2 of 3",
                                 onBack: { path.removeLast() },
-                                onPreview: { openPreview() }
+                                onPreview: { openPreview() },
+                                onRepeats: { path.append(.repeats) }
                             )
                             .readableColumn()
                             .toolbar(.hidden, for: .navigationBar)
+                        case .repeats:
+                            PlanRepeatsScreen(
+                                draft: model.repeating,
+                                start: model.effectiveStart,
+                                end: model.end,
+                                noun: PlanRepeatCopy.noun(kind: model.kind, walkKind: model.walkKind)
+                            ) { path.removeLast() }
+                                .readableColumn()
                         case .preview:
                             Group {
                                 if model.isPrivate {

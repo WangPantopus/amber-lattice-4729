@@ -76,6 +76,8 @@ final class PlanComposerModel {
     var letsEveryoneIn = true
     /// Private plans (step 1): who can see it, "Guests can bring a friend", the people invited.
     let privacy = PlanPrivateDraft()
+    /// Repeating plans (step 2): how it repeats (board Repeats).
+    let repeating = PlanRepeatDraft()
 
     private(set) var isPosting = false
     var postError: String?
@@ -184,24 +186,6 @@ final class PlanComposerModel {
         }
     }
 
-    var approvalIsLocked: Bool {
-        kind == .playdate || whereKind == .home
-    }
-
-    var approvalOptions: [PlanApproval] {
-        switch kind {
-        case .playdate: [.approveEach]
-        case .pickupGame: [.anyoneNearby, .approveEach]
-        case .walkCoffee: whereKind == .home ? [.approveEach] : [.verifiedAuto, .approveEach]
-        case .watchParty: whereKind == .home ? [.approveEach] : [.approveEach, .verifiedAuto]
-        case .studyGroup: [.approveEach, .verifiedAuto]
-        }
-    }
-
-    var canHostAtHome: Bool {
-        kind == .watchParty || kind == .walkCoffee
-    }
-
     func setWhere(_ newWhere: Where) {
         whereKind = newWhere
         if newWhere == .home {
@@ -307,6 +291,7 @@ final class PlanComposerModel {
         )
         body.hostedAgainFrom = hostedAgainFrom
         if isPrivate { privacy.apply(to: &body) }
+        applyRepeat(to: &body)
         return body
     }
 
@@ -359,6 +344,24 @@ final class PlanComposerModel {
 }
 
 extension PlanComposerModel {
+    var approvalIsLocked: Bool {
+        kind == .playdate || whereKind == .home
+    }
+
+    var approvalOptions: [PlanApproval] {
+        switch kind {
+        case .playdate: [.approveEach]
+        case .pickupGame: [.anyoneNearby, .approveEach]
+        case .walkCoffee: whereKind == .home ? [.approveEach] : [.verifiedAuto, .approveEach]
+        case .watchParty: whereKind == .home ? [.approveEach] : [.approveEach, .verifiedAuto]
+        case .studyGroup: [.approveEach, .verifiedAuto]
+        }
+    }
+
+    var canHostAtHome: Bool {
+        kind == .watchParty || kind == .walkCoffee
+    }
+
     var effectiveTitle: String {
         if kind == .pickupGame, !isBusiness { return "\(PlanComposerOptions.sportLabel(sport)), need \(spots)" }
         return title
