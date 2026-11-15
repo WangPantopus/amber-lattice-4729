@@ -1,9 +1,10 @@
 'use strict';
 // Union County, Ohio: the County Auditor's parcels with their appraisal facts, from two of the county's own publications. The parcel layer
-// "ParcelAllSaleinfoBuildingInfo" on the county's GIS server gives each parcel's site address, class, acres, appraised values, last sale with
-// the Auditor's valid-sale flag, and its dwelling's year built, living area, rooms, bedrooms, full and half baths and story height. Its acres
-// are blank on most platted lots, so the lot comes from the Auditor's land table ("TB_ARC_Land", one of the real estate extract files the
-// county lists free on its GIS Enterprise Portal, rewritten each week), whose land lines state the acres of every lot, platted or not.
+// "ParcelAllSaleinfoBuildingInfo" on the county's GIS server gives each parcel's site address, class, appraised values, last sale with the
+// Auditor's valid-sale flag, and its dwelling's year built, living area, rooms, bedrooms, full and half baths and story height. Every lot comes
+// from the Auditor's land table ("TB_ARC_Land", one of the real estate extract files the county lists free on its GIS Enterprise Portal,
+// rewritten each week), whose land lines state the recorded acres of each lot, platted or not. The layer's own Acreage column has no
+// description saying it is the recorded figure (it is blank on most platted lots), so it isn't read.
 // Neither the portal, the files nor the layer states a license or a limit on use, and the county's website posts no terms of use. Owner,
 // mailing and taxpayer columns are never asked for, and the extract's owner table is never opened.
 // The layer repeats a parcel once per sale and per dwelling; a parcel is read once, with its largest dwelling and its latest valid sale. Its
@@ -25,7 +26,7 @@ const { log } = require('../lib/log.cjs');
 const FIPS = '39159';
 const COUNTY = 'Union County';
 const LAYER = 'https://www7.co.union.oh.us/unioncountyohio/rest/services/ParcelAllSaleinfoBuildingInfo/MapServer/1';
-const COLUMNS = ['ParcelNo', 'Acreage', 'NeighborhoodCode', 'PARCELCLASS', 'classDescription', 'Address', 'city', 'ZipCode', 'unit', 'subdivision_name', 'Condominium_name', 'schoolDistrict', 'AppraisedBuildValue', 'appraisedLandValue', 'appraisedTotalValue', 'saleDate', 'salePrice', 'typeofSale', 'isValidSale', 'yearBuilt', 'bedroom', 'FullBaths', 'halfBath', 'roomCount', 'LivingArea', 'Floor'];
+const COLUMNS = ['ParcelNo', 'NeighborhoodCode', 'PARCELCLASS', 'classDescription', 'Address', 'city', 'ZipCode', 'unit', 'subdivision_name', 'Condominium_name', 'schoolDistrict', 'AppraisedBuildValue', 'appraisedLandValue', 'appraisedTotalValue', 'saleDate', 'salePrice', 'typeofSale', 'isValidSale', 'yearBuilt', 'bedroom', 'FullBaths', 'halfBath', 'roomCount', 'LivingArea', 'Floor'];
 const LAND = 'https://www2.co.union.oh.us/propertyinfofile/TB_ARC_Land.zip';
 const LAND_TABLE = 'TB_ARC_Land/TB_ARC_Land.txt';
 
@@ -127,9 +128,9 @@ function fromRows(rows, land, countyZips) {
     }
   }
   if (kind === 'building') put(facts, 'units', inRange(first.unit, 2000));
-  // A condominium's parcel is its share of the complex, so a condo unit gets no lot. Otherwise the parcel's acres, or where the layer leaves
-  // them blank (most platted lots), the acres the Auditor's land lines state for the parcel.
-  if (kind !== 'unit' && code !== '550') put(facts, 'lot_acres', positive(first.Acreage) || positive(land.get(parcel)));
+  // A condominium's parcel is its share of the complex, so a condo unit gets no lot. Otherwise the acres the Auditor's land lines record for
+  // the parcel, summed.
+  if (kind !== 'unit' && code !== '550') put(facts, 'lot_acres', positive(land.get(parcel)));
   put(facts, 'market_value', positive(first.appraisedTotalValue));
   put(facts, 'market_land_value', positive(first.appraisedLandValue));
   put(facts, 'market_building_value', positive(first.AppraisedBuildValue));
@@ -144,7 +145,7 @@ function fromRows(rows, land, countyZips) {
   return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address, facts };
 }
 
-/** Each parcel's acres as its land lines state them, summed. */
+/** Each parcel's recorded acres as its land lines state them, summed. */
 async function landAcres(zip) {
   const acres = new Map();
   for await (const row of zipTable(zip, LAND_TABLE, ['Parcel', 'Acres'], { delimiter: '|', encoding: 'utf8' })) {
@@ -195,7 +196,7 @@ module.exports = {
   build,
   dictionary: {
     layer: LAYER,
-    facts: { year_built: 'yearBuilt', living_sqft: 'LivingArea', bedrooms: 'bedroom', bathrooms: 'FullBaths', full_baths: 'FullBaths', half_baths: 'halfBath', rooms: 'roomCount', stories: 'Floor', units: 'unit', lot_acres: 'Acreage', market_value: 'appraisedTotalValue', market_land_value: 'appraisedLandValue', market_building_value: 'AppraisedBuildValue', sale_price: 'salePrice', sale_date: 'saleDate', subdivision: 'subdivision_name', school_district: 'schoolDistrict', neighborhood: 'NeighborhoodCode' },
-    land: { file: LAND, table: LAND_TABLE, facts: { lot_acres: 'Acres (summed per parcel, where the layer\'s Acreage is blank)' } },
+    facts: { year_built: 'yearBuilt', living_sqft: 'LivingArea', bedrooms: 'bedroom', bathrooms: 'FullBaths', full_baths: 'FullBaths', half_baths: 'halfBath', rooms: 'roomCount', stories: 'Floor', units: 'unit', market_value: 'appraisedTotalValue', market_land_value: 'appraisedLandValue', market_building_value: 'AppraisedBuildValue', sale_price: 'salePrice', sale_date: 'saleDate', subdivision: 'subdivision_name', school_district: 'schoolDistrict', neighborhood: 'NeighborhoodCode' },
+    land: { file: LAND, table: LAND_TABLE, facts: { lot_acres: 'Acres (each land line\'s recorded acres, summed per parcel)' } },
   },
 };
