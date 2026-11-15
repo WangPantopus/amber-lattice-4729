@@ -4,7 +4,7 @@
 // before its re-check is left to the browser, which reads it again).
 import { cache } from 'react';
 import type { DehydratedState } from '@tanstack/query-core';
-import type { HubPayload, MyHome } from '@pantopus/api';
+import type { AroundYou, HubPayload, MyHome } from '@pantopus/api';
 import type { PrimaryHome } from '@pantopus/api/endpoints/homes';
 import type { HubToday, PlaceIntelligence, UnifiedConversationItem } from '@pantopus/types';
 import { isHubTodayPayload } from '@pantopus/api/endpoints/hub';
@@ -15,6 +15,9 @@ import { placeCopyGate, showsHomeCopy, showsMyHomesCopy, showsPrimaryCopy } from
 import { FirstContentEntries, firstContentSession, readAsVisitor, settled, type FirstContentSession } from './firstContent';
 
 type MyHomesReply = { homes: MyHome[]; primary_home?: PrimaryHome | null };
+
+/** How long Today's first content waits for Around you once the briefing is in: a slower answer is the browser's. */
+const AROUND_GRACE_MS = 250;
 type ConversationsPage = {
   conversations: UnifiedConversationItem[];
   total: number;
@@ -64,18 +67,28 @@ export async function placeFirstContent(session: FirstContentSession): Promise<D
   return entries.dehydrate();
 }
 
-/** Today (/app/today): the briefing, and your homes for its ballot card. */
+/**
+ * Today (/app/today): the briefing, your homes for its ballot card, and Around you for the briefing's place, so the
+ * At home | Around you switch is in the first paint instead of pushing the page down once the browser's read answers.
+ */
 export async function todayFirstContent(session: FirstContentSession): Promise<DehydratedState | null> {
   const entries = new FirstContentEntries();
+  const aroundRead = settled(readAsVisitor<AroundYou>(session, '/api/hub/today/around'));
   const [today, homesReply] = await Promise.all([
     settled(readAsVisitor<HubToday | { today: null; error?: string }>(session, '/api/hub/today')),
     settled(readAsVisitor<MyHomesReply>(session, '/api/homes/my-homes')),
   ]);
+  // Around you never holds the briefing back for long.
+  const around = await Promise.race([aroundRead, new Promise<undefined>((resolve) => { setTimeout(resolve, AROUND_GRACE_MS); })]);
   // As api.hub.getHubToday: a briefing, or null for none; a reply that says it failed is the browser's to retry.
   if (today !== undefined && !(today as { error?: unknown } | null)?.error) {
     entries.set(queryKeys.hubToday(), isHubTodayPayload(today) ? today : null);
   }
   setHomes(entries, homesReply);
+  // The hub's place, as lib/aroundYou.ts keys it (an area view reads its own in the browser).
+  if (around && typeof around.available === 'boolean' && Array.isArray(around.sections)) {
+    entries.set(queryKeys.aroundYou(null, null, null), around);
+  }
   return entries.dehydrate();
 }
 
