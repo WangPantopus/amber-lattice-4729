@@ -8,15 +8,14 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
- * What the Repeats screen works from (Plans step 2): the plan's [start] and [end] as the host has them now, the series'
- * first date [anchor] (the plan's own date for a new series), which date of the series this plan is ([index]), the kind
- * (for "24 walks") and the pattern chosen so far ([initial]; null for "Doesn't repeat").
+ * What the Repeats screen works from (Plans step 2): the plan's [start] and [end] as the host has them now, the kind
+ * (for "24 walks") and the pattern chosen so far ([initial]; null for "Doesn't repeat"). A pattern starts at this plan's
+ * date, whichever date of its series it is (contract step 2, "Changing the pattern on any date"): its days, its year and
+ * its count are measured from here.
  */
 data class PlanRepeatSetup(
     val start: LocalDateTime,
     val end: LocalDateTime?,
-    val anchor: LocalDate = start.toLocalDate(),
-    val index: Int = 1,
     val kind: String? = null,
     val walkKind: String? = null,
     val initial: PlanRepeatPattern? = null,
@@ -24,16 +23,22 @@ data class PlanRepeatSetup(
     /** The plan's own date: its weekday (or its day of the month) is always one of the pattern's days. */
     val date: LocalDate get() = start.toLocalDate()
 
+    /** Where the pattern starts: this plan's date. */
+    val anchor: LocalDate get() = date
+
     val startWeekday: Int get() = date.dayOfWeek.value
 
     /** The earliest end date: the plan's own date (the server refuses one before it). */
     val firstEnd: LocalDate get() = date
 
-    /** The latest end date: a year from the series' first date. */
+    /** The latest end date: a year from this plan's date. */
     val lastEnd: LocalDate get() = PlanSeries.latestEnd(anchor)
 
-    /** The fewest times: 2, and never fewer than this date's place in a running series. */
-    val minCount: Int get() = maxOf(PlanSeries.MIN_COUNT, index)
+    /**
+     * The fewest times: 2 (the server's least). On a series' last date the card's count is 1, so "After a number of
+     * times" there adds a date.
+     */
+    val minCount: Int get() = PlanSeries.MIN_COUNT
 }
 
 /**
@@ -105,8 +110,9 @@ data class PlanRepeatEditor(
 
     companion object {
         /**
-         * The screen as it opens: the pattern chosen so far (moved to the plan's current date), else every week on the
-         * plan's own weekday, "the 3rd Saturday" for a month, ending 12 weeks out; the count starts at what that end makes.
+         * The screen as it opens: the pattern chosen so far (moved to the plan's current date), its end date or count as
+         * the card has them, else every week on the plan's own weekday, "the 3rd Saturday" for a month, ending 12 weeks
+         * out; the count starts at what that end makes (and at least 2).
          */
         fun start(setup: PlanRepeatSetup): PlanRepeatEditor {
             val date = setup.date

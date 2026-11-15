@@ -562,9 +562,14 @@ class HostFlowViewModel
             if (_ui.value.showsRepeats && _ui.value.draft.start != null) _ui.update { it.copy(repeatsOpen = true, error = null) }
         }
 
-        /** Done (or Back) on the Repeats screen: its pattern, or null for "Doesn't repeat". */
+        /** Done (or Back) on the Repeats screen after a change: its pattern, or null for "Doesn't repeat". */
         fun closeRepeats(pattern: PlanRepeatPattern?) {
             _ui.update { it.copy(repeatsOpen = false, draft = it.draft.copy(repeat = pattern), error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen with nothing changed. */
+        fun leaveRepeats() {
+            _ui.update { it.copy(repeatsOpen = false) }
         }
 
         // ---- H6 ----

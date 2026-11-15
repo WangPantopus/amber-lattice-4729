@@ -65,17 +65,20 @@ private enum class RepeatPicker { AddDay, Until, Count }
 
 /**
  * The Repeats screen (boards Repeats and Monthly, Plans step 2), pushed over a plan's details or the change screen: how
- * often, on which days, when it ends, and the dates that makes. [onDone] gets the pattern, or null for "Doesn't repeat".
- * Back keeps the choices too, as Done does.
+ * often, on which days, when it ends, and the dates that makes. Done (and Back, which keeps the choices too) gives
+ * [onDone] the pattern, or null for "Doesn't repeat", when the host changed something here, and calls [onUnchanged]
+ * when nothing changed (so the change screen sends no `repeat`).
  */
 @Composable
 fun PlanRepeatsScreen(
     setup: PlanRepeatSetup,
     onDone: (PlanRepeatPattern?) -> Unit,
+    onUnchanged: () -> Unit,
 ) {
-    var editor by remember(setup) { mutableStateOf(PlanRepeatEditor.start(setup)) }
+    val opened = remember(setup) { PlanRepeatEditor.start(setup) }
+    var editor by remember(setup) { mutableStateOf(opened) }
     var picker by remember { mutableStateOf<RepeatPicker?>(null) }
-    val done = { onDone(editor.pattern(setup)) }
+    val done = { if (editor == opened) onUnchanged() else onDone(editor.pattern(setup)) }
     BackHandler(onBack = done)
     Box(modifier = Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }.testTag("planRepeats")) {
         HostStepScaffold(

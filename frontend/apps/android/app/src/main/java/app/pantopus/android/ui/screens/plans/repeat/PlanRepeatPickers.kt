@@ -145,7 +145,7 @@ private fun Caption(text: String) {
     Text(text = text, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
 }
 
-/** "On a date": Android's date picker, from the plan's own date to a year after the series' first date. */
+/** "On a date": Android's date picker, from the plan's own date to a year after it. */
 @Composable
 internal fun PlanRepeatUntilDialog(
     setup: PlanRepeatSetup,
@@ -191,7 +191,7 @@ private fun betweenDates(
         override fun isSelectableYear(year: Int): Boolean = year in first.year..last.year
     }
 
-/** "After a number of times": 2 to 100 (and never fewer than this date's place in a running series). */
+/** "After a number of times": 2 to 100 dates from this one on (this one included). */
 @Composable
 internal fun PlanRepeatCountDialog(
     setup: PlanRepeatSetup,

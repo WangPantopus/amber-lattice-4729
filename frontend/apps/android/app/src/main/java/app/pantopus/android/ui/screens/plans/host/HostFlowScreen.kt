@@ -112,7 +112,7 @@ private fun HostRepeatsStep(
     viewModel: HostFlowViewModel,
 ) {
     val setup = ui.repeatSetup ?: return
-    PlanRepeatsScreen(setup = setup, onDone = viewModel::closeRepeats)
+    PlanRepeatsScreen(setup = setup, onDone = viewModel::closeRepeats, onUnchanged = viewModel::leaveRepeats)
 }
 
 /** The host flow's bar (board "navbar"): a round button, a centered title, and "1 of 3". */

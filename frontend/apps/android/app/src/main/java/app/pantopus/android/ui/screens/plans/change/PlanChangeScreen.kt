@@ -73,7 +73,7 @@ fun PlanChangeScreen(
     // The Repeats screen (Plans step 2) over this one; Back and Done come back here, and Save sends the choice.
     val repeatSetup = ui.repeatSetup
     if (ui.repeatsOpen && repeatSetup != null) {
-        PlanRepeatsScreen(setup = repeatSetup, onDone = viewModel::closeRepeats)
+        PlanRepeatsScreen(setup = repeatSetup, onDone = viewModel::closeRepeats, onUnchanged = viewModel::leaveRepeats)
         return
     }
     val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)

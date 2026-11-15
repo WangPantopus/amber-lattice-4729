@@ -116,7 +116,7 @@ data class PlanRepeatPattern(
         )
 
     /**
-     * This pattern for a plan whose own date is now [date] (the series' first date [anchor]): the old date's pre-selected
+     * This pattern for a plan whose own date is now [date] (where the pattern starts: [anchor]): the old date's pre-selected
      * day moves to the new one, and an end date it no longer fits (or the default 12 weeks out) follows it.
      */
     fun alignedTo(
@@ -175,7 +175,7 @@ data class PlanRepeatPattern(
 
 /** The series' dates, worked out as the server does (planSeries.js `matches`, `datesAfter`, `totalOf`, `lastOn`). */
 object PlanSeries {
-    /** A series runs for a year at most (from its first date), and for 2 to 100 dates. */
+    /** A pattern runs for a year at most (from the date it starts on), and for 2 to 100 dates. */
     const val MAX_DAYS = 366L
     const val MIN_COUNT = 2
     const val MAX_COUNT = 100
@@ -211,7 +211,7 @@ object PlanSeries {
         anchor: LocalDate,
     ): LocalDate = earlier(date.plusWeeks(DEFAULT_WEEKS), latestEnd(anchor))
 
-    /** Whether [date] is one of the pattern's days ([anchor]: the series' first date, which every-2-weeks counts from). */
+    /** Whether [date] is one of the pattern's days ([anchor]: the date it starts on, which every-2-weeks counts from). */
     fun matches(
         pattern: PlanRepeatPattern,
         date: LocalDate,
@@ -242,40 +242,31 @@ object PlanSeries {
             .filter { matches(pattern, it, anchor) }
     }
 
-    /** How many dates the series has in all: its count, or its dates from the first through the end date. */
+    /**
+     * The pattern's dates from its first ([anchor], this plan's date: a pattern set on any date of a series starts there)
+     * on: its end date's matching days, or its count of them; a count that can't fit in the year ends with the year
+     * (planSeries.js `runOf`), so the numbers match what the server will post.
+     */
+    private fun run(
+        pattern: PlanRepeatPattern,
+        anchor: LocalDate,
+    ): List<LocalDate> {
+        val after = datesAfter(pattern, anchor, anchor)
+        val counted = pattern.count?.let { after.take((it - 1).coerceAtLeast(0)) } ?: after
+        return listOf(anchor) + counted.toList()
+    }
+
+    /** How many dates the pattern makes from [anchor] on, [anchor] included. */
     fun total(
         pattern: PlanRepeatPattern,
         anchor: LocalDate,
-    ): Int = pattern.count ?: (1 + datesAfter(pattern, anchor, anchor).count())
+    ): Int = run(pattern, anchor).size
 
-    /** The series' last date: its end date's last matching day, or the date its count lands on. */
+    /** The pattern's last date from [anchor] on. */
     fun lastOn(
         pattern: PlanRepeatPattern,
         anchor: LocalDate,
-    ): LocalDate {
-        val dates = datesAfter(pattern, anchor, anchor)
-        val counted = pattern.count?.let { dates.take((it - 1).coerceAtLeast(0)) } ?: dates
-        return counted.lastOrNull() ?: anchor
-    }
-
-    /**
-     * A running series' first date, as near as the phone can tell: [index] − 1 of the pattern's days before [date] (this
-     * plan's date). The server keeps the first date with the pattern; a card doesn't carry it.
-     */
-    fun anchorBefore(
-        pattern: PlanRepeatPattern,
-        date: LocalDate,
-        index: Int,
-    ): LocalDate {
-        if (index <= 1) return date
-        val first =
-            generateSequence(date.minusDays(1)) { it.minusDays(1) }
-                .take(MAX_DAYS.toInt())
-                .filter { matches(pattern, it, date) }
-                .take(index - 1)
-                .lastOrNull()
-        return first ?: date
-    }
+    ): LocalDate = run(pattern, anchor).last()
 }
 
 /** The words for a repeating plan (planSeries.js `patternText` for the pattern itself, the boards for the rest). */
@@ -408,7 +399,7 @@ object PlanRepeatWords {
         return listOfNotNull("$index of $total", last?.let { "ends ${it.format(dateShort)}" }).joinToString(" · ")
     }
 
-    /** A draft's line on the preview: "Every Tue and Thu until Feb 4" (the series' first date [anchor]). */
+    /** A draft's line on the preview: "Every Tue and Thu until Feb 4" (the pattern starting on [anchor]). */
     fun draftLine(
         chosen: PlanRepeatPattern,
         anchor: LocalDate,

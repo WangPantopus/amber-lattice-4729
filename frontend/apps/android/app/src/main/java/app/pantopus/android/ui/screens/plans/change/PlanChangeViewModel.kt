@@ -14,7 +14,6 @@ import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanPlaceQuery
 import app.pantopus.android.data.plans.PlanRepeatPattern
 import app.pantopus.android.data.plans.PlanRepeatWords
-import app.pantopus.android.data.plans.PlanSeries
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
@@ -37,7 +36,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Duration
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
@@ -87,21 +85,14 @@ data class PlanChangeUi(
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
 
     /**
-     * The series' first date, which the server keeps (its year and every-2-weeks count from it): worked back from this
-     * date's place in the series; for a plan that doesn't repeat yet, the date chosen here.
+     * The pattern this screen sends: the one changed on the Repeats screen, moved to the start chosen here; null otherwise.
+     * A pattern starts at this date, whichever date of its series it is (contract step 2, "Changing the pattern on any
+     * date"): its days, every-2-weeks rhythm, year and count are measured from here.
      */
-    val repeatAnchor: LocalDate?
-        get() {
-            val pattern = originalRepeat ?: return start?.toLocalDate()
-            val date = originalStart?.toLocalDate() ?: return start?.toLocalDate()
-            return PlanSeries.anchorBefore(pattern, date, plan?.repeat?.index ?: 1)
-        }
-
-    /** The pattern this screen sends: the one chosen on the Repeats screen, moved to the start chosen here; null otherwise. */
     val repeatToSend: PlanRepeatPattern?
         get() {
             val date = start?.toLocalDate() ?: return null
-            return newRepeat?.takeIf { repeatChosen }?.alignedTo(date, repeatAnchor ?: date)
+            return newRepeat?.takeIf { repeatChosen }?.alignedTo(date, date)
         }
 
     /** "Doesn't repeat" was chosen for a plan that repeats: Save stops the series (this date stays). */
@@ -124,7 +115,10 @@ data class PlanChangeUi(
                 else -> plan?.repeat?.shortText?.takeIf(String::isNotBlank) ?: PlanRepeatWords.rowValue(originalRepeat)
             }
 
-    /** What the Repeats screen opens with: the start chosen here, the series' first date, and the pattern so far. */
+    /**
+     * What the Repeats screen opens with: the start chosen here and the pattern so far, its end date or count as the card
+     * has them (the card's count is the dates from this one through the last, so sent back unchanged it ends there).
+     */
     val repeatSetup: PlanRepeatSetup?
         get() {
             val at = start ?: return null
@@ -132,8 +126,6 @@ data class PlanChangeUi(
             return PlanRepeatSetup(
                 start = at,
                 end = end,
-                anchor = repeatAnchor ?: at.toLocalDate(),
-                index = plan?.repeat?.index ?: 1,
                 kind = plan?.kind,
                 walkKind = plan?.details?.walkKind,
                 initial = initial,
@@ -256,9 +248,14 @@ class PlanChangeViewModel
             if (_ui.value.showsRepeats && _ui.value.start != null) _ui.update { it.copy(repeatsOpen = true, error = null) }
         }
 
-        /** Done (or Back) on the Repeats screen: its pattern, or null for "Doesn't repeat"; Save sends it. */
+        /** Done (or Back) on the Repeats screen after a change: its pattern, or null for "Doesn't repeat"; Save sends it. */
         fun closeRepeats(pattern: PlanRepeatPattern?) {
             _ui.update { it.copy(repeatsOpen = false, newRepeat = pattern, repeatChosen = true, error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen with nothing changed: Save sends no `repeat`. */
+        fun leaveRepeats() {
+            _ui.update { it.copy(repeatsOpen = false) }
         }
 
         /** A business's plan: another of the business's own locations. */
