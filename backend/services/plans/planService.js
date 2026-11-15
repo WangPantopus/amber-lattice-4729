@@ -14,6 +14,9 @@
  *  - A private plan (Plan.audience 'invited') exists only for its host, the people invited and the people in or
  *    waiting: isVisibleTo refuses it unless the caller has checked that (`involved`), and the nearby query
  *    never reads one.
+ *  - An online plan, or one of the newer kinds, exists only for an app that said it can draw one (viewer.more):
+ *    isVisibleTo refuses it to everyone else, its host included, and the nearby queries leave it out. An online
+ *    plan's link reaches only the host and people who are in.
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -40,6 +43,8 @@ const PLAN_COLUMNS = [
   'audience',
   // A repeating plan (planSeries.js): its pattern, its series and which date of it this is.
   'repeat', 'series_id', 'series_index', 'series_next_at',
+  // An online plan's link (place_kind 'online'): only the host and people in read it (buildDetail).
+  'online_link',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -132,6 +137,8 @@ function endsAt(plan) {
 }
 
 function areaPoint(plan) {
+  // An online plan posted with no area has no point to show or measure from.
+  if (rules.hasNoArea(plan)) return null;
   const lat = Number(plan.post?.latitude);
   const lng = Number(plan.post?.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -151,9 +158,13 @@ function exactPoint(plan) {
  *
  * `involved`: the caller knows this viewer is part of the plan (isInvolved: invited, in or waiting). A private
  * plan is shown to nobody else, so a caller that doesn't say hides it: a new read path fails closed.
+ *
+ * An online plan or one of the newer kinds exists only for a viewer whose app said it can draw one (`more=1`):
+ * an older app would fail to decode it. Nobody else reads it, not even its host, and no job or nudge does.
  */
 function isVisibleTo(plan, viewer, { involved = false } = {}) {
   if (!plan || !plan.post) return false;
+  if (rules.needsMore(plan) && viewer.more !== true) return false;
   // A business's plan exists only for a viewer with the switch, in an app that can draw it, while the business
   // may still host (planBusiness.shownTo). That goes for the business's own team too. Once the business may no
   // longer host, only the people already involved keep reading it, so a guest can leave and the team can cancel:
@@ -505,7 +516,7 @@ function publicDetails(plan) {
   const details = plan.details && typeof plan.details === 'object' ? plan.details : {};
   const out = {};
   for (const key of ['game', 'sport', 'level', 'extra_gear', 'kids_age_bands', 'walk_kind', 'pace', 'dogs_welcome',
-    'subject', 'study_style']) {
+    'subject', 'study_style', 'food_kind', 'game_kind', 'outdoor_kind']) {
     if (details[key] !== undefined && details[key] !== null) out[key] = details[key];
   }
   // Schedule facts are public; the host can choose a different party time.
@@ -566,7 +577,9 @@ function buildCard(plan, viewer, ctx) {
       longitude: area ? area.longitude : null,
       precision: plan.kind === 'playdate' && !plan.business_user_id ? 'neighborhood' : 'area',
     },
-    distance_band: distanceFrom && area ? rules.distanceBandFromMeters(rules.distanceMeters(distanceFrom, area)) : null,
+    // None for an online plan: nobody travels to it.
+    distance_band: distanceFrom && area && !rules.isOnline(plan)
+      ? rules.distanceBandFromMeters(rules.distanceMeters(distanceFrom, area)) : null,
     place_kind: plan.place_kind,
     // 'invited': a private plan. The app says "Private" and offers Invite where a public plan offers Share.
     audience: rules.isPrivate(plan) ? 'invited' : 'nearby',
@@ -733,15 +746,29 @@ function buildDetail(plan, viewer, ctx) {
   const viewerIsHost = card.viewer.role === 'host';
   const requests = ctx.requestsByPlan.get(plan.post_id) || [];
 
-  card.place = {
-    name: plan.place_kind === 'home' ? `${firstName(host)}'s place` : (plan.place_name || plan.area_label),
-    address: plan.place_address || null,
-    latitude: exact.latitude,
-    longitude: exact.longitude,
-    note: plan.guest_note || null,
-  };
-  if (viewer.origin) {
-    card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
+  if (rules.isOnline(plan)) {
+    // No point, no address and no distance: the link, and the name of the site it opens ("meet.google.com").
+    const parsed = require('./planPlace').parseOnlineLink(plan.online_link, rules.ONLINE_LINK_MAX);
+    card.place = {
+      name: plan.place_name || 'Online',
+      address: null,
+      latitude: null,
+      longitude: null,
+      note: plan.guest_note || null,
+      link: plan.online_link || null,
+      link_host: parsed ? parsed.host : null,
+    };
+  } else {
+    card.place = {
+      name: plan.place_kind === 'home' ? `${firstName(host)}'s place` : (plan.place_name || plan.area_label),
+      address: plan.place_address || null,
+      latitude: exact.latitude,
+      longitude: exact.longitude,
+      note: plan.guest_note || null,
+    };
+    if (viewer.origin) {
+      card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
+    }
   }
 
   const people = [{
@@ -852,10 +879,22 @@ function boundingBox(point, radiusMeters) {
 }
 
 /**
- * Open plans whose public area point is inside the box. Businesses' plans are read only with `biz` (a viewer
- * they exist for: `viewer.biz`), and come back with their business attached.
+ * Only the plans an app without `more=1` can draw: the five kinds, never online. Applied to a Plan query, for a
+ * viewer without `more` (isVisibleTo would drop the rest anyway; leaving them out keeps them from using the limit).
  */
-async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false } = {}) {
+function drawableBy(query, viewer, kinds) {
+  if (viewer?.more) return kinds && kinds.length > 0 ? query.in('kind', kinds) : query;
+  // Asked only for kinds this app can't draw: nothing (an empty `in`), never every kind.
+  const known = kinds && kinds.length > 0 ? kinds.filter((kind) => rules.KINDS.includes(kind)) : rules.KINDS;
+  return query.in('kind', known).neq('place_kind', 'online');
+}
+
+/**
+ * Open plans whose public area point is inside the box. Businesses' plans are read only with `biz` (a viewer
+ * they exist for: `viewer.biz`), and come back with their business attached. Online plans and the newer kinds
+ * only with `more` (viewer.more), and online plans not at all with `online: false` (the map: they have no pin).
+ */
+async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false, more = false, online = true } = {}) {
   let query = supabaseAdmin
     .from('Plan')
     .select(PLAN_SELECT)
@@ -868,7 +907,8 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false } = {}
     .gte('post.longitude', box.west)
     .lte('post.longitude', box.east)
     .limit(500);
-  if (kinds && kinds.length > 0) query = query.in('kind', kinds);
+  query = drawableBy(query, { more }, kinds);
+  if (more && !online) query = query.neq('place_kind', 'online');
   if (!biz) query = query.is('business_user_id', null);
   query = (scopeAccess || await postScopeAccess(null)).query(query, 'post');
   const { data, error } = await query;
@@ -881,7 +921,7 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false } = {}
  * answered "can't make it") or are in or waiting on. These join the nearby list and the map for this viewer
  * only; queryOpenPlansInBox never reads a private plan.
  */
-async function ownPrivatePlans(viewer, { kinds } = {}) {
+async function ownPrivatePlans(viewer, { kinds, online = true } = {}) {
   const [requests, invited] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select('post_id').eq('user_id', viewer.id).in('status', ACTIVE_REQUEST_STATUSES).limit(200),
     supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted']).limit(200),
@@ -892,7 +932,8 @@ async function ownPrivatePlans(viewer, { kinds } = {}) {
     let q = query.eq('audience', 'invited').eq('status', 'open')
       .is('post.archived_at', null).eq('post.moderation_state', 'live')
       .gt('post.event_end_date', new Date().toISOString());
-    if (kinds && kinds.length > 0) q = q.in('kind', kinds);
+    q = drawableBy(q, viewer, kinds);
+    if (viewer.more && !online) q = q.neq('place_kind', 'online');
     return q.limit(200);
   };
   const [hosted, others] = await Promise.all([
@@ -944,7 +985,7 @@ function hostedBy(plan, host) {
 async function listNearby(viewer, { point, window = 'week', kinds = [], cursor = null, host = 'all' }) {
   const box = boundingBox(point, rules.LIST_RADIUS_METERS);
   const [publicRows, ownPrivate] = await Promise.all([
-    queryOpenPlansInBox(box, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz }),
+    queryOpenPlansInBox(box, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz, more: viewer.more }),
     ownPrivatePlans(viewer, { kinds }),
   ]);
   const after = decodeCursor(cursor);
@@ -984,7 +1025,9 @@ async function listNearby(viewer, { point, window = 'week', kinds = [], cursor =
 /** For the empty list (F4): the closest town with plans within 15 miles, as a count and a band. */
 async function findNearestElsewhere(viewer, point, { window, kinds }) {
   try {
-    const rows = await queryOpenPlansInBox(boundingBox(point, 15 * rules.MILE_METERS), { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz });
+    const rows = await queryOpenPlansInBox(boundingBox(point, 15 * rules.MILE_METERS), {
+      kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz, more: viewer.more,
+    });
     const byCity = new Map();
     for (const plan of rows) {
       if (!isVisibleTo(plan, viewer) || !windowMatches(plan, window)) continue;

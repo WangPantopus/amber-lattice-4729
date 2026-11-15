@@ -428,7 +428,9 @@ function emailWords(plan, hostFirst) {
     // A playdate's title stays in the app, as on its share page.
     title: hideTime ? null : plan.post.title,
     when,
-    where: [area ? area[0].toUpperCase() + area.slice(1) : null, city].filter(Boolean).join(', '),
+    // An online plan's email says "Online", never the link (it is in the app, for the people in).
+    where: plan.place_kind === 'online' ? 'Online'
+      : [area ? area[0].toUpperCase() + area.slice(1) : null, city].filter(Boolean).join(', '),
   };
 }
 

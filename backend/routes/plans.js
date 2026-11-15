@@ -22,15 +22,20 @@ const planInvites = require('../services/plans/planInvites');
 const planGames = require('../services/plans/planGames');
 const planPlaces = require('../services/plans/planPlaces');
 const { suggestPlaces } = require('../services/ai/planPlaceSuggest');
-const { KINDS, WINDOWS } = require('../services/plans/planRules');
+const { KINDS, ALL_KINDS, WINDOWS } = require('../services/plans/planRules');
 
 const router = express.Router();
 router.use(verifyToken, requireFeatureFlag('plans'));
 // `biz=1` on a request: this app can draw a business's plan (Plans with businesses). Without it, on every
 // route here, a business's plan does not exist, which is what keeps one from reaching an older app that would
-// draw it as a neighbor's. Read by services/plans/planViewer.js.
+// draw it as a neighbor's. `more=1`: this app can draw an online plan and the four newer kinds; without it those
+// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. Read by
+// services/plans/planViewer.js.
 router.use((req, _res, next) => {
-  if (req.user) req.user.plansBiz = req.query.biz === '1';
+  if (req.user) {
+    req.user.plansBiz = req.query.biz === '1';
+    req.user.plansMore = req.query.more === '1';
+  }
   next();
 });
 
@@ -75,9 +80,11 @@ function warmPlaces(viewer) {
   planPlaces.warmAround(viewer.locations.filter((l) => l.kind === 'home' || l.kind === 'gps'));
 }
 
-function kindsFromQuery(value) {
+/** The kinds a list asked for, of the ones this viewer's app can draw. */
+function kindsFromQuery(value, viewer) {
   if (!value) return [];
-  return String(value).split(',').map((k) => k.trim()).filter((k) => KINDS.includes(k));
+  const known = viewer.more ? ALL_KINDS : KINDS;
+  return String(value).split(',').map((k) => k.trim()).filter((k) => known.includes(k));
 }
 
 // GET /api/plans: the list under the map, soonest first, within 5 miles.
@@ -88,7 +95,7 @@ router.get('/', async (req, res) => {
     const window = WINDOWS.includes(req.query.window) ? req.query.window : 'week';
     const viewer = await loadViewer(req.user, { point, gps: gpsFromQuery(req.query) });
     warmPlaces(viewer);
-    let kinds = kindsFromQuery(req.query.kinds);
+    let kinds = kindsFromQuery(req.query.kinds, viewer);
     if (!viewer.seesPlaydates) kinds = kinds.filter((k) => k !== 'playdate');
     if (req.query.kinds && kinds.length === 0) return res.json({ items: [], next_cursor: null, nearest_elsewhere: null });
     // host=all|neighbors|businesses: the list's filter, for a viewer businesses' plans exist for.
@@ -172,7 +179,8 @@ router.get('/places/nearby', async (req, res) => {
     const point = pointFromQuery(req.query);
     if (!point) return fail(res, 422, 'validation', 'A latitude and longitude are needed to find places nearby.');
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 60) : '';
-    const kind = KINDS.includes(req.query.kind) ? req.query.kind : null;
+    // Any kind orders the places: the list is the same public places either way.
+    const kind = ALL_KINDS.includes(req.query.kind) ? req.query.kind : null;
     const sport = typeof req.query.sport === 'string' ? req.query.sport.slice(0, 30) : null;
     const result = await planPlaces.placesNear({
       ...point,
@@ -199,7 +207,7 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
     const input = body(req);
     const point = pointFromQuery(input);
     if (!point) return fail(res, 422, 'validation', 'A latitude and longitude are needed to find places nearby.');
-    if (!KINDS.includes(input.kind)) return fail(res, 422, 'validation', 'Choose what kind of plan it is.');
+    if (!ALL_KINDS.includes(input.kind)) return fail(res, 422, 'validation', 'Choose what kind of plan it is.');
     const details = input.details && typeof input.details === 'object' && !Array.isArray(input.details) ? input.details : {};
     const spots = Number.isInteger(input.spots) && input.spots > 0 && input.spots <= 50 ? input.spots : null;
     const result = await suggestPlaces({

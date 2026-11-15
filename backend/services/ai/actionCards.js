@@ -64,8 +64,11 @@ const ASSET_KIND_LABELS = {
   appliance: 'Appliance', electronics: 'Electronics', furniture: 'Furniture', tool: 'Tool', valuable: 'Valuable', fixture: 'Fixture', other: 'Other',
 };
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+// Every kind a plan can be. The assistant drafts only the first five (rules.KINDS): an app that can't draw the
+// newer kinds could run its card, and the plan would then not exist for that app.
 const KIND_LABELS = {
   watch_party: 'Watch party', pickup_game: 'Pickup game', walk_coffee: 'Walk & coffee', study_group: 'Study group', playdate: 'Playdate',
+  food_drinks: 'Food & drinks', game_night: 'Game night', outdoors: 'Outdoors', something_else: 'Something else',
 };
 // Kids' age bands as the apps write them (Android KidsAgeBand).
 const AGE_LABELS = { under_2: 'Under 2', '2_3': '2–3', '4_5': '4–5', '6_8': '6–8', '9_12': '9–12' };

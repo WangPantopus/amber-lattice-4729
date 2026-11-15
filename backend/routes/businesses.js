@@ -4653,7 +4653,7 @@ router.get('/:businessId/plans', verifyToken, require('../middleware/requireFeat
   try {
     const { loadViewer } = require('../services/plans/planViewer');
     const planService = require('../services/plans/planService');
-    const viewer = await loadViewer({ ...req.user, plansBiz: req.query.biz === '1' });
+    const viewer = await loadViewer({ ...req.user, plansBiz: req.query.biz === '1', plansMore: req.query.more === '1' });
     res.json(await planService.listForBusiness(viewer, req.params.businessId));
   } catch (err) {
     logger.error('Error fetching business plans', { error: err.message, businessId: req.params.businessId });
