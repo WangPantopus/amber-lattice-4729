@@ -29,6 +29,7 @@ object PlansRoutes {
     const val GAME_KEY = "game"
     const val AGAIN_KEY = "again"
     const val VIA_KEY = "via"
+    const val PRIVATE_KEY = "private"
 
     /** Opened from a business's page (B6): a join from there tells the server `via: business_page`. */
     const val VIA_BUSINESS_PAGE = "business_page"
@@ -46,8 +47,12 @@ object PlansRoutes {
     /** Change the time or place (H11). */
     const val CHANGE = "plans/{$PLAN_ID_KEY}/change"
 
-    /** Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan. */
-    const val HOST = "plans-host?$KIND_KEY={$KIND_KEY}&$GAME_KEY={$GAME_KEY}&$AGAIN_KEY={$AGAIN_KEY}"
+    /**
+     * Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan, and
+     * `private` starts "Who can see this" on "Only people I invite" (the empty state's "Plan with people you know").
+     */
+    const val HOST =
+        "plans-host?$KIND_KEY={$KIND_KEY}&$GAME_KEY={$GAME_KEY}&$AGAIN_KEY={$AGAIN_KEY}&$PRIVATE_KEY={$PRIVATE_KEY}"
 
     fun plan(
         id: String,
@@ -67,10 +72,11 @@ object PlansRoutes {
         kind: String? = null,
         game: String? = null,
         again: String? = null,
+        startPrivate: Boolean = false,
     ): String =
         "plans-host?$KIND_KEY=${Uri.encode(
             kind.orEmpty(),
-        )}&$GAME_KEY=${Uri.encode(game.orEmpty())}&$AGAIN_KEY=${Uri.encode(again.orEmpty())}"
+        )}&$GAME_KEY=${Uri.encode(game.orEmpty())}&$AGAIN_KEY=${Uri.encode(again.orEmpty())}&$PRIVATE_KEY=$startPrivate"
 }
 
 /** Where Plans hands off to the rest of the app. */
@@ -203,6 +209,10 @@ fun NavGraphBuilder.plansRoutes(
                 navArgument(PlansRoutes.AGAIN_KEY) {
                     type = NavType.StringType
                     defaultValue = ""
+                },
+                navArgument(PlansRoutes.PRIVATE_KEY) {
+                    type = NavType.BoolType
+                    defaultValue = false
                 },
             ),
     ) {

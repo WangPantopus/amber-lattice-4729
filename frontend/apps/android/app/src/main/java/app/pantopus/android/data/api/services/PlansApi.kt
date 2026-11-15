@@ -235,6 +235,15 @@ interface PlansApi {
     ): PlanInvitePeopleResponse
 
     /**
+     * `GET /api/plans/invites/people?q=`: the people this person can invite before the plan exists (a private plan's
+     * preview, Plans step 1), in the same order as the plan's own list, without `state`.
+     */
+    @GET("api/plans/invites/people")
+    suspend fun invitePeopleBefore(
+        @Query("q") query: String? = null,
+    ): PlanInvitePeopleResponse
+
+    /**
      * `POST /api/plans/:id/invites` (host): people on Pantopus and addresses. 409 `confirm_shares_address` the first
      * time at a home; 429 `too_many_invites`; 422 `invalid_email`.
      */
@@ -244,7 +253,10 @@ interface PlansApi {
         @Body body: PlanInviteBody,
     ): PlanInviteListDto
 
-    /** `POST /api/plans/:id/invites/link` (host): a one-person link to text. */
+    /**
+     * `POST /api/plans/:id/invites/link` (host): a one-person link to text. On a private plan whose host lets guests
+     * bring a friend, a guest who is in makes their one link here too (409 `friend_invite_used` after that).
+     */
     @POST("api/plans/{id}/invites/link")
     suspend fun inviteLink(
         @Path("id") id: String,

@@ -72,7 +72,7 @@ enum class PlanWindow(
 }
 
 /**
- * The list's All / Neighbors / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
+ * The list's All / People / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
  * business has a plan in the area. It filters the list and the pins on the phone, as the kind chips do, so the
  * requests stay as they were (as on iOS); [wire] is how the choice is remembered.
  */
@@ -81,7 +81,9 @@ enum class PlanHostFilter(
     val label: String,
 ) {
     ALL("all", "All"),
-    NEIGHBORS("neighbors", "Neighbors"),
+
+    /** "People" since November 14 (no "neighbor" in Plans); the remembered value stays `neighbors`. */
+    NEIGHBORS("neighbors", "People"),
     BUSINESSES("businesses", "Businesses"),
     ;
 
@@ -138,9 +140,29 @@ val PlanDto.standing: PlanViewerStanding
 
 /**
  * True when the private part (place, note, people) came with this copy: the viewer hosts it or is in. A business's
- * plan carries its place for everyone (it is the business's own address), so only the people count there.
+ * plan carries its place for everyone (it is the business's own address), so only the people count there; so does a
+ * private plan's place shown to the person invited before they answer.
  */
-val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null) || people != null
+val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null && !placeShownToInvitee) || people != null
+
+/** `audience` values (Plans step 1). An older server sends none, which is a plan anyone nearby can see. */
+object PlanAudience {
+    const val NEARBY = "nearby"
+    const val INVITED = "invited"
+}
+
+/** A private plan (Plans step 1): only its host, the people invited and the people in see it. */
+val PlanDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/** A private plan's pin. */
+val PlanPinDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/**
+ * A private plan's place as the person invited reads it before answering (at a public place the server sends it to
+ * them): not the private part of someone who is in.
+ */
+val PlanDto.placeShownToInvitee: Boolean
+    get() = isPrivate && place != null && standing != PlanViewerStanding.HOSTING && standing != PlanViewerStanding.IN
 
 /** A business hosts this plan (Plans with businesses): the server sends `business` only then. */
 val PlanDto.isBusiness: Boolean get() = business != null

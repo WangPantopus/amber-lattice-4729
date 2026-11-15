@@ -59,6 +59,7 @@ import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanInviteCountsDto
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusCheckbox
 import app.pantopus.android.ui.components.PrimaryButton
@@ -88,12 +89,17 @@ import app.pantopus.android.ui.theme.Spacing
 internal fun PlanInviteSheet(
     plan: PlanDto,
     onDismiss: () -> Unit,
+    /** Make a text invite as it opens (a private plan's "Text a link" on its preview, Plans step 1). */
+    textFirst: Boolean = false,
     vm: PlanInviteViewModel = hiltViewModel(key = "planInvite-${plan.id}"),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toast = remember { ToastController() }
-    LaunchedEffect(plan.id) { vm.start(plan.id) }
+    LaunchedEffect(plan.id) {
+        vm.start(plan.id)
+        if (textFirst) vm.makeTextInvite()
+    }
     LaunchedEffect(ui.notice) {
         ui.notice?.let {
             toast.info(it)
@@ -128,7 +134,7 @@ internal fun PlanInviteSheet(
                     verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 ) {
                     InviteHeader(plan, onDismiss)
-                    InviteBody(ui, vm)
+                    InviteBody(ui, vm, privatePlan = plan.isPrivate)
                 }
                 SendBar(ui, onSend = vm::send)
             }
@@ -143,6 +149,7 @@ internal fun PlanInviteSheet(
 private fun ColumnScope.InviteBody(
     ui: PlanInviteUi,
     vm: PlanInviteViewModel,
+    privatePlan: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.weight(1f).testTag("planInviteSearch")) {
@@ -179,7 +186,13 @@ private fun ColumnScope.InviteBody(
             TextInviteCard(making = ui.makingLink, onText = vm::makeTextInvite)
             Sent(ui, onCancel = vm::cancel)
             Text(
-                text = "Each invitation is for one person. Emails and texts show the plan's card and area, never your address.",
+                text =
+                    if (privatePlan) {
+                        // A private plan at a public place shows the person invited its place by name (Plans step 1).
+                        "Each invitation is for one person. Emails and texts show the plan's card, never your address."
+                    } else {
+                        "Each invitation is for one person. Emails and texts show the plan's card and area, never your address."
+                    },
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )

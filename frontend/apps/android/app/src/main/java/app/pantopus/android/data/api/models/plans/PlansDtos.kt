@@ -85,6 +85,18 @@ data class PlanViewerDto(
     @Json(name = "auto_rule") val autoRule: String? = null,
     /** True once this viewer answered "How was it" (A5). */
     @Json(name = "feedback_given") val feedbackGiven: Boolean = false,
+    /**
+     * "Bring a friend" (Plans step 1): for a guest who is in on a private plan whose host lets guests bring a friend;
+     * null for everyone else and from older servers.
+     */
+    @Json(name = "friend_invite") val friendInvite: PlanFriendInviteDto? = null,
+)
+
+/** `viewer.friend_invite`: whether this guest may make their one friend link now, and whether they already did. */
+@JsonClass(generateAdapter = true)
+data class PlanFriendInviteDto(
+    @Json(name = "can_invite") val canInvite: Boolean = false,
+    @Json(name = "used") val used: Boolean = false,
 )
 
 /** `place`: the exact place. Only in a host's or an accepted guest's [PlanDto]. */
@@ -215,7 +227,13 @@ data class PlanDto(
     @Json(name = "state") val state: String? = null,
     @Json(name = "viewer") val viewer: PlanViewerDto? = null,
     @Json(name = "share_url") val shareUrl: String? = null,
-    // PlanDetail: the host and people who are in.
+    /**
+     * Who can see it (Plans step 1): `nearby` (anyone nearby, as every plan was) or `invited` (private: only its host,
+     * the people invited and the people in). Absent from an older server, which means `nearby`.
+     */
+    @Json(name = "audience") val audience: String? = null,
+    // PlanDetail: the host and people who are in. A private plan at a public place also sends `place` to the person
+    // invited before they answer.
     @Json(name = "place") val place: PlanPlaceDto? = null,
     @Json(name = "people") val people: List<PlanPersonDto>? = null,
     @Json(name = "chat_room_id") val chatRoomId: String? = null,
@@ -245,6 +263,10 @@ data class PlanDto(
     @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
     /** The venue's later plans in the list's window, folded under this one; null when there are none. */
     @Json(name = "more_times") val moreTimes: PlanMoreTimesDto? = null,
+    /** Posting a private plan with `invite_user_ids` (Plans step 1): what happened to each person. */
+    @Json(name = "invite_results") val inviteResults: List<PlanInviteResultDto>? = null,
+    /** Posting a private plan: the invitations couldn't be sent at all (the plan is posted either way), in words to show. */
+    @Json(name = "invite_error") val inviteError: String? = null,
 )
 
 /** `nearest_elsewhere` (F4): the closest town with plans 5 to 15 miles away when the page is empty. */
@@ -323,6 +345,8 @@ data class PlanPinDto(
     @Json(name = "label_text") val labelText: String? = null,
     @Json(name = "place_name") val placeName: String? = null,
     @Json(name = "more_times") val moreTimes: Int = 0,
+    /** `invited` for a private plan's pin (its host, the people invited and the people in see it); `nearby` or absent otherwise. */
+    @Json(name = "audience") val audience: String? = null,
 )
 
 /** `business` on a business's map pin. */
@@ -390,6 +414,12 @@ data class CreatePlanBody(
     @Json(name = "business_location_id") val businessLocationId: String? = null,
     /** What guests see it called: a key from the kind's list (`host_as` only). */
     @Json(name = "label") val label: String? = null,
+    /** `invited` posts a private plan (Plans step 1); left out for a plan anyone nearby can see, as before. */
+    @Json(name = "audience") val audience: String? = null,
+    /** A private plan only: each person invited may invite one more. */
+    @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
+    /** A private plan only: up to 30 people (from `GET /api/plans/invites/people`) invited as it is posted. */
+    @Json(name = "invite_user_ids") val inviteUserIds: List<String>? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */

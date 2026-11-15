@@ -19,6 +19,7 @@ import app.pantopus.android.data.plans.PlanListChoices
 import app.pantopus.android.data.plans.PlanLocation
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanOrigin
+import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewport
 import app.pantopus.android.data.plans.PlanWindow
@@ -79,6 +80,10 @@ data class PlansMapUiState(
     val refreshing: Boolean = false,
     /** A plan the person just posted (board H8): its pin drops in and the sheet says it's on the map. */
     val postedId: String? = null,
+    /** The invite sheet a private plan's preview asked to open over the plan just posted (Plans step 1), until it opens. */
+    val postedInvite: PlanPostedInvite? = null,
+    /** What went wrong with the invitations the plan just posted sent (Plans step 1), said on H8. */
+    val postedNote: String? = null,
     /** The closest town with plans 5 to 15 miles away, when nothing is near (F4). */
     val elsewhere: PlansElsewhereDto? = null,
     /** The All / Neighbors / Businesses filter the person chose (Plans with businesses, board G2), remembered. */
@@ -166,7 +171,9 @@ class PlansMapViewModel
             viewModelScope.launch {
                 events.posted.collect { id ->
                     if (id != null && id != _state.value.postedId) {
-                        _state.update { it.copy(postedId = id) }
+                        _state.update {
+                            it.copy(postedId = id, postedInvite = events.takePostedInvite(id), postedNote = events.takePostedNote(id))
+                        }
                         select(id)
                         refreshAll(force = true)
                     }
@@ -178,8 +185,13 @@ class PlansMapViewModel
         fun dismissPosted() {
             val id = _state.value.postedId ?: return
             events.consumePosted(id)
-            _state.update { it.copy(postedId = null) }
+            _state.update { it.copy(postedId = null, postedInvite = null, postedNote = null) }
             select(null)
+        }
+
+        /** The invite sheet a private plan's preview asked for has opened. */
+        fun postedInviteOpened() {
+            _state.update { it.copy(postedInvite = null) }
         }
 
         /** First appearance and every return: show what's stored, then refresh what's out of date. */

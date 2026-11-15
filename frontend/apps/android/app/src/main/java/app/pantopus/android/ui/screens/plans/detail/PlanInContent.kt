@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.plans.detail
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -35,6 +38,7 @@ import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -43,8 +47,11 @@ import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
+import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanStackButton
+import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -72,6 +79,7 @@ internal fun ColumnScope.PlanInBody(
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
     InBanner(plan, reveal, reduceMotion)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (plan.isPrivate) PlanPrivateChip()
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
         plan.place?.let { place ->
             Row(
@@ -120,6 +128,71 @@ internal fun ColumnScope.PlanInBody(
         }
     }
     PeopleLine(plan, viewerId)
+}
+
+/**
+ * "Bring a friend" on a private plan whose host allows it (Plans step 1): [invited] once the guest made their link on
+ * this visit, [making] while it is being made.
+ */
+internal data class PlanFriendInvite(
+    val invited: Boolean,
+    val making: Boolean,
+    val onBring: () -> Unit,
+)
+
+/**
+ * "Bring a friend" (Plans step 1): for a guest whose host lets guests bring one friend to a private plan, under J7. It
+ * opens the share sheet with a one-person link; after that, or when the card says it was used, the row reads "You
+ * invited a friend".
+ */
+@Composable
+internal fun PlanFriendInviteRow(
+    plan: PlanDto,
+    friend: PlanFriendInvite,
+) {
+    val state = plan.viewer?.friendInvite ?: return
+    if (!plan.isPrivate) return
+    val done = state.used || friend.invited
+    if (!done && !state.canInvite) return
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .planCard()
+                .then(
+                    if (done) Modifier else Modifier.clickable(enabled = !friend.making, role = Role.Button, onClick = friend.onBring),
+                ).padding(14.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("planBringFriend"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        PlanIconTile(
+            if (done) PantopusIcon.Check else PantopusIcon.UserPlus,
+            if (done) PantopusColors.successBg else PantopusColors.primary100,
+            if (done) PantopusColors.success else PantopusColors.primary700,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (done) "You invited a friend" else "Bring a friend",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.appText,
+            )
+            Text(
+                text =
+                    if (done) {
+                        "${plan.hostFirst} sees who you invited. Each guest can bring one friend."
+                    } else {
+                        "${plan.hostFirst} lets each guest bring one. Send a link from your phone; it works for one person."
+                    },
+                style = PantopusTextStyle.small,
+                color = PantopusColors.appTextSecondary,
+            )
+        }
+        if (!done) {
+            PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
+        }
+    }
 }
 
 @Composable

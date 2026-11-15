@@ -89,6 +89,11 @@ data class PlanDetailUi(
     val requests: PlanRequestsResponse? = null,
     /** The person looking, to tell "you" apart in the people going. */
     val viewerId: String? = null,
+    /** "Bring a friend" (Plans step 1): the guest's one link, ready for their share sheet. */
+    val friendLink: PlanTextInvite? = null,
+    /** The guest made their friend link on this visit (the card's `used` says so after the next read too). */
+    val friendInvited: Boolean = false,
+    val makingFriendLink: Boolean = false,
 )
 
 /**
@@ -143,38 +148,52 @@ class PlanDetailViewModel
             if (!active || loadJob?.isActive == true) return
             loadJob =
                 viewModelScope.launch {
-                    claimInviteOnce()
+                    val missed = claimInviteOnce()
                     read()
+                    if (missed) inviteMissedNotice()
                 }
         }
 
         /**
          * Opened from an email or text invitation: it becomes this account's. Someone else already used it, or the host
-         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS).
+         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS). True when the
+         * invitation wasn't found.
          */
-        private suspend fun claimInviteOnce() {
-            val token = inviteToken ?: return
-            if (inviteClaimed) return
+        private suspend fun claimInviteOnce(): Boolean {
+            val token = inviteToken?.takeUnless { inviteClaimed } ?: return false
             val generation = readGeneration
             val result = repository.claimInvite(planId, token)
-            if (!active || generation != readGeneration) return
+            if (!active || generation != readGeneration) return false
             inviteClaimed = true
-            when (result) {
-                is NetworkResult.Success ->
+            return when (result) {
+                is NetworkResult.Success -> {
                     result.data.plan?.let { plan ->
                         storedCardOnly = false
                         _ui.update { it.copy(state = PlanDetailUiState.Ready(plan, fresh = false)) }
                     }
+                    false
+                }
                 is NetworkResult.Failure -> {
-                    val sentence =
-                        when {
-                            result.error == NetworkError.NotFound -> "This invitation isn't available anymore. You can still ask to join."
-                            result.error.planCode == "invite_used" -> result.error.planMessage
-                            else -> null
-                        }
-                    sentence?.let { line -> _ui.update { it.copy(notice = line) } }
+                    if (result.error.planCode == "invite_used") _ui.update { it.copy(notice = result.error.planMessage) }
+                    // Taken back, or never this plan's: said once the plan is read (see [inviteMissedNotice]).
+                    result.error == NetworkError.NotFound
                 }
             }
+        }
+
+        /**
+         * The invitation isn't there anymore. A plan the person can still see takes requests as any shared plan does; a
+         * private plan (Plans step 1) shows nothing without its invitation, so nothing is offered.
+         */
+        private fun inviteMissedNotice() {
+            val canAsk = _ui.value.state is PlanDetailUiState.Ready
+            val line =
+                if (canAsk) {
+                    "This invitation isn't available anymore. You can still ask to join."
+                } else {
+                    "This invitation isn't available anymore."
+                }
+            _ui.update { it.copy(notice = line) }
         }
 
         /** "Can't make it" to an invitation (someone already in or waiting is taken out first). */
@@ -450,6 +469,39 @@ class PlanDetailViewModel
         }
 
         fun removeGuest(requestId: String) = act(done = "Removed. They no longer see the plan.") { repository.remove(planId, requestId) }
+
+        // ---- Bring a friend (a guest on a private plan, Plans step 1) ----
+
+        /** Makes the guest's one friend link (`POST /:id/invites/link`), for their phone's share sheet. */
+        fun bringFriend() {
+            if (_ui.value.makingFriendLink) return
+            _ui.update { it.copy(makingFriendLink = true) }
+            viewModelScope.launch {
+                when (val result = repository.inviteLink(planId, confirmSharesAddress = false)) {
+                    is NetworkResult.Success ->
+                        _ui.update {
+                            it.copy(
+                                makingFriendLink = false,
+                                friendInvited = true,
+                                friendLink = PlanTextInvite(result.data.message, result.data.url),
+                            )
+                        }
+                    is NetworkResult.Failure -> {
+                        // Already made (on another phone, say): the row says so, and the server's sentence says why.
+                        val used = result.error.planCode == "friend_invite_used"
+                        _ui.update {
+                            it.copy(makingFriendLink = false, friendInvited = it.friendInvited || used, notice = result.error.planMessage)
+                        }
+                    }
+                }
+                read()
+            }
+        }
+
+        /** The share sheet opened with the friend link. */
+        fun friendLinkShared() {
+            _ui.update { it.copy(friendLink = null, notice = "Done. That link works for one person.") }
+        }
 
         private fun act(
             done: String? = null,

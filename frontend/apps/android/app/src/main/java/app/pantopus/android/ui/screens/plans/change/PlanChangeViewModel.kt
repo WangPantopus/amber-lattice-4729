@@ -14,6 +14,7 @@ import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanPlaceQuery
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
@@ -344,9 +345,12 @@ class PlanChangeViewModel
         ): String? {
             val now = LocalDateTime.now(_ui.value.zone)
             val minutes = Duration.between(start, end).toMinutes()
+            // A private plan moves up to 60 days ahead (Plans step 1).
+            val invitedOnly = _ui.value.plan?.isPrivate == true
             return when {
                 start.isBefore(now) -> "Pick a time that hasn't passed."
-                start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
+                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
                 else -> null
@@ -355,6 +359,7 @@ class PlanChangeViewModel
 
         private companion object {
             const val MAX_DAYS_AHEAD = 14L
+            const val MAX_PRIVATE_DAYS_AHEAD = 60L
             const val MIN_MINUTES = 15L
             const val MAX_MINUTES = 8 * 60L
             const val SEARCH_DEBOUNCE_MS = 350L

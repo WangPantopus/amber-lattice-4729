@@ -54,7 +54,8 @@ import com.google.maps.android.compose.rememberMarkerState
  * H6's "Pick it on the map": for a public place the list doesn't have, the host taps one of the places Google Maps
  * shows (parks, cafés, restaurants, sports and more). Only a labeled place can be chosen, never a dropped pin, which
  * could land on someone's home: within 3 miles of where the picker looks from (the circle), and not at one of the
- * host's homes (the server refuses that too). As on iOS (PlanPlaceMapPick).
+ * host's homes (the server refuses that too). As on iOS (PlanPlaceMapPick). A private plan ([anywhere], Plans step 1)
+ * can be anywhere: no circle and no reach.
  */
 @Composable
 internal fun PlaceMapPick(
@@ -63,6 +64,7 @@ internal fun PlaceMapPick(
     homePoints: List<Pair<Double, Double>>,
     onUse: (PickedPlace) -> Unit,
     onClose: () -> Unit,
+    anywhere: Boolean = false,
 ) {
     BackHandler(onBack = onClose)
     var selected by remember { mutableStateOf<PointOfInterest?>(null) }
@@ -83,13 +85,15 @@ internal fun PlaceMapPick(
                 uiSettings = settings,
                 onPOIClick = { selected = it },
             ) {
-                Circle(
-                    center = center,
-                    radius = REACH_METERS,
-                    strokeColor = accent.copy(alpha = 0.5f),
-                    strokeWidth = 4f,
-                    fillColor = accent.copy(alpha = 0.06f),
-                )
+                if (!anywhere) {
+                    Circle(
+                        center = center,
+                        radius = REACH_METERS,
+                        strokeColor = accent.copy(alpha = 0.5f),
+                        strokeWidth = 4f,
+                        fillColor = accent.copy(alpha = 0.06f),
+                    )
+                }
                 selected?.let { poi -> Marker(state = rememberMarkerState(key = poi.placeId, position = poi.latLng), title = poiName(poi)) }
             }
         }
@@ -97,13 +101,25 @@ internal fun PlaceMapPick(
             val poi = selected
             if (poi == null) {
                 Text(
-                    text = "Tap a park, café or other place the map shows, within 3 miles of you.",
+                    text =
+                        if (anywhere) {
+                            "Tap a park, café or other place the map shows. A private plan can be anywhere."
+                        } else {
+                            "Tap a park, café or other place the map shows, within 3 miles of you."
+                        },
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appTextSecondary,
                     modifier = Modifier.testTag("planPlaceMapPickHint"),
                 )
             } else {
-                MapPickCard(kind = kind, poi = poi, meters = metersBetween(center, poi.latLng), homePoints = homePoints, onUse = onUse)
+                MapPickCard(
+                    kind = kind,
+                    poi = poi,
+                    meters = metersBetween(center, poi.latLng),
+                    homePoints = homePoints,
+                    onUse = onUse,
+                    anywhere = anywhere,
+                )
             }
         }
     }
@@ -117,9 +133,10 @@ private fun MapPickCard(
     meters: Float,
     homePoints: List<Pair<Double, Double>>,
     onUse: (PickedPlace) -> Unit,
+    anywhere: Boolean,
 ) {
     val name = poiName(poi)
-    val problem = mapPickProblem(poi.latLng, meters, homePoints)
+    val problem = mapPickProblem(poi.latLng, meters, homePoints, anywhere)
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         PlanRow(
             title = name,
@@ -202,16 +219,17 @@ private fun metersBetween(
     return result[0]
 }
 
-/** Why the place can't be used, or null: one of the host's homes, or too far to host. */
+/** Why the place can't be used, or null: one of the host's homes, or too far to host (never for a private plan). */
 private fun mapPickProblem(
     spot: LatLng,
     meters: Float,
     homePoints: List<Pair<Double, Double>>,
+    anywhere: Boolean,
 ): String? =
     when {
         homePoints.any { (lat, lng) -> metersBetween(LatLng(lat, lng), spot) <= HOME_GUARD_METERS } ->
             "That's your home. Choose a public place nearby."
-        meters > REACH_METERS -> "That's more than 3 miles from you. Choose a place closer by."
+        !anywhere && meters > REACH_METERS -> "That's more than 3 miles from you. Choose a place closer by."
         else -> null
     }
 

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -50,6 +51,7 @@ import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.icon
 import app.pantopus.android.ui.screens.plans.planGlassStrong
 import app.pantopus.android.ui.screens.plans.planPinInk
+import app.pantopus.android.ui.screens.plans.planPinRing
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevations
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -158,6 +160,84 @@ fun PlanTypeTag(
             style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
             color = PantopusColors.appText,
         )
+    }
+}
+
+/** What TalkBack hears for a private plan's chip and lock badge (Plans step 1). */
+const val PLAN_PRIVATE_SPOKEN = "Private"
+
+/**
+ * "Private" (Plans step 1, board "priv"): a lock and the word on a sunken pill with a strong hairline, beside a private
+ * plan's kind on its preview, its page and its card.
+ */
+@Composable
+fun PlanPrivateChip(modifier: Modifier = Modifier) {
+    val pill = RoundedCornerShape(Radii.pill)
+    Row(
+        modifier =
+            modifier
+                .heightIn(min = 30.dp)
+                .clip(pill)
+                .background(PantopusColors.appSurfaceSunken)
+                .border(1.dp, PantopusColors.appBorderStrong, pill)
+                .padding(start = 10.dp, end = Spacing.s3)
+                .testTag("planPrivateChip")
+                .clearAndSetSemantics { contentDescription = PLAN_PRIVATE_SPOKEN },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = 14.dp, tint = PantopusColors.appTextStrong)
+        Text(
+            text = PLAN_PRIVATE_SPOKEN,
+            style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.appTextStrong,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The lock badge (Plans step 1): a small sunken square with a white ring and the lock, on a private plan's kind tile
+ * (a row) or on its pin's shoulder, so it reads "private" beside the kind without a word.
+ */
+@Composable
+fun PlanPrivateBadge(
+    modifier: Modifier = Modifier,
+    size: Dp = 18.dp,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(size)
+                .clip(RoundedCornerShape(size * 0.33f))
+                .background(planPinRing)
+                .padding(2.dp)
+                .clip(RoundedCornerShape(size * 0.28f))
+                .background(PantopusColors.appSurfaceSunken)
+                .border(1.dp, PantopusColors.appBorderStrong, RoundedCornerShape(size * 0.28f))
+                .testTag("planPrivateBadge")
+                .semantics { contentDescription = PLAN_PRIVATE_SPOKEN },
+        contentAlignment = Alignment.Center,
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = size * 0.55f, tint = PantopusColors.appTextStrong)
+    }
+}
+
+/** A radio circle (board "radio", Plans step 1): 24 dp with a 2 dp ring; the chosen one is filled in the primary color. */
+@Composable
+fun PlanRadio(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(24.dp)
+                .border(2.dp, if (selected) PantopusColors.primary600 else PantopusColors.appTextSecondary, CircleShape)
+                .clearAndSetSemantics {},
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(PantopusColors.primary600))
     }
 }
 

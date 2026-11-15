@@ -234,7 +234,7 @@ private fun RequestCard(
     onDecline: () -> Unit,
 ) {
     val user = request.user
-    val name = user?.displayName ?: "Neighbor"
+    val name = user?.displayName ?: "Someone"
     Column(
         modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
@@ -273,7 +273,7 @@ private fun RequestCard(
             Text(text = "“$it”", style = PantopusTextStyle.body.copy(fontStyle = FontStyle.Italic), color = PantopusColors.appText)
         }
         // TalkBack hears whom each button answers ("Accept Priya"), as VoiceOver does on iOS.
-        val first = user?.displayName?.takeIf { it.isNotBlank() }?.let(PlanFormat::firstName) ?: "Neighbor"
+        val first = user?.displayName?.takeIf { it.isNotBlank() }?.let(PlanFormat::firstName) ?: "Someone"
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SpokenAs("Decline $first", enabled = !working, action = onDecline, modifier = Modifier.weight(1f)) {
                 GhostButton(title = "Decline", onClick = onDecline, isEnabled = !working)
@@ -339,6 +339,6 @@ private fun partyLabel(
         val kids = request.kidsCount ?: 1
         return listOfNotNull("$kids ${if (kids == 1) "kid" else "kids"}", KidsAgeBand.rangeLabel(request.kidsAgeBands)).joinToString(" · ")
     }
-    val name = request.user?.displayName?.takeIf { it.isNotBlank() }?.let(PlanFormat::firstName) ?: "Neighbor"
+    val name = request.user?.displayName?.takeIf { it.isNotBlank() }?.let(PlanFormat::firstName) ?: "Someone"
     return if (request.partySize <= 1) "Just $name" else "$name + ${request.partySize - 1}"
 }

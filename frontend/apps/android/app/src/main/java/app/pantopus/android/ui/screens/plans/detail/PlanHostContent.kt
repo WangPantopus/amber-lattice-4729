@@ -43,6 +43,7 @@ import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.ui.components.DestructiveButton
 import app.pantopus.android.ui.components.GhostButton
@@ -55,6 +56,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsMeter
 import app.pantopus.android.ui.screens.plans.components.PlanStatusChip
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
@@ -85,20 +87,7 @@ internal fun ColumnScope.PlanHostBody(
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlanStatusChip(
-            text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
-            icon = PantopusIcon.Flag,
-            iconTint = PantopusColors.primary600,
-        )
-        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
-        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
-        Text(
-            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
-            style = PantopusTextStyle.small,
-            color = PantopusColors.appTextStrong,
-        )
-    }
+    HostHeading(plan)
     if (closed) HostClosedBanner(plan)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
@@ -121,12 +110,36 @@ internal fun ColumnScope.PlanHostBody(
             if (plan.chatRoomId != null) {
                 GhostButton(title = "Message guests", onClick = onMessageGuests, modifier = Modifier.weight(1f))
             }
-            GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
+            // No Share for a private plan: the Invite row above invites each person (Plans step 1).
+            if (!plan.isPrivate) GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
         }
         Column {
             PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
+    }
+}
+
+/** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
+@Composable
+private fun HostHeading(plan: PlanDto) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            PlanStatusChip(
+                text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
+                icon = PantopusIcon.Flag,
+                iconTint = PantopusColors.primary600,
+            )
+            // A private plan says so: only the people the host invites see it.
+            if (plan.isPrivate) PlanPrivateChip()
+        }
+        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
+        Text(
+            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
+            style = PantopusTextStyle.small,
+            color = PantopusColors.appTextStrong,
+        )
     }
 }
 
@@ -341,7 +354,7 @@ private fun GuestRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    val name = person.displayName ?: "Neighbor"
+    val name = person.displayName ?: "Someone"
     val title = if (person.partySize > 1) "$name + ${person.partySize - 1}" else name
     val kids =
         person.kidsCount?.let { count ->

@@ -31,6 +31,7 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanState
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.ui.components.GhostButton
@@ -147,7 +148,7 @@ private fun TodayCardHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        PlanKindLeading(plan.planKind)
+        PlanKindLeading(plan.planKind, isPrivate = plan.isPrivate)
         Column(modifier = Modifier.weight(1f)) {
             PlanOverline(overline)
             Text(text = title, style = planH4, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })

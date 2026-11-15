@@ -5,6 +5,8 @@ package app.pantopus.android.ui.screens.plans.detail
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +31,8 @@ import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.ui.components.GhostButton
@@ -41,6 +45,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanHostRow
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanNote
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsCaption
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsMeter
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
@@ -74,10 +79,17 @@ internal fun answerTime(plan: PlanDto): String? {
     }
 }
 
-/** "Near Prune Hill · under 1 mi · at Sam's place" (or "a public place"); a business's: "Lacamas Pickleball Club · about 1 mi". */
+/**
+ * "Near Prune Hill · under 1 mi · at Sam's place" (or "a public place"); a business's: "Lacamas Pickleball Club · about 1
+ * mi"; a private plan's place shown to the person invited: "Heritage Park, Camas · about 2 mi" (board Invited).
+ */
 internal fun whereLine(plan: PlanDto): String {
     if (plan.isBusiness) {
         return listOfNotNull(plan.place?.name ?: plan.host?.displayName, PlanFormat.distance(plan.distanceBand)).joinToString(" · ")
+    }
+    if (plan.placeShownToInvitee) {
+        val name = listOfNotNull(plan.place?.name, plan.area?.city).filter(String::isNotBlank).joinToString(", ")
+        return listOfNotNull(name.takeIf(String::isNotBlank), PlanFormat.distance(plan.distanceBand)).joinToString(" · ")
     }
     val at =
         when {
@@ -129,12 +141,16 @@ internal fun extraGearWord(sport: String?): String =
         else -> "gear"
     }
 
-/** The type tag and the title (h2). */
+/** The type tag (and "Private" beside it on a private plan, Plans step 1) and the title (h2). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlanHeading(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
-        plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
+            plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+            if (plan.isPrivate) PlanPrivateChip()
+        }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
     }
 }
@@ -181,7 +197,7 @@ internal fun PlanHostCard(
     val host = plan.host ?: return
     // The host's card opens their profile, as on iOS.
     PlanHostRow(
-        name = host.displayName ?: "Neighbor",
+        name = host.displayName ?: "Someone",
         verified = host.verifiedAddress && ruleCaption == null,
         caption = ruleCaption ?: hostCaption(plan),
         seed = host.userId,
@@ -216,17 +232,26 @@ internal fun PlanSpots(
     }
 }
 
-/** J1 and J2: a plan before you're in. */
+/** J1 and J2: a plan before you're in; [afterTitle] goes under its title block (a private plan's invitation banner). */
 @Composable
-internal fun ColumnScope.PlanBeforeInBody(plan: PlanDto) {
+internal fun ColumnScope.PlanBeforeInBody(
+    plan: PlanDto,
+    afterTitle: (@Composable () -> Unit)? = null,
+) {
     PlanTitleBlock(plan)
+    afterTitle?.invoke()
     PlanHostCard(plan)
     PlanSpots(plan, note = if (plan.isPlaydate) null else "Names show once you're in")
     plan.about?.takeIf(String::isNotBlank)?.let { Text(text = it, style = PantopusTextStyle.body, color = PantopusColors.appText) }
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
     if (plan.isPlaydate) {
         PlanNote(
-            "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family.",
+            if (plan.isPrivate) {
+                // The families a host invites to a private playdate get in right away (Plans step 1).
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools."
+            } else {
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family."
+            },
         )
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -287,7 +312,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Verify your address to join",
                 enabled = true,
-                caption = "This plan is for verified neighbors.",
+                caption = "This plan is for people with a verified address.",
                 action = AskAction.Verify,
             )
         PlanCannotAsk.NEEDS_LOCATION ->
@@ -301,7 +326,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Too far to join",
                 enabled = false,
-                caption = "This plan is for neighbors who live or are close by.",
+                caption = "This plan is for people who live or are close by.",
                 action = AskAction.None,
             )
         PlanCannotAsk.FULL_USE_WAITLIST ->
@@ -522,7 +547,7 @@ internal fun PlaydateLocked(
         Column(modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4), verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             PlanIconTile(PantopusIcon.Lock, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 48.dp, glyph = 22.dp)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-                Text(text = "Playdates are for verified neighbors", style = planH4, color = PantopusColors.appText)
+                Text(text = "Playdates are for people with a verified address", style = planH4, color = PantopusColors.appText)
                 Text(
                     text =
                         "Verify your address to see the time, the place and who's going, and to " +
