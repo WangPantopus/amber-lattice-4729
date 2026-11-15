@@ -50,9 +50,7 @@ struct PlanChangeScreen: View {
                     } else {
                         Shimmer(width: nil, height: 120, cornerRadius: Radii.xl)
                     }
-                    if let error {
-                        Text(error).planFont(.small).foregroundStyle(Theme.Color.error).fixedSize(horizontal: false, vertical: true)
-                    }
+                    if let error, plan == nil { PlanChangeErrorLine(text: error) }
                 }
                 .padding(.horizontal, Spacing.s4)
                 .padding(.top, Spacing.s2)
@@ -273,6 +271,8 @@ struct PlanChangeScreen: View {
 
     private func footer(_ card: PlanCardDTO) -> some View {
         VStack(spacing: Spacing.s2) {
+            // A refusal shows over Save: under the warning and the push preview it would be below the fold.
+            if let error { PlanChangeErrorLine(text: error) }
             Button(action: save) {
                 PlanButtonLabel(title: asksStillComing(card) ? "Save and ask them" : "Save", kind: .primary, isLoading: isSaving)
             }
@@ -353,5 +353,19 @@ private extension PlanChangeScreen {
         if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
         if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
         return ("\(host) moved the \(noun)", "\(now). Still coming?")
+    }
+}
+
+/// A refusal on the Change screen, in the server's words.
+private struct PlanChangeErrorLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .planFont(.small)
+            .foregroundStyle(Theme.Color.error)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("planChangeError")
     }
 }
