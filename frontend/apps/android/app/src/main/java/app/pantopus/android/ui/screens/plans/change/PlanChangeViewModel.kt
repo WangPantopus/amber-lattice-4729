@@ -12,6 +12,10 @@ import app.pantopus.android.data.api.models.plans.UpdatePlanBody
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanPlaceQuery
+import app.pantopus.android.data.plans.PlanRepeatPattern
+import app.pantopus.android.data.plans.PlanRepeatWords
+import app.pantopus.android.data.plans.PlanSeries
+import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isPrivate
@@ -23,6 +27,7 @@ import app.pantopus.android.ui.screens.plans.host.PickedPlace
 import app.pantopus.android.ui.screens.plans.host.PlaceSuggestions
 import app.pantopus.android.ui.screens.plans.host.placeQuery
 import app.pantopus.android.ui.screens.plans.host.placesFailure
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
@@ -67,7 +73,73 @@ data class PlanChangeUi(
     /** The plan's location among them (matched by its point), and the one chosen instead; null while unchanged. */
     val currentLocationId: String? = null,
     val newLocationId: String? = null,
+    /** `plans_repeat` is on (Plans step 2): the Repeats row shows for a plan that doesn't repeat yet too. */
+    val repeatOn: Boolean = false,
+    /** How the plan repeats now (its card's pattern), null when it doesn't. */
+    val originalRepeat: PlanRepeatPattern? = null,
+    /** The pattern chosen on the Repeats screen (null: "Doesn't repeat"), once [repeatChosen]. */
+    val newRepeat: PlanRepeatPattern? = null,
+    val repeatChosen: Boolean = false,
+    /** The Repeats screen is open over this one. */
+    val repeatsOpen: Boolean = false,
 ) {
+    /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
+    val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
+
+    /**
+     * The series' first date, which the server keeps (its year and every-2-weeks count from it): worked back from this
+     * date's place in the series; for a plan that doesn't repeat yet, the date chosen here.
+     */
+    val repeatAnchor: LocalDate?
+        get() {
+            val pattern = originalRepeat ?: return start?.toLocalDate()
+            val date = originalStart?.toLocalDate() ?: return start?.toLocalDate()
+            return PlanSeries.anchorBefore(pattern, date, plan?.repeat?.index ?: 1)
+        }
+
+    /** The pattern this screen sends: the one chosen on the Repeats screen, moved to the start chosen here; null otherwise. */
+    val repeatToSend: PlanRepeatPattern?
+        get() {
+            val date = start?.toLocalDate() ?: return null
+            return newRepeat?.takeIf { repeatChosen }?.alignedTo(date, repeatAnchor ?: date)
+        }
+
+    /** "Doesn't repeat" was chosen for a plan that repeats: Save stops the series (this date stays). */
+    val stopsRepeating: Boolean get() = repeatChosen && newRepeat == null && originalRepeat != null
+
+    /** The Repeats choice differs from how the plan repeats now. */
+    val repeatChanged: Boolean
+        get() {
+            if (!repeatChosen) return false
+            if (stopsRepeating) return true
+            return newRepeat != null && repeatToSend?.toInput() != originalRepeat?.toInput()
+        }
+
+    /** The Repeats row's value: the choice made here, else the plan's own short words, else "Doesn't repeat". */
+    val repeatsValue: String?
+        get() =
+            when {
+                !showsRepeats -> null
+                repeatChosen -> PlanRepeatWords.rowValue(repeatToSend)
+                else -> plan?.repeat?.shortText?.takeIf(String::isNotBlank) ?: PlanRepeatWords.rowValue(originalRepeat)
+            }
+
+    /** What the Repeats screen opens with: the start chosen here, the series' first date, and the pattern so far. */
+    val repeatSetup: PlanRepeatSetup?
+        get() {
+            val at = start ?: return null
+            val initial = if (repeatChosen) newRepeat else originalRepeat?.copy(chosenFor = originalStart?.toLocalDate())
+            return PlanRepeatSetup(
+                start = at,
+                end = end,
+                anchor = repeatAnchor ?: at.toLocalDate(),
+                index = plan?.repeat?.index ?: 1,
+                kind = plan?.kind,
+                walkKind = plan?.details?.walkKind,
+                initial = initial,
+            )
+        }
+
     /** A business's plan moves only between the business's own locations, and only when it has more than one. */
     val canChangeLocation: Boolean get() = business != null && business.locations.size > 1
 
@@ -103,7 +175,10 @@ data class PlanChangeUi(
             return if (area.latitude != null && area.longitude != null) area.latitude to area.longitude else null
         }
 
-    val changed: Boolean get() = start != originalStart || end != originalEnd || newPlace != null || locationMoved
+    /** Anything to save besides how it repeats. */
+    val changedBesidesRepeat: Boolean get() = start != originalStart || end != originalEnd || newPlace != null || locationMoved
+
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -120,6 +195,7 @@ class PlanChangeViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val repository: PlansRepository,
+        private val feature: PlansFeature,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val _ui = MutableStateFlow(PlanChangeUi())
@@ -153,6 +229,8 @@ class PlanChangeViewModel
                                 end = end,
                                 business = business,
                                 currentLocationId = current?.id,
+                                repeatOn = feature.flags.value.repeatOn,
+                                originalRepeat = PlanRepeatPattern.from(plan.repeat),
                             )
                         }
                     }
@@ -171,6 +249,16 @@ class PlanChangeViewModel
 
         fun setEnd(value: LocalDateTime) {
             _ui.update { it.copy(end = value, error = null) }
+        }
+
+        /** The Repeats row (Plans step 2): the Repeats screen over this one. */
+        fun openRepeats() {
+            if (_ui.value.showsRepeats && _ui.value.start != null) _ui.update { it.copy(repeatsOpen = true, error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen: its pattern, or null for "Doesn't repeat"; Save sends it. */
+        fun closeRepeats(pattern: PlanRepeatPattern?) {
+            _ui.update { it.copy(repeatsOpen = false, newRepeat = pattern, repeatChosen = true, error = null) }
         }
 
         /** A business's plan: another of the business's own locations. */
@@ -331,12 +419,30 @@ class PlanChangeViewModel
                                 )
                             },
                         businessLocationId = ui.newLocationId.takeIf { ui.locationMoved },
+                        // A new pattern from this date on (Plans step 2); stopping is its own request, below.
+                        repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
                     )
-                when (val result = repository.update(planId, body)) {
+                val result = if (ui.stopsRepeating) saveAndStop(ui, body) else repository.update(planId, body)
+                when (result) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
                     is NetworkResult.Failure -> _ui.update { it.copy(saving = false, error = result.error.planMessage) }
                 }
             }
+        }
+
+        /**
+         * "Doesn't repeat" for a plan that repeats: the other changes first (when there are any), then `"repeat": null`,
+         * which the change body can't carry. A refusal of either is shown; the first may have gone through then.
+         */
+        private suspend fun saveAndStop(
+            ui: PlanChangeUi,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
+            if (ui.changedBesidesRepeat) {
+                val first = repository.update(planId, body)
+                if (first is NetworkResult.Failure) return first
+            }
+            return repository.stopRepeating(planId)
         }
 
         private fun validate(

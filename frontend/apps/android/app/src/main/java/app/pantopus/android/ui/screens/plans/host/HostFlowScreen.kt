@@ -54,6 +54,7 @@ import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.detail.PlanFooter
 import app.pantopus.android.ui.screens.plans.detail.PlanRoundButton
 import app.pantopus.android.ui.screens.plans.map.planH4
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatsScreen
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -78,7 +79,13 @@ fun HostFlowScreen(
     Box(modifier = Modifier.fillMaxSize().testTag("plansHost")) {
         when (ui.step) {
             HostStep.Type -> HostTypeStep(ui, onClose = onClose, onChoose = choose, onHostAs = viewModel::chooseHostAs)
-            HostStep.Details -> HostDetailsStep(ui, viewModel, onBack = { if (!viewModel.back()) onClose() })
+            // The Repeats screen (Plans step 2) is pushed over the details; its Back and Done come back to them.
+            HostStep.Details ->
+                if (ui.repeatsOpen) {
+                    HostRepeatsStep(ui, viewModel)
+                } else {
+                    HostDetailsStep(ui, viewModel, onBack = { if (!viewModel.back()) onClose() })
+                }
             HostStep.Place -> PlacePickerStep(ui, viewModel)
             HostStep.Preview ->
                 HostPreviewStep(
@@ -96,6 +103,16 @@ fun HostFlowScreen(
                 )
         }
     }
+}
+
+/** The Repeats screen over the details (boards Repeats and Monthly), for the draft's start. */
+@Composable
+private fun HostRepeatsStep(
+    ui: HostUi,
+    viewModel: HostFlowViewModel,
+) {
+    val setup = ui.repeatSetup ?: return
+    PlanRepeatsScreen(setup = setup, onDone = viewModel::closeRepeats)
 }
 
 /** The host flow's bar (board "navbar"): a round button, a centered title, and "1 of 3". */

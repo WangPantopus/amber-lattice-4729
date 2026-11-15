@@ -30,6 +30,8 @@ import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanPlaceQuery
 import app.pantopus.android.data.plans.PlanPostedInvite
+import app.pantopus.android.data.plans.PlanRepeatPattern
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanStudyStyle
 import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
@@ -38,6 +40,7 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,6 +130,8 @@ data class HostDraft(
     val guestsCanInvite: Boolean = false,
     /** A private plan: the people chosen on the preview, in the order chosen, invited as it is posted. */
     val inviteIds: List<String> = emptyList(),
+    /** How it repeats (Plans step 2), as last chosen on the Repeats screen; null doesn't repeat. */
+    val repeat: PlanRepeatPattern? = null,
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -188,7 +193,38 @@ data class HostUi(
     val privateChoice: Boolean = false,
     /** A private plan's preview: the people to invite. */
     val invitePeople: HostInvitePeople = HostInvitePeople.Idle,
+    /** `plans_repeat` is on for this person: the Repeats row shows on a person's own plan (Plans step 2). */
+    val repeatOn: Boolean = false,
+    /** The Repeats screen is open over the details. */
+    val repeatsOpen: Boolean = false,
 ) {
+    /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
+    val showsRepeats: Boolean get() = repeatOn && business == null
+
+    /** How the draft repeats, moved to its current start (a new start moves the pre-selected day); null when it doesn't. */
+    val repeat: PlanRepeatPattern?
+        get() {
+            val date = draft.start?.toLocalDate() ?: return null
+            return draft.repeat?.takeIf { showsRepeats }?.alignedTo(date, date)
+        }
+
+    /** The Repeats row's value ("Doesn't repeat", "Every Tue and Thu"), or null while the row doesn't show. */
+    val repeatsValue: String? get() = if (showsRepeats) PlanRepeatWords.rowValue(repeat) else null
+
+    /** The preview's line: "Every Tue and Thu until Feb 4". */
+    val repeatLine: String?
+        get() {
+            val date = draft.start?.toLocalDate() ?: return null
+            return repeat?.let { PlanRepeatWords.draftLine(it, date) }
+        }
+
+    /** What the Repeats screen opens with: the draft's start and end, its kind, and the pattern so far. */
+    val repeatSetup: PlanRepeatSetup?
+        get() {
+            val start = draft.start ?: return null
+            return PlanRepeatSetup(start = start, end = draft.end, kind = draft.kind?.wire, walkKind = draft.walkKind, initial = repeat)
+        }
+
     /** "Who can see this" shows: the switch is on and the plan is the person's own (a business's plan is never private). */
     val showsAudience: Boolean get() = privateOn && business == null
 
@@ -246,6 +282,7 @@ class HostFlowViewModel
                     hostAvatar = feature.viewer?.avatarUrl,
                     privateOn = feature.flags.value.privateOn,
                     privateChoice = feature.flags.value.privateOn && savedStateHandle.get<Boolean>(PlansRoutes.PRIVATE_KEY) == true,
+                    repeatOn = feature.flags.value.repeatOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -516,6 +553,18 @@ class HostFlowViewModel
                     }
                 _ui.update { it.copy(invitePeople = next) }
             }
+        }
+
+        // ---- Repeats (Plans step 2) ----
+
+        /** The Repeats row: the Repeats screen over the details. */
+        fun openRepeats() {
+            if (_ui.value.showsRepeats && _ui.value.draft.start != null) _ui.update { it.copy(repeatsOpen = true, error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen: its pattern, or null for "Doesn't repeat". */
+        fun closeRepeats(pattern: PlanRepeatPattern?) {
+            _ui.update { it.copy(repeatsOpen = false, draft = it.draft.copy(repeat = pattern), error = null) }
         }
 
         // ---- H6 ----
@@ -859,6 +908,11 @@ class HostFlowViewModel
                     feature.refresh()
                     "Private plans aren't available right now. Choose Anyone nearby to post it."
                 }
+                "repeat_unavailable" -> {
+                    // The same for Repeats (Plans step 2): the row stays, so the host can choose "Doesn't repeat".
+                    feature.refresh()
+                    error.planMessage
+                }
                 else -> error.planMessage
             }
 
@@ -911,6 +965,8 @@ class HostFlowViewModel
                 guestNote = draft.note.trim().takeIf(String::isNotEmpty),
                 gps = gps,
                 hostedAgainFrom = againFrom,
+                // How it repeats (Plans step 2): left out for a plan that doesn't, as before.
+                repeat = ui.repeat?.toInput(),
                 // A private plan (Plans step 1); a plan anyone nearby can see sends none of these, as before.
                 audience = PlanAudience.INVITED.takeIf { invitedOnly },
                 guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },

@@ -47,6 +47,7 @@ import app.pantopus.android.ui.screens.plans.host.PlacePickerState
 import app.pantopus.android.ui.screens.plans.host.PublicPlacePicker
 import app.pantopus.android.ui.screens.plans.host.placeCaption
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatsScreen
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -67,6 +68,12 @@ fun PlanChangeScreen(
     LaunchedEffect(ui.saved) { if (ui.saved) onDone() }
     if (ui.picking) {
         ChangePlacePicker(ui, viewModel)
+        return
+    }
+    // The Repeats screen (Plans step 2) over this one; Back and Done come back here, and Save sends the choice.
+    val repeatSetup = ui.repeatSetup
+    if (ui.repeatsOpen && repeatSetup != null) {
+        PlanRepeatsScreen(setup = repeatSetup, onDone = viewModel::closeRepeats)
         return
     }
     val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
@@ -101,6 +108,8 @@ fun PlanChangeScreen(
                 onStart = viewModel::setStart,
                 onEnd = viewModel::setEnd,
                 startHighlighted = ui.start != ui.originalStart,
+                repeats = ui.repeatsValue,
+                onRepeats = viewModel::openRepeats,
             )
             if (was != null && ui.start != ui.originalStart) {
                 Text(text = "Was $was", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
