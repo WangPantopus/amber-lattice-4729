@@ -44,6 +44,8 @@ import app.pantopus.android.data.store.StoreKeys
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.data.store.Stored
 import kotlinx.coroutines.delay
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import retrofit2.Response
 import javax.inject.Inject
@@ -359,6 +361,28 @@ class PlansRepository
             note: String?,
         ): NetworkResult<Unit> = write(id, chats = true) { api.cancel(id, CancelPlanBody(note?.takeIf(String::isNotBlank))) }
 
+        /**
+         * Cancels this date of a repeating plan only and posts the next one now (Plans step 2: "Skip Thursday", "Cancel
+         * this date"). Success carries the next date's id, or null when the series is over.
+         */
+        suspend fun cancelThisDate(
+            id: String,
+            note: String?,
+        ): NetworkResult<String?> {
+            val body = CancelPlanBody(note?.takeIf(String::isNotBlank), repeat = REPEAT_KEEP)
+            return when (val result = write(id, chats = true) { api.cancelThisDate(id, body) }) {
+                is NetworkResult.Success -> NetworkResult.Success(result.data.nextPlanId?.takeIf(String::isNotBlank))
+                is NetworkResult.Failure -> result
+            }
+        }
+
+        /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> {
+            val session = cacheSession()
+            val body = STOP_REPEATING_JSON.toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.stopRepeating(id, body) }.also { rememberResult(it, session) }
+        }
+
         suspend fun ask(
             id: String,
             body: AskToJoinBody,
@@ -635,6 +659,9 @@ class PlansRepository
         private companion object {
             const val CARD_CACHE = 64
             const val GPS_MAX_AGE_SECONDS = 300L
+            const val REPEAT_KEEP = "keep"
+            const val STOP_REPEATING_JSON = "{\"repeat\":null}"
+            const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }
 

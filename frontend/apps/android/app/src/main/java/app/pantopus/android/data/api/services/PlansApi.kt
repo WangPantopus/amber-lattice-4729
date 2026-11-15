@@ -11,6 +11,7 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import app.pantopus.android.data.api.models.plans.HostAsResponse
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanCancelReply
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -33,6 +34,7 @@ import app.pantopus.android.data.api.models.plans.PlansListResponse
 import app.pantopus.android.data.api.models.plans.PublicPlanDto
 import app.pantopus.android.data.api.models.plans.StillComingBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -150,6 +152,26 @@ interface PlansApi {
         @Path("id") id: String,
         @Body body: CancelPlanBody,
     ): Unit
+
+    /**
+     * `POST /api/plans/:id/cancel` with `repeat: "keep"` (Plans step 2): cancels this date of a repeating plan only and
+     * posts the next one now; the answer carries `next_plan_id`. Route `backend/routes/plans.js:299`.
+     */
+    @POST("api/plans/{id}/cancel")
+    suspend fun cancelThisDate(
+        @Path("id") id: String,
+        @Body body: CancelPlanBody,
+    ): PlanCancelReply
+
+    /**
+     * `PATCH /api/plans/:id` with exactly `{"repeat":null}` (Plans step 2): stops the series; this date stays and none
+     * follows. A raw body, because [UpdatePlanBody] leaves nulls out.
+     */
+    @PATCH("api/plans/{id}")
+    suspend fun stopRepeating(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): PlanDto
 
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")

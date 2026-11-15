@@ -69,6 +69,23 @@ class PlansEvents
             if (_posted.value == planId) _posted.value = null
         }
 
+        @Volatile private var arrivalNote: Pair<String, String>? = null
+
+        /** A line for [planId]'s page to say when it opens (Plans step 2: a skipped date opens the next one, which says so). */
+        fun noteOnArrival(
+            planId: String,
+            note: String,
+        ) {
+            arrivalNote = planId to note
+        }
+
+        /** The line [noteOnArrival] left for [planId]'s page, once. */
+        fun takeArrivalNote(planId: String): String? {
+            val pending = arrivalNote?.takeIf { it.first == planId } ?: return null
+            arrivalNote = null
+            return pending.second
+        }
+
         /** The plan whose page is on screen (set while it's resumed), for push suppression. */
         @Volatile
         var viewedPlanId: String? = null
