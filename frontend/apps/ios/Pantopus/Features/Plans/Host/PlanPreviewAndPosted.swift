@@ -175,6 +175,10 @@ struct PlanPreviewScreen: View {
 
 struct PlanPostedScreen: View {
     let plan: PlanDetailDTO
+    /// A private plan's preview asked for "Text a link" or "Email": the invite sheet opens over this screen.
+    var opensInvite = false
+    /// A private plan posted with people chosen: the invitations that didn't go (the server's words, or how many).
+    var inviteProblem: String?
     let onSeePlan: () -> Void
     let onDone: () -> Void
 
@@ -195,6 +199,7 @@ struct PlanPostedScreen: View {
         }
         .sensoryFeedback(.success, trigger: landed)
         .onAppear(perform: drop)
+        .task { if opensInvite, plan.card.invites?.canInvite == true { showsInvite = true } }
         .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPosted")
@@ -242,14 +247,23 @@ struct PlanPostedScreen: View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             Capsule().fill(Theme.Color.appBorderStrong).frame(width: 36, height: 5).frame(maxWidth: .infinity).padding(.top, Spacing.s2)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Your plan is on the map")
+                Text(plan.card.isPrivate ? "Your plan is posted" : "Your plan is on the map")
                     .planFont(.h2)
                     .foregroundStyle(Theme.Color.appText)
                     .accessibilityAddTraits(.isHeader)
-                Text("People nearby can see it now. We'll tell you when someone asks to join.")
+                Text(plan.card.isPrivate
+                    ? "Only the people you invite can see it. We'll tell you when they say they're in."
+                    : "People nearby can see it now. We'll tell you when someone asks to join.")
                     .planFont(.body)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let inviteProblem {
+                    Text(inviteProblem)
+                        .planFont(.small)
+                        .foregroundStyle(Theme.Color.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("planInviteProblem")
+                }
             }
             PlanCardBox(padding: Spacing.s4) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -275,7 +289,8 @@ struct PlanPostedScreen: View {
                             .planButton(.secondary, size: .small)
                             .accessibilityIdentifier("planPostedInvite")
                         }
-                        if let url = plan.card.shareUrl.flatMap(URL.init(string:)) {
+                        // A private plan is shared by invitation only (Plans step 1).
+                        if !plan.card.isPrivate, let url = plan.card.shareUrl.flatMap(URL.init(string:)) {
                             ShareLink(item: url, message: Text(plan.card.title)) {
                                 PlanButtonLabel(title: "Share link", icon: .share, kind: .secondary)
                             }

@@ -30,8 +30,12 @@ struct PlanDetailsForm: View {
                     if model.kind == .walkCoffee { PlanWalkExtras(model: model) }
                     when
                     if model.isBusiness { PlanBusinessWhereField(model: model) } else { whereSection }
+                    if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow
-                    if model.isBusiness { PlanWhoGetsInField(model: model) } else { approvalSection }
+                    // A private plan's people get in right away: "Guests can bring a friend" instead (board Details).
+                    if model.isBusiness { PlanWhoGetsInField(model: model) } else if model.isPrivate {
+                        PlanGuestsCanInviteRow(model: model)
+                    } else { approvalSection }
                     if model.kind == .pickupGame { gearSwitch }
                     noteField
                     if model.kind == .watchParty || model.isBusiness { aboutField }
@@ -85,8 +89,8 @@ struct PlanDetailsForm: View {
                         label: "Starts",
                         date: $model.start,
                         components: [.date, .hourAndMinute],
-                        // A business plans up to 60 days ahead (its limits); a neighbor 14.
-                        range: Date()...Date().addingTimeInterval(TimeInterval(model.hostAs?.limits.daysAhead ?? 14) * 86400)
+                        // A business plans up to 60 days ahead (its limits), a private plan 60; a person's public plan 14.
+                        range: Date()...Date().addingTimeInterval(TimeInterval(model.daysAhead) * 86400)
                     )
                     Divider().overlay(Theme.Color.appBorder)
                 }
@@ -147,7 +151,7 @@ struct PlanDetailsForm: View {
                     }
                     .padding(.vertical, 10)
                 }
-                PlanScopeLine(text: "Only people you accept see your address. Everyone else sees the area.")
+                PlanScopeLine(text: PlanPrivateCopy.homeLine(isPrivate: model.isPrivate))
             } else {
                 Button { showsPlacePicker = true } label: {
                     PlanFormCard {

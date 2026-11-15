@@ -221,6 +221,8 @@ struct PlansMapActions {
     var openConnections: (@MainActor () -> Void)?
     /// "Ask Pantopus" about plans (the header's trailing button), the assistant over the tab.
     var ask: (@MainActor () -> Void)?
+    /// "Plan with people you know" (Plans step 1): the host flow on "Only people I invite".
+    var hostPrivate: (@MainActor () -> Void)?
 }
 
 /// Where the composer starts: a kind, and for a watch party maybe a game.

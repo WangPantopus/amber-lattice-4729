@@ -7,7 +7,8 @@
 //  libraries, sports and more). Only a labeled place can be chosen, never a
 //  dropped pin, which could land on someone's home: within 3 miles of where
 //  the picker looks from (the circle), and not at one of the host's homes
-//  (the server refuses that too). As on Android (PlaceMapPick).
+//  (the server refuses that too). As on Android (PlaceMapPick). A private
+//  plan can be anywhere (Plans step 1): no circle and no 3-mile refusal.
 //
 
 import MapKit
@@ -17,6 +18,8 @@ struct PlanPlaceMapPick: View {
     let kind: PlanKind
     let center: UserCoordinate
     let homes: [(latitude: Double, longitude: Double)]
+    /// A private plan: any place the map shows, however far.
+    let anywhere: Bool
     let onUse: (PlanPlaceOptionDTO) -> Void
     let onClose: () -> Void
 
@@ -30,12 +33,14 @@ struct PlanPlaceMapPick: View {
         kind: PlanKind,
         center: UserCoordinate,
         homes: [(latitude: Double, longitude: Double)],
+        anywhere: Bool = false,
         onUse: @escaping (PlanPlaceOptionDTO) -> Void,
         onClose: @escaping () -> Void
     ) {
         self.kind = kind
         self.center = center
         self.homes = homes
+        self.anywhere = anywhere
         self.onUse = onUse
         self.onClose = onClose
         _camera = State(initialValue: .region(MKCoordinateRegion(
@@ -48,9 +53,11 @@ struct PlanPlaceMapPick: View {
     var body: some View {
         Map(position: $camera, selection: $selection) {
             UserAnnotation()
-            MapCircle(center: CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude), radius: Self.reachMeters)
-                .foregroundStyle(kind.color.opacity(0.06))
-                .stroke(kind.color.opacity(0.5), lineWidth: 1.5)
+            if !anywhere {
+                MapCircle(center: CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude), radius: Self.reachMeters)
+                    .foregroundStyle(kind.color.opacity(0.06))
+                    .stroke(kind.color.opacity(0.5), lineWidth: 1.5)
+            }
         }
         .mapStyle(.standard(pointsOfInterest: .including(Self.categories(for: kind))))
         .mapFeatureSelectionDisabled { $0.kind != .pointOfInterest }
@@ -86,7 +93,7 @@ struct PlanPlaceMapPick: View {
     }
 
     private var hint: some View {
-        Text("Tap a park, café or other place the map shows, within 3 miles of you.")
+        Text(anywhere ? PlanPrivateCopy.mapPickHint : "Tap a park, café or other place the map shows, within 3 miles of you.")
             .planFont(.small)
             .foregroundStyle(Theme.Color.appTextSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -144,7 +151,7 @@ struct PlanPlaceMapPick: View {
             CLLocation(latitude: home.latitude, longitude: home.longitude).distance(from: spot) <= PlanHereNow.homeGuardMeters
         }
         if atHome { return "That's your home. Choose a public place nearby." }
-        if meters > Self.reachMeters { return "That's more than 3 miles from you. Choose a place closer by." }
+        if meters > Self.reachMeters, !anywhere { return "That's more than 3 miles from you. Choose a place closer by." }
         return nil
     }
 
@@ -244,6 +251,23 @@ struct PlanPlaceMapPickRow: View {
 }
 
 extension View {
+    /// The map pick for a draft: its kind, the host's homes, and whether it's private (anywhere).
+    func planPlaceMapPick(
+        isPresented: Binding<Bool>,
+        model: PlanComposerModel,
+        center: UserCoordinate?,
+        onPicked: @escaping (PlanPlaceOptionDTO) -> Void
+    ) -> some View {
+        planPlaceMapPick(
+            isPresented: isPresented,
+            kind: model.kind,
+            center: center,
+            homes: model.homePoints,
+            anywhere: model.isPrivate,
+            onPicked: onPicked
+        )
+    }
+
     /// Shows the map pick over H6. The place the host used reaches `onPicked` once the map has
     /// closed, so H6 can close in turn.
     func planPlaceMapPick(
@@ -251,9 +275,17 @@ extension View {
         kind: PlanKind,
         center: UserCoordinate?,
         homes: [(latitude: Double, longitude: Double)],
+        anywhere: Bool = false,
         onPicked: @escaping (PlanPlaceOptionDTO) -> Void
     ) -> some View {
-        modifier(PlanPlaceMapPickPresenter(isPresented: isPresented, kind: kind, center: center, homes: homes, onPicked: onPicked))
+        modifier(PlanPlaceMapPickPresenter(
+            isPresented: isPresented,
+            kind: kind,
+            center: center,
+            homes: homes,
+            anywhere: anywhere,
+            onPicked: onPicked
+        ))
     }
 }
 
@@ -262,6 +294,7 @@ private struct PlanPlaceMapPickPresenter: ViewModifier {
     let kind: PlanKind
     let center: UserCoordinate?
     let homes: [(latitude: Double, longitude: Double)]
+    let anywhere: Bool
     let onPicked: (PlanPlaceOptionDTO) -> Void
 
     @State private var picked: PlanPlaceOptionDTO?
@@ -273,6 +306,7 @@ private struct PlanPlaceMapPickPresenter: ViewModifier {
                     kind: kind,
                     center: center,
                     homes: homes,
+                    anywhere: anywhere,
                     onUse: { place in
                         picked = place
                         isPresented = false

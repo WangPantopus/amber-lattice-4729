@@ -3,8 +3,9 @@
 //  Pantopus
 //
 //  Board F4 "Nothing planned yet": the next game as a watch-party nudge,
-//  the other kinds to start, and "Invite a friend". Board F5 "See plans
-//  near you": the location ask, with the home as the other choice.
+//  "Plan with people you know" (a private plan, with `plans_private`), the
+//  other kinds to start, and "Invite a friend". Board F5 "See plans near
+//  you": the location ask, with the home as the other choice.
 //
 
 import SwiftUI
@@ -35,6 +36,9 @@ struct PlansEmptyCard: View {
                     watchNudge
                 }
                 .plansSheetPeek(.empty)
+                if flags.privatePlans, let hostPrivate = actions.hostPrivate {
+                    PlanPrivateStartRow(action: hostPrivate).hiddenUnderPlansTabBar()
+                }
                 Text("Or start something else")
                     .planFont(.small)
                     .foregroundStyle(Theme.Color.appTextSecondary)

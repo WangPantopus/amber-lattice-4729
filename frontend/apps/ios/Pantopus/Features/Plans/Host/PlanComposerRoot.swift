@@ -21,8 +21,11 @@ struct PlanComposerRoot: View {
     /// The posted plan's id to open, or nil to go back to the map.
     let onFinish: (String?) -> Void
 
-    init(start: PlansHostStart?, onFinish: @escaping (String?) -> Void) {
-        _model = State(initialValue: PlanComposerModel(start: start))
+    /// `isPrivate`: the empty state's "Plan with people you know" opens on "Only people I invite" (board Main).
+    init(start: PlansHostStart?, isPrivate: Bool = false, onFinish: @escaping (String?) -> Void) {
+        let model = PlanComposerModel(start: start)
+        if isPrivate { model.privacy.audience = .invited }
+        _model = State(initialValue: model)
         // "Host again" (A5) opens on the preview of the same plan next week.
         _path = State(initialValue: start?.again != nil ? [.preview] : [])
         self.onFinish = onFinish
@@ -37,7 +40,13 @@ struct PlanComposerRoot: View {
                 // Posted as a business (board B3): bring your regulars.
                 PlanBusinessPostedScreen(plan: posted, onSeePlan: { onFinish(posted.id) }, onDone: { onFinish(nil) })
             } else if let posted = model.posted {
-                PlanPostedScreen(plan: posted, onSeePlan: { onFinish(posted.id) }, onDone: { onFinish(nil) })
+                PlanPostedScreen(
+                    plan: posted,
+                    opensInvite: model.privacy.opensInviteSheet,
+                    inviteProblem: model.privacy.inviteProblem,
+                    onSeePlan: { onFinish(posted.id) },
+                    onDone: { onFinish(nil) }
+                )
             } else {
                 NavigationStack(path: $path) {
                     Group {
@@ -77,9 +86,15 @@ struct PlanComposerRoot: View {
                             .readableColumn()
                             .toolbar(.hidden, for: .navigationBar)
                         case .preview:
-                            PlanPreviewScreen(model: model, step: "3 of 3") { path.removeLast() }
-                                .readableColumn()
-                                .toolbar(.hidden, for: .navigationBar)
+                            Group {
+                                if model.isPrivate {
+                                    PlanPrivatePreviewScreen(model: model, step: "3 of 3") { path.removeLast() }
+                                } else {
+                                    PlanPreviewScreen(model: model, step: "3 of 3") { path.removeLast() }
+                                }
+                            }
+                            .readableColumn()
+                            .toolbar(.hidden, for: .navigationBar)
                         }
                     }
                 }
