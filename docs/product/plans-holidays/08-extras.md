@@ -512,6 +512,33 @@ after it, none.
   leaves.
 - These lean on several refunds in part on one payment, which the build's
   first check found broken and which is fixed first (contract 10.4).
+- **The business removes someone** (added November 16 after the coordinator
+  read server PR 4255; a removal always refunds, whenever it happens).
+  Removing the buyer works as the buyer's own leave: the buyer gets back
+  their own spot and the spots nobody took, the link stops, and the claimers
+  stay in, paid for. Removing a claimer: while the link is live the spot goes
+  back to the link; once the link has stopped, that spot's price goes back to
+  the buyer at once.
+
+**Built, and what is still open** (server PR 4255, November 16). On `dev`
+behind `plans_group_pay`: the buy in one payment with the buyer's own spot
+among them, the link at `/plan-link/<id>?spot=<token>`, the claim, the
+give-back, the refund at `refund_until`, and the buyer's leave. A claim is
+refused for someone the plan is not shown to; the web page buys one spot and
+buying for a group is in the apps; no funnel event was added. The
+coordinator's read found five gaps, sent to the server session as one
+follow-up; until it is merged this extra is not done:
+
+1. A claimer who leaves after the link stopped and before `refund_until`
+   sends nothing back to the buyer.
+2. The business removing the buyer returns the whole payment while the
+   claimers stay in, unpaid.
+3. The business removing a claimer after the link stopped sends nothing back
+   to the buyer.
+4. An owed refund is kept one a payment, so a second owed refund of a part
+   would replace the first.
+5. A refund's request key is built from its reason, so two refunds for the
+   same reason on one payment (two claimers leaving) would be taken for one.
 
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
