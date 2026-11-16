@@ -125,14 +125,18 @@ data class PlansMapUiState(
     val isEmpty: Boolean
         get() = listStatus == PlansListStatus.Loaded && list.isEmpty() && pins.isEmpty() && mineShown.isEmpty() && !hostFiltered
 
-    /** Every plan of the viewer's: invitations waiting for an answer first (as on iOS), then soonest first. */
+    /**
+     * Every plan of the viewer's: invitations waiting for an answer first (as on iOS), then soonest first. Under "Yours"
+     * (Plans for the holidays, board 1) all of them soonest first.
+     */
     val mineAll: List<PlanDto>
         get() {
             val open = { plan: PlanDto -> plan.planState != PlanState.CANCELLED && plan.planState != PlanState.ENDED }
             val soonest = compareBy<PlanDto> { PlanFormat.instant(it.startsAt) ?: Instant.MAX }
             val invited = mine?.invited.orEmpty().filter(open).sortedWith(soonest)
             val others = mine?.let { it.hosting + it.going + it.asked + it.waitlisted }.orEmpty().filter(open).sortedWith(soonest)
-            return (invited + others).distinctBy { it.id }
+            val all = (invited + others).distinctBy { it.id }
+            return if (flags.guestAnswersOn) all.sortedWith(soonest) else all
         }
 
     /** The viewer's own plans of the kind the chips show ("Your plans" follows the filters like the map). */

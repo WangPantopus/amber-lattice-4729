@@ -144,6 +144,9 @@ data class PlanPersonDto(
     @Json(name = "reconfirm_needed") val reconfirmNeeded: Boolean? = null,
     @Json(name = "kids_count") val kidsCount: Int? = null,
     @Json(name = "kids_age_bands") val kidsAgeBands: List<String>? = null,
+    /** Plans for the holidays (`guests=1`): a guest without an account who is in, by their invitation's id. */
+    @Json(name = "guest_id") val guestId: String? = null,
+    @Json(name = "guest") val isGuest: Boolean = false,
 )
 
 /** `my_request`: the viewer's own request, once they have one. */
@@ -283,6 +286,31 @@ data class PlanDto(
     @Json(name = "invite_results") val inviteResults: List<PlanInviteResultDto>? = null,
     /** Posting a private plan: the invitations couldn't be sent at all (the plan is posted either way), in words to show. */
     @Json(name = "invite_error") val inviteError: String? = null,
+    // Plans for the holidays, H1 (contract 6.5), with `guests=1`; absent from an older server.
+    /** Guests say how many adults and how many kids. */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
+    @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
+    /** The host only: how many people said I'm in, Maybe, or haven't answered. */
+    @Json(name = "answers") val answers: PlanAnswersDto? = null,
+)
+
+/** `headcount` on a plan card and on the host's invitation list (Plans for the holidays, contract 6.4 and 6.5). */
+@JsonClass(generateAdapter = true)
+data class PlanHeadcountDto(
+    @Json(name = "adults") val adults: Int = 0,
+    @Json(name = "kids") val kids: Int = 0,
+) {
+    /** Everyone coming: adults and kids. */
+    val total: Int get() = adults + kids
+}
+
+/** `answers` on the host's card (Plans for the holidays, contract 6.5), counted in people. */
+@JsonClass(generateAdapter = true)
+data class PlanAnswersDto(
+    @Json(name = "in") val isIn: Int = 0,
+    @Json(name = "maybe") val maybe: Int = 0,
+    @Json(name = "no_answer") val noAnswer: Int = 0,
 )
 
 /**
@@ -493,6 +521,8 @@ data class CreatePlanBody(
     @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
     /** A private plan only: up to 30 people (from `GET /api/plans/invites/people`) invited as it is posted. */
     @Json(name = "invite_user_ids") val inviteUserIds: List<String>? = null,
+    /** Plans for the holidays, H1: guests say how many adults and kids (a private plan, sent only while it's on). */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
@@ -521,6 +551,8 @@ data class UpdatePlanBody(
      * checks the host is nearby by their home, else this. Never for a private plan.
      */
     @Json(name = "gps") val gps: PlanGpsInput? = null,
+    /** Plans for the holidays, H1: guests say how many adults and kids (null leaves it as it is). */
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */

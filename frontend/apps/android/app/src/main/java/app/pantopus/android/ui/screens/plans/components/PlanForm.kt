@@ -5,6 +5,10 @@ package app.pantopus.android.ui.screens.plans.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,21 +30,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -58,6 +70,9 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -399,13 +414,15 @@ fun PlanStepperRow(
     range: IntRange,
     onChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Holding the plus steps to the next multiple of this (Plans for the holidays' "Room for": 5); 1 leaves holding out. */
+    holdStep: Int = 1,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
             Text(text = title, style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold), color = PantopusColors.appText)
             caption?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
         }
-        PlanStepperControl(value = value, range = range, label = title, onChange = onChange)
+        PlanStepperControl(value = value, range = range, label = title, onChange = onChange, holdStep = holdStep)
     }
 }
 
@@ -416,6 +433,8 @@ fun PlanStepperControl(
     range: IntRange,
     label: String,
     onChange: (Int) -> Unit,
+    /** Holding the plus goes to the next multiple of this, again every quarter second; 1 leaves holding out. */
+    holdStep: Int = 1,
 ) {
     Row(
         modifier =
@@ -435,7 +454,18 @@ fun PlanStepperControl(
             color = PantopusColors.appText,
             modifier = Modifier.padding(horizontal = Spacing.s2).clearAndSetSemantics { contentDescription = "$label: $value" },
         )
-        StepperButton(PantopusIcon.Plus, "One more", enabled = value < range.last) { onChange(value + 1) }
+        if (holdStep > 1) {
+            StepperButton(
+                icon = PantopusIcon.Plus,
+                label = "One more",
+                enabled = value < range.last,
+                // Holding goes to the next multiple of [holdStep] (12, 15, 20…), as on iPhone.
+                onHold = { onChange(((value / holdStep + 1) * holdStep).coerceAtMost(range.last)) },
+                holdLabel = "$holdStep more",
+            ) { onChange(value + 1) }
+        } else {
+            StepperButton(PantopusIcon.Plus, "One more", enabled = value < range.last) { onChange(value + 1) }
+        }
     }
 }
 
@@ -444,19 +474,46 @@ private fun StepperButton(
     icon: PantopusIcon,
     label: String,
     enabled: Boolean,
+    /** Called again and again while the button is held (after half a second); null: a tap only. */
+    onHold: (() -> Unit)? = null,
+    /** TalkBack's action for [onHold] ("5 more"). */
+    holdLabel: String? = null,
     onClick: () -> Unit,
 ) {
+    val press =
+        if (onHold != null) {
+            Modifier.holdToRepeat(enabled = enabled, onClick = onClick, onHold = onHold)
+        } else {
+            Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        }
     Box(
         modifier =
             Modifier
                 .padding(vertical = 2.dp)
                 .clip(RoundedCornerShape(9.dp))
                 .background(PantopusColors.appSurfaceSunken)
-                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .then(press)
                 .padding(Spacing.s3)
                 .clearAndSetSemantics {
                     contentDescription = label
                     role = Role.Button
+                    // Held buttons have no clickable of their own: TalkBack's tap and "5 more" come from here.
+                    if (onHold != null && !enabled) disabled()
+                    if (onHold != null && enabled) {
+                        onClick(label = label) {
+                            onClick()
+                            true
+                        }
+                    }
+                    if (onHold != null && holdLabel != null && enabled) {
+                        customActions =
+                            listOf(
+                                CustomAccessibilityAction(holdLabel) {
+                                    onHold()
+                                    true
+                                },
+                            )
+                    }
                 },
         contentAlignment = Alignment.Center,
     ) {
@@ -506,4 +563,74 @@ fun PlanTextArea(
             }
         },
     )
+}
+
+private const val HOLD_START_MS = 500L
+private const val HOLD_REPEAT_MS = 250L
+
+/**
+ * A tap calls [onClick]; holding past half a second calls [onHold] at once and every quarter second until the finger
+ * lifts (no tap then). The press ripples as a click's does.
+ */
+@Composable
+private fun Modifier.holdToRepeat(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    onHold: () -> Unit,
+): Modifier {
+    val click by rememberUpdatedState(onClick)
+    val hold by rememberUpdatedState(onHold)
+    val interactions = remember { MutableInteractionSource() }
+    val scope = rememberCoroutineScope()
+    return this
+        .indication(interactions, ripple())
+        .pointerInput(enabled) {
+            if (!enabled) return@pointerInput
+            detectTapGestures(
+                onPress = { offset ->
+                    val pressed = PressInteraction.Press(offset)
+                    interactions.emit(pressed)
+                    var held = false
+                    val repeat =
+                        scope.launch {
+                            delay(HOLD_START_MS)
+                            held = true
+                            while (isActive) {
+                                hold()
+                                delay(HOLD_REPEAT_MS)
+                            }
+                        }
+                    val lifted = tryAwaitRelease()
+                    repeat.cancel()
+                    interactions.emit(if (lifted) PressInteraction.Release(pressed) else PressInteraction.Cancel(pressed))
+                    if (lifted && !held) click()
+                },
+            )
+        }
+}
+
+/** At or above this font scale two buttons side by side stack instead, so neither label is cut. */
+private const val STACK_FONT_SCALE = 1.5f
+
+/**
+ * Two buttons side by side, each half the width ("Maybe" / "Can't make it", "Not this time" / "Let in", "Copy link" /
+ * "Share"); at the largest text sizes they stack, full width, so their words stay whole. Each slot gets the modifier to
+ * put on its button.
+ */
+@Composable
+fun PlanButtonPair(
+    first: @Composable (Modifier) -> Unit,
+    second: @Composable (Modifier) -> Unit,
+) {
+    if (LocalDensity.current.fontScale >= STACK_FONT_SCALE) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            first(Modifier.fillMaxWidth())
+            second(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            first(Modifier.weight(1f))
+            second(Modifier.weight(1f))
+        }
+    }
 }
