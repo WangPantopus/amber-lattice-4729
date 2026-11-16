@@ -207,9 +207,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var businessLocationId: String?
     /// Repeating plans (step 2): a new pattern from this date on, or `.stop` (sent as `null`). Nil leaves it.
     public var repeatChange: PlanRepeatChange?
+    /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
+    public var kidsWelcome: Bool?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label
+        case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"

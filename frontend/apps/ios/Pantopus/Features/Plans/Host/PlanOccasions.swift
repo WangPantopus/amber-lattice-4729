@@ -96,6 +96,8 @@ extension PlanComposerModel {
         if fills.audience == .invited, offersPrivate { privacy.audience = .invited }
         if fills.placeKind == "home", canHostAtHome { setWhere(.home) }
         if fills.kidsWelcome, offersGuestAnswers { privacy.kidsWelcome = true }
+        // The occasion's room (server #4227), within what this form allows once who it's for is set.
+        if let room = fills.spots, room > 0 { spots = min(room, spotsLimit) }
         if let bring = fills.bring, offersBringList, !bring.labels.isEmpty {
             privacy.bring = PlanBringEditor(labels: bring.labels, guestsCanAdd: bring.guestsCanAdd)
         }

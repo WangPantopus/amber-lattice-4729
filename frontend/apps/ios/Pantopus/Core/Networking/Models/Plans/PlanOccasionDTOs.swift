@@ -41,12 +41,14 @@ public struct PlanOccasionFillsDTO: Decodable, Sendable, Hashable {
     public let audience: PlanAudience?
     public let placeKind: String?
     public let kidsWelcome: Bool
+    /// The room it starts with (12, or 20 for a holiday party and New Year's Eve); nil from an older server.
+    public let spots: Int?
     public let bring: PlanOccasionBringDTO?
     public let startsAt: String?
     public let endsAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case title, audience, bring
+        case title, audience, bring, spots
         case placeKind = "place_kind"
         case kidsWelcome = "kids_welcome"
         case startsAt = "starts_at"
@@ -59,6 +61,7 @@ public struct PlanOccasionFillsDTO: Decodable, Sendable, Hashable {
         audience = try? container.decodeIfPresent(PlanAudience.self, forKey: .audience)
         placeKind = try? container.decodeIfPresent(String.self, forKey: .placeKind)
         kidsWelcome = (try? container.decodeIfPresent(Bool.self, forKey: .kidsWelcome)) ?? false
+        spots = try? container.decodeIfPresent(Int.self, forKey: .spots)
         bring = try? container.decodeIfPresent(PlanOccasionBringDTO.self, forKey: .bring)
         startsAt = try? container.decodeIfPresent(String.self, forKey: .startsAt)
         endsAt = try? container.decodeIfPresent(String.self, forKey: .endsAt)
