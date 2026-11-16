@@ -1463,7 +1463,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     plan_id: postId, kind: plan.kind, status: request.status, ...(plan.business_user_id ? { business: true, way_in: row.way_in } : {}),
   } });
   if (request.status === 'paying') {
-    const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis, payment_id: null }, viewer.id);
+    const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis,
+      hold_expires_at: row.hold_expires_at, payment_id: null }, viewer.id);
     return { status: mine ? 200 : 201, body: { ...(await requestResult(postId, viewer, request.id)), payment } };
   }
   if (invite) await planInvites.markAccepted(plan, viewer.id, request);

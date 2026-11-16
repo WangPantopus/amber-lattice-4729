@@ -254,7 +254,8 @@ async function paymentFor(plan, request, payerId) {
       paymentType: 'plan_payment',
       metadata: { type: 'plan_payment', plan_id: plan.post_id, request_id: request.id, business_user_id: plan.business_user_id },
       description: `Pantopus plan spot - ${plan.post.title}`.slice(0, 200),
-      idempotencyKey: `plan-spot:${request.id}:${request.payment_id || attempt}`,
+      // One key a hold: a fresh hold after one ran out must not get back the first, cancelled payment.
+      idempotencyKey: `plan-spot:${request.id}:${request.hold_expires_at ? new Date(request.hold_expires_at).getTime() : 'no-hold'}:${request.payment_id || attempt}`,
       sale: { soldType: 'plan_spot', soldId: request.id, basis: request.fee_basis, payoutAfter: new Date(end + PAYOUT_AFTER_MS).toISOString() },
     });
     if (!made?.success) throw new Error('The payment could not be started');
