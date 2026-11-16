@@ -74,6 +74,8 @@ struct PlanGoingSection: View {
             .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(card.kind.tint))
             .accessibilityElement(children: .combine)
         }
+        // Board 20: the bring list for someone who is in.
+        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring) }
         HStack(spacing: Spacing.s2) {
             if !card.isOnline { // nowhere to go for an online plan
                 Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
@@ -205,8 +207,9 @@ struct PlanHostingSection: View {
     let onConfirm: (PlanConfirmation) -> Void
     /// A guest's profile, from their row.
     let onOpenProfile: (String) -> Void
-    /// Plans for the holidays (board 4): the counts and the people line open "Who's coming".
+    /// Plans for the holidays (board 4): the counts and the people line open "Who's coming"; the bring card its list.
     var onOpenGuests: () -> Void = {}
+    var onOpenBring: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -257,6 +260,7 @@ struct PlanHostingSection: View {
             } else {
                 going
             }
+            if let bring = card.bring { PlanBringHostCard(bring: bring, onOpen: onOpenBring) }
             // Side by side; one under another when the words don't fit beside each other (the largest text).
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) { hostButtons }

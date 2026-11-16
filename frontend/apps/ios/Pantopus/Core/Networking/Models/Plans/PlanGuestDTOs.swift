@@ -69,20 +69,33 @@ public struct PlanCardGuestsPart: Decodable, Sendable, Hashable {
     public let kidsWelcome: Bool
     public let headcount: PlanHeadcountDTO?
     public let answers: PlanAnswerCountsDTO?
+    /// H2: the bring list, while the host has `plans_bring_list` (no marker needed).
+    public let bring: PlanBringDTO?
+    /// H3: the occasion the plan was started from; its tag reads `text`.
+    public let occasion: PlanCardOccasionDTO?
 
     /// What every card from a server before H1 is.
-    static let none = PlanCardGuestsPart(isOn: false, kidsWelcome: false, headcount: nil, answers: nil)
+    static let none = PlanCardGuestsPart(isOn: false, kidsWelcome: false, headcount: nil, answers: nil, bring: nil, occasion: nil)
 
     enum CodingKeys: String, CodingKey {
-        case headcount, answers
+        case headcount, answers, bring, occasion
         case kidsWelcome = "kids_welcome"
     }
 
-    init(isOn: Bool, kidsWelcome: Bool, headcount: PlanHeadcountDTO?, answers: PlanAnswerCountsDTO?) {
+    init(
+        isOn: Bool,
+        kidsWelcome: Bool,
+        headcount: PlanHeadcountDTO?,
+        answers: PlanAnswerCountsDTO?,
+        bring: PlanBringDTO?,
+        occasion: PlanCardOccasionDTO?
+    ) {
         self.isOn = isOn
         self.kidsWelcome = kidsWelcome
         self.headcount = headcount
         self.answers = answers
+        self.bring = bring
+        self.occasion = occasion
     }
 
     public init(from decoder: any Decoder) throws {
@@ -91,6 +104,8 @@ public struct PlanCardGuestsPart: Decodable, Sendable, Hashable {
         kidsWelcome = (try? container.decodeIfPresent(Bool.self, forKey: .kidsWelcome)) ?? false
         headcount = try? container.decodeIfPresent(PlanHeadcountDTO.self, forKey: .headcount)
         answers = try? container.decodeIfPresent(PlanAnswerCountsDTO.self, forKey: .answers)
+        bring = try? container.decodeIfPresent(PlanBringDTO.self, forKey: .bring)
+        occasion = try? container.decodeIfPresent(PlanCardOccasionDTO.self, forKey: .occasion)
     }
 }
 
@@ -98,6 +113,11 @@ public extension PlanCardDTO {
     /// The plan takes H1's answers (adults and kids, Maybe, the open link): its host has the switch.
     var takesGuestAnswers: Bool {
         guestsPart.isOn && !isBusiness && kind != .playdate
+    }
+
+    /// The occasion a plan was started from (H3): its tag says its name in place of the kind's.
+    var occasion: PlanCardOccasionDTO? {
+        guestsPart.occasion
     }
 
     /// Guests say how many adults and kids come.

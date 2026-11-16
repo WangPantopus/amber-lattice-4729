@@ -29,6 +29,10 @@ final class PlanPrivateDraft {
     var guestsCanInvite = false
     /// Plans for the holidays H1 ("Add to this plan"): guests say how many adults and kids.
     var kidsWelcome = false
+    /// Plans for the holidays H2: the bring list being drafted; nil while "Bring list" is off.
+    var bring: PlanBringEditor?
+    /// Plans for the holidays H3: the occasion the plan was started from (its name titles the form).
+    var occasion: PlanOccasionDTO?
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
@@ -88,11 +92,12 @@ final class PlanPrivateDraft {
     }
 
     /// The private keys of `POST /api/plans`; `kids_welcome` only where the host has `plans_guest_answers`.
-    func apply(to body: inout CreatePlanBody, guestAnswers: Bool) {
+    func apply(to body: inout CreatePlanBody, guestAnswers: Bool, bringList: Bool = false) {
         body.audience = .invited
         body.guestsCanInvite = guestsCanInvite
         body.inviteUserIds = chosen.isEmpty ? nil : chosen
         if guestAnswers { body.kidsWelcome = kidsWelcome }
+        if bringList, let bring, !bring.items.isEmpty { body.bring = bring.body }
     }
 
     /// "Host again": who the plan was for, "Bring a friend" and "Kids welcome", as the plan had them.
@@ -119,6 +124,16 @@ extension PlanComposerModel {
     /// (players needed) keep their own rows.
     var offersGuestAnswers: Bool {
         PlansFlags.shared.guestAnswers && isPrivate && kind != .playdate && kind != .pickupGame
+    }
+
+    /// Plans for the holidays H2 (board 3): the "Bring list" row, on a private plan of a host with `plans_bring_list`.
+    var offersBringList: Bool {
+        PlansFlags.shared.bringList && isPrivate && kind != .playdate && kind != .pickupGame
+    }
+
+    /// The "Add to this plan" card shows while it has a row to hold.
+    var offersAddToPlan: Bool {
+        offersGuestAnswers || offersBringList
     }
 
     /// The most the spots stepper goes to: 100 for a private plan with guest answers, otherwise 30.

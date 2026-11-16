@@ -14,6 +14,8 @@ enum PlanComposerStep: Hashable {
     case preview
     /// Plans step 2: how it repeats, from the Details form's Repeats row.
     case repeats
+    /// Plans for the holidays H2: the bring list, from "Add to this plan".
+    case bringList
 }
 
 struct PlanComposerRoot: View {
@@ -59,7 +61,8 @@ struct PlanComposerRoot: View {
                                 step: "2 of 3",
                                 onBack: { onFinish(nil) },
                                 onPreview: { openPreview() },
-                                onRepeats: { path.append(.repeats) }
+                                onRepeats: { path.append(.repeats) },
+                                onBringList: { path.append(.bringList) }
                             )
                         } else {
                             PlanTypePicker(
@@ -69,7 +72,12 @@ struct PlanComposerRoot: View {
                                 onClose: { onFinish(nil) },
                                 onPick: { kind in
                                     // Anyone on Pantopus may host a playdate (founder decision, November 7).
+                                    model.privacy.occasion = nil
                                     model.choose(kind)
+                                    path.append(.details)
+                                },
+                                onPickOccasion: { occasion in
+                                    model.start(from: occasion)
                                     path.append(.details)
                                 }
                             )
@@ -86,10 +94,16 @@ struct PlanComposerRoot: View {
                                 step: "2 of 3",
                                 onBack: { path.removeLast() },
                                 onPreview: { openPreview() },
-                                onRepeats: { path.append(.repeats) }
+                                onRepeats: { path.append(.repeats) },
+                                onBringList: { path.append(.bringList) }
                             )
                             .readableColumn()
                             .toolbar(.hidden, for: .navigationBar)
+                        case .bringList:
+                            if let bring = model.privacy.bring {
+                                PlanBringListScreen(editor: bring, onDone: { path.removeLast() }, onBack: { path.removeLast() })
+                                    .readableColumn()
+                            }
                         case .repeats:
                             PlanRepeatsScreen(
                                 draft: model.repeating,
@@ -137,8 +151,12 @@ struct PlanTypePicker: View {
     var model: PlanComposerModel?
     let onClose: () -> Void
     let onPick: (PlanKind) -> Void
+    /// Plans for the holidays (board 2): an occasion from "Coming up".
+    var onPickOccasion: ((PlanOccasionDTO) -> Void)?
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// "Coming up": the server's occasions in season; empty when there are none or the call failed.
+    @State private var occasions: [PlanOccasionDTO] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -154,6 +172,10 @@ struct PlanTypePicker: View {
                         Text("Pick one. You can change the details next.")
                             .planFont(.body)
                             .foregroundStyle(Theme.Color.appTextSecondary)
+                    }
+                    if !shownOccasions.isEmpty, let onPickOccasion {
+                        PlanComingUpSection(occasions: shownOccasions, onPick: onPickOccasion)
+                        Text.planOverline("Or any kind of plan").padding(.bottom, -Spacing.s3)
                     }
                     LazyVGrid(columns: columns, spacing: Spacing.s3) {
                         ForEach(kinds.filter { $0 != .somethingElse }) { kind in card(kind) }
@@ -175,6 +197,18 @@ struct PlanTypePicker: View {
         .background(Theme.Color.appBg)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planTypePicker")
+        .task(id: business?.id) {
+            // A business posts its own kinds; occasions are for a person's plans.
+            guard business == nil, onPickOccasion != nil else { return occasions = [] }
+            let reply: PlanOccasionsResponse? = try? await APIClient.shared.request(PlansEndpoints.occasions())
+            occasions = reply?.occasions ?? []
+        }
+    }
+
+    /// The occasions whose kind this host can post.
+    private var shownOccasions: [PlanOccasionDTO] {
+        guard business == nil else { return [] }
+        return occasions.filter { kinds.contains($0.kind) }
     }
 
     private var kinds: [PlanKind] {

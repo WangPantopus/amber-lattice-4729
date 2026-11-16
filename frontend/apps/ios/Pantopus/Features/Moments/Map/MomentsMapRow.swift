@@ -17,6 +17,8 @@ import SwiftUI
 extension MomentsMapViewModel {
     /// The empty card's line: the place where you are while the map shows it, else "around here".
     var emptyLine: String {
+        // With the time filter on, the line says what it covers: older Moments may still be there.
+        if let filtered = timeFilter.emptyLine { return filtered }
         if centerSource == .gps, let center, let herePlace, !herePlace.isEmpty, let region = lastRegion,
            abs(region.center.latitude - center.latitude) < region.span.latitudeDelta / 2,
            abs(region.center.longitude - center.longitude) < region.span.longitudeDelta / 2 {

@@ -76,7 +76,7 @@ export default function PrivacyPage() {
             <p>We collect the minimum data needed to operate the platform and keep communities safe. Here is what that includes:</p>
             <PolicyList items={[
               { label: 'Account information', detail: 'Name, email address or phone number, and profile details you choose to provide (bio, photo, skills, interests).' },
-              { label: 'Content you create', detail: 'Posts, messages, gig listings, offers, reviews, any files you upload, what you ask the Pantopus assistant, and anything you ask it to remember.' },
+              { label: 'Content you create', detail: 'Posts, messages, gig listings, offers, reviews, any files you upload, what you ask the Pantopus assistant, anything you ask it to remember, and the Christmas card signature you choose to keep for your next cards (only you see it until you send a card, and you can forget it any time).' },
               { label: 'Home and residency information (optional)', detail: 'If you claim or join a home, we collect address details and residency relationship (owner, tenant, etc.) used for home features and mailbox routing. Your precise address is not publicly displayed.' },
               { label: 'Location data (optional)', detail: 'General location for map and local discovery features, only if you grant permission. You can use most features without sharing precise location.' },
               { label: 'Usage and device data', detail: 'Basic analytics such as feature usage patterns, device type, and error logs used to improve reliability and prevent abuse.' },

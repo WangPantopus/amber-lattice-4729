@@ -12,6 +12,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -146,29 +148,42 @@ internal fun MomentHeightTag(
     }
 }
 
-/** The chip, the key's colors beside it, and the key under them. Nothing while heights are off for you. */
+/**
+ * While heights are on for you, the "Elevation" chip, the key's colors beside it, and the key under them; after them the
+ * time filter's chip (`MomentsTimeFilter.kt`), once the map knows where it is, going under them when the line is full.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MomentsHeightsBar(
     state: MomentsMapUiState,
+    timeFilter: MomentsTimeFilter,
+    onTimeFilter: (MomentsTimeFilter) -> Unit,
     onToggle: () -> Unit,
     onKey: () -> Unit,
     onCloseKey: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (!state.heightsOn) return
+    if (state.center == null) return
     val on = state.showsHeightTags
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalAlignment = Alignment.CenterVertically) {
-            HeightsChip(on = on, onToggle = onToggle)
-            AnimatedVisibility(visible = on, enter = fadeIn(), exit = fadeOut()) {
-                HeightKeyButton(open = state.heightKeyOpen, onClick = onKey)
+        // The heights chips keep their place; the time filter's chip follows them, or goes under them on a full line.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
+            if (state.heightsOn) {
+                HeightsChip(on = on, onToggle = onToggle)
+                AnimatedVisibility(visible = on, enter = fadeIn(), exit = fadeOut()) {
+                    HeightKeyButton(open = state.heightKeyOpen, onClick = onKey)
+                }
+                // Part D: while pins float, the time their shadows are drawn for (`MomentsFloat.kt`).
+                AnimatedVisibility(visible = state.floatingSun != null, enter = fadeIn(), exit = fadeOut()) {
+                    MomentsSunChip(modifier = Modifier.glassChip(CircleShape).height(CHIP_HEIGHT))
+                }
             }
-            // Part D: while pins float, the time their shadows are drawn for (`MomentsFloat.kt`).
-            AnimatedVisibility(visible = state.floatingSun != null, enter = fadeIn(), exit = fadeOut()) {
-                MomentsSunChip(modifier = Modifier.glassChip(CircleShape).height(CHIP_HEIGHT))
-            }
+            MomentsTimeChip(filter = timeFilter, onChoose = onTimeFilter)
         }
-        AnimatedVisibility(visible = on && state.heightKeyOpen, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = state.heightsOn && on && state.heightKeyOpen, enter = fadeIn(), exit = fadeOut()) {
             HeightKey(onClose = onCloseKey)
         }
     }
@@ -309,14 +324,14 @@ private fun HeightKeyBar(band: MomentHeightBand) {
 }
 
 /** The chip while it is on: the board's filled pill. */
-private fun Modifier.filled(shape: Shape): Modifier =
+internal fun Modifier.filled(shape: Shape): Modifier =
     this
         .pantopusShadow(PantopusElevations.primary, shape)
         .clip(shape)
         .background(PantopusColors.primary600)
 
 /** Glass over the map, as the top row's pills wear it: white at 82%, a hairline border and the soft shadow. */
-private fun Modifier.glassChip(
+internal fun Modifier.glassChip(
     shape: Shape,
     fill: Color = PantopusColors.mapGlass,
 ): Modifier =
@@ -326,4 +341,4 @@ private fun Modifier.glassChip(
         .background(fill)
         .border(0.5.dp, PantopusColors.appBorder.copy(alpha = 0.5f), shape)
 
-private val CHIP_HEIGHT: Dp = 36.dp
+internal val CHIP_HEIGHT: Dp = 36.dp

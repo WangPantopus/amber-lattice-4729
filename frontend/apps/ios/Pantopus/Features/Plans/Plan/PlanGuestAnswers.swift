@@ -42,7 +42,11 @@ extension PlanScreenViewModel {
     /// Board 18's "I'm in": the ordinary ask with the adults and kids. Nil when it went through.
     func answerIn(_ body: AskToJoinBody) async -> String? {
         let wasIn = mode == .going
-        guard await ask(body) else { return actionError ?? "We couldn't send that. Please try again." }
+        guard await ask(body) else {
+            // Someone in who asked for more seats than are left: the server keeps their answer (#4198), in its words.
+            if wasIn, actionError == PlanErrors.fullSentence { return "There's no room for more people. Your answer stays as it was." }
+            return actionError ?? "We couldn't send that. Please try again."
+        }
         // Someone already in who changed their numbers: say so when the server kept the old ones.
         if wasIn, let mine = plan?.myRequest,
            (mine.partySize ?? 1) != body.partySize || (mine.kidsCount ?? 0) != (body.kidsCount ?? 0) {

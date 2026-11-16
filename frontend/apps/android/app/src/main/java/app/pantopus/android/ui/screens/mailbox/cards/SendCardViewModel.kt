@@ -319,6 +319,9 @@ class SendCardViewModel
         private val _form = MutableStateFlow(restoredForm())
         val form: StateFlow<SendCardForm> = _form.asStateFlow()
 
+        /** The account's saved signature (founder, 2026-11-16): a new card starts signed with it (CardSignaturePad.kt). */
+        val signatureKeeper = SavedSignatureKeeper(repo, viewModelScope, cards, fresh = !saved.contains(KEY_SIGNATURE), ::onSignature)
+
         /** "Help me write it" on the write step (SendCardNoteHelp.kt): its notes and its Undo, for this card. */
         val noteHelp = CardNoteHelper(repo, network, viewModelScope, message = { _form.value.message }, write = ::onMessageChange)
 
@@ -328,7 +331,7 @@ class SendCardViewModel
         /** "Send another card" under a card just sent (digital stamps on): a new card from the first step. */
         fun startAnotherCard() {
             _query.value = ""
-            _form.value = SendCardForm()
+            _form.value = SendCardForm(signature = signatureKeeper.saved)
         }
 
         private val _stampsNeeded = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
@@ -407,8 +410,10 @@ class SendCardViewModel
         fun reload() {
             if (cards.value == null) _load.value = SendCardLoad.Loading
             viewModelScope.launch {
+                val loaded = repo.load()
+                signatureKeeper.cardsRead(loaded is NetworkResult.Success || cards.value != null, _form.value.signature)
                 _load.value =
-                    when (val result = repo.load()) {
+                    when (val result = loaded) {
                         is NetworkResult.Success -> SendCardLoad.Done
                         is NetworkResult.Failure ->
                             SendCardLoad.Failed(
@@ -798,7 +803,7 @@ class SendCardViewModel
                 }
                 TAKEN_BACK -> {
                     _query.value = ""
-                    _form.value = SendCardForm(takenBackNote = sendMessage(error))
+                    _form.value = SendCardForm(signature = signatureKeeper.saved, takenBackNote = sendMessage(error))
                 }
                 else -> return false
             }
@@ -815,7 +820,7 @@ class SendCardViewModel
                 when (val result = repo.takeBack(card.id)) {
                     is NetworkResult.Success -> {
                         _query.value = ""
-                        _form.value = SendCardForm(tookBack = true)
+                        _form.value = SendCardForm(signature = signatureKeeper.saved, tookBack = true)
                     }
                     is NetworkResult.Failure ->
                         _form.update { it.copy(takingBack = false, takeBackError = takeBackMessage(result.error)) }

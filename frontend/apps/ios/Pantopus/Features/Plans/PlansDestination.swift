@@ -28,6 +28,8 @@ struct PlansDestination: View {
                     onOpenRequests: { path.append(.requests(planId: planId)) },
                     onBack: { pop() }
                 )
+            case let .bringList(planId):
+                PlanBringListRoute(planId: planId) { pop() }
             case let .change(planId):
                 PlanChangeScreen(planId: planId) { pop() }
             case let .profile(userId):

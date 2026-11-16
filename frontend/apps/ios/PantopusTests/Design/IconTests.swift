@@ -126,7 +126,9 @@ final class IconTests: XCTestCase {
         // Moment heights: the "Elevation" chip and a Moment's height.
         "mountain",
         // Plans step 4: the die of a game night (the other new kinds reuse utensils, mountain and plus).
-        "plan-game"
+        "plan-game",
+        // Plans for the holidays: the Birthday and New Year's Eve occasions.
+        "cake", "sparkle"
     ]
 
     func testInventoryMatches() {

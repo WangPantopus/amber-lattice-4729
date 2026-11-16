@@ -135,15 +135,31 @@ enum CardTableSignature {
 
 /// Sign your name: a strip of the card's paper, four times as wide as it is tall, to sign with a finger. Done keeps
 /// it; Use my typed name puts the typed first name back.
+///
+/// With `keeping` (the account keeps one signature, founder 2026-11-16): "Keep this signature for my next cards",
+/// ticked, under the paper, so Done also saves it for the next card on any app; and, while one is saved, "Forget my
+/// saved signature".
 struct CardTableSignPad: View {
+    struct Keeping {
+        let saved: CardSignature?
+        /// False when the server couldn't forget it.
+        let onForget: () async -> Bool
+    }
+
+    private enum Forget { case idle, busy, done, failed }
+
     let initial: CardSignature?
-    let onDone: (CardSignature) -> Void
+    /// The signature, and whether "Keep this signature" was ticked (always false without `keeping`).
+    let onDone: (CardSignature, Bool) -> Void
     let onTyped: () -> Void
+    var keeping: Keeping?
     @Environment(\.dismiss) private var dismiss
     @State private var strokes: [[CGPoint]] = []
     @State private var tooLong = false
     @State private var loaded = false
     @State private var touching = false
+    @State private var keep = true
+    @State private var forget = Forget.idle
 
     var body: some View {
         let hasInk = strokes.contains { !$0.isEmpty }
@@ -175,6 +191,9 @@ struct CardTableSignPad: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(MailPaper.wax)
                     .accessibilityIdentifier("cardSignTooLong")
+            }
+            if let keeping {
+                keepRow(keeping)
             }
             HStack(spacing: Spacing.s2) {
                 Button("Clear") {
@@ -209,7 +228,7 @@ struct CardTableSignPad: View {
                     case .nothing: break
                     case .tooLong: tooLong = true
                     case let .signed(signature):
-                        onDone(signature)
+                        onDone(signature, keeping != nil && keep)
                         dismiss()
                     }
                 } label: {
@@ -233,6 +252,94 @@ struct CardTableSignPad: View {
             guard !loaded else { return }
             loaded = true
             if let initial { strokes = CardTableSignature.points(initial) }
+        }
+    }
+
+    /// "Keep this signature for my next cards" and, while one is saved, "Forget my saved signature".
+    private func keepRow(_ keeping: Keeping) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s1) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Spacing.s3) {
+                    keepBox
+                    Spacer(minLength: 0)
+                    forgetControl(keeping)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    keepBox
+                    forgetControl(keeping)
+                }
+            }
+            if forget == .failed {
+                Text("Couldn't forget it just now. Try again in a moment.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(MailPaper.wax)
+                    .accessibilityIdentifier("cardSignForgetFailed")
+            }
+        }
+    }
+
+    private var keepBox: some View {
+        Button {
+            keep.toggle()
+        } label: {
+            HStack(spacing: Spacing.s2) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(keep ? MailPaper.wax : Color.clear)
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(keep ? MailPaper.wax : MailPaper.cardText.opacity(0.45), lineWidth: 1.5)
+                    if keep {
+                        Icon(.check, size: 13, strokeWidth: 3, color: MailPaper.waxText)
+                    }
+                }
+                .frame(width: 20, height: 20)
+                Text("Keep this signature for my next cards")
+                    .font(.system(size: 14))
+                    .foregroundStyle(MailPaper.cardText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Keep this signature for my next cards")
+        .accessibilityValue(keep ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityIdentifier("cardSignKeep")
+    }
+
+    @ViewBuilder
+    private func forgetControl(_ keeping: Keeping) -> some View {
+        if forget == .done {
+            Text("Saved signature forgotten.")
+                .font(.system(size: 13))
+                .foregroundStyle(MailPaper.cardTextSoft)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("cardSignForgotten")
+        } else if keeping.saved != nil {
+            Button {
+                forget = .busy
+                Task {
+                    if await keeping.onForget() {
+                        forget = .done
+                        keep = false
+                    } else {
+                        forget = .failed
+                    }
+                }
+            } label: {
+                Text("Forget my saved signature")
+                    .font(.system(size: 13, weight: .medium))
+                    .underline()
+                    .foregroundStyle(MailPaper.cardTextSoft)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(forget == .busy)
+            .opacity(forget == .busy ? 0.5 : 1)
+            .accessibilityIdentifier("cardSignForget")
         }
     }
 

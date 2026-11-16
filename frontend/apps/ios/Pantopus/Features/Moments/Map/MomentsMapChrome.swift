@@ -135,9 +135,15 @@ struct MomentsMapBottom: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
                         .padding(.top, 14)
                 } else if viewModel.isEmpty, postings.isEmpty {
-                    MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
-                        .padding(.top, 14)
+                    Group {
+                        if viewModel.tooWide {
+                            MomentsZoomInCard { Task { await viewModel.locate() } }
+                        } else {
+                            MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
+                    .padding(.top, 14)
                 } else if viewModel.showsRow(postings: postings) {
                     MomentsRoundButton.add(action: actions.compose)
                         .padding(.top, Spacing.s3)
@@ -427,7 +433,7 @@ struct MomentsLocationCard: View {
 }
 
 /// The glass card M3 draws: an icon, a title and a line, and one button.
-private struct MomentsMapCard: View {
+struct MomentsMapCard: View {
     let icon: PantopusIcon
     let title: String
     let line: String

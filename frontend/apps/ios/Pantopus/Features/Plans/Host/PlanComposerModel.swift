@@ -74,7 +74,7 @@ final class PlanComposerModel {
     private(set) var hostName = "You"
     var hostedAgainFrom: String?
     private(set) var verifiedAddress: Bool
-    @ObservationIgnored private var autoTitle: String?
+    @ObservationIgnored var autoTitle: String?
     @ObservationIgnored private var kindChosen: Bool
 
     private let api: APIClient
@@ -282,7 +282,8 @@ final class PlanComposerModel {
             gps: gps
         )
         body.hostedAgainFrom = hostedAgainFrom
-        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers) }
+        if !isBusiness { body.occasion = privacy.occasion?.key } // H3, on a public or a private plan
+        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers, bringList: offersBringList) }
         applyRepeat(to: &body)
         return body
     }

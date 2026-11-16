@@ -26,7 +26,7 @@ import * as api from '@/lib/mailbox-api';
 import { MailboxApiError } from '@/lib/mailbox-api';
 import { businesses as businessesApi, mailboxV2P2 as mailboxV2P2Api } from '@pantopus/api';
 import type { AssetFullDetail } from '@/lib/mailbox-api';
-import type { DeletedMail, HolidayCards, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult } from '@pantopus/api';
+import type { CardSignature, DeletedMail, HolidayCards, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult } from '@pantopus/api';
 
 import type {
   DrawerMeta,
@@ -247,6 +247,30 @@ export function useTakeBackHolidayCard() {
   return useMutation<{ taken_back: true }, MailboxApiError, string>({
     mutationFn: api.takeBackHolidayCard,
     onSettled: () => invalidateSentCards(qc),
+  });
+}
+
+/** The account's saved signature, as the card screens read it (GET /cards `signature.saved`), set in place. */
+function setSavedSignature(qc: ReturnType<typeof useQueryClient>, saved: CardSignature | null) {
+  qc.setQueryData<HolidayCards>(mailboxKeys.holidayCards(), (old) =>
+    old?.signature ? { ...old, signature: { ...old.signature, saved } } : old);
+}
+
+/** Keep this signature for the next cards (replaces any saved one). */
+export function useSaveCardSignature() {
+  const qc = useQueryClient();
+  return useMutation<CardSignature, MailboxApiError, CardSignature>({
+    mutationFn: api.saveCardSignature,
+    onSuccess: (saved) => setSavedSignature(qc, saved),
+  });
+}
+
+/** Forget the saved signature; cards already sent keep theirs. */
+export function useForgetCardSignature() {
+  const qc = useQueryClient();
+  return useMutation<void, MailboxApiError, void>({
+    mutationFn: () => api.forgetCardSignature(),
+    onSuccess: () => setSavedSignature(qc, null),
   });
 }
 
