@@ -55,6 +55,12 @@ const PLAN_COLUMNS = [
   'bring_list',
   // H3: the occasion that started it (planOccasions.js).
   'occasion',
+  // B1: a business's plan's deal (planDeals.js), on its card only while the business has the switch.
+  'deal',
+  // B2: the price of a spot (planPaid.js); null is free.
+  'price_cents', 'currency',
+  // B5: guests pay their bill here, and the check asks for a tip (planChecks.js).
+  'pay_here', 'tips_on',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -65,7 +71,8 @@ const REQUEST_COLUMNS = [
 ].join(', ');
 const USER_COLUMNS = 'id, name, first_name, last_name, profile_picture_url, created_at';
 
-const ACTIVE_REQUEST_STATUSES = ['pending', 'waitlisted', 'accepted'];
+// 'paying' (B2): a spot held for 10 minutes while the guest pays; it counts as a taken seat. Only a paid plan has one.
+const ACTIVE_REQUEST_STATUSES = ['pending', 'waitlisted', 'accepted', 'paying'];
 const OPEN_REQUEST_STATUSES = ['pending', 'waitlisted'];
 const NEW_ACCOUNT_DAYS = 30;
 // What someone with no name is called, everywhere in Plans.
@@ -245,6 +252,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Whether each plan's host has the bring list (H2), and occasions (H3).
     bringByHost: new Map(),
     occasionByHost: new Map(),
+    // Whether each business hosting a plan with a deal has the switch (B1), and when each guest's free thing was used.
+    dealsByHost: new Map(),
+    dealUsedByRequest: new Map(),
+    // Paid spots (B2): whether each business with a priced plan has the switch, and each request's money.
+    paidByHost: new Map(),
+    moneyByRequest: new Map(),
+    // The bill at the place (B5): whether each business with pay_here on has the switch.
+    payHereByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -279,6 +294,34 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.guestAnswersByHost = guestFlags;
   ctx.bringByHost = bringFlags;
   ctx.occasionByHost = occasionFlags;
+  // Paid spots (B2): read only for priced plans, from businesses that have the switch.
+  const pricedPlans = plans.filter((p) => p.price_cents && p.business_user_id);
+  if (pricedPlans.length > 0) {
+    ctx.paidByHost = await require('./planPaid').switchByHost(pricedPlans.map((p) => p.host_user_id));
+    const onIds = pricedPlans.filter((p) => ctx.paidByHost.get(String(p.host_user_id))).map((p) => p.post_id);
+    if (onIds.length > 0) {
+      const { data: money, error: moneyError } = await supabaseAdmin.from('PlanRequest')
+        .select('id, payment_id, unit_price_cents, paid_cents, refunded_cents, refund_until, hold_expires_at, fee_basis, payment:Payment(metadata)')
+        .in('post_id', onIds).not('unit_price_cents', 'is', null);
+      if (moneyError) throw new Error(`Failed to load plan details: ${moneyError.message}`);
+      for (const row of money || []) ctx.moneyByRequest.set(row.id, row);
+    }
+  }
+  // The bill at the place (B5): read only for plans with pay_here on.
+  const payHerePlans = plans.filter((p) => p.pay_here && p.business_user_id);
+  if (payHerePlans.length > 0) ctx.payHereByHost = await require('./planChecks').switchByHost(payHerePlans.map((p) => p.host_user_id));
+  // Deals (B1): read only for plans that carry one, from businesses that have the switch.
+  const dealPlans = plans.filter((p) => p.deal && p.business_user_id);
+  if (dealPlans.length > 0) {
+    ctx.dealsByHost = await require('./planDeals').switchByHost(dealPlans.map((p) => p.host_user_id));
+    const onIds = dealPlans.filter((p) => ctx.dealsByHost.get(String(p.host_user_id))).map((p) => p.post_id);
+    if (onIds.length > 0) {
+      const { data: used, error: usedError } = await supabaseAdmin.from('PlanRequest').select('id, deal_used_at')
+        .in('post_id', onIds).not('deal_used_at', 'is', null);
+      if (usedError) throw new Error(`Failed to load plan details: ${usedError.message}`);
+      for (const row of used || []) ctx.dealUsedByRequest.set(row.id, row.deal_used_at);
+    }
+  }
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -440,7 +483,7 @@ async function mutualConnectionCounts(viewerId, otherIds) {
  */
 function seatsTaken(plan, requests, guestSeats = 0) {
   return (requests || [])
-    .filter((r) => r.status === 'accepted')
+    .filter((r) => r.status === 'accepted' || r.status === 'paying')
     .reduce((sum, r) => sum + rules.seatsFor(plan, r.party_size, r.kids_count), 0) + (Number(guestSeats) || 0);
 }
 
@@ -679,6 +722,17 @@ function buildCard(plan, viewer, ctx) {
     const occasion = require('./planOccasions').view(plan.occasion);
     if (occasion) card.occasion = occasion;
   }
+  // A business's plan's deal (B1, contract 9.2), with `biz=1` (a business's plan reaches no other app) while the
+  // business has the switch. An added field.
+  if (plan.business_user_id && plan.deal && ctx.dealsByHost?.get(hostId)) {
+    const deal = require('./planDeals').cardView(plan.deal, {
+      role, going, plan, paid: Boolean(card.price),
+      request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null,
+        unit_price_cents: ctx.moneyByRequest?.get(myRequest.id)?.unit_price_cents ?? null } : null,
+      firstName: role === 'guest' && ctx.users.get(viewer.id) ? firstName(ctx.users.get(viewer.id)) : null,
+    });
+    if (deal) card.deal = deal;
+  }
   // The bring list (H2), for the host and the people in, while the host has the switch. An added field older apps
   // ignore, so it needs no marker.
   if (isIn && plan.bring_list && ctx.bringByHost?.get(hostId)) {
@@ -732,8 +786,25 @@ function addBusinessFields(card, plan, viewer, ctx) {
     longitude: exact.longitude,
   };
   if (viewer.origin) card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
-  // Free until paid spots are built: null is "Free".
-  card.price = null;
+  // Null is "Free". A price (B2) while the business has the switch.
+  const paidOn = Boolean(plan.price_cents && ctx.paidByHost?.get(String(plan.host_user_id)));
+  // What one spot costs now: with deals on, a deal for everyone or a group price that unlocked (B4).
+  const unitNow = paidOn && plan.deal && ctx.dealsByHost?.get(String(plan.host_user_id)) ? require('./planDeals').spotPriceNow(plan) : plan.price_cents;
+  card.price = paidOn ? require('./planPaid').priceView(plan, unitNow) : null;
+  if (paidOn) {
+    const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
+    const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;
+    if (money && myRequest.status === 'paying' && card.my_request) card.my_request.hold_expires_at = iso(money.hold_expires_at);
+    const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
+      reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null) : null;
+    if (paid && myRequest.status === 'accepted') card.paid = paid;
+  }
+  // "Pay at {business}" (D2, B5) for the business's staff and the guests who are in, while it has the switch.
+  if (plan.pay_here && ctx.payHereByHost?.get(String(plan.host_user_id))) {
+    const role = card.viewer?.role;
+    const isIn = card.viewer?.request_status === 'accepted';
+    if (role === 'host' || isIn) card.pay_here = require('./planChecks').cardView(plan, card.business?.name);
+  }
   card.guests_can_invite = Boolean(plan.guests_can_invite);
   card.more_times = moreTimesView(ctx.moreTimesByPlan?.get(plan.post_id));
 }
@@ -866,6 +937,18 @@ function buildDetail(plan, viewer, ctx) {
         entry.distance_band = null;
         entry.plans_joined = 0;
         entry.new_to_pantopus = false;
+        // Who paid, and who brought them (B2), on a priced plan while the business has the switch.
+        const money = card.price ? ctx.moneyByRequest?.get(request.id) : null;
+        if (money?.paid_cents) {
+          entry.paid = { cents: money.paid_cents, text: require('./planPaid').moneyText(money.paid_cents),
+            refunded_cents: money.refunded_cents || 0, brought_by: money.fee_basis === 'own' ? 'own' : 'pantopus' };
+        }
+        // "Mark used" on the roster (B1): the guest's free thing, ready or used, while the deal gives one.
+        if (card.deal) {
+          const given = require('./planDeals').givenNow(plan.deal);
+          const usedAt = ctx.dealUsedByRequest?.get(request.id) || null;
+          if (given?.kind === 'free_item' || usedAt) entry.deal = { state: usedAt ? 'used' : 'ready', used_at: usedAt };
+        }
       }
     }
     people.push(entry);

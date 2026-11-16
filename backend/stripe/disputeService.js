@@ -68,6 +68,37 @@ async function findPaymentChatRoom(payment) {
 }
 
 /**
+ * A plan's evidence for a disputed plan payment (Plans for the holidays, contract 11.4): when the guest joined and by
+ * which way in, the check and who started it, when it was paid, and the plan's chat (the guest's and the staff's
+ * messages). Null for any other payment.
+ */
+async function gatherPlanEvidence(payment) {
+  if (payment.payment_type !== 'plan_payment' || !payment.metadata?.plan_id) return null;
+  const planId = payment.metadata.plan_id;
+  const [{ data: plan }, { data: request }, { data: check }] = await Promise.all([
+    supabaseAdmin.from('Plan').select('post_id, business_user_id, chat_room_id, post:Post!inner(title, event_date, event_end_date)').eq('post_id', planId).maybeSingle(),
+    payment.metadata.request_id
+      ? supabaseAdmin.from('PlanRequest').select('id, created_at, decided_at, way_in, status, party_size, kids_count').eq('id', payment.metadata.request_id).maybeSingle()
+      : { data: null },
+    payment.metadata.check_id
+      ? supabaseAdmin.from('BusinessInvoice').select('id, created_at, paid_at, started_by, subtotal_cents, discount_cents, tip_cents, total_cents').eq('id', payment.metadata.check_id).maybeSingle()
+      : { data: null },
+  ]);
+  if (!plan) return null;
+  let chatMessages = [];
+  if (plan.chat_room_id) {
+    const staff = await require('../services/plans/planBusiness').staffToNotify(plan).catch(() => []);
+    const authors = [payment.payer_id, ...staff].filter(Boolean);
+    const { data: messages, error } = await supabaseAdmin.from('ChatMessage').select('id, user_id, message, created_at')
+      .eq('room_id', plan.chat_room_id).eq('deleted', false).eq('type', 'text').in('user_id', authors)
+      .order('created_at', { ascending: false }).limit(50);
+    if (error) throw new Error(`Unable to load dispute plan messages: ${error.message}`);
+    chatMessages = (messages || []).reverse();
+  }
+  return { plan, request, check, chatMessages };
+}
+
+/**
  * Gather all evidence for a disputed payment.
  *
  * @param {string} paymentId - Payment UUID
@@ -174,6 +205,10 @@ async function gatherEvidence(paymentId) {
     chatMessages = (messages || []).reverse();
   }
 
+  // A plan payment's own record (B2 to B6): the plan, the guest's place, the check, the plan's chat.
+  const planEvidence = await gatherPlanEvidence(payment);
+  if (planEvidence?.chatMessages?.length) chatMessages = planEvidence.chatMessages;
+
   return {
     payment,
     gig,
@@ -182,6 +217,7 @@ async function gatherEvidence(paymentId) {
     payee,
     review,
     chatMessages,
+    plan: planEvidence,
   };
 }
 
@@ -218,6 +254,29 @@ function buildStripeEvidence(evidence) {
   // ─── Service Documentation ───
   // Compile a narrative of the service delivery
   const docParts = [];
+
+  // ─── A plan payment (Plans for the holidays, contract 11.4) ───
+  if (evidence.plan?.plan) {
+    const { plan, request, check } = evidence.plan;
+    const usd = (cents) => `${currency} ${(Number(cents || 0) / 100).toFixed(2)}`;
+    stripeEvidence.product_description = [
+      `In-person plan: "${plan.post.title}"`,
+      check ? `Bill at the place: ${usd(check.subtotal_cents)}${check.discount_cents ? `, deal ${usd(check.discount_cents)} off` : ''}${check.tip_cents ? `, tip ${usd(check.tip_cents)}` : ''}`
+        : `A spot at the plan, ${usd(payment.amount_total)}`,
+    ].join('\n');
+    stripeEvidence.service_date = new Date(plan.post.event_date).toISOString().split('T')[0];
+    docParts.push('PLAN ATTENDANCE RECORD');
+    docParts.push(`Plan starts: ${new Date(plan.post.event_date).toISOString()}`);
+    if (request) {
+      docParts.push(`Guest joined: ${new Date(request.created_at).toISOString()}${request.way_in ? ` (way in: ${request.way_in})` : ''}`);
+      if (request.decided_at) docParts.push(`Guest was in from: ${new Date(request.decided_at).toISOString()}`);
+      docParts.push(`Guest's place now: ${request.status}, party of ${(request.party_size || 1) + (request.kids_count || 0)}`);
+    }
+    if (check) {
+      docParts.push(`Check made: ${new Date(check.created_at).toISOString()}, started by ${check.started_by === 'guest' ? 'the guest' : 'the business'}`);
+      if (check.paid_at) docParts.push(`Check paid: ${new Date(check.paid_at).toISOString()}, total ${usd(check.total_cents)}`);
+    }
+  }
 
   if (gig?.status === 'completed' || gig?.owner_confirmed_at) {
     docParts.push('SERVICE DELIVERY CONFIRMED');

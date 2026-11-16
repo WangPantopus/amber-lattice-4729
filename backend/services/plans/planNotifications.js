@@ -405,16 +405,19 @@ async function requestReceivedBy(hostId, { plan, request, hostFirst, requesterFi
   });
 }
 
-async function accepted({ plan, request, hostFirst, byRule }) {
+async function accepted({ plan, request, hostFirst, byRule, paidCents = null }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true });
   const where = placePhrase(plan, hostFirst);
-  const body = byRule
-    ? `${capitalized(noun(plan))}, ${when} ${where}.`
-    : `${hostFirst} said yes. ${capitalized(when)} ${where}.`;
+  // A paid spot (B2): "You're in: {title}. Paid $18.00."
+  const body = paidCents
+    ? `Paid $${(paidCents / 100).toFixed(2)}. ${capitalized(when)} ${where}.`
+    : byRule
+      ? `${capitalized(noun(plan))}, ${when} ${where}.`
+      : `${hostFirst} said yes. ${capitalized(when)} ${where}.`;
   return notify({
     userId: request.user_id,
     type: 'plan_accepted',
-    title: "You're in",
+    title: paidCents ? `You're in: ${plan.post.title}` : "You're in",
     body: body.replace(/\s+\./g, '.'),
     link: `/plans/${plan.post_id}`,
     plan,
@@ -499,13 +502,15 @@ async function expired({ plan, request, hostFirst }) {
   });
 }
 
-async function spotOpened({ plan, request, hostFirst, nowIn }) {
+async function spotOpened({ plan, request, hostFirst, nowIn, price = null }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
   return notify({
     userId: request.user_id,
     type: 'plan_spot_opened',
     title: 'A spot opened up',
-    body: nowIn ? `You're in: ${plan.post.title}, ${when}.` : `${hostFirst} will let you know soon.`,
+    // A paid plan (B2): the spot is held 30 minutes for them to pay.
+    body: price ? `${plan.post.title}, ${when}. It's yours for 30 minutes: join for ${price}.`
+      : nowIn ? `You're in: ${plan.post.title}, ${when}.` : `${hostFirst} will let you know soon.`,
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: nowIn,
@@ -862,6 +867,7 @@ module.exports = {
   BUNDLE_WINDOW_MS,
   noun,
   whenText,
+  timeText,
   heldPushText,
   bandText,
   areaPhrase,
