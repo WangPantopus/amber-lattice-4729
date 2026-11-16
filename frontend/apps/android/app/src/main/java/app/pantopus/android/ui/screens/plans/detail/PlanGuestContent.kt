@@ -40,6 +40,7 @@ import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
+import app.pantopus.android.data.plans.tagLabel
 import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -179,7 +180,8 @@ internal fun PlanHeading(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
-            plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+            // An occasion's name in place of the kind's (Plans for the holidays, A6 item 1).
+            plan.planKind?.let { PlanTypeTag(it, label = plan.tagLabel) }
             if (plan.isPrivate) PlanPrivateChip()
             // Board Online (Plans step 3).
             if (plan.isOnline) PlanOnlineChip()
