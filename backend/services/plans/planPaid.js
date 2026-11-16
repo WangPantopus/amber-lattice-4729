@@ -474,38 +474,96 @@ async function onPaymentAuthorized(payment) {
 
 /**
  * Returns a paid request's money (all that is left of it), or releases the hold of one not captured yet. Never fails
- * the step that called it: a refund that can't complete now is logged and retried by the refund job.
+ * the step that called it. A refund that is owed and can't complete now (contract 10.4, "an owed refund is never
+ * dropped") is kept on the payment as owed (`metadata.plan_refund_owed`) and tried again by the Plans tick
+ * (retryOwedRefunds) with the same request key until the payment company confirms it. Answers the cents returned now.
  */
 async function refund(plan, request, { reason, actorMode = 'policy', actorId = null }) {
   if (!request?.payment_id) return 0;
-  const { data: payment } = await supabaseAdmin.from('Payment').select('id, payment_status, amount_total, refunded_amount, payer_id')
+  const { data: payment } = await supabaseAdmin.from('Payment').select('id, payment_status, amount_total, refunded_amount, payer_id, metadata')
     .eq('id', request.payment_id).maybeSingle();
-  if (!payment || ['refunded_full', 'canceled'].includes(payment.payment_status)) return 0;
+  if (!payment) return 0;
+  const key = uuidFrom(`plan-refund:${request.id}:${payment.id}:${reason}`);
+  const owed = payment.metadata?.plan_refund_owed?.key === key;
+  if (['refunded_full', 'canceled'].includes(payment.payment_status) && !owed) return 0;
   const left = payment.amount_total - (payment.refunded_amount || 0);
+  const actor = actorMode === 'payer' ? payment.payer_id : actorId;
   try {
     const result = await require('../paymentRefundService').create({
       paymentId: payment.id, amount: null, reason: 'requested_by_customer', description: `Plans: ${reason}`,
-      actorId: actorMode === 'payer' ? payment.payer_id : actorId, actorMode,
-      requestId: uuidFrom(`plan-refund:${request.id}:${payment.id}:${reason}`),
+      actorId: actor, actorMode, requestId: key,
     });
-    // A payment already refunded in part (a group price came back, B4) still holds what is left of it.
-    const captured = CAPTURED.includes(payment.payment_status) || payment.payment_status === 'refunded_partial';
-    if (captured && result?.success) {
-      await supabaseAdmin.from('PlanRequest').update({ refunded_cents: (request.refunded_cents || 0) + left, updated_at: new Date().toISOString() })
+    if (!result?.success) {
+      await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId });
+      return 0;
+    }
+    const operation = result.refundRequest?.operation;
+    const back = operation === 'refund' ? (Number(result.refundRequest.amountCents) || left) : 0;
+    if (back > 0) {
+      // One payment a request: what came back of it is the payment's refunded amount (so a retry never counts twice).
+      const refundedNow = Number(result.payment?.refunded_amount) || ((request.refunded_cents || 0) + back);
+      await supabaseAdmin.from('PlanRequest').update({ refunded_cents: refundedNow, updated_at: new Date().toISOString() })
         .eq('id', request.id);
       await require('../businessCustomers').recountBusinessCustomer(plan.business_user_id, request.user_id);
       await require('./planNotifications').notify({
-        userId: request.user_id, type: 'plan_refunded', plan, title: `${moneyText(left)} is on its way back to your card`,
+        userId: request.user_id, type: 'plan_refunded', plan, title: `${moneyText(back)} is on its way back to your card`,
         body: `${plan.post.title}. A bank can take a few days.`, link: `/plans/${plan.post_id}`,
-        metadata: { request_id: request.id, amount_cents: left }, idempotencyKey: `plan-refunded:${request.id}:${reason}`,
+        metadata: { request_id: request.id, amount_cents: back }, idempotencyKey: `plan-refunded:${request.id}:${reason}`,
       });
-      return left;
     }
-    return 0;
+    if (owed) await clearOwed(payment.id, key);
+    return back;
   } catch (err) {
     logger.warn('plans.paid.refund_failed', { planId: plan.post_id, requestId: request.id, reason, error: err.message, code: err.code });
+    await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId })
+      .catch((markErr) => logger.error('plans.paid.refund_owed_unsaved', { paymentId: payment.id, requestId: request.id, error: markErr.message }));
     return 0;
   }
+}
+
+/** Keeps a refund that is owed on its payment until the payment company confirms it (once per request key). */
+async function markOwed(paymentId, owed) {
+  const { data: now } = await supabaseAdmin.from('Payment').select('metadata').eq('id', paymentId).maybeSingle();
+  if (now?.metadata?.plan_refund_owed?.key === owed.key) return;
+  const { error } = await supabaseAdmin.from('Payment').update({ metadata: { ...(now?.metadata || {}),
+    plan_refund_owed: { ...owed, since: new Date().toISOString() } } }).eq('id', paymentId);
+  if (error) throw new Error(`Failed to keep the owed refund: ${error.message}`);
+  logger.warn('plans.paid.refund_owed', { paymentId, requestId: owed.request_id, reason: owed.reason });
+}
+
+async function clearOwed(paymentId, key) {
+  const { data: now } = await supabaseAdmin.from('Payment').select('metadata').eq('id', paymentId).maybeSingle();
+  if (now?.metadata?.plan_refund_owed?.key !== key) return;
+  const { plan_refund_owed: _done, ...rest } = now.metadata;
+  await supabaseAdmin.from('Payment').update({ metadata: { ...rest, plan_refund_last_owed: { ...now.metadata.plan_refund_owed, confirmed_at: new Date().toISOString() } } })
+    .eq('id', paymentId);
+}
+
+/**
+ * The Plans tick: every plan refund that is owed and couldn't complete is asked again, with its own request key, until
+ * the payment company confirms it. Runs whatever the switches say: money owed is always sent. Answers how many were
+ * confirmed now.
+ */
+async function retryOwedRefunds() {
+  const { data, error } = await supabaseAdmin.from('Payment').select('id, metadata')
+    .eq('payment_type', 'plan_payment').not('metadata->plan_refund_owed', 'is', null).limit(100);
+  if (error) throw new Error(`Failed to read owed refunds: ${error.message}`);
+  const planService = require('./planService');
+  let done = 0;
+  for (const payment of data || []) {
+    const owed = payment.metadata.plan_refund_owed;
+    try {
+      const plan = await planService.loadPlanRow(owed.post_id);
+      const [request] = await supabaseAdmin.from('PlanRequest').select(MONEY_COLUMNS).eq('id', owed.request_id).then(({ data: rows }) => rows || []);
+      if (!plan || !request) continue;
+      await refund(plan, request, { reason: owed.reason, actorMode: owed.actor_mode, actorId: owed.actor_id || null });
+      const { data: after } = await supabaseAdmin.from('Payment').select('metadata').eq('id', payment.id).maybeSingle();
+      if (after?.metadata?.plan_refund_owed?.key !== owed.key) done += 1;
+    } catch (err) {
+      logger.warn('plans.paid.owed_retry_failed', { paymentId: payment.id, error: err.message });
+    }
+  }
+  return done;
 }
 
 /**
@@ -675,6 +733,6 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 module.exports = {
   FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundUntilOf, mayCharge, assertMayCharge,
   checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, groupQuote, unitPriceNow, shortGroupPrice,
-  groupRefund, groupRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
+  groupRefund, groupRefunds, retryOwedRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
   finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED, captureNow,
 };

@@ -504,6 +504,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.holds_failed', { error: err.message });
   }
+  // Paid plans: refunds that are owed and couldn't complete are asked again until confirmed (contract 10.4).
+  let owedRefunds = 0;
+  try {
+    owedRefunds = await require('../services/plans/planPaid').retryOwedRefunds();
+  } catch (err) {
+    logger.warn('plans.tick.owed_refunds_failed', { error: err.message });
+  }
   // Group deals on businesses' plans (B1): settled at their deadline, and the one "closes soon" notice.
   let deals = null;
   try {
@@ -550,7 +557,7 @@ async function runPlansTick() {
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
-    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
+    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(owedRefunds ? { owedRefunds } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
     ...(dateTimes && (dateTimes.moved || dateTimes.reminded || dateTimes.lapsed) ? { dateTimes } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
