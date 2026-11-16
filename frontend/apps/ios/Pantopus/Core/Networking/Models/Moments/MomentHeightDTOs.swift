@@ -34,14 +34,15 @@ public struct MomentAltitudeBody: Encodable, Sendable, Hashable {
 
 /// The server's rules for a height (`shownAltitude` in backend/services/moments/momentStore.js), mirrored.
 public enum MomentHeight {
-    /// The feet everyone reads for a reading, rounded to 10 as the server rounds; nil for one the server leaves out:
-    /// below -500 m or above 15,000 m, or rougher than 60 m (150 m in flight, at 60 m/s or more).
-    public static func feet(meters: Double, accuracyM: Double?, speedMps: Double?) -> Int? {
+    /// The feet everyone reads for a reading, rounded to 10 as the server rounds (to 100 for a floating Moment, `step`);
+    /// nil for one the server leaves out: below -500 m or above 15,000 m, or rougher than 60 m (150 m in flight, at
+    /// 60 m/s or more).
+    public static func feet(meters: Double, accuracyM: Double?, speedMps: Double?, step: Int = 10) -> Int? {
         guard meters.isFinite, (-500...15000).contains(meters) else { return nil }
         let flying = speedMps.map { $0.isFinite && $0 >= 60 } ?? false
         if let accuracyM, !(accuracyM.isFinite && (0...(flying ? 150 : 60)).contains(accuracyM)) { return nil }
         // Half a step rounds up, as JavaScript's Math.round does.
-        return Int((meters * 3.28084 / 10 + 0.5).rounded(.down)) * 10
+        return Int((meters * 3.28084 / Double(step) + 0.5).rounded(.down)) * step
     }
 
     /// The row's second line: "4,390 ft above sea level".
@@ -59,11 +60,14 @@ public struct MomentShownHeight: Sendable, Hashable {
     public let feet: Int
     /// Posted in flight (60 m/s or more).
     public let flying: Bool
+    /// The Sky: a floating Moment's height, rounded to 100 ft, reads "About 4,400 ft".
+    public let about: Bool
 
-    public init?(feet: Int?, flying: Bool) {
+    public init?(feet: Int?, flying: Bool, about: Bool = false) {
         guard let feet else { return nil }
         self.feet = feet
         self.flying = flying
+        self.about = about && !flying
     }
 
     /// The colour that goes with the number (never colour alone).
@@ -71,15 +75,16 @@ public struct MomentShownHeight: Sendable, Hashable {
         flying ? .flying : MomentHeightBand(feet: feet)
     }
 
-    /// The tag: "4,390 ft".
+    /// The tag: "4,390 ft"; a floating Moment's "About 4,400 ft".
     public var text: String {
-        "\(feet.formatted()) ft"
+        about ? SkyWords.aboutFeet(feet) : "\(feet.formatted()) ft"
     }
 
     /// What VoiceOver adds to a ring: "4,390 feet above sea level", or "posted in flight at 34,000 feet".
     public var spoken: String {
         if flying { return "posted in flight at \(feet.formatted()) feet" }
-        return feet < 0 ? "\((-feet).formatted()) feet below sea level" : "\(feet.formatted()) feet above sea level"
+        let line = feet < 0 ? "\((-feet).formatted()) feet below sea level" : "\(feet.formatted()) feet above sea level"
+        return about ? "about " + line : line
     }
 }
 
@@ -129,7 +134,7 @@ public extension MomentRingDTO {
 
 public extension MomentDTO {
     var shownHeight: MomentShownHeight? {
-        MomentShownHeight(feet: altitudeFt, flying: flying)
+        MomentShownHeight(feet: altitudeFt, flying: flying, about: sky.floating)
     }
 }
 

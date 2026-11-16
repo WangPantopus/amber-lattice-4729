@@ -116,6 +116,7 @@ final class MomentsUploader {
 
     /// A text card is live the moment it's made: the map says so and reads its rings again.
     func wentLive(_ moment: MomentDTO) {
+        if moment.state == .scheduled { return waits(nil, shareAt: moment.sky.shareAt) }
         // A Moment with no location has no spot to bring into view.
         if !moment.noLocation { liveSpot = CLLocationCoordinate2D(latitude: moment.latitude, longitude: moment.longitude) }
         announceLive(hours: moment.hours)
@@ -190,7 +191,7 @@ final class MomentsUploader {
         // The file is in: nothing is left to remind about, whatever the picture check takes from here
         // (the wait for it can outlast the app's time in the background).
         MomentsUploadReminder.cancel(id)
-        await settle(id, state: uploaded.state, momentId: momentId)
+        await settle(id, state: uploaded.state, momentId: momentId, shareAt: uploaded.sky.shareAt)
     }
 
     /// The file goes up in the background session. An upload an earlier run of the app started is
@@ -257,15 +258,15 @@ final class MomentsUploader {
     }
 
     /// Live: the map says so and reads the ring. Checking: waits for the picture
-    /// check (a minute at most). Held: says so.
-    private func settle(_ id: String, state: MomentState, momentId: String) async {
-        var state = state
+    /// check (a minute at most). Held: says so. Shared later (the Sky): says when it shares; it's on no map until then.
+    private func settle(_ id: String, state: MomentState, momentId: String, shareAt: String?) async {
+        var (state, shareAt) = (state, shareAt)
         if state == .checking {
             update(id) { $0.phase = .checking }
             for _ in 0..<30 where state == .checking && !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 if let reply: MomentEnvelope = try? await MomentsAPI.send(MomentsEndpoints.moment(id: momentId)) {
-                    state = reply.moment.state
+                    (state, shareAt) = (reply.moment.state, reply.moment.sky.shareAt)
                 }
             }
         }
@@ -274,6 +275,8 @@ final class MomentsUploader {
         if state == .held {
             notice = "Your Moment is waiting for a quick review before it shows."
             finish(id)
+        } else if state == .scheduled {
+            return waits(id, shareAt: quiet ? nil : shareAt)
         } else {
             // The posting ring stays put until the map has the real ring (`clearLive`), so nothing jumps.
             update(id) {
@@ -484,5 +487,14 @@ extension MomentsUploader {
     func showsPin(_ posting: MomentPosting) -> Bool {
         guard let series = posting.series else { return true }
         return !postings.contains { $0.series == series && $0.part < posting.part && $0.phase != .live }
+    }
+}
+
+extension MomentsUploader {
+    /// Shared later (the Sky): it waits, on no map, until its time. The map says when it shares and reads again.
+    private func waits(_ id: String?, shareAt: String?) {
+        if let id { finish(id) }
+        if let at = MomentTime.parse(shareAt) { liveNote = SkyWords.scheduledNotice(at) }
+        finished += 1
     }
 }
