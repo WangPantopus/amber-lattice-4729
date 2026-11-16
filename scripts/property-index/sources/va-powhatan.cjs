@@ -3,7 +3,7 @@
 // county's ArcGIS organization and edited as the Assessor's records change. No license and no limit on use is posted with them; the county's
 // GIS data request form calls its maps and data a public information service and disclaims liability. Each home's year built (the
 // depreciation table), finished living area, bedrooms, full and half baths, stories and rooms (the residential construction table), the
-// parcel's land acres and its current land, building and total assessments (Virginia assesses at full market value), with the parcel's own
+// parcel's legal acreage (else the acres of its assessed land lines) and its current land, building and total assessments (Virginia assesses at full market value), with the parcel's own
 // location. Owner, mailing and ownership tables are never asked for. Parcels the county marks to keep off the internet carry no facts here.
 
 const path = require('node:path');
@@ -18,7 +18,7 @@ const FIPS = '51145';
 const COUNTY = 'Powhatan County';
 const SERVICE = 'https://services5.arcgis.com/nip9boeHfv9Av5yj/arcgis/rest/services/Vision_Powhatan/FeatureServer';
 const TABLES = {
-  realmast: { id: 13, columns: ['REM_PID', 'REM_ALT_PRCL_ID', 'REM_PRCL_LOCN', 'REM_PRCL_LOCN_CITY', 'REM_PRCL_LOCN_ZIP', 'REM_USE_CODE', 'REM_INET_SUPPRESS'] },
+  realmast: { id: 13, columns: ['REM_PID', 'REM_ALT_PRCL_ID', 'REM_PRCL_LOCN', 'REM_PRCL_LOCN_CITY', 'REM_PRCL_LOCN_ZIP', 'REM_USE_CODE', 'REM_LEGAL_AREA', 'REM_INET_SUPPRESS'] },
   parcel: { id: 11, columns: ['PRC_PID', 'PRC_TTL_LND_AREA_ACRES', 'PRC_TTL_ASSESS', 'PRC_TTL_ASSESS_LND', 'PRC_TTL_ASSESS_BLDG', 'PRC_TTL_ASSESS_IMPROVEMENTS'] },
   construction: { id: 4, columns: ['CNS_PID', 'CNS_BID', 'CNS_STYLE_DESC', 'CNS_IS_CMRCL'] },
   residential: { id: 6, columns: ['CNS_PID', 'CNS_BID', 'CNS_AREA_LIVING', 'CNS_NUM_BEDRM', 'CNS_NUM_BATHRM', 'CNS_NUM_HALF_BATHS', 'CNS_STORIES', 'CNS_NUM_RMS', 'CNS_EXT_WALL_1_DESC', 'CNS_ROOF_COVER_DESC', 'CNS_HEAT_TYPE_DESC', 'CNS_AC_TYPE_DESC'] },
@@ -129,9 +129,11 @@ async function* build({ work, today }) {
       put(facts, 'heating', said(residence.CNS_HEAT_TYPE_DESC));
       put(facts, 'cooling', said(residence.CNS_AC_TYPE_DESC));
     }
+    // The lot is the record's legal acreage ("Legal Acreage", REM_LEGAL_AREA), else the acres of the Assessor's land lines ("Total Land
+    // Acres", PRC_TTL_LND_AREA_ACRES); never the parcel map's area (PRC_GIS_AREA, which the county leaves empty anyway).
     const parcel = parcels.get(pid);
+    put(facts, 'lot_acres', positive(row.REM_LEGAL_AREA) || positive(parcel?.PRC_TTL_LND_AREA_ACRES));
     if (parcel) {
-      put(facts, 'lot_acres', positive(parcel.PRC_TTL_LND_AREA_ACRES));
       put(facts, 'market_value', positive(parcel.PRC_TTL_ASSESS));
       put(facts, 'market_land_value', positive(parcel.PRC_TTL_ASSESS_LND));
       put(facts, 'market_building_value', positive(parcel.PRC_TTL_ASSESS_IMPROVEMENTS) || positive(parcel.PRC_TTL_ASSESS_BLDG));
@@ -153,6 +155,6 @@ module.exports = {
     // CNS_AYB "Year Built".
     layer: [`${SERVICE}/13`, `${SERVICE}/11`, `${SERVICE}/6`, `${SERVICE}/5`, `${SERVICE}/0`],
     columns: { CNS_AYB: 'Year Built (the county\'s parcel viewer web map)' },
-    facts: { year_built: 'CNS_AYB', living_sqft: 'CNS_AREA_LIVING', bedrooms: 'CNS_NUM_BEDRM', bathrooms: 'CNS_NUM_BATHRM', full_baths: 'CNS_NUM_BATHRM', half_baths: 'CNS_NUM_HALF_BATHS', stories: 'CNS_STORIES', rooms: 'CNS_NUM_RMS', lot_acres: 'PRC_TTL_LND_AREA_ACRES', market_value: 'PRC_TTL_ASSESS', market_land_value: 'PRC_TTL_ASSESS_LND', market_building_value: 'PRC_TTL_ASSESS_IMPROVEMENTS' },
+    facts: { year_built: 'CNS_AYB', living_sqft: 'CNS_AREA_LIVING', bedrooms: 'CNS_NUM_BEDRM', bathrooms: 'CNS_NUM_BATHRM', full_baths: 'CNS_NUM_BATHRM', half_baths: 'CNS_NUM_HALF_BATHS', stories: 'CNS_STORIES', rooms: 'CNS_NUM_RMS', lot_acres: 'REM_LEGAL_AREA', market_value: 'PRC_TTL_ASSESS', market_land_value: 'PRC_TTL_ASSESS_LND', market_building_value: 'PRC_TTL_ASSESS_IMPROVEMENTS' },
   },
 };
