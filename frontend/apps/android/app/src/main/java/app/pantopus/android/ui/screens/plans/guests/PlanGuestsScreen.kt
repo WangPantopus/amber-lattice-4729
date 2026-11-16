@@ -41,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
+import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -106,6 +107,21 @@ fun PlanGuestsScreen(
             text = { Text("Their invitation will stop working.") },
             confirmButton = { TextButton(onClick = viewModel::remove) { Text("Remove", color = PantopusColors.error) } },
             dismissButton = { TextButton(onClick = viewModel::keep) { Text("Not now") } },
+        )
+    }
+    // "Let in" on a person from the link at a home: the requests screen's sentence, asked once for the plan.
+    ui.confirmAccept?.let { row ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissConfirm,
+            title = { Text("Accepting shares your address with them") },
+            text = {
+                Text(
+                    "${PlanFormat.firstName(row.title)} will see your address, your note and who's going. " +
+                        "You'll be asked once for this plan.",
+                )
+            },
+            confirmButton = { TextButton(onClick = viewModel::confirmSharingAddress) { Text("Accept and share") } },
+            dismissButton = { TextButton(onClick = viewModel::dismissConfirm) { Text("Not now") } },
         )
     }
     val plan = ui.plan
@@ -208,7 +224,8 @@ private fun WaitingCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            PlanAvatar(name = row.title, seed = row.id)
+            // A person from the link with an account shows their own name and picture (contract 6.9, picture 23).
+            PlanAvatar(name = row.title, seed = row.person?.userId ?: row.id, avatarUrl = row.person?.avatarUrl)
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = row.title, style = semibold, color = PantopusColors.appText, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(text = ui.waitingLine(row), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)

@@ -427,9 +427,10 @@ object DeepLinkRouter {
 
         /**
          * Nearby Plans: `/plans/:id` opens the plan (J1 to J8, or H9 for its host). Behind the `plans` flag.
-         * `?invite=` carries an email or text invitation for the plan to open ([invite]).
+         * `?invite=` carries an email or text invitation for the plan to open ([invite]); `?open=` the plan's one link
+         * for everyone (Plans for the holidays, contract 6.9), which the person answers as themselves ([open]).
          */
-        data class Plan(val id: String, val invite: String? = null) : Destination
+        data class Plan(val id: String, val invite: String? = null, val open: String? = null) : Destination
 
         /** Nearby Plans: `/plans/:id/requests` opens the host's requests (H10). */
         data class PlanRequests(val id: String) : Destination
@@ -540,6 +541,26 @@ object DeepLinkRouter {
 
     /** Whether a Moment link may open now, waiting for the server's answer on a first sign-in here (as [plansAnswer]). */
     suspend fun momentsAnswer(): Boolean = momentsAnswerProvider()
+
+    /**
+     * A pantopus.com address of a plan's one link for everyone (`/plan-link/:id?open=`, `/plans/:id?open=`, contract 6.9):
+     * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
+     * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
+     * sign-in instead, as plan links are.
+     */
+    fun opensOnlySignedIn(uri: Uri): Boolean =
+        uri.scheme.equals("https", ignoreCase = true) && (resolve(uri) as? Destination.Plan)?.open != null
+
+    /**
+     * A Plans notice whose metadata says `opens: whos_coming` (Plans for the holidays: a guest is in, wants to come, or
+     * waits after a move to a home) opens the host's Who's coming, in the notifications list as from its push.
+     */
+    fun whosComingPath(metadata: Any?): String? {
+        val fields = metadata as? Map<*, *> ?: return null
+        if (fields["opens"] != "whos_coming") return null
+        val planId = (fields["plan_id"] as? String)?.takeIf(String::isNotBlank) ?: return null
+        return "/plans/$planId/guests"
+    }
 
     /** True when [destination] is a Plans page. Those open only while the `plans` flag is on. */
     fun isPlansDestination(destination: Destination): Boolean =
@@ -1051,6 +1072,17 @@ object DeepLinkRouter {
                     Destination.Unknown(raw)
                 }
             }
+            // Plans for the holidays (contract 6.9): `/plan-link/:id?open=` is the plan's one link for everyone; it opens
+            // the plan (claimed for a signed-in person, see [opensOnlySignedIn]). Without `open` it's the web's page.
+            "plan-link" -> {
+                val id = segments.getOrNull(1)
+                val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
+                if (segments.size == 2 && !id.isNullOrBlank() && open != null) {
+                    Destination.Plan(id, open = open)
+                } else {
+                    Destination.Unknown(raw)
+                }
+            }
             // Moments: `/moments/:id` (a connection's new Moment); its id is a UUID.
             "moments" ->
                 segments.getOrNull(1)
@@ -1065,7 +1097,12 @@ object DeepLinkRouter {
                     segments.size == 1 -> Destination.PlansTab
                     id == "new" && segments.size == 2 -> Destination.NewPlan
                     id.isNullOrBlank() -> Destination.Unknown(raw)
-                    segments.size == 2 -> Destination.Plan(id, Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken))
+                    segments.size == 2 ->
+                        Destination.Plan(
+                            id,
+                            invite = Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken),
+                            open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken),
+                        )
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
                     trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
                     else -> Destination.Unknown(raw)

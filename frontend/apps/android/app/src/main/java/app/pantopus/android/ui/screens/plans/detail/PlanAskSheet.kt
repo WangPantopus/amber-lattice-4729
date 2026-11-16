@@ -94,8 +94,10 @@ internal fun PlanAskSheet(
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val host = plan.hostFirst
     // Plans for the holidays (board 18): an invited person on a private plan whose host has H1 answers with adults
-    // and kids (or how many), Maybe or Can't make it.
-    if (plan.answersWithCounts(invited) && onMaybe != null && onDecline != null) {
+    // and kids (or how many), Maybe or Can't make it. That includes an invitation the host says yes to first, as one
+    // from the plan's one link with "I say yes first" (A10 item 4): their "I'm in" is a request.
+    val withCounts = plan.answersWithCounts(invited || plan.openInvite != null)
+    if (withCounts && onMaybe != null && onDecline != null) {
         ModalBottomSheet(
             onDismissRequest = onClose,
             sheetState = sheet,

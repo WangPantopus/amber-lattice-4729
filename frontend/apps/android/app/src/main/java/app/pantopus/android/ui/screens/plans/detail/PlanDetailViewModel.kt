@@ -140,6 +140,9 @@ class PlanDetailViewModel
         /** An email or text invitation's token (`?invite=`): the plan opens it for this account first. */
         private val inviteToken: String? = savedStateHandle.get<String>(PlansRoutes.INVITE_KEY)?.takeIf(String::isNotBlank)
 
+        /** The plan's one link for everyone (`?open=`, Plans for the holidays, contract 6.9): claimed for this account first. */
+        private val openToken: String? = savedStateHandle.get<String>(PlansRoutes.OPEN_KEY)?.takeIf(String::isNotBlank)
+
         /** How the person came to a business's plan, when the app knows (`business_page`), sent with the ask. */
         private val via: String? = savedStateHandle.get<String>(PlansRoutes.VIA_KEY)?.takeIf { it == PlansRoutes.VIA_BUSINESS_PAGE }
         private var inviteClaimed = false
@@ -180,12 +183,20 @@ class PlanDetailViewModel
         /**
          * Opened from an email or text invitation: it becomes this account's. Someone else already used it, or the host
          * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS). True when the
-         * invitation wasn't found.
+         * invitation wasn't found. The plan's one link for everyone is claimed the same way (contract 6.9): the person
+         * is invited as themselves, and every refusal (removed, turned down, a block, the link off) is a 404.
          */
         private suspend fun claimInviteOnce(): Boolean {
-            val token = inviteToken?.takeUnless { inviteClaimed } ?: return false
+            if (inviteClaimed) return false
+            val token = inviteToken
+            val open = openToken
             val generation = readGeneration
-            val result = repository.claimInvite(planId, token)
+            val result =
+                when {
+                    token != null -> repository.claimInvite(planId, token)
+                    open != null -> repository.claimOpenLink(planId, open)
+                    else -> return false
+                }
             if (!active || generation != readGeneration) return false
             inviteClaimed = true
             return when (result) {

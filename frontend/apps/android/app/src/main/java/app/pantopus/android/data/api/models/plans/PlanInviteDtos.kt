@@ -24,6 +24,11 @@ data class PlanMyInviteDto(
     /** The host says yes first (an email opened by an account it wasn't sent to). */
     @Json(name = "needs_host_ok") val needsHostOk: Boolean = false,
     @Json(name = "invited_at") val invitedAt: String? = null,
+    /**
+     * How it came (Plans for the holidays, contract 6.9, with `guests=1`): `account`, `email`, `link` or `open`, the
+     * plan's one link for everyone, claimed in the app.
+     */
+    @Json(name = "via") val via: String? = null,
 ) {
     /** Not answered, "Maybe" (Plans for the holidays) or "Can't make it": the person can still change their mind. */
     val isOpen: Boolean get() = status == "pending" || status == "declined" || status == "maybe"
@@ -70,10 +75,24 @@ data class PlanInviteRowDto(
     @Json(name = "guest") val guest: PlanInviteGuestDto? = null,
     /** A guest from the open link waits for the host's yes (`state` `waiting_ok`): "Let in" shows. */
     @Json(name = "can_ok") val canOk: Boolean = false,
+    /** How the invitation came (contract 6.9): its channel; `open` for the plan's one link, by a guest or an account. */
+    @Json(name = "via") val via: String? = null,
+    /** An account with an ask: how many adults and kids it brings (contract 6.9). Guests carry theirs in [guest]. */
+    @Json(name = "party") val party: PlanInvitePartyDto? = null,
 ) {
+    /** An account that came by the open link and waits for the host's yes on its ask (contract 6.9, A5). */
+    val isLinkAccountWaiting: Boolean get() = via == "open" && person != null && state == "asked" && requestId != null
+
     /** The name, the address, or "Text invite". */
     val title: String get() = person?.displayName ?: guest?.name ?: email ?: "Text invite"
 }
+
+/** An account's party on the host's list (contract 6.9): adults, and kids only with kids welcome. */
+@JsonClass(generateAdapter = true)
+data class PlanInvitePartyDto(
+    @Json(name = "adults") val adults: Int = 1,
+    @Json(name = "kids") val kids: Int = 0,
+)
 
 /** A guest without an account on the host's list (contract 6.4). */
 @JsonClass(generateAdapter = true)
@@ -207,7 +226,9 @@ data class PlanInviteLinkResponse(
 /** `POST /api/plans/:id/invites/claim`. */
 @JsonClass(generateAdapter = true)
 data class PlanInviteClaimBody(
-    @Json(name = "token") val token: String,
+    @Json(name = "token") val token: String? = null,
+    /** The plan's one link for everyone (contract 6.9): the person answers it as themselves. */
+    @Json(name = "open") val open: String? = null,
 )
 
 /** The plan as the person sees it now (claiming or declining an invitation). */

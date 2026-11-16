@@ -285,8 +285,10 @@ class MainActivity : FragmentActivity() {
             OAuthSessionStore.deliver(uri)
             return
         }
-        if (forwardWebOnlyLink(intent, uri) || forwardReminderAction(intent, uri) || forwardAccountScopedPush(intent, uri)) return
-        DeepLinkRouter.handle(uri)
+        val handled =
+            forwardWebOnlyLink(intent, uri) || forwardOpenLink(intent, uri) ||
+                forwardReminderAction(intent, uri) || forwardAccountScopedPush(intent, uri)
+        if (!handled) DeepLinkRouter.handle(uri)
     }
 
     /**
@@ -299,6 +301,27 @@ class MainActivity : FragmentActivity() {
     ): Boolean {
         if (!WebLinkFallback.isWebOnly(uri)) return false
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) WebLinkFallback.open(this, uri)
+        return true
+    }
+
+    /**
+     * A plan's one link for everyone (`https://…/plan-link/<id>?open=…`, Plans for the holidays, contract 6.9): someone
+     * signed in answers it in the app as themselves; signed out it opens the web's page, where a guest answers without
+     * an account. A cold start waits for the saved session first. True when [uri] is such a link.
+     */
+    private fun forwardOpenLink(
+        intent: Intent,
+        uri: Uri,
+    ): Boolean {
+        if (!DeepLinkRouter.opensOnlySignedIn(uri)) return false
+        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        lifecycleScope.launch {
+            val state = authRepository.state.first { it != AuthRepository.State.Unknown }
+            when {
+                state is AuthRepository.State.SignedIn -> DeepLinkRouter.handle(uri)
+                !fromHistory -> WebLinkFallback.open(this@MainActivity, uri)
+            }
+        }
         return true
     }
 

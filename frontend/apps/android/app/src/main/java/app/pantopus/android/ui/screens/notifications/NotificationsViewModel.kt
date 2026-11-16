@@ -986,6 +986,7 @@ class NotificationsViewModel
             val link =
                 DeepLinkRouter.assistantNotificationPath(dto.type, dto.id, dto.link, conversationId)
                     ?: HomeTaskNotificationRoute.metadataPath(dto.type, dto.metadata)
+                    ?: DeepLinkRouter.whosComingPath(dto.metadata)
                     ?: DeepLinkRouter.notificationPath(dto.type, dto.link)
             if (!link.isNullOrEmpty()) {
                 val gigId = DeepLinkRouter.gigIdForLink(link)
