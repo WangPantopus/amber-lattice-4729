@@ -719,7 +719,7 @@ function buildCard(plan, viewer, ctx) {
   // business has the switch. An added field.
   if (plan.business_user_id && plan.deal && ctx.dealsByHost?.get(hostId)) {
     const deal = require('./planDeals').cardView(plan.deal, {
-      role, going, plan,
+      role, going, plan, paid: Boolean(card.price),
       request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null } : null,
       firstName: role === 'guest' && ctx.users.get(viewer.id) ? firstName(ctx.users.get(viewer.id)) : null,
     });
