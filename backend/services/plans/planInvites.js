@@ -59,6 +59,8 @@ const INVITE_COLUMNS = [
   'email_status', 'claimed_at', 'opened_at', 'answered_at', 'created_at', 'updated_at',
   // A guest without an account (planGuests.js), and the host's own yes (6.8, 6.9).
   'guest_name', 'guest_adults', 'guest_kids', 'reminded_at', 'host_ok_at',
+  // The same people again: the name the host knew this address by on an earlier plan (the address stays hidden).
+  'known_name',
 ].join(', ');
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]{1,64}@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -310,7 +312,9 @@ async function hostView(plan, rows, { guests = false } = {}) {
       channel: row.channel,
       state,
       person: named && userId ? personFor(plan, people.get(userId)) : null,
-      email: row.channel === 'email' ? row.email : null,
+      // An address invited from an earlier plan's guest (the same people again) never reaches the host: the name does.
+      email: row.channel === 'email' && !row.known_name ? row.email : null,
+      ...(row.known_name ? { name: row.known_name } : {}),
       email_failed: row.channel === 'email' && ['failed', 'skipped'].includes(row.email_status),
       // The ask waiting for the host's yes (state asked): the ordinary accept or decline.
       request_id: state === 'asked' && request ? request.id : null,
@@ -684,7 +688,18 @@ async function createInvites(user, postId, body = {}) {
   if (invalid.length > 0) fail(422, 'invalid_email', `Check this email address: ${invalid[0]}`, { invalid_emails: invalid });
   if (userIds.length === 0 && emails.length === 0) fail(422, 'validation', 'Choose someone to invite.');
   await assertSharesAddressConfirmed(plan, body);
+  return inviteAll(user, viewer, plan, { userIds, emails });
+}
 
+/**
+ * Invite these accounts and addresses to the host's plan, with every limit of invitations (the plan's invitations and
+ * emails, the host's emails a day, an address's five a day and its "don't send me invitations", blocks), and answer
+ * the host's list with a result for each. `knownNames` (the same people again, 08-extras section 6): an address the
+ * host knows only by a guest's name on an earlier plan. Its row keeps that name, and the host's list shows the name,
+ * never the address.
+ */
+async function inviteAll(user, viewer, plan, { userIds, emails, knownNames = null }) {
+  const postId = plan.post_id;
   const existing = await loadInvites(postId);
   const newEmails = emails.filter((e) => !existing.some((r) => r.email === e));
   // Someone who opened the plan's open link in the app (6.9) is invited already.
@@ -742,8 +757,12 @@ async function createInvites(user, postId, body = {}) {
     if (email === hostEmail) { results.push({ email, outcome: 'host' }); continue; }
     if (!newEmails.includes(email)) { results.push({ email, outcome: 'already_invited' }); continue; }
     const token = newToken();
+    const knownName = knownNames ? knownNames.get(email) || null : null;
     const { data, error } = await supabaseAdmin.from('PlanInvite')
-      .insert({ post_id: postId, host_user_id: inviterId(plan, viewer), channel: 'email', email, token_hash: hashToken(token) })
+      .insert({
+        post_id: postId, host_user_id: inviterId(plan, viewer), channel: 'email', email, token_hash: hashToken(token),
+        ...(knownName ? { known_name: knownName } : {}),
+      })
       .select(INVITE_COLUMNS).single();
     if (error) {
       if (error.code === '23505') { results.push({ email, outcome: 'already_invited' }); continue; }
@@ -1403,6 +1422,9 @@ module.exports = {
   friendLinkPlanIds,
   isLiveToken,
   createInvites,
+  inviteAll,
+  names,
+  personFor,
   createLinkInvite,
   cancelInvite,
   claimInvite,

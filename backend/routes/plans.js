@@ -259,6 +259,24 @@ router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, r
   }
 });
 
+// The same people again (Plans for the holidays, 08-extras section 6), behind plans_same_people: 404 while it is off.
+// GET /api/plans/past-people: the host's last ten ended plans that had anyone in, { plans: [{ post_id, title, kind,
+// date_text, count }] }. GET /api/plans/past-people/:postId: who was in on one, a name each, never an address.
+router.get('/past-people', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planSamePeople').pastPlans(req.user));
+  } catch (err) {
+    return serverError(res, err, 'past_people', req);
+  }
+});
+router.get('/past-people/:postId', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planSamePeople').pastPlanPeople(req.user, req.params.postId));
+  } catch (err) {
+    return serverError(res, err, 'past_people_plan', req);
+  }
+});
+
 // GET /api/plans/invites/next: right after signing in, the newest invitation the person hasn't opened, so the app
 // opens that plan ({ plan_id } or { plan_id: null }). An email invitation reaches them by their verified address.
 router.get('/invites/next', async (req, res) => {
@@ -487,6 +505,16 @@ router.post('/:id/invites/link', requireFeatureFlag('plans_invites'), async (req
     return res.status(201).json(await planInvites.createLinkInvite(req.user, req.params.id, body(req)));
   } catch (err) {
     return serverError(res, err, 'invite_link', req);
+  }
+});
+
+// POST /api/plans/:id/invites/from-plan { from_post_id, skip?, confirm_shares_address? }: the same people again. Each
+// person who was in there is invited the way they were reached; answers the host's list and a result a person.
+router.post('/:id/invites/from-plan', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.status(201).json(await require('../services/plans/planSamePeople').inviteFromPlan(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'invite_from_plan', req);
   }
 });
 
