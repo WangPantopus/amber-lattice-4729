@@ -688,6 +688,12 @@ priceSale({ businessUserId, soldType, amountCents, basis })
 - Where the business pays the card fee, its share is fixed when the charge has
   succeeded and the card company has reported the charge's fee (K9):
   `amount_to_payee = amount_total − platform fee − card fee`.
+- **When the card company reports no fee** (found November 16: the test
+  platform reports 0 on every charge, which is what an account billed its fees
+  separately does): the card fee is the payments design's standard rate, 2.9%
+  of the amount, rounded, plus 30 cents. The payment records which was used,
+  `card_fee_source`: `reported` or `standard_rate`. Whether production reports
+  a fee is the founder's to look at in the payment company's dashboard.
 - A payout waits for `payout_after`. A plan sets it to 48 hours after the plan
   ends.
 
