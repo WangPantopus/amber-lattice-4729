@@ -175,6 +175,8 @@ struct PlanDealForm: View {
     let start: Date
     let offer: PlanDealOffer
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s6) {
             PlanFormField(label: "Deal") {
@@ -254,16 +256,16 @@ struct PlanDealForm: View {
                 }
                 .padding(.vertical, Spacing.s2)
                 Divider().overlay(Theme.Color.appBorder)
-                DatePicker(
-                    selection: Binding(get: { draft.groupBy ?? start }, set: { draft.groupBy = $0 }),
-                    in: Date()...max(Date(), start),
-                    displayedComponents: [.date, .hourAndMinute]
-                ) {
-                    Text("By").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+                // At the largest sizes "By" sits above the date and time, which take the whole row.
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: Spacing.s2) {
+                        Text("By").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+                        byPicker.labelsHidden()
+                    }
+                    .padding(.vertical, 10)
+                } else {
+                    byPicker.padding(.vertical, 10)
                 }
-                .tint(Theme.Color.primary700)
-                .padding(.vertical, 10)
-                .accessibilityIdentifier("planDealGroupBy")
             }
             if let error = draft.error("group_size") ?? draft.error("group_by") { PlanDealFieldError(text: error) }
             PlanScopeLine(text: "Guests see the count and the time left, and can share the plan to get there.", icon: .info)
@@ -294,6 +296,18 @@ struct PlanDealForm: View {
                 )
             }
         }
+    }
+
+    private var byPicker: some View {
+        DatePicker(
+            selection: Binding(get: { draft.groupBy ?? start }, set: { draft.groupBy = $0 }),
+            in: Date()...max(Date(), start),
+            displayedComponents: [.date, .hourAndMinute]
+        ) {
+            Text("By").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+        }
+        .tint(Theme.Color.primary700)
+        .accessibilityIdentifier("planDealGroupBy")
     }
 
     private func smallerRow(_ gives: Bool, _ title: String, _ subtitle: String) -> some View {

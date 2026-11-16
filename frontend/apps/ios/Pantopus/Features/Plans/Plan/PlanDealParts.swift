@@ -17,8 +17,8 @@ struct PlanDealTag: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Icon(.tag, size: 13, strokeWidth: 2.2, color: Theme.Color.successDk)
-            Text(text).planFont(.footnote).fontWeight(.semibold).foregroundStyle(Theme.Color.successDk)
+            Icon(.tag, size: 13, strokeWidth: 2.2, color: Theme.Color.success)
+            Text(text).planFont(.footnote).fontWeight(.semibold).foregroundStyle(Theme.Color.success)
         }
         .padding(.horizontal, 10)
         .frame(minHeight: 26)
@@ -103,7 +103,7 @@ struct PlanDealCard: View {
     private func stateLine(_ text: String, done: Bool) -> some View {
         Text(text)
             .planFont(done ? .smallStrong : .small)
-            .foregroundStyle(done ? Theme.Color.successDk : Theme.Color.appTextStrong)
+            .foregroundStyle(done ? Theme.Color.success : Theme.Color.appTextStrong)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("planDealState")
     }
@@ -183,7 +183,7 @@ struct PlanYourDealCard: View {
             Text("Ready")
                 .planFont(.footnote)
                 .fontWeight(.semibold)
-                .foregroundStyle(Theme.Color.successDk)
+                .foregroundStyle(Theme.Color.success)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 24)
                 .background(Capsule().fill(Theme.Color.successBg))
