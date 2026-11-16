@@ -612,10 +612,11 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
-  // A business's plan's deal (B1), while the business has the switch: checked against its room and start.
-  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at });
   // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
   const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
+  // A business's plan's deal (B1), while the business has the switch: checked against its room, start and (B4, money
+  // off the spot) its price.
+  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at, priceCents });
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -909,13 +910,17 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
   }
-  // A business's plan's deal (B1): set or changed while nobody is in, removed at any time (everyone in is told).
+  // The price of a spot (B2): fixed once anyone is in or paying; a paid plan lets guests in as they pay.
+  const priceChange = await require('./planPaid').priceChange(plan, patch, { placeKind });
+  // A business's plan's deal (B1): set or changed while nobody is in, removed at any time (everyone in is told). Money
+  // off the spot (B4) is checked against the price the plan will have.
+  const priceAfter = priceChange ? priceChange.price_cents : (plan.price_cents ?? null);
   const dealChange = await require('./planDeals').dealChange(plan, patch, {
     going, spots: planUpdate.spots ?? plan.spots, startsAt: postUpdate.event_date || plan.post.event_date,
+    priceCents: priceAfter && (await require('./planPaid').enabledFor(plan.host_user_id)) ? priceAfter : null,
+    priceChanged: Boolean(priceChange),
   });
   if (dealChange) planUpdate.deal = dealChange.update;
-  // The price of a spot (B2): fixed once anyone has paid; a paid plan lets guests in as they pay.
-  const priceChange = await require('./planPaid').priceChange(plan, patch, { placeKind });
   if (priceChange) {
     planUpdate.price_cents = priceChange.price_cents;
     if (priceChange.price_cents) planUpdate.auto_rules = ['open'];
@@ -1342,7 +1347,11 @@ async function quoteToJoin(user, postId, body = {}) {
   const ask = plan.kind === 'playdate'
     ? { party_size: 1, kids_count: null }
     : cleanAsk(plan, { party_size: body.party_size, kids_count: body.kids_count }, { guestAnswers: await planGuests.switchFor(plan.host_user_id) });
-  return planPaid().quoteFor(plan, ask);
+  // With deals on (B4): the deal's price for everyone, or the group price card while it is open or unlocked.
+  const dealsOn = Boolean(plan.deal) && (await require('./planDeals').enabledFor(plan.host_user_id));
+  const going = dealsOn && plan.deal?.scope === 'group'
+    ? planService.seatsTaken(plan, (await activeRequests(postId)).filter((r) => r.status === 'accepted')) : 0;
+  return planPaid().quoteFor(plan, ask, { unitCents: await planPaid().unitPriceNow(plan), dealsOn, going });
 }
 
 async function askToJoin(user, postId, body, { io = null } = {}) {
