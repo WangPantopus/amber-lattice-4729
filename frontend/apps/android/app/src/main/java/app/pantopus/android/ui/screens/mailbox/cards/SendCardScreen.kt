@@ -261,7 +261,7 @@ fun SendCardScreen(
         TakeBackDialog(
             byEmail = card.byEmail,
             postage = true,
-            emailSetForLater = card.emailSendAt != null,
+            notEmailedYet = card.emailSendAt != null,
             onTakeBack = {
                 listTakeBack = null
                 viewModel.takeBackFromList(card)
@@ -274,7 +274,7 @@ fun SendCardScreen(
             byEmail = (form.sent ?: season?.todaysCard)?.byEmail == true,
             byLink = (form.sent ?: season?.todaysCard)?.byLink == true,
             postage = season?.postageEnabled == true,
-            emailSetForLater = (form.sent ?: season?.todaysCard)?.emailSendAt != null,
+            notEmailedYet = (form.sent ?: season?.todaysCard)?.emailSendAt != null,
             onTakeBack = {
                 confirmTakeBack = false
                 viewModel.takeBack()
@@ -607,13 +607,16 @@ internal fun TakeBackDialog(
     freesToday: Boolean = true,
     byLink: Boolean = false,
     postage: Boolean = false,
-    /** By email, set to go at the sender's 7 a.m. or on Christmas morning (`email_send_at`): nothing has been emailed yet. */
-    emailSetForLater: Boolean = false,
+    /**
+     * By email, nothing has been emailed to them yet: its email is set for later (`email_send_at`), or Sent says it didn't
+     * go out (`email_status`; taking it back stops the tries).
+     */
+    notEmailedYet: Boolean = false,
 ) {
     val first =
         when {
             byLink -> "Your link will say you took it back."
-            byEmail && emailSetForLater -> "We haven’t emailed them yet, so nothing will go out."
+            byEmail && notEmailedYet -> "We haven’t emailed them yet, so nothing will go out."
             byEmail -> "The link in their email will say you took it back."
             else -> "It won’t go out with the morning mail."
         }

@@ -141,7 +141,7 @@ fun MailSentCardScreen(
             onKeep = { confirmTakeBack = false },
             freesToday = MailSentWords.sentToday(card, zone),
             postage = cards?.postageEnabled == true,
-            emailSetForLater = card.emailSendAt != null,
+            notEmailedYet = MailSentWords.notEmailedYet(card),
         )
     }
 }

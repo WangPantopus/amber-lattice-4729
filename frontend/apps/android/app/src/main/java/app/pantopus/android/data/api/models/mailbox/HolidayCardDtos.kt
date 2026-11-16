@@ -551,6 +551,11 @@ data class SentCard(
     val note: String? = null,
     /** Where it's been, in order (the card's page only). */
     val trail: List<SentCardStep> = emptyList(),
+    /**
+     * A card by email whose email hasn't gone out while it waits (`email_waiting`): `retrying` while the server keeps
+     * trying (about an hour), then `failed`. Absent once it went; any other word is read as no trouble.
+     */
+    @Json(name = "email_status") val emailStatus: String? = null,
     /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when. Absent once it went (or when it went at once). */
     @Json(name = "email_send_at") val emailSendAt: String? = null,
 )

@@ -339,6 +339,12 @@ object MailSentWords {
     }
 
     /**
+     * Nothing has been emailed to them yet: its email is set for later (`email_send_at`), or it didn't go out and is still
+     * being tried or was given up (`email_status`). Taking it back then means nothing will go out.
+     */
+    fun notEmailedYet(card: SentCard): Boolean = card.emailSendAt != null || card.emailStatus == "retrying" || card.emailStatus == "failed"
+
+    /**
      * By email, still waiting: when its email goes while it's set for the sender's 7 a.m. or Christmas morning (nothing
      * is emailed before then), else that it waits for them to open or claim it.
      */
