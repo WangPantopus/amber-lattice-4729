@@ -383,14 +383,20 @@ class Take {
   /** Touch input through Chrome: a touch starts, moves or ends, and the film waits for the page to have it. */
   async touch(type, point) {
     const touchPoints = type === 'touchEnd' ? [] : [{ x: point.x, y: point.y, radiusX: 11, radiusY: 11, force: 1, id: 1 }];
+    const began = Date.now();
     await this.cdp.send('Input.dispatchTouchEvent', { type, touchPoints, modifiers: 0 });
     this.expected += 1;
     const landed = await this.page.evaluate(async (n) => {
       for (let i = 0; i < 200 && window.__adInput.n < n; i += 1) await new Promise((done) => { window.__film.real.set(done, 2); });
       return { n: window.__adInput.n, cancelled: window.__adInput.cancelled || 0 };
     }, this.expected);
+    this.touchStats = this.touchStats || { n: 0, missed: 0, ms: 0, worst: 0 };
+    const waited = Date.now() - began;
+    this.touchStats.n += 1; this.touchStats.ms += waited; this.touchStats.worst = Math.max(this.touchStats.worst, waited);
     if (landed.n < this.expected) {
       // A move to where the finger already was isn't an event: count what landed.
+      this.touchStats.missed += 1;
+      if (process.env.AD_DEBUG) console.log(`\n${this.name} ${type} at (${point?.x?.toFixed(2)}, ${point?.y?.toFixed(2)}) never landed (${waited} ms)`);
       this.expected = landed.n;
     }
     if (landed.cancelled) throw new Error(`${this.name}: the page cancelled a touch`);
@@ -811,7 +817,8 @@ async function stills({ browser, server, shapeName, work, out, art }) {
     await take.open();
     await take.film(path.join(work, shapeName, name), wanted.get(name));
     await take.close();
-    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}`);
+    const ts = take.touchStats;
+    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}${ts ? `, touches ${ts.n} (${ts.missed} never landed, ${(ts.ms / ts.n).toFixed(0)} ms average, worst ${ts.worst} ms)` : ''}`);
   }
   // Compose each still with its words (and the platforms' bars over the tall ones).
   const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
@@ -848,32 +855,56 @@ async function filmTakes({ browser, server, shapeName, work, art }) {
     const take = new Take({ browser, server, shape, shapeName, name, story: s0, art, work });
     const began = Date.now();
     await take.open();
-    await take.film(path.join(work, shapeName, name));
+    let wanted = null;
+    if (argument('from') || argument('to')) {
+      wanted = new Set();
+      const to = Math.min(Number(argument('to') ?? take.def.length), take.def.length);
+      for (let i = Math.round(Number(argument('from') ?? 0) * FPS); i < Math.round(to * FPS); i += 1) wanted.add(i);
+    }
+    await take.film(path.join(work, shapeName, name), wanted);
     await take.close();
-    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}`);
+    const ts = take.touchStats;
+    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}${ts ? `, touches ${ts.n} (${ts.missed} never landed, ${(ts.ms / ts.n).toFixed(0)} ms average, worst ${ts.worst} ms)` : ''}`);
   }
 }
 
-/** A cut from filmed takes: composed frames into ffmpeg (a ProRes master and an H.264 film), with the table's sounds. */
-async function filmCut({ browser, server, shapeName, work, out, length }) {
+/** Runs ffmpeg and throws with its words if it fails. */
+function ffmpeg(args) {
+  const run = require('child_process').spawnSync('ffmpeg', ['-v', 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  if (run.status !== 0) throw new Error(`ffmpeg failed: ${run.stderr.slice(-2000)}`);
+  return run;
+}
+
+/** The colour tags every film carries: BT.709, limited range (on the frames too, or ffmpeg drops some of them). */
+const TAGS = ['-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
+const TAG_FRAMES = 'setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709';
+
+/**
+ * A cut from filmed takes: composed frames into a ProRes master, then the table's sounds laid in at the frames they
+ * fired on, the master kept with its sound, and the H.264 film made from it.
+ */
+async function filmCut({ browser, server, shapeName, work, out, name }) {
   const shape = { ...SHAPES[shapeName] };
-  const cut = SHOTS.cuts[length];
+  const cut = SHOTS.cuts[name];
+  if (!cut) throw new Error(`No cut ${name}: ${Object.keys(SHOTS.cuts).join(', ')}.`);
   const plan = cutPlan(cut);
   const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
   const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
   const overlays = overlayCache(context, shape, server);
   fs.mkdirSync(out, { recursive: true });
-  const base = path.join(out, `cards-ad-${length}s-${shapeName}`);
+  const base = path.join(out, `cards-ad-${name}${/^\d+$/.test(name) ? 's' : ''}-${shapeName}`);
+  const silent = `${base}-master-silent.mov`;
   const master = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${w}x${h}`, '-r', String(FPS), '-i', '-',
-    '-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-vf', 'scale=in_range=full:out_range=tv:out_color_matrix=bt709',
-    '-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', `${base}-master-silent.mov`], { stdio: ['pipe', 'inherit', 'inherit'] });
+    '-vf', `scale=in_range=full:out_range=tv:out_color_matrix=bt709,format=yuv422p10le,${TAG_FRAMES}`, '-c:v', 'prores_ks', '-profile:v', '3', '-vendor', 'apl0', ...TAGS, silent],
+  { stdio: ['pipe', 'inherit', 'inherit'] });
   const frames = Math.round(plan.length * FPS);
   const sounds = [];
   for (const piece of plan.pieces) {
     const file = path.join(work, shapeName, piece.take, 'sounds.json');
     const list = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
-    for (const sound of list) if (sound.second >= piece.from && sound.second < piece.to) sounds.push({ name: sound.name, at: piece.at + (sound.second - piece.from) });
+    for (const sound of list) if (sound.second >= piece.from && sound.second < piece.to) sounds.push({ name: sound.name, at: piece.at + (sound.second - piece.from), take: piece.take, second: sound.second });
   }
+  const sheet = [];
   for (let j = 0; j < frames; j += 1) {
     const s = j / FPS;
     const piece = [...plan.pieces].reverse().find((p) => s >= p.at - 1e-9);
@@ -881,14 +912,43 @@ async function filmCut({ browser, server, shapeName, work, out, length }) {
     const file = path.join(work, shapeName, piece.take, `f_${String(frame).padStart(5, '0')}.png`);
     const raw = await sharp(file).removeAlpha().raw().toBuffer();
     const rgb = await compose({ raw, shape, s, cut, overlays, frameNo: j });
+    if (j % (FPS / 4) === 0) sheet.push({ s, image: await sharp(rgb, { raw: { width: w, height: h, channels: 3 } }).resize(shape.mobile ? 180 : 320).jpeg({ quality: 85 }).toBuffer() });
     if (!master.stdin.write(rgb)) await new Promise((done) => { master.stdin.once('drain', done); });
-    if (j % 60 === 0) process.stdout.write(`  cut ${length}s ${s.toFixed(1)}s\r`);
+    if (j % 60 === 0) process.stdout.write(`  cut ${name} ${s.toFixed(1)}s\r`);
   }
   master.stdin.end();
   await new Promise((done) => { master.on('close', done); });
   await context.close();
+
+  // The sounds, each at the frame it fired on.
+  const seconds = (frames / FPS).toFixed(4);
+  const inputs = ['-i', silent];
+  const mix = [];
+  sounds.forEach((sound, i) => {
+    inputs.push('-i', path.join(WEB, 'public/holiday-cards/sounds', `${sound.name}.mp3`));
+    const ms = Math.max(0, Math.round(sound.at * 1000));
+    // As loud as the app plays them (0.85), raised by the cut's soundGain (dB): the same for all three, so their balance holds.
+    const volume = 0.85 * 10 ** ((cut.soundGain || 0) / 20);
+    mix.push(`[${i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${volume.toFixed(4)},adelay=${ms}|${ms}[s${i}]`);
+  });
+  if (sounds.length) mix.push(`${sounds.map((_, i) => `[s${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[a]`);
+  else { inputs.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'); mix.push(`[1:a]atrim=0:${seconds}[a]`); }
+  const withSound = `${base}-master.mov`;
+  ffmpeg([...inputs, '-filter_complex', mix.join(';'), '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', seconds, withSound]);
+  fs.rmSync(silent);
+  // The film: H.264 High, 4:2:0, limited range, BT.709, about 18 Mbps, AAC 256 kbps 48 kHz, fast start.
+  const film = `${base}.mp4`;
+  ffmpeg(['-i', withSound, '-vf', `scale=in_range=tv:out_range=tv,format=yuv420p,${TAG_FRAMES}`, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-level:v', '4.2',
+    '-b:v', '18M', '-maxrate', '24M', '-bufsize', '36M', '-g', String(FPS), '-bf', '2', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv', ...TAGS,
+    '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-movflags', '+faststart', film]);
+  // A sheet of its frames, four a second, to look the whole cut over at once.
+  const tw = shape.mobile ? 180 : 320;
+  const th = Math.round((tw * h) / w);
+  const cols = shape.mobile ? 12 : 6;
+  await sharp({ create: { width: cols * (tw + 4), height: Math.ceil(sheet.length / cols) * (th + 4), channels: 3, background: '#111' } })
+    .composite(sheet.map((t, i) => ({ input: t.image, left: (i % cols) * (tw + 4), top: Math.floor(i / cols) * (th + 4) }))).jpeg({ quality: 88 }).toFile(`${base}-sheet.jpg`);
   fs.writeFileSync(`${base}-sounds.json`, JSON.stringify(sounds, null, 1));
-  return { master: `${base}-master-silent.mov`, sounds };
+  return { film, master: withSound, sounds };
 }
 
 (async () => {
@@ -927,8 +987,8 @@ async function filmCut({ browser, server, shapeName, work, out, length }) {
       const made = await stills({ browser, server: server.url, shapeName, work, out, art });
       console.log(`${made.length} stills in ${out}`);
     } else if (argument('cut')) {
-      const made = await filmCut({ browser, server: server.url, shapeName, work, out, length: Number(argument('cut')) });
-      console.log(`master ${made.master}, ${made.sounds.length} sounds`);
+      const made = await filmCut({ browser, server: server.url, shapeName, work, out, name: argument('cut') });
+      console.log(`${made.film}\n${made.master}\nsounds ${made.sounds.map((x) => `${x.name}@${x.at.toFixed(3)}s`).join(' ')}`);
     } else {
       await filmTakes({ browser, server: server.url, shapeName, work, art });
     }

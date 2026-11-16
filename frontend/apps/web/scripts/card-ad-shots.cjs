@@ -25,8 +25,8 @@ const SAM = [
 ];
 
 const story = {
-  /** The picture that stars (by its number in backend/services/holidayCards.js). */
-  card: 45,
+  /** The picture that stars (by its number in backend/services/holidayCards.js): "On his way to you.", the founder's pick (11-16). */
+  card: 55,
   from: 'Sam',
   to: 'Grandma',
   note: 'Grandma, I still dream about your cookies. Save me one.',
@@ -35,8 +35,8 @@ const story = {
   /** Sealed until Christmas morning. */
   until: '2026-12-25T15:00:00.000Z',
   signature: SAM,
-  /** The card rack: three swipes, the cloth a new colour each time, stopping on the star. */
-  rack: [8, 44, 40, 45],
+  /** The card rack: three swipes through Christmas with Santa (58, 57, 56, its own order backwards), the cloth a new colour each time, stopping on the star. */
+  rack: [58, 57, 56, 55],
 };
 
 // Where a finger goes, from the table's own layout (a: anchors on the page, g: the engine's geometry).
@@ -49,7 +49,7 @@ const takes = {
     clock: 618265,
     start: { go: 'back' },
     speed: [[0, 1], [0.25, 1], [0.36, 0.25], [1.2, 0.25], [1.5, 1]],
-    view: [{ at: 0, z: 1.6, focus: 'seal', dy: -0.02, dx: { wide: -0.12 } }, { at: 1.55, z: 1.6, focus: 'seal', dy: -0.02, dx: { wide: -0.12 } }, { at: 2.75, z: 1 }],
+    view: [{ at: 0, z: 1.6, focus: 'seal', dy: { tall: -0.05, wide: -0.02 }, dx: { wide: -0.12 } }, { at: 1.55, z: 1.6, focus: 'seal', dy: { tall: -0.05, wide: -0.02 }, dx: { wide: -0.12 } }, { at: 2.75, z: 1 }],
     gestures: [
       { at: 0.3, kind: 'drag', path: (a, g) => [[0, a.seal.x + 4, a.seal.y + 8], [110, a.seal.x + 4, a.seal.y - 9],
         [330, a.seal.x + 3, a.seal.y - 0.12 * g.h], [520, a.seal.x + 2, a.seal.y - 0.2 * g.h], [600, a.seal.x + 2, a.seal.y - 0.27 * g.h]] },
@@ -82,8 +82,8 @@ const takes = {
     length: 10.2,
     clock: 655100,
     start: { send: true },
-    speed: [[0, 1], [3.0, 1], [3.5, 1.2], [4.45, 1.2], [4.6, 1], [5.68, 1], [5.78, 0.5], [6.88, 0.5], [7.0, 1], [7.2, 1.5], [10.2, 1.5]],
-    view: [{ at: 0, z: 1 }, { at: 5.25, z: 1 }, { at: 5.68, z: 1.6, focus: 'press', dx: { wide: -0.12 } }, { at: 7.1, z: 1.6, focus: 'press', dx: { wide: -0.12 } }, { at: 7.6, z: 1 }],
+    speed: [[0, 1], [3.0, 1], [3.5, 1.2], [4.45, 1.2], [4.6, 1], [5.68, 1], [5.78, 0.5], [6.88, 0.5], [7.0, 1], [7.1, 1.65], [7.42, 1.65], [7.52, 1.2], [7.9, 1.2], [8.0, 1.12], [9.45, 1.12], [9.55, 2.3], [9.82, 2.3], [9.92, 1.3], [10.2, 1.3]],
+    view: [{ at: 0, z: 1 }, { at: 5.25, z: 1 }, { at: 5.68, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 7.1, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 7.6, z: 1 }],
     write: { from: 0.25, to: 1.55 },
     sign: { from: 1.75, to: 2.85, lift: 0.1 },
     gestures: [
@@ -152,14 +152,24 @@ const END = { lines: ['Send a Christmas card.', 'Your first 3 are free.'], addre
 
 // A cut: takes end to end ([take, from, to] in the take's seconds), then words, dips and the end card in the cut's seconds.
 const cuts = {
+  // Checkpoint 2: shots 4a-4d.
+  seal: {
+    pieces: [['send', 3.0, 10.2]],
+    shots: { '4a': 0, '4b': 1.3, '4c': 2.4, '4d': 4.3 },
+    words: [[1.2, 4.25, W.seal], [5.2, 6.88, W.sealed]],
+    dips: [],
+    // The app's paper sounds are quiet by design (peaks about -18 dBFS): all three raised alike, peaks near -5 dBFS.
+    soundGain: 13,
+  },
   30: {
     pieces: [['open1', 0, 3.2], ['rack', 0, 2.6], ['send', 0, 10.2], ['sealed', 0, 2.4], ['open', 0, 11.6]],
     shots: { 1: 0, 2: 3.2, 3: 5.8, '4a': 8.8, '4b': 10.1, '4c': 11.2, '4d': 13.1, '5a': 16.0, '5b': 17.5, '6a': 18.4, '6b': 19.4, '6c': 20.3, '6d': 22.5, '6e': 24.8, 7: 26.8 },
     words: [
       [0.15, 1.75, W.open], [1.85, 3.15, W.phone], [3.3, 5.75, W.pick], [5.9, 7.4, W.write], [7.5, 8.75, W.sign],
-      [10.0, 13.05, W.seal], [14.0, 15.95, W.sealed], [16.35, 17.45, W.notYet], [17.6, 18.5, W.morning], [22.1, 23.8, W.mail],
+      [10.0, 13.05, W.seal], [14.0, 15.68, W.sealed], [16.35, 17.45, W.notYet], [17.6, 18.5, W.morning], [22.1, 23.8, W.mail],
     ],
     dips: [[17.45, 17.9, 18.4, 18.95, 0.05]],
+    soundGain: 13,
     end: { at: 26.8, full: 27.6, ...END },
   },
 };
