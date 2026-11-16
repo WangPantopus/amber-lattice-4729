@@ -592,6 +592,21 @@ router.post('/:id/dates/pick', async (req, res) => {
   }
 });
 
+// ── The gift exchange (the extras, 08-extras section 4; services/plans/planGift.js): 404 while plans_gift_exchange is
+// off. Each answers { gift }; whom someone drew is in their own answer only.
+const giftRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+giftRoute('post', '/:id/gift/join', 'gift_join', (req) => require('../services/plans/planGift').join(req.user, req.params.id, body(req)));
+giftRoute('patch', '/:id/gift/mine', 'gift_wish', (req) => require('../services/plans/planGift').setWish(req.user, req.params.id, body(req)));
+giftRoute('delete', '/:id/gift/mine', 'gift_leave', (req) => require('../services/plans/planGift').leave(req.user, req.params.id));
+// The host: "Draw names now", or "Draw again" after someone who drew left. 409 too_few with fewer than three.
+giftRoute('post', '/:id/gift/draw', 'gift_draw', (req) => require('../services/plans/planGift').drawNow(req.user, req.params.id));
+
 // ── Chip in (the extras, 08-extras section 3; services/plans/planChipIn.js): 404 while plans_chip_in is off ──
 
 // POST | DELETE /api/plans/:id/chip-in/paid [{ who }]: someone in says they paid the host (or takes it back); the host

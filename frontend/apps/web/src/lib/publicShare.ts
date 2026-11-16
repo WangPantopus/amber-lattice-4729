@@ -232,6 +232,26 @@ export type PublicPlanForGuest = {
   changed: 'time' | 'place' | 'both' | null;
   /** Chip in (the extras, 08-extras section 3), while the host has it on. Every word is the server's. */
   chip_in?: PublicPlanChipIn | null;
+  /** The gift exchange (the extras): whom this guest drew is in their own page only. */
+  gift?: PublicPlanGift | null;
+};
+
+export type PublicPlanGift = {
+  budget_cents: number;
+  budget_text: string;
+  draw_at: string;
+  draw_text: string;
+  state: 'open' | 'drawn';
+  joined: number;
+  joined_text: string;
+  can_join: boolean;
+  mine: {
+    in: boolean;
+    wish: string | null;
+    giving_to: { name: string; wish: string | null } | null;
+    wish_text?: string | null;
+    secret_text?: string;
+  };
 };
 
 export type PublicPlanDates = {

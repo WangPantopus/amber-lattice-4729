@@ -66,6 +66,8 @@ const PLAN_COLUMNS = [
   // Find a date (planDates.js): the times offered, the ticks and the pick. A plan still picking reaches only an app
   // that sends `extras=1` (isVisibleTo).
   'date_options',
+  // The gift exchange (planGift.js). Its pairs (gift_pairs) are never read here: only plan_gift_mine touches them.
+  'gift',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -276,6 +278,9 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Find a date: whether each picking plan's host has the switch, and (read per plan) who was invited.
     datesByHost: new Map(),
     datesPartsByPlan: new Map(),
+    // The gift exchange: whether each plan's host has the switch, and the viewer's own receiver (theirs only).
+    giftByHost: new Map(),
+    giftGivingByPlan: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -314,6 +319,16 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   if (viewer.extras) {
     const chipInPlans = plans.filter((p) => p.chip_in);
     if (chipInPlans.length) ctx.chipInByHost = await require('./planChipIn').switchByHost(chipInPlans.map((p) => p.host_user_id));
+    const giftPlans = plans.filter((p) => p.gift);
+    if (giftPlans.length) {
+      const planGift = require('./planGift');
+      ctx.giftByHost = await planGift.switchByHost(giftPlans.map((p) => p.host_user_id));
+      await Promise.all(giftPlans.filter((p) => p.gift.state === 'drawn' && ctx.giftByHost.get(String(p.host_user_id))).map(async (p) => {
+        const mineKey = String(p.host_user_id) === viewer.id ? planGift.hostKey(p) : require('./planExtras').personKey(viewer.id);
+        if (!(p.gift.people || []).some((x) => x.who === mineKey)) return;
+        ctx.giftGivingByPlan.set(p.post_id, await planGift.givingTo(p, mineKey));
+      }));
+    }
     const planDates = require('./planDates');
     const picking = plans.filter((p) => planDates.isPicking(p));
     if (picking.length) {
@@ -792,6 +807,16 @@ function buildCard(plan, viewer, ctx) {
       // Whoever saved their times has answered: not "no answer" on the host's card.
       if (card.answers) card.answers.no_answer = Math.max(0, card.answers.no_answer - dates.answered);
     }
+  }
+  // The gift exchange (the extras, 08-extras section 4), with `extras=1`, for the host and the people in. Whom someone
+  // drew is in their own card only (giftGivingByPlan holds the viewer's own, read for them alone).
+  if (isIn && viewer.extras && plan.gift && ctx.giftByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const planGift = require('./planGift');
+    const gift = planGift.view(plan, {
+      mineKey: role === 'host' ? planGift.hostKey(plan) : require('./planExtras').personKey(viewer.id),
+      isIn, giving: ctx.giftGivingByPlan?.get(plan.post_id) || null,
+    });
+    if (gift) card.gift = gift;
   }
   // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has
   // the switch. The payment link reaches nobody else.

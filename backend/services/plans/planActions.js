@@ -621,6 +621,10 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  // The gift exchange (the extras), while the host has its switch: a private plan of a person's, not a playdate.
+  const gift = !hostAs && input.gift != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planGift').enabledFor(viewer.id))
+    ? require('./planGift').initialValue(input.gift, input.starts_at) : null;
   if (dateOptions && (audience !== 'invited' || kind === 'playdate')) {
     fail(422, 'validation', 'Only a private plan can let guests pick the date.', { field: 'date_options' });
   }
@@ -722,6 +726,7 @@ async function createPlan(user, input, internal = {}) {
     ...(bringList ? { bring_list: bringList } : {}),
     ...(chipIn ? { chip_in: chipIn } : {}),
     ...(dateOptions ? { date_options: dateOptions } : {}),
+    ...(gift ? { gift } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
@@ -802,6 +807,9 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
     && (await require('./planChipIn').enabledFor(plan.host_user_id));
   if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
+  if (patch.gift && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    require('./planGift').checkedInput(patch.gift, patch.starts_at || plan.post.event_date);
+  }
   // Find a date: while the date is being picked the times offered change, not the plan's time.
   const planDates = require('./planDates');
   if (planDates.isPicking(plan)) {
@@ -1038,6 +1046,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
   if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
     await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
+  // The gift exchange: the budget and the draw time, or null to call it off.
+  if (patch.gift !== undefined && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    await require('./planGift').replaceFromForm(await planService.loadPlanRow(postId), patch.gift);
   }
   // Find a date: the times offered (a removed time's ticks go, and nobody is told).
   if (patch.date_options !== undefined && planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
@@ -1610,6 +1622,7 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   if (changed && changed.length > 0 && leaving) {
     // What they were bringing goes back on the list (H2).
     await require('./planBring').clearClaims(postId, 'user', mine.id);
+    await require('./planGift').onLeave(postId, require('./planExtras').personKey(viewer.id));
     const names = await userNames([viewer.id]);
     const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
@@ -1744,6 +1757,7 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
         await require('./planBring').clearClaims(postId, 'user', request.id);
+        await require('./planGift').onLeave(postId, require('./planExtras').personKey(request.user_id));
         // The business removed a guest who paid (B2): all of it back.
         if (plan.price_cents) await planPaid().onBusinessEnds(plan, [request.id], 'removed');
         await planNotify.declined({ plan, request, hostFirst });
