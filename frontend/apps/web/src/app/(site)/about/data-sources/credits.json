@@ -302,7 +302,8 @@
           "url": "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1",
           "license": "Public record under North Carolina's Public Records Law, as the county's site states; no terms posted on the layer",
           "license_url": "https://www.brunswickcountync.gov/privacy",
-          "dataset": "Parcels with the Tax Office's building facts (bedrooms, full and half baths, heated area, year built)"
+          "dataset": "Parcels with the Tax Office's building facts (bedrooms, full and half baths, heated area, year built)",
+          "statement": "As a condition providing electronic GIS data, Brunswick County reserves the right to require the data requester agree in writing that the data will not be resold or otherwise used for trade or commercial purposes. (The public layer asks for no such agreement, and Pantopus never resells the data.)"
         },
         {
           "id": "mn-wright",

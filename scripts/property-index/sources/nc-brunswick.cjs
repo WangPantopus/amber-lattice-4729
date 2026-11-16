@@ -4,7 +4,9 @@
 // no terms; the county's site says everything on it is public record kept under the Public Records Law (N.C.G.S. Chapter 132) and asks for no
 // agreement. Only the parcel numbers, the building count and the building facts are asked for: the owner and mailing columns in the layer never
 // are. A parcel the county says has more than one building gives no one home's counts. Records OneMap couldn't call homes become homes where the
-// county's layer and its own use words say so (retype, below). OneMap's Brunswick file has no site city or ZIP, so the
+// county's layer and its own use words say so (retype, below). A home's lot is OneMap's GISACRES, which the state's parcel standard defines as
+// "The area of the feature in acres - computed from the GIS, this is not the recorded area": the county's layer records no area of its own
+// (its DeedAcreage counts lots, "1.0000 LT", and CALCAC is calculated too). OneMap's Brunswick file has no site city or ZIP, so the
 // ZIP codes that reach into the county (the Census Bureau's ZCTA-to-county file) are where a person's ZIP looks: a list of places to look, never a
 // fact on a record.
 
