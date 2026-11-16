@@ -8,6 +8,7 @@ const { parts } = require('../../../backend/services/propertyRecords/addressKey'
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -98,6 +99,8 @@ function fromRow(row, fips, county) {
     put(facts, 'garage_sqft', positive(row.garagesqft));
   }
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.acres_deed) || positive(row.acres_poly));
+  // MnGeo's polygon acres stand in where the county gives no deeded acres: the parcel map's (lib/held.cjs mapLot).
+  const mapped = positive(row.acres_deed) ? null : 'lot_acres';
   put(facts, 'subdivision', word(row.plat_name));
   put(facts, 'school_district', word(row.school_dst));
   // A class number isn't a word for a screen, and "homestead" says something about a person.
@@ -111,7 +114,7 @@ function fromRow(row, fips, county) {
     facts.sale_price = positive(row.sale_value);
     facts.sale_date = sold;
   }
-  return { id: `pp:${kind}:${fips}:${parcel}`, kind, home_type: homeType, address: { ...parsed, city: String(word(row.postcomm) || word(row.ctu_name) || '').toUpperCase(), zip: zipCode(row.zip) }, facts };
+  return { id: `pp:${kind}:${fips}:${parcel}`, kind, home_type: homeType, address: { ...parsed, city: String(word(row.postcomm) || word(row.ctu_name) || '').toUpperCase(), zip: zipCode(row.zip) }, facts, ...mapLot(facts, mapped) };
 }
 
 /** The counties the state's own table marks open, and its layers. */

@@ -526,12 +526,13 @@ function buildProfileFromRecord(home, copy, estimate = null, similar = null) {
   // A condo's account lists the complex's common land, and a tower's lot isn't an apartment's.
   const ownLot = copy.match !== 'building_only' && copy.subject?.kind !== 'unit';
   const lotFromAcres = facts.lot_acres ? Math.round(facts.lot_acres * 43560) : null;
+  const countyLot = ownLot ? facts.lot_sqft ?? lotFromAcres : null;
   const countyFacts = [
     ['year_built', facts.year_built ?? building.year_built ?? null, home.year_built, false],
     ['sqft', facts.living_sqft ?? null, home.sq_ft, true, 'living_sqft'],
     ['bedrooms', facts.bedrooms ?? null, home.bedrooms, true, 'bedrooms'],
     ['bathrooms', facts.bathrooms ?? null, home.bathrooms, true, 'bathrooms'],
-    ['lot_sqft', ownLot ? facts.lot_sqft ?? lotFromAcres : null, home.lot_sq_ft, false],
+    ['lot_sqft', countyLot, home.lot_sq_ft, false],
   ];
   const shown = {};
   const householdFields = [];
@@ -543,6 +544,10 @@ function buildProfileFromRecord(home, copy, estimate = null, similar = null) {
     if (own != null && (county == null || (ownFirst && !householdFacts.columnAgrees(field, own, county)))) householdFields.push(field);
   }
   const provenance = homeRecords.provenanceOf(copy);
+  // A lot size the county's parcel map measured, shown here as the record's, says so on the card's source line while the
+  // county's mapped_lots switch is on (propertyRecords/router.js): "... · lot size measured from Mecklenburg County's parcel map".
+  const lotWords = countyLot != null ? copy.mapped?.from?.lot_sqft || copy.mapped?.from?.lot_acres || null : null;
+  const lotNote = lotWords ? ` \u00b7 lot size ${lotWords.charAt(0).toLowerCase()}${lotWords.slice(1)}` : '';
   const measured = estimate?.level === 1 ? estimate : null;
   const value = measured?.value ?? (copy.match === 'parcel_only' ? null : facts.market_value ?? null);
   const yearLead = facts.value_year ? `${facts.value_year} value. ` : '';
@@ -566,7 +571,7 @@ function buildProfileFromRecord(home, copy, estimate = null, similar = null) {
     house: houseFromRecord({ ...copy, facts: householdFacts.factsWithEntries(copy.facts, home.niche_data) }),
     cached_at: `${copy.as_of}T12:00:00.000Z`,
     source: 'record',
-    provenance: householdFields.length ? { ...provenance, label: `${provenance.label}, with details you entered` } : provenance,
+    provenance: householdFields.length || lotNote ? { ...provenance, label: `${provenance.label}${householdFields.length ? ', with details you entered' : ''}${lotNote}` } : provenance,
     ...(value != null ? {
       value_title: measured ? 'Estimated value' : 'County market value',
       value_provenance: {

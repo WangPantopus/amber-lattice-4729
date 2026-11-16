@@ -14,6 +14,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
@@ -87,7 +88,7 @@ function fromRow(row) {
   put(facts, 'market_land_value', positive(row.LandVal));
   put(facts, 'market_building_value', positive(row.ImprVal));
   const zip = /^\d{5}$/.test(String(row.Prop_zip ?? '').trim()) ? String(row.Prop_zip).trim() : null;
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.Prop_City ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.Prop_City ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 async function* build({ work, today }) {

@@ -609,6 +609,11 @@ function serializePropertyRecord(copy, estimate = null) {
     facts = { ...facts, ...Object.fromEntries(measured) };
     derived = { ...(derived || {}), ...Object.fromEntries(measured.map(([name]) => [name, measuredFrom[name]])) };
   }
+  // A lot size the county's parcel map measured, not its recorded acreage, says so under its value while the county's
+  // mapped_lots switch is on (router.js joinHeld): "Measured from Mecklenburg County's parcel map". Founder, Nov 15.
+  const mapped = Object.entries(copy.mapped?.from || {})
+    .filter(([name, words]) => typeof words === 'string' && (copy.facts?.[name] !== undefined || copy.building?.[name] !== undefined) && derived?.[name] === undefined);
+  if (mapped.length) derived = { ...(derived || {}), ...Object.fromEntries(mapped) };
   const titled = (id) => new Section(id, RECORD_SECTIONS.find(([key]) => key === id)[1]);
   if (copy.match === 'ambiguous') {
     const building = titled('building');
