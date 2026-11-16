@@ -23,6 +23,10 @@ enum MomentsFailure: Error, Equatable {
     case placeNotNearby
     /// 422: a Moment with no location needs a connection (contract v3.4).
     case noConnections
+    /// 422: "Pin it at a place" with no public place at the spot (v4.0, the Sky).
+    case noPlaceHere
+    /// 422: "Tonight at 8" asked for at or after 7 pm (v4.0, the Sky).
+    case shareTimePassed
     /// 429: 20 Moments today.
     case dailyLimit
     /// 422: a video longer than can be posted.
@@ -54,6 +58,8 @@ enum MomentsFailure: Error, Equatable {
         case .locationTooOld: "Your location is out of date. Try again where you are."
         case .placeNotNearby: "That place is too far from this Moment's pin. Pick one nearby."
         case .noConnections: "A Moment with no location goes only to your connections. Add a connection first."
+        case .noPlaceHere: SkyWords.noPlaceHere
+        case .shareTimePassed: SkyWords.shareTimePassed
         case .dailyLimit: "You've posted 20 Moments today. Try again tomorrow."
         case .mediaTooLong: MomentsLimits.tooLongMessage
         case .ended: "This Moment has ended."
@@ -109,6 +115,8 @@ enum MomentsFailure: Error, Equatable {
         "LOCATION_TOO_OLD": .locationTooOld,
         "PLACE_NOT_NEARBY": .placeNotNearby,
         "NO_CONNECTIONS": .noConnections,
+        "NO_PLACE_HERE": .noPlaceHere,
+        "SHARE_TIME_PASSED": .shareTimePassed,
         "MOMENTS_DAILY_LIMIT": .dailyLimit,
         "MEDIA_TOO_LONG": .mediaTooLong,
         "MOMENT_ENDED": .ended,

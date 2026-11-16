@@ -26,7 +26,7 @@ struct PlanNotThisTimeScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s4) {
                     VStack(alignment: .leading, spacing: Spacing.s2) {
-                        PlanTypeTag(kind: card.kind)
+                        PlanTypeTag(kind: card.kind, text: card.occasion?.text)
                         Text(card.title)
                             .planFont(.h2)
                             .foregroundStyle(Theme.Color.appText)

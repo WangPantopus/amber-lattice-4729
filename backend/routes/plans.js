@@ -294,6 +294,15 @@ function body(req) {
   return req.body && typeof req.body === 'object' ? req.body : {};
 }
 
+// POST /api/plans/deal-preview (B1): what a guest will read about a deal the business is choosing; nothing is saved.
+router.post('/deal-preview', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').previewFor(req.user, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'deal_preview', req);
+  }
+});
+
 // POST /api/plans: host a plan. Returns PlanDetail (201).
 router.post('/', contentCreationLimiter, async (req, res) => {
   try {
@@ -347,6 +356,60 @@ router.delete('/:id/requests/mine', async (req, res) => {
     return res.json(await planActions.withdrawMine(req.user, req.params.id, { io: req.app.get('io') }));
   } catch (err) {
     return serverError(res, err, 'withdraw', req);
+  }
+});
+
+// POST /api/plans/:id/requests/quote (B2): { party_size, kids_count } → what joining costs, with no side effect.
+router.post('/:id/requests/quote', async (req, res) => {
+  try {
+    return res.json(await planActions.quoteToJoin(req.user, req.params.id, req.body || {}));
+  } catch (err) {
+    return serverError(res, err, 'paid_quote', req);
+  }
+});
+
+// POST /api/plans/:id/requests/mine/confirm (B2): the payment sheet closed; in once the payment company says it went
+// through. Answers the plan (PlanDetail), or 409 payment_not_complete, full (it filled while they paid: refunded) or
+// ended (it takes nobody now: refunded).
+router.post('/:id/requests/mine/confirm', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPaid').confirmMine(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'paid_confirm', req);
+  }
+});
+
+// The bill at the place (B5, contract 11.2), behind plans_pay_here. Every amount is the server's.
+const planChecks = () => require('../services/plans/planChecks');
+const checkRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+// Staff with plans.manage: send a guest a check { request_id, amount_cents, no_deal_cents }, and the guest list.
+checkRoute('post', '/:id/checks', 'check_send', (req) => planChecks().sendCheck(req.user, req.params.id, req.body || {}));
+checkRoute('get', '/:id/checks', 'check_list', (req) => planChecks().staffList(req.user, req.params.id));
+// A guest who is in: their open check (or the last paid one), and starting their own { amount_cents } (no deal on the bill).
+checkRoute('get', '/:id/checks/mine', 'check_mine', (req) => planChecks().mine(req.user, req.params.id));
+checkRoute('post', '/:id/checks/mine', 'check_start', (req) => planChecks().startMine(req.user, req.params.id, req.body || {}));
+// The guest: another tip's total (no side effect), the payment sheet's values, and confirm after the sheet closes.
+checkRoute('post', '/:id/checks/:checkId/quote', 'check_quote', (req) => planChecks().quote(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/pay', 'check_pay', (req) => planChecks().pay(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/confirm', 'check_confirm', (req) => planChecks().confirm(req.user, req.params.id, req.params.checkId));
+// A tip after a paid plan (B6): { amount_cents } answers the payment sheet's values; confirm answers "You tipped $5.00".
+checkRoute('post', '/:id/tip', 'tip_later', (req) => planChecks().tipLater(req.user, req.params.id, req.body || {}));
+checkRoute('post', '/:id/tip/confirm', 'tip_confirm', (req) => planChecks().tipConfirm(req.user, req.params.id));
+// Staff: refund all or { amount_cents }, until 48 hours after the plan ends.
+checkRoute('post', '/:id/checks/:checkId/refund', 'check_refund', (req) => planChecks().refund(req.user, req.params.id, req.params.checkId, req.body || {}));
+
+// POST /api/plans/:id/requests/:requestId/deal-used (B1): staff with plans.manage mark a guest's free thing used.
+router.post('/:id/requests/:requestId/deal-used', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').markUsedFor(req.user, req.params.id, req.params.requestId));
+  } catch (err) {
+    return serverError(res, err, 'deal_used', req);
   }
 });
 

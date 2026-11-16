@@ -163,6 +163,9 @@ async function settleInvoiceAfterRefund(payment) {
   if (error) logger.warn('Refunded invoice could not be voided', { paymentId: payment.id, invoiceId, error: error.message });
   // Only the call that voided it says so; a notice that fails never fails the refund.
   if (voided?.[0]) {
+    // The refunded sale leaves the customer record's count (shared piece 3); never fails the refund.
+    // eslint-disable-next-line global-require
+    void require('./businessCustomers').recountBusinessCustomer(voided[0].business_user_id, voided[0].recipient_user_id);
     notifyInvoiceRefunded(voided[0], payment).catch((err) => {
       logger.warn('Invoice refund notice skipped', { invoiceId, error: err.message });
     });

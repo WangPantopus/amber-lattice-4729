@@ -104,8 +104,8 @@ struct PlanPreviewScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             areaMap
             VStack(alignment: .leading, spacing: Spacing.s2) {
-                HStack(spacing: Spacing.s2) {
-                    PlanTypeTag(kind: model.kind)
+                PlanTagRow {
+                    PlanTypeTag(kind: model.kind, text: model.isBusiness ? nil : model.privacy.occasion?.text)
                     if model.isOnline { PlanOnlineChip() }
                 }
                 Text(model.effectiveTitle).planFont(.h3).foregroundStyle(Theme.Color.appText).fixedSize(horizontal: false, vertical: true)

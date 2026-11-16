@@ -58,8 +58,8 @@ struct PlanPrivatePreviewScreen: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(spacing: Spacing.s2) {
-                PlanTypeTag(kind: model.kind)
+            PlanTagRow {
+                PlanTypeTag(kind: model.kind, text: model.privacy.occasion?.text)
                 PlanPrivateChip()
                 if model.isOnline { PlanOnlineChip() }
             }

@@ -28,7 +28,8 @@ public enum MomentAudience: String, Codable, Sendable, Hashable, CaseIterable {
 
 /// Where a Moment is on its way to the map.
 public enum MomentState: String, Sendable, Hashable {
-    case uploading, checking, live, held, ended
+    /// `scheduled`: shared later, waiting for its time; only its author sees it (v4.0).
+    case uploading, checking, live, held, ended, scheduled
 }
 
 /// Who posted: a person, a business, or the Pantopus curator.
@@ -233,6 +234,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     /// How high it was made, in feet above sea level, and whether in flight (contract v3.8); `height` is the picture's.
     public let altitudeFt: Int?
     public let flying: Bool
+    /// Floating over an area, shared later, when it shares (v4.0, `MomentSkyDTOs.swift`).
+    public let sky: MomentSkyStateDTO
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -281,6 +284,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         noLocation = (try? c.decodeIfPresent(Bool.self, forKey: .noLocation)) ?? false
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
+        sky = MomentSkyStateDTO(from: decoder)
     }
 
     public var media: URL? {
@@ -371,6 +375,8 @@ public struct MomentPlacePreviewDTO: Decodable, Sendable, Hashable {
     public let hasConnections: Bool?
     /// The sheet may offer "Show elevation" here (contract v3.8): heights are on for you and it isn't your home.
     public let canShowHeight: Bool
+    /// The Sky's fields, only when the server answers `sky: true` (v4.0, `MomentSkyDTOs.swift`).
+    public let sky: MomentSkyPreviewDTO?
 
     private enum CodingKeys: String, CodingKey {
         case places
@@ -395,6 +401,7 @@ public struct MomentPlacePreviewDTO: Decodable, Sendable, Hashable {
         pickWithinM = try? c.decodeIfPresent(Double.self, forKey: .pickWithinM)
         hasConnections = try? c.decodeIfPresent(Bool.self, forKey: .hasConnections)
         canShowHeight = (try? c.decodeIfPresent(Bool.self, forKey: .canShowHeight)) ?? false
+        sky = MomentSkyPreviewDTO(from: decoder)
     }
 }
 

@@ -106,6 +106,7 @@ extension MomentsComposerModel {
     /// What the server said no to, where the person can act on it.
     private func refused(_ failure: MomentsFailure) {
         if failure == .placeNotNearby { venue = nil }
+        if failure == .noPlaceHere { return noPlaceToPin() }
         if failure == .noConnections {
             hasConnections = false
             noLocation = false
@@ -115,12 +116,13 @@ extension MomentsComposerModel {
 
     /// The create request for what's on the Post sheet.
     private func createBody(kind: MomentKind, location: MomentLocationBody, requestId: String, caption: String) -> MomentCreateBody {
-        MomentCreateBody(
+        var body = MomentCreateBody(
             kind: kind,
             hours: hours,
             // No location goes only to connections ("Everyone nearby" needs a place).
             audience: noLocationOn ? .connections : audience,
-            showArea: showArea && !noLocationOn,
+            // Under the Sky an unpinned Moment says so too: should the server's switch go off meanwhile, it still floats.
+            showArea: floats && !noLocationOn,
             caption: kind == .text || caption.isEmpty ? nil : caption,
             text: kind == .text ? text.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
             background: kind == .text ? background : nil,
@@ -130,9 +132,13 @@ extension MomentsComposerModel {
             placeKey: pickedVenue == nil && !noLocationOn ? pickedPlace.flatMap { $0.key == placeChoices.first?.key ? nil : $0.key } : nil,
             // An album item pinned where you are says when it was taken (a capture pin carries its own).
             takenAt: kind != .text && capture == nil ? takenAt.map(MomentTime.string) : nil,
-            venueId: noLocationOn ? nil : pickedVenue?.placeId,
+            venueId: noLocationOn || (sky != nil && !pinsHere) ? nil : pickedVenue?.placeId,
             altitude: shownHeight
         )
+        // The Sky: pin at the place (the venue picked, else the one that names the spot), and "Share later".
+        body.pin = pinsHere ? "place" : nil
+        body.shareLater = shareLaterBody
+        return body
     }
 
     /// The pin: where a library item was taken, else a fix at most four and a half minutes old.

@@ -326,3 +326,20 @@ export function nearestMediaLocation(points: MediaLocation[], latitude: number, 
     undefined,
   );
 }
+
+/** How far from a place an attachment may have been taken and still count as taken there (the server's 5 km). */
+const TAKEN_THERE_M = 5000;
+
+/**
+ * Whether one of the draft's attachments was taken at the place, as POST /api/posts counts it: within 5 km of it. The
+ * Sky pins a post exactly at a tagged venue only then.
+ */
+export function mediaTakenNear(points: MediaLocation[], latitude: number, longitude: number): boolean {
+  return points.some((point) => {
+    const dLat = ((point.latitude - latitude) * Math.PI) / 180;
+    const dLng = ((point.longitude - longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos((latitude * Math.PI) / 180) * Math.cos((point.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.sqrt(a)) <= TAKEN_THERE_M;
+  });
+}

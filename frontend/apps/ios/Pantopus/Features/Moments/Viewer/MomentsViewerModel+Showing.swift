@@ -76,10 +76,16 @@ extension MomentsViewerModel {
         // Once it has ended ("This Moment has ended.") there is no time left to show.
         var over = ends.map { $0 <= Date() } ?? false
         if case .gone = load { over = true }
-        return Self.times(created: created, ends: over ? nil : ends)
+        return Self.times(created: created, ends: over ? nil : ends, earlier: moment?.sky.earlier == true)
     }
 
-    static func times(created: Date?, ends: Date?) -> String {
-        [MomentTime.ago(created), MomentTime.left(ends)].filter { !$0.isEmpty }.joined(separator: " · ")
+    /// A Moment shared later (the Sky) says "Earlier today" (or "Yesterday") in place of "12m ago".
+    static func times(created: Date?, ends: Date?, earlier: Bool = false) -> String {
+        let ago = if earlier, let created {
+            Calendar.current.isDateInToday(created) ? SkyWords.earlierToday : SkyWords.yesterday
+        } else {
+            MomentTime.ago(created)
+        }
+        return [ago, MomentTime.left(ends)].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
