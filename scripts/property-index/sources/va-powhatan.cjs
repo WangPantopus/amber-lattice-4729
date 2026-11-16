@@ -29,6 +29,11 @@ const inRange = (value, most) => {
   const count = positive(value);
   return count && count <= most ? count : null;
 };
+// An acreage of record, or none where the county stores a placeholder under 0.01 acre (436 square feet).
+const acresOf = (value) => {
+  const acres = positive(value);
+  return acres && acres >= 0.01 ? acres : null;
+};
 // A description column now and then holds a bare code.
 const said = (value) => (/[A-Z]{2}/i.test(String(value ?? '')) ? word(value) : null);
 
@@ -130,9 +135,11 @@ async function* build({ work, today }) {
       put(facts, 'cooling', said(residence.CNS_AC_TYPE_DESC));
     }
     // The lot is the record's legal acreage ("Legal Acreage", REM_LEGAL_AREA), else the acres of the Assessor's land lines ("Total Land
-    // Acres", PRC_TTL_LND_AREA_ACRES); never the parcel map's area (PRC_GIS_AREA, which the county leaves empty anyway).
+    // Acres", PRC_TTL_LND_AREA_ACRES); never the parcel map's area (PRC_GIS_AREA, which the county leaves empty anyway). A lot the county
+    // prices as one "Buildable Lot" carries 0.000023 acres (one square foot) there, a placeholder, not a size: an acreage under 0.01 acre is
+    // no lot, and the other field is used only when it holds a real area.
     const parcel = parcels.get(pid);
-    put(facts, 'lot_acres', positive(row.REM_LEGAL_AREA) || positive(parcel?.PRC_TTL_LND_AREA_ACRES));
+    put(facts, 'lot_acres', acresOf(row.REM_LEGAL_AREA) || acresOf(parcel?.PRC_TTL_LND_AREA_ACRES));
     if (parcel) {
       put(facts, 'market_value', positive(parcel.PRC_TTL_ASSESS));
       put(facts, 'market_land_value', positive(parcel.PRC_TTL_ASSESS_LND));
