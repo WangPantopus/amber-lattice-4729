@@ -113,16 +113,20 @@ struct PlanPaySpotSheet: View {
                 .accessibilityElement(children: .combine)
                 Divider().overlay(Theme.Color.appBorder)
                 // P1 item 3: what they pay today, large.
-                HStack(alignment: .firstTextBaseline) {
-                    Text("You pay today").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
-                    Spacer()
-                    Text(quote.totalText)
-                        .planFont(.h2)
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.Color.appText)
-                        .accessibilityIdentifier("planPayTotal")
+                // Side by side; the amount under the words when they don't fit (the largest text), never split.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline) {
+                        payToday
+                        Spacer()
+                        total(quote)
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.s1) {
+                        payToday
+                        total(quote)
+                    }
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("planPayTotal")
                 if let group = quote.group { groupCard(group) }
                 if let refund = quote.refundText {
                     PlanScopeLine(text: refund, icon: .info).accessibilityIdentifier("planPayRefund")
@@ -133,6 +137,18 @@ struct PlanPaySpotSheet: View {
         } else {
             Shimmer(width: nil, height: 96, cornerRadius: Radii.lg)
         }
+    }
+
+    private var payToday: some View {
+        Text("You pay today").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+    }
+
+    private func total(_ quote: PlanQuoteDTO) -> some View {
+        Text(quote.totalText)
+            .planFont(.h2)
+            .monospacedDigit()
+            .foregroundStyle(Theme.Color.appText)
+            .fixedSize()
     }
 
     /// P1 item 4 (B4): the group price while open ("7 of 10 in" and the server's sentence), or "Group price: $14".

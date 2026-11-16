@@ -83,7 +83,15 @@ struct PlanBusinessPriceField: View {
         }
         .sheet(isPresented: $showsPayouts) {
             if let business = model.hostAs {
-                NavigationStack { BusinessPaymentsView(businessId: business.userId) }
+                NavigationStack {
+                    BusinessPaymentsView(businessId: business.userId)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showsPayouts = false }.accessibilityIdentifier("planPayoutsDone")
+                            }
+                        }
+                }
+                .presentationDragIndicator(.visible)
             }
         }
     }
