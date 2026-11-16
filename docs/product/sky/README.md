@@ -8,6 +8,10 @@ world.
 decisions and the ten screens that day. Phase A has a build contract, and the founder accepted its nine calls the same day; it needs the
 founder's go.
 
+**November 16:** the founder accepted one rule for lift (close in, height is real; zoomed out, height is reach) and
+gave ideas for later, which the design records. Claiming the airspace over a home is not to be built as described.
+The hand-off's section 0 has what changed since it was written.
+
 ## What is here
 
 | File | What it is |
@@ -48,6 +52,8 @@ founder's go.
 - **Screens 1, 2, 6 and 7 are partly out of date.** They draw lift as reach. Later on November 14 the founder decided
   that lift is a post's height above the ground under it, and reach is brightness, size and how far out a post
   stays visible (the design's "Changed on November 14" section). They are to be redrawn before phase B.
+- **Screen 3 is right as drawn.** Under the November 16 rule, lift is reach once the map is zoomed out to a state or
+  wider.
 - Phase A builds only screens 4, 5 and 9. The others belong to phases B and C.
 
 The editable boards are a private design canvas, and the design is a private Claude Doc; both belong to the
@@ -57,9 +63,13 @@ Mac at `~/pantopus-moments/sky-design-src/`.
 ## What is decided, and what is open
 
 **Decided by the founder on November 14** (the design's decisions table has all sixteen): area by default; exact
-pins only at public places picked by name; home is always an area; 100 homes at least; lift means reach and real
-elevation stays as its own mode; rising by rank with the author's yes past Town; a person reviews before Country or
-World; columns on posts and no new table through phase C; the names.
+pins only at public places picked by name; home is always an area; 100 homes at least; lift is a post's real height
+above the ground (reversed that day from "lift means reach"); rising by rank with the author's yes past Town; a
+person reviews before Country or World; columns on posts and no new table through phase C; the names.
+
+**Decided by the founder on November 16** (the design's "Changed on November 16" section): close in, from a street
+to a town, lift is real height; zoomed out, from a state to the globe, lift is reach; a view of busy places is
+separate. Claiming the airspace over a home is not to be built as described.
 
 **Added by the founder with the yes to the screens**, as directions for later phases (the design's "Added on
 November 14" section): most posts stay near the ground; someone with many followers may choose to start higher;
@@ -68,6 +78,9 @@ and a view where the ground rises where it is busy.
 **Open:**
 
 - The go for phase A.
+- Four questions from the November 15 review of the screens (the hand-off's section 0), the first of which touches
+  phase A's words on the app screens.
+- The founder's ideas of November 16 (the design's "Added on November 16" section): directions only.
 - Details and drawings for the higher starting level and the terrain.
 - Contracts for phases B to E.
 

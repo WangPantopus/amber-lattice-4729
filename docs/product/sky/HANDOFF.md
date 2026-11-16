@@ -3,6 +3,56 @@
 Written 2026-11-14 (about 11:00 UTC) by the session that did the work, at 88% of its context, for a new session on
 the same Mac. Everything a new session needs is in this file or at a path it names. No passwords, keys or tokens.
 
+## 0. Since this hand-off was written (November 16)
+
+A new session picked the Sky up on November 15, read everything here and reviewed the fourteen boards. Nothing was
+redrawn and nothing is built. Read this section first; sections 1 to 10 are as the design session left them.
+
+**Decided by the founder on November 16.**
+
+- **One rule for lift:** close in, from a street to a town, lift is real height above the ground; zoomed out, from a
+  state to the globe, lift is reach. A view of busy places is separate. The design's "Changed on November 16"
+  section has it. Read line 3 of section 1 and decision 5 in section 4 with it. Screen 3 is right as drawn and
+  needs no note in the README about visibility (section 6).
+- **Claiming the airspace over a home is not to be built as described.** The reasons and a safe version are in the
+  design's "Added on November 16" section.
+
+**The founder's ideas for later** are recorded in that same section: a Moment that does not expire, filters, Plans
+with Moments, a globe to turn, browsing from the top down, top posts by place, county, state and country, and busy
+places. The founder's own note: all of them depend on having users, and there are almost none yet.
+
+**Not answered: which comes first, the redraw or phase A.** The session's advice was phase A, because it is the
+safety piece and should be in place before Moments is promoted, and to keep the rest as design until there are
+users.
+
+**Four questions the review raised. The founder has not answered them.**
+
+1. **"Floating" now means two things.** Since the reversal an area post sits on the ground on its disc, and only a
+   post truly in the air is lifted. The Post sheet, the composer and the viewer still say "Floating over
+   Washougal". Something like "Somewhere in Washougal, WA" would keep "floating" for posts in the air. This
+   touches the words in the phase A contract's section 10, not the server work.
+2. **Screen 1 is prettier than what would be built.** Every post from one area shows at that area's centre, and the
+   centres form a regular grid. By the session's arithmetic, at the zoom drawn they are about 70 points apart side
+   to side, a ring is 64 points wide, and discs at real size (about 124 points across) overlap their neighbours.
+   The redraw should place posts on the true grid, and may need the disc shown only for the post that is tapped.
+3. **Real height can give away a home.** A post from high in the only tower in an area points at that building, and
+   apartment buildings are kept off the list of places on purpose. Proposal for the height contract (section 7,
+   step 4): lift an area post only when it is clearly flying. Don't use "a balcony high in a tower" as the
+   redraw's example (section 6).
+4. **Brightness is a weak signal by day.** A photo can't look much brighter on a light map, and a dimmed ring reads
+   as seen or ended. Size and the level's name should carry reach, with glow as a night extra.
+
+Smaller: on screen 8, "Nearby" is both the tab's name and the smallest level.
+
+**Paths in section 5 that are gone.** On November 15 neither `~/pantopus-moments/` (the board sources, the drawing
+tools and the Moments API contract) nor `~/.config/pantopus/launch-kit/streams/` (the real screenshots) was on the
+Mac. The design canvas is intact: a session on the founder's account can read its fourteen boards and their style
+sheet and publish to it, and the founder can download the boards as pictures from it. A redraw needs the small
+preview tool rebuilt first. Phase A needs the Moments contract found, or its additions written from the code.
+
+**Pull requests.** #4076 and #4058 are still open and not to be merged until the founder says so. #4058 waits on
+the founder's steps in section 9.
+
 ## 1. Where things stand, in ten lines
 
 1. The session began with a question: can celebrities and influencers use Pantopus? It ended with a design, **the

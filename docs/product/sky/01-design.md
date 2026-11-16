@@ -29,6 +29,17 @@ The founder settled how elevation and popularity share one map. This section win
 - **The view of busy places** becomes its own view, so its hills are not mistaken for real ones.
 - **Screens to redraw in part:** 1, 2, 6 and 7. Phase A does not change.
 
+## Changed on November 16: close in, height is real; zoomed out, height is reach
+
+The founder accepted one rule for what lift means at each zoom. It adds to the November 14 section above, and it wins over any older sentence that disagrees.
+
+- **Close in, from a street to a town, lift is real height above the ground.** This is the November 14 rule, unchanged. Nearly every post is on the ground, and a paraglider or a plane is lifted by its height.
+- **Zoomed out, from a state to the globe, lift is reach.** Real height is too small to see from there, so the two can't be confused. The posts with the widest reach sit highest over the globe. Coming down through country, state and town to the ground goes from the most seen to the most local.
+- **One meaning on any one view.** No screen mixes the two, and each view names which one it shows.
+- **A view of busy places is separate,** behind its own switch. Its height or colour means "busy" and is never drawn together with either meaning above.
+- **Screen 3 (country and world) is right as drawn** under this rule. Screens 1, 2, 6 and 7 are still to be redrawn.
+- **Open, proposed by the design session and not confirmed:** where the change-over sits and how it is drawn. The proposal: the city view carries no lift for reach (brightness, size and the level's name carry it there), and posts settle to the ground as the map zooms in from a state to a city.
+
 ## Principles
 
 Every later choice in this document follows from these seven rules.
@@ -38,7 +49,7 @@ Every later choice in this document follows from these seven rules.
 3. **Up close, local wins.** A famous post overhead never covers the yard sale next door.
 4. **An ordinary person's post rises far only with their yes.**
 5. **No live location and no trail.** Only the posted point is kept, and nothing joins one post to the next. This is true today and stays true.
-6. **One meaning for lift.** Lift shows how far a post is above the ground under it. Reach shows as brightness, size and how far out a post stays visible.
+6. **One meaning for lift on any one view.** Close in, lift shows how far a post is above the ground under it. Zoomed out to a state or wider, lift shows reach. At every zoom, reach also shows as brightness, size and how far out a post stays visible.
 7. **Safety rules live on the server.** They protect people on app builds already in the stores, not only on new ones.
 
 ## Where a post is
@@ -368,6 +379,69 @@ The map is useful and fun because most people are at ground level together. The 
 - A business cannot pay to be taller. A peak opens the place's page.
 - Three views, one meaning each: the sky shows reach, the terrain shows how busy the ground is, and Elevation shows real altitude. Whether the terrain is a chip on the same map or its own screen is open, and it needs drawings.
 
+## Added on November 16: the founder's ideas for later
+
+On November 15 and 16 the founder gave these ideas for making the Sky useful and able to earn. They are directions. None is designed in detail and none is approved to build. Where a line is the design session's advice, it says so.
+
+The founder's own note covers all of them: they depend on having users, and Pantopus has almost none yet. The session's advice is to keep them as design until there are users. Approximate places (phase A) is the part worth having before Moments is promoted.
+
+### A Moment that does not expire
+
+- **The idea:** one more choice beside 1, 6, 24 and 48 hours: until the author deletes it. Such a Moment would be close to a Pulse post.
+- **Read from the code:** a Moment is already stored as a post with an end time. In the product the two still differ: a Moment is made with the camera and its replies are private, and a Pulse post has public reply threads.
+- **Advice, not decided:** no "never" on a Moment, because a Moment's place fades with it and that is part of its safety. Offer "Keep it as a Pulse post" when a Moment is about to end.
+
+### Filters on the map
+
+- **The idea:** show only one kind of place, such as restaurants, or only the posts of the last 30 minutes, the last hour or the last 24 hours.
+- Filtering by time is small.
+- Filtering by kind of place can only show posts pinned at a place, because a post over an area belongs to no place. That gives people a reason to pin at public places. Not checked: whether the place list carries a kind for every place.
+
+### Plans and Moments together
+
+- **The idea:** people post Moments at a Plan they attend, and people look at a Plan's Moments when they decide whether to go.
+- Nothing links the two in the code today.
+- **Advice:** this is the strongest of these ideas for earning, since Plans already has fees and paid spots in its design. A Plan's page could keep its Moments as an album, with each author's yes. A Plan held at a home stays an area.
+
+### Claiming the airspace over a home: not to be built as described
+
+- **The idea:** the owner of a house claims the airspace over the property, and either stops other people posting in it or is told as soon as someone does. The aim is a reason for more people to register their address.
+- **Why not** (the founder agreed on November 16: "if hard to implement right it makes sense"):
+  - Phone location is off by more than the width of most lots, so it would name the wrong house.
+  - When it is right, it reports a guest, a neighbour or someone on the sidewalk to an owner, which is what the Sky exists to prevent.
+  - Its notices fire only when other people post nearby, so with few users it would stay silent.
+- It is not hard to build: the check could run when a post is made, without keeping the spot. It can't be made accurate or safe.
+- **What already holds for everyone:** no post can be pinned at a home.
+- **A safe version, not decided:** "your home never appears on the map" as a benefit of verifying, and a notice at area level ("12 Moments around you today").
+- **The aim stands.** A reason to register an address has to be worth it to one person alone.
+
+### A globe to turn
+
+- **The idea:** zoom out until the map is a globe, turn it by hand and see posts on it. Real elevation and terrain should matter to what is drawn.
+- **Read from the code on November 15. The apps were not run.**
+  - iPhone: the Pulse map has been 3D with real terrain since October 22. As far as the session knows, that mode of Apple's map becomes a globe when zoomed out. The Moments map is flat. Giving Moments the same mode is small.
+  - Web: the map engine can draw a globe, terrain and its own 3D shapes. Moments is not on the web.
+  - Android: Google's map has no globe and no terrain. A globe needs another map engine for that screen, which may cost money and is the founder's decision. Prices were not checked.
+  - Apple's map puts a marker only on the ground, so lift is drawn on the screen, as the built floating view does. Many lifted posts on a tilted map dropped half the frames when measured.
+  - The server shows no Moments once the view is wider than 5 degrees, about 300 miles. Posts on a globe need levels (phase C) first.
+
+### Browsing from the top down
+
+- **The idea:** instead of scrolling a list, people turn the globe. The posts that drew the most attention are on top; then lower and lower, down to the ground. A filter shows connections only.
+- This is the November 16 rule seen from the user's side.
+- **Advice:** make it a way in beside the list, not in place of it. Open on the person's own area, because a globe looks empty while there are few posts. Keep "Play all" as the way to watch without exploring. A list stays for screen readers.
+
+### The top posts of each place, county, state and country
+
+- **The idea:** the most popular posts of a place, then of a county, a state and a country, over a chosen period, so the hottest posts and topics can be seen.
+- This is the levels design: ranks per town, metro area, state and country. New in the idea: counties, a chosen period, and topics. Topics are new work.
+
+### Busy places, by height or colour
+
+- **The idea:** shops, restaurants and venues stand taller or change colour with the number of posts over a period such as 24 hours, with filters.
+- It adds to "The terrain: where it is busy" above.
+- **Advice:** label a place with a count ("212 posts today"), not feet, because the app already prints real elevation in feet. Count different people, not posts. A business may sponsor a marked spot and can never buy height.
+
 ## Decisions (made November 14)
 
 The founder accepted all sixteen recommendations on November 14, 2026 ("Yes, all sixteen"). Nothing is built yet, and each build phase still needs its own OK.
@@ -378,7 +452,7 @@ The founder accepted all sixteen recommendations on November 14, 2026 ("Yes, all
 | 2 | Exact pins only at public places picked by name. This reverses the November 5 choice of an exact pin wherever a photo was taken, the author's home included, and applies to Pulse posts already made | Yes |
 | 3 | A post made at home is always an area, with no choice | Yes |
 | 4 | The smallest area holds 100 homes | Yes, and tune it after measuring |
-| 5 | Lift means reach. Real elevation keeps its chip, colours, numbers and its floating view as a mode | Reversed the same day: lift is height above the ground, and reach is brightness, size and zoom range |
+| 5 | Lift means reach. Real elevation keeps its chip, colours, numbers and its floating view as a mode | Reversed the same day: lift is height above the ground, and reach is brightness, size and zoom range. Added November 16: that holds close in; zoomed out to a state or wider, lift is reach |
 | 6 | Rising by rank with a floor, at the numbers in the table | Yes, as starting points |
 | 7 | Views count toward height as one twentieth of a reaction, at most half the score | Yes |
 | 8 | Rising past Town needs the author's yes; public pages rise without asking | Yes |

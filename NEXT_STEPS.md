@@ -423,6 +423,8 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] The names: the Sky, Overhead, How far, and the levels Nearby, Town, City, Region, Country, World.
 - [x] Changed later the same day, on your word: height on the map is physical. A post sits as far above the map as it was above the ground under it (on Mount Rainier at 10,000 ft you are on the ground; a paraglider 500 ft over the ground floats 500 ft up), with the sea-level number kept as the tag. Reach shows as brightness, size and how far out a post stays visible. The map stays flat for now; real 3D terrain is a future project. This reverses "lift means reach".
 - [x] Added with your yes to the screens, as directions for later phases: most posts stay near the ground; someone with many followers may choose to start higher (this replaces "public pages start at City level"); and a view where the ground rises where it is busy, by public place in built-up areas, where higher means busy and not good.
+- [x] November 16, on your word: close in, from a street to a town, height on the map is real; zoomed out, from a state to the globe, height is reach. A view of busy places is separate.
+- [x] November 16: claiming the airspace over a home is not to be built as described. It can't be made accurate or safe; no post can be pinned at a home already.
 
 **Still open. The brief builds the default until you decide.**
 
@@ -1205,5 +1207,7 @@ Decided November 14 (section 0). Every Moment and Pulse post gets a place that i
 - [ ] The homes-per-cell file is built and published beside the property index; that bucket belongs to the property-data lane.
 - [ ] Details and drawings for the two later additions: the higher starting level (which followers count, the steps) and the terrain (same map or its own screen).
 - [ ] Screens 1, 2, 6 and 7 redrawn for "height is physical, reach is brightness", before phase B.
+- [x] Your ideas of November 15 and 16 are recorded in the design as directions for later: a Moment that does not expire, filters, Plans with Moments, a globe to turn, browsing from the top down, top posts by place, county, state and country, and busy places. None is approved to build. Your note: all of them depend on having users.
+- [ ] Your answers to four questions from the November 15 review of the screens ([hand-off](docs/product/sky/HANDOFF.md), section 0): the word "Floating" now that area posts sit on the ground, the close-in map drawn on its true grid, real height giving away a home in a tower, and brightness as a signal by day. The first touches phase A's words on the app screens, not its server work.
 - [ ] Phases B to E (the floating look, levels, the living sky, the world) each need their own contract and your OK.
 - [ ] Not decided: whether old exact points are replaced with area points in the production database (contract call C8). They are no longer shown either way.
