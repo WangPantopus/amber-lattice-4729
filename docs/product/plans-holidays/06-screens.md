@@ -47,9 +47,10 @@ Top to bottom:
 5. "Who's coming": two steppers, "Adults" (1 to 10, starts at 1) and "Kids" (0
    to 10, starts at 0). The Kids row shows only when `answer.kids_welcome`.
 6. "Email, for the address and one reminder": an email field. Shown when
-   `answer.needs_email`; required then. For a text invitation it reads "Email,
-   if you'd like the address sent to you" and is optional. Hidden for an email
-   invitation.
+   `answer.needs_email`; required then. That is the open link always, and a
+   text invitation to a plan at a home. For a text invitation elsewhere it
+   reads "Email, if you'd like a reminder" and is optional. Hidden for an email
+   invitation, whose address the host already gave.
 7. Three buttons: "I'm in" (primary, full width), then "Maybe" and "Can't make
    it" side by side.
 8. A line with a lock: "No account needed. {Host} sees your name and your
@@ -77,7 +78,8 @@ States:
 
 Picture `15-browser-waiting-for-yes.png` (board `WebWait.dc.html`). Shown when
 `answer.mine.state` is `waiting_ok`, or right after an answer that returned
-`check_email`.
+`check_email`. At a home every answer returns `check_email`, by every way in,
+so this is the page every guest of a plan at a home sees after "I'm in".
 
 1. The bar.
 2. A quiet banner with a clock: "Your answer is with {Host}" and under it
@@ -92,7 +94,14 @@ Picture `15-browser-waiting-for-yes.png` (board `WebWait.dc.html`). Shown when
 
 When no yes is needed (`check_email` without `host_says_yes_first`), the banner
 reads "Check your email" with "{2 adults, 1 kid}" under it, and the note reads
-"The address and the bring list are on their way to **{email}**."
+"The address and the bring list are on their way to **{email}**." For an email
+invitation the page does not know the whole address; it shows the hint the page
+already has ("d•••@example.com").
+
+When the answer was for an address that already had an answer and this browser
+does not hold its key, the banner reads "Check your email" and the note reads
+"There is already an answer for this address. We sent its link there; open it
+to see or change it." Nothing about the earlier answer is shown.
 
 ### W3. In: the guest's part
 

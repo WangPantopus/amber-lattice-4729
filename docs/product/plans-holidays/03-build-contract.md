@@ -40,7 +40,7 @@ The founder accepted all ten on November 15, as recommended, with H1 to H11 of
 | --- | --- | --- |
 | K1 | Where a guest without an account is saved | On their `PlanInvite` row. No row in `PlanRequest`, no account, no new table |
 | K2 | The open link's token | Saved as given on `Plan`, not hashed, so the host can share the link again. It lets someone answer; it never reads anything private |
-| K3 | A guest's key | A second secret made when a guest answers. Private parts of a plan are read with it, never with the link alone |
+| K3 | A guest's keys | A secret made when a guest answers, and one more for each email that carries their link. A guest may hold several and none replaces another. Private parts of a plan are read with one of them, never with the link alone. (Made precise on November 15 after the server session asked; see 6.1) |
 | K4 | The bring list | One JSON value on `Plan`, changed by compare-and-set on its revision number |
 | K5 | A guest without an account and seats | Their adults and kids count as seats from the moment they say they are in, also while waiting for the host's yes |
 | K6 | Reminders | One "Remind" a plan a day; a person is reminded once |
@@ -129,7 +129,7 @@ Checks:
 | `guest_name` | `text`, 1 to 100 | The name a guest without an account typed |
 | `guest_adults` | `integer`, 1 to 10 | |
 | `guest_kids` | `integer`, 0 to 10 | |
-| `guest_key_hash` | `text`, 64 hex, unique | The hash of the guest's key (K3) |
+| `guest_key_hashes` | `text[]`, default empty, at most 6 | The hashes of the guest's keys (K3). A GIN index serves the lookup by one hash |
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
 
@@ -167,9 +167,17 @@ family.
 
 - **A way in** lets someone answer: an email invitation's token (exists), a
   text invitation's token (exists), or the plan's open link.
-- **A guest's key** is made at the first answer. The web app keeps it in an
-  HttpOnly cookie for that plan and sends it as `guest`. Emails to the guest
-  carry it in their link. Only its hash is saved.
+- **A guest's key** reads the private parts. One is made when a guest answers;
+  the web app keeps it in an HttpOnly cookie for that plan and sends it as
+  `guest`. One more is made for each email to the guest that carries their link
+  (You're in, the reminder, a change). Only hashes are saved.
+- **A guest may hold several keys, and none replaces another.** The link in the
+  first email still works after the reminder goes out, and the browser's cookie
+  does not stop working because an email was sent. On the day, people look for
+  the first email.
+- **All of a guest's keys stop working together** when the host removes the
+  guest, the invitation is cancelled, or the plan is deleted. Nothing else ends
+  one. At most 6 a guest; a seventh drops the oldest.
 
 ### 6.2 Reading
 
@@ -217,9 +225,22 @@ One of `open`, `invite` or `guest`. `answer` is `in`, `maybe` or `cant`.
 
 | Came by | The row | Email | The answer says |
 | --- | --- | --- | --- |
-| The open link | Made now, `channel = 'open'`. The same address answering again changes its row | Required | `{ "state": "check_email" }` when the plan is at a home; the key goes only in the email. Elsewhere the key is returned |
-| An email invitation | The host's row, filled in | Known | The key is returned. The host typed this address, which is the host's yes |
-| A text invitation | The host's row, filled in. The first answer takes it, as the first account does today | Optional | The key is returned |
+| The open link | Made now, `channel = 'open'` | Required | See "At a home" below |
+| An email invitation | The host's row, filled in | Known: the address the host typed, which is the host's yes | See "At a home" below |
+| A text invitation | The host's row, filled in. The first answer takes it, as the first account does today | Required at a home, optional elsewhere | See "At a home" below |
+
+**At a home, by every way in,** the answer is `{ "state": "check_email" }` and
+the key travels only in the email: to the address the guest gave, or for an
+email invitation to the address the host typed. Someone holding a forwarded
+invitation can answer but never sees the address. **Away from a home** the key
+is returned in the answer, by every way in.
+
+**An address that already has a row.** An answer for an address that already
+has a row on this plan, arriving without a valid key of that row, changes
+nothing on the row and returns no key. It answers `check_email` and sends that
+address its link, at a home or not. Otherwise anyone who knows a guest's email
+could take over their answer from the open link. With a valid key, the answer
+changes the row.
 
 - `in` when the room is full: refused `409 full`, with `can_maybe: true`.
 - `in` from the open link with `open_invite_ok_first`: saved with
@@ -619,6 +640,13 @@ Each step is checked in the real apps against a local stack and backend, as
 - A second browser holding only the open link reads no address, no guest's
   name and no bring list.
 - A removed guest's link stops showing the address.
+- The link in the "You're in" email still shows the address after the reminder
+  has been sent, and so does the browser that answered.
+- An answer from the open link with an address that already answered, from a
+  browser without that guest's key, changes nothing and returns no key; the
+  address gets an email with its link.
+- At a home, an email invitation and a text invitation answered in a browser
+  return `check_email` and no key.
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
 
