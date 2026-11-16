@@ -7,13 +7,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
+import app.pantopus.android.data.api.models.plans.PlanChecksDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
+import app.pantopus.android.data.api.models.plans.PlanMyCheckResponse
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.blocks.BlocksRepository
 import app.pantopus.android.data.homes.HomesRepository
+import app.pantopus.android.data.plans.PlanChecksRepository
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
@@ -113,6 +116,10 @@ data class PlanDetailUi(
     val bringBusy: Boolean = false,
     /** The line under the bring list ("Sam got to that one first."). */
     val bringNotice: String? = null,
+    /** Business track B5: the guest's check on a plan that takes the bill here ("Pay at …", or "Paid … · Receipt"). */
+    val myCheck: PlanMyCheckResponse? = null,
+    /** Business track B5: the staff's totals for the guest list (C3's entry on the host page). */
+    val checks: PlanChecksDto? = null,
 )
 
 /**
@@ -130,6 +137,7 @@ class PlanDetailViewModel
         private val blocks: BlocksRepository,
         private val homes: HomesRepository,
         private val locations: PlanLocationResolver,
+        private val checksRepository: PlanChecksRepository,
         feature: PlansFeature,
     ) : ViewModel() {
         val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
@@ -288,6 +296,21 @@ class PlanDetailViewModel
             }
             if (plan.standing == PlanViewerStanding.HOSTING) loadRequests()
             if (plan.standing == PlanViewerStanding.HOSTING && plan.answers != null) loadGuests()
+            if (plan.payHere != null) loadChecks(hosting = plan.standing == PlanViewerStanding.HOSTING)
+        }
+
+        /** Business track B5: the guest's check, or the staff's totals, on a plan that takes the bill here. */
+        private fun loadChecks(hosting: Boolean) {
+            val generation = readGeneration
+            viewModelScope.launch {
+                if (hosting) {
+                    val list = (checksRepository.checks(planId) as? NetworkResult.Success)?.data ?: return@launch
+                    if (active && generation == readGeneration) _ui.update { it.copy(checks = list) }
+                } else {
+                    val mine = (checksRepository.myCheck(planId) as? NetworkResult.Success)?.data ?: return@launch
+                    if (active && generation == readGeneration) _ui.update { it.copy(myCheck = mine) }
+                }
+            }
         }
 
         /** The host's answers for the counts, the people line and Remind (Plans for the holidays, A6). */

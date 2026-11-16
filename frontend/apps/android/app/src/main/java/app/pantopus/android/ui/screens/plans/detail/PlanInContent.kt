@@ -85,6 +85,8 @@ internal fun ColumnScope.PlanInBody(
     onChangeAnswer: (() -> Unit)? = null,
     /** Plans for the holidays (A8 item 2): the bring list's actions; null leaves the list out. */
     bring: PlanBringActions? = null,
+    /** Business track B5: "Pay at {business}" and the guest's check. */
+    payHere: PlanPayHereEntry? = null,
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -105,6 +107,7 @@ internal fun ColumnScope.PlanInBody(
         if (deal.isGroup && !deal.isUnlocked) PlanDealCard(plan, deal, onShare = rememberDealShare(plan))
         deal.mine?.let { mine -> PlanYourDealCard(plan, deal, mine) }
     }
+    if (payHere != null) PlanPayHereRow(plan, payHere)
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
     val list = plan.bring
     if (list != null && bring != null) {

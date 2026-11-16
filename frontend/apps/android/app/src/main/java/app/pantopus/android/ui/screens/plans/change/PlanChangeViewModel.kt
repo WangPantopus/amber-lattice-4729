@@ -538,7 +538,7 @@ class PlanChangeViewModel
         private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
             val ui = _ui.value
             val business = ui.business ?: return null
-            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents)
+            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents, bill = ui.bill)
             val body = dealPreviewBody(business, ui.deal.draft, facts, ui.zone) ?: return null
             _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = true, failed = null))) }
             return when (val result = repository.dealPreview(body)) {

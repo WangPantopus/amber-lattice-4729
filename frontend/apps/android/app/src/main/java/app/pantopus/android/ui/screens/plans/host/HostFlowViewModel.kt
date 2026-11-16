@@ -166,6 +166,9 @@ data class HostDraft(
     /** Business track B2: "Price a spot" is on, and the amount as typed in dollars ($1 to $500). */
     val priceOn: Boolean = false,
     val priceDollars: String = "",
+    /** Business track B5: "Guests can pay their bill here", and "Take tips" (null: the kind's start, as the server's). */
+    val payHere: Boolean = false,
+    val tipsOn: Boolean? = null,
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -255,6 +258,15 @@ data class HostUi(
 
     /** "Price a spot" shows on a business's form while its switch is on (host-as `can.price`, business track B2). */
     val showsPrice: Boolean get() = business?.can?.price == true
+
+    /** "Guests can pay their bill here" shows on a business's form while its switch is on (host-as `can.pay_here`, B5). */
+    val showsPayHere: Boolean get() = business?.can?.payHere == true
+
+    /** The plan is posted taking the bill here: the row is on and the business can charge. */
+    val payHereOn: Boolean get() = showsPayHere && business?.payoutsReady == true && draft.payHere
+
+    /** "Take tips" as it shows: the business's choice, else on for a watch party and a walk or coffee (B5). */
+    val tipsShownOn: Boolean get() = draft.tipsOn ?: (draft.kind?.wire in TIPS_START_KINDS)
 
     /** The spot's price in cents the plan is posted with: the row is on, the business can charge, the amount reads. */
     val priceCents: Int?
@@ -1062,7 +1074,11 @@ class HostFlowViewModel
                 val body =
                     if (business != null) {
                         businessCreateBody(kind, draft, ui.zone, business, deal = draft.deal.toInput(ui.zone).takeIf { ui.showsDealStep })
-                            .copy(priceCents = ui.priceCents)
+                            .copy(
+                                priceCents = ui.priceCents,
+                                payHere = true.takeIf { ui.payHereOn },
+                                tipsOn = ui.tipsShownOn.takeIf { ui.payHereOn },
+                            )
                     } else {
                         // A private plan can be anywhere: no fix is needed to prove the host is nearby.
                         val fix = if (ui.isPrivate) null else locations.gpsFix()
@@ -1137,7 +1153,7 @@ class HostFlowViewModel
         private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
             val ui = _ui.value
             val business = ui.business ?: return null
-            val facts = DealPlanFacts(spots = ui.draft.spots, start = ui.draft.start, priceCents = ui.priceCents)
+            val facts = DealPlanFacts(spots = ui.draft.spots, start = ui.draft.start, priceCents = ui.priceCents, bill = ui.payHereOn)
             val body = dealPreviewBody(business, ui.draft.deal, facts, ui.zone) ?: return null
             _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = true, failed = null)) }
             return when (val result = repository.dealPreview(body)) {

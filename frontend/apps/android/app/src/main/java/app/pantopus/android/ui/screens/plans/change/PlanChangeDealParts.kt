@@ -160,6 +160,7 @@ internal fun ChangeDealForm(
                 preview = ui.deal.preview,
                 onEdit = viewModel::editDeal,
                 priced = ui.priced,
+                bill = ui.bill,
             )
         }
     }

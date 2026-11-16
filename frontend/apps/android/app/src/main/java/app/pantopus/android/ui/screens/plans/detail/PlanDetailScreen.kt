@@ -97,6 +97,10 @@ fun PlanDetailScreen(
     onOpenGuests: (String) -> Unit = {},
     /** The bring list for the host (Plans for the holidays, A9). */
     onOpenBring: (String) -> Unit = {},
+    /** Business track B5: the guest's check (C1, C2). */
+    onOpenCheck: (String) -> Unit = {},
+    /** Business track B5: the business's guest list with money (C3). */
+    onOpenChecks: (String) -> Unit = {},
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -161,6 +165,8 @@ fun PlanDetailScreen(
                     onOpenRequests = { onOpenRequests(state.plan.id) },
                     onOpenGuests = { onOpenGuests(state.plan.id) },
                     onOpenBring = { onOpenBring(state.plan.id) },
+                    onOpenCheck = { onOpenCheck(state.plan.id) },
+                    onOpenChecks = { onOpenChecks(state.plan.id) },
                     onChange = { onChange(state.plan.id) },
                     onHost = onHost,
                     onOpenChat = { room -> onOpenChat(room, PlanFormat.shortTitle(state.plan), state.plan.id) },
@@ -183,6 +189,8 @@ private fun PlanReady(
     onOpenRequests: () -> Unit,
     onOpenGuests: () -> Unit,
     onOpenBring: () -> Unit,
+    onOpenCheck: () -> Unit,
+    onOpenChecks: () -> Unit,
     onChange: () -> Unit,
     onHost: (String?, String?) -> Unit,
     onOpenChat: (String) -> Unit,
@@ -274,6 +282,7 @@ private fun PlanReady(
                     guests = ui.guests,
                     onOpenGuests = onOpenGuests,
                     onOpenBring = onOpenBring,
+                    checks = PlanChecksEntry(ui.checks, onOpenChecks),
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -287,6 +296,8 @@ private fun PlanReady(
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
                     // Plans for the holidays (A8): "Change" opens the answer sheet with the guest's numbers.
                     onChangeAnswer = viewModel::openAsk,
+                    // Business track B5: "Pay at {business}", or the paid check and its receipt.
+                    payHere = PlanPayHereEntry(ui.myCheck, onOpenCheck),
                     bring =
                         PlanBringActions(
                             busy = ui.bringBusy,

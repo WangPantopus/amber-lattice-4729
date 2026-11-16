@@ -438,6 +438,9 @@ object DeepLinkRouter {
         /** Plans for the holidays: `/plans/:id/guests` opens the host's Who's coming (A5), from its two notices. */
         data class PlanGuests(val id: String) : Destination
 
+        /** `/plans/:id/check` (business track B5): the guest's check, C1. */
+        data class PlanCheck(val id: String) : Destination
+
         /** Nearby Plans: `/plans/new` opens the host flow (H1). */
         data object NewPlan : Destination
 
@@ -557,14 +560,19 @@ object DeepLinkRouter {
      */
     fun whosComingPath(metadata: Any?): String? {
         val fields = metadata as? Map<*, *> ?: return null
-        if (fields["opens"] != "whos_coming") return null
         val planId = (fields["plan_id"] as? String)?.takeIf(String::isNotBlank) ?: return null
-        return "/plans/$planId/guests"
+        return when (fields["opens"]) {
+            "whos_coming" -> "/plans/$planId/guests"
+            // Business track B5: a check's notice opens the check (C1).
+            "check" -> "/plans/$planId/check"
+            else -> null
+        }
     }
 
     /** True when [destination] is a Plans page. Those open only while the `plans` flag is on. */
     fun isPlansDestination(destination: Destination): Boolean =
         destination is Destination.Plan || destination is Destination.PlanRequests || destination is Destination.PlanGuests ||
+            destination is Destination.PlanCheck ||
             destination == Destination.NewPlan || destination == Destination.PlansTab
 
     /** True while Nearby Plans is on for the signed-in person. */
@@ -1105,6 +1113,7 @@ object DeepLinkRouter {
                         )
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
                     trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
+                    trailing == "check" && segments.size == 3 -> Destination.PlanCheck(id)
                     else -> Destination.Unknown(raw)
                 }
             }

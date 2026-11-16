@@ -106,6 +106,8 @@ internal fun ColumnScope.PlanHostBody(
     onOpenBring: () -> Unit = {},
     /** Business track B1: staff mark a guest's free thing used. */
     onMarkUsed: (PlanPersonDto) -> Unit = {},
+    /** Business track B5: the guest list with money (C3), on a plan that takes the bill here. */
+    checks: PlanChecksEntry? = null,
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
@@ -127,6 +129,8 @@ internal fun ColumnScope.PlanHostBody(
         WaitlistCard(waitingCount, waiting.mapNotNull { it.user?.displayName }, onOpenRequests)
     }
     InviteCard(plan, closed, onOpen = onInvite)
+    // Business track B5: the three totals, opening the guest list with money (C3).
+    PlanChecksCard(plan, checks)
     // Plans for the holidays (A6): the three counts and the people line with their numbers, both opening Who's coming,
     // in place of the going list (Who's coming has every guest, with or without an account, and Remove).
     HostPeople(plan, guests, onOpenGuests) {

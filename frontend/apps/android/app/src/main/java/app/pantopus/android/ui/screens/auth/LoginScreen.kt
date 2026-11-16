@@ -966,6 +966,7 @@ internal fun waitingLinkLine(path: String?): String? {
             is DeepLinkRouter.Destination.Plan,
             is DeepLinkRouter.Destination.PlanRequests,
             is DeepLinkRouter.Destination.PlanGuests,
+            is DeepLinkRouter.Destination.PlanCheck,
             -> "open the plan you were sent"
             is DeepLinkRouter.Destination.Post -> "open the post you were sent"
             is DeepLinkRouter.Destination.SupportTrain, is DeepLinkRouter.Destination.SupportTrainManage ->

@@ -81,6 +81,52 @@ internal fun ColumnScope.BusinessPriceField(
     }
 }
 
+/**
+ * B5: "Guests can pay their bill here" (off at the start, needing payouts as a price does) and, when on, "Take tips"
+ * (07-screens C3's form rows), which starts on for a watch party and a walk or coffee and off for every other kind.
+ */
+@Composable
+internal fun ColumnScope.BusinessPayHereField(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+) {
+    val business = ui.business ?: return
+    val draft = ui.draft
+    if (!business.payoutsReady) {
+        Column(modifier = Modifier.testTag("planPayHere"), verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+            Text(
+                text = "Guests can pay their bill here",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.appText,
+            )
+            Text(text = "Set up payouts to take payments", style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+            PlanTextButton(
+                title = "Set up payouts",
+                onClick = { DeepLinkRouter.handle("/businesses/${business.userId}?tab=payments") },
+            )
+        }
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+        PlanSwitchRow(
+            title = "Guests can pay their bill here",
+            caption = null,
+            checked = draft.payHere,
+            onChecked = { on -> vm.edit { it.copy(payHere = on) } },
+            modifier = Modifier.testTag("planPayHere"),
+        )
+        if (draft.payHere) {
+            PlanSwitchRow(
+                title = "Take tips",
+                caption = null,
+                checked = ui.tipsShownOn,
+                onChecked = { on -> vm.edit { it.copy(tipsOn = on) } },
+                modifier = Modifier.testTag("planTakeTips"),
+            )
+        }
+    }
+}
+
 /** What may be typed in an amount field: digits and a point, up to [max] characters. */
 internal fun amountTyped(
     text: String,

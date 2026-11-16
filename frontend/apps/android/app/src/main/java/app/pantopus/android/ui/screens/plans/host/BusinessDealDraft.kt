@@ -25,8 +25,13 @@ const val DEAL_FREE_ITEM = "free_item"
 const val DEAL_PERCENT = "percent"
 const val DEAL_AMOUNT = "amount"
 
-/** B4: "On" is "The spot" on a priced plan (the bill's targets come with B5). */
+/** B4: "On" is "The spot" on a priced plan; B5 adds the bill's "Food" and "Everything but alcohol". */
 const val DEAL_ON_SPOT = "spot"
+const val DEAL_ON_FOOD = "food"
+const val DEAL_ON_NO_ALCOHOL = "no_alcohol"
+
+/** B5: "Take tips" starts on for these kinds when the business turns the bill on (the server's TIPS_ON_KINDS). */
+val TIPS_START_KINDS = setOf("watch_party", "walk_coffee")
 
 /** A percent off starts at 10, from 5 to 50. */
 const val DEAL_PERCENT_START = 10
@@ -51,6 +56,8 @@ data class DealPart(
     val item: String = "",
     val percent: Int = DEAL_PERCENT_START,
     val dollars: String = "",
+    /** What money off is on: "The spot" (B4), "Food" or "Everything but alcohol" (B5). */
+    val on: String = DEAL_ON_SPOT,
 ) {
     /** What the server takes as `value`: the percent, or the cents typed; none for something free. */
     val value: Int?
@@ -61,8 +68,8 @@ data class DealPart(
                 else -> null
             }
 
-    /** `applies_to`: "The spot" for money off (B4); none for something free. */
-    val appliesTo: String? get() = if (kind == DEAL_PERCENT || kind == DEAL_AMOUNT) DEAL_ON_SPOT else null
+    /** `applies_to` for money off: the spot (B4) or the bill (B5); none for something free. */
+    val appliesTo: String? get() = if (kind == DEAL_PERCENT || kind == DEAL_AMOUNT) on else null
 
     /** `item` for something free; none for money off. */
     val itemOrNull: String? get() = if (kind == DEAL_FREE_ITEM) item.trim() else null
@@ -73,10 +80,11 @@ data class DealPart(
             kind: String?,
             item: String?,
             value: Int?,
+            appliesTo: String? = null,
         ): DealPart =
             when (kind) {
-                DEAL_PERCENT -> DealPart(kind = DEAL_PERCENT, percent = value ?: DEAL_PERCENT_START)
-                DEAL_AMOUNT -> DealPart(kind = DEAL_AMOUNT, dollars = value?.let(::dollarsOf).orEmpty())
+                DEAL_PERCENT -> DealPart(kind = DEAL_PERCENT, percent = value ?: DEAL_PERCENT_START, on = appliesTo ?: DEAL_ON_SPOT)
+                DEAL_AMOUNT -> DealPart(kind = DEAL_AMOUNT, dollars = value?.let(::dollarsOf).orEmpty(), on = appliesTo ?: DEAL_ON_SPOT)
                 else -> DealPart(kind = DEAL_FREE_ITEM, item = item.orEmpty())
             }
 
@@ -164,11 +172,11 @@ data class DealDraft(
             val smaller = form.ifShort
             return DealDraft(
                 scope = scope,
-                main = DealPart.of(form.kind, form.item, form.value),
+                main = DealPart.of(form.kind, form.item, form.value, form.appliesTo),
                 groupSize = form.groupSize ?: MIN_GROUP,
                 groupBy = PlanFormat.instant(form.groupBy)?.atZone(zone)?.toLocalDateTime(),
                 smaller = smaller != null,
-                fallback = smaller?.let { DealPart.of(it.kind, it.item, it.value) } ?: DealPart(),
+                fallback = smaller?.let { DealPart.of(it.kind, it.item, it.value, it.appliesTo) } ?: DealPart(),
             )
         }
 
@@ -227,14 +235,16 @@ internal fun dealPreviewBody(
         spots = plan.spots,
         startsAt = startsAt,
         priceCents = plan.priceCents,
+        payHere = true.takeIf { plan.bill },
     )
 }
 
-/** What deal-preview needs to know about the plan: its spots, its start, and a spot's price (B4). */
+/** What deal-preview needs to know about the plan: its spots, its start, a spot's price (B4), the bill here (B5). */
 data class DealPlanFacts(
     val spots: Int,
     val start: LocalDateTime?,
     val priceCents: Int? = null,
+    val bill: Boolean = false,
 )
 
 /** How long the form waits after the last edit before asking the server again. */

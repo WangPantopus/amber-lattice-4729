@@ -155,6 +155,8 @@ private fun ColumnScope.BusinessFields(
     )
     // Business track B2: "Price a spot", while the business's switch is on.
     if (ui.showsPrice) BusinessPriceField(ui, vm)
+    // Business track B5: "Guests can pay their bill here" and "Take tips".
+    if (ui.showsPayHere) BusinessPayHereField(ui, vm)
     PlanField(label = "Who gets in") {
         PlanSegmented(
             options = listOf(WHO_OPEN to "Right away", WHO_APPROVE to "I approve each"),

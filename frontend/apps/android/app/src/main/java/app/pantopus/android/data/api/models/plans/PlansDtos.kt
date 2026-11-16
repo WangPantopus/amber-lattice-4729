@@ -318,6 +318,10 @@ data class PlanDto(
     @Json(name = "deal") val deal: PlanDealDto? = null,
     /** Business track B2: what the guest paid, the receipt and what leaving gives back; only for a guest who paid. */
     @Json(name = "paid") val paid: PlanPaidDto? = null,
+    /** Business track B5: "Pay at {business}" for staff and guests who are in, while the plan takes the bill here. */
+    @Json(name = "pay_here") val payHere: PlanPayHereDto? = null,
+    /** Business track B6: a tip after a paid plan, once, for 7 days after it ends. */
+    @Json(name = "tip_later") val tipLater: PlanTipLaterDto? = null,
 )
 
 /** `occasion` on a card (Plans for the holidays, H3). */
@@ -662,6 +666,9 @@ data class CreatePlanBody(
     @Json(name = "deal") val deal: PlanDealInput? = null,
     /** Business track B2: a spot's price in cents ($1 to $500); none is free. */
     @Json(name = "price_cents") val priceCents: Int? = null,
+    /** Business track B5: guests can pay their bill here, and take tips (the server's start value when left out). */
+    @Json(name = "pay_here") val payHere: Boolean? = null,
+    @Json(name = "tips_on") val tipsOn: Boolean? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */

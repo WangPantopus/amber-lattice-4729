@@ -65,7 +65,10 @@ internal fun ColumnScope.BusinessDealForm(
     onEdit: ((DealDraft) -> DealDraft) -> Unit,
     /** B4: the plan has a price the business can charge, so money off "The spot" is offered. */
     priced: Boolean = false,
+    /** B5: guests pay their bill here, so money off "Food" or "Everything but alcohol" is offered. */
+    bill: Boolean = false,
 ) {
+    val targets = dealTargets(priced, bill)
     // Live answers don't flag a field nobody has filled in yet; "Preview" (or "Done") shows every error.
     val errors =
         if (preview.checked) {
@@ -81,14 +84,15 @@ internal fun ColumnScope.BusinessDealForm(
     DealWhatField(
         label = "What they get",
         part = draft.main,
-        kinds = dealKinds(priced),
+        kinds = dealKinds(targets.isNotEmpty()),
         smaller = false,
         errors = errors,
-        onPart = { change -> onEdit { it.copy(main = change(it.main)) } },
+        onPart = { change -> onEdit { it.copy(main = change(it.main).withTargetIn(targets)) } },
+        targets = targets,
     )
     if (draft.scope == DealScope.GROUP) {
         DealUnlocksField(draft, spots, errors, onEdit)
-        DealIfShortField(draft, errors["if_short"], onEdit)
+        DealIfShortField(draft, errors["if_short"], targets, onEdit)
     }
     DealGuestsWillRead(preview)
 }
@@ -161,6 +165,7 @@ private fun DealWhatField(
     smaller: Boolean,
     errors: Map<String, String>,
     onPart: ((DealPart) -> DealPart) -> Unit,
+    targets: List<PlanChoice> = emptyList(),
 ) {
     val prefix = if (smaller) "planDealSmaller" else "planDeal"
     PlanField(label = label) {
@@ -187,7 +192,7 @@ private fun DealWhatField(
             DealFieldError(itemError)
         }
     } else {
-        DealHowMuch(part, prefix, valueError, onPart)
+        DealHowMuch(part, prefix, valueError, targets, onPart)
     }
 }
 
@@ -197,6 +202,7 @@ private fun DealHowMuch(
     part: DealPart,
     prefix: String,
     error: String?,
+    targets: List<PlanChoice>,
     onPart: ((DealPart) -> DealPart) -> Unit,
 ) {
     PlanField(label = "How much") {
@@ -231,14 +237,26 @@ private fun DealHowMuch(
                     }
                 }
             }
-            PlanOptionRow {
-                Text(text = "On", style = PantopusTextStyle.body, color = PantopusColors.appText, modifier = Modifier.weight(1f))
-                Text(
-                    text = "The spot",
-                    style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
-                    color = PantopusColors.appText,
-                )
+            if (targets.size <= 1) {
+                PlanOptionRow {
+                    Text(text = "On", style = PantopusTextStyle.body, color = PantopusColors.appText, modifier = Modifier.weight(1f))
+                    Text(
+                        text = targets.firstOrNull()?.label ?: "The spot",
+                        style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = PantopusColors.appText,
+                    )
+                }
             }
+        }
+        // B5: more than one thing to take it off: "On" is a choice (Food, Everything but alcohol, The spot).
+        if (targets.size > 1) {
+            PlanOverline("On")
+            PlanChoiceGroup(
+                choices = targets,
+                isSelected = { it.id == part.on },
+                onSelect = { choice -> onPart { it.copy(on = choice.id) } },
+                tagPrefix = "${prefix}On",
+            )
         }
         DealFieldError(error)
     }
@@ -253,6 +271,23 @@ private fun dealKinds(priced: Boolean): List<PlanChoice> =
         }
         add(PlanChoice(DEAL_FREE_ITEM, "Something free"))
     }
+
+/** What money off may be on: "The spot" on a priced plan (B4), "Food" and "Everything but alcohol" with the bill (B5). */
+private fun dealTargets(
+    priced: Boolean,
+    bill: Boolean,
+): List<PlanChoice> =
+    buildList {
+        if (bill) {
+            add(PlanChoice(DEAL_ON_FOOD, "Food"))
+            add(PlanChoice(DEAL_ON_NO_ALCOHOL, "Everything but alcohol"))
+        }
+        if (priced) add(PlanChoice(DEAL_ON_SPOT, "The spot"))
+    }
+
+/** Money off keeps a target the plan offers (the first, when the one chosen isn't offered any more). */
+private fun DealPart.withTargetIn(targets: List<PlanChoice>): DealPart =
+    if (targets.isEmpty() || targets.any { it.id == on }) this else copy(on = targets.first().id)
 
 /** A smaller deal is the same family as the deal: free after free, money after money (the server's rule). */
 private fun smallerKinds(main: DealPart): List<PlanChoice> =
@@ -343,6 +378,7 @@ private fun DealUnlocksField(
 private fun DealIfShortField(
     draft: DealDraft,
     error: String?,
+    targets: List<PlanChoice>,
     onEdit: ((DealDraft) -> DealDraft) -> Unit,
 ) {
     PlanField(label = "If it doesn't unlock") {
@@ -373,7 +409,8 @@ private fun DealIfShortField(
             kinds = smallerKinds(draft.main),
             smaller = true,
             errors = listOfNotNull(error?.let { "if_short" to it }).toMap(),
-            onPart = { change -> onEdit { it.copy(fallback = change(it.fallback)) } },
+            onPart = { change -> onEdit { it.copy(fallback = change(it.fallback).withTargetIn(targets)) } },
+            targets = targets,
         )
     }
 }

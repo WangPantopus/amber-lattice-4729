@@ -40,6 +40,9 @@ val PlanChangeUi.spotPriceCents: Int? get() = plan?.price?.let { it.wasCents ?: 
 /** B4: money off "The spot" is offered on a priced plan the business can charge for. */
 val PlanChangeUi.priced: Boolean get() = spotPriceCents != null && business?.can?.price == true
 
+/** B5: money off the bill is offered on a plan that takes the bill here. */
+val PlanChangeUi.bill: Boolean get() = plan?.payHere != null && business?.can?.payHere == true
+
 /** Anyone is in: the deal can't change (only be removed). */
 val PlanChangeUi.dealLocked: Boolean get() = plan?.deal?.let { !it.canChange } ?: (peopleIn > 0)
 
