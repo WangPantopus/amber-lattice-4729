@@ -54,9 +54,14 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
     public let newToPantopus: Bool
     /// Host only: asked "Still coming?" and hasn't answered.
     public let reconfirmNeeded: Bool
-    /// Host only, playdates: how many kids come and their age bands (never names).
+    /// Host only, playdates: how many kids come and their age bands (never names). With `guests=1` on a plan with
+    /// kids welcome, everyone's kids.
     public let kidsCount: Int?
     public let kidsAgeBands: [PlanKidsAgeBand]?
+    /// Plans for the holidays H1 (`guests=1`): a guest without an account who is in. No profile; `userId` is
+    /// "guest:" and their invitation's id.
+    public let isGuest: Bool
+    public let guestId: String?
 
     public var id: String {
         userId
@@ -78,11 +83,19 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
         case reconfirmNeeded = "reconfirm_needed"
         case kidsCount = "kids_count"
         case kidsAgeBands = "kids_age_bands"
+        case isGuest = "guest"
+        case guestId = "guest_id"
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        userId = try container.decode(String.self, forKey: .userId)
+        guestId = try container.decodeIfPresent(String.self, forKey: .guestId)
+        isGuest = try (container.decodeIfPresent(Bool.self, forKey: .isGuest) ?? false) && guestId != nil
+        if isGuest, let guestId {
+            userId = try container.decodeIfPresent(String.self, forKey: .userId) ?? "guest:\(guestId)"
+        } else {
+            userId = try container.decode(String.self, forKey: .userId)
+        }
         displayName = try container.decode(String.self, forKey: .displayName)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         partySize = try container.decodeIfPresent(Int.self, forKey: .partySize) ?? 1

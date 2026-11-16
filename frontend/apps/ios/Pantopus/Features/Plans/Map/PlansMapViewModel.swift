@@ -344,12 +344,6 @@ final class PlansMapViewModel {
         sheetStop == .peek && phase == .needsLocation ? .half : sheetStop
     }
 
-    /// Your plans: invitations waiting for an answer first, then hosting.
-    var yourPlans: [PlanCardDTO] {
-        guard let mine else { return [] }
-        return mine.invited + mine.hosting + mine.going + mine.asked + mine.waitlisted
-    }
-
     /// Your plans after the type filter: the list's "Your plans" follows the chip, as the map and the days do.
     var visibleYourPlans: [PlanCardDTO] {
         yourPlans.filter { (kindFilter == nil || $0.kind == kindFilter) && shownHostFilter.admits(isBusiness: $0.isBusiness) }
@@ -434,5 +428,24 @@ extension PlansMapViewModel {
 
     private var hostFilterKey: String {
         "pantopus.plans.hostFilter.\(ScreenStore.accountKey)"
+    }
+}
+
+extension PlansMapViewModel {
+    /// "Yours" (Plans for the holidays, board 1): the plans this person hosts, is in, is waiting on, or is invited
+    /// to and hasn't answered, soonest first. A plan listed twice (hosting and invited) shows once.
+    var yourPlans: [PlanCardDTO] {
+        guard let mine else { return [] }
+        var seen = Set<String>()
+        let lists = mine.invited + mine.hosting + mine.going + mine.asked + mine.waitlisted
+        let all = lists.filter { seen.insert($0.id).inserted }
+        // With the switch off, today's order: invitations waiting first, then hosting.
+        guard PlansFlags.shared.guestAnswers else { return all }
+        let soonestFirst = all.enumerated().sorted { lhs, rhs in
+            let left = lhs.element.startsAtDate ?? lhs.element.startsOnDate ?? .distantFuture
+            let right = rhs.element.startsAtDate ?? rhs.element.startsOnDate ?? .distantFuture
+            return left == right ? lhs.offset < rhs.offset : left < right
+        }
+        return soonestFirst.map(\.element)
     }
 }

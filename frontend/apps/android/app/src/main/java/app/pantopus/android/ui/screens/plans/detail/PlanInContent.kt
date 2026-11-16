@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
@@ -68,6 +70,7 @@ import app.pantopus.android.ui.theme.Spacing
  * in. [reveal] slides "You're in" up 8 dp and fades it in (300 to 450 ms of the reveal; a crossfade under Reduce
  * Motion).
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun ColumnScope.PlanInBody(
     plan: PlanDto,
@@ -77,6 +80,8 @@ internal fun ColumnScope.PlanInBody(
     viewerId: String?,
     onStillComing: (Boolean) -> Unit,
     onOpenChat: () -> Unit,
+    /** Plans for the holidays (A8): "Change" on the banner opens the answer sheet (A7); null leaves it out. */
+    onChangeAnswer: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -84,10 +89,10 @@ internal fun ColumnScope.PlanInBody(
         // Board Online: the kind and "Online", the title, when and "Online · hosted from Camas", then "You're in" and
         // the link's card. No place, no map, no directions (Plans step 3).
         PlanTitleBlock(plan)
-        InBanner(plan, reveal, reduceMotion)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         PlanOnlineLinkCard(plan, hosting = false)
     } else {
-        InBanner(plan, reveal, reduceMotion)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         InPlaceTitle(plan)
     }
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
@@ -220,6 +225,7 @@ private fun InBanner(
     plan: PlanDto,
     reveal: Boolean,
     reduceMotion: Boolean,
+    onChangeAnswer: (() -> Unit)? = null,
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
@@ -238,8 +244,11 @@ private fun InBanner(
     // plan points at its link (board Online): "Sam let you in. The link is below."
     val rule = mine?.decidedBy == "rule"
     val said = if (rule) "You got in right away" else "${plan.hostFirst} said yes"
+    // Plans for the holidays (board 20, A8): the guest's numbers, "2 adults, 1 kid", with "Change".
+    val counts = if (onChangeAnswer != null && plan.answersWithCounts(invited = false)) myCounts(plan) else null
     val subtitle =
         when {
+            counts != null -> counts
             plan.isOnline && rule -> "You got in right away. The link is below."
             plan.isOnline -> "${plan.hostFirst} let you in. The link is below."
             else -> listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
@@ -249,11 +258,56 @@ private fun InBanner(
         subtitle = subtitle,
         icon = PantopusIcon.Check,
         tone = PlanBannerTone.Ok,
+        trailing = if (counts != null && onChangeAnswer != null) ({ PlanBannerChange(onChangeAnswer) }) else null,
         modifier =
             Modifier.graphicsLayer {
                 alpha = progress.value
                 translationY = if (reduceMotion) 0f else (1f - progress.value) * 8.dp.toPx()
             },
+    )
+}
+
+/** "2 adults, 1 kid" with kids welcome, else "Just you" or "3 people": the person's own answer (A8). */
+internal fun myCounts(plan: PlanDto): String {
+    val adults = plan.myRequest?.partySize ?: 1
+    val kids = plan.myRequest?.kidsCount ?: 0
+    return when {
+        plan.takesKids -> PlanFormat.people(adults, kids)
+        adults <= 1 -> "Just you"
+        else -> "$adults people"
+    }
+}
+
+/** "Change" on a banner (A8): opens the answer sheet. */
+@Composable
+internal fun PlanBannerChange(onClick: () -> Unit) {
+    Text(
+        text = "Change",
+        style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+        color = PantopusColors.primary600,
+        modifier =
+            Modifier
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(Radii.pill))
+                .clickable(role = Role.Button, onClickLabel = "Change your answer", onClick = onClick)
+                .padding(horizontal = Spacing.s2, vertical = 11.dp)
+                .testTag("planAnswerChange"),
+    )
+}
+
+/** "You said maybe" (A8): a quiet banner with "Change"; no bring list and no place for someone who said maybe. */
+@Composable
+internal fun PlanMaybeBanner(
+    plan: PlanDto,
+    onChange: () -> Unit,
+) {
+    PlanBanner(
+        title = "You said maybe",
+        subtitle = "${plan.hostFirst} sees your answer",
+        icon = PantopusIcon.HelpCircle,
+        tone = PlanBannerTone.Neutral,
+        modifier = Modifier.testTag("planMaybeBanner"),
+        trailing = { PlanBannerChange(onChange) },
     )
 }
 
@@ -309,12 +363,15 @@ private fun PeopleLine(
     if (you !in names) names.add(if (people.firstOrNull()?.isHost == true) 1 else 0, you)
     val shown = names.take(4)
     val rest = names.size - shown.size
-    val line =
+    val nameList =
         when {
             rest > 0 -> shown.joinToString(", ") + " and $rest more"
             shown.size > 1 -> shown.dropLast(1).joinToString(", ") + " and " + shown.last()
             else -> shown.joinToString()
         }
+    // Plans for the holidays (A8 item 3): with kids welcome the line ends "· 3 kids".
+    val kids = plan.headcount?.kids?.takeIf { plan.takesKids && it > 0 }
+    val line = if (kids != null) "$nameList · $kids ${if (kids == 1) "kid" else "kids"}" else nameList
     // Each photo opens that person's profile; TalkBack offers the same as actions on the line.
     val openProfile = LocalPlanOpenProfile.current
     val shownPeople = people.take(4)

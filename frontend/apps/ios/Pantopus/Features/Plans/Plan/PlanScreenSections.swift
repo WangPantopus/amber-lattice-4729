@@ -18,13 +18,18 @@ struct PlanScreenSections: View {
     let onChange: () -> Void
     let onCancel: () -> Void
     let onConfirm: (PlanConfirmation) -> Void
+    /// Plans for the holidays: "Change" on board 20's banners opens board 18's sheet; the host's counts open board 17.
+    var onAnswer: () -> Void = {}
+    var onOpenGuests: () -> Void = {}
 
     var body: some View {
         if let card = viewModel.card {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 switch viewModel.mode {
                 case .browsing:
-                    if viewModel.openInvite != nil, card.isPrivate {
+                    if let invite = viewModel.openInvite, invite.status == .maybe, card.answersWithNumbers {
+                        PlanAnswerBanner(kind: .maybe, line: "\(PlanCardLines.hostName(card)) sees your answer", onChange: onAnswer)
+                    } else if viewModel.openInvite != nil, card.isPrivate {
                         // Board Invited: only the people the host invites can see a private plan.
                         PlanInvitedBanner(card: card)
                     } else if let invite = viewModel.openInvite {
@@ -43,7 +48,8 @@ struct PlanScreenSections: View {
                         card: card,
                         onOpenChat: onOpenChat,
                         onConfirm: onConfirm,
-                        onOpenProfile: onOpenHost
+                        onOpenProfile: onOpenHost,
+                        onAnswer: onAnswer
                     )
                 case .hosting:
                     PlanHostingSection(
@@ -55,7 +61,8 @@ struct PlanScreenSections: View {
                         onChange: onChange,
                         onCancel: onCancel,
                         onConfirm: onConfirm,
-                        onOpenProfile: onOpenHost
+                        onOpenProfile: onOpenHost,
+                        onOpenGuests: onOpenGuests
                     )
                 case .closed:
                     PlanClosedSection(
@@ -114,60 +121,6 @@ struct PlanTitleBlock: View {
                     PlanFactRow(icon: .planPlaydate, text: "Kids \(ages)")
                 }
             }
-        }
-    }
-}
-
-/// A status banner: a 34 pt glyph square and two lines.
-struct PlanBanner: View {
-    enum Tone { case neutral, success, warning }
-
-    let tone: Tone
-    let icon: PantopusIcon
-    let title: String
-    let message: String?
-
-    var body: some View {
-        HStack(spacing: Spacing.s3) {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(tone == .success ? Theme.Color.successSolid : Theme.Color.appSurface)
-                .overlay {
-                    if tone != .success {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1)
-                    }
-                }
-                .frame(width: 34, height: 34)
-                .overlay(Icon(icon, size: 18, strokeWidth: tone == .success ? 2.6 : 2, color: glyph))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
-                if let message {
-                    Text(message)
-                        .planFont(.small)
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Spacing.s3)
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(background))
-        .accessibilityElement(children: .combine)
-    }
-
-    private var background: Color {
-        switch tone {
-        case .neutral: Theme.Color.appSurfaceSunken
-        case .success: Theme.Color.successBg
-        case .warning: Theme.Color.warningBg
-        }
-    }
-
-    private var glyph: Color {
-        switch tone {
-        case .success: Theme.Color.appTextInverse
-        case .warning: Theme.Color.warning
-        case .neutral: Theme.Color.appTextStrong
         }
     }
 }

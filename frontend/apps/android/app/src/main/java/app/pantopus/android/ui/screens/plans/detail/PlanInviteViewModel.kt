@@ -8,6 +8,7 @@ import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
@@ -55,7 +56,28 @@ data class PlanInviteUi(
     /** At a home, the first invitation asks the host to agree that people who say they're in see the address. */
     val asksAboutAddress: Boolean = false,
     val textInvite: PlanTextInvite? = null,
+    /**
+     * Plans for the holidays, H1: the card "One link for everyone" shows (`plans_guest_answers` on for the host, a
+     * private plan of a person's that isn't a playdate).
+     */
+    val showsOpenLink: Boolean = false,
+    /** "I say yes first" as the host set it before the link exists (it starts on at a home); the server's once it does. */
+    val yesFirstDraft: Boolean = false,
+    /** The open link is being made, copied or changed. */
+    val openLinkBusy: Boolean = false,
+    /** The open link, ready for the share sheet. */
+    val openLinkShare: PlanTextInvite? = null,
+    /** The open link to put on the clipboard. */
+    val openLinkCopy: String? = null,
+    /** "Turn this link off?" is open. */
+    val confirmsLinkOff: Boolean = false,
 ) {
+    /** The open link exists and is on. */
+    val openLinkOn: Boolean get() = list?.openLink?.on == true && list.openLink.url != null
+
+    /** "I say yes first": the server's once the link exists, the host's draft before. */
+    val yesFirst: Boolean get() = list?.openLink?.takeIf { it.on }?.hostSaysYesFirst ?: yesFirstDraft
+
     val searchText: String get() = query.trim()
 
     /** The search text when it's an address not chosen yet: "Invite alex@example.com by email". */
@@ -78,11 +100,14 @@ data class PlanInviteUi(
  * came to their plans), anyone by email, and a one-person link to text. The invitations already sent, with where each
  * stands, and taking one back. Everything is the server's (planInvites.js); the same screen as iOS's PlanInviteSheet.
  */
+// The open link (Plans for the holidays, A4) adds its own small steps to the sheet's.
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class PlanInviteViewModel
     @Inject
     constructor(
         private val repository: PlansRepository,
+        private val feature: PlansFeature,
     ) : ViewModel() {
         private val _ui = MutableStateFlow(PlanInviteUi())
         val ui: StateFlow<PlanInviteUi> = _ui.asStateFlow()
@@ -93,16 +118,109 @@ class PlanInviteViewModel
         private var searchJob: Job? = null
 
         /** What "Share your address?" is for. */
-        private enum class Pending { Send, Link }
+        private enum class Pending { Send, Link, OpenCopy, OpenShare }
 
-        /** The sheet opened for [id]: read the people and the invitations sent. */
-        fun start(id: String) {
+        /**
+         * The sheet opened for [id]: read the people and the invitations sent. [openLink] (a private plan of a person's,
+         * not a playdate) shows "One link for everyone" while `plans_guest_answers` is on (Plans for the holidays);
+         * [atHome] starts its "I say yes first" on.
+         */
+        fun start(
+            id: String,
+            openLink: Boolean = false,
+            atHome: Boolean = false,
+        ) {
             if (planId != id) {
                 planId = id
                 addressAgreed = false
-                _ui.value = PlanInviteUi()
+                _ui.value = PlanInviteUi(showsOpenLink = openLink && feature.flags.value.guestAnswersOn, yesFirstDraft = atHome)
             }
             load()
+        }
+
+        // ---- One link for everyone (Plans for the holidays, A4) ----
+
+        /** "Copy link" ([copy]) or "Share": the first tap makes the link; at a home it asks about the address first. */
+        fun useOpenLink(copy: Boolean) {
+            val ui = _ui.value
+            if (ui.openLinkBusy) return
+            val url = ui.list?.openLink?.url?.takeIf { ui.openLinkOn }
+            if (url != null && copy) {
+                _ui.update { it.copy(openLinkCopy = url) }
+                return
+            }
+            _ui.update { it.copy(openLinkBusy = true, error = null) }
+            viewModelScope.launch {
+                when (val result = repository.openLink(planId, ui.yesFirst, addressAgreed)) {
+                    is NetworkResult.Success -> {
+                        val link = result.data
+                        _ui.update {
+                            it.copy(
+                                openLinkBusy = false,
+                                yesFirstDraft = link.hostSaysYesFirst,
+                                openLinkCopy = link.url.takeIf { copy },
+                                openLinkShare = PlanTextInvite(link.message, link.url).takeIf { !copy },
+                            )
+                        }
+                        reload()
+                    }
+                    is NetworkResult.Failure -> failed(result.error, if (copy) Pending.OpenCopy else Pending.OpenShare)
+                }
+            }
+        }
+
+        /** The link went to the clipboard: "Link copied." */
+        fun openLinkCopied() {
+            _ui.update { it.copy(openLinkCopy = null, notice = "Link copied.") }
+        }
+
+        /** The share sheet opened with the link. */
+        fun openLinkShared() {
+            _ui.update { it.copy(openLinkShare = null) }
+        }
+
+        /** "I say yes first": saved with the link's own call once the link exists, kept for its first tap before. */
+        fun setYesFirst(on: Boolean) {
+            val ui = _ui.value
+            if (!ui.openLinkOn) {
+                _ui.update { it.copy(yesFirstDraft = on) }
+                return
+            }
+            if (ui.openLinkBusy) return
+            _ui.update { it.copy(openLinkBusy = true, yesFirstDraft = on, error = null) }
+            viewModelScope.launch {
+                when (val result = repository.openLink(planId, on, addressAgreed)) {
+                    is NetworkResult.Success -> {
+                        _ui.update { it.copy(openLinkBusy = false, yesFirstDraft = result.data.hostSaysYesFirst) }
+                        reload()
+                    }
+                    is NetworkResult.Failure ->
+                        _ui.update { it.copy(openLinkBusy = false, yesFirstDraft = !on, error = result.error.planMessage) }
+                }
+            }
+        }
+
+        /** "Turn this link off" asks first. */
+        fun askLinkOff() {
+            _ui.update { it.copy(confirmsLinkOff = true) }
+        }
+
+        fun keepLink() {
+            _ui.update { it.copy(confirmsLinkOff = false) }
+        }
+
+        /** "Turn off": the link stops working; people who already answered stay. */
+        fun turnLinkOff() {
+            _ui.update { it.copy(confirmsLinkOff = false, openLinkBusy = true, error = null) }
+            viewModelScope.launch {
+                when (val result = repository.closeOpenLink(planId)) {
+                    is NetworkResult.Success -> {
+                        _ui.update { it.copy(openLinkBusy = false, notice = "The link is off.") }
+                        reload()
+                    }
+                    is NetworkResult.Failure -> _ui.update { it.copy(openLinkBusy = false, error = result.error.planMessage) }
+                }
+            }
         }
 
         fun load() {
@@ -242,6 +360,8 @@ class PlanInviteViewModel
             when (action) {
                 Pending.Send -> send()
                 Pending.Link -> makeTextInvite()
+                Pending.OpenCopy -> useOpenLink(copy = true)
+                Pending.OpenShare -> useOpenLink(copy = false)
                 null -> Unit
             }
         }
@@ -274,9 +394,9 @@ class PlanInviteViewModel
         ) {
             if (error.planCode == "confirm_shares_address") {
                 pending = action
-                _ui.update { it.copy(sending = false, makingLink = false, asksAboutAddress = true) }
+                _ui.update { it.copy(sending = false, makingLink = false, openLinkBusy = false, asksAboutAddress = true) }
             } else {
-                _ui.update { it.copy(sending = false, makingLink = false, error = error.planMessage) }
+                _ui.update { it.copy(sending = false, makingLink = false, openLinkBusy = false, error = error.planMessage) }
             }
         }
 

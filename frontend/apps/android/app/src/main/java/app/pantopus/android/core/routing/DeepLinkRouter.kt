@@ -434,6 +434,9 @@ object DeepLinkRouter {
         /** Nearby Plans: `/plans/:id/requests` opens the host's requests (H10). */
         data class PlanRequests(val id: String) : Destination
 
+        /** Plans for the holidays: `/plans/:id/guests` opens the host's Who's coming (A5), from its two notices. */
+        data class PlanGuests(val id: String) : Destination
+
         /** Nearby Plans: `/plans/new` opens the host flow (H1). */
         data object NewPlan : Destination
 
@@ -540,8 +543,8 @@ object DeepLinkRouter {
 
     /** True when [destination] is a Plans page. Those open only while the `plans` flag is on. */
     fun isPlansDestination(destination: Destination): Boolean =
-        destination is Destination.Plan || destination is Destination.PlanRequests || destination == Destination.NewPlan ||
-            destination == Destination.PlansTab
+        destination is Destination.Plan || destination is Destination.PlanRequests || destination is Destination.PlanGuests ||
+            destination == Destination.NewPlan || destination == Destination.PlansTab
 
     /** True while Nearby Plans is on for the signed-in person. */
     fun plansEnabled(): Boolean = plansEnabledProvider()
@@ -1054,7 +1057,7 @@ object DeepLinkRouter {
                     ?.takeIf { segments.size == 2 && MAIL_UUID.matches(it) }
                     ?.let { Destination.Moment(it.lowercase()) } ?: Destination.Unknown(raw)
             "plans" -> {
-                // Nearby Plans: `/plans/new`, `/plans/:id` and `/plans/:id/requests` (brief section 7).
+                // Nearby Plans: `/plans/new`, `/plans/:id`, `/plans/:id/requests` (brief section 7) and `/plans/:id/guests`.
                 val id = segments.getOrNull(1)
                 val trailing = segments.getOrNull(2)
                 when {
@@ -1064,6 +1067,7 @@ object DeepLinkRouter {
                     id.isNullOrBlank() -> Destination.Unknown(raw)
                     segments.size == 2 -> Destination.Plan(id, Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken))
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
+                    trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
                     else -> Destination.Unknown(raw)
                 }
             }

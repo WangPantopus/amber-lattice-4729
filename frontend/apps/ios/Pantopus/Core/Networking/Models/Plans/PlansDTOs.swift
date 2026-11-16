@@ -331,6 +331,8 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
     public let privatePart: PlanCardPrivatePart
     /// Repeating plans (step 2): how it repeats and which date of the series this is. Nil when it doesn't.
     public let repeats: PlanRepeatDTO?
+    /// Plans for the holidays H1 (read with `guests=1`): kids welcome, the headcount and the host's counts.
+    public let guestsPart: PlanCardGuestsPart
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, about, timezone, area, host, spots, details, state, viewer
@@ -392,6 +394,7 @@ public struct PlanCardDTO: Decodable, Sendable, Hashable, Identifiable {
         businessPart = try? PlanCardBusinessPart(from: decoder)
         privatePart = (try? PlanCardPrivatePart(from: decoder)) ?? .nearby
         repeats = PlanRepeatDTO.read(from: decoder)
+        guestsPart = (try? PlanCardGuestsPart(from: decoder)) ?? .none
     }
 
     /// The exact start, parsed. Nil when hidden (a playdate before you're in).

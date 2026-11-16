@@ -71,8 +71,12 @@ public enum PlansEndpoints {
     /// Plans steps 3 and 4 (CONTRACT-step3-4.md section 0): the same requests say
     /// with `more=1` that this build can draw an online plan and the four newer
     /// kinds; without it those plans don't exist. Always sent, flags or not.
+    ///
+    /// Plans for the holidays (contract section 4, K10): `guests=1` says this
+    /// build draws guests without an account, Maybe, adults and kids, and room
+    /// over 30. Without it the server answers as before H1.
     static func biz(_ query: [String: String] = [:]) -> [String: String] {
-        query.merging(["biz": "1", "more": "1"]) { _, marker in marker }
+        query.merging(["biz": "1", "more": "1", "guests": "1"]) { _, marker in marker }
     }
 
     // MARK: - Flags
@@ -345,7 +349,8 @@ public enum PlansEndpoints {
     }
 
     /// `DELETE /api/plans/:id/invites/:inviteId` (host) — take back an
-    /// invitation nobody said yes to. Route `backend/routes/plans.js`.
+    /// invitation nobody said yes to; with H1, also remove a guest without an
+    /// account ("Not this time", "Remove"). Route `backend/routes/plans.js`.
     public static func cancelInvite(planId: String, inviteId: String) -> Endpoint {
         Endpoint(method: .delete, path: "\(base)/\(planId)/invites/\(inviteId)", query: biz())
     }
@@ -367,5 +372,39 @@ public enum PlansEndpoints {
     /// invitation not opened yet, `{ plan_id }`. Route `backend/routes/plans.js`.
     public static func nextInvite() -> Endpoint {
         Endpoint(method: .get, path: "\(base)/invites/next", query: biz())
+    }
+
+    // MARK: - Plans for the holidays, H1 (404 while `plans_guest_answers` is off for the host)
+
+    /// `POST /api/plans/:id/invites/open-link` (host) — makes or returns the plan's one link for everyone,
+    /// `{ url, message, host_says_yes_first }`; also saves "I say yes first". At a home the first one answers 409
+    /// `confirm_shares_address`; 422 `validation` on a public plan, a playdate or a business's plan.
+    /// Route `backend/routes/plans.js:419`.
+    public static func openLink(planId: String, _ body: PlanOpenLinkBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/invites/open-link", query: biz(), body: body)
+    }
+
+    /// `DELETE /api/plans/:id/invites/open-link` (host) — turns the link off; answers already given stay.
+    /// Route `backend/routes/plans.js:428`.
+    public static func closeOpenLink(planId: String) -> Endpoint {
+        Endpoint(method: .delete, path: "\(base)/\(planId)/invites/open-link", query: biz())
+    }
+
+    /// `POST /api/plans/:id/invites/remind` (host) — everyone who hasn't answered, the way each was invited,
+    /// `{ reminded, skipped }`; again within a day: 429 `too_many`. Route `backend/routes/plans.js:437`.
+    public static func remind(planId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/invites/remind", query: biz())
+    }
+
+    /// `POST /api/plans/:id/invites/maybe` — an invited account says Maybe, `{ plan }`. The ordinary ask or decline
+    /// replaces it later. Route `backend/routes/plans.js:446`.
+    public static func sayMaybe(planId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/invites/maybe", query: biz())
+    }
+
+    /// `POST /api/plans/:id/invites/:inviteId/ok` (host) — "Let in": a guest waiting from the open link is in and
+    /// gets their email; answers the host's list. Route `backend/routes/plans.js:455`.
+    public static func letIn(planId: String, inviteId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/invites/\(inviteId)/ok", query: biz())
     }
 }

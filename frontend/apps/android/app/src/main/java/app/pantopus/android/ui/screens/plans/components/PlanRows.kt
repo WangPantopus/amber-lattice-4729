@@ -486,6 +486,8 @@ fun PlanBanner(
     icon: PantopusIcon,
     tone: PlanBannerTone,
     modifier: Modifier = Modifier,
+    /** A button on the right (Plans for the holidays' "Change"); null for none. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val (bg, boxBg, boxFg) =
         when (tone) {
@@ -532,6 +534,7 @@ fun PlanBanner(
                 Text(text = subtitle, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
             }
         }
+        trailing?.invoke()
     }
 }
 

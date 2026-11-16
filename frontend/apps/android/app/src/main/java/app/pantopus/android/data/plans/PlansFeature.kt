@@ -34,6 +34,11 @@ data class PlansFlags(
     val onlinePlans: Boolean = false,
     /** `plans_kinds` (Plans step 4): the four newer kinds can be posted. A plan of one already posted reads either way. */
     val newKinds: Boolean = false,
+    /**
+     * `plans_guest_answers` (Plans for the holidays, H1): a private plan has room for up to 100, kids welcome, one link
+     * for everyone, Who's coming, Maybe, and the list's "Yours". Read for the host, as the server reads it.
+     */
+    val guestAnswers: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
@@ -51,6 +56,12 @@ data class PlansFlags(
 
     /** The type picker, the empty state and the map's chips show nine kinds rather than five. */
     val kindsOn: Boolean get() = plans && newKinds
+
+    /**
+     * Plans for the holidays, H1: the host form's "Room for" (to 100) and "Kids welcome", the invite sheet's "One link
+     * for everyone", Who's coming and the list's "Yours". It needs private plans (the server's own rule).
+     */
+    val guestAnswersOn: Boolean get() = privateOn && guestAnswers
 }
 
 /**
@@ -176,6 +187,7 @@ class PlansFeature
                     val repeat = async { read(FLAG_REPEAT) }
                     val onlinePlans = async { read(FLAG_ONLINE) }
                     val newKinds = async { read(FLAG_KINDS) }
+                    val guestAnswers = async { read(FLAG_GUEST_ANSWERS) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
@@ -183,6 +195,7 @@ class PlansFeature
                     val repeatOn = repeat.await()
                     val onlineOn = onlinePlans.await()
                     val kindsOn = newKinds.await()
+                    val guestAnswersOn = guestAnswers.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -193,6 +206,7 @@ class PlansFeature
                             repeat = repeatOn ?: current.repeat,
                             onlinePlans = onlineOn ?: current.onlinePlans,
                             newKinds = kindsOn ?: current.newKinds,
+                            guestAnswers = guestAnswersOn ?: current.guestAnswers,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -217,8 +231,9 @@ class PlansFeature
             }
 
         /**
-         * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`) and kinds
-         * (`plans_kinds`). A shorter string from before a flag existed reads that flag off ("11" reads the rest off).
+         * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`), kinds
+         * (`plans_kinds`) and guest answers (`plans_guest_answers`). A shorter string from before a flag existed reads
+         * that flag off ("11" reads the rest off).
          */
         @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
@@ -230,6 +245,7 @@ class PlansFeature
                 repeat = raw.getOrNull(3) == '1',
                 onlinePlans = raw.getOrNull(INDEX_ONLINE) == '1',
                 newKinds = raw.getOrNull(INDEX_KINDS) == '1',
+                guestAnswers = raw.getOrNull(INDEX_GUEST_ANSWERS) == '1',
             )
         }
 
@@ -238,8 +254,15 @@ class PlansFeature
             flags: PlansFlags,
         ) {
             val raw =
-                listOf(flags.plans, flags.playdates, flags.privatePlans, flags.repeat, flags.onlinePlans, flags.newKinds)
-                    .joinToString("") { if (it) "1" else "0" }
+                listOf(
+                    flags.plans,
+                    flags.playdates,
+                    flags.privatePlans,
+                    flags.repeat,
+                    flags.onlinePlans,
+                    flags.newKinds,
+                    flags.guestAnswers,
+                ).joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
 
@@ -255,5 +278,7 @@ class PlansFeature
             const val FLAG_KINDS = "plans_kinds"
             const val INDEX_ONLINE = 4
             const val INDEX_KINDS = 5
+            const val FLAG_GUEST_ANSWERS = "plans_guest_answers"
+            const val INDEX_GUEST_ANSWERS = 6
         }
     }

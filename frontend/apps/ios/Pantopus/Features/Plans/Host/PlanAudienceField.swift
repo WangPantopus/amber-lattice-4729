@@ -26,7 +26,7 @@ struct PlanAudienceField: View {
                 row(
                     .invited,
                     title: "Only people I invite",
-                    subtitle: "Private. Not on the map, the list or anywhere else.",
+                    subtitle: invitedSubtitle,
                     identifier: "plansAudienceInvited"
                 )
             }
@@ -35,6 +35,13 @@ struct PlanAudienceField: View {
                 icon: .info
             )
         }
+    }
+
+    /// Plans for the holidays H1 (board 3): people invited can answer from the link, app or not.
+    private var invitedSubtitle: String {
+        let shipped = "Private. Not on the map, the list or anywhere else."
+        guard PlansFlags.shared.guestAnswers else { return shipped }
+        return shipped + " They can answer from the link, with or without the app."
     }
 
     private func row(_ audience: PlanAudience, title: String, subtitle: String, identifier: String) -> some View {
@@ -70,6 +77,8 @@ struct PlanAudienceField: View {
         // `onChange(of: start)` keeps the length).
         let latest = Date().addingTimeInterval(TimeInterval(model.daysAhead) * 86400 - 60)
         if model.start > latest { model.start = latest }
+        // A public plan has room for 30 at most (Plans for the holidays H1: a private one, 100).
+        if model.spots > model.spotsLimit { model.spots = model.spotsLimit }
     }
 }
 

@@ -24,9 +24,12 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
@@ -302,6 +305,43 @@ interface PlansApi {
     /** `POST /api/plans/:id/invites/decline`: "Can't make it". Saying "I'm in" is the ordinary ask. */
     @POST("api/plans/{id}/invites/decline")
     suspend fun declineInvite(
+        @Path("id") id: String,
+    ): PlanInvitePlanResponse
+
+    // ---- Plans for the holidays, H1 (contract 6.4; backend/routes/plans.js, services/plans/planGuests.js) ----
+
+    /**
+     * `POST /api/plans/:id/invites/open-link` (host): makes or returns the plan's one link for everyone, or changes "I
+     * say yes first". At a home the first time answers 409 `confirm_shares_address`.
+     */
+    @POST("api/plans/{id}/invites/open-link")
+    suspend fun openLink(
+        @Path("id") id: String,
+        @Body body: PlanOpenLinkBody,
+    ): PlanOpenLinkResponse
+
+    /** `DELETE /api/plans/:id/invites/open-link` (host): turns the link off; people who already answered stay. */
+    @DELETE("api/plans/{id}/invites/open-link")
+    suspend fun closeOpenLink(
+        @Path("id") id: String,
+    ): Unit
+
+    /** `POST /api/plans/:id/invites/:inviteId/ok` (host): lets a guest who waits in; their email goes. */
+    @POST("api/plans/{id}/invites/{inviteId}/ok")
+    suspend fun letIn(
+        @Path("id") id: String,
+        @Path("inviteId") inviteId: String,
+    ): PlanInviteListDto
+
+    /** `POST /api/plans/:id/invites/remind` (host): reminds everyone who hasn't answered, once a day. */
+    @POST("api/plans/{id}/invites/remind")
+    suspend fun remind(
+        @Path("id") id: String,
+    ): PlanRemindResponse
+
+    /** `POST /api/plans/:id/invites/maybe`: an invited account says Maybe; the ask or "Can't make it" replaces it later. */
+    @POST("api/plans/{id}/invites/maybe")
+    suspend fun maybeInvite(
         @Path("id") id: String,
     ): PlanInvitePlanResponse
 

@@ -43,6 +43,7 @@ import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.saidMaybe
 import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.ErrorState
@@ -53,6 +54,7 @@ import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestsUi
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
 import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
@@ -90,6 +92,8 @@ fun PlanDetailScreen(
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
     /** A repeating plan's next date, opened in place of the date its host just skipped (Plans step 2). */
     onOpenNextDate: (String) -> Unit = onOpenPlan,
+    /** Who's coming (Plans for the holidays, A5), from the host's counts and people line. */
+    onOpenGuests: (String) -> Unit = {},
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -152,6 +156,7 @@ fun PlanDetailScreen(
                     onBack = onBack,
                     onOpenPlan = onOpenPlan,
                     onOpenRequests = { onOpenRequests(state.plan.id) },
+                    onOpenGuests = { onOpenGuests(state.plan.id) },
                     onChange = { onChange(state.plan.id) },
                     onHost = onHost,
                     onOpenChat = { room -> onOpenChat(room, PlanFormat.shortTitle(state.plan), state.plan.id) },
@@ -172,6 +177,7 @@ private fun PlanReady(
     onBack: () -> Unit,
     onOpenPlan: (String) -> Unit,
     onOpenRequests: () -> Unit,
+    onOpenGuests: () -> Unit,
     onChange: () -> Unit,
     onHost: (String?, String?) -> Unit,
     onOpenChat: (String) -> Unit,
@@ -256,6 +262,8 @@ private fun PlanReady(
                             onStop = viewModel::stopRepeating,
                             busy = ui.busy || (ui.state as? PlanDetailUiState.Ready)?.fresh != true,
                         ),
+                    guests = ui.guests,
+                    onOpenGuests = onOpenGuests,
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -267,6 +275,8 @@ private fun PlanReady(
                     viewerId = ui.viewerId,
                     onStillComing = { coming -> if (coming) viewModel.stillComing(true) else confirmLeave = LeaveKind.Plan },
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
+                    // Plans for the holidays (A8): "Change" opens the answer sheet with the guest's numbers.
+                    onChangeAnswer = viewModel::openAsk,
                 )
                 PlanFriendInviteRow(
                     plan = plan,
@@ -276,6 +286,9 @@ private fun PlanReady(
             standing == PlanViewerStanding.REQUESTED -> PlanRequestedBody(plan)
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
             // A private plan's invitation goes under its title (board Invited, Plans step 1).
+            // Plans for the holidays (A8): someone who said maybe sees a quiet "You said maybe" with "Change".
+            plan.isPrivate && plan.saidMaybe ->
+                PlanBeforeInBody(plan, afterTitle = { PlanMaybeBanner(plan, onChange = viewModel::openAsk) })
             plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
@@ -291,6 +304,12 @@ private fun PlanReady(
             onSend = viewModel::sendAsk,
             onClose = viewModel::closeAsk,
             invited = plan.openInvite?.needsHostOk == false && plan.standing != PlanViewerStanding.REQUESTED,
+            // Plans for the holidays (A7): Maybe and Can't make it beside I'm in.
+            onMaybe = viewModel::maybeInvite,
+            onDecline = {
+                viewModel.closeAsk()
+                viewModel.declineInvite()
+            },
         )
     }
     if (inviting) {
@@ -387,7 +406,9 @@ private fun footerFor(
     val busy = ui.busy || !ready
     return when {
         // An online plan's host joins the call from here too (Plans step 3); nothing else for a host, as before.
-        standing == PlanViewerStanding.HOSTING -> if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened)
+        // Plans for the holidays (A6 item 5): "Remind the {n} who haven't answered" while anyone can be reminded.
+        standing == PlanViewerStanding.HOSTING ->
+            if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened) ?: remindFooter(ui, viewModel)
         closed -> {
             { GhostButton(title = "See other plans", onClick = onSeeAll, modifier = Modifier.height(50.dp)) }
         }
@@ -418,6 +439,37 @@ private fun footerFor(
             (plan.viewer?.canAsk == true || plan.viewer?.cannotAskReason == PlanCannotAsk.FULL_USE_WAITLIST) ->
             inviteFooterContent(plan, requireNotNull(plan.openInvite), busy, viewModel)
         else -> askFooterContent(askFooter(plan), viewModel, onVerify, onLocation, ready)
+    }
+}
+
+/**
+ * The host's reminder (Plans for the holidays, board 4): "Remind the {3} who haven't answered" and "One reminder each,
+ * by the way they were invited"; "Reminded today" once used. Null when nobody can be reminded (the shipped page then).
+ */
+private fun remindFooter(
+    ui: PlanDetailUi,
+    viewModel: PlanDetailViewModel,
+): (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? {
+    val list = ui.guests ?: return null
+    val plan = (ui.state as? PlanDetailUiState.Ready)?.plan ?: return null
+    val guests = PlanGuestsUi(plan = plan, list = list, remindedToday = ui.remindedToday)
+    val n = guests.remindable
+    val reminded = guests.remindedTodayNow
+    if (!guests.showsRemind) return null
+    return {
+        PrimaryButton(
+            title =
+                when {
+                    reminded -> "Reminded today"
+                    n == 1 -> "Remind the 1 who hasn't answered"
+                    else -> "Remind the $n who haven't answered"
+                },
+            onClick = viewModel::remind,
+            isLoading = ui.reminding,
+            isEnabled = !ui.reminding && !reminded,
+            modifier = Modifier.height(50.dp).testTag("planRemind"),
+        )
+        PlanFooterCaption("One reminder each, by the way they were invited")
     }
 }
 

@@ -40,6 +40,7 @@ import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenBusiness
@@ -292,7 +293,8 @@ internal fun ColumnScope.PlanBeforeInBody(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PlanInfoLine(PantopusIcon.Users, PlanFormat.howPeopleGetIn(plan))
-            PlanInfoLine(PantopusIcon.ShieldCheck, "Free, and for adults")
+            // Plans for the holidays: a plan with kids welcome doesn't say it's for adults.
+            PlanInfoLine(PantopusIcon.ShieldCheck, if (plan.takesKids) "Free, and kids are welcome" else "Free, and for adults")
         }
     }
 }

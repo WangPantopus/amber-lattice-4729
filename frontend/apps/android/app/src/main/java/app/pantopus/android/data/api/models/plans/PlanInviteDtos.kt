@@ -17,7 +17,7 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class PlanMyInviteDto(
     @Json(name = "id") val id: String,
-    /** `pending`, `accepted`, `declined` (or `cancelled`). */
+    /** `pending`, `accepted`, `declined` (or `cancelled`); `maybe` with `guests=1` (Plans for the holidays). */
     @Json(name = "status") val status: String = "pending",
     /** `account`, `email` or `link`. */
     @Json(name = "channel") val channel: String = "account",
@@ -25,8 +25,8 @@ data class PlanMyInviteDto(
     @Json(name = "needs_host_ok") val needsHostOk: Boolean = false,
     @Json(name = "invited_at") val invitedAt: String? = null,
 ) {
-    /** Not answered, or "Can't make it" (the person can still change their mind). */
-    val isOpen: Boolean get() = status == "pending" || status == "declined"
+    /** Not answered, "Maybe" (Plans for the holidays) or "Can't make it": the person can still change their mind. */
+    val isOpen: Boolean get() = status == "pending" || status == "declined" || status == "maybe"
 }
 
 /** `invites` on a hosted plan's card: whether the host can invite now, and how it stands. */
@@ -63,10 +63,57 @@ data class PlanInviteRowDto(
     @Json(name = "request_id") val requestId: String? = null,
     @Json(name = "can_cancel") val canCancel: Boolean = false,
     @Json(name = "invited_at") val invitedAt: String? = null,
+    /**
+     * Plans for the holidays (contract 6.4, with `guests=1`): a guest who answered without an account, with the name
+     * they typed and how many adults and kids. Never their email.
+     */
+    @Json(name = "guest") val guest: PlanInviteGuestDto? = null,
+    /** A guest from the open link waits for the host's yes (`state` `waiting_ok`): "Let in" shows. */
+    @Json(name = "can_ok") val canOk: Boolean = false,
 ) {
     /** The name, the address, or "Text invite". */
-    val title: String get() = person?.displayName ?: email ?: "Text invite"
+    val title: String get() = person?.displayName ?: guest?.name ?: email ?: "Text invite"
 }
+
+/** A guest without an account on the host's list (contract 6.4). */
+@JsonClass(generateAdapter = true)
+data class PlanInviteGuestDto(
+    @Json(name = "name") val name: String = "",
+    @Json(name = "adults") val adults: Int = 1,
+    @Json(name = "kids") val kids: Int = 0,
+)
+
+/** The open link on the host's list (contract 6.4): whether it is on, its address, and whether the host says yes first. */
+@JsonClass(generateAdapter = true)
+data class PlanOpenLinkDto(
+    @Json(name = "on") val on: Boolean = false,
+    @Json(name = "url") val url: String? = null,
+    @Json(name = "host_says_yes_first") val hostSaysYesFirst: Boolean = false,
+)
+
+/** `POST /api/plans/:id/invites/open-link` (contract 6.4): make or return the link, or change "I say yes first". */
+@JsonClass(generateAdapter = true)
+data class PlanOpenLinkBody(
+    @Json(name = "host_says_yes_first") val hostSaysYesFirst: Boolean? = null,
+    @Json(name = "rotate") val rotate: Boolean? = null,
+    /** At a home, the host agreed that people who are in see the address (as inviting asks). */
+    @Json(name = "confirm_shares_address") val confirmSharesAddress: Boolean? = null,
+)
+
+/** The open link and the words to send with it, in the host's voice. */
+@JsonClass(generateAdapter = true)
+data class PlanOpenLinkResponse(
+    @Json(name = "url") val url: String,
+    @Json(name = "message") val message: String = "",
+    @Json(name = "host_says_yes_first") val hostSaysYesFirst: Boolean = false,
+)
+
+/** `POST /api/plans/:id/invites/remind` (contract 6.4): how many were reminded, and how many had nobody to remind. */
+@JsonClass(generateAdapter = true)
+data class PlanRemindResponse(
+    @Json(name = "reminded") val reminded: Int = 0,
+    @Json(name = "skipped") val skipped: Int = 0,
+)
 
 /** How the host's invitations stand. */
 @JsonClass(generateAdapter = true)
@@ -75,6 +122,10 @@ data class PlanInviteCountsDto(
     @Json(name = "in") val isIn: Int = 0,
     @Json(name = "waitlisted") val waitlisted: Int = 0,
     @Json(name = "cant_make_it") val cantMakeIt: Int = 0,
+    // Plans for the holidays (contract 6.4, with `guests=1`), counted in people.
+    @Json(name = "maybe") val maybe: Int = 0,
+    @Json(name = "waiting_ok") val waitingOk: Int = 0,
+    @Json(name = "no_answer") val noAnswer: Int = 0,
 )
 
 /** What happened to one person or address in `POST /invites`: invited, already_invited, already_in, unavailable, host. */
@@ -96,6 +147,20 @@ data class PlanInviteListDto(
     @Json(name = "can_invite") val canInvite: Boolean = true,
     /** Only after inviting. */
     @Json(name = "results") val results: List<PlanInviteResultDto> = emptyList(),
+    /** Plans for the holidays (contract 6.4): adults and kids coming, guests without an account included. */
+    @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
+    /** Plans for the holidays: the open link, when the plan can have one. */
+    @Json(name = "open_link") val openLink: PlanOpenLinkDto? = null,
+    /** Plans for the holidays: who a reminder would reach, and whether the plan was reminded today. */
+    @Json(name = "remind") val remind: PlanRemindInfoDto? = null,
+)
+
+/** `remind` on the host's list (Plans for the holidays): how many "Remind" reaches, unopened text invites, today's. */
+@JsonClass(generateAdapter = true)
+data class PlanRemindInfoDto(
+    @Json(name = "count") val count: Int = 0,
+    @Json(name = "unopened_links") val unopenedLinks: Int = 0,
+    @Json(name = "reminded_today") val remindedToday: Boolean = false,
 )
 
 /** Someone the host can invite: a connection, or someone who came to their plans. */

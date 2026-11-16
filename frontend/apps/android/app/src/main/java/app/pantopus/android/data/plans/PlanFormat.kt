@@ -376,6 +376,59 @@ object PlanFormat {
         return parts.filter { it.isNotBlank() }.joinToString(" · ")
     }
 
+    /**
+     * A row under "Yours" (Plans for the holidays, board 1): when, then the person's part: "Thu, Nov 26 · You're
+     * hosting", "Sat 6:00 PM · You're in", "You said maybe", "Invited"; a request or the waitlist as the shipped words.
+     */
+    fun yoursSubtitle(
+        plan: PlanDto,
+        now: Instant = Instant.now(),
+    ): String {
+        val whenText = rowWhen(plan, now) ?: hiddenWhen(plan)
+        val part =
+            when {
+                plan.standing == PlanViewerStanding.HOSTING -> "You're hosting"
+                plan.standing == PlanViewerStanding.IN -> "You're in"
+                plan.standing == PlanViewerStanding.REQUESTED -> "Requested"
+                plan.standing == PlanViewerStanding.WAITLISTED -> "On the waitlist"
+                plan.saidMaybe -> "You said maybe"
+                plan.invitedNoAnswer -> "Invited"
+                else -> null
+            }
+        return listOfNotNull(whenText, part).joinToString(" · ")
+    }
+
+    /**
+     * "2 adults, 1 kid", "3 adults", "1 adult" (Plans for the holidays, as the server writes them); [and] joins with
+     * "and" ("2 adults and 1 kid"). No kids part at 0.
+     */
+    fun people(
+        adults: Int,
+        kids: Int,
+        and: Boolean = false,
+    ): String {
+        val a = adults.coerceAtLeast(1)
+        val parts = mutableListOf("$a ${if (a == 1) "adult" else "adults"}")
+        if (kids > 0) parts += "$kids ${if (kids == 1) "kid" else "kids"}"
+        return parts.joinToString(if (and) " and " else ", ")
+    }
+
+    /**
+     * A headcount: "6 adults, 3 kids", "1 adult", "2 kids"; null when nobody is coming (the count says "0 coming"
+     * alone).
+     */
+    fun headcount(
+        adults: Int,
+        kids: Int,
+    ): String? {
+        val parts =
+            listOfNotNull(
+                adults.takeIf { it > 0 }?.let { "$it ${if (it == 1) "adult" else "adults"}" },
+                kids.takeIf { it > 0 }?.let { "$it ${if (it == 1) "kid" else "kids"}" },
+            )
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(", ")
+    }
+
     /** A study group's subject and style, ["Spanish", "Quiet study"]; empty without a subject, and for other kinds. */
     fun studyParts(plan: PlanDto): List<String> {
         if (plan.planKind != PlanKind.STUDY_GROUP) return emptyList()
