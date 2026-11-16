@@ -142,6 +142,12 @@ final class HolidayCardFlowViewModel {
         }
     }
 
+    /// The signature the account keeps for the next cards (founder, 2026-11-16): read with the cards, then as it's
+    /// saved or forgotten here. A new card starts signed with it.
+    private(set) var savedSignature: CardSignature?
+    /// Done with "Keep this signature" ticked, but the account didn't keep it: this card is still signed.
+    private(set) var keepSignatureFailed = false
+
     /// The card's own photo beside its note (memories plan step 4, `holiday_card_memories`), uploaded as it's chosen.
     let attachments = HolidayCardAttachments()
 
@@ -356,6 +362,7 @@ final class HolidayCardFlowViewModel {
             // A link can name a picture that isn't one of this year's: nothing is chosen then.
             if let designId, !response.designs.contains(where: { $0.id == designId }) { self.designId = nil }
             state = .loaded(response)
+            savedSignature = response.signature?.saved
             HolidayCardWords.postageOn = response.postageEnabled
         } catch {
             state = .error(message: Self.loadFailure(error))
@@ -635,12 +642,53 @@ final class HolidayCardFlowViewModel {
         theirs = nil
         designId = nil
         message = ""
+        if let savedSignature { signature = savedSignature }
         attachments.reset()
         arrival = nil
         query = ""
         email = ""
         byEmail = false
         step = .to
+    }
+
+    // MARK: - Saved signature
+
+    /// The account keeps one signature for the next cards (GET /cards `signature.saves`).
+    var signatureSaves: Bool {
+        cards?.signature?.saves == true
+    }
+
+    /// The card is signed with the account's saved signature.
+    var signedWithSaved: Bool {
+        signature != nil && signature == savedSignature
+    }
+
+    /// Signed on the pad: this card takes it, and with "Keep this signature" ticked the account keeps it too.
+    func signed(_ new: CardSignature, keep: Bool) {
+        signature = new
+        keepSignatureFailed = false
+        guard keep, signatureSaves, new != savedSignature else { return }
+        Task { await keepSignature(new) }
+    }
+
+    private func keepSignature(_ new: CardSignature) async {
+        do {
+            let kept: CardSignatureBody = try await api.request(HolidayCardEndpoints.saveSignature(new))
+            savedSignature = kept.signature
+        } catch {
+            keepSignatureFailed = true
+        }
+    }
+
+    /// Forgets the saved signature (this card keeps its own); false when the server couldn't.
+    func forgetSavedSignature() async -> Bool {
+        do {
+            _ = try await api.request(HolidayCardEndpoints.forgetSignature())
+            savedSignature = nil
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// This card already went with an earlier try whose answer was lost: show
@@ -871,6 +919,8 @@ extension HolidayCardFlowViewModel {
     private func restoreDraftOnce() {
         guard !draftRead, let cards else { return }
         draftRead = true
+        // A new card starts with the saved signature beside FROM; a draft brought back keeps its own.
+        if let savedSignature { signature = savedSignature }
         guard !openedOnPurpose, cards.open, let user = draftUser, let kept = HolidayCardDraftStore.read(user: user) else { return }
         if let to = kept.to?.recipient {
             recipient = to

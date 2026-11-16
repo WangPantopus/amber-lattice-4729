@@ -749,8 +749,11 @@ export interface HolidayCards {
     bought_stamp?: { required: boolean; remaining: number | null; state: 'ready' | 'buy' | 'unavailable' };
   };
   postage_enabled?: boolean;
-  /** The server keeps a signature beside FROM: its box and most bytes. Absent: set the typed name. */
-  signature?: { w: number; h: number; max_bytes: number };
+  /**
+   * The server keeps a signature beside FROM: its box and most bytes. Absent: set the typed name. `saves`: the account
+   * can keep one for the next cards (saveCardSignature / forgetCardSignature); `saved` is the one it keeps, or null.
+   */
+  signature?: { w: number; h: number; max_bytes: number; saves?: boolean; saved?: CardSignature | null };
   /** Digital stamps left (postage on; null when they couldn't be read). */
   stamps?: { available: number; free_remaining: number; paid_remaining: number } | null;
   /** Sending is open (until December 31 ends where you are). */
@@ -785,6 +788,16 @@ export interface HolidayCards {
 /** GET /api/mailbox/cards */
 export async function getHolidayCards(): Promise<HolidayCards> {
   return get<HolidayCards>('/api/mailbox/cards');
+}
+
+/** PUT /api/mailbox/cards/signature: keep this signature for the next cards, replacing any saved one. */
+export async function saveCardSignature(signature: CardSignature): Promise<{ signature: CardSignature }> {
+  return put<{ signature: CardSignature }>('/api/mailbox/cards/signature', { signature });
+}
+
+/** DELETE /api/mailbox/cards/signature: forget the saved signature (cards already sent keep theirs). */
+export async function forgetCardSignature(): Promise<void> {
+  await del('/api/mailbox/cards/signature');
 }
 
 /**
