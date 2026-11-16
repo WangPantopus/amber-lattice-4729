@@ -72,7 +72,12 @@ struct PlanComposerRoot: View {
                                 onClose: { onFinish(nil) },
                                 onPick: { kind in
                                     // Anyone on Pantopus may host a playdate (founder decision, November 7).
+                                    model.privacy.occasion = nil
                                     model.choose(kind)
+                                    path.append(.details)
+                                },
+                                onPickOccasion: { occasion in
+                                    model.start(from: occasion)
                                     path.append(.details)
                                 }
                             )
@@ -146,8 +151,12 @@ struct PlanTypePicker: View {
     var model: PlanComposerModel?
     let onClose: () -> Void
     let onPick: (PlanKind) -> Void
+    /// Plans for the holidays (board 2): an occasion from "Coming up".
+    var onPickOccasion: ((PlanOccasionDTO) -> Void)?
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// "Coming up": the server's occasions in season; empty when there are none or the call failed.
+    @State private var occasions: [PlanOccasionDTO] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -163,6 +172,10 @@ struct PlanTypePicker: View {
                         Text("Pick one. You can change the details next.")
                             .planFont(.body)
                             .foregroundStyle(Theme.Color.appTextSecondary)
+                    }
+                    if !shownOccasions.isEmpty, let onPickOccasion {
+                        PlanComingUpSection(occasions: shownOccasions, onPick: onPickOccasion)
+                        Text.planOverline("Or any kind of plan").padding(.bottom, -Spacing.s3)
                     }
                     LazyVGrid(columns: columns, spacing: Spacing.s3) {
                         ForEach(kinds.filter { $0 != .somethingElse }) { kind in card(kind) }
@@ -184,6 +197,18 @@ struct PlanTypePicker: View {
         .background(Theme.Color.appBg)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planTypePicker")
+        .task(id: business?.id) {
+            // A business posts its own kinds; occasions are for a person's plans.
+            guard business == nil, onPickOccasion != nil else { return occasions = [] }
+            let reply: PlanOccasionsResponse? = try? await APIClient.shared.request(PlansEndpoints.occasions())
+            occasions = reply?.occasions ?? []
+        }
+    }
+
+    /// The occasions whose kind this host can post.
+    private var shownOccasions: [PlanOccasionDTO] {
+        guard business == nil else { return [] }
+        return occasions.filter { kinds.contains($0.kind) }
     }
 
     private var kinds: [PlanKind] {

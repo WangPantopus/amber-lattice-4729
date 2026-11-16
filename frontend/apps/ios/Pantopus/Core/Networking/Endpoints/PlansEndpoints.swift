@@ -408,6 +408,15 @@ public enum PlansEndpoints {
         Endpoint(method: .post, path: "\(base)/\(planId)/invites/\(inviteId)/ok", query: biz())
     }
 
+    // MARK: - Plans for the holidays, H3 (404 while `plans_occasions` is off)
+
+    /// `GET /api/plans/occasions` — the occasions in season for this host's date, in the strip's order,
+    /// `{ occasions: [{ key, text, kind, details, fills }] }`. Route `backend/routes/plans.js`
+    /// (`GET /occasions`).
+    public static func occasions() -> Endpoint {
+        Endpoint(method: .get, path: "\(base)/occasions", query: biz())
+    }
+
     // MARK: - Plans for the holidays, H2 (404 while `plans_bring_list` is off for the host)
 
     /// `PUT /api/plans/:id/bring` (host) — the whole list, `{ bring }`. Kept ids keep their claims; `mine` claims or

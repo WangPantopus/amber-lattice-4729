@@ -338,8 +338,8 @@ struct PlanCardTag: View {
                 PlanPriceChip()
             }
         } else {
-            HStack(spacing: Spacing.s2) {
-                PlanTypeTag(kind: card.kind)
+            PlanTagRow {
+                PlanTypeTag(kind: card.kind, text: card.occasion?.text)
                 if card.isPrivate { PlanPrivateChip() }
                 if card.isOnline { PlanOnlineChip() }
             }

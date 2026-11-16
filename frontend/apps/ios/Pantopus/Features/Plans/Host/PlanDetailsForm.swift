@@ -24,7 +24,12 @@ struct PlanDetailsForm: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlanNavBar(title: model.businessKind?.name ?? model.kind.title, leading: .back, trailing: step, onLeading: onBack)
+            PlanNavBar(
+                title: model.privacy.occasion?.text ?? model.businessKind?.name ?? model.kind.title,
+                leading: .back,
+                trailing: step,
+                onLeading: onBack
+            )
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s6) {
                     // A business's plan (board B2): its label, its own location, who gets in; no price, no repeats.
