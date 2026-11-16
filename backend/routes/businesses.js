@@ -5151,6 +5151,8 @@ router.post('/invoices/:invoiceId/pay', verifyToken, async (req, res) => {
         business_user_id: invoice.business_user_id,
       },
       idempotencyKey: `invoice-pay:${invoiceId}:${invoice.stripe_payment_intent_id || 'first'}`,
+      // What was sold (shared piece 4). A business invoices people it already knows, at today's rate.
+      sale: { soldType: 'invoice', soldId: invoiceId, basis: 'pantopus' },
     });
 
     if (!result.success) {

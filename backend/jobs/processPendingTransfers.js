@@ -204,8 +204,12 @@ async function processPendingTransfers() {
       created_at,
       dispute_id,
       dispute_status,
+      payout_after,
       metadata
     `;
+    // A payment may also name the earliest its payout goes (shared piece 4: a plan's payout waits until 48 hours
+    // after the plan ends). Without it, the cooling-off below is the only wait, as before.
+    const payoutDue = `payout_after.is.null,payout_after.lte."${nowIso}"`;
 
     const [standardReadyRes, legacyReadyRes] = await Promise.all([
       supabaseAdmin
@@ -214,7 +218,8 @@ async function processPendingTransfers() {
         .in('payment_status', [PAYMENT_STATES.CAPTURED_HOLD, PAYMENT_STATES.REFUNDED_PARTIAL, PAYMENT_STATES.REFUNDED_FULL])
         .is('transfer_completed_at', null)
         .lte('cooling_off_ends_at', nowIso)
-        .or('dispute_id.is.null,dispute_status.eq.won'),
+        .or('dispute_id.is.null,dispute_status.eq.won')
+        .or(payoutDue),
       // Legacy safety-net: older captured_hold rows may have null cooling_off_ends_at.
       // Treat them as transferable once they are at least 48h old.
       supabaseAdmin
@@ -224,7 +229,8 @@ async function processPendingTransfers() {
         .is('transfer_completed_at', null)
         .is('cooling_off_ends_at', null)
         .lte('created_at', legacyCoolingFallbackIso)
-        .or('dispute_id.is.null,dispute_status.eq.won'),
+        .or('dispute_id.is.null,dispute_status.eq.won')
+        .or(payoutDue),
     ]);
 
     if (standardReadyRes.error || legacyReadyRes.error) {
