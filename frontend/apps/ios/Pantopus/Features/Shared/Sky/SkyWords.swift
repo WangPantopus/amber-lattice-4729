@@ -72,6 +72,15 @@ enum SkyWords {
 
     static let shareTimePassed = "It's past 7 pm, so Tonight at 8 isn't on offer. Pick another time."
 
+    // MARK: - Your row on the Moments map
+
+    /// The row's title when it holds only your Moments waiting to share.
+    static let scheduledRowTitle = "Sharing later"
+    static let deleteScheduledTitle = "Delete this Moment?"
+    static let deleteScheduledBody = "It hasn't shared yet, so nobody has seen it."
+    static let delete = "Delete"
+    static let couldNotDelete = "Couldn't delete that Moment. Try again."
+
     // MARK: - A Moment shared later
 
     static let earlierToday = "Earlier today"

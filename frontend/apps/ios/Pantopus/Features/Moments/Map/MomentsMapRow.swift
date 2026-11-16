@@ -36,7 +36,7 @@ extension MomentsMapViewModel {
 
     /// Whether the row shows: a crowded spot is open, someone's Moment isn't on the map, or yours is posting.
     func showsRow(postings: [MomentPosting]) -> Bool {
-        focus != nil || !postings.isEmpty || stripRings.contains(where: \.noLocation)
+        focus != nil || !postings.isEmpty || stripRings.contains(where: \.noLocation) || MomentsScheduled.shared.waiting
     }
 
     /// What Play all plays with no spot open: the new ones in view, nearest first. Empty when caught up.

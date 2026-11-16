@@ -458,10 +458,18 @@ router.get('/map', async (req, res) => {
     const box = parseBody(mapSchema, req.query);
     if (box.south >= box.north || box.west >= box.east) throw store.fail(400, 'MOMENT_INVALID', 'Send a map area with south < north and west < east.');
     // `unplaced`: connections' Moments with no location (and the caller's own), for the row of faces, whatever the box.
-    const [rings, unplaced, heights, float] = await Promise.all([
+    const [rings, unplaced, heights, float, sky] = await Promise.all([
       store.mapRings(req.user.id, box), store.unplacedRings(req.user.id), store.heightsOn(req.user), store.floatOn(req.user),
+      store.skyOn(req.user),
     ]);
     const answer = { rings, unplaced, heights_on: heights, float_on: float };
+    // The Sky (share later): the caller's own Moments waiting for their time, for their own row ("Shares at 6:40 pm"),
+    // soonest first. Never anyone else's, never on the map; only while the Sky is on for the caller.
+    if (sky) {
+      answer.scheduled = (await store.ownMoments(req.user.id))
+        .filter((moment) => moment.state === 'scheduled')
+        .sort((a, b) => String(a.share_at).localeCompare(String(b.share_at)));
+    }
     if (float) answer.sun = sunPosition((box.south + box.north) / 2, (box.west + box.east) / 2);
     res.json(answer);
   } catch (error) {

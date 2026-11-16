@@ -84,6 +84,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.pantopus.android.R
+import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.moments.MomentPosting
 import app.pantopus.android.data.moments.MomentsMapMove
 import app.pantopus.android.ui.components.MessagesButton
@@ -154,6 +155,7 @@ fun MomentsMapScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val rings by viewModel.rings.collectAsStateWithLifecycle()
     val posts by viewModel.posts.collectAsStateWithLifecycle()
+    val scheduled by viewModel.scheduled.collectAsStateWithLifecycle()
     val liveSpot by viewModel.liveSpot.collectAsStateWithLifecycle()
     val timeFilter by viewModel.timeFilter.collectAsStateWithLifecycle()
     val toast = remember { ToastController() }
@@ -351,7 +353,9 @@ fun MomentsMapScreen(
                     .padding(bottom = Spacing.s3 + barRest),
             horizontalAlignment = Alignment.End,
         ) {
-            val empty = state.loaded && !state.failed && shown.isEmpty() && posts.isEmpty()
+            // The Sky: your own Moments waiting to share later stay in your row under every time filter.
+            val waiting = scheduled.stillWaiting()
+            val empty = state.loaded && !state.failed && shown.isEmpty() && posts.isEmpty() && waiting.isEmpty()
             // A Moment that just went live keeps its place in the strip until its ring is read; no second cell then.
             val stripPosts = posts.filter { item -> shown.none { ring -> ring.mine && ring.ring.moments.any { it.id == item.momentId } } }
             val people = remember(shown, spot != null) { rowPeople(stripPeople(shown), inSpot = spot != null) }
@@ -359,7 +363,7 @@ fun MomentsMapScreen(
             val playAll = { if (viewModel.playAll(shown)) actions.onWatch() }
             // The row holds a crowded spot's people, or what the map can't: a Moment with no location, yours while it
             // posts, the first read failing.
-            val holdsOffMap = state.failed || stripPosts.isNotEmpty() || people.isNotEmpty()
+            val holdsOffMap = state.failed || stripPosts.isNotEmpty() || people.isNotEmpty() || (spot == null && waiting.isNotEmpty())
             MapRoundButton(
                 icon = PantopusIcon.Navigation,
                 label = "Show my location",
@@ -392,6 +396,8 @@ fun MomentsMapScreen(
                     newPeople = newPeople,
                     canPlay = shown.isNotEmpty(),
                     posts = stripPosts,
+                    scheduled = if (spot == null) waiting else emptyList(),
+                    onDeleteScheduled = viewModel::deleteScheduled,
                     avatarUrl = viewModel.avatarUrl,
                     failed = state.failed,
                     spot = spot,
@@ -818,6 +824,8 @@ private fun MomentsStrip(
     newPeople: Int,
     canPlay: Boolean,
     posts: List<MomentPosting>,
+    scheduled: List<MomentDto>,
+    onDeleteScheduled: (String, (Boolean) -> Unit) -> Unit,
     avatarUrl: String?,
     failed: Boolean,
     spot: MomentsSpot?,
@@ -831,7 +839,7 @@ private fun MomentsStrip(
     val list = rememberLazyListState()
     val first = posts.firstOrNull()?.momentId ?: people.firstOrNull()?.first?.takeIf { it.mine }?.id
     LaunchedEffect(first, spot?.ringIds) { list.animateScrollToItem(0) }
-    val title = rowTitle(failed = failed, people = people, posts = posts)
+    val title = rowTitle(failed = failed, people = people, posts = posts, waiting = scheduled.isNotEmpty())
     Column(
         modifier =
             Modifier
@@ -911,6 +919,7 @@ private fun MomentsStrip(
             contentPadding = PaddingValues(start = Spacing.s2, end = Spacing.s2, top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            items(scheduled, key = { "scheduled:${it.id}" }) { moment -> MomentsScheduledCell(moment, onDeleteScheduled) }
             items(posts, key = { "posting:${it.momentId}" }) { item ->
                 val author = item.author
                 if (item.stage == MomentPosting.Stage.DONE && author != null) {

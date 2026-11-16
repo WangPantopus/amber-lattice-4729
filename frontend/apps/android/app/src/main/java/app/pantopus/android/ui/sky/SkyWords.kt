@@ -65,6 +65,15 @@ object SkyWords {
 
     const val SHARE_TIME_PASSED = "It's past 7 pm, so Tonight at 8 isn't on offer. Pick another time."
 
+    // Your row on the Moments map
+
+    /** The row's title when it holds only your Moments waiting to share. */
+    const val SCHEDULED_ROW_TITLE = "Sharing later"
+    const val DELETE_SCHEDULED_TITLE = "Delete this Moment?"
+    const val DELETE_SCHEDULED_BODY = "It hasn't shared yet, so nobody has seen it."
+    const val DELETE = "Delete"
+    const val COULD_NOT_DELETE = "Couldn't delete that Moment. Try again."
+
     // A Moment shared later
 
     const val EARLIER_TODAY = "Earlier today"
