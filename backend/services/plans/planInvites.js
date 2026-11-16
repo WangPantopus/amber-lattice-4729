@@ -555,6 +555,14 @@ async function emailHeld(email) {
   return (today.count || 0) + laterToday >= LIMITS.emailsPerAddressPerDay ? 'too_many' : null;
 }
 
+/** Did this address say "don't send me invitations" (on any invitation, from any host)? */
+async function addressOptedOut(email) {
+  const { count, error } = await supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
+    .eq('email', email).not('email_opted_out_at', 'is', null);
+  if (error) throw new Error(`Failed to check the address: ${error.message}`);
+  return Boolean(count);
+}
+
 /** An email after the invitation's first went to this row's address: its time joins the row's (at most 20). */
 function withEmailSent(row) {
   return [...(row?.email_sent_times || []), nowIso()].slice(-20);
@@ -1243,6 +1251,7 @@ module.exports = {
   dateText,
   emailWords,
   emailHeld,
+  addressOptedOut,
   withEmailSent,
   hostPlan,
   assertInvitable,

@@ -932,6 +932,17 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (newDay !== oldDay && newDay > rules.localParts(new Date(), tz).date) planUpdate.host_summary_sent_at = null;
   }
 
+  // A move to the host's home (H1, contract 6.8): "I say yes first" turns on, and guests from the open link who never
+  // had the host's own yes wait for it again. They are held before the plan row moves, so no key of theirs reads the
+  // home in between: a failure here leaves the plan where it was, and if saving the move fails after it, they stay
+  // waiting (the safe side) and the host can let them in.
+  const movingHome = placeChanged && planGuests.movesToHome(plan, placeKind);
+  let heldForHome = [];
+  if (movingHome) {
+    planUpdate.open_invite_ok_first = true;
+    heldForHome = await planGuests.holdForHome(postId);
+  }
+
   const stamp = nowIso();
   if (Object.keys(postUpdate).length > 0) {
     const { error } = await supabaseAdmin.from('Post').update({ ...postUpdate, updated_at: stamp, is_edited: true, edited_at: stamp }).eq('id', postId);
@@ -940,6 +951,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   if (Object.keys(planUpdate).length > 0) {
     const { error } = await supabaseAdmin.from('Plan').update({ ...planUpdate, updated_at: stamp }).eq('post_id', postId);
     if (error) throw new Error(`Failed to save the change: ${error.message}`);
+  }
+  if (movingHome) {
+    // Anyone from the open link who answered between the hold and the move waits too.
+    const later = await planGuests.holdForHome(postId)
+      .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
+    heldForHome = [...heldForHome, ...later.filter((r) => !heldForHome.some((h) => h.id === r.id))];
   }
   if (postUpdate.title && postUpdate.title !== plan.post.title) await planChat.renameRoom(plan, postUpdate.title);
   // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
@@ -974,7 +991,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       }
     }
   }
-  // Guests without an account who are in (H1): their page says what changed, and one email goes.
+  // Guests the move to a home made wait (6.8): one email each, and one notice to the host.
+  if (heldForHome.length > 0) {
+    await planGuests.movedToHome(updated, heldForHome).catch((err) => logger.warn('plans.edit.move_home_failed', { planId: postId, error: err.message }));
+  }
+  // Guests without an account who are in (H1): their page says what changed, and one email goes (not to a guest who
+  // waits, so a guest the move made wait gets only its own email).
   if (timeMoved || placeChanged) {
     await planGuests.planChanged(updated, { timeMoved, placeChanged }).catch((err) => logger.warn('plans.edit.guests_failed', { planId: postId, error: err.message }));
   }

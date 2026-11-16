@@ -534,9 +534,10 @@ Don’t send me invitations: ${unsubscribeLink}
 
 /**
  * The words of the three emails a guest without an account gets for a plan (Plans for the holidays, H1;
- * docs/product/plans-holidays/06-screens.md, "The emails"): You're in, one reminder, and a change or cancellation.
+ * docs/product/plans-holidays/06-screens.md, "The emails"): You're in, one reminder, and a change or cancellation;
+ * and, to a guest a move to the host's home makes wait (contract 6.8), the move.
  * Never an address: the guest's own link opens the page that shows it.
- * @param {'in'|'reminder'|'changed'|'cancelled'} kind
+ * @param {'in'|'reminder'|'changed'|'moved_home'|'cancelled'} kind
  * @param {Object} words - { hostFirst, title, icon, when, people, day, openCount, changed, newPlace, cancelNote }
  *   people: "2 adults and 1 kid"; day: 'Today' | 'Tomorrow'; changed: 'time' | 'place' | 'both'.
  */
@@ -573,6 +574,18 @@ function planGuestEmailContent(kind, words) {
       heading: `${words.hostFirst} changed ${what}`,
       lines: [],
       facts: [title, words.changed !== 'place' ? words.when : null, words.changed !== 'time' ? words.newPlace : null].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'moved_home') {
+    // The plan moved to the host's home and this guest now waits for the host's yes: no address, only that it comes.
+    return {
+      subject: `${words.hostFirst} changed the place of ${title}`,
+      heading: `${words.hostFirst} changed the place`,
+      lines: [`${title} is now at ${words.hostFirst}’s home. ${words.hostFirst} lets each guest in. When ${words.hostFirst} says yes, the address comes to this email.`],
+      facts: [title, words.when].filter(Boolean),
       button: 'Open your invitation',
       after: [],
       footer,

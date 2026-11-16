@@ -467,6 +467,9 @@ export default function GuestAnswer(props: GuestAnswerProps) {
       }
       if (res.status === 422 && data.field) {
         setErrors({ [data.field]: data.message });
+      } else if (res.status === 409 && data.error === 'email_opted_out') {
+        // The address asked not to be emailed: said under the email field; the form keeps what was typed.
+        setErrors({ email: typeof data.message === 'string' ? data.message : 'This address asked Pantopus not to email it. Use another one.' });
       } else if (res.status === 409 && data.error === 'full') {
         setFull(true);
       } else if (res.status === 429) {
@@ -510,6 +513,10 @@ export default function GuestAnswer(props: GuestAnswerProps) {
     }
     const waiting = waitingWithKey || sent?.mine === 'waiting_ok';
     const address = (sent?.email) || mine?.email_hint || emailHint || 'your email';
+    // A guest waiting again after the plan moved to the host's home (contract 6.8): "{Host} changed the place."
+    const waitingChanged = waitingWithKey && !sent
+      ? (mine?.changed === 'both' ? 'the time and the place' : mine?.changed === 'place' ? 'the place' : mine?.changed === 'time' ? 'the time' : null)
+      : null;
     return (
       <div className="flex flex-col gap-4">
         {waiting && !sent?.already ? (
@@ -518,6 +525,7 @@ export default function GuestAnswer(props: GuestAnswerProps) {
           // An answer for an address that already had one says nothing about the earlier answer.
           <Banner tone="quiet" icon={Glyph.mail('h-5 w-5')} title="Check your email" sub={sent?.already ? null : people} onChange={() => startChange(sent)} />
         )}
+        {waitingChanged ? <p className="text-sm font-semibold leading-5 text-app-text-strong">{`${hostFirst} changed ${waitingChanged}.`}</p> : null}
         <ShortCard plan={plan} when={when} area={area} />
         <p className="flex items-start gap-[10px] rounded-2xl bg-app-info-bg px-4 py-3 text-sm leading-5 text-app-text">
           <span className="mt-0.5 text-app-info">{Glyph.mail()}</span>

@@ -43,6 +43,8 @@ const PLAN_NOTICE_TYPES = [
   'plan_invite', 'plan_invite_declined', 'plan_series',
   // Guests without an account (Plans for the holidays, H1), and the bring list (H2).
   'plan_guest_answered', 'plan_guest_waiting', 'plan_bring_claimed', 'plan_bring_open',
+  // The host moved a plan to their home and guests from the open link wait (6.8).
+  'plan_moved_home',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -93,6 +95,7 @@ function isStale(row, plan, request, invite = null) {
     // A guest without an account: removed since, or (waiting) let in or answered otherwise since.
     case 'plan_guest_answered': return !invite || invite.status !== 'accepted' || ended;
     case 'plan_guest_waiting': return !invite || invite.status !== 'accepted' || !invite.needs_host_ok || ended;
+    case 'plan_moved_home': return ended;
     // About the series, not this date: it is still news after the date has ended.
     case 'plan_series': return false;
     case 'plan_request': return !request || request.status !== 'pending' || ended;
