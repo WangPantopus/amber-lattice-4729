@@ -170,6 +170,8 @@ private fun planArguments() =
     )
 
 /** Registers every Plans page. Call inside the root `NavHost`. */
+// One composable a page: it grows with the pages, and splitting it would scatter the routes.
+@Suppress("LongMethod")
 fun NavGraphBuilder.plansRoutes(
     nav: NavHostController,
     external: PlansExternalRoutes,

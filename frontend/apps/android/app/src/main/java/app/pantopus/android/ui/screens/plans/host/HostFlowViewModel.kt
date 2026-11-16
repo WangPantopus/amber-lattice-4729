@@ -1294,11 +1294,16 @@ private fun copiedDraft(
         gameKind = d?.gameKind ?: "board_games",
         outdoorKind = d?.outdoorKind ?: "hike",
         kidsWelcome = keepPrivate && plan.kidsWelcome == true,
-        // Host again keeps what was on the bring list, with nobody bringing anything yet (Plans for the holidays, H2).
-        bring =
-            plan.bring?.takeIf { keepPrivate && it.items.isNotEmpty() }?.let { list ->
-                val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
-                BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
-            },
+        bring = copiedBring(plan, keepPrivate),
     )
+}
+
+/** Host again keeps what was on the bring list, with nobody bringing anything yet (Plans for the holidays, H2). */
+private fun copiedBring(
+    plan: PlanDto,
+    keepPrivate: Boolean,
+): BringDraft? {
+    val list = plan.bring?.takeIf { keepPrivate && it.items.isNotEmpty() } ?: return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
 }
