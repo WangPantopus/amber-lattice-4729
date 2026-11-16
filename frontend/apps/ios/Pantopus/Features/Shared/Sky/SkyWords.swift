@@ -13,9 +13,9 @@ import Foundation
 enum SkyWords {
     // MARK: - The place line
 
-    /// "Floating over Washougal, WA".
+    /// "Around Washougal, WA".
     static func floatingOver(_ area: String) -> String {
-        "Floating over \(area)"
+        "Around \(area)"
     }
 
     /// "At Esther Short Park".
@@ -33,7 +33,7 @@ enum SkyWords {
 
     // MARK: - At home
 
-    static let homeTitle = "You're at home, so this floats over the area"
+    static let homeTitle = "You're at home, so this shows only the area"
     static let homeBody = "A Moment made at home never shows the spot. Photos can still show where you are."
 
     // MARK: - Elevation
@@ -77,7 +77,7 @@ enum SkyWords {
     /// A venue tagged and a photo taken there: the post pins exactly (as before the Sky).
     static let photoPins = "Your photo was taken here, so you can post to this place. Your post will say \u{201C}Photo taken here.\u{201D}"
     /// An address or a bare photo: the post floats.
-    static let photoFloats = "Your photo was taken here. The post floats over the area."
+    static let photoFloats = "Your photo was taken here. The post shows only the area."
 
     // MARK: - Your row on the Moments map
 

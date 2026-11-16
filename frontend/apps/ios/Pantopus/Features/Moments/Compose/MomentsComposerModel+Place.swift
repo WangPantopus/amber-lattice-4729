@@ -49,7 +49,7 @@ extension MomentsComposerModel {
     /// "Your home".
     var placeLine: String {
         if noLocationOn { return "No location" }
-        // The Sky: "At Esther Short Park", else "Floating over Washougal, WA".
+        // The Sky: "At Esther Short Park", else "Around Washougal, WA".
         if let sky {
             if let skyPlaceName { return SkyWords.at(skyPlaceName) }
             return SkyWords.floatingOver(sky.area?.label ?? place?.areaLabel ?? "this area")

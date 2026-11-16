@@ -4,7 +4,7 @@
 //
 //  The Sky's approximate places on the Post sheet (phase A, contract section
 //  10.1), only while the place preview answers `sky: true`: a Moment floats
-//  over its area by default ("Floating over Washougal, WA"); "Pin it at a
+//  over its area by default ("Around Washougal, WA"); "Pin it at a
 //  place" pins it at a public place picked by name; at home it always floats
 //  and says so; "Share later" holds it until a time picked. The server decides
 //  again when it's posted. With no `sky` in the answer nothing here applies
