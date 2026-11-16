@@ -951,14 +951,8 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
   });
   if (sounds.length) graph.push(`${sounds.map((_, i) => `[s${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[sfx]`);
   else { inputs.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'); graph.push(`[1:a]atrim=0:${seconds}[sfx]`); }
-  // The ducking's key: the same sounds a little early, so the music is already down when each one lands.
-  const ahead = (cut.music?.lookahead ?? 0.08) * 1000;
-  const keyChain = sounds.map((sound, i) => {
-    const ms = Math.max(0, Math.round(sound.at * 1000 - ahead));
-    return `[${i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${(0.85 * 10 ** ((cut.soundGain || 0) / 20)).toFixed(4)},adelay=${ms}|${ms}[k${i}]`;
-  });
   const musicFile = music && cut.music ? music : null;
-  let audioLabel = '[sfx]';
+  let audioLabel;
   if (musicFile) {
     // The bed: brought to the cut's bed loudness, a breath where the picture dips, ended with a fade; it ducks under
     // each of the table's sounds so they stay clearly above it. Then the whole mix is set to the cut's loudness.
@@ -974,20 +968,15 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
     const fade = cut.music.fade ?? 1.6;
     graph.push(`[${m}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${seconds},asetpts=PTS-STARTPTS,volume=${bedGain.toFixed(2)}dB`
       + `${breaths.length ? `,volume='${breaths.join('*')}':eval=frame` : ''},afade=t=out:st=${(length - fade).toFixed(3)}:d=${fade}[bed]`);
-    if (sounds.length) {
-      // Each sound's input feeds both the mix and the early key.
-      sounds.forEach((_, i) => {
-        const at = graph.findIndex((line) => line.startsWith(`[${i + 1}:a]`));
-        graph[at] = graph[at].replace(`[${i + 1}:a]`, `[in${i}]`);
-        graph.unshift(`[${i + 1}:a]asplit=2[in${i}][kin${i}]`);
-        keyChain[i] = keyChain[i].replace(`[${i + 1}:a]`, `[kin${i}]`);
-      });
-      graph.push(...keyChain, `${sounds.map((_, i) => `[k${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[key]`);
-      graph.push('[sfx]asplit=2[sfx1][sfxcheck]');
-    } else graph.push('[sfx]asplit=3[sfx1][key][sfxcheck]');
+    // The ducking looks ahead: the key is the sounds as they are, while the music and the sounds in the mix run late by
+    // the look-ahead; the music is already down when each sound lands, and the finished mix is moved back into place.
+    const ahead = (cut.music.lookahead ?? 0.08).toFixed(3);
+    const ms = Math.round(Number(ahead) * 1000);
+    graph.push(`[sfx]asplit=3[sfxlate][key][sfxcheck]`, `[sfxlate]adelay=${ms}|${ms}[sfx1]`);
+    graph[graph.findIndex((line) => line.endsWith('[bed]'))] = graph[graph.findIndex((line) => line.endsWith('[bed]'))].replace(/\[bed\]$/, `,adelay=${ms}|${ms}[bed]`);
     graph.push(`[bed][key]sidechaincompress=threshold=${cut.music.duckThreshold ?? 0.02}:ratio=${cut.music.duckRatio ?? 8}:attack=5:release=${cut.music.duckRelease ?? 350}:knee=4[ducked]`);
-    graph.push('[ducked]asplit=2[ducked1][bedcheck]');
-    graph.push('[ducked1][sfx1]amix=inputs=2:normalize=0:duration=first[mix]');
+    graph.push(`[ducked]asplit=2[ducked1][bedlate]`, `[bedlate]atrim=start=${ahead},asetpts=PTS-STARTPTS,apad,atrim=0:${seconds}[bedcheck]`);
+    graph.push(`[ducked1][sfx1]amix=inputs=2:normalize=0:duration=first,atrim=start=${ahead},asetpts=PTS-STARTPTS,apad,atrim=0:${seconds}[mix]`);
     // For the check: the sounds alone and the ducked music alone, before the mix is set to its loudness.
     const sinks = '[sfxcheck]anullsink;[bedcheck]anullsink';
     ffmpeg([...inputs, '-filter_complex', `${graph.join(';')};[mix]anullsink`, '-map', '[sfxcheck]', '-c:a', 'pcm_f32le', `${base}-check-sounds.wav`, '-map', '[bedcheck]', '-c:a', 'pcm_f32le', `${base}-check-music.wav`]);
@@ -1001,11 +990,6 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
   } else {
     graph.push('[sfx]anull[final]');
     audioLabel = '[final]';
-  }
-  if (!musicFile) {
-    const split = graph.findIndex((line) => line.startsWith('[sfx]asplit='));
-    if (split >= 0) graph.splice(split, 1);
-    for (let i = graph.length - 1; i >= 0; i -= 1) if (/^\[k\d+\]|^\[\d+:a\]asplit|\[key\]$|^\[sfxspare\]/.test(graph[i])) graph.splice(i, 1);
   }
   const mix = graph;
   const withSound = `${base}-master.mov`;

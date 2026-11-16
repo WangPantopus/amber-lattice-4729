@@ -180,9 +180,9 @@ const cuts = {
     dips: [[19.15, 19.6, 20.1, 20.65, 0.05]],
     // Under music the paper sounds need a little more to stay clearly above it.
     soundGain: 15,
-    // With --music: the bed at -16 LUFS, ducking under each sound (starting 80 ms early), a breath of 9 dB as the
-    // picture dips, a fade to the end; the whole mix then set to -14 LUFS, true peak under -1 dB.
-    music: { bed: -16, lookahead: 0.08, duckThreshold: 0.015, duckRatio: 10, duckRelease: 420, breaths: [[19.0, 19.4, 20.15, 20.7, 9]], fade: 1.8, loudness: -14, truePeak: -1 },
+    // With --music: the bed at -16 LUFS, ducking under each sound (starting 80 ms early), a breath of 4 dB as the seal
+    // is pressed and of 9 dB as the picture dips, a fade to the end; the whole mix then set to -14 LUFS, true peak under -1 dB.
+    music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [[12.9, 13.25, 13.95, 14.5, 4], [19.0, 19.4, 20.15, 20.7, 9]], fade: 1.8, loudness: -14, truePeak: -1 },
     end: { at: 30.85, full: 31.65, ...END },
   },
 };
