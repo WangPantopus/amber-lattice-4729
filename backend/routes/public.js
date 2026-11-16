@@ -155,6 +155,18 @@ router.put('/plans/:id/dates/mine', async (req, res) => {
   }
 });
 
+// ── Photos afterwards (the extras): a guest without an account who was in looks, by their key ──
+// GET /api/public/plans/:id/photos. Answers the grid (links signed for minutes) with "Add yours in the app."
+router.get('/plans/:id/photos', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const key = planGuests.isKey(req.query.guest) ? req.query.guest : guestCookie(req);
+    return res.json(await require('../services/plans/planPhotos').guestList(req.params.id, key));
+  } catch (err) {
+    return planError(res, err, 'photos');
+  }
+});
+
 // ── The gift exchange (the extras): a guest without an account who is in joins, by their key ──
 // POST /api/public/plans/:id/gift/join { wish }, PATCH | DELETE /api/public/plans/:id/gift/mine. Answers { gift }.
 const giftPublic = (method, path, label, handler) => router[method](path, async (req, res) => {

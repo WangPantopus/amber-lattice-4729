@@ -212,6 +212,8 @@ export type PublicPlanAnswer = {
   open_live?: boolean;
   /** Find a date (the extras): while the host picks, the times to tick in place of the three answers. */
   dates?: PublicPlanDates | null;
+  /** Photos afterwards (the extras): a guest who was in may look, on a plan that is over. */
+  photos?: { count: number; add_text: string; note: string } | null;
   mine: {
     state: PublicPlanGuestState;
     name: string;

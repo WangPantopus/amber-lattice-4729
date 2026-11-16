@@ -289,6 +289,12 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
     // The page was opened with the plan's live open link (6.9): its "Open app" carries the link into the app.
     open_live: openLive && invites().isOpenForAnswers(plan),
   };
+  // Photos afterwards (the extras): a guest who was in, on a plan that is over, may look (GET …/photos).
+  const planPhotos = require('./planPhotos');
+  if (isGuestIn(mine) && planPhotos.isOver(plan) && require('./planExtras').takesExtras(plan) && (await planPhotos.enabledFor(plan.host_user_id))) {
+    const count = ((plan.photos && plan.photos.items) || []).length;
+    answer.photos = { count, add_text: 'Add yours in the app.', note: 'Only the people who came can see these. They stay with the plan.' };
+  }
   // Find a date (the extras): while the host picks, W1 shows the times in place of the three answers.
   const planDates = require('./planDates');
   if (planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
