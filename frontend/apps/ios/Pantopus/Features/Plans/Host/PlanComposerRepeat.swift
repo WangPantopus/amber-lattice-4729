@@ -76,11 +76,6 @@ final class PlanRepeatDraft {
         calendar.startOfDay(for: start)
     }
 
-    /// "On a date": from the plan's own date to a year after it.
-    var untilRange: ClosedRange<Date> {
-        startDay...PlanRepeatRules.add(days: PlanRepeatRules.maxDays, to: startDay, calendar)
-    }
-
     /// "After a number of times", from this date on (this one included): 2 to 100, and no more than the chosen
     /// days give in the year after this date, where the server ends a longer count too.
     var countRange: ClosedRange<Int> {
@@ -106,6 +101,7 @@ final class PlanRepeatDraft {
         edited = true
         if !weekdays.contains(lockedWeekday) { weekdays.insert(lockedWeekday) }
         if monthDays.isEmpty { monthDays = [PlanRepeatRules.monthDay(for: start, byDate: false, calendar)] }
+        fitUntil()
         fitCount()
     }
 
@@ -113,11 +109,19 @@ final class PlanRepeatDraft {
         guard weekday != lockedWeekday, (1...7).contains(weekday) else { return }
         if weekdays.contains(weekday) { weekdays.remove(weekday) } else { weekdays.insert(weekday) }
         edited = true
+        fitUntil()
         fitCount()
     }
 
     /// "Ends": on a date or after a number of times, and the date or the number the host picks.
     func setEnds(_ newEnds: Ends) {
+        // Switching keeps the same series: the number of dates the end date gives, or the date the number ends on.
+        if newEnds != ends, let span {
+            switch newEnds {
+            case .afterCount: count = min(max(span.total, countRange.lowerBound), countRange.upperBound)
+            case .onDate: until = min(max(calendar.startOfDay(for: span.last), untilRange.lowerBound), untilRange.upperBound)
+            }
+        }
         ends = newEnds
         edited = true
     }
@@ -140,6 +144,7 @@ final class PlanRepeatDraft {
         guard canAddMonthDay, !monthDays.contains(rule) else { return }
         monthDays = Self.ordered(monthDays + [rule])
         edited = true
+        fitUntil()
         fitCount()
     }
 
@@ -152,6 +157,7 @@ final class PlanRepeatDraft {
         guard canRemove(rule) else { return }
         monthDays.removeAll { $0 == rule }
         edited = true
+        fitUntil()
         fitCount()
     }
 
@@ -190,14 +196,11 @@ final class PlanRepeatDraft {
             monthDays[old] = PlanRepeatRules.monthDay(for: newStart, byDate: byDate, calendar)
             monthDays = Self.ordered(monthDays)
         }
-        let range = untilRange
-        let defaultUntil = PlanRepeatRules.add(days: PlanRepeatRules.defaultWeeks * 7, to: startDay, calendar)
-        if !untilChosen, until != defaultUntil {
-            until = defaultUntil
+        if !untilChosen, until != usualUntil {
+            until = usualUntil
             untilChosen = false
-        } else if until < range.lowerBound || until > range.upperBound {
-            until = min(max(until, range.lowerBound), range.upperBound)
         }
+        fitUntil()
         fitCount()
     }
 
@@ -306,6 +309,39 @@ final class PlanRepeatDraft {
         // What it is now, so saving sends `repeat` only when the host changed it.
         original = body
         edited = false
+    }
+}
+
+/// A repeating plan has a second date (the founder's check of 2026-11-15; the server refuses fewer than two).
+extension PlanRepeatDraft {
+    /// The pattern's second date: the first day after the plan's own date that it lands on.
+    var secondDay: Date? {
+        guard let days = chosenDays else { return nil }
+        return PlanRepeatRules.days(after: start, pattern: days, anchor: start, limit: 1, calendar).first
+    }
+
+    /// "On a date": from the pattern's second date to a year after the plan's own date.
+    var untilRange: ClosedRange<Date> {
+        let last = PlanRepeatRules.add(days: PlanRepeatRules.maxDays, to: startDay, calendar)
+        let first = min(secondDay ?? PlanRepeatRules.add(days: 1, to: startDay, calendar), last)
+        return first...last
+    }
+
+    /// Twelve weeks after the plan's date: the end until the host picks one.
+    private var usualUntil: Date {
+        PlanRepeatRules.add(days: PlanRepeatRules.defaultWeeks * 7, to: startDay, calendar)
+    }
+
+    /// The days or the start changed: an end date now before the second date goes to the twelve-week default
+    /// (or to the second date, when that is later), and one past the year comes back to it.
+    private func fitUntil() {
+        let range = untilRange
+        if until > range.upperBound {
+            until = range.upperBound
+        } else if until < range.lowerBound {
+            until = min(max(usualUntil, range.lowerBound), range.upperBound)
+            untilChosen = false
+        }
     }
 }
 
