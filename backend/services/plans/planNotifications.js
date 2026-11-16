@@ -788,6 +788,29 @@ async function guestWaiting({ plan, invite }) {
 }
 
 /**
+ * The host moved the plan to their home and guests from the open link now wait for their yes (contract 6.8). Once a
+ * move, to the host, opening Who's coming, with no buttons (each guest has Let in and Not this time there):
+ * "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes."
+ */
+async function guestsWaitAfterMove({ plan, count }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  const title = plan.post.title;
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_moved_home',
+    title: count === 1
+      ? `You moved ${title} to your home. 1 guest from your link is waiting for your yes.`
+      : `You moved ${title} to your home. ${count} guests from your link are waiting for your yes.`,
+    body: [title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: { opens: 'whos_coming', count },
+    idempotencyKey: `plan_moved_home:${plan.post_id}:${new Date(plan.updated_at || Date.now()).toISOString()}`,
+  });
+}
+
+/**
  * "Still coming?" again, for a guest who hasn't answered: once per change (the change's
  * reconfirm_requested_at is in the key), with the same buttons as the first ask.
  */
@@ -848,5 +871,6 @@ module.exports = {
   peopleText,
   guestAnswered,
   guestWaiting,
+  guestsWaitAfterMove,
   GUEST_BUNDLE_WINDOW_MS,
 };

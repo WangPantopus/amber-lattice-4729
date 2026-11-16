@@ -50,8 +50,8 @@ const LIMITS = Object.freeze({
 const GUEST_COLUMNS = [
   'id', 'post_id', 'host_user_id', 'channel', 'invitee_user_id', 'email', 'token_hash', 'status', 'needs_host_ok',
   'email_status', 'email_opted_out_at', 'guest_name', 'guest_adults', 'guest_kids', 'guest_key_hashes',
-  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'email_sent_times', 'opened_at', 'answered_at',
-  'created_at', 'updated_at',
+  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'email_sent_times', 'host_ok_at', 'opened_at',
+  'answered_at', 'created_at', 'updated_at',
 ].join(', ');
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;
 const COOKIE_PREFIX = 'pantopus_plan_guest_';
@@ -277,7 +277,6 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
   let forGuest = null;
   if (isGuestIn(mine) && plan.status !== 'cancelled') {
     const hostFirst = await actions().hostFirstOf(plan);
-    const changedSince = mine.changed_at && (!mine.answered_at || new Date(mine.changed_at) > new Date(mine.answered_at));
     forGuest = {
       place: await placeFor(plan, hostFirst),
       guest_note: plan.guest_note || null,
@@ -285,10 +284,16 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
       // The bring list (H2), while the host has its switch.
       bring: await bringFor(plan, mine),
       // The plan's time or place changed since the guest last answered: 'time', 'place' or 'both'.
-      changed: changedSince ? mine.changed_reason || null : null,
+      changed: changedReason(mine),
     };
   }
   return { live: true, answer, for_guest: forGuest, removed: false };
+}
+
+/** What changed ('time', 'place' or 'both') since the guest last answered, or null. */
+function changedReason(row) {
+  const since = row?.changed_at && (!row.answered_at || new Date(row.changed_at) > new Date(row.answered_at));
+  return since ? row.changed_reason || null : null;
 }
 
 /** The guest's own answer, read with their key. `email_hint` ("da•••@example.com") is for their page's own words. */
@@ -302,6 +307,8 @@ function mineView(row) {
   return {
     state: stateOf(row), name: row.guest_name, adults: row.guest_adults, kids: row.guest_kids,
     email_hint: row.email ? invites().emailHint(row.email) : null,
+    // A waiting guest's page says the place changed too (6.8), e.g. after a move to the host's home.
+    changed: changedReason(row),
   };
 }
 
@@ -449,10 +456,14 @@ async function saveEmailed(row, key, stamp, { inThree = true } = {}) {
 /**
  * Send one email to a guest (You're in, the reminder, a change, a cancellation). Each email that carries the guest's
  * link carries a key of its own, which joins the guest's keys once the email went; none replaces another (K3).
- * Answers whether it went. `stamp`: the row's column to stamp ('address_sent_at' or 'reminded_at').
+ * Answers whether it went. `stamp`: the row's column to stamp ('address_sent_at' or 'reminded_at'). `inThree`: it
+ * counts as one of the plan's three (a cancellation and a move to a home never do); `capped`: the three hold it back
+ * once they are used (as a rule the same; "You're in" after the host's own yes never is held, 6.6).
  */
-async function sendGuestEmail(plan, row, kind, { words = {}, stamp = null, inThree = kind !== 'cancelled' } = {}) {
-  const held = await guestEmailHeld(row, { inThree });
+async function sendGuestEmail(plan, row, kind, {
+  words = {}, stamp = null, inThree = !['cancelled', 'moved_home'].includes(kind), capped = inThree,
+} = {}) {
+  const held = await guestEmailHeld(row, { inThree: capped });
   if (held) {
     logger.info('plans.guests.email_held', { inviteId: row.id, kind, reason: held });
     return false;
@@ -539,6 +550,13 @@ async function answer(postId, body = {}, { cookieKey = null, patch = false } = {
   }
   const fields = checkedFields(plan, body || {}, presentedKey ? row : null, { via });
 
+  // An address that said "don't send me invitations" gets no email, so "Check your email" would never come true: where
+  // the form asks for an email, such an address is refused and nothing is saved (6.3). A guest changing their own
+  // answer with the address already on their row isn't asked again.
+  if (fields.email && !(presentedKey && row?.email === fields.email) && (await invites().addressOptedOut(fields.email))) {
+    fail(409, 'email_opted_out', 'This address asked Pantopus not to email it. Use another one.');
+  }
+
   // An address that already has a row on this plan, without a key of that row: nothing changes and no key comes
   // back; the address gets its link. A guest the host removed doesn't come back by the open link.
   if (!presentedKey) {
@@ -575,9 +593,11 @@ async function answer(postId, body = {}, { cookieKey = null, patch = false } = {
   const wasIn = Boolean(before && before.status === 'accepted');
   const wasWaiting = Boolean(before && before.status === 'accepted' && before.needs_host_ok);
   const wasLetIn = wasIn && !wasWaiting;
-  // From the open link with "I say yes first", the host lets each one in. Someone the host let in once (their
-  // "You're in" went) doesn't wait again after a Maybe.
-  const letInBefore = wasLetIn || Boolean(before?.address_sent_at);
+  // From the open link with "I say yes first", the host lets each one in. Someone in now keeps their place when they
+  // change their answer; someone the host let in by hand once (host_ok_at) doesn't wait again after a Maybe. Nothing
+  // else counts as let in (6.8): not a "You're in" that once went, and not having been in before the plan moved to the
+  // host's home.
+  const letInBefore = wasLetIn || Boolean(before?.host_ok_at);
   const needsHostOk = status === 'accepted' && via === 'open' && plan.open_invite_ok_first && !letInBefore;
   const seatsNeeded = status === 'accepted' ? fields.adults + fields.kids : 0;
   const othersTaken = status === 'accepted'
@@ -725,7 +745,11 @@ async function guestRowFor(plan, inviteId) {
   return data;
 }
 
-/** POST /api/plans/:id/invites/:inviteId/ok: lets a waiting guest in and sends their email with their link. */
+/**
+ * POST /api/plans/:id/invites/:inviteId/ok: lets a waiting guest in, records the host's own yes (host_ok_at, 6.8),
+ * and sends "You're in" with their link. That email is never held by the plan's three; it counts as one of them only
+ * when it is the guest's first "You're in" (6.6).
+ */
 async function letIn(user, postId, inviteId) {
   const { viewer, plan } = await hostPlanWithSwitch(user, postId);
   const row = await guestRowFor(plan, inviteId);
@@ -733,11 +757,11 @@ async function letIn(user, postId, inviteId) {
   if (row.needs_host_ok) {
     if (!invites().isOpenForAnswers(plan)) fail(409, 'ended', 'This plan has started.');
     const { data, error } = await supabaseAdmin.from('PlanInvite')
-      .update({ needs_host_ok: false, updated_at: nowIso() })
+      .update({ needs_host_ok: false, host_ok_at: nowIso(), updated_at: nowIso() })
       .eq('id', row.id).eq('status', 'accepted').eq('needs_host_ok', true).select(GUEST_COLUMNS);
     if (error) throw new Error(`Failed to let them in: ${error.message}`);
     if (data && data.length) {
-      await sendGuestEmail(plan, data[0], 'in', { stamp: 'address_sent_at' });
+      await sendGuestEmail(plan, data[0], 'in', { stamp: 'address_sent_at', capped: false, inThree: !data[0].address_sent_at });
       await planNotify.guestAnswered({ plan, invite: data[0] })
         .catch((err) => logger.warn('plans.guests.notice_failed', { planId: plan.post_id, error: err.message }));
       recordFunnelEvent('plan_guest_let_in', { userId: viewer.id, meta: { plan_id: plan.post_id, kind: plan.kind } });
@@ -941,6 +965,47 @@ async function planChanged(plan, { timeMoved, placeChanged }) {
   }
 }
 
+/** Does this edit move a plan that takes answers from anywhere else to a home (6.8)? */
+function movesToHome(plan, newPlaceKind) {
+  return takesAnswers(plan) && plan.place_kind !== 'home' && newPlaceKind === 'home';
+}
+
+/**
+ * A plan moving to the host's home (6.8): each guest without an account who came by the open link, is in, and never
+ * had the host's own yes goes back to waiting for it. Their seats stay held and their bring-list claims stay; while
+ * they wait no key of theirs reads the place, the note, who is going or the list. Guests the host invited by email or
+ * text, and accounts, stay in. The edit runs this before the plan row moves, so no key reads the home in between, and
+ * once after, for an answer that came in meanwhile. Answers the rows it made wait.
+ */
+async function holdForHome(postId) {
+  const { data, error } = await supabaseAdmin.from('PlanInvite')
+    .update({ needs_host_ok: true, updated_at: nowIso() })
+    .eq('post_id', postId).eq('channel', 'open').eq('status', 'accepted').eq('needs_host_ok', false)
+    .is('host_ok_at', null).is('invitee_user_id', null).not('guest_name', 'is', null)
+    .select(GUEST_COLUMNS);
+  if (error) throw new Error(`Failed to hold guests for the move: ${error.message}`);
+  return data || [];
+}
+
+/**
+ * After the plan moved to the host's home (6.8): each guest it made wait gets one email, outside the plan's three,
+ * with their link (it opens the waiting page), so nobody goes to the old place; it is still held for an address that
+ * opted out and by the address's five a day. They don't also get the ordinary change email (planChanged skips a
+ * guest who waits). The host gets one notice, opening Who's coming.
+ */
+async function movedToHome(plan, rows) {
+  if (!rows || rows.length === 0) return;
+  for (const row of rows) {
+    try {
+      await sendGuestEmail(plan, row, 'moved_home');
+    } catch (err) {
+      logger.warn('plans.guests.move_email_failed', { inviteId: row.id, error: err.message });
+    }
+  }
+  await planNotify.guestsWaitAfterMove({ plan, count: rows.length })
+    .catch((err) => logger.warn('plans.guests.notice_failed', { planId: plan.post_id, error: err.message }));
+}
+
 /**
  * The plan was cancelled: guests who are in get the one email about it, with the host's note, outside the plan's
  * three (a guest who already had all three still hears it). Not a guest still waiting for the host's yes; never an
@@ -1022,6 +1087,9 @@ module.exports = {
   peopleEntries,
   hostRowParts,
   planChanged,
+  movesToHome,
+  holdForHome,
+  movedToHome,
   planCancelled,
   sendReminders,
 };

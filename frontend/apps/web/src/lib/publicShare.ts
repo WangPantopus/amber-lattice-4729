@@ -208,7 +208,15 @@ export type PublicPlanAnswer = {
   kids_welcome: boolean;
   room_left: number;
   host_says_yes_first: boolean;
-  mine: { state: PublicPlanGuestState; name: string; adults: number; kids: number; email_hint: string | null } | null;
+  mine: {
+    state: PublicPlanGuestState;
+    name: string;
+    adults: number;
+    kids: number;
+    email_hint: string | null;
+    /** What changed since this guest answered; a waiting guest's page says so too (a move to the host's home). */
+    changed?: 'time' | 'place' | 'both' | null;
+  } | null;
 };
 
 export type PublicPlanForGuest = {
