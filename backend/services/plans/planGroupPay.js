@@ -367,11 +367,11 @@ function leaveText(plan, buyer, requests, backCents) {
 
 /**
  * A claimer left or was removed (08-extras section 7, settled November 16: before refund_until every bought spot that
- * ends up empty goes back to the buyer; after it, none). While the link takes people the spot goes back to the link
+ * ends up empty goes back to the buyer; after it, none, except a removal, which always refunds). While the link takes people the spot goes back to the link
  * (nothing to do here). Once it has stopped and refund_until hasn't come, that spot's price goes back to the buyer at
  * once, one more refund in part; the spot is an ordinary open spot. Answers the cents returned.
  */
-async function onClaimerGone(plan, claimerId, now = Date.now()) {
+async function onClaimerGone(plan, claimerId, { removed = false, now = Date.now() } = {}) {
   if (!takes(plan)) return 0;
   const { data: claimer, error } = await supabaseAdmin.from('PlanRequest').select('id, paid_by_request_id').eq('id', claimerId).maybeSingle();
   if (error) throw new Error(`Failed to read the spot: ${error.message}`);
@@ -381,7 +381,8 @@ async function onClaimerGone(plan, claimerId, now = Date.now()) {
     .eq('id', claimer.paid_by_request_id).maybeSingle();
   if (buyerError) throw new Error(`Failed to read the buyer's spots: ${buyerError.message}`);
   if (!buyer?.payment_id || buyer.spots_token) return 0;
-  if (!buyer.refund_until || new Date(buyer.refund_until).getTime() <= now) return 0;
+  // Leaving: only before refund_until. Removed by the business: always (a removal always refunds).
+  if (!removed && (!buyer.refund_until || new Date(buyer.refund_until).getTime() <= now)) return 0;
   const back = await planPaid().refund(plan, buyer, { reason: `claimer_gone:${claimer.id}`, actorMode: 'policy', amount: perSpot(plan, buyer) });
   logger.info('plans.group_pay.claimer_spot_returned', { planId: plan.post_id, buyerRequestId: buyer.id, claimerRequestId: claimer.id, back });
   return back;
