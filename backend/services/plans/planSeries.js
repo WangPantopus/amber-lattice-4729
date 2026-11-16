@@ -203,10 +203,18 @@ function checkedRepeat(input, { startsAt, timezone, before = 0 }) {
       ? (typeof input.until === 'string' && DATE_RE.test(input.until) ? day(input.until, zone) : null)
       : start.startOf('day').plus({ weeks: LIMITS.defaultWeeks });
     if (!until || !until.isValid) fail('Choose the date it ends.');
-    if (until < start.startOf('day')) fail('It has to end on or after the plan’s own date.');
+    if (until < start.startOf('day')) fail('It has to end after the plan’s own date.');
     if (until > latest) fail('A plan can repeat for up to a year.');
     repeat.until = until.toISODate();
     repeat.count = null;
+  }
+  // A plan that repeats has a second date: an end on the plan's own date, or before the next day the pattern
+  // lands on, would leave it with one.
+  if (runOf(repeat, zone).dates < 2) {
+    const second = datesAfter({ ...repeat, until: null }, start, zone).next().value;
+    fail(second
+      ? `It has to end on or after its second date, ${second.toFormat('cccc, LLLL d')}.`
+      : 'It has to end after the plan’s own date.');
   }
   if (Number.isInteger(before) && before > 0) repeat.before = before;
   return repeat;
