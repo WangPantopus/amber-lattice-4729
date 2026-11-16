@@ -61,7 +61,7 @@ fun PlanDto.guestCounts(): PlanGuestCounts? {
     val answers = answers ?: return null
     return PlanGuestCounts(
         coming = headcount?.total ?: answers.isIn,
-        adultsKids = headcount?.takeIf { takesKids }?.let { PlanFormat.people(it.adults, it.kids) },
+        adultsKids = headcount?.takeIf { takesKids }?.let { PlanFormat.headcount(it.adults, it.kids) },
         maybe = answers.maybe,
         noAnswer = answers.noAnswer,
     )
@@ -94,7 +94,7 @@ data class PlanGuestsUi(
             val headcount = list.headcount ?: plan?.headcount
             return PlanGuestCounts(
                 coming = headcount?.total ?: counts?.isIn ?: 0,
-                adultsKids = headcount?.takeIf { kidsWelcome }?.let { PlanFormat.people(it.adults, it.kids) },
+                adultsKids = headcount?.takeIf { kidsWelcome }?.let { PlanFormat.headcount(it.adults, it.kids) },
                 maybe = counts?.maybe ?: 0,
                 noAnswer = counts?.noAnswer ?: 0,
             )

@@ -413,6 +413,22 @@ object PlanFormat {
         return parts.joinToString(if (and) " and " else ", ")
     }
 
+    /**
+     * A headcount: "6 adults, 3 kids", "1 adult", "2 kids"; null when nobody is coming (the count says "0 coming"
+     * alone).
+     */
+    fun headcount(
+        adults: Int,
+        kids: Int,
+    ): String? {
+        val parts =
+            listOfNotNull(
+                adults.takeIf { it > 0 }?.let { "$it ${if (it == 1) "adult" else "adults"}" },
+                kids.takeIf { it > 0 }?.let { "$it ${if (it == 1) "kid" else "kids"}" },
+            )
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(", ")
+    }
+
     /** A study group's subject and style, ["Spanish", "Quiet study"]; empty without a subject, and for other kinds. */
     fun studyParts(plan: PlanDto): List<String> {
         if (plan.planKind != PlanKind.STUDY_GROUP) return emptyList()

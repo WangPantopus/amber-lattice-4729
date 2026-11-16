@@ -8,9 +8,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -138,7 +141,11 @@ internal fun PlanGuestCountsRow(
     counts: PlanGuestCounts,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier.fillMaxWidth().testTag("planGuestCounts"), horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+    // The three tiles share one height (board 17), however many lines the first one needs.
+    Row(
+        modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("planGuestCounts"),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
         CountTile(
             number = counts.coming,
             words = listOfNotNull("coming", counts.adultsKids).joinToString(" · "),
@@ -158,6 +165,7 @@ private fun CountTile(
     Column(
         modifier =
             modifier
+                .fillMaxHeight()
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(PantopusColors.appSurfaceSunken)
                 .padding(horizontal = Spacing.s3, vertical = 10.dp)

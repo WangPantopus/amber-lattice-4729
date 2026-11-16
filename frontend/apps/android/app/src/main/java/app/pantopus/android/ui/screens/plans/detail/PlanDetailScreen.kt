@@ -457,7 +457,12 @@ private fun remindFooter(
     if (n <= 0 && !reminded) return null
     return {
         PrimaryButton(
-            title = if (reminded) "Reminded today" else "Remind the $n who haven't answered",
+            title =
+                when {
+                    reminded -> "Reminded today"
+                    n == 1 -> "Remind the 1 who hasn't answered"
+                    else -> "Remind the $n who haven't answered"
+                },
             onClick = viewModel::remind,
             isLoading = ui.reminding,
             isEnabled = !ui.reminding && !reminded,

@@ -212,8 +212,15 @@ val PlanPinDto.isBusiness: Boolean get() = business != null
 /** The viewer's invitation, not answered yet. */
 val PlanDto.invitedNoAnswer: Boolean get() = standing == PlanViewerStanding.NONE && myInvite?.status == PlanInviteStatus.PENDING
 
-/** The viewer said Maybe to their invitation (Plans for the holidays, H1; sent only with `guests=1`). */
-val PlanDto.saidMaybe: Boolean get() = standing == PlanViewerStanding.NONE && myInvite?.status == PlanInviteStatus.MAYBE
+/**
+ * The viewer said Maybe to their invitation (Plans for the holidays, H1; sent only with `guests=1`). Saying Maybe after
+ * "I'm in" leaves the plan, so the request may read left or withdrawn: only being in, asking, waiting or hosting
+ * outranks it.
+ */
+val PlanDto.saidMaybe: Boolean
+    get() =
+        myInvite?.status == PlanInviteStatus.MAYBE &&
+            standing !in setOf(PlanViewerStanding.HOSTING, PlanViewerStanding.IN, PlanViewerStanding.REQUESTED, PlanViewerStanding.WAITLISTED)
 
 /** A private plan whose guests say how many adults and kids (Plans for the holidays, H1). */
 val PlanDto.takesKids: Boolean get() = kidsWelcome == true && !isPlaydate
