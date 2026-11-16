@@ -63,7 +63,8 @@ private struct MomentsTablePostCard: View {
         HStack(alignment: .top, spacing: 6) {
             MomentsPostMap(
                 pin: model.pin,
-                showArea: model.showArea,
+                showArea: model.floats,
+                disc: model.skyDisc,
                 me: me,
                 placeholder: model.locating == .unavailable ? "Location is off" : "Finding where you are…",
                 height: mapHeight
