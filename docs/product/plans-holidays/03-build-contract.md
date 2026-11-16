@@ -282,7 +282,7 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
 
 - `POST /api/plans/:id/invites/open-link` with
   `{ "host_says_yes_first": true, "rotate": false }` makes or returns the link:
-  `{ "url": "…/plans/<id>?open=<token>", "message": "…", "host_says_yes_first":
+  `{ "url": "…/plan-link/<id>?open=<token>", "message": "…", "host_says_yes_first":
   true }`. At a home `host_says_yes_first` starts true, and the call needs the
   address confirmation that inviting already needs
   (`assertSharesAddressConfirmed`, exists). `rotate` replaces the token; answers
@@ -394,6 +394,93 @@ the place of a plan that takes answers from anywhere else to a home:
 
 A move between two places away from a home, between two homes, or from a home
 to somewhere else makes nobody wait.
+
+### 6.9 The open link, for a person who has the app
+
+Decided by the founder on November 15 ("Yes, go ahead"). Boards 21 to 23. The
+open link was built for a guest without an account, in a browser. A person who
+has the app must be able to answer it as themselves, and no build of either
+app may land on a plan it cannot show.
+
+**Why the address changes.** The iPhone opens a web address in the app when
+the site's `apple-app-site-association` lists its path, for every build of the
+app at once; it lists `/plans/*`. The store builds do not know an open link,
+so `…/plans/<id>?open=<token>` would open them on a private plan the person
+was not invited to by name. The Android app claims every path and hands a page
+it has no screen for to the browser (`WebLinkFallback`, in store builds since
+October 20).
+
+1. **The open link's address is `…/plan-link/<id>?open=<token>`.**
+   `POST /api/plans/:id/invites/open-link` answers that `url`. `/plan-link/`
+   is never added to `apple-app-site-association`.
+2. **The web serves the guest's page at `/plan-link/<id>`** (W1, W2, W3): the
+   same page the plan's page draws today for `open` and for a guest's cookie.
+   It does not redirect to `/plans/`. `/plan-invitation/<id>?key=…` (the
+   emailed link) now keeps the key in the cookie and opens `/plan-link/<id>`,
+   for the same reason: on Android a browser may pass a `/plans/` address
+   back to the app. `/plans/<id>?open=…` keeps working in a browser.
+3. **"Open app" carries the link.** On a page opened with a live `open` token,
+   the bar's "Open app" (exists) opens `pantopus://plans/<id>?open=<token>`,
+   with the store fallback and the copied link it has today. Nothing is added
+   to the page.
+4. **The apps read `open`.** `pantopus://plans/<id>?open=<token>` and
+   `https://…/plans/<id>?open=<token>` on both; `https://…/plan-link/<id>?open=<token>`
+   on Android, which is how a new Android build opens the link straight in
+   the app. Signed in: the app claims it (5) and shows the plan the claim
+   answers. Signed out: an `https` arrival on Android goes on to the browser;
+   a `pantopus://` arrival, where the person chose the app, is kept through
+   sign-in or sign-up as plan links are today, then claimed. `/plan-link/`
+   without `open` goes on to the browser. While Plans is off for the person,
+   as any plan link.
+5. **Claiming.** `POST /api/plans/:id/invites/claim` (exists, takes `token`)
+   also takes `{ "open": "<token>" }`, while the host has
+   `plans_guest_answers` and the plan has a live open link with that token.
+   It answers the plan as the person now sees it, as it does for `token`.
+
+   | The person | What happens |
+   | --- | --- |
+   | Runs the plan | Nothing is made |
+   | Already has a live invitation or an ask on this plan | Nothing is made |
+   | Was removed or turned down by the host on this plan | `404 invite_unavailable` |
+   | Is on either side of a block with the host, or could not be invited on Pantopus for any reason `assertInvitable` gives | `404 invite_unavailable` |
+   | The link is off, rotated or wrong; the plan is over or cancelled | `404 invite_unavailable` |
+   | The open link's rows are at their limit (6.7; accounts count) | `404 invite_unavailable` |
+   | Has a verified email that answered this plan in a browser | That answer becomes theirs (8) |
+   | Anyone else | An invitation row is made: `channel = 'open'`, `invitee_user_id`, `status = 'pending'`, `needs_host_ok = open_invite_ok_first`, `claimed_at`, `opened_at` |
+
+   From there it is an invitation like any other. "I'm in" is the shipped ask:
+   in at once, or, with `needs_host_ok`, an ask the host accepts, exactly as an
+   email invitation opened by another account waits today. Maybe is
+   `…/invites/maybe`. Can't make it is the shipped decline. `my_invite` gains
+   `via: "open"` so the app can say why the host says yes first.
+6. **What the host sees.** In the host's list a row from the open link with an
+   account carries `via: "open"`, the person's shipped name and picture, and
+   the id of their ask. Waiting for the host's yes (`asked`) it sits with the
+   guests who wait; "Let in" is the shipped accept of that ask, with its
+   address confirmation the first time at a home, and "Not this time" the
+   shipped decline. The shipped notices for an ask tell the host.
+7. **A move to a home (6.8) covers them.** A person with an account whose
+   invitation came by the open link, who is in, and whose ask the host never
+   accepted by hand goes back to waiting when the plan moves to a home: the
+   ask returns to pending, `needs_host_ok` turns on, they leave the plan's
+   chat as anyone who is no longer in does, and they read no address. They get
+   one notice: "{Host} moved {title} to a home. {Host} lets each guest in, and
+   you'll hear when {Host} says yes." They count in the host's one notice.
+8. **A browser answer follows the person into the app.** A row answered in a
+   browser whose email is a verified email of an account becomes that
+   account's, with the answer: when that account claims the open link, when it
+   claims an email invitation's token (this replaces "answers anew", which is
+   how it was built), and where signing in already attaches email invitations
+   (`attachEmailInvites`). In becomes an accepted ask with `party_size` the
+   adults and `kids_count` the kids, so the seats do not change; waiting
+   becomes a pending ask with `needs_host_ok`; Maybe and Can't make it stay
+   what they are. `host_ok_at` is kept as the host's yes. Their bring-list
+   claims become the account's. The guest's keys end; their old links then
+   read what a signed-out stranger reads. Only a verified email does this:
+   an address someone typed is not proof.
+
+**Data.** No new column. `plan_invite_channel_fields` is widened so an `open`
+row may carry an account and no email. One additive migration.
 
 ## 7. The bring list (H2)
 
@@ -677,6 +764,9 @@ Sent through `planNotifications.js`, held for quiet hours as Plans notices are.
   the form, the three answers, and after answering the guest's part. It keeps
   the guest's key in an HttpOnly cookie and never puts it in a link the page
   shows.
+- The same guest's page is served at `/plan-link/<id>`, which is where the
+  open link and the emailed link now lead (6.9). "Open app" on it carries the
+  open link into the app.
 - With the switch off, or for a plan that takes no answers, it is today's page.
 - B3 adds sign-in and payment for a business's plan.
 - Every state in light and dark, at phone width first.
@@ -693,6 +783,9 @@ Both send `guests=1` once they draw H1.
 | B1 | The deal form (board 9); "Mark used" on the guest list | The deal card (board 7); the pass for something free |
 | B2, B4 | The price row; who paid, on the guest list | Join and pay (board 11); the receipt; leaving with a refund; money back |
 | B5, B6 | "Send a check", refund (board 14) | The check, the tip, pay (board 12); Paid (board 13) |
+
+With H1 both apps also read an open link (6.9, boards 21 to 23): the person
+claims it and answers as an invited person; the host sees them in Who's coming.
 
 The Plans tab gains the "Yours" section above "This week nearby" (board 1) with
 H1. Its map, sheet, rows and tab bar are otherwise as shipped. The side menu
@@ -756,6 +849,33 @@ Each step is checked in the real apps against a local stack and backend, as
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
 
+**H1, the open link with the app (6.9)**:
+
+- The host's "Share a link" gives a `/plan-link/` address.
+- On an iPhone with the store build and with the new build, and on an Android
+  phone with the store build, tapping the open link in Messages ends on the
+  browser page with the form. So does the emailed "You're in" link, with the
+  address. Neither ends on the app's page for a private plan.
+- On Android with the new build, signed in, the open link opens the plan in
+  the app. Signed out, it opens the browser page.
+- "Open app" on the browser page opens the new build on that plan, with
+  "{Host} invited you".
+- Without "I say yes first", "I'm in" puts the person in and the place shows.
+  With it, they wait; the host sees them under "Waiting for you" with their
+  name and picture; after "Let in" the address shows.
+- A person the host removed, and a person on either side of a block, get
+  "This invitation isn't available anymore."
+- A guest who answered in a browser with the email their account has verified
+  signs in to the app: the plan is under "Yours" with the same answer and
+  numbers and their bring-list claim; the host's list has one row for them,
+  and the seats did not change. With an email the account has not verified,
+  nothing moves.
+- After a move to a home, a person with an account from the open link who
+  never had the host's yes waits, reads no address and is out of the chat;
+  one the host accepted by hand stays in.
+- A store build on either phone still opens its plans and invitations as
+  before.
+
 **H2**: two guests claim the same item within a second; one gets it and the
 other sees it taken. A guest in a browser claims and gives back. Leaving clears
 claims.
@@ -789,11 +909,12 @@ payout is not sent before `payout_after`.
    link wait for the host's yes (6.8).
 7. A guest held by the day's five gets "Check your email" and no email until
    they answer again a day later. Nothing tells them. Left as it is.
-8. **A person who has the app and taps the open link.** The open link is
-   answered in a browser, by a guest without an account. The iPhone app claims
-   `/plans/` links and the Android app every link, so someone with the app may
-   land in the app on a private plan they were not invited to by name. Not
-   checked on a phone; not designed. It needs its own answer before the open
-   link is turned on for people (most likely: the app lets a signed-in person
-   answer the open link as an invited person, with the host's yes where the
-   link asks for it).
+8. Decided November 15: a person who has the app answers the open link as
+   themselves (6.9).
+9. Whether a browser on Android hands a `/plans/` address reached by a
+   redirect back to the app. 6.9 keeps guests off `/plans/` so it cannot
+   matter; the Android session checks it on a phone with the store build.
+10. On iPhone the open link opens the browser first, also for a new build. It
+    can open the app directly once `/plan-link/*` is added to
+    `apple-app-site-association`, which sends every build there: only after
+    the store builds that do not know it are rare.
