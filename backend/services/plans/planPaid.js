@@ -109,11 +109,11 @@ async function priceForNewPlan(hostAs, input, place) {
   return cents;
 }
 
-/** Someone paid or is paying: the price is fixed from then on. */
-async function anyonePaid(postId) {
+/** Someone is in or paying: the price is fixed from then on (contract 10.2). */
+async function anyoneInOrPaying(postId) {
   const { count, error } = await supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true })
-    .eq('post_id', postId).not('payment_id', 'is', null);
-  if (error) throw new Error(`Failed to read payments: ${error.message}`);
+    .eq('post_id', postId).in('status', ['accepted', 'paying']);
+  if (error) throw new Error(`Failed to read who is in: ${error.message}`);
   return (count || 0) > 0;
 }
 
@@ -126,33 +126,78 @@ async function priceChange(plan, patch, { placeKind }) {
   }
   const next = patch.price_cents === null ? null : checkedPrice(patch.price_cents, { placeKind });
   if (next === (plan.price_cents ?? null)) return null;
-  if (await anyonePaid(plan.post_id)) fail(409, 'price_locked', "The price can't change once someone has paid.", { field: 'price_cents' });
+  if (await anyoneInOrPaying(plan.post_id)) fail(409, 'price_locked', "The price can't change once someone is in.", { field: 'price_cents' });
   if (next !== null) await assertMayCharge(plan.business_user_id);
   return { price_cents: next };
 }
 
 // ── The card ─────────────────────────────────────────────────
 
+function perOf(plan) {
+  return plan.kind === 'playdate' ? 'family' : 'person';
+}
+
+/** The card's price: "$18", "$18 a person", and the line under the join button with the refund rule. */
 function priceView(plan) {
   if (!plan.price_cents) return null;
+  const line = `${priceText(plan.price_cents)} a ${perOf(plan)}`;
+  const refund = refundText(plan);
   return {
-    cents: plan.price_cents, currency: plan.currency || 'USD', per: plan.kind === 'playdate' ? 'family' : 'person',
-    text: priceText(plan.price_cents), refund_until: refundUntilOf(plan), refund_text: refundText(plan),
+    cents: plan.price_cents, currency: plan.currency || 'USD', per: perOf(plan),
+    text: priceText(plan.price_cents), line, join_text: `${line}. ${refund}`,
+    refund_until: refundUntilOf(plan), refund_text: refund,
   };
 }
 
+/**
+ * What leaving now gives back (P10): all that is left of the payment before refund_until, or while the business has
+ * moved the plan and asked whether the guest still comes; otherwise nothing. The card's leave line and onLeave agree.
+ */
+function leaveBackCents(request, { reason = null, now = Date.now() } = {}) {
+  const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0));
+  if (left === 0) return 0;
+  const inWindow = request.refund_until && new Date(request.refund_until).getTime() > now;
+  const moved = Boolean(request.reconfirm_requested_at) && (request.reconfirmed == null || reason === 'not_coming');
+  return inWindow || moved ? left : 0;
+}
+
+/** The receipt in Mail, under Receipts: a link the apps already open (a Mail piece), or null when there is none. */
+function receiptView(mailId) {
+  return mailId ? { link: `/app/mailbox/${mailId}` } : null;
+}
+
 /** What a guest who paid reads on the plan: "Paid $18.00", the receipt, and what leaving gives back. */
-function paidView(plan, request, receiptUrl = null) {
+function paidView(plan, request, receiptMailId = null) {
   if (!request || !request.payment_id || !request.paid_cents) return null;
-  const left = Math.max(0, request.paid_cents - (request.refunded_cents || 0));
-  const refundable = request.refund_until && new Date(request.refund_until).getTime() > Date.now();
+  const back = leaveBackCents(request);
   return {
     cents: request.paid_cents,
     text: `Paid ${moneyText(request.paid_cents)}`,
     refunded_cents: request.refunded_cents || 0,
     refund_until: request.refund_until,
-    receipt_url: receiptUrl,
-    leave_text: left > 0 && refundable ? `You'll get ${moneyText(left)} back.` : 'There is no refund now.',
+    leave_back_cents: back,
+    leave_text: back > 0 ? `You'll get ${moneyText(back)} back.` : 'There is no refund now.',
+    receipt: receiptView(receiptMailId),
+  };
+}
+
+/**
+ * What joining costs for this party (POST /api/plans/:id/requests/quote): the sheet's amounts, worked out here so an
+ * app never multiplies a price. No side effect. `group` is a group price's sentence (B4); null without one.
+ */
+function quoteFor(plan, { party_size: partySize, kids_count: kidsCount }) {
+  const spots = rules.seatsFor(plan, partySize, kidsCount);
+  const each = plan.price_cents;
+  const total = each * spots;
+  return {
+    spots,
+    spots_text: `${spots} ${spots === 1 ? 'spot' : 'spots'}`,
+    each_cents: each,
+    each_text: spots === 1 ? priceText(each) : `${priceText(each)} each`,
+    total_cents: total,
+    total_text: moneyText(total),
+    group: null,
+    refund_text: refundText(plan),
   };
 }
 
@@ -240,7 +285,8 @@ async function captureNow(paymentId) {
 /**
  * The guest paid: in, once. Called by the app's confirm and by the payment's webhook. A payment that arrives after
  * its hold ran out still lets the guest in while there is room; otherwise it goes straight back to their card.
- * Answers 'in', 'not_paid', 'refunded' (too late, no room) or 'gone' (nothing to do).
+ * Answers 'in', 'not_paid', 'full' (too late, and the plan filled meanwhile: refunded), 'ended' (too late, and the
+ * plan takes nobody now: refunded) or 'gone' (nothing to do).
  */
 async function finalize(postId, requestId, { io = null } = {}) {
   const planService = require('./planService');
@@ -263,7 +309,7 @@ async function finalize(postId, requestId, { io = null } = {}) {
     const free = plan.spots - (await actions._seatsNow(plan, requests));
     if (plan.status !== 'open' || free < rules.seatsFor(plan, request.party_size, request.kids_count)) {
       await refund(plan, request, { reason: 'hold_ran_out', actorMode: 'policy' });
-      return 'refunded';
+      return plan.status !== 'open' ? 'ended' : 'full';
     }
   }
   const stamp = new Date().toISOString();
@@ -272,7 +318,7 @@ async function finalize(postId, requestId, { io = null } = {}) {
     .eq('id', request.id).in('status', ['paying', 'expired']).select(planService.REQUEST_COLUMNS);
   if (!moved || moved.length === 0) return 'in';
   await stripeService().settleCardFeeShare(request.payment_id).catch((err) => logger.warn('plans.paid.card_fee_later', { paymentId: request.payment_id, error: err.message }));
-  await saveReceiptUrl(request.payment_id);
+  await fileReceipt(plan, request, payment);
   await require('../businessCustomers').recordBusinessContact({ businessUserId: plan.business_user_id, userId: request.user_id,
     feature: 'plan', wayIn: request.way_in, basis: request.fee_basis, at: stamp });
   recordFunnelEvent('plan_paid', { userId: request.user_id, meta: { plan_id: postId, kind: plan.kind, cents: payment.amount_total, basis: request.fee_basis, way_in: request.way_in } });
@@ -280,17 +326,59 @@ async function finalize(postId, requestId, { io = null } = {}) {
   return 'in';
 }
 
-/** The payment company's receipt for the charge, kept on the payment so the plan can link to it. Never fails. */
-async function saveReceiptUrl(paymentId) {
+/**
+ * The guest's receipt, filed in their Receipts in Mail (as a paid invoice's and a Support Train gift's are), made once
+ * for the payment; its Mail id is kept on the payment so the plan links to it. Nothing while the mailbox is off.
+ * Never fails.
+ */
+async function fileReceipt(plan, request, payment) {
   try {
-    const { data: payment } = await supabaseAdmin.from('Payment').select('id, stripe_charge_id, metadata').eq('id', paymentId).maybeSingle();
-    if (!payment?.stripe_charge_id || payment.metadata?.receipt_url) return;
-    const charge = await require('../../stripe/getStripeClient').getStripeClient().charges.retrieve(payment.stripe_charge_id);
-    if (!charge?.receipt_url) return;
-    const { data: fresh } = await supabaseAdmin.from('Payment').select('metadata').eq('id', paymentId).maybeSingle();
-    await supabaseAdmin.from('Payment').update({ metadata: { ...(fresh?.metadata || {}), receipt_url: charge.receipt_url } }).eq('id', paymentId);
+    const { isLaunchFeatureEnabled } = require('../../utils/featureFlags');
+    if (!isLaunchFeatureEnabled('mailbox')) return null;
+    const pantopusLetters = require('../pantopusLetters');
+    const mailDelivery = require('../mailDelivery');
+    const { ensureSystemFolders } = require('../mailVault');
+    const { getAccessibleHomeIds } = require('../../utils/homeMailAccess');
+    const userId = request.user_id;
+    await ensureSystemFolders(userId, await getAccessibleHomeIds(userId));
+    const { data: receipts } = await supabaseAdmin.from('VaultFolder').select('id').eq('user_id', userId)
+      .eq('drawer', 'personal').eq('label', 'Receipts').eq('system', true).order('created_at').limit(1);
+    const { data: business } = await supabaseAdmin.from('User').select('name, username').eq('id', plan.business_user_id).maybeSingle();
+    const seller = (business?.name || business?.username || 'the business').trim().slice(0, 120);
+    const zone = (await mailDelivery.personTimeZone(userId)) || mailDelivery.FALLBACK_TIME_ZONE;
+    const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: zone });
+    const spots = rules.seatsFor(plan, request.party_size, request.kids_count);
+    const amount = moneyText(payment.amount_total);
+    const spotsText = `${spots} ${spots === 1 ? 'spot' : 'spots'}`;
+    const title = String(plan.post?.title || 'the plan').slice(0, 120);
+    const made = await pantopusLetters.sendSafe(`plan-spot:${request.id}:${payment.id}`, {
+      recipient_user_id: userId,
+      subject: `Your receipt from ${seller}`,
+      content: [
+        `You paid ${amount} for ${spotsText} at ${title}, hosted by ${seller}, on ${day}.`,
+        '',
+        `${seller} is the seller, and the price includes tax. Pantopus took the payment for ${seller}.`,
+        '',
+        'This is your receipt. Pantopus keeps it in your Vault, under Receipts.',
+        '',
+        'Your Pantopus carrier',
+      ].join('\n'),
+      summary: `You paid ${amount} for ${spotsText} at ${title} on ${day}.`,
+      key_facts: [{ label: 'Amount', value: amount }, { label: 'Date', value: day }, { label: 'For', value: `${title} · ${spotsText}` },
+        { label: 'Seller', value: seller }],
+      category: 'receipt',
+      filed_folder_id: receipts?.[0]?.id || null,
+      immediate: true,
+    });
+    if (!made?.id) return null;
+    const { data: fresh } = await supabaseAdmin.from('Payment').select('metadata').eq('id', payment.id).maybeSingle();
+    if (fresh?.metadata?.receipt_mail_id !== made.id) {
+      await supabaseAdmin.from('Payment').update({ metadata: { ...(fresh?.metadata || {}), receipt_mail_id: made.id } }).eq('id', payment.id);
+    }
+    return made.id;
   } catch (err) {
-    logger.warn('plans.paid.receipt_url_skipped', { paymentId, error: err.message });
+    logger.warn('plans.paid.receipt_skipped', { paymentId: payment?.id, error: err.message });
+    return null;
   }
 }
 
@@ -313,7 +401,12 @@ async function confirmMine(user, postId, { io = null } = {}) {
     fail(503, 'payment_check_failed', "We couldn't confirm this payment yet. Please try again in a moment.");
   }
   if (outcome === 'not_paid') fail(409, 'payment_not_complete', "This payment hasn't gone through yet.");
-  if (outcome === 'refunded') fail(409, 'hold_ran_out', 'That took a while. Start again.');
+  if (outcome === 'full' || outcome === 'ended') {
+    const { data: payment } = await supabaseAdmin.from('Payment').select('amount_total').eq('id', mine.payment_id).maybeSingle();
+    const back = moneyText(payment?.amount_total || 0);
+    if (outcome === 'full') fail(409, 'full', `This filled while you were paying. Your ${back} is on its way back.`);
+    fail(409, 'ended', `This plan isn't taking anyone now. Your ${back} is on its way back.`);
+  }
   const { body } = await planService.getForViewer(postId, viewer);
   return body;
 }
@@ -363,7 +456,7 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
   }
 }
 
-const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at';
+const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at, reconfirmed';
 async function moneyRows(requestIds) {
   const ids = (requestIds || []).filter(Boolean);
   if (ids.length === 0) return [];
@@ -381,10 +474,10 @@ async function onLeave(plan, requestId, { reason, wasStatus }) {
   const [request] = await moneyRows([requestId]);
   if (!request) return 0;
   request.status = wasStatus || request.status;
+  if (request.status === 'paying') return refund(plan, request, { reason: 'abandoned', actorMode: 'payer' });
+  if (leaveBackCents(request, { reason }) === 0) return 0;
   const inWindow = request.refund_until && new Date(request.refund_until).getTime() > Date.now();
-  const moved = reason === 'not_coming' && Boolean(request.reconfirm_requested_at);
-  if (!inWindow && !moved && request.status !== 'paying') return 0;
-  return refund(plan, request, { reason: moved ? 'moved' : request.status === 'paying' ? 'abandoned' : 'left_in_time', actorMode: 'payer' });
+  return refund(plan, request, { reason: inWindow ? 'left_in_time' : 'moved', actorMode: 'payer' });
 }
 
 /** The business cancelled the plan or removed the guest: everything back. */
@@ -426,6 +519,6 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 
 module.exports = {
   FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundUntilOf, mayCharge, assertMayCharge,
-  checkedPrice, priceForNewPlan, priceChange, priceView, paidView, basisOf, payingFields, paymentFor, finalize, confirmMine,
-  onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED,
+  checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, basisOf, payingFields, paymentFor,
+  finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED,
 };

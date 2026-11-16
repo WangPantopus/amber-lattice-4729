@@ -785,7 +785,8 @@ function addBusinessFields(card, plan, viewer, ctx) {
     const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
     const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;
     if (money && myRequest.status === 'paying' && card.my_request) card.my_request.hold_expires_at = iso(money.hold_expires_at);
-    const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status }, money.payment?.metadata?.receipt_url || null) : null;
+    const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
+      reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null) : null;
     if (paid && myRequest.status === 'accepted') card.paid = paid;
   }
   card.guests_can_invite = Boolean(plan.guests_can_invite);

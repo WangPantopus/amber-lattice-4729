@@ -359,8 +359,18 @@ router.delete('/:id/requests/mine', async (req, res) => {
   }
 });
 
+// POST /api/plans/:id/requests/quote (B2): { party_size, kids_count } → what joining costs, with no side effect.
+router.post('/:id/requests/quote', async (req, res) => {
+  try {
+    return res.json(await planActions.quoteToJoin(req.user, req.params.id, req.body || {}));
+  } catch (err) {
+    return serverError(res, err, 'paid_quote', req);
+  }
+});
+
 // POST /api/plans/:id/requests/mine/confirm (B2): the payment sheet closed; in once the payment company says it went
-// through. Answers the plan (PlanDetail), or 409 payment_not_complete / hold_ran_out.
+// through. Answers the plan (PlanDetail), or 409 payment_not_complete, full (it filled while they paid: refunded) or
+// ended (it takes nobody now: refunded).
 router.post('/:id/requests/mine/confirm', async (req, res) => {
   try {
     return res.json(await require('../services/plans/planPaid').confirmMine(req.user, req.params.id, { io: req.app.get('io') }));

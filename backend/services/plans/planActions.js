@@ -1328,6 +1328,23 @@ async function requestResult(postId, viewer, requestId) {
   };
 }
 
+/**
+ * POST /api/plans/:id/requests/quote (B2, contract 10.2): what joining this paid plan costs for a party of this size,
+ * worked out by the server, with no side effect. Only on a priced business's plan while the business has the switch.
+ */
+async function quoteToJoin(user, postId, body = {}) {
+  const viewer = await loadViewer(user);
+  const plan = await loadVisiblePlan(postId, viewer);
+  if (!plan.price_cents || !plan.business_user_id || !(await planPaid().enabledFor(plan.host_user_id))) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
+  // A kids' plan is a price a family; any other counts adults and, where kids are welcome, kids.
+  const ask = plan.kind === 'playdate'
+    ? { party_size: 1, kids_count: null }
+    : cleanAsk(plan, { party_size: body.party_size, kids_count: body.kids_count }, { guestAnswers: await planGuests.switchFor(plan.host_user_id) });
+  return planPaid().quoteFor(plan, ask);
+}
+
 async function askToJoin(user, postId, body, { io = null } = {}) {
   const viewer = await loadViewer(user, { gps: body.gps });
   const plan = await loadVisiblePlan(postId, viewer);
@@ -1752,6 +1769,7 @@ async function reportPlan(user, postId, { reason, details }) {
 }
 
 module.exports = {
+  quoteToJoin,
   // For planPaid (paid spots): the same steps a join takes.
   _activeRequests: activeRequests,
   _seatsNow: seatsNow,
