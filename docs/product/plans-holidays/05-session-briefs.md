@@ -306,7 +306,7 @@ comparing the same payments before and after.
 | 5.5 | B3 | The plan's web page: sign-in, join and pay | Contract 10.3; 07-screens P2 |
 | 5.6 | B4 | The money kinds on a spot, the group price and its refund on the tick | Contract 10.4; 02-payments 6 |
 | 5.7 | B5 | Checks on `BusinessInvoice`, `pay_here` and `tips_on`, the six routes, the discount and tip rules, the tip's share of the card fee, disputes, the switch `plans_pay_here` | Contract 11.1 to 11.4; 02-payments 5, 7, 9 |
-| 5.8 | B6 | The tip after a paid plan; the statement's lines | Contract 11.5 |
+| 5.8 | B6 | The tip after a paid plan; the statement's route, which is not built yet, behind `business_statement` | Contract 11.5; business graph shared pieces 5.4 |
 
 `BusinessCustomer` is the one new table in this track. It is the business
 graph's, which the founder approved on November 11; no other table is added.
@@ -326,7 +326,7 @@ its server part is on `dev`.
 | 1 | B1 | The deal card on a business's plan; "Your deal" when in; the deal step in the business's host flow; the four notices; the list's tag and filter; "Mark used" on the roster | D1, D2, D3, D4, "The Plans list", "Mark used" | 07, 08, 09, 10, 01 |
 | 2 | B2, B4 | "Price a spot" on the business's form; paying for a spot with the group price; "Paid" and the receipt on the plan; leaving with its refund line | P1 | 11 |
 | 3 | B5 | The check, the tip, pay; Paid; the business's guest list with "Send a check" and refund; the two switches on the business's form | C1, C2, C3 | 12, 13, 14 |
-| 4 | B6 | The tip after a paid plan; the statement's new lines where the app shows the statement | C4 | |
+| 4 | B6 | The tip after a paid plan (the statement has no screen in this build) | C4 | |
 
 Send `biz=1` as today. Paying uses the app's shipped payment sheet. Check for
 real with the payment company's test mode on the rig: each worked example of

@@ -42,7 +42,7 @@ canvas. The boards' own HTML, for exact sizes, is in
 | B3 paying on the web | `plans_paid` | P2 |
 | B4 deals with money | `plans_deals` and `plans_paid` | D1 and D3 with the money kinds, P1's group price |
 | B5 the bill at the place | `plans_pay_here` | C1, C2, C3 |
-| B6 tips later, the statement | `plans_pay_here` | C4 |
+| B6 a tip later (the statement is server only) | `plans_pay_here` | C4 |
 
 ---
 
@@ -295,9 +295,10 @@ payouts set up as a price does.
 No board. On the page of a paid plan that is over, for a guest who paid, for 7
 days and once: a quiet card "Leave a tip for {business}?" with the three
 choices as percents of what they paid, "Another amount", and the pay button.
-The business's shipped statement gains the lines the contract names (11.5):
-plans' bills and tips by feature, and totals for tips, the tips' share of card
-fees, and what deals took off.
+
+The statement has no screen in this build. The server gains its route with the
+plan lines (contract 11.5); the business's statement screens belong to the
+business graph's own work and are drawn there.
 
 ---
 

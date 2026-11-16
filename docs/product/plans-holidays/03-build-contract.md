@@ -708,6 +708,17 @@ Pay. It calls the same routes as the apps. No account-less payment.
   the unlock is charged the group price.
 - A group price that falls short: every guest may leave with a full refund
   until the plan starts, whatever `refund_until` says.
+- **Paying out a payment that was refunded in part** (settled November 16 with
+  the server session). Today the payout job and its database functions release
+  only a payment with nothing refunded, and a partial refund of an invoice is
+  refused. A group price coming back, and a staff refund of part of a bill
+  (11.2), are partial refunds of a payment not yet paid out. For `plan_spot`
+  and `plan_bill` only, the business's share is re-priced at the refund on what
+  the guest paid in the end, and such a payment is released with that amount.
+  It is done with a new function that only these payments reach where that is
+  possible; the functions that pay gigs and invoices are replaced only if it is
+  not, and then with every existing branch as it is, shown by comparing the
+  same payments before and after. Every other payment kind keeps today's rule.
 - A card's `deal` adds `"price_cents": 1400` and, for a guest,
   `"mine": { "back_cents": 400, "back_at": "…" }`.
 
@@ -774,9 +785,13 @@ plan's chat.
 - `POST /api/plans/:id/tip` with `{ "amount_cents" }`: a guest who paid for a
   spot, on a plan with `tips_on`, once, until 7 days after the plan ends. A
   separate charge with `sold_type = 'plan_tip'`.
-- The statement is the shared one (`GET /api/businesses/:businessId/statement`).
-  Its `by_feature` gains `plan_bill` and `plan_tip`, and `totals` gains
-  `tips_cents`, `tip_card_fee_cents` and `deal_cents`.
+- The statement is the shared one (`GET /api/businesses/:businessId/statement`,
+  the business graph's shared contract 5.4). It is not built yet: this step
+  builds the route, behind `business_statement` (off), for staff with
+  `finance.view`. Its `by_feature` carries `plan_spot`, `plan_bill` and
+  `plan_tip`, and `totals` carries `tips_cents`, `tip_card_fee_cents` and
+  `deal_cents`. No screen is built here: the statement's screens are the
+  business graph's own phase D.
 
 ## 12. Notices
 
