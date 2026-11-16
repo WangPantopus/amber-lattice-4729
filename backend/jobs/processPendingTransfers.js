@@ -130,6 +130,41 @@ function isPlanPayment(payment) {
   return payment.payment_type === 'plan_payment';
 }
 
+/**
+ * A plan spot or plan bill refunded in part before its payout (Plans for the holidays B4/B5, contract 10.4: a group
+ * price that came back, a staff refund of part of a bill). The shared release below takes only a payment with nothing
+ * refunded and stays so; this one goes through its own database function, which nothing else reaches.
+ */
+function isPartiallyRefundedPlanPayment(payment, status) {
+  return isPlanPayment(payment) && ['plan_spot', 'plan_bill'].includes(payment.sold_type) && status === PAYMENT_STATES.REFUNDED_PARTIAL;
+}
+
+/** Pays out a plan payment refunded in part, at its re-priced share. Answers true when it was paid out now. */
+async function releasePartiallyRefundedPlanPayment(payment) {
+  // A refund recorded elsewhere (the webhook) before the share was re-priced: re-price it now.
+  if (String(payment.metadata?.repriced_refunded_amount ?? '') !== String(payment.refunded_amount)) {
+    try {
+      await require('../services/plans/planPaid').repriceAfterPartialRefund(payment.id);
+    } catch (err) {
+      logger.warn('processPendingTransfers: plan payment not re-priced yet', { paymentId: payment.id, error: err.message });
+      return false;
+    }
+  }
+  const { data, error } = await supabaseAdmin.rpc('plan_payment_release_after_partial_refund', { p_payment_id: payment.id });
+  if (error || !data || data.error) {
+    logger.warn('processPendingTransfers: plan payment refunded in part not released', { paymentId: payment.id, error: error?.message || data?.error });
+    return false;
+  }
+  if (!data.changed) return false;
+  const paid = data.payment;
+  await collectDebtsAfterIncome(paid.payee_id, paid.id);
+  const sent = paid.payee_id === payment.metadata?.business_user_id ? await sendBusinessWalletToPayoutAccount(paid.payee_id) : 0;
+  notifyBusinessPayout({ ...payment, ...paid }, { amountFormatted: `$${(paid.amount_to_payee / 100).toFixed(2)}`, sent: sent > 0 }).catch((err) => {
+    logger.warn('processPendingTransfers: business payout notice skipped', { paymentId: payment.id, error: err.message });
+  });
+  return true;
+}
+
 // A payment for a business invoice: a gig_payment with no gig, tagged by the invoice route.
 function isInvoicePayment(payment) {
   return payment.payment_type === 'gig_payment' && !payment.gig_id && payment.metadata?.type === 'invoice_payment';
@@ -221,6 +256,7 @@ async function processPendingTransfers() {
       dispute_id,
       dispute_status,
       payout_after,
+      sold_type,
       metadata
     `;
     // A payment may also name the earliest its payout goes (shared piece 4: a plan's payout waits until 48 hours
@@ -286,7 +322,9 @@ async function processPendingTransfers() {
         // completed and confirmed) can never apply; it is released straight into the owner's wallet.
         const invoicePayment = isInvoicePayment(payment);
         const protectedWalletPayment = ['gig_payment', 'tip'].includes(payment.payment_type) && !invoicePayment;
-        const admittedStates = protectedWalletPayment ? ['captured_hold', 'refunded_partial', 'refunded_full'] : ['captured_hold'];
+        const partialPlanPayment = isPartiallyRefundedPlanPayment(payment, fresh?.payment_status);
+        const admittedStates = protectedWalletPayment ? ['captured_hold', 'refunded_partial', 'refunded_full']
+          : partialPlanPayment ? ['refunded_partial'] : ['captured_hold'];
         if (!fresh || !admittedStates.includes(fresh.payment_status) || (fresh.dispute_id && fresh.dispute_status !== 'won')) {
           logger.info('processPendingTransfers: skipping (state changed)', {
             paymentId: payment.id,
@@ -304,6 +342,11 @@ async function processPendingTransfers() {
             amount: transferAmount,
           });
           errorCount++;
+          continue;
+        }
+
+        if (partialPlanPayment) {
+          if (await releasePartiallyRefundedPlanPayment(payment)) successCount++; else skipCount++;
           continue;
         }
 

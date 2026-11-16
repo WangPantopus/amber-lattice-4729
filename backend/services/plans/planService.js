@@ -720,7 +720,8 @@ function buildCard(plan, viewer, ctx) {
   if (plan.business_user_id && plan.deal && ctx.dealsByHost?.get(hostId)) {
     const deal = require('./planDeals').cardView(plan.deal, {
       role, going, plan, paid: Boolean(card.price),
-      request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null } : null,
+      request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null,
+        unit_price_cents: ctx.moneyByRequest?.get(myRequest.id)?.unit_price_cents ?? null } : null,
       firstName: role === 'guest' && ctx.users.get(viewer.id) ? firstName(ctx.users.get(viewer.id)) : null,
     });
     if (deal) card.deal = deal;
@@ -780,7 +781,9 @@ function addBusinessFields(card, plan, viewer, ctx) {
   if (viewer.origin) card.distance_band = rules.distanceBandFromMeters(rules.distanceMeters(viewer.origin, exact));
   // Null is "Free". A price (B2) while the business has the switch.
   const paidOn = Boolean(plan.price_cents && ctx.paidByHost?.get(String(plan.host_user_id)));
-  card.price = paidOn ? require('./planPaid').priceView(plan) : null;
+  // What one spot costs now: with deals on, a deal for everyone or a group price that unlocked (B4).
+  const unitNow = paidOn && plan.deal && ctx.dealsByHost?.get(String(plan.host_user_id)) ? require('./planDeals').spotPriceNow(plan) : plan.price_cents;
+  card.price = paidOn ? require('./planPaid').priceView(plan, unitNow) : null;
   if (paidOn) {
     const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
     const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;

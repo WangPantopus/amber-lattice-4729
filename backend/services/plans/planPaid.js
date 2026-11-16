@@ -137,28 +137,48 @@ function perOf(plan) {
   return plan.kind === 'playdate' ? 'family' : 'person';
 }
 
-/** The card's price: "$18", "$18 a person", and the line under the join button with the refund rule. */
-function priceView(plan) {
+/**
+ * The card's price: "$18", "$18 a person", and the line under the join button with the refund rule. `unitCents` is
+ * what one spot costs now (B4: a deal for everyone, or a group price that unlocked); below the price it adds
+ * `was_cents`, the price struck through.
+ */
+function priceView(plan, unitCents = plan.price_cents) {
   if (!plan.price_cents) return null;
-  const line = `${priceText(plan.price_cents)} a ${perOf(plan)}`;
+  const unit = unitCents || plan.price_cents;
+  const line = `${priceText(unit)} a ${perOf(plan)}`;
   const refund = refundText(plan);
   return {
-    cents: plan.price_cents, currency: plan.currency || 'USD', per: perOf(plan),
-    text: priceText(plan.price_cents), line, join_text: `${line}. ${refund}`,
+    cents: unit, currency: plan.currency || 'USD', per: perOf(plan),
+    ...(unit < plan.price_cents ? { was_cents: plan.price_cents, was_text: priceText(plan.price_cents) } : {}),
+    text: priceText(unit), line, join_text: `${line}. ${refund}`,
     refund_until: refundUntilOf(plan), refund_text: refund,
   };
+}
+
+/** What one spot costs now: the deal's price while the business has deals on (B4), otherwise the price. */
+async function unitPriceNow(plan) {
+  if (!plan.price_cents) return null;
+  if (!plan.deal || !(await require('./planDeals').enabledFor(plan.host_user_id))) return plan.price_cents;
+  return require('./planDeals').spotPriceNow(plan);
+}
+
+/** A group price that fell short (B4): anyone may leave with all of it back until the plan starts. */
+function shortGroupPrice(plan, now = Date.now()) {
+  const deal = plan?.deal;
+  return Boolean(deal && deal.scope === 'group' && deal.state === 'short' && require('./planDeals').isSpotDeal(deal)
+    && plan.post?.event_date && new Date(plan.post.event_date).getTime() > now);
 }
 
 /**
  * What leaving now gives back (P10): all that is left of the payment before refund_until, or while the business has
  * moved the plan and asked whether the guest still comes; otherwise nothing. The card's leave line and onLeave agree.
  */
-function leaveBackCents(request, { reason = null, now = Date.now() } = {}) {
+function leaveBackCents(request, { reason = null, plan = null, now = Date.now() } = {}) {
   const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0));
   if (left === 0) return 0;
   const inWindow = request.refund_until && new Date(request.refund_until).getTime() > now;
   const moved = Boolean(request.reconfirm_requested_at) && (request.reconfirmed == null || reason === 'not_coming');
-  return inWindow || moved ? left : 0;
+  return inWindow || moved || shortGroupPrice(plan, now) ? left : 0;
 }
 
 /** The receipt in Mail, under Receipts: a link the apps already open (a Mail piece), or null when there is none. */
@@ -169,7 +189,7 @@ function receiptView(mailId) {
 /** What a guest who paid reads on the plan: "Paid $18.00", the receipt, and what leaving gives back. */
 function paidView(plan, request, receiptMailId = null) {
   if (!request || !request.payment_id || !request.paid_cents) return null;
-  const back = leaveBackCents(request);
+  const back = leaveBackCents(request, { plan });
   return {
     cents: request.paid_cents,
     text: `Paid ${moneyText(request.paid_cents)}`,
@@ -185,9 +205,9 @@ function paidView(plan, request, receiptMailId = null) {
  * What joining costs for this party (POST /api/plans/:id/requests/quote): the sheet's amounts, worked out here so an
  * app never multiplies a price. No side effect. `group` is a group price's sentence (B4); null without one.
  */
-function quoteFor(plan, { party_size: partySize, kids_count: kidsCount }) {
+function quoteFor(plan, { party_size: partySize, kids_count: kidsCount }, { unitCents = plan.price_cents, dealsOn = false, going = 0 } = {}) {
   const spots = rules.seatsFor(plan, partySize, kidsCount);
-  const each = plan.price_cents;
+  const each = unitCents || plan.price_cents;
   const total = each * spots;
   return {
     spots,
@@ -196,9 +216,26 @@ function quoteFor(plan, { party_size: partySize, kids_count: kidsCount }) {
     each_text: spots === 1 ? priceText(each) : `${priceText(each)} each`,
     total_cents: total,
     total_text: moneyText(total),
-    group: null,
+    group: dealsOn ? groupQuote(plan, spots, going) : null,
     refund_text: refundText(plan),
   };
+}
+
+/**
+ * P1's group price card (B4): open, "If 10 are in by Thursday at 6:00 PM, everyone pays $14 and $4.00 comes back to
+ * your card." (the amount for this party); unlocked, "Group price: $14". Null with no group price, or once it fell
+ * short.
+ */
+function groupQuote(plan, spots, going) {
+  const deals = require('./planDeals');
+  const deal = plan.deal;
+  if (!deal || deal.scope !== 'group' || !deals.isSpotDeal(deal) || !['open', 'unlocked'].includes(deal.state)) return null;
+  const groupPrice = deals.groupPriceOf(deal, plan.price_cents);
+  const base = { state: deal.state, in: going, size: deal.group_size, price_cents: groupPrice };
+  if (deal.state === 'unlocked') return { ...base, text: `Group price: ${priceText(groupPrice)}` };
+  const when = require('./planNotifications').whenText(deal.group_by, rules.timezoneForPlan(plan), { long: true, at: true });
+  const back = (plan.price_cents - groupPrice) * spots;
+  return { ...base, text: `If ${deal.group_size} are in by ${when}, everyone pays ${priceText(groupPrice)} and ${moneyText(back)} comes back to your card.` };
 }
 
 // ── Joining ──────────────────────────────────────────────────
@@ -213,10 +250,11 @@ async function payingFields(plan, viewerId, wayIn, { holdMs = HOLD_MS } = {}) {
   const businessCustomers = require('../businessCustomers');
   const basis = basisOf(wayIn);
   return {
-    unit_price_cents: plan.price_cents,
+    // What one spot costs now (B4: the deal's price for everyone, or the group price once it unlocked).
+    unit_price_cents: await unitPriceNow(plan),
     fee_basis: basis,
     fee_pct: (await stripeService().priceSale({ businessUserId: plan.business_user_id, soldType: 'plan_spot',
-      amountCents: plan.price_cents, basis })).feePct,
+      amountCents: (await unitPriceNow(plan)) || plan.price_cents, basis })).feePct,
     refund_until: refundUntilOf(plan),
     hold_expires_at: new Date(Date.now() + holdMs).toISOString(),
     new_to_business: await businessCustomers.isNewToBusiness(plan.business_user_id, viewerId),
@@ -319,6 +357,16 @@ async function finalize(postId, requestId, { io = null } = {}) {
     .eq('id', request.id).in('status', ['paying', 'expired']).select(planService.REQUEST_COLUMNS);
   if (!moved || moved.length === 0) return 'in';
   await stripeService().settleCardFeeShare(request.payment_id).catch((err) => logger.warn('plans.paid.card_fee_later', { paymentId: request.payment_id, error: err.message }));
+  // Money off the spot (B4): a deal price paid is the deal used; a group price that unlocked while they paid comes back.
+  const seats = rules.seatsFor(plan, request.party_size, request.kids_count);
+  if (request.unit_price_cents && request.unit_price_cents < plan.price_cents) {
+    await supabaseAdmin.from('PlanRequest').update({ deal_cents: (plan.price_cents - request.unit_price_cents) * seats, deal_used_at: stamp })
+      .eq('id', request.id).is('deal_used_at', null);
+  }
+  else if (request.unit_price_cents && (await unitPriceNow(plan)) < request.unit_price_cents) {
+    await groupRefund(plan, { ...moved[0], payment_id: request.payment_id, unit_price_cents: request.unit_price_cents,
+      paid_cents: payment.amount_total, refunded_cents: request.refunded_cents || 0 });
+  }
   await fileReceipt(plan, request, payment);
   await require('../businessCustomers').recordBusinessContact({ businessUserId: plan.business_user_id, userId: request.user_id,
     feature: 'plan', wayIn: request.way_in, basis: request.fee_basis, at: stamp });
@@ -438,7 +486,8 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
       actorId: actorMode === 'payer' ? payment.payer_id : actorId, actorMode,
       requestId: uuidFrom(`plan-refund:${request.id}:${payment.id}:${reason}`),
     });
-    const captured = CAPTURED.includes(payment.payment_status);
+    // A payment already refunded in part (a group price came back, B4) still holds what is left of it.
+    const captured = CAPTURED.includes(payment.payment_status) || payment.payment_status === 'refunded_partial';
     if (captured && result?.success) {
       await supabaseAdmin.from('PlanRequest').update({ refunded_cents: (request.refunded_cents || 0) + left, updated_at: new Date().toISOString() })
         .eq('id', request.id);
@@ -457,7 +506,109 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
   }
 }
 
-const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at, reconfirmed';
+/**
+ * A group price that unlocked (B4, contract 10.4): the difference between what this guest paid a spot and the price
+ * now goes back to their card, once (the request key `plan-group:<request id>`), through paymentRefundService. The
+ * business's share is re-priced on what the guest paid in the end. Answers the cents returned (0 when nothing was
+ * owed or it couldn't complete now; it is tried again on the next tick).
+ */
+async function groupRefund(plan, request, { notify = true } = {}) {
+  if (!request?.payment_id || !request.unit_price_cents || request.deal_used_at) return 0;
+  const now = require('./planDeals').spotPriceNow(plan);
+  const seats = rules.seatsFor(plan, request.party_size, request.kids_count);
+  const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0));
+  const back = Math.min(left, Math.max(0, (request.unit_price_cents - now) * seats));
+  if (back <= 0) return 0;
+  try {
+    const result = await require('../paymentRefundService').create({
+      paymentId: request.payment_id, amount: back, reason: 'requested_by_customer', description: 'Plans: group_price',
+      actorId: null, actorMode: 'policy', requestId: uuidFrom(`plan-group:${request.id}`),
+    });
+    if (!result?.success) return 0;
+    const stamp = new Date().toISOString();
+    const { data: marked } = await supabaseAdmin.from('PlanRequest')
+      .update({ refunded_cents: (request.refunded_cents || 0) + back, deal_cents: back, deal_used_at: stamp, updated_at: stamp })
+      .eq('id', request.id).is('deal_used_at', null).select('id');
+    if (!marked || marked.length === 0) return 0;
+    await repriceAfterPartialRefund(request.payment_id);
+    if (notify) {
+      await require('./planNotifications').notify({
+        userId: request.user_id, type: 'plan_refunded', plan, recipientIsIn: true,
+        title: `${moneyText(back)} is on its way back to your card`,
+        body: `${plan.post.title} reached its group price. A bank can take a few days.`,
+        link: `/plans/${plan.post_id}`, metadata: { request_id: request.id, amount_cents: back, reason: 'group_price' },
+        idempotencyKey: `plan-group-price:${request.id}`,
+      });
+    }
+    return back;
+  } catch (err) {
+    logger.warn('plans.paid.group_refund_failed', { planId: plan.post_id, requestId: request.id, error: err.message, code: err.code });
+    return 0;
+  }
+}
+
+/**
+ * Every paid guest of a plan whose group price unlocked (or whose smaller deal off the spot is given after it fell
+ * short) and who is still owed the difference: each gets it back once. Run by the Plans tick at the settle and again
+ * on later ticks for any that couldn't complete. Answers [{ request, back }] for those returned now.
+ */
+async function groupRefunds(plan, { notify = true } = {}) {
+  if (!plan.price_cents || !(await enabledFor(plan.host_user_id))) return [];
+  const { data, error } = await supabaseAdmin.from('PlanRequest').select(MONEY_COLUMNS)
+    .eq('post_id', plan.post_id).eq('status', 'accepted').not('payment_id', 'is', null).is('deal_used_at', null)
+    .gt('unit_price_cents', require('./planDeals').spotPriceNow(plan) || 0);
+  if (error) throw new Error(`Failed to read who paid: ${error.message}`);
+  const out = [];
+  for (const request of data || []) {
+    const back = await groupRefund(plan, request, { notify });
+    if (back > 0) out.push({ request, back });
+  }
+  return out;
+}
+
+/**
+ * After part of a plan payment came back (a group price, B4; a staff refund of part of a bill, B5), the business's
+ * share is re-priced on what the guest paid in the end (contract 10.4): Pantopus's percent on the sale paid, and where
+ * the business bears the card fee, its share in proportion to what was paid (round(fee × paid ÷ charged)); Pantopus
+ * absorbs the rest. A tip stays whole (a partial refund leaves it alone). Only plan_spot and plan_bill payments are
+ * touched; the payout of such a payment goes through plan_payment_release_after_partial_refund. Answers the payment.
+ */
+async function repriceAfterPartialRefund(paymentId) {
+  const svc = stripeService();
+  let { data: payment } = await supabaseAdmin.from('Payment').select('*').eq('id', paymentId).maybeSingle();
+  if (!payment || payment.payment_type !== 'plan_payment' || !['plan_spot', 'plan_bill'].includes(payment.sold_type)) return payment;
+  if (payment.payment_status !== 'refunded_partial' || !(payment.refunded_amount > 0)) return payment;
+  if (payment.metadata?.card_fee_by === 'business' && !payment.metadata?.card_fee_reported_at) {
+    payment = (await svc.settleCardFeeShare(paymentId)) || payment;
+    if (!payment.metadata?.card_fee_reported_at) throw new Error('The card fee is not reported yet');
+  }
+  const priced = repricedShare(payment);
+  const { data, error } = await supabaseAdmin.from('Payment').update({
+    amount_platform_fee: priced.platformFeeCents,
+    amount_to_payee: priced.toPayeeCents,
+    metadata: { ...(payment.metadata || {}), repriced_refunded_amount: payment.refunded_amount,
+      business_card_fee_cents: priced.businessCardFeeCents, original_platform_fee_cents: payment.metadata?.original_platform_fee_cents ?? payment.amount_platform_fee,
+      original_to_payee_cents: payment.metadata?.original_to_payee_cents ?? payment.amount_to_payee },
+  }).eq('id', paymentId).eq('refunded_amount', payment.refunded_amount).select().maybeSingle();
+  if (error) throw new Error(`Failed to re-price the payment: ${error.message}`);
+  return data || payment;
+}
+
+/** The re-priced share of a plan payment refunded in part (see repriceAfterPartialRefund). Pure. */
+function repricedShare(payment) {
+  const charged = payment.amount_total;
+  const paidEnd = charged - (payment.refunded_amount || 0);
+  const tip = Math.min(payment.tip_cents || 0, paidEnd);
+  const saleEnd = paidEnd - tip;
+  const platformFeeCents = Math.floor((saleEnd * Number(payment.fee_pct || 0)) / 100);
+  const cardFee = Number(payment.metadata?.card_fee_cents ?? payment.amount_processing_fee ?? 0);
+  const businessCardFeeCents = payment.metadata?.card_fee_by === 'business' ? Math.round((cardFee * paidEnd) / charged) : 0;
+  const toPayeeCents = paidEnd - platformFeeCents - businessCardFeeCents;
+  if (toPayeeCents < 0) throw new Error('The re-priced share is below zero');
+  return { paidEndCents: paidEnd, platformFeeCents, businessCardFeeCents, toPayeeCents };
+}
+
+const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at, reconfirmed, party_size, kids_count, unit_price_cents, deal_used_at';
 async function moneyRows(requestIds) {
   const ids = (requestIds || []).filter(Boolean);
   if (ids.length === 0) return [];
@@ -476,9 +627,10 @@ async function onLeave(plan, requestId, { reason, wasStatus }) {
   if (!request) return 0;
   request.status = wasStatus || request.status;
   if (request.status === 'paying') return refund(plan, request, { reason: 'abandoned', actorMode: 'payer' });
-  if (leaveBackCents(request, { reason }) === 0) return 0;
+  if (leaveBackCents(request, { reason, plan }) === 0) return 0;
   const inWindow = request.refund_until && new Date(request.refund_until).getTime() > Date.now();
-  return refund(plan, request, { reason: inWindow ? 'left_in_time' : 'moved', actorMode: 'payer' });
+  const reasonNow = inWindow ? 'left_in_time' : shortGroupPrice(plan) ? 'group_short' : 'moved';
+  return refund(plan, request, { reason: reasonNow, actorMode: 'payer' });
 }
 
 /** The business cancelled the plan or removed the guest: everything back. */
@@ -520,6 +672,7 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 
 module.exports = {
   FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundUntilOf, mayCharge, assertMayCharge,
-  checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, basisOf, payingFields, paymentFor,
+  checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, groupQuote, unitPriceNow, shortGroupPrice,
+  groupRefund, groupRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
   finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED,
 };
