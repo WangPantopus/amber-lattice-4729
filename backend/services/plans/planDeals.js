@@ -354,6 +354,8 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
     // What the business's form fills in for "Change", and whether it still may (nobody in yet).
     out.form = {
       scope: deal.scope, kind: deal.kind, item: deal.item || null,
+      // Money off the spot (B4): how much, and what it is off.
+      value: deal.value ?? null, applies_to: deal.applies_to ?? null,
       group_size: deal.group_size ?? null, group_by: deal.group_by ?? null, if_short: deal.if_short ?? null,
     };
     out.can_change = going === 0;
