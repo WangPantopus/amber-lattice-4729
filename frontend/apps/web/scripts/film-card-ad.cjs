@@ -31,6 +31,10 @@ const sharp = require(require.resolve('sharp', { paths: [path.dirname(require.re
 
 const SHOTS = require(path.resolve(argument('shots', path.join(__dirname, 'card-ad-shots.cjs'))));
 const FPS = SHOTS.fps;
+/** A finger's touches reach the page 120 times a second of the table's time, as a phone's screen samples them, however the film's frames and steps fall. */
+const TOUCH_EVERY = 1000 / 120;
+/** The shutter for the fast moments: four steps over half a frame (180°, as a film camera), blended. */
+const SHUTTER = 0.5;
 /** The serif the table prints in (CardTable.module.css --serif): the ad's words are set in it. */
 const SERIF = "ui-serif, 'New York', Georgia, 'Times New Roman', serif";
 const CREAM = '#f6ecd9';
@@ -408,8 +412,14 @@ class Take {
     for (const g of this.gestures) {
       if (g.state === 'waiting' && t >= g.t0) {
         const a = await this.page.evaluate(anchors);
+        g.missing = Object.entries(a).filter(([, v]) => v === null).map(([k]) => k);
         if (process.env.AD_DEBUG) console.log(`\n${this.name} touch at ${g.at}s`, JSON.stringify(Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v && v.x !== undefined ? [Math.round(v.x), Math.round(v.y), Math.round(v.w), Math.round(v.h)] : v && k === 'g' ? 'g' : v]))));
-        const points = g.path(a, a.g || {});
+        let points;
+        try {
+          points = g.path(a, a.g || {});
+        } catch (error) {
+          throw new Error(`${this.name}: the touch at ${g.at}s needs something that isn't on the table (missing: ${g.missing.join(', ')})`);
+        }
         g.points = points;
         g.end = g.kind === 'press' ? g.hold : points[points.length - 1][0];
         g.last = pathAt(points, 0);
@@ -418,13 +428,17 @@ class Take {
       }
       if (g.state === 'down') {
         const at = t - g.t0;
-        const p = pathAt(g.points, Math.min(at, g.end));
-        if (Math.hypot(p.x - g.last.x, p.y - g.last.y) > 0.01) {
-          await this.touch('touchMove', p);
-          g.last = p;
+        // A move goes to the page at the screen's own rate, and always at the end.
+        if (at >= g.end || t - (g.sentAt ?? g.t0) >= TOUCH_EVERY - 1e-6) {
+          const p = pathAt(g.points, Math.min(at, g.end));
+          if (Math.hypot(p.x - g.last.x, p.y - g.last.y) > 0.01) {
+            await this.touch('touchMove', p);
+            g.last = p;
+          }
+          g.sentAt = t;
         }
         if (at >= g.end) {
-          await this.touch('touchEnd', p);
+          await this.touch('touchEnd', g.last);
           g.state = 'up';
           g.upAt = t;
         }
@@ -519,7 +533,7 @@ class Take {
       for (const sound of fresh) this.sounds.push({ name: path.basename(new URL(sound.src).pathname, '.mp3'), table: sound.at, second: s });
     }
     this.t = t;
-    if (process.env.AD_DEBUG && Math.abs(s * 10 - Math.round(s * 10)) < 1e-6) {
+    if (process.env.AD_DEBUG && Math.abs(s * 10 - Math.round(s * 10)) < 0.022) {
       const state = await this.page.evaluate(() => { const e = window.__cardTable; return e ? { step: e.step, send: e.send, pull: +e.v.pull.x.toFixed(3), lay: +e.v.lay.x.toFixed(3), env: +e.v.envDeg.x.toFixed(1), deg: +e.v.deg.x.toFixed(1), drag: e.dragging?.mode ?? null } : null; });
       console.log(`${this.name} ${s.toFixed(1)}s t=${t.toFixed(0)} ${JSON.stringify(state)}`);
     }
@@ -537,7 +551,7 @@ class Take {
     return raw.raw().toBuffer();
   }
 
-  /** Is the take's second `s` one of its fast moments, filmed in four steps and blended? */
+  /** Is the take's second `s` one of its fast moments, filmed in four steps over a 180° shutter and blended? */
   blurred(s) {
     return (this.def.blur || []).some(([a, b]) => s >= a && s < b);
   }
@@ -557,7 +571,7 @@ class Take {
       if (this.blurred(s)) {
         const sum = new Float32Array(ow * oh * 3);
         for (let k = 0; k < 4; k += 1) {
-          const raw = await this.step(s + (k - 1.5) / (4 * FPS), capture);
+          const raw = await this.step(s + ((k - 1.5) / 4) * (SHUTTER / FPS), capture);
           if (raw) for (let p = 0; p < sum.length; p += 1) sum[p] += raw[p];
         }
         if (capture) {
@@ -793,7 +807,7 @@ function story() {
 
 async function stills({ browser, server, shapeName, work, out, art }) {
   const shape = { ...SHAPES[shapeName] };
-  const cut = SHOTS.cuts[30];
+  const cut = SHOTS.cuts.main;
   const plan = cutPlan(cut);
   const s0 = story();
   // Which frame of which take each still needs.
@@ -868,9 +882,9 @@ async function filmTakes({ browser, server, shapeName, work, art }) {
   }
 }
 
-/** Runs ffmpeg and throws with its words if it fails. */
-function ffmpeg(args) {
-  const run = require('child_process').spawnSync('ffmpeg', ['-v', 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
+/** Runs ffmpeg and throws with its words if it fails (`loud`: keep its information lines, for readings like loudness). */
+function ffmpeg(args, loud = false) {
+  const run = require('child_process').spawnSync('ffmpeg', ['-hide_banner', '-v', loud ? 'info' : 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (run.status !== 0) throw new Error(`ffmpeg failed: ${run.stderr.slice(-2000)}`);
   return run;
 }
@@ -883,7 +897,7 @@ const TAG_FRAMES = 'setparams=range=tv:colorspace=bt709:color_primaries=bt709:co
  * A cut from filmed takes: composed frames into a ProRes master, then the table's sounds laid in at the frames they
  * fired on, the master kept with its sound, and the H.264 film made from it.
  */
-async function filmCut({ browser, server, shapeName, work, out, name }) {
+async function filmCut({ browser, server, shapeName, work, out, name, music }) {
   const shape = { ...SHAPES[shapeName] };
   const cut = SHOTS.cuts[name];
   if (!cut) throw new Error(`No cut ${name}: ${Object.keys(SHOTS.cuts).join(', ')}.`);
@@ -894,7 +908,8 @@ async function filmCut({ browser, server, shapeName, work, out, name }) {
   fs.mkdirSync(out, { recursive: true });
   const base = path.join(out, `cards-ad-${name}${/^\d+$/.test(name) ? 's' : ''}-${shapeName}`);
   const silent = `${base}-master-silent.mov`;
-  const master = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${w}x${h}`, '-r', String(FPS), '-i', '-',
+  const reuse = process.argv.includes('--reuse-picture') && fs.existsSync(silent);
+  const master = reuse ? null : spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${w}x${h}`, '-r', String(FPS), '-i', '-',
     '-vf', `scale=in_range=full:out_range=tv:out_color_matrix=bt709,format=yuv422p10le,${TAG_FRAMES}`, '-c:v', 'prores_ks', '-profile:v', '3', '-vendor', 'apl0', ...TAGS, silent],
   { stdio: ['pipe', 'inherit', 'inherit'] });
   const frames = Math.round(plan.length * FPS);
@@ -905,7 +920,7 @@ async function filmCut({ browser, server, shapeName, work, out, name }) {
     for (const sound of list) if (sound.second >= piece.from && sound.second < piece.to) sounds.push({ name: sound.name, at: piece.at + (sound.second - piece.from), take: piece.take, second: sound.second });
   }
   const sheet = [];
-  for (let j = 0; j < frames; j += 1) {
+  for (let j = 0; j < frames && !reuse; j += 1) {
     const s = j / FPS;
     const piece = [...plan.pieces].reverse().find((p) => s >= p.at - 1e-9);
     const frame = Math.min(Math.round((piece.from + (s - piece.at)) * FPS), Math.round(piece.to * FPS) - 1);
@@ -916,26 +931,86 @@ async function filmCut({ browser, server, shapeName, work, out, name }) {
     if (!master.stdin.write(rgb)) await new Promise((done) => { master.stdin.once('drain', done); });
     if (j % 60 === 0) process.stdout.write(`  cut ${name} ${s.toFixed(1)}s\r`);
   }
-  master.stdin.end();
-  await new Promise((done) => { master.on('close', done); });
+  if (master) {
+    master.stdin.end();
+    await new Promise((done) => { master.on('close', done); });
+  }
   await context.close();
 
-  // The sounds, each at the frame it fired on.
+  // The sounds, each at the frame it fired on; with --music, a music bed under them.
   const seconds = (frames / FPS).toFixed(4);
+  const length = frames / FPS;
   const inputs = ['-i', silent];
-  const mix = [];
+  const graph = [];
   sounds.forEach((sound, i) => {
     inputs.push('-i', path.join(WEB, 'public/holiday-cards/sounds', `${sound.name}.mp3`));
     const ms = Math.max(0, Math.round(sound.at * 1000));
     // As loud as the app plays them (0.85), raised by the cut's soundGain (dB): the same for all three, so their balance holds.
     const volume = 0.85 * 10 ** ((cut.soundGain || 0) / 20);
-    mix.push(`[${i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${volume.toFixed(4)},adelay=${ms}|${ms}[s${i}]`);
+    graph.push(`[${i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${volume.toFixed(4)},adelay=${ms}|${ms}[s${i}]`);
   });
-  if (sounds.length) mix.push(`${sounds.map((_, i) => `[s${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[a]`);
-  else { inputs.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'); mix.push(`[1:a]atrim=0:${seconds}[a]`); }
+  if (sounds.length) graph.push(`${sounds.map((_, i) => `[s${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[sfx]`);
+  else { inputs.push('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'); graph.push(`[1:a]atrim=0:${seconds}[sfx]`); }
+  // The ducking's key: the same sounds a little early, so the music is already down when each one lands.
+  const ahead = (cut.music?.lookahead ?? 0.08) * 1000;
+  const keyChain = sounds.map((sound, i) => {
+    const ms = Math.max(0, Math.round(sound.at * 1000 - ahead));
+    return `[${i + 1}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,volume=${(0.85 * 10 ** ((cut.soundGain || 0) / 20)).toFixed(4)},adelay=${ms}|${ms}[k${i}]`;
+  });
+  const musicFile = music && cut.music ? music : null;
+  let audioLabel = '[sfx]';
+  if (musicFile) {
+    // The bed: brought to the cut's bed loudness, a breath where the picture dips, ended with a fade; it ducks under
+    // each of the table's sounds so they stay clearly above it. Then the whole mix is set to the cut's loudness.
+    const measured = ffmpeg(['-nostats', '-i', musicFile, '-af', 'ebur128', '-f', 'null', '-'], true).stderr;
+    const musicLoudness = Number((measured.slice(measured.lastIndexOf('Summary:')).match(/I:\s+(-?[\d.]+) LUFS/) || [])[1]);
+    const bedGain = (cut.music.bed ?? -14.5) - musicLoudness;
+    const m = sounds.length + (sounds.length ? 1 : 2);
+    inputs.push('-i', musicFile);
+    const breaths = (cut.music.breaths || []).map(([a, b, c, d, depth]) => {
+      const floor = 10 ** (-depth / 20);
+      return `(1-${(1 - floor).toFixed(4)}*clip((t-${a})/${(b - a).toFixed(3)},0,1)*(1-clip((t-${c})/${(d - c).toFixed(3)},0,1)))`;
+    });
+    const fade = cut.music.fade ?? 1.6;
+    graph.push(`[${m}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${seconds},asetpts=PTS-STARTPTS,volume=${bedGain.toFixed(2)}dB`
+      + `${breaths.length ? `,volume='${breaths.join('*')}':eval=frame` : ''},afade=t=out:st=${(length - fade).toFixed(3)}:d=${fade}[bed]`);
+    if (sounds.length) {
+      // Each sound's input feeds both the mix and the early key.
+      sounds.forEach((_, i) => {
+        const at = graph.findIndex((line) => line.startsWith(`[${i + 1}:a]`));
+        graph[at] = graph[at].replace(`[${i + 1}:a]`, `[in${i}]`);
+        graph.unshift(`[${i + 1}:a]asplit=2[in${i}][kin${i}]`);
+        keyChain[i] = keyChain[i].replace(`[${i + 1}:a]`, `[kin${i}]`);
+      });
+      graph.push(...keyChain, `${sounds.map((_, i) => `[k${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${seconds}[key]`);
+      graph.push('[sfx]asplit=2[sfx1][sfxcheck]');
+    } else graph.push('[sfx]asplit=3[sfx1][key][sfxcheck]');
+    graph.push(`[bed][key]sidechaincompress=threshold=${cut.music.duckThreshold ?? 0.02}:ratio=${cut.music.duckRatio ?? 8}:attack=5:release=${cut.music.duckRelease ?? 350}:knee=4[ducked]`);
+    graph.push('[ducked]asplit=2[ducked1][bedcheck]');
+    graph.push('[ducked1][sfx1]amix=inputs=2:normalize=0:duration=first[mix]');
+    // For the check: the sounds alone and the ducked music alone, before the mix is set to its loudness.
+    const sinks = '[sfxcheck]anullsink;[bedcheck]anullsink';
+    ffmpeg([...inputs, '-filter_complex', `${graph.join(';')};[mix]anullsink`, '-map', '[sfxcheck]', '-c:a', 'pcm_f32le', `${base}-check-sounds.wav`, '-map', '[bedcheck]', '-c:a', 'pcm_f32le', `${base}-check-music.wav`]);
+    // Two passes of loudnorm: measure, then a straight gain to the target (it limits only if the peaks need it).
+    const target = `I=${cut.music.loudness ?? -14}:TP=${cut.music.truePeak ?? -1}:LRA=11`;
+    const first = ffmpeg(['-nostats', ...inputs, '-filter_complex', `${graph.join(';')};${sinks};[mix]loudnorm=${target}:print_format=json[out]`, '-map', '[out]', '-f', 'null', '-'], true).stderr;
+    const stats = JSON.parse(first.slice(first.lastIndexOf('{'), first.lastIndexOf('}') + 1));
+    graph.push(`[mix]loudnorm=${target}:measured_I=${stats.input_i}:measured_TP=${stats.input_tp}:measured_LRA=${stats.input_lra}:measured_thresh=${stats.input_thresh}:offset=${stats.target_offset}:linear=true,aresample=48000[final]`, sinks);
+    audioLabel = '[final]';
+    fs.writeFileSync(`${base}-mix.json`, JSON.stringify({ music: path.basename(musicFile), musicLoudness, bedGain, soundGain: cut.soundGain, loudnorm: stats }, null, 1));
+  } else {
+    graph.push('[sfx]anull[final]');
+    audioLabel = '[final]';
+  }
+  if (!musicFile) {
+    const split = graph.findIndex((line) => line.startsWith('[sfx]asplit='));
+    if (split >= 0) graph.splice(split, 1);
+    for (let i = graph.length - 1; i >= 0; i -= 1) if (/^\[k\d+\]|^\[\d+:a\]asplit|\[key\]$|^\[sfxspare\]/.test(graph[i])) graph.splice(i, 1);
+  }
+  const mix = graph;
   const withSound = `${base}-master.mov`;
-  ffmpeg([...inputs, '-filter_complex', mix.join(';'), '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', seconds, withSound]);
-  fs.rmSync(silent);
+  ffmpeg([...inputs, '-filter_complex', mix.join(';'), '-map', '0:v', '-map', audioLabel, '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', seconds, withSound]);
+  if (!process.argv.includes('--keep-picture') && !process.argv.includes('--reuse-picture')) fs.rmSync(silent);
   // The film: H.264 High, 4:2:0, limited range, BT.709, about 18 Mbps, AAC 256 kbps 48 kHz, fast start.
   const film = `${base}.mp4`;
   ffmpeg(['-i', withSound, '-vf', `scale=in_range=tv:out_range=tv,format=yuv420p,${TAG_FRAMES}`, '-c:v', 'libx264', '-preset', 'slow', '-profile:v', 'high', '-level:v', '4.2',
@@ -945,7 +1020,7 @@ async function filmCut({ browser, server, shapeName, work, out, name }) {
   const tw = shape.mobile ? 180 : 320;
   const th = Math.round((tw * h) / w);
   const cols = shape.mobile ? 12 : 6;
-  await sharp({ create: { width: cols * (tw + 4), height: Math.ceil(sheet.length / cols) * (th + 4), channels: 3, background: '#111' } })
+  if (sheet.length) await sharp({ create: { width: cols * (tw + 4), height: Math.ceil(sheet.length / cols) * (th + 4), channels: 3, background: '#111' } })
     .composite(sheet.map((t, i) => ({ input: t.image, left: (i % cols) * (tw + 4), top: Math.floor(i / cols) * (th + 4) }))).jpeg({ quality: 88 }).toFile(`${base}-sheet.jpg`);
   fs.writeFileSync(`${base}-sounds.json`, JSON.stringify(sounds, null, 1));
   return { film, master: withSound, sounds };
@@ -987,7 +1062,7 @@ async function filmCut({ browser, server, shapeName, work, out, name }) {
       const made = await stills({ browser, server: server.url, shapeName, work, out, art });
       console.log(`${made.length} stills in ${out}`);
     } else if (argument('cut')) {
-      const made = await filmCut({ browser, server: server.url, shapeName, work, out, name: argument('cut') });
+      const made = await filmCut({ browser, server: server.url, shapeName, work, out, name: argument('cut'), music: argument('music') ? path.resolve(argument('music')) : null });
       console.log(`${made.film}\n${made.master}\nsounds ${made.sounds.map((x) => `${x.name}@${x.at.toFixed(3)}s`).join(' ')}`);
     } else {
       await filmTakes({ browser, server: server.url, shapeName, work, art });

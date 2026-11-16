@@ -45,7 +45,7 @@ const takes = {
   open1: {
     scene: 'open',
     signed: true,
-    length: 3.2,
+    length: 3.6,
     clock: 618265,
     start: { go: 'back' },
     speed: [[0, 1], [0.25, 1], [0.36, 0.25], [1.2, 0.25], [1.5, 1]],
@@ -79,21 +79,24 @@ const takes = {
   // Shots 3 and 4a-4d: Sam writes, signs, puts it in the envelope, closes the flap, presses the seal; it's addressed and goes.
   send: {
     scene: 'send',
-    length: 10.2,
+    length: 11.5,
     clock: 655100,
     start: { send: true },
-    speed: [[0, 1], [3.0, 1], [3.5, 1.2], [4.45, 1.2], [4.6, 1], [5.68, 1], [5.78, 0.5], [6.88, 0.5], [7.0, 1], [7.1, 1.65], [7.42, 1.65], [7.52, 1.2], [7.9, 1.2], [8.0, 1.12], [9.45, 1.12], [9.55, 2.3], [9.82, 2.3], [9.92, 1.3], [10.2, 1.3]],
-    view: [{ at: 0, z: 1 }, { at: 5.25, z: 1 }, { at: 5.68, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 7.1, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 7.6, z: 1 }],
-    write: { from: 0.25, to: 1.55 },
-    sign: { from: 1.75, to: 2.85, lift: 0.1 },
+    // The writing at an easy pace; the card in, the flap down; the press at half speed; then the address, stamp, postmark
+    // and gold mark at the app's own speed (only the beat before the turn and the wait before it leaves hurry).
+    speed: [[0, 1], [3.4, 1], [3.9, 1.2], [4.85, 1.2], [5.0, 1], [6.08, 1], [6.18, 0.5], [7.28, 0.5], [7.4, 1], [7.5, 1.3], [7.85, 1.3],
+      [7.95, 1], [10.35, 1], [10.45, 1.6], [10.85, 1.6], [10.95, 1], [11.5, 1]],
+    view: [{ at: 0, z: 1 }, { at: 5.65, z: 1 }, { at: 6.08, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 7.5, z: 1.6, focus: 'press', dy: { tall: -0.06 }, dx: { wide: -0.12 } }, { at: 8.0, z: 1 }],
+    write: { from: 0.25, to: 1.95 },
+    sign: { from: 2.15, to: 3.25, lift: 0.1 },
     gestures: [
-      { at: 3.0, kind: 'drag', path: (a, g) => [[0, a.card.x + 6, a.card.y + 0.22 * g.ch], [160, a.card.x + 5, a.card.y + 0.13 * g.ch],
+      { at: 3.4, kind: 'drag', path: (a, g) => [[0, a.card.x + 6, a.card.y + 0.22 * g.ch], [160, a.card.x + 5, a.card.y + 0.13 * g.ch],
         [330, a.card.x + 3, a.card.y - 0.02 * g.ch], [420, a.card.x + 2, a.card.y - 0.1 * g.ch]] },
-      { at: 4.58, kind: 'drag', path: (a, g) => [[0, a.flapIn.x + 3, a.flapIn.top + 0.22 * g.fd], [140, a.flapIn.x + 2, a.flapIn.top + 0.55 * g.fd],
+      { at: 4.98, kind: 'drag', path: (a, g) => [[0, a.flapIn.x + 3, a.flapIn.top + 0.22 * g.fd], [140, a.flapIn.x + 2, a.flapIn.top + 0.55 * g.fd],
         [280, a.flapIn.x + 1, a.flapIn.top + 1.05 * g.fd], [330, a.flapIn.x + 1, a.flapIn.top + 1.3 * g.fd]] },
-      { at: 5.72, kind: 'press', hold: 680, path: (a) => [[0, a.press.x + 3, a.press.y + 4]] },
+      { at: 6.12, kind: 'press', hold: 680, path: (a) => [[0, a.press.x + 3, a.press.y + 4]] },
     ],
-    blur: [[7.45, 8.2], [9.5, 10.2]],
+    blur: [[7.85, 8.65], [10.8, 11.5]],
   },
   // Shot 5a: Grandma's table, the sealed envelope; she tries the flap, it springs back. 5b dips to black over its end.
   sealed: {
@@ -113,22 +116,26 @@ const takes = {
   open: {
     scene: 'open',
     signed: true,
-    length: 11.6,
+    length: 13.95,
     clock: 731000,
     start: { arrive: true },
-    speed: [[0, 1], [1.98, 1], [2.06, 0.3], [2.65, 0.3], [2.85, 1], [7.0, 1], [7.25, 0.32], [8.0, 0.32], [8.3, 1]],
+    speed: [[0, 1], [1.98, 1], [2.06, 0.3], [2.65, 0.3], [2.85, 1], [9.0, 1], [9.12, 0.3], [9.9, 0.3], [10.2, 1]],
     view: [{ at: 0, z: 1 }],
     gestures: [
       { at: 1.05, kind: 'drag', path: (a, g) => [[0, a.front.x + 0.22 * g.ew, a.front.y + 6], [120, a.front.x + 0.1 * g.ew, a.front.y + 7],
         [230, a.front.x - 0.16 * g.ew, a.front.y + 9]] },
       { at: 1.95, kind: 'drag', path: (a, g) => [[0, a.seal.x + 4, a.seal.y + 8], [110, a.seal.x + 4, a.seal.y - 9],
         [330, a.seal.x + 3, a.seal.y - 0.12 * g.h], [520, a.seal.x + 2, a.seal.y - 0.2 * g.h], [600, a.seal.x + 2, a.seal.y - 0.27 * g.h]] },
-      { at: 4.2, kind: 'drag', path: (a, g) => [[0, a.card.x + 0.32 * g.cw, a.card.y + 0.05 * g.ch], [300, a.card.x + 0.12 * g.cw, a.card.y + 0.05 * g.ch],
+      // The light moves: held still on the card, then the finger draws the window light across the picture (the app's
+      // "press and hold, then move your finger").
+      { at: 4.5, kind: 'drag', path: (a, g) => [[0, a.card.x - 0.44 * g.cw, a.card.y + 0.04 * g.ch], [330, a.card.x - 0.44 * g.cw, a.card.y + 0.04 * g.ch],
+        [1000, a.card.x + 0.05 * g.cw, a.card.y - 0.08 * g.ch], [1600, a.card.x + 0.6 * g.cw, a.card.y - 0.2 * g.ch], [1750, a.card.x + 0.64 * g.cw, a.card.y - 0.21 * g.ch]] },
+      { at: 6.55, kind: 'drag', path: (a, g) => [[0, a.card.x + 0.32 * g.cw, a.card.y + 0.05 * g.ch], [300, a.card.x + 0.12 * g.cw, a.card.y + 0.05 * g.ch],
         [700, a.card.x - 0.3 * g.cw, a.card.y + 0.06 * g.ch], [900, a.card.x - 0.44 * g.cw, a.card.y + 0.06 * g.ch]] },
-      { at: 6.45, kind: 'drag', path: (a, g) => [[0, a.card.x + 0.3 * g.cw, a.card.y + 0.1 * g.ch], [60, a.card.x + 0.2 * g.cw, a.card.y + 0.1 * g.ch],
-        [120, a.card.x - 0.6 * g.cw, a.card.y + 0.12 * g.ch]] },
+      { at: 8.8, kind: 'drag', path: (a, g) => [[0, a.card.x + 0.4 * g.cw, a.card.y + 0.1 * g.ch], [60, a.card.x + 0.3 * g.cw, a.card.y + 0.1 * g.ch],
+        [120, a.card.x - 0.83 * g.cw, a.card.y + 0.12 * g.ch]] },
     ],
-    blur: [[1.15, 1.75], [6.5, 7.6]],
+    blur: [[1.15, 1.75], [8.85, 9.95]],
   },
 };
 
@@ -154,30 +161,36 @@ const END = { lines: ['Send a Christmas card.', 'Your first 3 are free.'], addre
 const cuts = {
   // Checkpoint 2: shots 4a-4d.
   seal: {
-    pieces: [['send', 3.0, 10.2]],
-    shots: { '4a': 0, '4b': 1.3, '4c': 2.4, '4d': 4.3 },
-    words: [[1.2, 4.25, W.seal], [5.2, 6.88, W.sealed]],
+    pieces: [['send', 3.4, 11.5]],
+    shots: { '4a': 0, '4b': 1.55, '4c': 2.65, '4d': 4.6 },
+    words: [[1.55, 4.15, W.seal], [5.1, 7.25, W.sealed]],
     dips: [],
     // The app's paper sounds are quiet by design (peaks about -18 dBFS): all three raised alike, peaks near -5 dBFS.
     soundGain: 13,
   },
-  30: {
-    pieces: [['open1', 0, 3.2], ['rack', 0, 2.6], ['send', 0, 10.2], ['sealed', 0, 2.4], ['open', 0, 11.6]],
-    shots: { 1: 0, 2: 3.2, 3: 5.8, '4a': 8.8, '4b': 10.1, '4c': 11.2, '4d': 13.1, '5a': 16.0, '5b': 17.5, '6a': 18.4, '6b': 19.4, '6c': 20.3, '6d': 22.5, '6e': 24.8, 7: 26.8 },
+  // The main cut (the founder, 11-16: it needn't be 30 seconds; show as much of the good parts as possible).
+  main: {
+    pieces: [['open1', 0, 3.6], ['rack', 0, 2.6], ['send', 0, 11.5], ['sealed', 0, 2.4], ['open', 0, 13.95]],
+    shots: { 1: 0, 2: 3.6, 3: 6.2, '4a': 9.6, '4b': 11.15, '4c': 12.25, '4d': 14.2, '5a': 17.7, '5b': 19.15, '6a': 20.1, '6b': 21.1, '6c': 22.0, light: 24.05, '6d': 26.65, '6e': 28.9, 7: 30.85 },
     words: [
-      [0.15, 1.75, W.open], [1.85, 3.15, W.phone], [3.3, 5.75, W.pick], [5.9, 7.4, W.write], [7.5, 8.75, W.sign],
-      [10.0, 13.05, W.seal], [14.0, 15.68, W.sealed], [16.35, 17.45, W.notYet], [17.6, 18.5, W.morning], [22.1, 23.8, W.mail],
+      // The first line ends before the card rises into it; "On their phone." waits until the card is laid down.
+      [0.15, 1.35, W.open], [2.6, 3.55, W.phone], [3.7, 6.15, W.pick], [6.3, 8.15, W.write], [8.25, 9.55, W.sign],
+      [11.15, 13.75, W.seal], [14.7, 16.85, W.sealed], [18.05, 19.15, W.notYet], [19.3, 20.2, W.morning], [23.8, 25.5, W.mail],
     ],
-    dips: [[17.45, 17.9, 18.4, 18.95, 0.05]],
-    soundGain: 13,
-    end: { at: 26.8, full: 27.6, ...END },
+    dips: [[19.15, 19.6, 20.1, 20.65, 0.05]],
+    // Under music the paper sounds need a little more to stay clearly above it.
+    soundGain: 15,
+    // With --music: the bed at -16 LUFS, ducking under each sound (starting 80 ms early), a breath of 9 dB as the
+    // picture dips, a fade to the end; the whole mix then set to -14 LUFS, true peak under -1 dB.
+    music: { bed: -16, lookahead: 0.08, duckThreshold: 0.015, duckRatio: 10, duckRelease: 420, breaths: [[19.0, 19.4, 20.15, 20.7, 9]], fade: 1.8, loudness: -14, truePeak: -1 },
+    end: { at: 30.85, full: 31.65, ...END },
   },
 };
 
-/** Checkpoint 1: one still per shot, at these seconds of the 30-second cut. */
+/** One still per shot, at these seconds of the main cut. */
 const stills = {
-  1: 0.78, 2: 4.95, 3: 8.32, '4a': 9.12, '4b': 10.75, '4c': 12.3, '4d': 15.0, '5a': 16.75, '5b': 18.05, '6a': 19.1,
-  '6b': 19.7, '6c': 21.4, '6d': 23.9, '6e': 26.3, 7: 29.0,
+  1: 0.78, 2: 5.35, 3: 8.9, '4a': 9.9, '4b': 11.55, '4c': 13.1, '4d': 16.4, '5a': 18.45, '5b': 19.85, '6a': 20.8,
+  '6b': 21.4, '6c': 23.1, light: 25.4, '6d': 28.0, '6e': 30.4, 7: 33.0,
 };
 
 module.exports = { fps: 60, story, takes, cuts, stills, words: W, end: END };
