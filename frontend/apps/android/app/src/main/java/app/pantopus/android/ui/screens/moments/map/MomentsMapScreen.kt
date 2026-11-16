@@ -686,7 +686,7 @@ private fun MomentsTopChrome(
             onToggle = heights.onToggle,
             onKey = heights.onKey,
             onCloseKey = heights.onCloseKey,
-            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4),
+            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4, end = Spacing.s4),
         )
     }
 }

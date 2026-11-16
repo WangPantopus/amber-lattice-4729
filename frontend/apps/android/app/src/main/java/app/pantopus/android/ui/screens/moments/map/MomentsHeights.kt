@@ -12,6 +12,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -147,9 +149,10 @@ internal fun MomentHeightTag(
 }
 
 /**
- * The time filter's chip first (`MomentsTimeFilter.kt`), once the map knows where it is; then, while heights are on for
- * you, the "Elevation" chip, the key's colors beside it, and the key under them.
+ * While heights are on for you, the "Elevation" chip, the key's colors beside it, and the key under them; after them the
+ * time filter's chip (`MomentsTimeFilter.kt`), once the map knows where it is, going under them when the line is full.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MomentsHeightsBar(
     state: MomentsMapUiState,
@@ -163,8 +166,11 @@ internal fun MomentsHeightsBar(
     if (state.center == null) return
     val on = state.showsHeightTags
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalAlignment = Alignment.CenterVertically) {
-            MomentsTimeChip(filter = timeFilter, onChoose = onTimeFilter)
+        // The heights chips keep their place; the time filter's chip follows them, or goes under them on a full line.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
             if (state.heightsOn) {
                 HeightsChip(on = on, onToggle = onToggle)
                 AnimatedVisibility(visible = on, enter = fadeIn(), exit = fadeOut()) {
@@ -175,6 +181,7 @@ internal fun MomentsHeightsBar(
                     MomentsSunChip(modifier = Modifier.glassChip(CircleShape).height(CHIP_HEIGHT))
                 }
             }
+            MomentsTimeChip(filter = timeFilter, onChoose = onTimeFilter)
         }
         AnimatedVisibility(visible = state.heightsOn && on && state.heightKeyOpen, enter = fadeIn(), exit = fadeOut()) {
             HeightKey(onClose = onCloseKey)

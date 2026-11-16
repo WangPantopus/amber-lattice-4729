@@ -2,9 +2,11 @@
 //  MomentsTimeFilter.swift
 //  Pantopus
 //
-//  Under the Moments map's top row, at the left: a chip that shows only the
-//  Moments posted in the last 30 minutes, the last hour or the last 24 hours
-//  (founder, 2026-11-16), "All" to begin with. The pins, the bubbles, the row
+//  Under the Moments map's top row: a chip that shows only the Moments
+//  posted in the last 30 minutes, the last hour or the last 24 hours
+//  (founder, 2026-11-16), "All" to begin with. It follows "Elevation" and
+//  its chips when those show, or goes under them when the line is full
+//  (`MomentsHeightsChip.swift`). The pins, the bubbles, the row
 //  of faces and Play all follow it. It works on what the map already reads
 //  (each Moment's posting time), so nothing changes on the server.
 //
