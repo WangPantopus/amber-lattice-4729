@@ -384,7 +384,8 @@ read the merged change for where a picture is stored and who can read it):
   "{Name} added {14}. Add yours and keep them together."
 
 **Decided after the build's report** (November 16, the designer's calls; both
-make it stricter; not built when written):
+make it stricter; built the same day in server PR 4249, which the coordinator
+read):
 
 - **A picture the check could not look at is not kept.** As first built, a
   picture was stored unchecked when the check could not run, and nothing
@@ -395,9 +396,15 @@ make it stricter; not built when written):
 - **Deleting an account takes its pictures.** When a person deletes their
   account, every picture they added to anyone's plan goes, its files and its
   entry, and so do the files of every plan they hosted, before the account's
-  rows go. Until this is built a deleted account's pictures stay in the
-  bucket with nothing pointing at them, so `plans_photos` stays off
-  everywhere but a rig.
+  rows go. It runs whatever the switch says, so nothing is left behind after
+  the switch was on once; trouble with storage is logged and does not stop
+  the deletion, as with Moments' files.
+- The day-after notice also waits for the picture check, since photos count
+  as off without it.
+- **Not seen anywhere yet: the real picture check.** The build's setup has no
+  key for it, so it was tried against a stand-in (down: refused, nothing
+  stored; held: refused; passed: added). Before `plans_photos` is turned on
+  in an environment, add one picture there and see it pass.
 
 ## 6. The same people again
 
