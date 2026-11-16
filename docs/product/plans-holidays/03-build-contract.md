@@ -486,8 +486,33 @@ October 20).
    read what a signed-out stranger reads. Only a verified email does this:
    an address someone typed is not proof.
 
+**Made precise by the build** (the server session's choices on #4196,
+confirmed by the designer):
+
+- "I say yes first" also governs a link row whose person has not asked yet:
+  the row follows the host's switch, and turns on at a move to a home, so
+  nobody who claimed a link at a cafe is in at the home without the yes.
+- A person the host let in by hand is not asked again after a Maybe and back.
+- The account's verified email is kept on its open-link row and never shown
+  to the host. An answer from that address in a browser is told to answer in
+  the app, and a person the host removed cannot come back through a browser
+  with it.
+- Nothing moves into an account that already has its own answer, invitation
+  or refusal on the plan.
+- The notice to a person the move makes wait has the type
+  `plan_moved_home_wait`.
+- "Open app" opens `pantopus:///plans/<id>?open=<token>`, the form the share
+  page already uses.
+- Every refusal of a claim answers the same `404 invite_unavailable`.
+- `accessTokenVerifier` treated an address Supabase had not confirmed as
+  confirmed on one path (it read a missing `email_confirmed_at` as present).
+  It is fixed. Its only readers are `verifyToken` and Plans' own check of
+  whose an email invitation is, so nothing outside Plans changes; inside
+  Plans an unconfirmed address no longer counts as the invited person's.
+
 **Data.** No new column. `plan_invite_channel_fields` is widened so an `open`
-row may carry an account and no email. One additive migration.
+row may carry an account and no email. One additive migration
+(`20261116020000_plans_open_link_accounts`).
 
 ## 7. The bring list (H2)
 
