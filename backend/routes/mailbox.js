@@ -461,7 +461,8 @@ function normalizeEscrowContact(contact) {
  *   stamp, so past the first 3 new addresses a week, each new address needs a card that's still out to every address
  *   past those 3. Cards taken back (their stamps came back) keep counting as new addresses, so the free stamps can't be
  *   sent, taken back and sent again to email stranger after stranger.
- * @returns {Promise<{ allowed: boolean, reason?: string, limit?: 'same_contact' | 'same_contact_unsent' | 'weekly' }>}
+ * @returns {Promise<{ allowed: boolean, reason?: string,
+ *   limit?: 'same_contact' | 'same_contact_scheduled' | 'same_contact_unsent' | 'weekly' }>}
  */
 const checkEscrowRateLimits = async (senderId, contact, earlier = [], { stamps = false } = {}) => {
   const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -480,9 +481,11 @@ const checkEscrowRateLimits = async (senderId, contact, earlier = [], { stamps =
 
   const blocking = (sameContact || []).filter((row) => row.escrow_status !== 'withdrawn' || holidayCards.emailWent(row));
   if (blocking.length) {
-    // A card still waiting whose email hasn't gone out yet: its sender emails that one again (Sent) or takes it back.
+    // A card still waiting whose email hasn't gone out yet: set for a later 7 a.m. (it will go), or one that didn't go
+    // (its sender emails that one again from Sent, or takes it back).
     const unsent = blocking.every((row) => row.escrow_status === 'pending' && !holidayCards.emailWent(row));
-    return { allowed: false, limit: unsent ? 'same_contact_unsent' : 'same_contact',
+    const scheduled = unsent && blocking.some((row) => holidayCards.emailSendAt(row));
+    return { allowed: false, limit: scheduled ? 'same_contact_scheduled' : unsent ? 'same_contact_unsent' : 'same_contact',
       reason: 'You can only send to the same non-Pantopus contact once every 30 days.' };
   }
 
@@ -1780,6 +1783,9 @@ const cardListSchema = Joi.object({
   message: Joi.string().allow('').max(4000).required(),
   // One choice for the whole list; each card reads it in its own words (listArrival).
   arrival: Joi.string().valid(...CARD_ARRIVALS).required(),
+  // Apps that word every email choice (GET /cards arrivals.email_all) send true: each address keeps the list's choice,
+  // its email going at the sender's 7 a.m. or on Christmas morning. Older apps' lists read it as before (listArrival).
+  emails_keep_arrival: Joi.boolean(),
   recipients: Joi.array().items(Joi.object({
     // An address is checked with its own card (checkCardList), so one mistyped address doesn't refuse the list.
     to: Joi.object({ user_id: Joi.string().uuid(), email: Joi.string().trim().max(320) }).xor('user_id', 'email').required(),
@@ -2108,12 +2114,17 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
   if (!byLink && toEmail === normalizeEscrowContact(sender.email || '')) {
     return refuse(400, 'Send your card to someone else.', 'CARD_TO_SELF');
   }
-  const open = holidayCards.arrivalsFor({ byEmail: true, timeZone: senderZone, now, nextRound: mailDelivery.nextRound });
+  // By email, all four choices (EMAIL_ARRIVALS_ALL: older apps only ever send now or sealed_christmas); a link keeps its
+  // two, since it goes when its sender shares it.
+  const open = holidayCards.arrivalsFor({ byEmail: true, all: !byLink, timeZone: senderZone, now, nextRound: mailDelivery.nextRound });
   if (!open.includes(arrival)) return arrivalClosed();
   // A link goes to no address, so the email limits don't count it; one card a day does. With digital stamps every card
   // takes a stamp, so a list can go to as many new addresses as there are stamps for (checkEscrowRateLimits).
   if (!byLink) {
     const rateCheck = await checkEscrowRateLimits(senderId, toEmail, earlierAddresses, { stamps: mailStamps.enabled(senderId) });
+    if (rateCheck.limit === 'same_contact_scheduled') {
+      return refuse(429, 'You already have a card waiting to be emailed to this address. One card to an address a month.', 'MAIL_SEND_LIMIT');
+    }
     if (rateCheck.limit === 'same_contact_unsent') {
       return refuse(429, 'Your card to this address is still waiting: its email hasn’t gone out yet. Email it again from Sent, or take it back first.', 'MAIL_SEND_LIMIT');
     }
@@ -2126,13 +2137,18 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
         : 'You can email cards to 3 new people a week. You can send this one in a few days.', 'MAIL_SEND_LIMIT');
     }
   }
-  // Sealed by email or link: until Christmas morning where the sender is, set again where they live once they open it.
-  Object.assign(card, byLink ? { by_link: true } : { to_name: maskContact(toEmail) },
-    { sealed_until: arrival === 'sealed_christmas' ? holidayCards.christmasMorning(senderZone).toISOString() : null });
+  // Sealed by email or link: until Christmas morning where the sender is, set again where they live once they open it. By
+  // email it goes now, at the sender's next 7 a.m. or at 7 a.m. on Christmas morning (holidayCards.emailDelivery), and
+  // waits its 90 days from then.
+  const timing = holidayCards.emailDelivery({ arrival, timeZone: senderZone, now, nextRound: mailDelivery.nextRound });
+  Object.assign(card, byLink ? { by_link: true } : { to_name: maskContact(toEmail) }, { sealed_until: timing.sealed_until });
+  const emailSendAt = byLink ? null : timing.send_at;
+  const waitsFrom = emailSendAt ? Math.max(now.getTime(), Date.parse(emailSendAt)) : now.getTime();
   return { design, message, signature, media, mediaFiles, arrival, senderZone, toUserId: null, toEmail, card, zone: senderZone,
     senderDisplay: (await loadChatPeople([senderId])).get(String(senderId))?.displayName || 'Someone',
     delivery: { delivered_at: now.toISOString(), special_delivery: false },
-    escrowExpiresAt: new Date(now.getTime() + ESCROW_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString() };
+    emailSendAt: emailSendAt && Date.parse(emailSendAt) > now.getTime() ? emailSendAt : null,
+    escrowExpiresAt: new Date(waitsFrom + ESCROW_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString() };
 }
 
 /**
@@ -2149,7 +2165,7 @@ router.get('/cards', verifyToken, async (req, res) => {
     const now = new Date();
     const timeZone = (await mailDelivery.personTimeZone(senderId)) || mailDelivery.FALLBACK_TIME_ZONE;
     const [today] = await cardsSentToday(senderId, timeZone, now);
-    const arrivals = (byEmail) => holidayCards.arrivalsFor({ byEmail, timeZone, now, nextRound: mailDelivery.nextRound });
+    const arrivals = (byEmail, all = false) => holidayCards.arrivalsFor({ byEmail, all, timeZone, now, nextRound: mailDelivery.nextRound });
     const postage = mailStamps.enabled(senderId);
     // The stamps left, for the Mailbox row's line; the cards still load when the balance can't be read.
     const stamps = postage ? await mailStamps.balance(senderId).catch(() => null) : null;
@@ -2170,7 +2186,9 @@ router.get('/cards', verifyToken, async (req, res) => {
         ? { ...controls, bought_stamp: await boughtStampControls(senderId, postage, stamps) } : controls,
       designs: holidayCards.DESIGNS,
       collections: holidayCards.COLLECTIONS,
-      arrivals: { person: arrivals(false), email: arrivals(true) },
+      // By email, `email` is the two choices older apps word; `email_all` the four (an email at your next 7 a.m. or on
+      // Christmas morning, next_round_at and christmas_morning_at below), for apps that word them.
+      arrivals: { person: arrivals(false), email: arrivals(true), email_all: arrivals(true, true) },
       next_round_at: mailDelivery.nextRound(timeZone, now).toISOString(),
       christmas_morning_at: holidayCards.christmasMorning(timeZone).toISOString(),
       time_zone: timeZone,
@@ -2481,8 +2499,11 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
     tags: [holidayCards.CARD_TAG, holidayCards.SEASON.tag], priority: 'normal', expires_at: null,
     object_id: objectResult.objectId, mail_type: 'letter', primary_action: 'open', action_required: false,
     ack_required: false, ack_status: null, mail_object_type: 'envelope',
-    // By email, where its email is (services/cardEmail): its first try starts once the card is settled.
-    mail_extracted: { card: toEmail && emailToken ? { ...card, email: { state: 'sending', tries: 0, at: now.toISOString() } } : card },
+    // By email, where its email is (services/cardEmail): its first try starts once the card is settled, or at its 7 a.m.
+    // or on Christmas morning ('scheduled', sent by jobs/cardEmailSend).
+    mail_extracted: { card: toEmail && emailToken ? { ...card, email: checked.emailSendAt
+      ? { state: 'scheduled', tries: 0, at: now.toISOString(), send_at: checked.emailSendAt }
+      : { state: 'sending', tries: 0, at: now.toISOString() } } : card },
     recipient_home_id: null, address_id: null, address_home_id: null, attn_user_id: null, attn_label: null,
     delivery_visibility: null,
     ...(toUserId
@@ -2543,9 +2564,10 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
   if (settled.outcome === 'taken_back') return cardTakenBack(settled.mail);
   mail = settled.mail;
 
-  if (escrow && toEmail && emailToken) {
+  if (escrow && toEmail && emailToken && !checked.emailSendAt) {
     // Its email goes after the answer (services/cardEmail). One that doesn't go is tried again a moment later, then by
-    // jobs/cardEmailRetry, and its sender's Sent says so until it goes (holidayCards.emailTrouble).
+    // jobs/cardEmailSend, and its sender's Sent says so until it goes (holidayCards.emailTrouble). One set for a later
+    // 7 a.m. waits for that job.
     const mailId = mail.id;
     (async () => {
       try {
@@ -2555,7 +2577,7 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
         logger.warn('Card email failed (non-blocking)', { mailId, error: emailErr.message });
       }
     })();
-  } else if (escrow && toEmail) {
+  } else if (escrow && toEmail && !emailToken) {
     // No secret to make its link from (local setups only): one try, as before, with nothing kept.
     const claimLink = escrowClaimLink(mail.id, escrow.token);
     (async () => {
@@ -2581,7 +2603,8 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
  * POST /api/mailbox/cards  { design, message, arrival, to: { user_id } | { email } | { link: true }, request_id? }
  * Send today's card. To a person it comes with their next 7 a.m. mail (sealed until Christmas morning or not) or on
  * Christmas morning, and the sender can take it back until the next 7 a.m. pickup. By email it waits for them (90
- * days, like a letter) and they get an email saying only who it's from. By link (launch key card_table) it waits the same
+ * days, like a letter) and they get an email saying only who it's from: now (now, sealed_christmas), or at the sender's
+ * next 7 a.m. (next_morning) or 7 a.m. on Christmas morning (christmas_morning), sent then by jobs/cardEmailSend. By link (launch key card_table) it waits the same
  * way for whoever opens the link first, and no email goes out. Answers 201 { card } (what the sender sees), with
  * { link } by link.
  * A repeat of a send with the same request ID answers from the card it stored: 200 { card }, 409 CARD_TAKEN_BACK once
@@ -2649,6 +2672,8 @@ async function cardLook(senderId, checked, now) {
       ? emailService.cardWaitingEmailContent({ senderName: senderDisplay, expiresAt: checked.escrowExpiresAt, sealed,
         timeZone: checked.senderZone })
       : null,
+    // By email, set to go at the sender's 7 a.m. or on Christmas morning: when (null: it goes as it's sealed).
+    email_send_at: toEmail ? checked.emailSendAt || null : null,
     link_page: linkPage,
   };
 }
@@ -2687,9 +2712,11 @@ router.post('/cards/preview', verifyToken, validate(sendCardSchema), async (req,
 // went alone, under its own request ID, so a repeat of the list never sends anyone a second card or costs a second
 // stamp. Nobody on it sees who else got one.
 
-// The list's one choice of arrival in each card's own words: an address has no morning mail (its card comes when they
-// open the email) and no Christmas morning (sealed until Christmas instead); a person has no "now" (the next morning).
-function listArrival(arrival, byEmail) {
+// The list's one choice of arrival in each card's own words: a person has no "now" (the next morning). For older apps an
+// address has no morning mail (its email goes now) and no Christmas morning (sealed until Christmas instead); apps that
+// send `emails_keep_arrival` keep the list's choice for an address too, its email going at the sender's 7 a.m.
+function listArrival(arrival, byEmail, keepForEmail = false) {
+  if (byEmail && keepForEmail) return arrival;
   if (byEmail) return { next_morning: 'now', christmas_morning: 'sealed_christmas' }[arrival] || arrival;
   return arrival === 'now' ? 'next_morning' : arrival;
 }
@@ -2718,7 +2745,8 @@ async function checkCardList(senderId, body, now) {
   const from = await checkCardSender(senderId, body, now);
   if (from.refusal) return from;
   const items = body.recipients.map(({ to, request_id: id }) => {
-    const single = { design: body.design, message: body.message, arrival: listArrival(body.arrival, Boolean(to.email)), to,
+    const single = { design: body.design, message: body.message,
+      arrival: listArrival(body.arrival, Boolean(to.email), body.emails_keep_arrival === true), to,
       signature: body.signature };
     const requestId = String(id).toLowerCase();
     return { requestId, rowId: holidayCards.requestRowId(senderId, requestId), single, digest: cardRequestDigest(single) };
@@ -2793,8 +2821,10 @@ router.post('/cards/batch/preview', verifyToken, validate(cardListSchema), async
         const line = listLine(item);
         return line.status === 'not_sent' ? { ...line, status: 'refused' } : line;
       }
-      const { card, zone, toEmail } = item.checked;
+      const { card, zone, toEmail, emailSendAt } = item.checked;
       return { request_id: item.requestId, status: 'ready', to_name: card.to_name, by_email: Boolean(toEmail), arrival: card.arrival,
+        // By email, set to go at the sender's 7 a.m. or on Christmas morning: when (absent: it goes now).
+        ...(emailSendAt ? { email_send_at: emailSendAt } : {}),
         arrives_on: card.arrives_on || null,
         opens_on: card.sealed_until ? mailDelivery.localDate(new Date(card.sealed_until), zone) : null };
     });
@@ -2813,7 +2843,7 @@ router.post('/cards/batch/preview', verifyToken, validate(cardListSchema), async
 
 /**
  * POST /api/mailbox/cards/batch
- *   { design, message, arrival, use_stamp: true, recipients: [{ to: { user_id } | { email }, request_id }] }
+ *   { design, message, arrival, use_stamp: true, recipients: [{ to: { user_id } | { email }, request_id }], emails_keep_arrival? }
  * Send one card to up to 20 people or addresses at once (digital stamps on): each gets a card of its own with the same
  * picture and note, and the list's choice of arrival in its own words (listArrival). When the cards that can go need
  * more stamps than are left, nothing is sent: 402 STAMPS_REQUIRED with `needed` and `available`. Otherwise 200
@@ -2994,6 +3024,10 @@ router.post('/cards/:id/email-again', verifyToken, async (req, res) => {
     if (mail.escrow_status !== 'pending' || holidayCards.sentStatus(mail, now) === 'expired') return tooLate(mail);
     const email = mail.mail_extracted?.card?.email;
     if (!email || email.state === 'sent') return res.status(409).json({ error: 'We already emailed them.', code: 'CARD_EMAILED' });
+    // Set for a later 7 a.m. or Christmas morning: it goes then (Sent says when); it can be taken back until it's opened.
+    if (email.state === 'scheduled' && Date.parse(email.send_at) > now.getTime()) {
+      return res.status(409).json({ error: 'This card’s email goes at the time you chose. You can take it back before then.', code: 'CARD_EMAIL_SCHEDULED' });
+    }
     if (now.getTime() - Date.parse(email.at || mail.created_at) < 60 * 1000) {
       return res.status(429).json({ error: 'We just tried. Try again in a minute.', code: 'CARD_EMAIL_BUSY' });
     }

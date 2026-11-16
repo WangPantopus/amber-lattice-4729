@@ -1,6 +1,7 @@
 // ============================================================
-// A Christmas card by email's email: sent as the card is stored (routes/mailbox storeCard), tried again by
-// jobs/cardEmailRetry, and by its sender's "Email it again" (POST /api/mailbox/cards/:id/email-again).
+// A Christmas card by email's email: sent as the card is stored (routes/mailbox storeCard), or at the sender's 7 a.m. or
+// on Christmas morning by jobs/cardEmailSend, which also tries again one that didn't go, and by its sender's "Email it
+// again" (POST /api/mailbox/cards/:id/email-again).
 //
 // Where it is lives on the card's Mail row, in mail_extracted.card.email ({ state, tries, at, sent_at };
 // services/holidayCards emailTrouble), so the sender's Sent can say when it didn't go out. A try first marks the row
@@ -18,8 +19,8 @@ const logger = require('../utils/logger');
 const { skipForLaunchCut } = require('../utils/featureFlags');
 const { maskContact } = require('../jobs/mailEscrowExpiry');
 
-// A list of up to 20 addresses sends its emails two at a time, not 20 connections to the mail server at once.
-const AT_ONCE = 2;
+// Emails go a few at a time, not 20 connections to the mail server at once for a list, nor hundreds on Christmas morning.
+const AT_ONCE = 4;
 // A card's first email gets one more try a moment later; after that the retry job tries every 10 minutes.
 const QUICK_RETRY_MS = Number(process.env.CARD_EMAIL_QUICK_RETRY_MS || 3000);
 const RETRY_EVERY_MS = 10 * 60 * 1000;
@@ -87,7 +88,7 @@ async function writeEmail(base, was, email, extra = {}) {
 }
 
 /**
- * Tell a sender once that the emails of these cards (their rows) didn't go out after every try (jobs/cardEmailRetry):
+ * Tell a sender once that the emails of these cards (their rows) didn't go out after every try (jobs/cardEmailSend):
  * one notice for one card, with its address masked as on a lock screen, or one for several. It opens their Sent, where
  * they can email it again or take it back (the stamp comes back).
  */
@@ -127,10 +128,14 @@ async function deliver(mail, { first = false } = {}) {
   let tries = Number(was.tries) || 0;
   if (!first) {
     if (was.state === 'sent') return { skipped: true };
+    // One set for later goes only once it's due ("Email it again" doesn't offer it before).
+    if (was.state === 'scheduled' && Date.parse(was.send_at) > Date.now()) return { skipped: true };
     row = await writeEmail(mail, was, { ...was, state: 'sending', at: new Date().toISOString() });
     if (!row) return { skipped: true };
   }
   const sending = emailOf(row);
+  // When it was due stays with it, so Sent gives up an hour after its 7 a.m., not an hour after it was sealed.
+  const due = sending.send_at ? { send_at: sending.send_at } : {};
 
   // A card whose link's hash isn't the one its id makes now (the server's secret changed since): its emails never went,
   // so its link is made again before this one goes.
@@ -146,7 +151,7 @@ async function deliver(mail, { first = false } = {}) {
     tries += 1;
   }
   const now = new Date().toISOString();
-  const email = result.ok ? { state: 'sent', tries, at: now, sent_at: now } : { state: 'failed', tries, at: now };
+  const email = result.ok ? { state: 'sent', tries, at: now, sent_at: now, ...due } : { state: 'failed', tries, at: now, ...due };
   let written = null;
   try {
     written = await writeEmail(row, sending, email, rehash);
@@ -169,24 +174,32 @@ async function cardRow(mailId) {
 }
 
 /**
- * The cards by email whose email is due another try (jobs/cardEmailRetry): it didn't go out and its last try was 10
- * minutes ago or more (or a try was lost while sending), fewer than holidayCards.EMAIL_TRIES tries so far, sent in
- * the last two days and still waiting.
+ * The cards by email whose email is due (jobs/cardEmailSend), oldest first, still waiting: those set for a 7 a.m. or
+ * Christmas morning that has come ('scheduled'), then those that didn't go (or lost a try while sending) whose last try
+ * was 10 minutes ago or more, with fewer than holidayCards.EMAIL_TRIES tries, tried in the last two days. Both read only
+ * cards still waiting (the database's partial index on pending escrow).
  */
-async function dueForRetry(now = new Date(), limit = 200) {
-  const { data, error } = await supabaseAdmin.from('Mail').select(ROW)
+async function dueToSend(now = new Date(), limit = 200) {
+  const waiting = () => supabaseAdmin.from('Mail').select(ROW)
     .eq('escrow_status', 'pending')
-    .contains('tags', [holidayCards.CARD_TAG])
-    .gt('created_at', new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString())
-    .in('mail_extracted->card->email->>state', ['failed', 'sending'])
-    .order('created_at', { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  return (data || []).filter((mail) => {
-    const email = emailOf(mail);
-    return (Number(email.tries) || 0) < holidayCards.EMAIL_TRIES
-      && now.getTime() - Date.parse(email.at || mail.created_at) >= RETRY_EVERY_MS;
-  });
+    .contains('tags', [holidayCards.CARD_TAG]);
+  const [scheduled, again] = await Promise.all([
+    waiting().eq('mail_extracted->card->email->>state', 'scheduled')
+      .lte('mail_extracted->card->email->>send_at', now.toISOString())
+      .order('created_at', { ascending: true }).limit(limit),
+    waiting().in('mail_extracted->card->email->>state', ['failed', 'sending'])
+      .gt('mail_extracted->card->email->>at', new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString())
+      .order('created_at', { ascending: true }).limit(limit),
+  ]);
+  if (scheduled.error || again.error) throw new Error((scheduled.error || again.error).message);
+  return [
+    ...(scheduled.data || []),
+    ...(again.data || []).filter((mail) => {
+      const email = emailOf(mail);
+      return (Number(email.tries) || 0) < holidayCards.EMAIL_TRIES
+        && now.getTime() - Date.parse(email.at || mail.created_at) >= RETRY_EVERY_MS;
+    }),
+  ];
 }
 
-module.exports = { deliver, cardRow, dueForRetry, tellSender, escrowClaimLink, RETRY_EVERY_MS };
+module.exports = { deliver, cardRow, dueToSend, tellSender, escrowClaimLink, AT_ONCE, RETRY_EVERY_MS };
