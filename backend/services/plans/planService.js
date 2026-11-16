@@ -55,6 +55,8 @@ const PLAN_COLUMNS = [
   'bring_list',
   // H3: the occasion that started it (planOccasions.js).
   'occasion',
+  // B1: a business's plan's deal (planDeals.js), on its card only while the business has the switch.
+  'deal',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -245,6 +247,9 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Whether each plan's host has the bring list (H2), and occasions (H3).
     bringByHost: new Map(),
     occasionByHost: new Map(),
+    // Whether each business hosting a plan with a deal has the switch (B1), and when each guest's free thing was used.
+    dealsByHost: new Map(),
+    dealUsedByRequest: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -279,6 +284,18 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.guestAnswersByHost = guestFlags;
   ctx.bringByHost = bringFlags;
   ctx.occasionByHost = occasionFlags;
+  // Deals (B1): read only for plans that carry one, from businesses that have the switch.
+  const dealPlans = plans.filter((p) => p.deal && p.business_user_id);
+  if (dealPlans.length > 0) {
+    ctx.dealsByHost = await require('./planDeals').switchByHost(dealPlans.map((p) => p.host_user_id));
+    const onIds = dealPlans.filter((p) => ctx.dealsByHost.get(String(p.host_user_id))).map((p) => p.post_id);
+    if (onIds.length > 0) {
+      const { data: used, error: usedError } = await supabaseAdmin.from('PlanRequest').select('id, deal_used_at')
+        .in('post_id', onIds).not('deal_used_at', 'is', null);
+      if (usedError) throw new Error(`Failed to load plan details: ${usedError.message}`);
+      for (const row of used || []) ctx.dealUsedByRequest.set(row.id, row.deal_used_at);
+    }
+  }
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -679,6 +696,15 @@ function buildCard(plan, viewer, ctx) {
     const occasion = require('./planOccasions').view(plan.occasion);
     if (occasion) card.occasion = occasion;
   }
+  // A business's plan's deal (B1, contract 9.2), with `biz=1` (a business's plan reaches no other app) while the
+  // business has the switch. An added field.
+  if (plan.business_user_id && plan.deal && ctx.dealsByHost?.get(hostId)) {
+    const deal = require('./planDeals').cardView(plan.deal, {
+      role, going,
+      request: myRequest ? { ...myRequest, deal_used_at: ctx.dealUsedByRequest?.get(myRequest.id) || null } : null,
+    });
+    if (deal) card.deal = deal;
+  }
   // The bring list (H2), for the host and the people in, while the host has the switch. An added field older apps
   // ignore, so it needs no marker.
   if (isIn && plan.bring_list && ctx.bringByHost?.get(hostId)) {
@@ -866,6 +892,12 @@ function buildDetail(plan, viewer, ctx) {
         entry.distance_band = null;
         entry.plans_joined = 0;
         entry.new_to_pantopus = false;
+        // "Mark used" on the roster (B1): the guest's free thing, ready or used, while the deal gives one.
+        if (card.deal) {
+          const given = require('./planDeals').givenNow(plan.deal);
+          const usedAt = ctx.dealUsedByRequest?.get(request.id) || null;
+          if (given?.kind === 'free_item' || usedAt) entry.deal = { state: usedAt ? 'used' : 'ready', used_at: usedAt };
+        }
       }
     }
     people.push(entry);

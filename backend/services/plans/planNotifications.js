@@ -862,6 +862,7 @@ module.exports = {
   BUNDLE_WINDOW_MS,
   noun,
   whenText,
+  timeText,
   heldPushText,
   bandText,
   areaPhrase,

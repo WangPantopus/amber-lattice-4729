@@ -55,6 +55,14 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   'plan_guest_let_in',
   'plan_bring_claimed',
   'plan_occasion_started',
+  // Plans for the holidays, the business track (meta: plan_id, kind).
+  'plan_deal_set',
+  'plan_deal_unlocked',
+  'plan_deal_short',
+  'plan_paid',
+  'plan_check_sent',
+  'plan_check_paid',
+  'plan_tip_paid',
   // Recorded atomically by pulse_record_helpful_mark, not by a client event.
   'pulse_helpful_marked',
   'pulse_follow',
