@@ -133,7 +133,7 @@ Checks:
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
 | `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
-| `host_ok_at` | `timestamptz` | When the host let this guest in by hand (6.8). Null: the host has not. To be added with 6.8 |
+| `host_ok_at` | `timestamptz` | When the host let this guest in by hand (6.8). Null: the host has not. Added with 6.8; rows from before it are not filled in |
 | `guest_emails` | `integer`, default 0 | How many of the plan's three emails the guest has had (6.6). Added by the server session |
 | `changed_at`, `changed_reason` | `timestamptz`, `text` (`time`, `place`, `both`) | The plan's time or place changed since the guest answered: their page says so, and the one change email goes once. Added by the server session |
 
@@ -264,8 +264,8 @@ changes the row.
   home it could never see the address and "Check your email" would not be
   true. Wherever the form asks for an email, an answer with such an address is
   refused: `409 email_opted_out`, "This address asked Pantopus not to email it.
-  Use another one." Nothing is saved. (Decided November 15 after the server
-  session's build; not built when written.)
+  Use another one." Nothing is saved. A guest changing their own answer, with
+  the address already on their row, is not checked again.
 - `in` when the room is full: refused `409 full`, with `can_maybe: true`.
 - `in` from the open link with `open_invite_ok_first`: saved with
   `needs_host_ok = true`. The seats are held (K5). The host is told. The guest's
@@ -661,7 +661,7 @@ Sent through `planNotifications.js`, held for quiet hours as Plans notices are.
 | --- | --- | --- |
 | A guest without an account answers | The host | "Dana Lee is in: 2 adults, 1 kid." Several in an hour become one |
 | An answer waits for the host's yes | The host | "Dana Lee wants to come. Let them in?" with Let in and Not this time |
-| The host moved a plan to a home and guests from the link now wait (6.8) | The host | "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." Once a move |
+| The host moved a plan to a home and guests from the link now wait (6.8) | The host | "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." For one: "1 guest from your link is waiting for your yes." Once a move. Type `plan_moved_home`, no buttons |
 | Bring-list items are claimed | The host | At most one in 30 minutes: "3 things are taken. 2 are still open." |
 | Items are still open two days before | People in who claimed nothing | "2 things are still open for Thanksgiving dinner." Once |
 | A group deal is close | People in, and people who opened the plan and did not join | "2 more and trivia is 20% off. It closes at 5:00 PM." Once, in the last day |
