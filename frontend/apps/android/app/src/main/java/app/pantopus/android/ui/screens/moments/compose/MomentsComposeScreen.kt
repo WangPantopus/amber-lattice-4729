@@ -225,6 +225,7 @@ fun MomentsComposeScreen(
                     onFindPlace = { viewModel.findPlace(true) },
                     onNoLocation = viewModel::setNoLocation,
                     onShowHeight = viewModel::setShowHeight,
+                    sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                 )
         }
         // The place picker (the Pulse composer's) around the Moment's pin: venues within reach of it, and search.
@@ -239,7 +240,9 @@ fun MomentsComposeScreen(
                 mediaLocation = MediaCaptureLocation(pin.latitude, pin.longitude),
                 limits =
                     PlacePickerLimits(anchorChips = false, showLocality = false) { place ->
-                        place.placeId?.startsWith("osm:") == true && (place.distanceM ?: Double.MAX_VALUE) <= reach
+                        place.placeId?.startsWith("osm:") == true &&
+                            (place.distanceM ?: Double.MAX_VALUE) <= reach &&
+                            state.canPinAt(place.category)
                     },
             )
         }
@@ -687,6 +690,7 @@ private fun ReviewStep(
     onFindPlace: () -> Unit,
     onNoLocation: (Boolean) -> Unit,
     onShowHeight: (Boolean) -> Unit,
+    sky: MomentsSkyActions,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (val media = state.media) {
@@ -758,6 +762,7 @@ private fun ReviewStep(
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,
             onShowHeight = onShowHeight,
+            sky = sky,
         )
     }
 }
