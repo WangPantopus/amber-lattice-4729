@@ -218,9 +218,11 @@ val PlanDto.invitedNoAnswer: Boolean get() = standing == PlanViewerStanding.NONE
  * outranks it.
  */
 val PlanDto.saidMaybe: Boolean
-    get() =
-        myInvite?.status == PlanInviteStatus.MAYBE &&
-            standing !in setOf(PlanViewerStanding.HOSTING, PlanViewerStanding.IN, PlanViewerStanding.REQUESTED, PlanViewerStanding.WAITLISTED)
+    get() = myInvite?.status == PlanInviteStatus.MAYBE && standing !in OUTRANKS_MAYBE
+
+/** Standings that outrank an invitation's Maybe. */
+private val OUTRANKS_MAYBE =
+    setOf(PlanViewerStanding.HOSTING, PlanViewerStanding.IN, PlanViewerStanding.REQUESTED, PlanViewerStanding.WAITLISTED)
 
 /** A private plan whose guests say how many adults and kids (Plans for the holidays, H1). */
 val PlanDto.takesKids: Boolean get() = kidsWelcome == true && !isPlaydate
