@@ -344,6 +344,20 @@ person paying for the group) needs the business track's B2 first. The founder
 had not looked at boards 24 to 31 when this was written: build from the file,
 and expect a change of words if the founder asks for one.
 
+**How the phones pick each one up** (the coordinator's standing rule,
+November 16). The server session keeps `HOLSRV-extras-api-for-apps.md` in the
+shared notes folder: one section an extra, with its routes and shapes, marked
+"merged into dev" with its PR when its server part lands. Whenever an app
+session finishes a PR it looks at that file and builds, as its own small PR
+and in section 8's order, the phone part of each extra marked merged that its
+platform does not have yet, beside the business track. No message from the
+coordinator is needed. Each section's "Settled while it was built" in
+[08-extras.md](08-extras.md) holds what the build decided; an app session asks
+the coordinator only when the file and the notes disagree or leave something
+out. Each extra is checked on the phone with its switch on in the session's
+own rig, as the other person sees it too, after a relaunch, and with the
+switch off.
+
 ## Words for the founder to start them
 
 A new session on Opus 5.5 at Extra High for each, with one line:

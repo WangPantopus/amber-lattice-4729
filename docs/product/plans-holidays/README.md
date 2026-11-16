@@ -1,9 +1,9 @@
 # Plans for the holidays, and paying businesses
 
-Written November 15, 2026. Design, architecture and build plan. **Nothing here is
-built.** The founder asked for design only in this round; the build starts when
-the founder says so, in separate sessions
-([session briefs](05-session-briefs.md)).
+Written November 15, 2026. Design, architecture and build plan. The build
+started the same day and is under way in separate sessions
+([session briefs](05-session-briefs.md)); what is built is under Status below
+and, item by item, in `NEXT_STEPS.md`, section "Plans for the holidays".
 
 Plans today is good for small get-togethers among people who have the app. This
 set of documents makes it carry holiday plans (Thanksgiving, Christmas, New
@@ -56,8 +56,10 @@ Pantopus, with tips.
 | Boards 24 to 31, the extras | Drawn November 16 after the founder said to build everything discussed; checked by rendering them in light and dark only. The founder had not looked at them when [08-extras.md](08-extras.md) was written |
 | Payment decisions P1 to P16 | Accepted by the founder November 15, all as recommended ([02-payments.md](02-payments.md), section 12) |
 | Calls these documents make | H1 to H11 and K1 to K10, accepted by the founder November 15, all as recommended ([01-design.md](01-design.md), section 7, and [03-build-contract.md](03-build-contract.md), section 2) |
-| Build | The founder said "yes, let's start" on November 15 for the people track; the build sessions run on Opus 5.5 at Extra High |
-| On `dev` and staging, every switch off | H1, H2 and H3 on the server and the web, the guest email rules and the move-to-a-home rule (PRs 4183 to 4187 and 4192, November 15). Production has none of it. The iPhone and Android halves are being built |
+| Build | The founder said "yes, let's start" on November 15 for the people track, and on November 16 to keep every session working until everything discussed and designed is built and checked, without being asked before each piece. The build sessions run on Opus 5.5 at Extra High; one session designs and coordinates and writes no product code |
+| The people track | On `dev` on the server, the web, the iPhone and Android (November 15 and 16), and checked with the two phones together both ways round. Its server and web halves are on staging, with guests answering in a browser turned on there at the founder's word. Production has none of it |
+| The business track | On `dev` and staging on the server and the web (PRs 4209, 4212, 4214, 4215, 4216, 4221, 4222, 4223, November 16), every switch off, checked in the payment company's test mode on a session's own setup. Being built on the iPhone and Android |
+| The six extras | Being built on the server and the web since November 16, then on the phones ([08-extras.md](08-extras.md), section 8) |
 | Made precise during the build | Several keys a guest, and the key only by email at a home (contract 6.1, 6.3). Which emails count against a guest's three, and that a cancellation always goes (contract 6.6). Both were the designer's calls after the server session asked, reported to the founder, not separately approved |
 
 ## Not checked

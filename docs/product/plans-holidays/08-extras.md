@@ -78,6 +78,35 @@ list's reminder, repeats). A plan that repeats cannot use it.
   These emails are outside a guest's three (contract 6.6).
 - The host may change the time afterwards as any plan's time changes today.
 
+**Settled while it was built** (November 16; the designer's calls after the
+server session asked, told to the founder):
+
+- **While the host is picking, ticking is answering.** A guest's ticks are
+  kept on their invitation row as answered and not in. The host's lists do not
+  show them as Maybe and do not count them under "no answer", and "Remind the
+  {5} who haven't answered" skips everyone who saved their times, "none of
+  these" included. In a browser the times card takes the place of W1's three
+  buttons, with the name, the numbers and the email as W1 asks for them.
+- **At a home, a browser guest's saved times answer `check_email`**, as an
+  "I'm in" does (contract 6.3), so the guest can come back to their ticks only
+  through their own link. That email: subject "Your times for {title}",
+  heading "Your times are saved", the line "{Host} is picking a date. You'll
+  hear when {Host} chooses one.", the button "Open your invitation", and "This
+  link is yours; please don't forward it." It shows no address. It is outside
+  the plan's three and goes at most once in 24 hours, as "their link again"
+  does (contract 6.6); the day's five and "don't send me invitations" hold.
+- **Past the room at the pick.** A person with an account who ticked the
+  picked time and does not fit is on the waitlist, told "{title} is {Sunday,
+  Nov 22 at 4:00 PM}. You're on the waitlist." A guest without an account has
+  no waitlist: their answer becomes Maybe, so the host sees them under Maybe
+  and is not asked to remind them, and they get one email in place of "Can
+  you make it?": subject "{title} is {Sunday, Nov 22 at 4:00 PM}", heading
+  "{title} is full right now", the line "It's {Sunday, Nov 22 at 4:00 PM}, a
+  time you ticked, but it filled up with people who answered first. You're
+  down as Maybe, so {Host} sees you'd still like to come. You can change that
+  from your invitation.", and the button "Open your invitation". If room
+  opens later, "I'm in" from their link works as on any plan.
+
 **The card** (with `extras=1`): `"dates": { "state": "picking", "options":
 [{ "id", "text": "Sat, Nov 21 · 6:00 PM", "can": 4, "mine": true }],
 "answered": 9, "invited": 14 }`. The host also gets, for each option, `"who":
@@ -142,6 +171,30 @@ person who is in (board 27): a card with "Chip in {$12}", the note, "{7} of
 straight to {Host}. Pantopus doesn't handle this money." The host sees the same
 card with the count and, in Who's coming, "paid" on a row and a row action
 "Mark paid". No notice is sent for chipping in.
+
+**Settled while it was built** (server PR 4235, November 16; the designer's
+yes, told to the founder):
+
+- **"{7} of {12} paid" counts answers, not heads.** One mark an answer: a
+  person with an account, or a guest's row, whatever its adults and kids. `of`
+  is the answers that are in, without the host and without anyone waiting for
+  the host's yes. The amount stays "each person"; a party settles its own
+  total with the host.
+- **The words are the server's**: `paid_text` ("7 of 12 paid"), `pay_text`
+  ("Pay Maya on Venmo") and `straight_text` ("This goes straight to Maya.
+  Pantopus doesn't handle this money.") come with the card, beside
+  `amount_cents`. `mine` is null for the host.
+- **The link** is at most 300 characters, with no port and no sign-in part,
+  and a service's home page is refused as any other site is. A refusal
+  carries `field` (`link`, `amount_cents` or `note`), and a bad value refuses
+  the whole change.
+- **Changing it.** A new value on the Change screen keeps who paid; `"chip_in":
+  null` takes it away and forgets who paid.
+- **Marks** can change while the plan is on and after it is over, never on a
+  cancelled plan (`409 ended`). On the host's screens each person who is in
+  carries `"chip_in": { "paid", "who" }`, and `who` is what "Mark paid" sends.
+  A guest without an account reads the card in `for_guest.chip_in` on the web
+  page and marks through the public route with their key.
 
 ## 4. Gift exchange
 
@@ -239,14 +292,45 @@ manage. A named group kept between plans would need a new table and is not
 built; it needs the founder's word.
 
 **Routes.** `GET /api/plans/past-people` answers the host's last ten ended
-plans that had anyone in: `{ "post_id", "title", "date_text", "count" }`.
+plans that had anyone in: `{ "post_id", "title", "kind", "date_text", "count" }`
+(a person's own plans, never a playdate, never a cancelled one; `count` is the
+people who were in at the end, one a party).
 `POST /api/plans/:id/invites/from-plan` with `{ "from_post_id", "skip":
-["<id>"] }` invites each person who was in there the way they were reached: a
-person with an account on Pantopus; a guest who gave an email, by email. The
-host never sees that address; the list shows the name. A guest reached only by
-a text invitation cannot be reached again and is listed as such. The limits of
-invitations hold (emails a plan, the day's five, "don't send me invitations",
-blocks).
+["<key>"], "confirm_shares_address" }` invites each person who was in there
+the way they were reached: a person with an account on Pantopus; a guest who
+gave an email, by email. The host never sees that address; the list shows the
+name. A guest reached only by a text invitation cannot be reached again and is
+listed as such. The limits of invitations hold (emails a plan, the day's five,
+"don't send me invitations", blocks), and at a home the first invitation needs
+`confirm_shares_address` as inviting does.
+
+**Settled while it was built** (server PR 4234, November 16; the designer's
+yes to both, told to the founder):
+
+- **The names before anything goes.** `GET /api/plans/past-people/:postId`
+  answers one past plan's people for board 30's list with a check each:
+  `{ "post_id", "title", "kind", "date_text", "count", "text_only", "people":
+  [{ "key", "name", "avatar_url", "via", "can_invite" }] }`. `key` is
+  `p:<user id>` or `g:<guest id>` and is what `skip` takes. `via` is
+  `pantopus`, `email` or `text`; a `text` person has `can_invite` false and is
+  drawn unchecked and greyed. No address and no account id is in it. It is
+  `404` for anything but the caller's own ended plan.
+- **What comes back.** `from-plan` answers the host's invitation list as
+  `POST …/invites` does, with `results: [{ "key", "name", "outcome" }]`
+  (`invited`, `already_invited`, `already_in`, `unavailable`, `text_only`),
+  `invited`, `text_only` and `text` ("Invited 4. 1 can only be reached by
+  text."), which the screen shows as it is.
+- **The address stays hidden afterwards too.** One added column,
+  `PlanInvite.known_name` (email invitations only, 1 to 100 characters; a
+  column, not a table): an email invitation made this way keeps the name the
+  guest gave on the earlier plan. Wherever the host would read that
+  invitation's address (the invitation list, the ask's `opened_invite_to`, the
+  "wants to come" notice) the host reads the name instead: the row has
+  `"email": null` and `"name"`. The apps draw `name` where an email row draws
+  its address.
+- **Starting the next plan with the same people** (board 29's button) is
+  creating the plan as usual and then calling `from-plan` with the past plan's
+  id.
 
 **Screens.** A row "People from a past plan" in the shipped invite sheet opens
 board 30: "Invite everyone who came to one of your plans, in one tap."; a row
