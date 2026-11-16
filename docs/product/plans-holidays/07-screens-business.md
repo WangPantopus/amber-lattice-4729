@@ -278,7 +278,8 @@ Picture `13-paid.png` (board `Paid.dc.html`). Shown when the payment succeeds.
    conversation with the business, its first line naming the payment ("About
    my payment of {$47.04} on {Fri, Nov 20}: "). The business can refund from
    its list. (Neither app has a payment-problem screen; this was the
-   designer's choice on November 16.)
+   designer's choice on November 16.) Android cannot fill a first line in a
+   conversation, so there it opens the conversation with the line empty.
 
 ### C3. The business's guest list
 
