@@ -46,8 +46,11 @@ places. The founder's own note: all of them depend on having users, and there ar
 them as design until there are users.
 
 **Four questions the review raised.** The redraw settled the second (the founder accepted the disc only for the
-tapped post) and follows the third and fourth. The first is set aside: phase A is built with the accepted words,
-kept in one place per app so they are easy to change.
+tapped post) and follows the third and fourth. The founder settled the first on November 16 after the build: a
+post over an area reads "Around Washougal, WA" (pull request #4232; the contract's section 15.6), and "floating"
+is kept for a post really in the air. The same day the founder agreed that old exact points are replaced in the
+production database later, on the founder's word, once the switch has been on for everyone for a few weeks and
+the homes-per-area file is published.
 
 1. **"Floating" now means two things.** Since the reversal an area post sits on the ground on its disc, and only a
    post truly in the air is lifted. The Post sheet, the composer and the viewer still say "Floating over

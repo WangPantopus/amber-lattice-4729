@@ -64,8 +64,8 @@ that rule; the founder approved screen 1 first, with the disc shown only for the
   spacing is not); the map scale is the hand-off's arithmetic, not re-measured; the paraglider and plane photos are
   new drawings in the style of the others; the night boards keep the day's shadow for a post in the air, though the
   built view draws no shadow after sunset, so how height shows at night is still open; the flying posts show their
-  height tags while the Elevation chip is off, and what that chip does now is open (screen 10); "Floating over …" is
-  kept until the founder decides the wording.
+  height tags while the Elevation chip is off, and what that chip does now is open (screen 10); the boards keep "Floating over …",
+  which the founder changed to "Around …" on November 16.
 - **Screen 3 is right as drawn.** Under the November 16 rule, lift is reach once the map is zoomed out to a state or
   wider.
 - Phase A builds only screens 4, 5 and 9. The others belong to phases B and C.
@@ -94,10 +94,8 @@ and a view where the ground rises where it is busy.
 
 - For phase A to reach people: the homes-per-area file published, its address set on the servers, and the switch
   turned on (the contract's section 15). All three are the founder's.
-- The first of the four questions from the November 15 review (the hand-off's section 0): the word "Floating",
-  which touches phase A's words on the app screens. The redraw settled the second (the founder accepted screen 1
-  with the disc only for the tapped post) and follows the third and fourth (a paraglider, not a balcony in a tower;
-  size and the level's name carry reach by day).
+- Screens 4, 5 and 9 still say "Floating over ...". The founder changed the words on November 16 to "Around
+  Washougal, WA" (the contract's section 15.6); the pictures are not redrawn.
 - How a post in the air shows its height after sunset, and what the Elevation chip does now.
 - The founder's ideas of November 16 (the design's "Added on November 16" section): directions only.
 - Details and drawings for the higher starting level and the terrain.

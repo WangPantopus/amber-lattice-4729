@@ -488,6 +488,17 @@ published and is not kept.
    `AREA_CELLS_URL` on staging and production. Until then every post over an area gets the largest area: safe but
    coarse.
 3. Turn `sky_places` on, for the founder's own account first, then for everyone.
-4. Whether old exact points are replaced in the production database (call C8).
+4. The word to replace old exact points in the production database (call C8), when the time comes (15.6).
 5. Store builds with the new sheets, through the usual release.
-6. The wording question from the November 15 review ("Floating" for a post that sits on the ground).
+
+### 15.6 Decided by the founder after the build (November 16)
+
+- **The words.** The founder asked for the wording that reads best for a post that now sits on the ground. A post
+  over an area reads "Around Washougal, WA" in place of "Floating over Washougal, WA"; at home, "You're at home, so
+  this shows only the area"; for a photo that does not pin the post, "The post shows only the area". Pull request
+  #4232 into `dev`. Section 10 and the pictures of screens 4, 5 and 9 still show the old words. "Floating" is kept
+  for a post really in the air.
+- **Old exact points (call C8): replace them, but later.** Not before the switch has been on for everyone for a
+  few weeks and the homes-per-area file is published, so each old post gets an area of the right size instead of
+  the largest one. It cannot be undone and is a change to the production database, so it runs only on the
+  founder's word at that time.
