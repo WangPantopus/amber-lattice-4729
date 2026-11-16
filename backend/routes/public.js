@@ -143,6 +143,18 @@ router.post('/plans/:id/bring/items', async (req, res) => {
   }
 });
 
+// ── Find a date (the extras): a guest without an account ticks the times that work, by a way in or their key ──
+// PUT /api/public/plans/:id/dates/mine { open | invite | guest, name, adults, kids, email, options }. Answers
+// { state: 'saved' | 'check_email', mine, has_key }; away from a home the first answer's key is set in the cookie.
+router.put('/plans/:id/dates/mine', async (req, res) => {
+  try {
+    const result = await planGuests.answerDates(req.params.id, req.body || {}, { cookieKey: guestCookie(req) });
+    return answered(req, res, result);
+  } catch (err) {
+    return planError(res, err, 'dates_mine');
+  }
+});
+
 // ── Chip in (the extras): a guest without an account who is in says they paid the host, by their key ──
 // POST | DELETE /api/public/plans/:id/chip-in/paid. Answers { chip_in }.
 router.post('/plans/:id/chip-in/paid', async (req, res) => {

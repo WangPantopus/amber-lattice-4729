@@ -289,6 +289,13 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
     // The page was opened with the plan's live open link (6.9): its "Open app" carries the link into the app.
     open_live: openLive && invites().isOpenForAnswers(plan),
   };
+  // Find a date (the extras): while the host picks, W1 shows the times in place of the three answers.
+  const planDates = require('./planDates');
+  if (planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
+    const parts = await planDates.cardParts(plan);
+    answer.dates = planDates.view(plan, { mineKey: mine ? require('./planExtras').guestKey(mine.id) : '-', invited: parts.invited });
+    answer.dates.host_line = `${await actions().hostFirstOf(plan)} is picking a date`;
+  }
   let forGuest = null;
   if (isGuestIn(mine) && plan.status !== 'cancelled') {
     const hostFirst = await actions().hostFirstOf(plan);
@@ -324,6 +331,120 @@ async function chipInFor(plan, row) {
   if (!plan.chip_in) return {};
   const chipIn = await require('./planChipIn').forGuest(plan, row);
   return chipIn ? { chip_in: chipIn } : {};
+}
+
+// ── Find a date (the extras, 08-extras section 2) ──
+
+/**
+ * PUT /api/public/plans/:id/dates/mine { open | invite | guest, name, adults, kids, email, options }: a guest without
+ * an account ticks the times that work, with the name and email rules of an answer (6.3). The row is saved answered
+ * but not in (status pending, its name and numbers) and the ticks go on the plan's date_options. Away from a home the
+ * first answer's key comes back; at a home it travels only in an email to the address ("Your times are saved"), and the
+ * answer is check_email. An address that already has a row, without its key, changes nothing and gets its link.
+ */
+async function answerDates(postId, body = {}, { cookieKey = null } = {}) {
+  const planDates = require('./planDates');
+  const plan = await loadAnswerablePlan(postId);
+  if (!plan.date_options || !(await planDates.enabledFor(plan.host_user_id))) fail(404, 'not_found', "This plan isn't available.");
+  if (!planDates.isPicking(plan)) fail(409, 'picked', 'The date is picked. Answer the invitation.');
+  if (!invites().isOpenForAnswers(plan)) {
+    const hostFirst = await actions().hostFirstOf(plan);
+    fail(409, 'ended', plan.status === 'cancelled' ? `${hostFirst} cancelled this plan.` : 'This plan is over.');
+  }
+  const key = isKey(body.guest) ? body.guest : cookieKey;
+  let { row, via, presentedKey } = await resolveAnswerRow(plan, { ...(body || {}), guest: key || undefined }, { cookieKey: null, patch: false });
+  if (row && !isGuest(row) && row.status !== 'pending') fail(409, 'picked', 'Answer the invitation.');
+  const fields = checkedFields(plan, { ...(body || {}), answer: 'maybe' }, presentedKey ? row : null, { via });
+  planDates.checkedIds(plan.date_options, body.options);
+  if (fields.email && !(presentedKey && row?.email === fields.email) && (await invites().addressOptedOut(fields.email))) {
+    fail(409, 'email_opted_out', 'This address asked Pantopus not to email it. Use another one.');
+  }
+  if (!presentedKey) {
+    let existing = null;
+    if (via === 'open' || (via === 'link' && fields.email && !row.guest_name)) {
+      const found = await rowsByEmail(plan.post_id, fields.email);
+      if (via === 'open' && !found.live && found.removed) fail(404, 'not_found', 'This invitation is no longer open.');
+      if (found.live && found.live.id !== row?.id) existing = found.live;
+    }
+    if (row && row.guest_name) {
+      if (via === 'link' && fields.email !== row.email) fail(409, 'invite_used', 'Someone else already used this invitation. Ask the host for a new one.');
+      existing = row;
+    }
+    if (existing) {
+      if (existing.invitee_user_id || existing.channel === 'account') fail(409, 'invite_used', 'This invitation was opened in the Pantopus app. Answer it there.');
+      if (!takeAnswerAllowance(existing.email)) fail(429, 'too_many', 'Try again in a little while.');
+      await sendLinkAgain(plan, existing);
+      return { state: 'check_email', already_answered: true, mine: null, guest: null, set_cookie: false };
+    }
+  }
+  const email = via === 'email' ? row.email : (fields.email || row?.email || null);
+  if (!takeAnswerAllowance(email)) fail(429, 'too_many', 'Try again in a little while.');
+  const browserKey = !presentedKey && !atHome(plan) ? newKey() : null;
+  const stamp = nowIso();
+  const values = { guest_name: fields.name, guest_adults: fields.adults, guest_kids: fields.kids, answered_at: stamp, updated_at: stamp };
+  if (browserKey) values.guest_key_hashes = withKey(row, browserKey);
+  if (via === 'link' && fields.email && !row?.email) values.email = fields.email;
+  if (!row) {
+    const existingRows = await invites().loadInvites(plan.post_id);
+    const openRows = existingRows.filter((r) => r.channel === 'open').length;
+    if (openRows >= plan.spots + LIMITS.openRowsOverRoom || existingRows.length >= invites().invitesLimit(plan)) fail(429, 'too_many', 'Try again in a little while.');
+    const { data, error } = await supabaseAdmin.from('PlanInvite').insert({
+      ...values, status: 'pending', post_id: plan.post_id, host_user_id: plan.host_user_id, channel: 'open', email: fields.email, opened_at: stamp,
+    }).select(GUEST_COLUMNS).single();
+    if (error) {
+      if (error.code === '23505') fail(409, 'try_again', 'Please try again.');
+      throw new Error(`Failed to save your answer: ${error.message}`);
+    }
+    row = data;
+  } else {
+    const { data, error } = await supabaseAdmin.from('PlanInvite').update({ ...values, ...(row.opened_at ? {} : { opened_at: stamp }) })
+      .eq('id', row.id).eq('status', 'pending').select(GUEST_COLUMNS);
+    if (error) throw new Error(`Failed to save your answer: ${error.message}`);
+    if (!data || data.length === 0) fail(404, 'not_found', 'This invitation is no longer open.');
+    row = data[0];
+  }
+  await planDates.saveTicks(plan, require('./planExtras').guestKey(row.id), body.options);
+  recordFunnelEvent('plan_guest_answered', { meta: { plan_id: plan.post_id, kind: plan.kind, via, answer: 'dates' } });
+  if (browserKey || presentedKey) return { state: 'saved', mine: mineView(row), guest: browserKey, set_cookie: Boolean(browserKey) };
+  // At a home the key goes only by email, at most once a day.
+  if (!emailedWithinDay(row)) await sendDateEmail(plan, row, 'dates_saved');
+  return { state: 'check_email', mine: null, guest: null, set_cookie: false };
+}
+
+/**
+ * The pick settles a guest who ticked it (planDates.settle): in, or, from the open link with "I say yes first" (and
+ * never let in by hand), waiting for the host's yes with their seats held. "{title} is {date}. You're in." goes by email
+ * with their link, outside the plan's three. Answers 'in', 'waiting' or null.
+ */
+async function settlePicked(plan, row) {
+  const needsHostOk = row.channel === 'open' && Boolean(plan.open_invite_ok_first) && !row.host_ok_at;
+  const stamp = nowIso();
+  const { data, error } = await supabaseAdmin.from('PlanInvite')
+    .update({ status: 'accepted', needs_host_ok: needsHostOk, answered_at: stamp, updated_at: stamp })
+    .eq('id', row.id).eq('status', 'pending').select(GUEST_COLUMNS);
+  if (error) throw new Error(`Failed to let them in: ${error.message}`);
+  if (!data || data.length === 0) return null;
+  const fresh = data[0];
+  if (needsHostOk) {
+    await planNotify.guestWaiting({ plan, invite: fresh }).catch((err) => logger.warn('plans.guests.notice_failed', { error: err.message }));
+    return 'waiting';
+  }
+  await sendDateEmail(plan, fresh, 'date_in', { stamp: 'address_sent_at' });
+  await planNotify.guestAnswered({ plan, invite: fresh }).catch((err) => logger.warn('plans.guests.notice_failed', { error: err.message }));
+  return 'in';
+}
+
+/** A find-a-date email to a guest (outside the plan's three): 'dates_saved', 'date_in' or 'date_ask'. */
+async function sendDateEmail(plan, row, kind, { when = null, stamp = null } = {}) {
+  const planDates = require('./planDates');
+  const words = { when: when || planDates.noticeDate(plan.post.event_date, rules.timezoneForPlan(plan)) };
+  return sendGuestEmail(plan, row, kind, { words, stamp, inThree: false, capped: false });
+}
+
+async function guestRowsFull(postId) {
+  const { data, error } = await supabaseAdmin.from('PlanInvite').select(GUEST_COLUMNS).eq('post_id', postId).neq('status', 'cancelled');
+  if (error) throw new Error(`Failed to load invitations: ${error.message}`);
+  return data || [];
 }
 
 function mineView(row) {
@@ -566,6 +687,8 @@ async function sendLinkAgain(plan, row) {
  */
 async function answer(postId, body = {}, { cookieKey = null, patch = false } = {}) {
   const plan = await loadAnswerablePlan(postId);
+  // Find a date (the extras): while the date is being picked a guest ticks times instead (answerDates).
+  if (require('./planDates').isPicking(plan)) fail(409, 'picking', 'Tick the times that work for you.');
   let { row, via, presentedKey } = await resolveAnswerRow(plan, body || {}, { cookieKey, patch });
   if (!invites().isOpenForAnswers(plan)) {
     const hostFirst = await actions().hostFirstOf(plan);
@@ -876,8 +999,12 @@ async function remind(user, postId) {
   const hostFirst = await actions().hostFirstOf(plan);
   let reminded = 0;
   let skipped = 0;
+  // Find a date: whoever ticked times has answered.
+  const ticked = require('./planDates').isPicking(plan) ? new Set(Object.keys(plan.date_options.answered || {})) : null;
+  const extras = require('./planExtras');
   for (const row of rows || []) {
     if (row.status !== 'pending' || row.reminded_at) continue;
+    if (ticked && ticked.has(row.invitee_user_id ? extras.personKey(row.invitee_user_id) : extras.guestKey(row.id))) continue;
     if (row.invitee_user_id) {
       if (asked.has(String(row.invitee_user_id))) continue;
       const claimed = await claimReminder(row);
@@ -1297,6 +1424,11 @@ async function sendReminders(plans) {
 }
 
 module.exports = {
+  answerDates,
+  settlePicked,
+  sendDateEmail,
+  guestRowsFull,
+  guestSeatsOf: (postId) => guestSeats(postId),
   LIMITS,
   COOKIE_PREFIX,
   cookieName,

@@ -85,6 +85,10 @@ async function claimNotice(row, patch) {
 }
 
 /** Has this notice's moment passed? */
+/** A plan still picking its date (planDates): nothing runs on its time. */
+const picking = (plan) => require('../services/plans/planDates').isPicking(plan);
+const allTimesPast = (plan, now) => (plan.date_options.options || []).every((o) => new Date(o.ends_at).getTime() <= now);
+
 function isStale(row, plan, request, invite = null) {
   if (!plan) return true;
   // Money coming back is news whatever happened to the plan (a cancellation refunds everyone).
@@ -240,7 +244,10 @@ async function closeAskingAndEnd() {
     .lte('post.event_date', new Date(now + 31 * 60 * 1000).toISOString())
     .limit(300);
   if (error) throw new Error(`Failed to read plans: ${error.message}`);
-  const plans = (open || []).filter((p) => rules.askingClosesAt(p.kind, p.post.event_date, p.post.event_end_date).getTime() <= now);
+  // A plan still picking its date (the extras' find a date) runs on no time until it is picked, unless every time it
+  // offered has gone by.
+  const plans = (open || []).filter((p) => (!picking(p) || allTimesPast(p, now))
+    && rules.askingClosesAt(p.kind, p.post.event_date, p.post.event_end_date).getTime() <= now);
   const hostFirst = await hostFirstNames(plans);
   let expiredCount = 0;
   let endedCount = 0;
@@ -337,7 +344,7 @@ async function sendReminders() {
     .limit(300);
   if (error) throw new Error(`Failed to read upcoming plans: ${error.message}`);
   let sent = 0;
-  for (const plan of upcoming || []) {
+  for (const plan of (upcoming || []).filter((p) => !picking(p))) {
     const remindAt = rules.reminderAt(plan.post.event_date, rules.timezoneForPlan(plan));
     if (remindAt.getTime() > now) continue;
     const requests = await activeRequests(plan.post_id);
@@ -372,7 +379,7 @@ async function sendBringStillOpen() {
     .lte('post.event_date', new Date(now + 2 * 24 * HOUR_MS).toISOString())
     .limit(300);
   if (error) throw new Error(`Failed to read plans with a bring list: ${error.message}`);
-  return require('../services/plans/planBring').sendStillOpen(data || []);
+  return require('../services/plans/planBring').sendStillOpen((data || []).filter((p) => !picking(p)));
 }
 
 // ── 6. The host's morning summary ────────────────────────────
@@ -393,7 +400,7 @@ async function sendHostSummaries() {
     .limit(300);
   if (error) throw new Error(`Failed to read today's plans: ${error.message}`);
   let sent = 0;
-  for (const plan of today || []) {
+  for (const plan of (today || []).filter((p) => !picking(p))) {
     const tz = rules.timezoneForPlan(plan);
     const local = rules.localParts(new Date(now), tz);
     if (rules.localParts(new Date(plan.post.event_date), tz).date !== local.date || local.hour < fromHour) continue;

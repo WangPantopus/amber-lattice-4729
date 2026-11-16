@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PublicPlan, PublicPlanBring, PublicPlanChipIn, PublicPlanGuestState } from '@/lib/publicShare';
+import type { PublicPlan, PublicPlanBring, PublicPlanChipIn, PublicPlanDates, PublicPlanGuestState } from '@/lib/publicShare';
 import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
 
 // Plans for the holidays, H1: the plan's page for a guest without an account (docs/product/plans-holidays/
@@ -453,9 +453,193 @@ function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanCh
   );
 }
 
+// ── Find a date (the extras) ─────────────────────────────────
+
+/**
+ * W1 while the host picks a date (08-extras section 2, board 24): "{Host} is picking a date", the times with how many
+ * can make each and a switch, the guest's name, numbers and (where asked) email, and "Save my times". At a home the
+ * answer is "Check your email": the link to the ticks travels only there.
+ */
+function DatesForm(props: GuestAnswerProps & { dates: PublicPlanDates }) {
+  const { planId, plan, hostFirst, area, open, invite, dates } = props;
+  const router = useRouter();
+  const answer = plan.answer!;
+  const mine = answer.mine;
+  const hasKey = Boolean(mine);
+  const [ticks, setTicks] = useState<Set<string>>(new Set(dates.options.filter((o) => o.mine).map((o) => o.id)));
+  const [name, setName] = useState(mine?.name || '');
+  const [adults, setAdults] = useState(mine?.adults || 1);
+  const [kids, setKids] = useState(mine?.kids || 0);
+  const [email, setEmail] = useState('');
+  const [errors, setErrors] = useState<{ name?: string; email?: string; adults?: string; kids?: string }>({});
+  const [line, setLine] = useState<string | null>(dates.mine?.answered ? 'Your times are saved.' : null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function toggle(id: string) {
+    setTicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setLine(null);
+  }
+
+  async function save() {
+    setBusy(true);
+    setErrors({});
+    setLine(null);
+    const body: Record<string, unknown> = { name, adults, kids: answer.kids_welcome ? kids : 0, options: [...ticks] };
+    if (answer.via !== 'email' && email.trim()) body.email = email.trim();
+    if (!hasKey) {
+      if (answer.via === 'open' && open) body.open = open;
+      else if (invite) body.invite = invite;
+    }
+    try {
+      const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/dates/mine`, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.state === 'check_email') setSentTo(answer.via === 'email' ? props.emailHint || 'your email' : email.trim() || 'your email');
+        else {
+          setLine('Your times are saved.');
+          router.refresh();
+        }
+      } else if (res.status === 422 && data.field) {
+        setErrors({ [data.field]: data.message });
+      } else if (res.status === 409 && data.error === 'email_opted_out') {
+        setErrors({ email: data.message });
+      } else if (res.status === 429) {
+        setLine('Try again in a little while.');
+      } else {
+        setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
+        if (data.error === 'picked' || data.error === 'ended') router.refresh();
+      }
+    } catch {
+      setLine('Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sentTo) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Banner tone="quiet" icon={Glyph.mail('h-5 w-5')} title="Check your email" sub={null} onChange={() => setSentTo(null)} />
+        <ShortCard plan={plan} when={null} area={area} />
+        <p className="flex items-start gap-[10px] rounded-2xl bg-app-info-bg px-4 py-3 text-sm leading-5 text-app-text">
+          <span className="mt-0.5 text-app-info">{Glyph.mail()}</span>
+          <span>Your times are saved. The link to see or change them is on its way to <strong>{sentTo}</strong>.</span>
+        </p>
+        <LockLine>The address is shown only through the link in that email, so only you can open it.</LockLine>
+      </div>
+    );
+  }
+
+  const emailShown = answer.via !== 'email' && !hasKey;
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="flex items-start gap-3 rounded-2xl bg-app-info-bg px-4 py-3">
+        <span className="grid h-9 w-9 flex-none place-items-center rounded-full bg-app-surface text-sm font-bold text-app-text" aria-hidden="true">
+          {hostFirst.slice(0, 1).toUpperCase()}
+        </span>
+        <div className="flex flex-col">
+          <p className="text-base font-semibold leading-[22px]">{dates.host_line}</p>
+          <p className="text-sm leading-5 text-app-text-secondary">{`Tick every time that works for you. ${hostFirst} chooses one, and you’ll hear.`}</p>
+        </div>
+      </section>
+      <InvitationCard plan={plan} when={null} area={area} hostShort={props.hostShort} hostAvatar={props.hostAvatar} />
+      <section className={`${CARD} flex flex-col px-4 pb-2 pt-4`} aria-labelledby="dates-title">
+        <div className="flex items-baseline justify-between gap-3 pb-1">
+          <h2 id="dates-title" className="text-base font-semibold leading-[22px]">Which times work?</h2>
+          <span className="text-sm text-app-text-secondary">{dates.answered_text}</span>
+        </div>
+        <ul className="divide-y divide-app-border">
+          {dates.options.map((o) => (
+            <li key={o.id}>
+              <label className="flex min-h-[60px] cursor-pointer items-center justify-between gap-3 py-2">
+                <span className="flex flex-col">
+                  <span className="text-base font-semibold leading-[22px] [font-variant-numeric:tabular-nums]">{o.text}</span>
+                  <span className="text-[13px] leading-[18px] text-app-text-secondary">{o.can_text}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={ticks.has(o.id)}
+                  onChange={() => toggle(o.id)}
+                  aria-label={o.text}
+                  className="peer sr-only"
+                />
+                <span aria-hidden="true" className={`relative h-[31px] w-[51px] flex-none rounded-full transition-colors ${ticks.has(o.id) ? 'bg-app-success' : 'bg-app-border-strong'}`}>
+                  <span className={`absolute top-[2px] h-[27px] w-[27px] rounded-full bg-white shadow transition-all ${ticks.has(o.id) ? 'left-[22px]' : 'left-[2px]'}`} />
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <label className="flex flex-col gap-2">
+        <span className={LABEL}>Your name</span>
+        <input
+          type="text"
+          value={name}
+          maxLength={100}
+          autoComplete="name"
+          onChange={(e) => setName(e.target.value)}
+          aria-invalid={Boolean(errors.name)}
+          className="h-[50px] rounded-xl border border-app-border-strong bg-app-surface px-4 text-base text-app-text outline-none focus:border-primary-600"
+        />
+        {errors.name ? <span className="text-sm text-app-error">{errors.name}</span> : null}
+      </label>
+      <div className="flex flex-col gap-2">
+        <span className={LABEL}>Who’s coming</span>
+        <div className="divide-y divide-app-border rounded-2xl border border-app-border bg-app-surface px-4">
+          <Stepper label="Adults" value={adults} min={1} max={10} onChange={setAdults} disabled={busy} />
+          {answer.kids_welcome ? <Stepper label="Kids" value={kids} min={0} max={10} onChange={setKids} disabled={busy} /> : null}
+        </div>
+        {errors.adults || errors.kids ? <span className="text-sm text-app-error">{errors.adults || errors.kids}</span> : null}
+      </div>
+      {emailShown ? (
+        <label className="flex flex-col gap-2">
+          <span className={LABEL}>{answer.needs_email ? 'Email, for the address and one reminder' : 'Email, if you’d like a reminder'}</span>
+          <input
+            type="email"
+            value={email}
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            onChange={(e) => setEmail(e.target.value)}
+            aria-invalid={Boolean(errors.email)}
+            className="h-[50px] rounded-xl border border-app-border-strong bg-app-surface px-4 text-base text-app-text outline-none placeholder:text-app-text-muted focus:border-primary-600"
+          />
+          {errors.email ? <span className="text-sm text-app-error">{errors.email}</span> : null}
+        </label>
+      ) : null}
+      <div className="flex flex-col gap-2">
+        <button type="button" className={PRIMARY} disabled={busy || !answer.can} onClick={save}>
+          {busy ? <Spinner /> : null}Save my times
+        </button>
+        <p className="text-center text-[13px] leading-[18px] text-app-text-secondary">{`You’re in when ${hostFirst} picks a time you ticked`}</p>
+        {line ? <p className="text-center text-sm leading-5 text-app-text-strong" role="status">{line}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 // ── The page ─────────────────────────────────────────────────
 
 export default function GuestAnswer(props: GuestAnswerProps) {
+  // Find a date: while the host picks, the times take the three answers' place.
+  if (props.plan.answer?.dates) return <DatesForm {...props} dates={props.plan.answer.dates} />;
+  return <GuestAnswerPage {...props} />;
+}
+
+function GuestAnswerPage(props: GuestAnswerProps) {
   const { planId, plan, hostFirst, when, area, open, invite, emailHint, storeHref, mapsBase, pageUrl } = props;
   const router = useRouter();
   const answer = plan.answer!;

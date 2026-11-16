@@ -391,7 +391,11 @@ async function addGuestParts(out, plan, rows, requestRows) {
   out.open_link = planGuests.openLinkView(plan);
   const asked = new Set(requestRows.filter((r) => ['pending', 'waitlisted', 'accepted'].includes(r.status)).map((r) => String(r.user_id)));
   const dayAgo = Date.now() - DAY_MS;
+  // Find a date: whoever ticked times has answered.
+  const extras = require('./planExtras');
+  const ticked = require('./planDates').isPicking(plan) ? new Set(Object.keys(plan.date_options.answered || {})) : null;
   const remindable = rows.filter((r) => r.status === 'pending' && !r.reminded_at
+    && !(ticked && ticked.has(r.invitee_user_id ? extras.personKey(r.invitee_user_id) : extras.guestKey(r.id)))
     && (r.channel === 'email' || (r.invitee_user_id && !asked.has(String(r.invitee_user_id)))));
   const remindedToday = rows.some((r) => r.reminded_at && new Date(r.reminded_at).getTime() > dayAgo
     && (r.status === 'pending' || (r.answered_at && new Date(r.answered_at) > new Date(r.reminded_at))));

@@ -210,6 +210,8 @@ export type PublicPlanAnswer = {
   host_says_yes_first: boolean;
   /** The page was opened with the plan's live open link (contract 6.9): "Open app" carries it into the app. */
   open_live?: boolean;
+  /** Find a date (the extras): while the host picks, the times to tick in place of the three answers. */
+  dates?: PublicPlanDates | null;
   mine: {
     state: PublicPlanGuestState;
     name: string;
@@ -230,6 +232,16 @@ export type PublicPlanForGuest = {
   changed: 'time' | 'place' | 'both' | null;
   /** Chip in (the extras, 08-extras section 3), while the host has it on. Every word is the server's. */
   chip_in?: PublicPlanChipIn | null;
+};
+
+export type PublicPlanDates = {
+  state: 'picking';
+  host_line: string;
+  answered: number;
+  invited: number;
+  answered_text: string;
+  options: { id: string; starts_at: string; ends_at: string; text: string; can: number; can_text: string; mine?: boolean }[];
+  mine?: { answered: boolean };
 };
 
 export type PublicPlanChipIn = {

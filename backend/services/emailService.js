@@ -555,6 +555,40 @@ function planGuestEmailContent(kind, words) {
       footer,
     };
   }
+  // Find a date (Plans for the holidays, the extras): the host picked the time, or a guest's ticks are saved.
+  if (kind === 'date_in') {
+    return {
+      subject: `${title} is ${words.when}. You’re in.`,
+      heading: 'You’re in',
+      lines: [`${words.hostFirst} has you down for ${words.people}.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['The address and the bring list are on that page. This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'date_ask') {
+    return {
+      subject: `${title} is ${words.when}. Can you make it?`,
+      heading: 'Can you make it?',
+      lines: [],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'dates_saved') {
+    return {
+      subject: `Your times for ${title}`,
+      heading: 'Your times are saved',
+      lines: [`${words.hostFirst} is picking a date. You’ll hear when ${words.hostFirst} chooses one.`],
+      facts: [title],
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
   if (kind === 'reminder') {
     const open = Number(words.openCount) || 0;
     return {

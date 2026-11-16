@@ -63,6 +63,9 @@ const PLAN_COLUMNS = [
   'pay_here', 'tips_on',
   // The extras (08-extras.md): chip in (planChipIn.js), read by the host and the people in only, with `extras=1`.
   'chip_in',
+  // Find a date (planDates.js): the times offered, the ticks and the pick. A plan still picking reaches only an app
+  // that sends `extras=1` (isVisibleTo).
+  'date_options',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -184,6 +187,9 @@ function exactPoint(plan) {
 function isVisibleTo(plan, viewer, { involved = false } = {}) {
   if (!plan || !plan.post) return false;
   if (rules.needsMore(plan) && viewer.more !== true) return false;
+  // A plan still picking its date (the extras' find a date) doesn't exist for an app without `extras=1`, the host's
+  // own included: it would read the first time offered as the plan's time.
+  if (plan.date_options && !plan.date_options.picked && viewer.extras !== true) return false;
   // A business's plan exists only for a viewer with the switch, in an app that can draw it, while the business
   // may still host (planBusiness.shownTo). That goes for the business's own team too. Once the business may no
   // longer host, only the people already involved keep reading it, so a guest can leave and the team can cancel:
@@ -267,6 +273,9 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     tipsByHost: new Map(),
     // The extras (`extras=1`): whether each plan's host has chip in.
     chipInByHost: new Map(),
+    // Find a date: whether each picking plan's host has the switch, and (read per plan) who was invited.
+    datesByHost: new Map(),
+    datesPartsByPlan: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -305,6 +314,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   if (viewer.extras) {
     const chipInPlans = plans.filter((p) => p.chip_in);
     if (chipInPlans.length) ctx.chipInByHost = await require('./planChipIn').switchByHost(chipInPlans.map((p) => p.host_user_id));
+    const planDates = require('./planDates');
+    const picking = plans.filter((p) => planDates.isPicking(p));
+    if (picking.length) {
+      ctx.datesByHost = await planDates.switchByHost(picking.map((p) => p.host_user_id));
+      await Promise.all(picking.filter((p) => ctx.datesByHost.get(String(p.host_user_id))).map(async (p) => {
+        ctx.datesPartsByPlan.set(p.post_id, await planDates.cardParts(p, { host: planBusiness.runsPlan(p, viewer) }));
+      }));
+    }
   }
   // Paid spots (B2): read only for priced plans, from businesses that have the switch.
   const pricedPlans = plans.filter((p) => p.price_cents && p.business_user_id);
@@ -759,6 +776,20 @@ function buildCard(plan, viewer, ctx) {
     const planBring = require('./planBring');
     const bring = planBring.view(plan.bring_list, planBring.mineFor({ role, requestId: myRequest?.status === 'accepted' ? myRequest.id : null }));
     if (bring) card.bring = bring;
+  }
+  // Find a date (the extras, 08-extras section 2), with `extras=1` (no other app gets a plan that is picking): the
+  // times, how many can make each and the reader's own ticks; for the host, who and the favorite. Lists say "Picking
+  // a date" where the time shows.
+  if (viewer.extras && ctx.datesPartsByPlan?.has(plan.post_id)) {
+    const parts = ctx.datesPartsByPlan.get(plan.post_id);
+    const dates = require('./planDates').view(plan, {
+      mineKey: role === 'host' ? null : require('./planExtras').personKey(viewer.id),
+      host: role === 'host', names: parts.names, invited: parts.invited,
+    });
+    if (dates) {
+      card.dates = dates;
+      card.time_text = 'Picking a date';
+    }
   }
   // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has
   // the switch. The payment link reaches nobody else.
