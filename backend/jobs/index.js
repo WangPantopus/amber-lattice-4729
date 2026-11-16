@@ -23,6 +23,7 @@
 //   - assistantPickupRules       → hourly at :12 (AI assistant phase 3 standing rules)
 //   - processQuorumActions       → hourly at :33 (owner votes nobody opened)
 //   - momentsCleanup             → every 10 minutes (Moments: checks left behind, files 7 days after the end)
+//   - momentsShareLater          → every minute (Moments shared later: the push to connections at their time)
 //   - cardMediaCleanup           → daily at 04:50 UTC (a card's own photo or voice nobody can read any more)
 // ============================================================
 
@@ -125,6 +126,7 @@ const { runSupportTrainReminders } = require('./supportTrainReminders');
 const { runPlansTick } = require('./planJobs');
 // Moments: picture checks left behind, and files deleted 7 days after the end
 const momentsCleanup = require('./momentsCleanup');
+const momentsShareLater = require('./momentsShareLater');
 const cardMediaCleanup = require('./cardMediaCleanup');
 // Assistant nudges and briefs: pushes held for quiet hours
 const { releaseHeldNudges } = require('../services/ai/nudges/engine');
@@ -838,6 +840,11 @@ function startJobs(options = {}) {
   // Every 10 minutes: finish picture checks an upload left running, check again Moments whose check couldn't run, and
   // delete files 7 days after a Moment ends unless a review holds them. Moments end on time without it.
   scheduleCron('*/10 * * * *', wrapJob('momentsCleanup', momentsCleanup), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+  // Every minute: a Moment shared later goes live by itself at its time; this sends its push to connections then.
+  scheduleCron('* * * * *', wrapJob('momentsShareLater', momentsShareLater), {
     scheduled: true,
     timezone: 'UTC',
   });
