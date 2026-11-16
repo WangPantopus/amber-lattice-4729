@@ -309,8 +309,10 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
 - A person who is in can change their numbers with the ordinary ask: the new
   `party_size` and `kids_count` are saved when the plan has room for the
   difference, with no new approval; with no room for a larger party it is
-  refused `409 full` and the old numbers stay. (Added November 15: the first
-  build kept the first numbers.)
+  refused `409 full`, "There's no room for more people. Your answer stays as
+  it was.", and the old numbers stay. Fewer always save and free their seats.
+  No notice goes to the host. (Added November 15: the first build kept the
+  first numbers. Built in #4198.)
 - The "wants to come" notice carries its two buttons on iPhone as well: its
   category, `PLAN_GUEST_OK`, is one the push sender passes on.
 - Creating and changing a plan take `kids_welcome` and, for a private plan,
