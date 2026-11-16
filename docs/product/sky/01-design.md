@@ -394,7 +394,7 @@ The founder's own note covers all of them: they depend on having users, and Pant
 ### Filters on the map
 
 - **The idea:** show only one kind of place, such as restaurants, or only the posts of the last 30 minutes, the last hour or the last 24 hours.
-- Filtering by time is small.
+- Filtering by time is small. **Built November 16** on the iPhone and Android Moments maps (pull request #4206): All, last 30 minutes, last hour, last 24 hours. It is worked out in the app from each Moment's posting time and goes back to All after a relaunch.
 - Filtering by kind of place can only show posts pinned at a place, because a post over an area belongs to no place. That gives people a reason to pin at public places. Not checked: whether the place list carries a kind for every place.
 
 ### Plans and Moments together
@@ -419,9 +419,9 @@ The founder's own note covers all of them: they depend on having users, and Pant
 
 - **The idea:** zoom out until the map is a globe, turn it by hand and see posts on it. Real elevation and terrain should matter to what is drawn.
 - **Read from the code on November 15. The apps were not run.**
-  - iPhone: the Pulse map has been 3D with real terrain since October 22, and the Moments map is flat. **Corrected November 16 after a test in the simulator:** neither becomes a globe. Apple draws a globe for other companies' apps only in its satellite styles; its drawn street map stays flat at every zoom. The globe the founder remembers is most likely the web's Pulse map. Being built for the iPhone Moments map: the drawn map close in, and satellite with labels once the view is wider than about 300 miles, where it becomes a globe to turn.
+  - iPhone: the Pulse map has been 3D with real terrain since October 22, and the Moments map is flat. **Corrected November 16 after a test in the simulator:** neither becomes a globe. Apple draws a globe for other companies' apps only in its satellite styles; its drawn street map stays flat at every zoom. The globe the founder remembers is most likely the web's Pulse map. **Built November 16** for the iPhone Moments map (pull request #4217): the drawn map close in, and satellite with labels once the view is wider than about 300 miles, where it becomes a globe to turn. A short fade covers the change. With 300 people on the map and the elevation view on, smoothness measured the same before and after (about 63 frames a second). No Moments show that far out yet, so a card says "Zoom in to see Moments". Not checked: real phones, and whether older iPhones draw the satellite map flat.
   - Web: the map engine can draw a globe, terrain and its own 3D shapes. Moments is not on the web.
-  - Android: Google's map has no globe and no terrain. A globe needs another map engine for that screen, which may cost money and is the founder's decision. Prices were not checked.
+  - Android: Google's map has no globe and no terrain. A globe needs another map engine for that screen, which may cost money and is the founder's decision. Prices read on November 16: Mapbox, which the web app already uses, draws a globe and is free up to 25,000 monthly users, then $4 per 1,000; Google's separate 3D map is billed at $7 per 1,000 views after 5,000 a month; the free MapLibre has no globe on Android yet. Mapbox is the realistic choice, at about a week of work to move the Moments map onto it.
   - Apple's map puts a marker only on the ground, so lift is drawn on the screen, as the built floating view does. Many lifted posts on a tilted map dropped half the frames when measured.
   - The server shows no Moments once the view is wider than 5 degrees, about 300 miles. Posts on a globe need levels (phase C) first.
 

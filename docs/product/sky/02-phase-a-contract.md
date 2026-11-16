@@ -1,7 +1,9 @@
 # The Sky, phase A: approximate places, built fully (build contract v1, 2026-11-14)
 
-**Status: accepted, not approved to build.** The founder accepted the design's sixteen decisions, the ten screens
-and this contract's nine calls on November 14 ("Yes, all nine"). Building phase A needs the founder's go.
+**Status: built in `dev` on November 16, 2026, with the switch off.** The founder accepted the design's sixteen
+decisions, the ten screens and this contract's nine calls on November 14 ("Yes, all nine"), and gave the go on
+November 16. Section 15 says what was built, where it differs from the sections above, and what waits for the
+founder. Sections 1 to 14 are the contract as accepted.
 
 Read first: [the design](01-design.md), screens [4](screens/04-posting-floating.jpg),
 [5 (place)](screens/05-posting-at-a-place.jpg), [5 (home)](screens/05-posting-at-home.jpg) and
@@ -85,6 +87,9 @@ Five sizes, each a square of whole base cells (a base cell is today's 0.005° ce
 A step's cells are aligned to multiples of its size, so every base cell sits inside exactly one cell of each step.
 A point's step is the smallest one whose cell holds at least 100 homes (`AREA_MIN_HOMES = 100`); if none does, or
 there is no count, step 5.
+
+**As built (section 15, decision 1):** the count is stricter. The places that share an area at a step must hold 100
+homes between them, so an area is never smaller than this rule gives and is sometimes larger.
 
 ### 4.2 The point and the disc
 
@@ -366,3 +371,111 @@ Height above the ground (the phone's elevation minus the ground's; decided Novem
 accepted: it belongs with the map's look in phase B, and section 7 here keeps today's sea-level number). Also: the floating look on the map, discs on the map, levels, Overhead, "How far", the author's yes, review before
 Country and World, the viewer's "Floating over" header, a higher starting level, the terrain, sponsored lift,
 areas outside the US, and replacing old exact points in the database (C8).
+
+## 15. As built (November 16, 2026)
+
+Built by two sessions on the founder's word ("keep working until everything is done. no need to ask me for
+anything"). Everything is behind `sky_places`, which is off on every hosted database. With it off, every screen
+and every answer is as it was.
+
+### 15.1 The pull requests
+
+| # | What | Pull request |
+| --- | --- | --- |
+| 1 | Areas of at least 100 homes, the build script and workflow, a sample file for local checks, the switch | #4202 |
+| 2 | Moments: over an area by default, pinned only at a public place, only the area stored, elevation to 100 ft | #4207 |
+| 3 | Share later for Moments (in 1 hour, in 3 hours, tonight at 8) | #4208 |
+| 4 | Pulse posts: exact only at a tagged venue with a photo taken there; only the area stored; old posts read the same way | #4213 |
+| 5 | The Moment Post sheet, iPhone | #4220 |
+| 6 | The Moment Post sheet, Android | #4225 |
+| 7 | The Pulse composer's place line, web | #4226 |
+| 8 | The Pulse composer's place line, iPhone | #4228 |
+| 9 | The Pulse composer's place line, Android | #4229 |
+| 10 | The location privacy matrix: the apps' side and Share later | #4230 |
+
+All are merged into `dev` except 8 and 9, which were checked in the apps and were waiting on their checks on the
+afternoon of November 16. The README and NEXT_STEPS parts of row 10 in section 12 were written on this folder's
+own branch instead.
+
+The words of section 10 are used as they are, in one file per app so they are easy to change: iPhone
+`Features/Shared/Sky/SkyWords.swift`, Android `ui/sky/SkyWords.kt`, web `components/feed/composer/skyWords.ts`. The
+composer's area label comes from `GET /api/posts/place-eligibility`, which the composers already call; it adds
+`sky` and `area` for a person with the switch on. The Moments additions are in `docs/product/moments/api-v4.0.md`.
+
+### 15.2 What was checked, and what was not
+
+Checked on the founder's Mac against a local database and server, with the switch on for one test account and off
+for another, and a sample homes file for Clark County:
+
+- **iPhone simulator and Android emulator:** the Post sheet with the switch off, compared pixel by pixel with the
+  build before it (the same, apart from on/off switches a newer Xcode draws differently on iPhone); over an area,
+  Share later, pinned at a coffee shop, at home; each posted and read back from the database (only the area's point
+  stored for a post over an area, the place's own point for a pin); the second account's view (nothing before a
+  held Moment's time, "Earlier today" after); after a relaunch. The Pulse composer with the switch off and on, and
+  "At <place>" after attaching a photo taken there.
+- **Web, production build in a browser:** the composer's line, the pin button, a post stored exactly at a tagged
+  place, the second account's view.
+- Every pull request passed its checks before it was merged.
+
+Not checked: real phones (real location, real altitude, pushes); the hosted sites; the 2.1.2 store builds against
+the new server (section 12 asked for this before each merge); the whole-US homes file on a server; an address tag
+with a photo (the local server has no map-search key); the Android viewer's "About 4,400 ft" tag on screen. Map
+tiles do not draw in the local Android build, so the disc was seen over blank tiles.
+
+### 15.3 Decisions made in the founder's place
+
+On the server:
+
+1. **Areas are counted the safer way.** The places that share an area must hold 100 homes between them. The plain
+   rule in section 4.1 could point at a handful of homes beside a dense block. In the whole-US trial this gives
+   5.6% of homes a larger area than the plain rule would (5.9% in Clark County).
+2. A post over an area is labelled with the town at the area's own point. A Pulse post at home always reads the
+   town, even with a venue tagged.
+3. "Tonight" uses the time zone of the Moment's place, else of a home, else Pacific. A held Moment's time is when
+   it went live. "Scheduled" is worked out from its share time.
+4. With the switch on, "That place is too far" is gone: a picked place that is not found is posted over the area.
+5. Schools are found by looking the venue up again by its id.
+6. Old photo posts that lose their exact pin also lose "Photo taken here" for other people.
+7. The composer's area label comes from the place check the composers already make (section 10.2 left it open).
+
+In the apps:
+
+8. "Pin it at a place" with no named place opens the place picker; closing it without a pick leaves the switch
+   off. "No place to pin near here" shows only when the server says so.
+9. The small map's pin stands at the phone's spot for a named place, because the preview gives the place's name
+   and not its point. The server pins at the place's own point.
+10. With the Sky on, the place row opens the place picker directly; the old short list includes streets and the
+    town.
+11. "Share later" starts on "In 1 hour".
+12. An unpinned Moment also tells the server "show the area", so it stays over an area if the switch goes off
+    meanwhile.
+13. The place picker leaves out schools and preschools while the Sky is on (iPhone and Android Moments).
+14. On Android, "Show elevation" at home is always drawn greyed out.
+15. On Android, "Your Moment shares at ..." is a short system note.
+16. The web has no "Posting to ..." line for a personal post, so the new line sits under the location chip.
+17. "Taken there" for a Pulse photo is the server's rule: within 5 km of the tagged place.
+18. The web place picker is not filtered for schools, because other screens share it. The server puts a school
+    post over the area anyway.
+19. **Left out of pull requests 5 and 6, and being built separately on November 16:** section 10.1's "a scheduled
+    Moment appears in the author's own row as 'Shares at 6:40 pm', and can be deleted". The author's row is on
+    the Moments map, which another session was changing that day. Until it is built the author is told the time
+    when posting.
+
+### 15.4 The whole-US homes file, as a trial
+
+Built once on the founder's Mac with the repository's script, in under 3 minutes: about 1.0 GB of Census block
+tables read, 5.5 MB out (1,381 tiles covering 142.1 million homes in every state, DC and Puerto Rico). 68.7% of
+homes get the smallest area, about 0.4 mile across; 3.2% get the largest, about 7 by 5 miles. It was not
+published and is not kept.
+
+### 15.5 What waits for the founder
+
+1. Promote `dev` to `master` in the usual way.
+2. Publish the homes-per-area file: once pull request 1 is on master, run the "Area Cells" action on master with
+   publish on and states blank, or pass it to the property-data sessions, who own that storage. Then set
+   `AREA_CELLS_URL` on staging and production. Until then every post over an area gets the largest area: safe but
+   coarse.
+3. Turn `sky_places` on, for the founder's own account first, then for everyone.
+4. Whether old exact points are replaced in the production database (call C8).
+5. Store builds with the new sheets, through the usual release.
+6. The wording question from the November 15 review ("Floating" for a post that sits on the ground).

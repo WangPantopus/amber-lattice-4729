@@ -4,9 +4,10 @@ Every Moment and Pulse post gets a place that is only as exact as is safe, and a
 far it reaches. Most posts stay near the ground, together; a few rise over the town, the city, the country and the
 world.
 
-**Status on November 14, 2026: designed and drawn. Nothing is built.** The founder accepted the design's sixteen
-decisions and the ten screens that day. Phase A has a build contract, and the founder accepted its nine calls the same day; it needs the
-founder's go.
+**Status on November 16, 2026: phase A (approximate places) is built in `dev` behind the switch `sky_places`,
+which is off everywhere. Nothing else is built.** The founder accepted the design's sixteen decisions, the ten
+screens and the phase A contract's nine calls on November 14, and gave the go for phase A on November 16. The
+contract's section 15 says what was built and what waits for the founder.
 
 **November 16:** the founder accepted one rule for lift (close in, height is real; zoomed out, height is reach) and
 gave ideas for later, which the design records. Claiming the airspace over a home is not to be built as described.
@@ -91,7 +92,8 @@ and a view where the ground rises where it is busy.
 
 **Open:**
 
-- The go for phase A.
+- For phase A to reach people: the homes-per-area file published, its address set on the servers, and the switch
+  turned on (the contract's section 15). All three are the founder's.
 - The first of the four questions from the November 15 review (the hand-off's section 0): the word "Floating",
   which touches phase A's words on the app screens. The redraw settled the second (the founder accepted screen 1
   with the disc only for the tapped post) and follows the third and fourth (a paraglider, not a balcony in a tower;
@@ -105,7 +107,7 @@ and a view where the ground rises where it is busy.
 
 | Phase | What people see | State |
 | --- | --- | --- |
-| A | Approximate places, built fully | Contract accepted; waits for the go |
+| A | Approximate places, built fully | Built in `dev` on November 16, switch off |
 | B | The floating look on a flat map | Drawn |
 | C | Levels: rising, sinking, Overhead, How far | Drawn |
 | D | The living sky: night, motion, then tilt | In words |
