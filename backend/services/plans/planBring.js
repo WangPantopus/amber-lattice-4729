@@ -100,6 +100,13 @@ function mineFor({ role, requestId = null, inviteId = null }) {
     || (inviteId && claim.kind === 'guest' && claim.id === inviteId);
 }
 
+/** The list changes only while the plan is on: never once it is cancelled or over. */
+async function assertOpen(plan) {
+  const state = require('./planRules').planState(plan, plan.post.event_date, plan.post.event_end_date);
+  if (state === 'cancelled') fail(409, 'ended', `${await actions().hostFirstOf(plan)} cancelled this plan.`);
+  if (state === 'ended') fail(409, 'ended', 'This plan is over.');
+}
+
 async function readList(postId) {
   const { data, error } = await supabaseAdmin.from('Plan').select('bring_list').eq('post_id', postId).maybeSingle();
   if (error) throw new Error(`Failed to read the bring list: ${error.message}`);
@@ -136,6 +143,7 @@ async function personFor(user, postId) {
     fail(404, 'not_found', "This plan isn't available.");
   }
   if (!takesBringList(plan) || !(await enabledFor(plan.host_user_id))) fail(404, 'not_found', "This isn't available right now.");
+  await assertOpen(plan);
   if (require('./planBusiness').runsPlan(plan, viewer)) {
     return { viewer, plan, who: { kind: 'host', id: String(plan.host_user_id), name: await actions().hostFirstOf(plan) }, mine: mineFor({ role: 'host' }) };
   }
@@ -157,6 +165,7 @@ async function guestFor(postId, key) {
   const row = await guests().rowByKey(postId, key);
   if (!row || row.status === 'cancelled') fail(404, 'not_found', 'This invitation is no longer open.');
   if (row.status !== 'accepted' || row.needs_host_ok) fail(403, 'not_in', "You're not in this plan yet.");
+  await assertOpen(plan);
   return {
     plan,
     who: { kind: 'guest', id: row.id, name: actions().firstOf(row.guest_name) },
