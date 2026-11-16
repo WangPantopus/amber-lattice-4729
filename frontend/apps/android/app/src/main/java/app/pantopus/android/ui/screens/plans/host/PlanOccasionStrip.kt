@@ -4,8 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,11 +45,12 @@ internal fun PlanOccasionStrip(
     large: Boolean,
     onOccasion: (PlanOccasionDto) -> Unit,
 ) {
-    val across = if (large) 2 else 3
+    val across = if (large) ACROSS_LARGE else ACROSS
     Column(modifier = Modifier.testTag("planOccasions"), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         PlanOverline("Coming up")
         occasions.chunked(across).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            // One height a row, so a two-line name doesn't make its tile taller than the others.
+            Row(modifier = Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 row.forEach { occasion -> OccasionTile(occasion, Modifier.weight(1f)) { onOccasion(occasion) } }
                 repeat(across - row.size) { Spacer(modifier = Modifier.weight(1f)) }
             }
@@ -69,6 +73,7 @@ private fun OccasionTile(
     Column(
         modifier =
             modifier
+                .fillMaxHeight()
                 .heightIn(min = 96.dp)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(PantopusColors.appSurfaceSunken)
@@ -86,6 +91,10 @@ private fun OccasionTile(
         )
     }
 }
+
+/** Tiles a row: three, or two at the largest text sizes. */
+private const val ACROSS = 3
+private const val ACROSS_LARGE = 2
 
 /**
  * The occasion's glyph (06-screens A2): Thanksgiving dinner its kind's, Friendsgiving two people, Holiday party a tree,

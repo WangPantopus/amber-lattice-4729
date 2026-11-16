@@ -152,7 +152,8 @@ private fun InvitedCard(
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            PlanTypeTag(kind)
+            // An occasion's name, as the posted card's tag reads it (Plans for the holidays, A6 item 1).
+            PlanTypeTag(kind, label = draft.occasionText)
             PlanPrivateChip()
             if (ui.isOnline) PlanOnlineChip()
         }

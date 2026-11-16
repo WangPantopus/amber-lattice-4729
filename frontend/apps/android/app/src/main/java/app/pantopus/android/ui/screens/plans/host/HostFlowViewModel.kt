@@ -15,7 +15,9 @@ import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionBringDto
 import app.pantopus.android.data.api.models.plans.PlanOccasionDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionFillsDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlansSportsDto
@@ -1343,29 +1345,45 @@ private fun filledFrom(
 ): HostDraft {
     val draft = ui.draft
     val fills = occasion.fills
-    val start = fills?.startsAt?.let { localTime(it, ui.zone) }
-    val end = fills?.endsAt?.let { localTime(it, ui.zone) }
-    val length = if (draft.start != null && draft.end != null) java.time.Duration.between(draft.start, draft.end) else null
-    val private = occasionIsPrivate(ui, occasion)
+    val (start, end) = occasionTimes(draft, fills, ui.zone)
+    val title = fills?.title?.takeIf(String::isNotBlank)
     return draft.copy(
-        title = fills?.title?.takeIf(String::isNotBlank) ?: draft.title,
-        titleEdited = fills?.title?.isNotBlank() == true || draft.titleEdited,
-        isPrivate = private || draft.isPrivate,
-        atHome = if (fills?.placeKind == "home" && ui.home != null) true else draft.atHome,
-        start = start ?: draft.start,
-        end = end ?: start?.let { s -> length?.let { s.plus(it) } } ?: draft.end,
+        title = title ?: draft.title,
+        titleEdited = title != null || draft.titleEdited,
+        isPrivate = occasionIsPrivate(ui, occasion) || draft.isPrivate,
+        atHome = (fills?.placeKind == "home" && ui.home != null) || draft.atHome,
+        start = start,
+        end = end,
         kidsWelcome = fills?.kidsWelcome == true && ui.guestAnswersOn,
-        bring =
-            fills?.bring?.takeIf { ui.bringOn && it.items.isNotEmpty() }?.let { list ->
-                val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
-                BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
-            },
+        bring = occasionBring(ui, fills?.bring),
         foodKind = occasion.details?.foodKind ?: draft.foodKind,
         gameKind = occasion.details?.gameKind ?: draft.gameKind,
         outdoorKind = occasion.details?.outdoorKind ?: draft.outdoorKind,
         occasion = occasion.key,
         occasionText = occasion.text.takeIf(String::isNotBlank),
     )
+}
+
+/** An occasion's start and end on the host's clock; without an end, a new start keeps the draft's length. */
+private fun occasionTimes(
+    draft: HostDraft,
+    fills: PlanOccasionFillsDto?,
+    zone: ZoneId,
+): Pair<LocalDateTime?, LocalDateTime?> {
+    val start = fills?.startsAt?.let { localTime(it, zone) }
+    val end = fills?.endsAt?.let { localTime(it, zone) }
+    val length = if (draft.start != null && draft.end != null) Duration.between(draft.start, draft.end) else null
+    return (start ?: draft.start) to (end ?: start?.let { s -> length?.let { s.plus(it) } } ?: draft.end)
+}
+
+/** An occasion's starter bring list, while the host's form offers one (Plans for the holidays, H2). */
+private fun occasionBring(
+    ui: HostUi,
+    list: PlanOccasionBringDto?,
+): BringDraft? {
+    if (list == null || !ui.bringOn || list.items.isEmpty()) return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
 }
 
 /** An occasion's ISO time on the host's clock. */
