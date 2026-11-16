@@ -15,6 +15,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -83,9 +84,13 @@ function fromRow(row) {
   if (kind === 'building') put(facts, 'gross_sqft', positive(row.FinSize));
   // The acres recorded at the courthouse. A condominium's parcel without them is its share of the complex (the unit's footprint), so it gets
   // no lot; any other lot without them takes its parcel's own area (the layer is in Virginia South state plane feet).
+  let mapped = null;
   if (kind !== 'unit') {
     if (positive(row.LegalAc)) put(facts, 'lot_acres', positive(row.LegalAc));
-    else if (homeType !== 'townhouse') put(facts, 'lot_sqft', positive(row.Shape__Area) >= 100 ? Math.round(positive(row.Shape__Area)) : null);
+    else if (homeType !== 'townhouse') {
+      put(facts, 'lot_sqft', positive(row.Shape__Area) >= 100 ? Math.round(positive(row.Shape__Area)) : null);
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'market_value', positive(row.CurTot));
   put(facts, 'market_land_value', positive(row.CurLand));
@@ -95,7 +100,7 @@ function fromRow(row) {
     put(facts, 'sale_price', price);
     put(facts, 'sale_date', isoDate(row.Sale1D));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.City) || '').toUpperCase(), zip: zipCode(row.Zip_Code) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.City) || '').toUpperCase(), zip: zipCode(row.Zip_Code) }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

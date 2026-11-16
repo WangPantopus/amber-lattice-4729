@@ -30,6 +30,7 @@ import app.pantopus.android.data.api.models.postsmap.PostsMapResponse
 import app.pantopus.android.data.api.models.profile.PublicProfileDto
 import app.pantopus.android.data.api.models.relationships.PendingRequestsResponse
 import app.pantopus.android.data.api.models.relationships.RelationshipsListResponse
+import app.pantopus.android.data.api.models.saved_places.AroundYouDto
 import app.pantopus.android.data.api.models.saved_places.SavedPlacesListResponse
 import app.pantopus.android.data.api.models.settings.PrivacySettingsResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
@@ -125,6 +126,25 @@ object StoreKeys {
             kind = StoreKind.TODAY,
             topics = setOf(StoreTopics.TODAY, "place:$id"),
             type = PlaceIntelligence::class.java,
+        )
+
+    /**
+     * Around you (Today's second half) for a Home: kept, saved on the phone, so Today opens with its At home | Around
+     * you switch instead of growing it once the read answers. Every look still reads it again.
+     */
+    fun homeAround(homeId: String) =
+        StoreKey<AroundYouDto>(
+            "api/homes/$homeId/around",
+            kind = StoreKind.TODAY,
+            type = AroundYouDto::class.java,
+        )
+
+    /** Around you for the viewer's saved place, kept the same way. */
+    fun savedPlaceAround(id: String) =
+        StoreKey<AroundYouDto>(
+            "api/saved-places/$id/around",
+            kind = StoreKind.TODAY,
+            type = AroundYouDto::class.java,
         )
 
     /** Public preview shared by the saved-address root and its details. */

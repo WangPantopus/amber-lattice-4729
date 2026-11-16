@@ -8,7 +8,7 @@ const { download, zipDates, zipTable } = require('../lib/tables.cjs');
 const { streetParts, year, isoDate } = require('../lib/addresses.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -66,11 +66,12 @@ function fromParcel(row, main, valueYear) {
   if (main && kind === 'building') put(facts, 'gross_sqft', positive(main.AHFNAR));
   // A deeded acreage where the county has one, else its mapped acreage.
   put(facts, 'lot_acres', positive(row.ACRE) || positive(row.MAPPEDACRE));
+  const mapped = positive(row.ACRE) ? null : 'lot_acres';
   put(facts, 'value_year', valueYear);
   put(facts, 'assessed_value', positive(row.TOTALVALUE));
   put(facts, 'assessed_land_value', positive(row.LANDVALUE));
   put(facts, 'assessed_building_value', positive(row.IMPROVALUE));
-  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts };
+  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts, ...mapLot(facts, mapped) };
   // Read since the county went live, held off its screens until its new_columns switch is on (lib/held.cjs): the style
   // its description names, and cooling where its heating-and-air words say the home is cooled ("Heat and A/C",
   // "Pack. Heat/Cool", "M.H. Cooling", "HVAC").

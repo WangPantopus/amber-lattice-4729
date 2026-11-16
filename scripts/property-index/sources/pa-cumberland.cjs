@@ -9,7 +9,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -74,6 +74,7 @@ function fromRow(row) {
     put(facts, 'basement_finished_sqft', positive(row.FINISHED_B));
   }
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.DEEDED_AC) || positive(row.CalcAcre));
+  const mapped = positive(row.DEEDED_AC) ? null : 'lot_acres';
   put(facts, 'assessed_value', positive(row.TOTAL_VAL));
   put(facts, 'assessed_land_value', positive(row.LAND_VAL));
   put(facts, 'assessed_building_value', positive(row.BLDG_VAL));
@@ -82,7 +83,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.SALEPRICE));
     put(facts, 'sale_date', isoDate(row.SALEDATE));
   }
-  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.SITUS_ZIP) || null }, facts };
+  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.SITUS_ZIP) || null }, facts, ...mapLot(facts, mapped) };
   // Read since the county went live, held off its screens until its new_columns switch is on (lib/held.cjs): the story
   // height is written in words ("2 Stories", "1.5 Stories (Ul 50% Of Lla)"); split levels and bi-levels give no count.
   const stories = /^(\d(?:\.5)?) Stor(?:y|ies)\b/i.exec(String(row.STORY_HEIG ?? '').trim());

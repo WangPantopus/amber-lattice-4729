@@ -529,7 +529,9 @@ async function reminder({ plan, request, goingCount, band }) {
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: true,
-    metadata: { request_id: request.id },
+    // An online plan's reminder carries no buttons: "On my way" is for a place to get to. A tap opens the plan,
+    // where Join and "Can't make it" are.
+    metadata: { request_id: request.id, ...(plan.place_kind === 'online' ? { category: null } : {}) },
   });
 }
 

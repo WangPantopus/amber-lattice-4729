@@ -65,6 +65,7 @@ export default function SentList({ selectedId }: { selectedId?: string }) {
       byLink: piece.by_link,
       sentToday: calendarDay(new Date(piece.sent_at), timeZone) === today,
       postage: Boolean(holidayCards?.postage_enabled),
+      notEmailed: Boolean(piece.email_send_at || piece.email_status),
     });
     if (!yes) return;
     setTakingId(piece.id);

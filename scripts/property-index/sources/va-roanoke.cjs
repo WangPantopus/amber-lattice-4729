@@ -9,7 +9,7 @@ const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, markMapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -87,6 +87,8 @@ function fromRow(row) {
   // county writes a home's fireplaces in words, "1 FIREPLACE", "2 FIREPLACES".
   const fireplaces = /^(\d+) FIREPLACES?$/.exec(String(row.FirePlaceDescr ?? '').replace(/\s+/g, ' ').trim().toUpperCase());
   if (home && fireplaces && Number(fireplaces[1]) <= 10) hold(record, 'fireplaces', Number(fireplaces[1]));
+  // The county's Calc_Acreage is its parcel map's measure (lib/held.cjs mapLot).
+  markMapLot(record, 'lot_acres');
   return record;
 }
 

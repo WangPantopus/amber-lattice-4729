@@ -243,7 +243,10 @@ class MailSentViewModel
         /** The list shows [card] in another state than its page just read (the pickup, an arrival or its email came since). */
         private fun movedOn(card: SentCard): Boolean {
             val shown = loaded.firstOrNull { it.id == card.id } ?: return false
-            return shown.status != card.status || shown.canTakeBack != card.canTakeBack || shown.emailSendAt != card.emailSendAt
+            return shown.status != card.status ||
+                shown.canTakeBack != card.canTakeBack ||
+                shown.emailSendAt != card.emailSendAt ||
+                shown.emailStatus != card.emailStatus
         }
 
         private fun publish() {
@@ -280,6 +283,9 @@ class MailSentViewModel
             val STALE_AFTER: Duration = Duration.ofMinutes(5)
         }
     }
+
+/** A card by email's email that hasn't gone out: the server keeps trying for about an hour, then gives up. */
+enum class SentEmailTrouble { Retrying, Failed }
 
 /** How Sent says where a card is (the list and the card's own page say it the same way). */
 object MailSentWords {
@@ -345,17 +351,35 @@ object MailSentWords {
     fun notEmailedYet(card: SentCard): Boolean = card.emailSendAt != null || card.emailStatus == "retrying" || card.emailStatus == "failed"
 
     /**
-     * By email, still waiting: when its email goes while it's set for the sender's 7 a.m. or Christmas morning (nothing
-     * is emailed before then), else that it waits for them to open or claim it.
+     * A card by email whose email hasn't gone out while it waits (the server's `email_status`): still being tried, or
+     * given up. Null once it went, for a link, and for a word this app doesn't know.
+     */
+    fun emailTrouble(card: SentCard): SentEmailTrouble? {
+        if (card.status != "email_waiting" || card.byLink) return null
+        return when (card.emailStatus) {
+            "retrying" -> SentEmailTrouble.Retrying
+            "failed" -> SentEmailTrouble.Failed
+            else -> null
+        }
+    }
+
+    /**
+     * By email, still waiting: that its email hasn't gone out, else when it goes while it's set for the sender's 7 a.m.
+     * or Christmas morning (nothing is emailed before then), else that it waits for them to open or claim it.
      */
     private fun emailWaitingLine(
         card: SentCard,
         zone: ZoneId,
     ): String =
-        when {
-            card.emailSendAt != null -> "Email goes ${HolidayCardTimes.emailGoesAt(card.emailSendAt, zone)}"
-            card.kind == "letter" -> "Waiting for them to claim it"
-            else -> "Waiting for them to open the email"
+        when (emailTrouble(card)) {
+            SentEmailTrouble.Retrying -> "The email didn’t go out yet. Trying again"
+            SentEmailTrouble.Failed -> "The email didn’t go out"
+            null ->
+                when {
+                    card.emailSendAt != null -> "Email goes ${HolidayCardTimes.emailGoesAt(card.emailSendAt, zone)}"
+                    card.kind == "letter" -> "Waiting for them to claim it"
+                    else -> "Waiting for them to open the email"
+                }
         }
 
     /** A card by link, in a line; null for a state the words below already say. */

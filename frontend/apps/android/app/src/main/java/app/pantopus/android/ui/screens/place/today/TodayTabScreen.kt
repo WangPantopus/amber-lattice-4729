@@ -169,7 +169,9 @@ fun TodayTabScreen(
         onPauseOrDispose {}
     }
     var half by rememberSaveable { mutableStateOf(TodayHalf.Home) }
-    val aroundPage = around?.takeIf { it.showsSwitch && aroundPlace != null }
+    // The answer kept for this place draws the switch in Today's first frame, before the read above has started.
+    val keptAround = remember(aroundPlace) { viewModel.keptAround(aroundPlace) }
+    val aroundPage = (around ?: keptAround)?.takeIf { it.showsSwitch && aroundPlace != null }
     val showsAround = half == TodayHalf.Around && aroundPage != null
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { scroll.animateScrollTo(0) } }
     LaunchedEffect(radonHomeId, state) {

@@ -10,6 +10,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
@@ -86,14 +87,18 @@ function fromRow(row) {
     if (heat === 4) put(facts, 'heating', 'Heat pump');
   }
   // A condominium's parcel is its share of the complex, so a condo unit gets no lot. The layer's own area is in Ohio South state plane feet.
+  let mapped = null;
   if (kind !== 'unit' && String(row.LUC || '').trim() !== '550') {
     if (positive(row.ACRES)) put(facts, 'lot_acres', positive(row.ACRES));
-    else put(facts, 'lot_sqft', positive(row.Shape_Area) >= 100 ? Math.round(positive(row.Shape_Area)) : null);
+    else {
+      put(facts, 'lot_sqft', positive(row.Shape_Area) >= 100 ? Math.round(positive(row.Shape_Area)) : null);
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'market_value', positive(row.APPRVAL));
   put(facts, 'market_land_value', positive(row.APRLAND));
   put(facts, 'market_building_value', positive(row.APRBLDG));
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

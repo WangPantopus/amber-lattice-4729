@@ -558,6 +558,14 @@ data class SentCard(
     @Json(name = "email_status") val emailStatus: String? = null,
     /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when. Absent once it went (or when it went at once). */
     @Json(name = "email_send_at") val emailSendAt: String? = null,
+    /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
+    @Json(name = "email_to") val emailTo: String? = null,
+)
+
+/** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */
+@JsonClass(generateAdapter = true)
+data class CardEmailedAgainResponse(
+    val emailed: Boolean = false,
 )
 
 /** The envelope as they got it: who it's from, and the day it was postmarked by their clock (null before the pickup). */
@@ -592,7 +600,7 @@ data class SentCardFace(
 
 /**
  * One step of a sent card's trail: `sealed`, `picked_up`, `delivered`, `opens`, `emailed`, `joined` or `returned`, when
- * (a time, [at], or a day by their clock, [on]) and whether it has happened.
+ * (a time, [at], or a day by their clock, [on]) and whether it has happened (`emailed` only once the email went out).
  */
 @JsonClass(generateAdapter = true)
 data class SentCardStep(

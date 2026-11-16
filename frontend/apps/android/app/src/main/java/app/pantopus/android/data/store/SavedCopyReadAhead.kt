@@ -44,6 +44,7 @@ class SavedCopyReadAhead
                 val home = homes.homes.firstOrNull { it.id == homes.defaultHomeId }?.takeIf { it.showsCopyBeforeRecheck }
                 if (home != null) {
                     launch { store.readAhead(StoreKeys.today(home.id), account) }
+                    launch { store.readAhead(StoreKeys.homeAround(home.id), account) }
                     store.readAhead(StoreKeys.place(home.id), account)
                 }
             }

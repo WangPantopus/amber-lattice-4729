@@ -52,6 +52,8 @@ import app.pantopus.android.data.api.models.mailbox.SentCardStep
 import app.pantopus.android.data.mailbox.HolidayCardsRepository
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.components.ToastController
+import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.mailbox.cards.CardButton
 import app.pantopus.android.ui.screens.mailbox.cards.CardButtonKind
 import app.pantopus.android.ui.screens.mailbox.cards.CardNoteSide
@@ -73,6 +75,7 @@ import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.MailTrailStep
 import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.TrailRow
 import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.tableCard
 import app.pantopus.android.ui.screens.mailbox.mailbox_root.MailSentWords
+import app.pantopus.android.ui.screens.mailbox.mailbox_root.SentEmailTrouble
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -86,7 +89,8 @@ import java.util.Locale
 /**
  * A card the person sent (launch key `mailbox`; drawings `M3-SentCard`, `M4-SentEmail`), opened from Sent: who it went
  * to and where it is, its envelope as they got it, both sides with the sender's own note, its trail ("a card never tells
- * you when it was opened"), and Take it back while it can be, which closes the page back to Sent. Back says "Sent".
+ * you when it was opened"), and Take it back while it can be, which closes the page back to Sent. Back says "Sent". A
+ * card by email whose email didn't go out says so right under where it is, with the address typed and Email it again.
  */
 @Composable
 fun MailSentCardScreen(
@@ -96,6 +100,9 @@ fun MailSentCardScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val takingBack by viewModel.takingBack.collectAsStateWithLifecycle()
     val takeBackError by viewModel.takeBackError.collectAsStateWithLifecycle()
+    val emailingAgain by viewModel.emailingAgain.collectAsStateWithLifecycle()
+    val emailAgainError by viewModel.emailAgainError.collectAsStateWithLifecycle()
+    val toasts = remember { ToastController() }
     // With digital stamps on, taking a card back gives its stamp back.
     val cards by HolidayCardsRepository.latest.collectAsStateWithLifecycle()
     var confirmTakeBack by rememberSaveable { mutableStateOf(false) }
@@ -103,31 +110,48 @@ fun MailSentCardScreen(
     val zone = remember { HolidayCardTimes.zone(HolidayCardsRepository.latest.value?.timeZone) }
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(Unit) { viewModel.closed.collect { onBack() } }
+    LaunchedEffect(Unit) { viewModel.emailed.collect { toasts.success("We emailed them.") } }
 
-    Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailSentPiece")) {
-        BackToSent(onBack)
-        when (val shown = state) {
-            MailSentCardState.Loading -> Loading()
-            is MailSentCardState.Gone -> Gone(shown.message, onBack)
-            is MailSentCardState.Error ->
-                ErrorState(
-                    headline = "Your card didn't load",
-                    message = shown.message,
-                    modifier = Modifier.padding(vertical = Spacing.s4),
-                    onRetry = viewModel::read,
-                )
-            is MailSentCardState.Loaded ->
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s8),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    SentCardPage(shown.card, zone, takingBack, takeBackError, onTakeBack = { confirmTakeBack = true })
-                }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailSentPiece")) {
+            BackToSent(onBack)
+            when (val shown = state) {
+                MailSentCardState.Loading -> Loading()
+                is MailSentCardState.Gone -> Gone(shown.message, onBack)
+                is MailSentCardState.Error ->
+                    ErrorState(
+                        headline = "Your card didn't load",
+                        message = shown.message,
+                        modifier = Modifier.padding(vertical = Spacing.s4),
+                        onRetry = viewModel::read,
+                    )
+                is MailSentCardState.Loaded ->
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s8),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        SentCardPage(
+                            card = shown.card,
+                            zone = zone,
+                            takingBack = takingBack,
+                            takeBackError = takeBackError,
+                            onTakeBack = { confirmTakeBack = true },
+                            emailAgain =
+                                EmailAgain(
+                                    busy = emailingAgain,
+                                    error = emailAgainError,
+                                    postage = cards?.postageEnabled == true,
+                                    onEmailAgain = viewModel::emailAgain,
+                                ),
+                        )
+                    }
+            }
         }
+        ToastHost(controller = toasts)
     }
     val card = (state as? MailSentCardState.Loaded)?.card
     if (confirmTakeBack && card != null) {
@@ -169,6 +193,15 @@ private fun BackToSent(onBack: () -> Unit) {
     }
 }
 
+/** Email it again on a card by email whose email didn't go out: while it tries, why it didn't work, and the stamp's words. */
+private data class EmailAgain(
+    val busy: Boolean,
+    val error: String?,
+    /** Digital stamps are on: taking the card back gives its stamp back. */
+    val postage: Boolean,
+    val onEmailAgain: () -> Unit,
+)
+
 /** The card's page: who it went to, its envelope, both sides, its trail, and Take it back while it can be. */
 @Composable
 private fun SentCardPage(
@@ -177,6 +210,7 @@ private fun SentCardPage(
     takingBack: Boolean,
     takeBackError: String?,
     onTakeBack: () -> Unit,
+    emailAgain: EmailAgain,
 ) {
     val waitingLink = card.byLink && card.status != "claimed"
     val to = if (waitingLink) "whoever opens your link" else card.toName?.takeIf { it.isNotBlank() } ?: "them"
@@ -201,6 +235,9 @@ private fun SentCardPage(
             modifier = Modifier.padding(top = 2.dp),
         )
     }
+    // Its email didn't go out: said first, under where it is, before the envelope and the card.
+    MailSentWords.emailTrouble(card)?.let { EmailTrouble(card, it, emailAgain) }
+    emailAgain.error?.let { PageError(it, Modifier.testTag("mailSentPieceEmailError")) }
     val delivered = card.status == "delivered" || card.status == "claimed"
     val mailboxLabel =
         when {
@@ -241,16 +278,23 @@ private fun SentCardPage(
     }
     Trail(card, first, zone)
     if (card.canTakeBack) ChangedYourMind(card, zone, takingBack, onTakeBack)
-    takeBackError?.let {
-        Text(
-            it,
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            fontWeight = FontWeight.Medium,
-            color = PantopusColors.error,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }.testTag("mailSentPieceError"),
-        )
-    }
+    takeBackError?.let { PageError(it, Modifier.testTag("mailSentPieceError")) }
+}
+
+/** Why something on the page didn't work, said as it appears. */
+@Composable
+private fun PageError(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        message,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontWeight = FontWeight.Medium,
+        color = PantopusColors.error,
+        modifier = modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+    )
 }
 
 /** "See it the way they did": the same full-screen moment, and Share. Nothing about it reaches them. */
@@ -453,6 +497,66 @@ private fun ChangedYourMind(
     }
 }
 
+/**
+ * Its email hasn't gone out (Sent's `email_status`): still being tried for an hour, or given up. The address they typed,
+ * whole, so a mistake shows, and Email it again. Take it back stays in its own box at the end of the page.
+ */
+@Composable
+private fun EmailTrouble(
+    card: SentCard,
+    trouble: SentEmailTrouble,
+    emailAgain: EmailAgain,
+) {
+    val to = card.emailTo?.trim()?.takeIf { it.isNotEmpty() } ?: "them"
+    val title: String
+    val body: String
+    when (trouble) {
+        SentEmailTrouble.Retrying -> {
+            title = "The email hasn’t gone out yet"
+            body = "We couldn’t reach $to yet. We’ll keep trying for an hour, or you can email it again now."
+        }
+        SentEmailTrouble.Failed -> {
+            title = "The email didn’t go out"
+            body =
+                "We couldn’t email $to. If the address is right, email it again. If it has a mistake, take the card back " +
+                "and send it to the right one." + if (emailAgain.postage) " Your stamp comes back." else ""
+        }
+    }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.cardNotePaper)
+                .border(1.dp, PantopusColors.cardNoteEdge, shape)
+                .padding(horizontal = Spacing.s4, vertical = 14.dp)
+                .testTag("mailSentEmailTrouble"),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.Mail,
+            contentDescription = null,
+            size = 20.dp,
+            tint = PantopusColors.cardSectionInk,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.semantics(mergeDescendants = true) {}) {
+                Text(title, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+                Text(body, fontSize = 13.sp, lineHeight = 18.sp, color = PantopusColors.appTextSecondary)
+            }
+            CardButton(
+                "Email it again",
+                onClick = emailAgain.onEmailAgain,
+                kind = CardButtonKind.Paper,
+                fill = false,
+                busy = emailAgain.busy,
+                modifier = Modifier.padding(top = Spacing.s3).testTag("mailSentPieceEmailAgain"),
+            )
+        }
+    }
+}
+
 /** A part of the page under its small heading. */
 @Composable
 private fun PageSection(
@@ -538,14 +642,16 @@ private fun trailStep(
     first: String,
     zone: ZoneId,
 ): MailTrailStep {
-    val later = emailStepLater(step, card, zone)
-    val title = later ?: sentTrailTitle(step, card, first)
+    // Its email didn't go out (email_status), or it waits for its time (email_send_at); never both.
+    val trouble = emailStepTrouble(step, card)
+    val later = if (trouble == null) emailStepLater(step, card, zone) else null
+    val title = trouble ?: later ?: sentTrailTitle(step, card, first)
     val detail =
         step.at?.let { at -> HolidayCardTimes.parse(at)?.atZone(zone)?.format(trailTime) }
             ?: step.on?.let { on -> runCatching { LocalDate.parse(on.take(10)) }.getOrNull()?.format(trailDay) }
     return MailTrailStep(
         id = step.step,
-        title = if (step.done || later != null) title else "$title · not yet",
+        title = if (step.done || trouble != null || later != null) title else "$title · not yet",
         detail = detail?.uppercase(Locale.US)?.takeIf { step.done },
         done = step.done,
         readers = false,
@@ -587,6 +693,19 @@ private fun sentLetterCard(card: SentCard): MailLetterCard? {
         photo = face.photo?.let { CardPrintPhoto.sent(card.id, it) },
         voice = face.voice?.let { CardGreetingVoice.sent(card.id, it) },
     )
+}
+
+/** The emailed step while its email hasn't gone out: what happened to it, instead of "· not yet". */
+private fun emailStepTrouble(
+    step: SentCardStep,
+    card: SentCard,
+): String? {
+    if (step.step != "emailed" || step.done) return null
+    return when (MailSentWords.emailTrouble(card)) {
+        SentEmailTrouble.Failed -> "The email didn’t go out"
+        SentEmailTrouble.Retrying -> "Emailing them · trying again"
+        null -> null
+    }
 }
 
 private fun claimStepTitle(

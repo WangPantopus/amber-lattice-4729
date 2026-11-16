@@ -9,6 +9,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { download, zipDates, zipTable } = require('../lib/tables.cjs');
 const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
@@ -90,7 +91,7 @@ function fromRow(row, sale, files) {
     facts.sale_price = sale.price;
     facts.sale_date = sale.date;
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: situs[2].toUpperCase(), zip: zipCode(situs[3]) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: situs[2].toUpperCase(), zip: zipCode(situs[3]) }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 async function* build({ work }) {

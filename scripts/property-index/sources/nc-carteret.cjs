@@ -10,6 +10,7 @@ const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -84,6 +85,7 @@ function fromRow(row, latest) {
   }
   // A condominium unit's acreage is its share of the complex, so it gets no lot.
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.LegalAcres) || positive(row.GISacres));
+  const mapped = positive(row.LegalAcres) ? null : 'lot_acres';
   put(facts, 'assessed_value', positive(row.Total_EMV));
   put(facts, 'assessed_land_value', positive(row.LAND_VALUE));
   put(facts, 'assessed_building_value', positive(row.STRUC_VAL));
@@ -93,7 +95,7 @@ function fromRow(row, latest) {
     put(facts, 'sale_price', positive(row.SALE_PRICE));
     put(facts, 'sale_date', saleDate);
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.SITE_CITY ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip: null }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.SITE_CITY ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip: null }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

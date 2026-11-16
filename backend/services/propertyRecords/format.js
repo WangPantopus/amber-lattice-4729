@@ -44,7 +44,9 @@ const BLOCK_RAW_BYTES = 32 * 1024;
  * which its words take where they say {year}. `held.bath_totals: { field: value }` is the other way round: the full and half
  * baths a live county's page showed before a bath total the county gives on its own stopped being split into them (2.5 read
  * as two full and a half), which stay in the record's facts as well and leave its screens once the switch file names the
- * county on its bath_totals list (router.js).
+ * county on its bath_totals list (router.js). `held.mapped_lots: { lot_acres?, lot_sqft? }` marks the same way a lot size the
+ * record states that a parcel map measured (a shape's area, GIS or calculated acres) instead of the recorded acreage, with
+ * the county's words in `held_from.mapped_lots`, shown under the lot once the county is on its mapped_lots list.
  */
 const KINDS = new Set(['property', 'unit', 'building', 'parcel', 'other']);
 

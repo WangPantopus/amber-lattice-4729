@@ -1,5 +1,6 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
@@ -163,6 +164,17 @@ interface HolidayCardsApi {
     suspend fun takeBack(
         @Path("id") id: String,
     ): TakeBackHolidayCardResponse
+
+    /**
+     * `POST /api/mailbox/cards/:id/email-again` — the same route file (after take-back): one more try at a card by
+     * email's email that didn't go out (Sent's `email_status`), sender only. 503 `CARD_EMAIL_FAILED` when it still
+     * didn't go, 429 `CARD_EMAIL_BUSY` within a minute of the last try, 409 once it went, was taken back or they have
+     * it, 404 for anyone else; each with the server's sentence.
+     */
+    @POST("api/mailbox/cards/{id}/email-again")
+    suspend fun emailAgain(
+        @Path("id") id: String,
+    ): CardEmailedAgainResponse
 
     /**
      * `GET /api/mailbox/sent?before=&limit=` — route `backend/routes/mailbox.js` (before `GET /:id`; launch key

@@ -9,6 +9,7 @@ const path = require('node:path');
 const { layerRows, layerAreas, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -94,9 +95,13 @@ function fromRow(row) {
     put(facts, 'heating_fuel', text(row.Heat_Source));
   }
   // A condominium's parcel is its share of the complex, so a condo unit gets no lot.
+  let mapped = null;
   if (kind !== 'unit' && String(row.Land_Use_Code || '').trim() !== '550') {
     if (positive(row.Acres)) put(facts, 'lot_acres', positive(row.Acres));
-    else put(facts, 'lot_sqft', positive(row.area) >= 100 ? positive(row.area) : null);
+    else {
+      put(facts, 'lot_sqft', positive(row.area) >= 100 ? positive(row.area) : null);
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'market_value', positive(row.Appraised_Total));
   put(facts, 'market_land_value', positive(row.Appraised_Land));
@@ -107,7 +112,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.Sale_Price));
     put(facts, 'sale_date', isoDate(row.Sale_Date));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: word(row.Address_City) || '', zip: zipCode(row.Address_ZipCode) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: word(row.Address_City) || '', zip: zipCode(row.Address_ZipCode) }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

@@ -5,8 +5,14 @@ package app.pantopus.android.data.saved_places
 import app.pantopus.android.data.api.models.saved_places.AreaTodayBody
 import app.pantopus.android.data.api.models.saved_places.AroundYouDto
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.api.net.conditionalApiCall
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.AroundYouApi
+import app.pantopus.android.data.store.ScreenStore
+import app.pantopus.android.data.store.StoreKey
+import app.pantopus.android.data.store.StoreKeys
+import app.pantopus.android.data.store.asResult
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,20 +27,35 @@ sealed interface AroundYouPlace {
 
 /**
  * Around you (Today's second half) for the place Today shows: a Home (a claimed one included), a saved address, or the
- * city around a point already rounded on the phone.
+ * city around a point already rounded on the phone. A Home's and a saved address's answers go through the screen store,
+ * which keeps the last one (saved on the phone) for Today's first frame.
  */
 @Singleton
 class AroundYouRepository
     @Inject
     constructor(
         private val api: AroundYouApi,
+        private val store: ScreenStore,
     ) {
-        suspend fun read(place: AroundYouPlace): NetworkResult<AroundYouDto> =
-            safeApiCall {
-                when (place) {
-                    is AroundYouPlace.Home -> api.homeAround(place.id)
-                    is AroundYouPlace.Saved -> api.savedPlaceAround(place.id)
-                    is AroundYouPlace.Area -> api.areaAround(AreaTodayBody(place.latitude, place.longitude))
-                }
+        /** The answer kept for [place], without a request; none for an area, whose read is never kept. */
+        fun copy(place: AroundYouPlace): AroundYouDto? =
+            when (place) {
+                is AroundYouPlace.Home -> store.peek(StoreKeys.homeAround(place.id)).data
+                is AroundYouPlace.Saved -> store.peek(StoreKeys.savedPlaceAround(place.id)).data
+                is AroundYouPlace.Area -> null
             }
+
+        /** Asks the server every time, as before; the store keeps the answer for the next first look. */
+        suspend fun read(place: AroundYouPlace): NetworkResult<AroundYouDto> =
+            when (place) {
+                is AroundYouPlace.Home -> stored(StoreKeys.homeAround(place.id)) { etag -> api.homeAround(place.id, etag) }
+                is AroundYouPlace.Saved -> stored(StoreKeys.savedPlaceAround(place.id)) { etag -> api.savedPlaceAround(place.id, etag) }
+                // The point stays out of the URL (a POST body), so the store can't key it and nothing is kept.
+                is AroundYouPlace.Area -> safeApiCall { api.areaAround(AreaTodayBody(place.latitude, place.longitude)) }
+            }
+
+        private suspend fun stored(
+            key: StoreKey<AroundYouDto>,
+            fetch: suspend (etag: String?) -> Response<AroundYouDto>,
+        ): NetworkResult<AroundYouDto> = store.read(key, force = true) { etag -> conditionalApiCall { fetch(etag) } }.asResult()
     }

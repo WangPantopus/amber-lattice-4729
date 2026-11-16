@@ -42,7 +42,7 @@ import CardRack from './CardRack';
 import { askTakeBack } from './takeBack';
 import { chosenPersonFor } from './sendOneBack';
 import { clearCardDraft, readCardDraft, saveCardDraft } from './cardDraft';
-import { cardMood, cardPicture, clockTime, firstNameOf, SERIF, shortDay, WAX, WAX_BUTTON } from './cardArt';
+import { cardMood, cardPicture, clockTime, emailGoesAt, firstNameOf, SERIF, shortDay, WAX, WAX_BUTTON } from './cardArt';
 
 type Step = 'to' | 'pick' | 'write' | 'seal' | 'look' | 'sent';
 /** Someone on a list (digital stamps on): a person found by name, or an address. */
@@ -216,6 +216,8 @@ function arrivalLine(card: SentHolidayCard): string {
   }
   if (card.by_email) {
     if (card.status === 'claimed') return `${who} joined Pantopus and has your card.`;
+    // Set for your 7 a.m. or Christmas morning: nothing is emailed before then.
+    if (card.email_send_at) return `We’ll email them ${emailGoesAt(card.email_send_at)}, your time. Once they join with that address, it waits in their mailbox.`;
     return card.arrival === 'sealed_christmas'
       ? 'We emailed them. Once they join with that address, it waits in their mailbox and opens on Christmas morning.'
       : 'We emailed them. It waits for them to join with that address and open it.';
@@ -1039,6 +1041,13 @@ function arrivalChoice(
   theirDay: string | null,
 ): { title: string; detail: string } {
   if (to.kind === 'list') return listArrivalChoice(arrival, cards, to.entries);
+  // By email, its email goes at your next 7 a.m. or on Christmas morning (the other person's clock isn't known).
+  if (to.kind === 'email' && arrival === 'next_morning') {
+    return { title: 'With the morning mail', detail: `We email them ${emailGoesAt(cards.next_round_at)}, your time. They can open it once they join with that address.` };
+  }
+  if (to.kind === 'email' && arrival === 'christmas_morning') {
+    return { title: 'On Christmas morning', detail: `We email them ${emailGoesAt(cards.christmas_morning_at)}, your time. They can open it once they join with that address.` };
+  }
   const day = shortDay(theirDay ?? cards.next_round_at);
   const name = to.kind === 'person' ? firstName(to.name) : 'they';
   switch (arrival) {
@@ -1061,11 +1070,28 @@ function arrivalChoice(
   }
 }
 
-// A list's one choice, as each card reads it: every person's by their own clock (the days differ, so none is named), and
-// an address's card waits for them to open the email, sealed until Christmas for both Christmas choices.
+// A list's one choice, as each card reads it: every person's by their own clock (the days differ, so none is named). An
+// address keeps the choice where the server offers every email choice (arrivals.email_all: its email at your 7 a.m. or on
+// Christmas morning); otherwise its card waits for them to open the email, sealed until Christmas for both Christmas
+// choices.
 function listArrivalChoice(arrival: HolidayCardArrival, cards: HolidayCards, entries: ListEntry[]): { title: string; detail: string } {
   const people = entries.some((entry) => entry.kind === 'person');
   const emails = entries.some((entry) => entry.kind === 'email');
+  if (cards.arrivals.email_all) {
+    if (!people) return arrivalChoice(arrival, cards, { kind: 'email', email: '' }, null);
+    const later = arrival === 'christmas_morning' ? cards.christmas_morning_at : cards.next_round_at;
+    const byEmail = !emails ? '' : arrival === 'sealed_christmas'
+      ? ' People not on Pantopus get the email now; their card opens on Christmas morning.'
+      : ` People not on Pantopus get the email ${emailGoesAt(later)}, your time.`;
+    switch (arrival) {
+      case 'sealed_christmas':
+        return { title: 'Sealed until Christmas', detail: `It comes with each person’s next 7 a.m. mail and waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.${byEmail}` };
+      case 'christmas_morning':
+        return { title: 'On Christmas morning', detail: `${shortDay(cards.christmas_morning_at)}, with the 7 a.m. mail where each person lives.${byEmail}` };
+      default:
+        return { title: 'With the morning mail', detail: `With each person’s next 7 a.m. mail, where they live. They can open it right away.${byEmail}` };
+    }
+  }
   if (!people) {
     return arrival === 'sealed_christmas'
       ? { title: 'Sealed until Christmas', detail: 'They get an email now. Once they join with that address, it waits in their mailbox with a “Do not open until Christmas” seal. It opens on December 25.' }
@@ -1255,6 +1281,7 @@ function Initial({ name }: { name: string }) {
 function lineWords(line: HolidayCardListLine): string {
   if (line.status === 'refused') return `${line.error} Won’t be sent.`;
   if (line.status === 'already_sent') return 'Already sent.';
+  if (line.by_email && line.email_send_at) return `Gets an email ${emailGoesAt(line.email_send_at)}, your time.`;
   if (line.by_email) return line.arrival === 'sealed_christmas' ? 'Gets an email now. The card opens on Christmas morning.' : 'Gets an email now.';
   if (line.arrival === 'christmas_morning') return 'On Christmas morning, with their 7 a.m. mail.';
   if (line.arrival === 'sealed_christmas') return `Comes with their 7 a.m. mail on ${shortDay(line.arrives_on)}, sealed until Christmas.`;
@@ -1596,8 +1623,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const today = sent ?? (data?.today && data.today.status !== 'withdrawn' ? data.today : null);
   const options = useMemo<HolidayCardArrival[]>(() => {
     if (!data || !to) return [];
-    if (to.kind === 'list') return to.entries.some((entry) => entry.kind === 'person') ? data.arrivals.person : data.arrivals.email;
-    return to.kind === 'person' ? (theirs.data?.arrivals ?? data.arrivals.person) : data.arrivals.email;
+    // By email every choice the server offers (arrivals.email_all); a link keeps its two.
+    const byEmail = data.arrivals.email_all ?? data.arrivals.email;
+    if (to.kind === 'list') return to.entries.some((entry) => entry.kind === 'person') ? data.arrivals.person : byEmail;
+    if (to.kind === 'person') return theirs.data?.arrivals ?? data.arrivals.person;
+    return to.kind === 'email' ? byEmail : data.arrivals.email;
   }, [data, to, theirs.data]);
 
   const listId = (entry: ListEntry) => {
@@ -1714,6 +1744,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
         request_id: listId(entry),
       })),
       ...(signature ? { signature } : {}),
+      // Each address keeps the list's choice where the server offers every email choice.
+      ...(data?.arrivals.email_all ? { emails_keep_arrival: true } : {}),
     };
   };
 
@@ -1894,7 +1926,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
 
   // One card on a sent list taken back: its stamp comes back.
   const doTakeBackFromList = async (card: SentHolidayCard) => {
-    const yes = await askTakeBack({ byEmail: card.by_email, sentToday: false, postage: true });
+    const yes = await askTakeBack({ byEmail: card.by_email, sentToday: false, postage: true, notEmailed: Boolean(card.email_send_at) });
     if (!yes) return;
     setListTakeBackError(null);
     setListTakingBack(card.id);
@@ -2040,7 +2072,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const doTakeBack = async () => {
     if (!today) return;
     // Today's card: taking it back frees the day.
-    const yes = await askTakeBack({ byEmail: today.by_email, byLink: today.by_link, sentToday: true, postage: Boolean(data?.postage_enabled) });
+    const yes = await askTakeBack({ byEmail: today.by_email, byLink: today.by_link, sentToday: true, postage: Boolean(data?.postage_enabled), notEmailed: Boolean(today.email_send_at) });
     if (!yes) return;
     setTakeBackError(null);
     takeBack.mutate(today.id, {
