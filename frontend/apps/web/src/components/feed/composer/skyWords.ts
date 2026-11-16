@@ -1,8 +1,8 @@
 // Every word the Sky's approximate places put in the Pulse composer (phase A, contract section 10.2), kept in one
 // place so a change of words is one edit. Drawn only while GET /api/posts/place-eligibility answers `sky: true`.
 export const SKY_WORDS = {
-  /** "Floating over Camas, WA". */
-  floatingOver: (area: string) => `Floating over ${area}`,
+  /** "Around Camas, WA". */
+  floatingOver: (area: string) => `Around ${area}`,
   /** "At Esther Short Park". */
   at: (place: string) => `At ${place}`,
   pinAtPlace: 'Pin it at a place',
@@ -10,7 +10,7 @@ export const SKY_WORDS = {
   /** A venue tagged and a photo taken there: the post pins exactly. */
   photoPins: 'Your photo was taken here, so you can post to this place. Your post will say “Photo taken here.”',
   /** An address or a bare photo: the post floats. */
-  photoFloats: 'Your photo was taken here. The post floats over the area.',
+  photoFloats: 'Your photo was taken here. The post shows only the area.',
 };
 
 // What a post's place tag names, as the server reads it (backend/utils/postPlaceTag.js): a town or an area, an address,

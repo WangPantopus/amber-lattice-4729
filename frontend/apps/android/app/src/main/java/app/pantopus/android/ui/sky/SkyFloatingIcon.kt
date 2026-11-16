@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * The Sky's floating icon (contract section 10.1): a dashed circle with a dot in it, beside "Floating over …" on the
+ * The Sky's floating icon (contract section 10.1): a dashed circle with a dot in it, beside "Around …" on the
  * Moment Post sheet and the Pulse composer, where a pin icon stands for an exact place.
  */
 @Composable
