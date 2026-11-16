@@ -11,14 +11,13 @@ section first; sections 1 to 10 are as the design session left them, and this se
 **Started on November 16, on the founder's word, each in its own session** ("keep working until everything is
 done. no need to ask me for anything"):
 
-- **Phase A is built in `dev`, with its switch off.** Ten pull requests: the server (#4202, #4207, #4208, #4213),
-  the Moment Post sheet on iPhone and Android (#4220, #4225), the Pulse composer's place line on the web, iPhone
-  and Android (#4226, #4228, #4229) and the privacy matrix (#4230). On the afternoon of November 16 the last two
-  app pull requests were waiting on their checks. Everything is behind the switch `sky_places`, off on every hosted
-  database; with it off every screen is as it was. The contract's new section 15 says what was built, what was
-  checked, what was not, the decisions made in the founder's place and the steps only the founder can take
-  (publishing the homes-per-area file, setting its address on the servers, turning the switch on). One piece was
-  still being built that afternoon: a Moment held for later showing in its author's own row on the Moments map.
+- **Phase A is built and merged into `dev`, with its switch off.** Eleven pull requests: the server (#4202, #4207,
+  #4208, #4213), the Moment Post sheet on iPhone and Android (#4220, #4225), the Pulse composer's place line on
+  the web, iPhone and Android (#4226, #4228, #4229), the privacy matrix (#4230), and a Moment held for later
+  showing in its author's own row on the Moments map (#4231). Everything is behind the switch `sky_places`, off on
+  every hosted database; with it off every screen is as it was. The contract's new section 15 says what was built,
+  what was checked, what was not, the decisions made in the founder's place and the steps only the founder can
+  take (publishing the homes-per-area file, setting its address on the servers, turning the switch on).
   The builder's notes are in `~/.pantopus-review/handoffs/sky-phase-a.md`. The app screens use the contract's
   accepted words ("Floating over ..."), kept in one file per app.
 - **Screens 1, 2, 6 and 7 are redrawn** and on the canvas (section 6 is done). The founder approved screen 1 first,

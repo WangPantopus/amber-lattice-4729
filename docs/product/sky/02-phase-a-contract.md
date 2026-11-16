@@ -392,9 +392,9 @@ and every answer is as it was.
 | 8 | The Pulse composer's place line, iPhone | #4228 |
 | 9 | The Pulse composer's place line, Android | #4229 |
 | 10 | The location privacy matrix: the apps' side and Share later | #4230 |
+| 11 | A Moment held for later, in its author's own row on the Moments map (the last line of section 10.1) | #4231 |
 
-All are merged into `dev` except 8 and 9, which were checked in the apps and were waiting on their checks on the
-afternoon of November 16. The README and NEXT_STEPS parts of row 10 in section 12 were written on this folder's
+All eleven are merged into `dev`. The README and NEXT_STEPS parts of row 10 in section 12 were written on this folder's
 own branch instead.
 
 The words of section 10 are used as they are, in one file per app so they are easy to change: iPhone
@@ -415,6 +415,9 @@ for another, and a sample homes file for Clark County:
   "At <place>" after attaching a photo taken there.
 - **Web, production build in a browser:** the composer's line, the pin button, a post stored exactly at a tagged
   place, the second account's view.
+- **Pull request 11, on both phones:** the row with "Shares at ..." for the author, a second held Moment joining
+  it soonest first, the row kept under the time filter, deleting one, the second account seeing nothing until the
+  time and the Moment after it, after a relaunch, and no row for an account with the switch off.
 - Every pull request passed its checks before it was merged.
 
 Not checked: real phones (real location, real altitude, pushes); the hosted sites; the 2.1.2 store builds against
@@ -456,10 +459,19 @@ In the apps:
 17. "Taken there" for a Pulse photo is the server's rule: within 5 km of the tagged place.
 18. The web place picker is not filtered for schools, because other screens share it. The server puts a school
     post over the area anyway.
-19. **Left out of pull requests 5 and 6, and being built separately on November 16:** section 10.1's "a scheduled
-    Moment appears in the author's own row as 'Shares at 6:40 pm', and can be deleted". The author's row is on
-    the Moments map, which another session was changing that day. Until it is built the author is told the time
-    when posting.
+19. Section 10.1's "a scheduled Moment appears in the author's own row as 'Shares at 6:40 pm', and can be
+    deleted" was left out of pull requests 5 and 6, because another session was changing the Moments map that
+    day, and built afterwards as pull request 11.
+
+In pull request 11:
+
+20. The map's read gives the author a separate list of their own held Moments. They are never among the rings,
+    so never a pin, and never in anyone else's answer.
+21. The row is titled "Sharing later" when it holds only held Moments.
+22. Deleting asks first: "Delete this Moment?" with "It hasn't shared yet, so nobody has seen it." There is no
+    edit.
+23. Held Moments stay in the row under every time filter, and show only while no crowded spot is open.
+24. The iPhone Duo's open layouts are not changed. The web has no such row, so nothing changes there.
 
 ### 15.4 The whole-US homes file, as a trial
 
