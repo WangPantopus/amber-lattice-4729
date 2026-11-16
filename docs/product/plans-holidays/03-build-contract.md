@@ -132,6 +132,7 @@ Checks:
 | `guest_key_hashes` | `text[]`, default empty, at most 6 | The hashes of the guest's keys (K3). A GIN index serves the lookup by one hash |
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
+| `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
 
 Checks widened:
 
@@ -169,8 +170,16 @@ family.
   text invitation's token (exists), or the plan's open link.
 - **A guest's key** reads the private parts. One is made when a guest answers;
   the web app keeps it in an HttpOnly cookie for that plan and sends it as
-  `guest`. One more is made for each email to the guest that carries their link
-  (You're in, the reminder, a change). Only hashes are saved.
+  `guest`. One more is made for each email to the guest (You're in, the
+  reminder, a change, their link sent again, the cancellation). Only hashes are
+  saved, so an old key cannot be put into a new email.
+- **The cancellation email carries no link to the invitation.** Its "Don't send
+  me invitations" link still needs a key to say whose address it is, so it
+  carries one of its own, which joins the guest's keys like any other.
+- **On a plan that is cancelled or over, no key reads the place, the host's
+  note, who is going or the bring list.** It reads the card and the guest's own
+  answer, so the page can say what happened. The bring list's guest routes
+  refuse there.
 - **A guest may hold several keys, and none replaces another.** The link in the
   first email still works after the reminder goes out, and the browser's cookie
   does not stop working because an email was sent. On the day, people look for
@@ -292,16 +301,32 @@ in: `"headcount": { "adults": 6, "kids": 3 }`. For the host only:
 
 ### 6.6 Emails to a guest without an account
 
-At most three a plan, each with the unsubscribe link invitation emails already
-carry:
+Every one carries the unsubscribe link invitation emails already carry.
+
+**The plan's three.** At most three a plan count against a guest:
 
 1. "You're in" with their link (and, at a home, after the host's yes).
 2. One reminder, at the time people who are in are reminded today
    (`rules.reminderAt`).
-3. A change of time or place, or a cancellation.
+3. The first change of time or place.
 
-They follow the limits that exist: 5 emails an address a day from every host
-together, and an address that said "don't send me invitations" gets none.
+**Two that are outside the three** (made precise on November 15, after the
+server session's build showed a cancellation could be held back):
+
+- **The cancellation.** One a plan, to each guest who is in. A guest still
+  waiting for the host's yes gets none, as with a change. It is never held by
+  the plan's three: it is the one email a guest must not miss.
+- **Their link again**, sent when an answer comes for an address that already
+  has a row without that row's key (6.3). It does not use one of the guest's
+  three, so answering again from a second device costs the guest nothing, and
+  nobody holding the open link can use up another guest's emails. It goes only
+  if no email went to that guest for that plan in the last 24 hours; otherwise
+  nothing is sent and the answer is the same `check_email`.
+
+**The limits that exist hold for all of them**, the cancellation included: 5
+emails an address a day from every host together, each counted by its own time
+(`email_sent_times`), and an address that said "don't send me invitations" gets
+none.
 
 ### 6.7 Limits
 
@@ -647,6 +672,14 @@ Each step is checked in the real apps against a local stack and backend, as
   address gets an email with its link.
 - At a home, an email invitation and a text invitation answered in a browser
   return `check_email` and no key.
+- A guest who already got "You're in", the reminder and a change still gets
+  the cancellation. A guest waiting for the host's yes gets none.
+- The cancellation email has no link to the invitation, and its "Don't send me
+  invitations" link works. With any of the guest's keys, a cancelled plan's
+  page shows no address, note, names or bring list.
+- A second answer for the same address inside a day, without its key, sends
+  nothing and answers the same. A guest's reminder still goes after their link
+  was sent again.
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
 

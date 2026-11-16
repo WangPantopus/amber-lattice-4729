@@ -148,7 +148,12 @@ All three use the existing invitation email's frame and unsubscribe links.
 | --- | --- | --- |
 | You're in | "You're in: {title}" | "{Host} has you down for {2 adults and 1 kid}." The date. "Open your invitation" (the guest's link). "The address and the bring list are on that page. This link is yours; please don't forward it." |
 | Reminder | "Tomorrow: {title}" (or "Today:") | The time. "Open your invitation." If items are open: "{n} things are still open on the bring list." |
-| Changed or cancelled | "{Host} changed the time of {title}" / "the place of" / "{Host} cancelled {title}" | The new time or place, or the host's cancel note. The guest's link, except when cancelled |
+| Changed or cancelled | "{Host} changed the time of {title}" / "the place of" / "{Host} cancelled {title}" | The new time or place, or the host's cancel note. The guest's link, except when cancelled: a cancellation has no button, and keeps "Don't send me invitations" |
+
+Which of these count against a guest's three a plan, and which always go, is in
+the contract, 6.6. A guest's link sent again (W2, "already an answer for this
+address") uses the "You're in" email for a guest who is in and the invitation
+email's words for anyone else.
 
 ---
 

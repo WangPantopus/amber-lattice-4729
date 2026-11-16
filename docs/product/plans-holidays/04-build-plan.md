@@ -1,7 +1,8 @@
 # Plans for the holidays: the build plan
 
-November 15, 2026. Nothing is built. The founder starts the build; this plan
-says what starts when, what waits, who builds what and how each step is checked.
+November 15, 2026. What is built so far is in the [README](README.md), under
+Status. The founder starts each part of the build; this plan says what starts
+when, what waits, who builds what and how each step is checked.
 The steps are named in [03-build-contract.md](03-build-contract.md), section 1.
 
 ## 1. Two tracks

@@ -1144,13 +1144,17 @@ Decided November 14 (section 0). Built November 14 and 15 and checked in a brows
 
 ## Plans for the holidays (added November 15)
 
-Decided November 15 (section 0). Design, contract and build plan: [docs/product/plans-holidays](docs/product/plans-holidays/README.md). Nothing is built.
+Decided November 15 (section 0). Design, contract and build plan: [docs/product/plans-holidays](docs/product/plans-holidays/README.md). The server and web halves of the people track are on `dev` with every switch off; the phone halves are being built.
 
-- [x] The research, the fourteen boards and the payments design (November 15). The boards were checked by rendering them in light and dark, not in the canvas page.
+- [x] The research, the twenty boards and the payments design (November 15). The boards were checked by rendering them in light and dark, not in the canvas page.
 - [x] The documents' calls confirmed and the people track started (November 15): three sessions (server and web, iPhone, Android) from [the briefs](docs/product/plans-holidays/05-session-briefs.md).
-- [ ] H1, answers without an account: the open link, adults and kids, Maybe, room for 100. Server and web first; the shipped apps' email and text invitations can then be answered in a browser.
-- [ ] H2, the bring list.
-- [ ] H3, occasions.
+- [x] H1 on the server and the web, on `dev` (November 15): answers without an account, the open link, adults and kids, Maybe, room for 100 ([#4183](https://github.com/WangPantopus/skinny-pantopus/pull/4183), [#4184](https://github.com/WangPantopus/skinny-pantopus/pull/4184)). One additive migration, no new table. Switch `plans_guest_answers`, off. Checked in a phone-width browser against a local backend and database, with the emails read in a local mailbox: a guest answered a private dinner at a home from the open link, waited for the host's yes, and saw the address only through the link in their own "You're in" email; a second browser holding only the open link saw no address, name or note, and could not change the first guest's answer.
+- [x] H2 on the server and the web, on `dev` (November 15): the bring list ([#4185](https://github.com/WangPantopus/skinny-pantopus/pull/4185)). Switch `plans_bring_list`, off.
+- [x] H3 on the server and the web, on `dev` (November 15): occasions ([#4186](https://github.com/WangPantopus/skinny-pantopus/pull/4186)). Switch `plans_occasions`, off.
+- [ ] Guest emails, two fixes decided November 15 and not merged yet: every email to a guest counts against the five an address may get a day ([#4187](https://github.com/WangPantopus/skinny-pantopus/pull/4187)); a cancellation always reaches a guest who is in, and a link sent again does not use up one of the guest's three emails ([contract 6.6](docs/product/plans-holidays/03-build-contract.md#66-emails-to-a-guest-without-an-account)).
+- [ ] H1, H2 and H3 on the iPhone and Android: both sessions are building.
+- [ ] Your check on staging once H1 is switched on there: invite your own email address from a plan at your home, answer in a browser, and see that the address shows only after you let yourself in. Then turn `plans_guest_answers` on in production. The apps in the stores today already send email and text invitations, so this part needs no store release.
+- [ ] Not checked anywhere: the hosted staging site, hosted email delivery, Safari on a real iPhone (Directions, Add to calendar), real push.
 - [ ] Business track, each behind its gate ([build plan, section 3](docs/product/plans-holidays/04-build-plan.md#3-the-business-track-and-its-gates)): the shared pieces; deals without money; paying to join after the by-hand trial, the lawyer's read and a re-read of the stores' rules; the bill at the place and tips after the accountant's answer on Washington sales tax.
 - [ ] Not drawn yet: find a date, chip in, gift exchange, photos afterwards, groups, one person paying for a group.
 
