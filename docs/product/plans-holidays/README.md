@@ -21,11 +21,12 @@ Pantopus, with tips.
 | [05-session-briefs.md](05-session-briefs.md) | The briefs for the build sessions |
 | [06-screens.md](06-screens.md) | Every screen of the people track, element by element, with its words, states and routes |
 | [07-screens-business.md](07-screens-business.md) | The business track's screens, element by element: deals, paying to join, the bill and tips |
-| [screens/](screens/) | The twenty-three boards as pictures (light) |
+| [08-extras.md](08-extras.md) | The six extras, each with its design, contract and screens: find a date, chip in, gift exchange, photos afterwards, the same people again, one person paying for a group |
+| [screens/](screens/) | The thirty-one boards as pictures (light) |
 
 ## Where the design lives outside the repository
 
-- The canvas "Plans for the holidays", twenty-three boards, each with a Dark
+- The canvas "Plans for the holidays", thirty-one boards, each with a Dark
   switch: <https://claude.ai/artifact/8FbzKc3ZQMCH8HRBzVzcNe> (private; a
   session other than the one that drew it cannot open it, which is why the
   pictures are in `screens/`).
@@ -52,6 +53,7 @@ Pantopus, with tips.
 | The research and the first report | Done November 15 |
 | The twenty boards | Drawn November 15. The founder's only change to the first fourteen was to move payment into Pantopus, which boards 7 to 14 show. Boards 15 to 20 were added the same day so every screen of the first build has a picture; the founder has not looked at those six yet |
 | Boards 21 to 23, a shared link for someone who has the app | Drawn November 15 and accepted by the founder the same day ("Yes, go ahead"); contract 6.9. Checked by rendering them in light and dark, not in the canvas page or on a phone |
+| Boards 24 to 31, the extras | Drawn November 16 after the founder said to build everything discussed; checked by rendering them in light and dark only. The founder had not looked at them when [08-extras.md](08-extras.md) was written |
 | Payment decisions P1 to P16 | Accepted by the founder November 15, all as recommended ([02-payments.md](02-payments.md), section 12) |
 | Calls these documents make | H1 to H11 and K1 to K10, accepted by the founder November 15, all as recommended ([01-design.md](01-design.md), section 7, and [03-build-contract.md](03-build-contract.md), section 2) |
 | Build | The founder said "yes, let's start" on November 15 for the people track; the build sessions run on Opus 5.5 at Extra High |

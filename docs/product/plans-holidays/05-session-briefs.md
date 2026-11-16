@@ -334,6 +334,16 @@ real with the payment company's test mode on the rig: each worked example of
 The other person's view is the business's guest list changing when the guest
 pays.
 
+## Brief 8: the extras (added November 16)
+
+Six additions, each small, each behind its own switch: [08-extras.md](08-extras.md)
+is their design, contract, screens and "Done when" in one file, with pictures
+24 to 31. Its section 8 gives the order and who builds what. They come after
+the people track and may be built beside the business track; the sixth (one
+person paying for the group) needs the business track's B2 first. The founder
+had not looked at boards 24 to 31 when this was written: build from the file,
+and expect a change of words if the founder asks for one.
+
 ## Words for the founder to start them
 
 A new session on Opus 5.5 at Extra High for each, with one line:
