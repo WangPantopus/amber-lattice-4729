@@ -540,6 +540,16 @@ follow-up; until it is merged this extra is not done:
 5. A refund's request key is built from its reason, so two refunds for the
    same reason on one payment (two claimers leaving) would be taken for one.
 
+Server PR 4259 (the same day, read by the coordinator) closed 1 and 5: a
+claimer's spot goes back to the buyer with a request key of its own, seen on
+the build's setup to the cent (8 given back, $144.00; a claimer leaving
+before the time, $18.00 more as a second refund, the business paid out on
+what stayed; a claimer leaving after it, nothing). It also made an owed
+refund loud: an error line when a refund first becomes owed, and
+`plans.paid.refund_owed_stuck` at error level on every tick once it has been
+owed an hour. Still open, with the server session: 2, 4, and the part of 3
+after `refund_until` (a removal by the business refunds at any time).
+
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
 get one link. The first {11} people who open it are in, paid by you. Spots
