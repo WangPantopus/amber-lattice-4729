@@ -46,6 +46,17 @@ public struct MyPostsView: View {
                         }
                 }
             }
+            .overlay(alignment: .bottom) {
+                // A failed Undo repost on the Reposts tab says so (the row stays).
+                if let toast = viewModel.reposts.toastMessage {
+                    ToastView(message: ToastMessage(text: toast, kind: .error))
+                        .padding(.bottom, 96)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .dismissToast(after: toast, minimum: 2.5) {
+                            viewModel.reposts.toastMessage = nil
+                        }
+                }
+            }
             .accessibilityIdentifier("my-posts")
             .onReceive(NotificationCenter.default.publisher(for: .pulsePostsDidChange)) { _ in
                 Task { await viewModel.refresh() }

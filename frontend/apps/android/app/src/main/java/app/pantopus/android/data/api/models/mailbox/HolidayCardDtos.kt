@@ -221,7 +221,14 @@ data class HolidayCardCollection(
 @JsonClass(generateAdapter = true)
 data class HolidayCardArrivals(
     val person: List<String> = emptyList(),
+    /** By email the two choices older apps word, and a card by link's two. */
     val email: List<String> = emptyList(),
+    /**
+     * By email all four, where the server has them: its email at the sender's next 7 a.m. ([HolidayCardsResponse.nextRoundAt])
+     * or on Christmas morning, sealed until Christmas, or right away (after Christmas morning: `next_morning`, `now`).
+     * Absent from an older server: [email] then.
+     */
+    @Json(name = "email_all") val emailAll: List<String>? = null,
 )
 
 /**
@@ -261,6 +268,8 @@ data class SentHolidayCard(
     /** Sent by a link: [byEmail] stays true as well, so older apps still show something sensible. */
     @Json(name = "by_link") val byLink: Boolean = false,
     val arrival: String? = null,
+    /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when. Absent once it went, or when it went at once. */
+    @Json(name = "email_send_at") val emailSendAt: String? = null,
     /** When it goes into their mailbox (their 7 a.m. mail); null by email. */
     @Json(name = "arrives_at") val arrivesAt: String? = null,
     /** The day it goes into their mailbox by their clock ("2026-10-31"); null by email. */
@@ -331,7 +340,8 @@ data class HolidayCardRecipient(
 /**
  * `POST /api/mailbox/cards/batch` (and its look) body: one card to a list of people and addresses (digital stamps on),
  * each its own card under its own request ID, kept for every look and retry of the list. One choice of arrival: an
- * address reads the morning mail as right away and Christmas morning as sealed until Christmas.
+ * address reads the morning mail as right away and Christmas morning as sealed until Christmas, unless
+ * [emailsKeepArrival].
  */
 @JsonClass(generateAdapter = true)
 data class SendHolidayCardListBody(
@@ -342,6 +352,11 @@ data class SendHolidayCardListBody(
     @Json(name = "use_stamp") val useStamp: Boolean = true,
     /** One signature for the whole list, as one note (plan 8.2). */
     val signature: CardSignature? = null,
+    /**
+     * Each address keeps the list's choice too (its email at the sender's 7 a.m. or on Christmas morning): true where the
+     * server offers every email choice ([HolidayCardArrivals.emailAll]), else left out.
+     */
+    @Json(name = "emails_keep_arrival") val emailsKeepArrival: Boolean? = null,
 )
 
 /** A person or an address on a list, and its card's request ID. */
@@ -359,6 +374,8 @@ data class HolidayCardListLine(
     @Json(name = "to_name") val toName: String? = null,
     @Json(name = "by_email") val byEmail: Boolean = false,
     val arrival: String? = null,
+    /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when (absent: it goes now). */
+    @Json(name = "email_send_at") val emailSendAt: String? = null,
     /** The day it goes into their mailbox by their clock (`YYYY-MM-DD`). */
     @Json(name = "arrives_on") val arrivesOn: String? = null,
     val card: SentHolidayCard? = null,
@@ -380,13 +397,18 @@ data class HolidayCardListPreview(
     @Json(name = "take_back_until") val takeBackUntil: String? = null,
     val email: HolidayCardPreviewEmail? = null,
     @Json(name = "link_page") val linkPage: HolidayCardPreviewLinkPage? = null,
+    /** The first card's email, set for later: when (see [HolidayCardPreview.emailSendAt]). */
+    @Json(name = "email_send_at") val emailSendAt: String? = null,
     val recipients: List<HolidayCardListLine> = emptyList(),
     val stamps: HolidayCardStamps? = null,
     val needed: Int = 0,
 ) {
     /** The first card that can go, as Look it over shows one card. */
     val look: HolidayCardPreview?
-        get() = piece?.let { HolidayCardPreview(it, arrivesOn, opensOn, sealedDays, takeBackUntil, email, linkPage) }
+        get() =
+            piece?.let {
+                HolidayCardPreview(it, arrivesOn, opensOn, sealedDays, takeBackUntil, email, linkPage, emailSendAt = emailSendAt)
+            }
 }
 
 /** One card in a list's answer: `sent`, `already_sent` (an earlier try), or `not_sent` (and why; it used no stamp). */
@@ -444,6 +466,8 @@ data class HolidayCardPreview(
     val email: HolidayCardPreviewEmail? = null,
     /** The page the email's link opens, for a card sent to an email address. */
     @Json(name = "link_page") val linkPage: HolidayCardPreviewLinkPage? = null,
+    /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when (null: it goes as it's sealed). */
+    @Json(name = "email_send_at") val emailSendAt: String? = null,
 )
 
 /** The card as a piece in their Mailbox: the name it really carries, its postmark and the card. */
@@ -527,6 +551,21 @@ data class SentCard(
     val note: String? = null,
     /** Where it's been, in order (the card's page only). */
     val trail: List<SentCardStep> = emptyList(),
+    /**
+     * A card by email whose email hasn't gone out while it waits (`email_waiting`): `retrying` while the server keeps
+     * trying (about an hour), then `failed`. Absent once it went; any other word is read as no trouble.
+     */
+    @Json(name = "email_status") val emailStatus: String? = null,
+    /** By email, set to go at the sender's 7 a.m. or on Christmas morning: when. Absent once it went (or when it went at once). */
+    @Json(name = "email_send_at") val emailSendAt: String? = null,
+    /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
+    @Json(name = "email_to") val emailTo: String? = null,
+)
+
+/** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */
+@JsonClass(generateAdapter = true)
+data class CardEmailedAgainResponse(
+    val emailed: Boolean = false,
 )
 
 /** The envelope as they got it: who it's from, and the day it was postmarked by their clock (null before the pickup). */
@@ -561,7 +600,7 @@ data class SentCardFace(
 
 /**
  * One step of a sent card's trail: `sealed`, `picked_up`, `delivered`, `opens`, `emailed`, `joined` or `returned`, when
- * (a time, [at], or a day by their clock, [on]) and whether it has happened.
+ * (a time, [at], or a day by their clock, [on]) and whether it has happened (`emailed` only once the email went out).
  */
 @JsonClass(generateAdapter = true)
 data class SentCardStep(

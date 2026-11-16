@@ -100,6 +100,13 @@ function screenClosed(entry, ctx) {
 // answer could not simply be written first. Carrying the answer inside the call was tried too: the model then left
 // the button out of most answers (7 of 8 before, 1 of 8 after, on "what's due in my mail").
 
+// The button under a reply that could not look into Mail or the Wallet because the phone's identity check has not
+// passed: the app runs the check on a tap and sends the question again. Only for apps that list "identity_ask" in
+// `cards`, and only on a reply whose Mail or Wallet lookup was refused (agentService); it is never a button line.
+const VERIFY_LINK = Object.freeze({ label: "Verify it's me", url: 'pantopus://assistant/verify' });
+// What a reply with that button never also offers: the screens whose own check the button stands in for.
+const VERIFIED_SCREEN_URLS = new Set(['pantopus://mailbox', 'pantopus://wallet']);
+
 const BUTTON_OPEN = '[[button';
 const MAX_BUTTONS = 2;
 
@@ -402,6 +409,8 @@ module.exports = {
   linkFor,
   showLinkDefinition,
   runShowLink,
+  VERIFY_LINK,
+  VERIFIED_SCREEN_URLS,
   buttonRule,
   buttonLink,
   needsDefaultHome,

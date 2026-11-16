@@ -5,9 +5,11 @@
 //  A person's posts on their profile, drawn with the Pulse card
 //  (`PulsePostCard`): photos and videos, event times, tappable links,
 //  reactions, Save, Repost and the post menu (share, report). The rows come
-//  from `GET /api/posts/user/:id`, which uses the feed's serializer, and each
-//  tap calls the endpoint the Pulse feed calls for it
-//  (`PulseFeedViewModel`).
+//  from `GET /api/posts/user/:id?include_reposts=true`, which uses the feed's
+//  serializer, and each tap calls the endpoint the Pulse feed calls for it
+//  (`PulseFeedViewModel`). The list also holds the posts the person
+//  reposted (PULSEREPOST contract §3): someone else's posts, also on your
+//  own profile, so owner actions follow each post's own author.
 //
 
 import Foundation
@@ -24,9 +26,13 @@ public final class ProfilePostCardsModel {
     public var overflowPostId: String?
     /// The post being reported: the reason picker is open.
     public var reportingPostId: String?
+    /// The post the Repost chooser is open for (contract §2).
+    public var repostChooser: PulseRepostTarget?
+    /// "Repost with your words" picked: the composer is open with this post quoted (contract §8).
+    public var quoteDraft: PulseComposeQuote?
     /// Bumped by every tap, so a read that started before one can't undo it.
     public private(set) var actionRevision = 0
-    /// Action feedback ("Saved to your bookmarks."), shown by the profile's toast.
+    /// Action feedback ("Saved."), shown by the profile's toast.
     @ObservationIgnored var onToast: (@MainActor (String) -> Void)?
     /// Whose profile this is: their own posts wear their profile color, as
     /// the header above them does (`ProfileAvatarColor`).
@@ -60,6 +66,11 @@ public final class ProfilePostCardsModel {
     /// The posts' ids, to ask the store whether one was changed elsewhere.
     var postIds: [String] {
         posts.map(\.id)
+    }
+
+    /// How many of the rows the person wrote (the rest are posts they reposted): what My posts lists.
+    var writtenCount: Int {
+        posts.filter { $0.repostedAt == nil }.count
     }
 
     /// The card whose menu is open.
@@ -161,15 +172,16 @@ public final class ProfilePostCardsModel {
             )
             overrides[postId, default: Override()].isSaved = response.saved
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
-            onToast?(response.saved ? "Saved to your bookmarks." : "Removed from bookmarks.")
+            onToast?(response.saved ? "Saved." : "Removed from Saved.")
         } catch {
             overrides[postId, default: Override()].isSaved = original
-            onToast?("Couldn't update your bookmark.")
+            onToast?("Couldn't update Saved. Try again.")
         }
     }
 
     /// `POST /api/posts/:id/share` as a repost, shown at once and rolled
-    /// back on failure.
+    /// back on failure; the card's "reposted" line gains or loses "You" at
+    /// once (contract §1). Reached from the Repost chooser.
     func toggleRepost(postId: String) async {
         guard let post = post(postId), begin(.repost, postId: postId) else { return }
         let original = overrides[postId]?.isReposted ?? post.userHasReposted
@@ -187,7 +199,12 @@ public final class ProfilePostCardsModel {
             overrides[postId, default: Override()].isReposted = reposted
             overrides[postId, default: Override()].shareCount = response.shareCount ?? originalCount
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
-            onToast?(reposted ? "Reposted to your network." : "Repost removed.")
+            onToast?(reposted ? PulseFeedViewModel.repostedToast : "Repost removed.")
+            // On your own profile a post you reposted is there only because you did: undone, it leaves.
+            if !reposted, post.repostedAt != nil, !isOwnPost(post), let viewerId, profileUserId == viewerId {
+                posts.removeAll { $0.id == postId }
+                rebuild()
+            }
         } catch {
             overrides[postId, default: Override()].isReposted = original
             overrides[postId, default: Override()].shareCount = originalCount
@@ -195,12 +212,25 @@ public final class ProfilePostCardsModel {
         }
     }
 
+    /// ↻ on a card: the Repost chooser opens (contract §2).
+    func openRepostChooser(postId: String) {
+        guard let post = post(postId) else { return }
+        repostChooser = PulseRepostTarget(postId: postId, isReposted: overrides[postId]?.isReposted ?? post.userHasReposted)
+    }
+
+    /// "Repost with your words": the composer opens with this post quoted (contract §8).
+    func beginQuote(postId: String) {
+        guard let post = post(postId) else { return }
+        quoteDraft = PulseComposeQuote(card: PulseQuotedCard(post: post))
+    }
+
     // MARK: - Post menu
 
     /// "Pin to profile" / "Unpin from profile" on your own posts (the server
-    /// marks only those); nil hides it.
+    /// marks only those); nil hides it. A post someone else wrote (one the
+    /// person reposted) never offers it, whoever's profile this is.
     func pinTitle(postId: String) -> String? {
-        guard let post = post(postId) else { return nil }
+        guard let post = post(postId), isOwnPost(post) else { return nil }
         return ProfilePins.shared.menuTitle(
             postId,
             server: post.profilePinned,
@@ -271,6 +301,12 @@ public final class ProfilePostCardsModel {
         posts.first { $0.id == postId }
     }
 
+    /// The viewer wrote this post: owner actions follow the post's own author, never whose profile it is.
+    private func isOwnPost(_ post: FeedPostDTO) -> Bool {
+        guard let viewerId, !viewerId.isEmpty else { return false }
+        return post.userId == viewerId || post.creator?.id == viewerId
+    }
+
     private func begin(_ action: PulsePendingAction, postId: String) -> Bool {
         guard pending[postId, default: []].insert(action).inserted else { return false }
         actionRevision += 1
@@ -296,8 +332,9 @@ public final class ProfilePostCardsModel {
             }
             live.pending = pending[post.id] ?? []
             var card = PulseFeedViewModel.card(for: post, viewerId: viewerId, surface: nil, live: live)
-            // Every post here is the person's own; one written for a business keeps the business look.
-            if let profileUserId, post.businessAuthorId == nil {
+            // The person's own posts wear their profile color; one written for a business keeps the business
+            // look, and a post they reposted keeps its author's.
+            if let profileUserId, post.businessAuthorId == nil, post.userId == profileUserId {
                 card.avatarColor = ProfileAvatarColor(userId: profileUserId).color
             }
             return card

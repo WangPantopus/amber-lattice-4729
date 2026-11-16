@@ -10,9 +10,12 @@
 
 package app.pantopus.android.ui.screens.shared.media
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.media.MediaMetadataRetriever
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
@@ -39,6 +42,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,6 +97,11 @@ enum class PostMediaGridStyle(
  * [PostMediaGrid] that owns the full-screen viewer — tapping any tile
  * opens [MediaViewerDialog] at that index. Mirrors iOS
  * `PostMediaGridView`'s fullScreenCover ownership.
+ *
+ * [dropsFailedPictures]: for a post that names an outside source (a [app.pantopus.android.data.api.models.posts.PostSource]),
+ * whose pictures are hotlinked from the outlet. A picture that fails to load is left out: the grid lays out the ones
+ * that loaded, the viewer pages through those, and when none load there is no picture area at all. A picture still
+ * loading keeps its placeholder. People's own uploads keep the failure mark.
  */
 @Composable
 fun PostMediaGridWithViewer(
@@ -102,10 +112,15 @@ fun PostMediaGridWithViewer(
     locationBadge: String? = null,
     usesSharpPreviews: Boolean = false,
     edgeToEdge: Boolean = false,
+    dropsFailedPictures: Boolean = false,
 ) {
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
+    val context = LocalContext.current
+    // Saved so a card scrolled away and back in a list doesn't bring a dead picture's placeholder back.
+    var failedIds by rememberSaveable(items) { mutableStateOf(emptySet<String>()) }
+    val shown = if (dropsFailedPictures) items.filterNot { it.id in failedIds } else items
     PostMediaGrid(
-        items = items,
+        items = shown,
         style = style,
         testTag = testTag,
         modifier = modifier,
@@ -113,10 +128,15 @@ fun PostMediaGridWithViewer(
         usesSharpPreviews = usesSharpPreviews,
         edgeToEdge = edgeToEdge,
         onTileTap = { index -> viewerIndex = index },
+        onTileLoadFailed =
+            { item: PostMediaItem ->
+                // Offline, every picture fails for a while: only a link that fails with a connection is a dead one.
+                if (context.hasConnection()) failedIds = failedIds + item.id
+            }.takeIf { dropsFailedPictures },
     )
     viewerIndex?.let { index ->
         MediaViewerDialog(
-            items = items,
+            items = shown,
             startIndex = index,
             onDismiss = { viewerIndex = null },
         )
@@ -127,6 +147,8 @@ fun PostMediaGridWithViewer(
  * Typed media grid shared by the Pulse feed card and post detail body.
  * Layouts: 1 → 16:9, 2 → side-by-side, 3 → hero + stacked pair, 4+ →
  * 2x2 with a "+N" overflow veil. Mirrors iOS `PostMediaGridView`.
+ * With [onTileLoadFailed], a picture that can't load is reported (so the caller can leave it out) instead of drawing
+ * the failure mark.
  */
 @Composable
 fun PostMediaGrid(
@@ -138,6 +160,7 @@ fun PostMediaGrid(
     usesSharpPreviews: Boolean = false,
     edgeToEdge: Boolean = false,
     onTileTap: ((Int) -> Unit)? = null,
+    onTileLoadFailed: ((PostMediaItem) -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
     val photoLabel = "${items.size} attached ${if (items.size == 1) "item" else "items"}"
@@ -154,6 +177,7 @@ fun PostMediaGrid(
                     usesSharpPreview = usesSharpPreviews,
                     item = items[0],
                     onTap = onTileTap?.let { tap -> { tap(0) } },
+                    onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[0]) } },
                     badge = locationBadge,
                     modifier =
                         Modifier
@@ -174,12 +198,14 @@ fun PostMediaGrid(
                         usesSharpPreview = usesSharpPreviews,
                         item = items[0],
                         onTap = onTileTap?.let { tap -> { tap(0) } },
+                        onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[0]) } },
                         modifier = Modifier.weight(1f).fillMaxSize(),
                     )
                     PostMediaTile(
                         usesSharpPreview = usesSharpPreviews,
                         item = items[1],
                         onTap = onTileTap?.let { tap -> { tap(1) } },
+                        onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[1]) } },
                         badge = locationBadge,
                         modifier = Modifier.weight(1f).fillMaxSize(),
                     )
@@ -197,6 +223,7 @@ fun PostMediaGrid(
                         usesSharpPreview = usesSharpPreviews,
                         item = items[0],
                         onTap = onTileTap?.let { tap -> { tap(0) } },
+                        onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[0]) } },
                         modifier = Modifier.weight(1f).fillMaxSize(),
                     )
                     Column(
@@ -207,12 +234,14 @@ fun PostMediaGrid(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[1],
                             onTap = onTileTap?.let { tap -> { tap(1) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[1]) } },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                         PostMediaTile(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[2],
                             onTap = onTileTap?.let { tap -> { tap(2) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[2]) } },
                             badge = locationBadge,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
@@ -228,12 +257,14 @@ fun PostMediaGrid(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[0],
                             onTap = onTileTap?.let { tap -> { tap(0) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[0]) } },
                             modifier = Modifier.weight(1f).aspectRatio(1f),
                         )
                         PostMediaTile(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[1],
                             onTap = onTileTap?.let { tap -> { tap(1) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[1]) } },
                             modifier = Modifier.weight(1f).aspectRatio(1f),
                         )
                     }
@@ -242,12 +273,14 @@ fun PostMediaGrid(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[2],
                             onTap = onTileTap?.let { tap -> { tap(2) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[2]) } },
                             modifier = Modifier.weight(1f).aspectRatio(1f),
                         )
                         PostMediaTile(
                             usesSharpPreview = usesSharpPreviews,
                             item = items[3],
                             onTap = onTileTap?.let { tap -> { tap(3) } },
+                            onLoadFailed = onTileLoadFailed?.let { failed -> { failed(items[3]) } },
                             overflowCount = if (items.size > 4) items.size - 4 else null,
                             badge = locationBadge,
                             modifier = Modifier.weight(1f).aspectRatio(1f),
@@ -258,7 +291,10 @@ fun PostMediaGrid(
     }
 }
 
-/** One typed tile — image, video poster + play disc, or Live Photo. */
+/**
+ * One typed tile — image, video poster + play disc, or Live Photo. [onLoadFailed]: a picture that can't load reports
+ * it instead of drawing the failure mark (pictures only).
+ */
 @Composable
 fun PostMediaTile(
     item: PostMediaItem,
@@ -267,6 +303,7 @@ fun PostMediaTile(
     overflowCount: Int? = null,
     badge: String? = null,
     usesSharpPreview: Boolean = false,
+    onLoadFailed: (() -> Unit)? = null,
 ) {
     Box(modifier = modifier) {
         when (item.kind) {
@@ -278,6 +315,7 @@ fun PostMediaTile(
                     // Coil stores source bytes: a small view does not make the original a thumbnail.
                     cacheOnDisk = !usesSharpPreview && item.thumbnailUrl != null,
                     fallbackUrl = item.thumbnailUrl,
+                    onLoadFailed = onLoadFailed,
                 )
             PostMediaKind.Document -> {
                 Box(
@@ -368,7 +406,9 @@ fun PostMediaTile(
  * Still image tile (Coil) with shimmer-free loading + error states. [cacheOnDisk] false (the full-screen viewer's
  * originals): read from the disk cache when a tile saved the image, never written (contract §6: original-size photos
  * are never cached automatically). [background] shows while it loads and around a fitted image; the full-screen
- * viewer passes transparent, so its photos sit on its black canvas, as on iOS.
+ * viewer passes transparent, so its photos sit on its black canvas, as on iOS. With [onLoadFailed], an image that
+ * can't load (nor its [fallbackUrl]) calls it and keeps the plain [background] in place of the failure mark, so the
+ * caller can leave the tile out.
  */
 @Composable
 fun MediaStillTile(
@@ -379,6 +419,7 @@ fun MediaStillTile(
     cacheOnDisk: Boolean = true,
     fallbackUrl: String? = null,
     background: Color = PantopusColors.appSurfaceSunken,
+    onLoadFailed: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val model =
@@ -411,7 +452,11 @@ fun MediaStillTile(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = contentScale,
                     background = background,
+                    onLoadFailed = onLoadFailed,
                 )
+            } else if (onLoadFailed != null) {
+                val report by rememberUpdatedState(onLoadFailed)
+                LaunchedEffect(Unit) { report() }
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     PantopusIconImage(
@@ -706,4 +751,11 @@ fun LivePhotoTile(
             }
         }
     }
+}
+
+/** Whether the phone has a connection right now, as `NetworkMonitor` reads it, for a composable with no view model. */
+private fun Context.hasConnection(): Boolean {
+    val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+    val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }

@@ -287,8 +287,8 @@ object DeepLinkRouter {
 
         /**
          * `/app/mailbox/sent/:id` — a card the person sent, on its page over
-         * Sent (the holiday_card_claimed / holiday_card_expired notices).
-         * Mirrors iOS `mailSentCard`.
+         * Sent (the holiday_card_claimed / holiday_card_expired notices, and
+         * holiday_card_email_failed for one card). Mirrors iOS `mailSentCard`.
          */
         data class MailSentCard(val id: String) : Destination
 
@@ -297,7 +297,11 @@ object DeepLinkRouter {
          */
         data class SendCard(val design: String?) : Destination
 
-        /** `/mailbox` — the Mail tab (the Mail Day summary notification). */
+        /**
+         * `/mailbox` — the Mail tab (the Mail Day summary notification); also
+         * `/app/mailbox/sent` (holiday_card_email_failed for several cards),
+         * since Sent is a drawer of the Mailbox. Mirrors iOS `mailbox`.
+         */
         data object Mailbox : Destination
 
         /** `/app/place/neighbor-message/:id` — a received neighbor message. */
@@ -430,6 +434,9 @@ object DeepLinkRouter {
         /** Nearby Plans: `/plans/:id/requests` opens the host's requests (H10). */
         data class PlanRequests(val id: String) : Destination
 
+        /** Plans for the holidays: `/plans/:id/guests` opens the host's Who's coming (A5), from its two notices. */
+        data class PlanGuests(val id: String) : Destination
+
         /** Nearby Plans: `/plans/new` opens the host flow (H1). */
         data object NewPlan : Destination
 
@@ -536,8 +543,8 @@ object DeepLinkRouter {
 
     /** True when [destination] is a Plans page. Those open only while the `plans` flag is on. */
     fun isPlansDestination(destination: Destination): Boolean =
-        destination is Destination.Plan || destination is Destination.PlanRequests || destination == Destination.NewPlan ||
-            destination == Destination.PlansTab
+        destination is Destination.Plan || destination is Destination.PlanRequests || destination is Destination.PlanGuests ||
+            destination == Destination.NewPlan || destination == Destination.PlansTab
 
     /** True while Nearby Plans is on for the signed-in person. */
     fun plansEnabled(): Boolean = plansEnabledProvider()
@@ -665,9 +672,11 @@ object DeepLinkRouter {
             "mail_escrow_expired" to setOf(LaunchFeature.MAIL_EXTRAS),
             "mail_escrow_claimed" to setOf(LaunchFeature.MAIL_EXTRAS),
             "mail_claimed" to setOf(LaunchFeature.MAIL_EXTRAS),
-            // Someone not on Pantopus joined and has the sender's Christmas card, or its 90 days ended.
+            // Someone not on Pantopus joined and has the sender's Christmas card, its 90 days ended, or its email didn't
+            // go out after every try (one card's page, or the Mailbox for several).
             "holiday_card_claimed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
             "holiday_card_expired" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
+            "holiday_card_email_failed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
         )
 
     /**
@@ -1048,7 +1057,7 @@ object DeepLinkRouter {
                     ?.takeIf { segments.size == 2 && MAIL_UUID.matches(it) }
                     ?.let { Destination.Moment(it.lowercase()) } ?: Destination.Unknown(raw)
             "plans" -> {
-                // Nearby Plans: `/plans/new`, `/plans/:id` and `/plans/:id/requests` (brief section 7).
+                // Nearby Plans: `/plans/new`, `/plans/:id`, `/plans/:id/requests` (brief section 7) and `/plans/:id/guests`.
                 val id = segments.getOrNull(1)
                 val trailing = segments.getOrNull(2)
                 when {
@@ -1058,6 +1067,7 @@ object DeepLinkRouter {
                     id.isNullOrBlank() -> Destination.Unknown(raw)
                     segments.size == 2 -> Destination.Plan(id, Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken))
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
+                    trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
                     else -> Destination.Unknown(raw)
                 }
             }

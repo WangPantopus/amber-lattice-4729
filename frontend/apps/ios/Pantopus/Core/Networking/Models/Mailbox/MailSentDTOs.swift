@@ -74,17 +74,34 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
     public let arrivesAt: String?
     /// The day it goes (or went) into their mailbox by their clock (`YYYY-MM-DD`).
     public let arrivesOn: String?
+    /// By email, while it waits: when its email goes (ISO), set for the sender's 7 a.m. or Christmas morning. Nil
+    /// once it went, and for one that went as it was sealed.
+    public let emailSendAt: String?
     /// The day a sealed card opens (`YYYY-MM-DD`).
     public let opensOn: String?
     public let sealed: Bool
     public let canTakeBack: Bool
     public let takeBackUntil: String?
+    /// A card by email whose email hasn't gone out while it waits
+    /// (`email_waiting`): still being tried, or given up on. Nil once it went,
+    /// and for a value this app doesn't know.
+    public let emailStatus: EmailStatus?
+    /// The address the sender typed, whole, so they can see a mistake in it;
+    /// only beside `emailStatus`.
+    public let emailTo: String?
     public let envelope: Envelope
     public let card: Card
     /// The sender's own words (the card's page only), also while it's sealed for them.
     public let note: String?
     /// The card's page only: where it has been, in order.
     public let trail: [TrailStep]
+
+    /// Where a card by email's email is when it hasn't gone out: the server
+    /// keeps trying for about an hour (`retrying`), then gives up (`failed`).
+    public enum EmailStatus: String, Sendable, Hashable {
+        case retrying
+        case failed
+    }
 
     /// The envelope as they got it: who it's from and the day it was
     /// postmarked by their clock (nil while it waits for the pickup).
@@ -174,9 +191,12 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         case byLink = "by_link"
         case arrivesAt = "arrives_at"
         case arrivesOn = "arrives_on"
+        case emailSendAt = "email_send_at"
         case opensOn = "opens_on"
         case canTakeBack = "can_take_back"
         case takeBackUntil = "take_back_until"
+        case emailStatus = "email_status"
+        case emailTo = "email_to"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -194,10 +214,13 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         self.status = status ?? .delivered
         arrivesAt = try? c.decodeIfPresent(String.self, forKey: .arrivesAt)
         arrivesOn = try? c.decodeIfPresent(String.self, forKey: .arrivesOn)
+        emailSendAt = try? c.decodeIfPresent(String.self, forKey: .emailSendAt)
         opensOn = try? c.decodeIfPresent(String.self, forKey: .opensOn)
         sealed = (try? c.decodeIfPresent(Bool.self, forKey: .sealed)) ?? false
         canTakeBack = (try? c.decodeIfPresent(Bool.self, forKey: .canTakeBack)) ?? false
         takeBackUntil = try? c.decodeIfPresent(String.self, forKey: .takeBackUntil)
+        emailStatus = (try? c.decodeIfPresent(String.self, forKey: .emailStatus)).flatMap(EmailStatus.init(rawValue:))
+        emailTo = try? c.decodeIfPresent(String.self, forKey: .emailTo)
         envelope = try c.decode(Envelope.self, forKey: .envelope)
         card = try c.decode(Card.self, forKey: .card)
         note = try? c.decodeIfPresent(String.self, forKey: .note)

@@ -3,6 +3,7 @@
 // feature is off or the area has nothing, and Today then shows no switch.
 import * as api from '@pantopus/api';
 import type { AroundYou } from '@pantopus/api';
+import type { Post } from '@pantopus/types';
 import { queryKeys } from '@/lib/query-keys';
 
 /** Which half of Today shows. */
@@ -22,6 +23,21 @@ export function aroundYouQuery(account: string | null, area: { latitude: number;
     staleTime: 300_000,
     retry: 1,
   };
+}
+
+/** The page with one of its posts changed (a reaction, a save, a reply count from the post panel). */
+export function patchAroundYouPost(page: AroundYou, postId: string, changes: Partial<Post>): AroundYou {
+  return {
+    ...page,
+    sections: page.sections.map((section) => (section.posts
+      ? { ...section, posts: section.posts.map((post) => (post.id === postId ? { ...post, ...changes } : post)) }
+      : section)),
+  };
+}
+
+/** Whether the server sent the items as posts (servers before the posts send only the rows). */
+export function hasAroundYouPosts(page: AroundYou): boolean {
+  return page.sections.some((section) => Array.isArray(section.posts));
 }
 
 /** "3 hr ago", "Yesterday", "2 days ago": how long since Pantopus first saw the story. */

@@ -293,7 +293,7 @@ enum TodayAgenda {
                     .compactMap { $0 }
                     .joined(separator: " · "),
                 owner: hosts ? .plan : .going,
-                details: [people, card.area.label].filter { !$0.isEmpty },
+                details: [people, card.areaWord].filter { !$0.isEmpty },
                 source: "Plans",
                 actions: [.openPlan(id: card.id)]
             )

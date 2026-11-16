@@ -2247,7 +2247,7 @@ private fun EngagementStrip(engagement: RowEngagement) {
                         Modifier
                             .clickable(onClick = cta.onClick)
                             .padding(horizontal = Spacing.s2, vertical = Spacing.s1)
-                            .testTag("rowEngagementCTA")
+                            .testTag(cta.testTag ?: "rowEngagementCTA")
                             .semantics { contentDescription = cta.accessibilityLabel },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s1),

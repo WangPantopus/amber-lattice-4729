@@ -88,6 +88,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.moments.MomentMedia
 import app.pantopus.android.data.moments.MomentMediaFile
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
@@ -382,6 +383,8 @@ private fun CameraStep(
                 controller = controller,
                 front = front,
                 flash = flash,
+                maxVideoMs = state.limits.videoMs,
+                videoBitrate = MomentMedia.videoBitrate(state.limits.videoMs, state.limits.videoBytes),
                 onCaptured = onCaptured,
                 onRecording = {
                     if (recording && !it) MomentHaptics.firm(view)
@@ -463,9 +466,9 @@ private fun CameraStep(
             Text(
                 text =
                     notice ?: if (recording) {
-                        "0:${recordedSeconds.toString().padStart(2, '0')} · let go to stop"
+                        "${recordedSeconds / 60}:${(recordedSeconds % 60).toString().padStart(2, '0')} · let go to stop"
                     } else {
-                        "Tap for a photo. Hold for a video up to 30 seconds."
+                        "Tap for a photo. Hold for a video up to ${state.limits.spoken(state.limits.videoMs)}."
                     },
                 color = Color.White,
                 fontSize = 14.sp,
@@ -495,6 +498,7 @@ private fun CameraStep(
                 Spacer(Modifier.weight(1f))
                 MomentsShutter(
                     recording = recording,
+                    maxVideoMs = state.limits.videoMs,
                     onPhoto = {
                         if (granted) {
                             MomentHaptics.light(view)

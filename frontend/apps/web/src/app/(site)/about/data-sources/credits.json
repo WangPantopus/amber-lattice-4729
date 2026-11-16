@@ -1,5 +1,5 @@
 {
-  "updated": "November 8, 2026",
+  "updated": "November 15, 2026",
   "groups": [
     {
       "title": "National sources",
@@ -72,6 +72,57 @@
           "statement": "All data is believed to be correct, but is not guaranteed by James City County. The county is not responsible for its accuracy or how current it may be."
         },
         {
+          "id": "ks-sedgwick",
+          "publisher": "City of Wichita, Kansas (copy of the Sedgwick County Appraiser's records)",
+          "url": "https://www.arcgis.com/home/item.html?id=cc370e96c9944bb2be62fe15964f9cba",
+          "license": "Open Data Commons Public Domain Dedication and License (PDDL) 1.0",
+          "license_url": "https://opendatacommons.org/licenses/pddl/1-0/",
+          "dataset": "City of Wichita Parcels, with the Sedgwick County Appraiser's building facts and appraised values; lot sizes are the county's mapped parcel acres",
+          "statement": "The Sedgwick County Appraiser is the origin of these records; the City of Wichita publishes this copy. Data users must comply with K.S.A. 45-230, which restricts selling, giving or receiving lists of names and addresses from public records for sales solicitation."
+        },
+        {
+          "id": "oh-union",
+          "publisher": "Union County Auditor, Ohio",
+          "url": "https://www.unioncountyohio.gov/property-search-tools",
+          "license": "Union County GIS services and real estate extract files (no license stated)",
+          "license_url": "https://www.unioncountyohio.gov/gis-mapping",
+          "dataset": "Parcels with appraisal data, and the land table of the Auditor's weekly real estate extract",
+          "statement": "The Union County Auditor is the origin and publisher of these records, on the county's GIS server and its GIS Enterprise Portal."
+        },
+        {
+          "id": "ak-ketchikan",
+          "publisher": "Ketchikan Gateway Borough, Alaska",
+          "url": "https://www.arcgis.com/home/item.html?id=2787be973b534a969d57bda80010eb0e",
+          "license": "Ketchikan Gateway Borough GIS web map services",
+          "license_url": "https://www.kgbak.us/196/GIS-Maps",
+          "dataset": "Address points with the Assessment Department's roll (2026 assessment year)",
+          "statement": "The borough's Assessment Department is the origin of these records; Ketchikan Gateway Borough GIS publishes them as web map services, hosted by its GIS contractor."
+        },
+        {
+          "id": "ok-cleveland",
+          "publisher": "Cleveland County Assessor, Oklahoma",
+          "url": "https://www.arcgis.com/home/item.html?id=a0b7946cceaf499f963e0a9ce9946cb3",
+          "license": "Published by the Assessor; no license or limit on use stated",
+          "dataset": "Tax parcels with the Assessor's appraisal records (dated copies; June 2026)",
+          "statement": "The Cleveland County Assessor is both the origin and the publisher of these records."
+        },
+        {
+          "id": "va-richmond",
+          "publisher": "City of Richmond Assessor of Real Estate, Virginia",
+          "url": "https://www.rva.gov/assessor-real-estate/data-request",
+          "license": "Public Data Set offered free by the Assessor's Office; no license or limit on use stated",
+          "dataset": "Public Data Set (Property Information), refreshed about the 15th of each month",
+          "statement": "The City of Richmond assumes no liability for any errors, omissions, or inaccuracies in the information provided."
+        },
+        {
+          "id": "va-powhatan",
+          "publisher": "Powhatan County, Virginia",
+          "url": "https://services5.arcgis.com/nip9boeHfv9Av5yj/arcgis/rest/services/Vision_Powhatan/FeatureServer",
+          "license": "Published by the county; no license or limit on use stated",
+          "dataset": "Assessment tables (residential construction, year built, parcels and assessments)",
+          "statement": "Powhatan County provides its maps and data as a public information service; parcels the county keeps off the internet carry no facts here."
+        },
+        {
           "id": "va-charlottesville",
           "publisher": "City of Charlottesville, Virginia",
           "url": "https://opendata.charlottesville.org",
@@ -109,7 +160,7 @@
           "url": "https://www.arcgis.com/home/item.html?id=1181deaadec047478dd7e91f3d94c69d",
           "license": "CC BY 4.0",
           "license_url": "https://creativecommons.org/licenses/by/4.0/",
-          "dataset": "Tax parcels"
+          "dataset": "Tax parcels and 2024 building records"
         },
         {
           "id": "dc-dc",
@@ -212,6 +263,85 @@
           "license": "County of Berks GIS Data General Agreement and Terms",
           "license_url": "https://services3.arcgis.com/dGYe1jDYrTw1wwpc/arcgis/rest/services/Berks_Assessment_CAMA_Residential_File/FeatureServer",
           "dataset": "Information is based on geospatial data from the County of Berks (CAMA residential file)"
+        },
+        {
+          "id": "ri-newport",
+          "publisher": "City of Newport, Rhode Island",
+          "url": "https://services2.arcgis.com/URasD5e1uL7MfVOn/arcgis/rest/services/Planning_Pop_Denisty_WFL1/FeatureServer/6",
+          "license": "City of Newport GIS notice (provided as is; no license or limit on use posted)",
+          "license_url": "https://www.arcgis.com/home/item.html?id=e798d82de52c489c96ed8fd2eb04c24a",
+          "dataset": "Tax Assessor's CAMA extract (City of Newport only)"
+        },
+        {
+          "id": "or-hood-river",
+          "publisher": "Hood River County, Oregon",
+          "url": "https://www.arcgis.com/home/item.html?id=d364be9861c54e27bacfcd973193bc28",
+          "license": "Hood River County open data disclaimer",
+          "license_url": "https://opendata-hrcgis.hub.arcgis.com/",
+          "dataset": "Tax lots with the Assessor's facts (published each October)",
+          "statement": "The County of Hood River makes no representation or warranty of any kind as to this product or its accuracy."
+        },
+        {
+          "id": "nc-johnston",
+          "publisher": "Johnston County, North Carolina (GIS and Tax Administration)",
+          "url": "https://services.arcgis.com/klfX5Vz1Hy74tGIF/arcgis/rest/services/Appraisal_Map_Layers/FeatureServer/0",
+          "license": "Free to use, as the county's GIS data page states",
+          "license_url": "https://www.johnstonnc.gov/gis2/content.cfm?pd=data",
+          "dataset": "Appraisal Map Layers (bedrooms, baths, heated area, year built)"
+        },
+        {
+          "id": "nc-lenoir",
+          "publisher": "Lenoir County, North Carolina",
+          "url": "https://services3.arcgis.com/bDx73HOFAO3oSeDq/arcgis/rest/services/OpenGov/FeatureServer/2",
+          "license": "No terms posted",
+          "dataset": "Parcels (bedrooms, baths, finished area, year built)"
+        },
+        {
+          "id": "nc-brunswick",
+          "publisher": "Brunswick County, North Carolina (GIS and Tax Office)",
+          "url": "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1",
+          "license": "Public record under North Carolina's Public Records Law, as the county's site states; no terms posted on the layer",
+          "license_url": "https://www.brunswickcountync.gov/privacy",
+          "dataset": "Parcels with the Tax Office's building facts (bedrooms, full and half baths, heated area, year built)",
+          "statement": "As a condition providing electronic GIS data, Brunswick County reserves the right to require the data requester agree in writing that the data will not be resold or otherwise used for trade or commercial purposes. (The public layer asks for no such agreement, and Pantopus never resells the data.)"
+        },
+        {
+          "id": "mn-wright",
+          "publisher": "Wright County, Minnesota",
+          "url": "https://services2.arcgis.com/CiQCvRGImIxsaFnM/arcgis/rest/services/Buildings_Current_MapIt/FeatureServer/0",
+          "license": "Public data, with the county's disclaimer under Minnesota Statutes 466.03, subd. 21",
+          "license_url": "https://wright-county-gis-wrightgis.hub.arcgis.com/",
+          "dataset": "Buildings Current (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "wv-jefferson",
+          "publisher": "Jefferson County, West Virginia",
+          "url": "https://gisarcweb.jeffersoncountywv.org/gisarcweb/rest/services/Base/Base_Parcels/MapServer/0",
+          "license": "No terms posted",
+          "dataset": "Parcels (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "co-summit",
+          "publisher": "Summit County Assessor, Colorado, as published by the Town of Breckenridge",
+          "url": "https://maps.townofbreckenridge.com/arcgis/rest/services/CountyParcel/FeatureServer/0",
+          "license": "No terms posted",
+          "dataset": "County parcels (bedrooms, baths, living area, year built)"
+        },
+        {
+          "id": "fl-orange",
+          "publisher": "Orange County Property Appraiser, Florida, as published by Orange County Government",
+          "url": "https://ocgis4.ocfl.net/arcgis/rest/services/AGOL_Open_Data/MapServer/56",
+          "license": "No license stated; the county government's terms of use ask for lawful use",
+          "dataset": "Parcels (bedrooms, baths, living area, floors), updated weekly"
+        },
+        {
+          "id": "mi-oakland#semcog",
+          "publisher": "Southeast Michigan Council of Governments (SEMCOG)",
+          "url": "https://gis.semcog.org/server/rest/services/Hosted/Building_Points/FeatureServer",
+          "license": "SEMCOG Copyright License Agreement",
+          "license_url": "https://maps-semcog.opendata.arcgis.com/pages/copyright-license-agreement",
+          "dataset": "Building Points: year built for Oakland County, Michigan homes, from local assessing data",
+          "statement": "Copyright © 2019 SEMCOG. All Rights Reserved. Reproduction or Use Without Permission is Prohibited."
         }
       ]
     },

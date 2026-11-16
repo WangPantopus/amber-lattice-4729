@@ -261,6 +261,7 @@ fun SendCardScreen(
         TakeBackDialog(
             byEmail = card.byEmail,
             postage = true,
+            notEmailedYet = card.emailSendAt != null,
             onTakeBack = {
                 listTakeBack = null
                 viewModel.takeBackFromList(card)
@@ -273,6 +274,7 @@ fun SendCardScreen(
             byEmail = (form.sent ?: season?.todaysCard)?.byEmail == true,
             byLink = (form.sent ?: season?.todaysCard)?.byLink == true,
             postage = season?.postageEnabled == true,
+            notEmailedYet = (form.sent ?: season?.todaysCard)?.emailSendAt != null,
             onTakeBack = {
                 confirmTakeBack = false
                 viewModel.takeBack()
@@ -605,10 +607,16 @@ internal fun TakeBackDialog(
     freesToday: Boolean = true,
     byLink: Boolean = false,
     postage: Boolean = false,
+    /**
+     * By email, nothing has been emailed to them yet: its email is set for later (`email_send_at`), or Sent says it didn't
+     * go out (`email_status`; taking it back stops the tries).
+     */
+    notEmailedYet: Boolean = false,
 ) {
     val first =
         when {
             byLink -> "Your link will say you took it back."
+            byEmail && notEmailedYet -> "We haven’t emailed them yet, so nothing will go out."
             byEmail -> "The link in their email will say you took it back."
             else -> "It won’t go out with the morning mail."
         }
@@ -791,6 +799,10 @@ internal fun arrivalLine(
         card.byLink && card.status == "expired" -> "Nobody opened your link in 90 days."
         card.byLink -> "Waiting for someone to open your link."
         card.byEmail && card.status == "claimed" -> "$who joined Pantopus and has your card."
+        // Set for the sender's 7 a.m. or Christmas morning: nothing is emailed before then.
+        card.byEmail && card.emailSendAt != null ->
+            "We’ll email them ${HolidayCardTimes.emailGoesAt(card.emailSendAt, zone)}, your time. Once they join with that address, it " +
+                "waits in their mailbox."
         card.byEmail && card.arrival == "sealed_christmas" ->
             "We emailed them. Once they join with that address, it waits in their mailbox and opens on Christmas morning."
         card.byEmail -> "We emailed them. It waits for them to join with that address and open it."

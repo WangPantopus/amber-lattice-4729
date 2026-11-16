@@ -206,14 +206,24 @@ private fun PlanRowEndSlot(end: PlanRowEnd) {
     }
 }
 
-/** A plan row's tile for a plan type; a business's plan adds the business badge on its corner (board P1). */
+/**
+ * A plan row's tile for a plan type; a business's plan adds the business badge on its corner (board P1), a private plan
+ * the lock badge (Plans step 1).
+ */
 @Composable
 fun PlanKindLeading(
     kind: PlanKind?,
     business: Boolean = false,
+    isPrivate: Boolean = false,
 ) {
     if (kind != null && business) {
         PlanBusinessTile(kind)
+    } else if (kind != null && isPrivate) {
+        // The tile keeps its 44 dp; the lock hangs over its corner, as the business badge does.
+        Box(modifier = Modifier.size(44.dp)) {
+            PlanTile(kind)
+            PlanPrivateBadge(modifier = Modifier.align(Alignment.BottomEnd).offset(x = 5.dp, y = 5.dp))
+        }
     } else if (kind != null) {
         PlanTile(kind)
     } else {
@@ -476,6 +486,8 @@ fun PlanBanner(
     icon: PantopusIcon,
     tone: PlanBannerTone,
     modifier: Modifier = Modifier,
+    /** A button on the right (Plans for the holidays' "Change"); null for none. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val (bg, boxBg, boxFg) =
         when (tone) {
@@ -522,6 +534,7 @@ fun PlanBanner(
                 Text(text = subtitle, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
             }
         }
+        trailing?.invoke()
     }
 }
 

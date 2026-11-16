@@ -51,17 +51,24 @@ final class PlanScreenViewModel {
     var actionError: String?
     /// A toast for an action a section ran ("Plan cancelled. Everyone has been told."), as on Android.
     var notice: String?
+    /// A repeating plan's date skipped (Plans step 2): the date posted in its place, for the screen to open.
+    var nextPlanId: String?
     /// The plan became "in" while this screen was open: play the reveal.
     private(set) var revealToken = 0
     /// Other plans nearby, for J8.
     private(set) var otherPlans: [PlanCardDTO] = []
     /// The host's pending and waitlisted requests (names on H9's card).
-    private(set) var hostRequests: PlanRequestsResponse?
+    private(set) var hostRequests: PlanRequestsResponse? {
+        didSet { if hostRequests == nil { hostInvites = nil } }
+    }
+
+    /// Plans for the holidays: the host's invitation list, for "Remind" (`remind`) on a plan that takes answers.
+    var hostInvites: PlanInviteListDTO?
     private(set) var isLoadingDetails = false
     private var readGeneration = 0
     private var isOnScreen = true
 
-    private let api: APIClient
+    let api: APIClient
     private let store: ScreenStore
 
     init(planId: String, seed: PlanCardDTO? = nil, api: APIClient = .shared) {
@@ -126,8 +133,10 @@ final class PlanScreenViewModel {
             if case .notThisTime = mode { await loadOtherPlans(generation: generation) }
             if mode == .hosting {
                 let requests = try? await PlansStoreReads.requests(planId: planId, store: store)
+                let invites = detail.card.answerCounts == nil ? nil : try? await hostInviteList()
                 guard generation == readGeneration, !Task.isCancelled else { return }
                 hostRequests = requests
+                hostInvites = invites
             }
         } catch is CancellationError {
             return
@@ -321,13 +330,30 @@ final class PlanScreenViewModel {
 
     // MARK: - Hosting
 
-    func cancelPlan(note: String?) async -> Bool {
+    /// `keepRepeating`: a repeating plan's date only ("Skip Thursday", "Cancel this date"); the date the server
+    /// posts in its place opens next. Without it a repeating plan stops repeating too.
+    func cancelPlan(note: String?, keepRepeating: Bool = false) async -> Bool {
+        var next: String?
+        let wasLast = card.map { $0.isRepeating && !$0.seriesGoesOn } ?? false
         let done = await perform {
-            _ = try await api.request(PlansEndpoints.cancel(id: planId, note: note), as: EmptyResponse.self)
+            let reply: PlanCancelResponse = try await api.request(PlansEndpoints.cancel(
+                id: planId,
+                note: note,
+                keepRepeating: keepRepeating
+            ))
+            next = reply.nextPlanId
             await load()
         }
-        if done { notice = "Plan cancelled. Everyone has been told." }
-        return done
+        guard done else { return false }
+        if !keepRepeating {
+            notice = "Plan cancelled. Everyone has been told."
+        } else if next == nil {
+            notice = wasLast ? PlanRepeatCopy.lastDateToast : PlanRepeatCopy.notPostedToast
+        } else {
+            // The next date's screen opens at once and says it (PlanScreen.openNext).
+            nextPlanId = next
+        }
+        return true
     }
 
     func remove(requestId: String) async -> Bool {
@@ -369,7 +395,7 @@ final class PlanScreenViewModel {
 
     // MARK: - Helpers
 
-    private func perform(_ work: () async throws -> Void) async -> Bool {
+    func perform(_ work: () async throws -> Void) async -> Bool {
         isWorking = true
         actionError = nil
         defer { isWorking = false }

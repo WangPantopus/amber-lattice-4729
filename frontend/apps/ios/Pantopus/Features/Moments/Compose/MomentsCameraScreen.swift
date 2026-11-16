@@ -4,7 +4,7 @@
 //
 //  Board P1 drawn: the camera full screen under a soft shade at the top and
 //  bottom, close / "pins at" / flash at the top, "Tap for a photo. Hold for
-//  a video up to 30 seconds.", the library's newest photo, the shutter and
+//  a video up to 60 seconds.", the library's newest photo, the shutter and
 //  the camera switch, and Library · Camera · Text. On the iPhone Duo it takes
 //  the Duo's layouts (`MomentsCameraScreen+Duo.swift`). The camera and what
 //  it's doing live in the composer's model (`MomentsCameraModel`), so a fold
@@ -92,7 +92,8 @@ struct MomentsCameraScreen: View {
 
     /// The hint, or how long the video has been recording.
     var hint: some View {
-        Text(camera.recording ? camera.timeLabel : "Tap for a photo. Hold for a video up to 30 seconds.")
+        Text(camera.recording ? camera
+            .timeLabel : "Tap for a photo. Hold for a video up to \(Int(MomentsMediaExport.maxVideoSeconds)) seconds.")
             .font(.system(size: camera.recording ? 16 : 14, weight: camera.recording ? .bold : .medium))
             .monospacedDigit()
             .foregroundStyle(.white)
@@ -164,7 +165,7 @@ struct MomentsCameraScreen: View {
         .accessibilityIdentifier("moments.camera.switch")
     }
 
-    /// Tap for a photo; hold for a video, which stops on letting go or at 30 seconds. 80 pt on the phone, 96 beside the
+    /// Tap for a photo; hold for a video, which stops on letting go or at the limit. 80 pt on the phone, 96 beside the
     /// open Duo's picture (board O7).
     func shutter(size: CGFloat) -> some View {
         let large = size > 80

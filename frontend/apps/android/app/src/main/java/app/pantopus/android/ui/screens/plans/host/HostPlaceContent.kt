@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.R
@@ -52,6 +53,8 @@ import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanGuestsSeeCard
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineHero
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanRow
@@ -65,6 +68,7 @@ import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.detail.PlanAreaPreviewMap
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
 import app.pantopus.android.ui.screens.plans.map.planH3
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -109,6 +113,7 @@ internal fun PlacePickerStep(
                 placesError = ui.placesError,
                 suggestions = ui.suggestions,
                 homePoints = ui.homePoints,
+                anywhere = ui.isPrivate,
             ),
         onClose = vm::closePlaces,
         onUse = vm::usePlace,
@@ -149,6 +154,8 @@ internal data class PlacePickerState(
     val suggestions: PlaceSuggestions = PlaceSuggestions.Idle,
     /** The host's homes: "Pick it on the map" never takes a place at one. */
     val homePoints: List<Pair<Double, Double>> = emptyList(),
+    /** A private plan (Plans step 1) can be anywhere: "Pick it on the map" has no 3-mile reach. */
+    val anywhere: Boolean = false,
 )
 
 /**
@@ -276,6 +283,7 @@ internal fun PublicPlacePicker(
             kind = kind,
             origin = origin,
             homePoints = state.homePoints,
+            anywhere = state.anywhere,
             onUse = { picked ->
                 pickingOnMap = false
                 onPick(picked)
@@ -305,7 +313,7 @@ internal fun PublicPlacePicker(
             PlanTextArea(
                 value = state.query,
                 onValue = onSearch,
-                placeholder = if (kind == PlanKind.STUDY_GROUP) "Search libraries, cafés" else "Search parks, courts, cafés",
+                placeholder = searchHint(kind),
                 label = "Search places",
                 singleLine = true,
             )
@@ -373,12 +381,7 @@ internal fun PublicPlacePicker(
                         }
                     places.isEmpty() ->
                         Text(
-                            text =
-                                if (query.isEmpty()) {
-                                    "No public places are on the map within 3 miles of you yet."
-                                } else {
-                                    "No public places match “$query” within 3 miles."
-                                },
+                            text = noPlacesLine(query, state.anywhere),
                             style = PantopusTextStyle.small,
                             color = PantopusColors.appTextSecondary,
                             modifier = Modifier.padding(vertical = Spacing.s3),
@@ -402,7 +405,13 @@ internal fun PublicPlacePicker(
                 homeRow?.invoke(first)
             }
             Text(
-                text = "You can host within 3 miles of where you live or where you are now.",
+                text =
+                    if (state.anywhere) {
+                        // A private plan (Plans step 1) has no 3-mile rule; the list still shows the places near the host.
+                        "A private plan can be anywhere. If the place isn't listed, pick it on the map."
+                    } else {
+                        "You can host within 3 miles of where you live or where you are now."
+                    },
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )
@@ -566,7 +575,7 @@ private fun PlaceSuggestionsSection(
     }
 }
 
-/** "Suggested for your watch party", "… your game" (as on iOS). */
+/** "Suggested for your watch party", "… your game" (as on iOS); the newer kinds' own noun ("… your outing"). */
 private fun suggestNoun(kind: PlanKind): String =
     when (kind) {
         PlanKind.WATCH_PARTY -> "watch party"
@@ -574,6 +583,17 @@ private fun suggestNoun(kind: PlanKind): String =
         PlanKind.PICKUP_GAME -> "game"
         PlanKind.WALK_COFFEE -> "walk"
         PlanKind.STUDY_GROUP -> "study group"
+        else -> kind.noun
+    }
+
+/** H6's search box, by the places that suit the kind. */
+private fun searchHint(kind: PlanKind): String =
+    when (kind) {
+        PlanKind.STUDY_GROUP -> "Search libraries, cafés"
+        PlanKind.FOOD_DRINKS -> "Search restaurants, cafés, bars"
+        PlanKind.GAME_NIGHT -> "Search cafés, libraries"
+        PlanKind.OUTDOORS -> "Search trails, parks"
+        else -> "Search parks, courts, cafés"
     }
 
 private const val ASK_MAX = 120
@@ -621,6 +641,11 @@ internal fun orderedForKind(
             PlanKind.PICKUP_GAME -> listOf("court", "park", "playground", "community_center")
             PlanKind.WALK_COFFEE -> listOf("trail", "park", "cafe")
             PlanKind.STUDY_GROUP -> listOf("library", "cafe", "community_center")
+            // Plans step 4, as backend/services/plans/planPlaces.js orders them.
+            PlanKind.FOOD_DRINKS -> listOf("restaurant", "cafe", "bar")
+            PlanKind.GAME_NIGHT -> listOf("cafe", "community_center", "library", "bar")
+            PlanKind.OUTDOORS -> listOf("trail", "park")
+            PlanKind.SOMETHING_ELSE -> listOf("cafe", "community_center", "park")
         }
     val allowed = places.filter { kind != PlanKind.PLAYDATE || it.category?.lowercase() != "bar" }
     // A stable sort: places of the same rank keep the server's order.
@@ -735,30 +760,62 @@ private fun PickerMap(
     }
 }
 
-/** H7: what neighbors see, and what only the people you accept see. */
+/** What the list says when it has no place to show; a private plan ([anywhere]) is pointed at the map instead of the 3 miles. */
+private fun noPlacesLine(
+    query: String,
+    anywhere: Boolean,
+): String =
+    when {
+        anywhere && query.isEmpty() -> "No public places are on the map near you yet. For one farther away, pick it on the map."
+        anywhere -> "No public places match “$query” near you. For one farther away, pick it on the map."
+        query.isEmpty() -> "No public places are on the map within 3 miles of you yet."
+        else -> "No public places match “$query” within 3 miles."
+    }
+
+/**
+ * H7: what others see, and what only the people you accept see. A private plan (Plans step 1) previews what the people
+ * invited see, with the host's people to invite as it is posted.
+ */
 @Composable
 internal fun HostPreviewStep(
     ui: HostUi,
     onBack: () -> Unit,
     onPost: () -> Unit,
+    privateActions: PrivatePreviewActions? = null,
 ) {
     val draft = ui.draft
     val kind = draft.kind ?: return
+    val invitedOnly = ui.isPrivate && privateActions != null
     HostStepScaffold(
         title = "Preview",
         step = "3 of 3",
         leadingClose = false,
         onLeading = onBack,
         footer = {
-            ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
-            HostFooterButton(title = "Post plan", onClick = onPost, loading = ui.posting)
+            ui.error?.let {
+                Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error, modifier = Modifier.testTag("planHostError"))
+            }
+            if (invitedOnly) {
+                Box(modifier = Modifier.testTag("planPostAndInvite")) {
+                    HostFooterButton(title = privatePostTitle(draft.inviteIds.size), onClick = onPost, loading = ui.posting)
+                }
+                Text(
+                    text = "You can invite more people later",
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                HostFooterButton(title = "Post plan", onClick = onPost, loading = ui.posting)
+            }
         },
     ) {
         val business = ui.business
-        if (business != null) {
-            BusinessPreview(ui, kind, business)
-        } else {
-            NeighborPreview(ui, kind)
+        when {
+            business != null -> BusinessPreview(ui, kind, business)
+            invitedOnly -> PrivatePreview(ui, kind, requireNotNull(privateActions))
+            else -> NeighborPreview(ui, kind)
         }
     }
 }
@@ -819,22 +876,24 @@ private fun NeighborPreview(
 ) {
     val draft = ui.draft
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-        PlanOverline("What neighbors see")
+        PlanOverline("What others see")
         NeighborsCard(ui, kind)
         PlanOverline(
             if (kind == PlanKind.PLAYDATE) "Families you accept also see" else "People you accept also see",
             modifier = Modifier.padding(top = Spacing.s1),
         )
         PlanFormCard {
+            // The address, the exact spot, or an online plan's link (Plans step 3).
+            val (whereIcon, whereText) = acceptedSeeWhere(ui)
             PlanOptionRow(first = true) {
                 PantopusIconImage(
-                    icon = if (draft.atHome) PantopusIcon.Home else PantopusIcon.MapPin,
+                    icon = whereIcon,
                     contentDescription = null,
                     size = 18.dp,
                     tint = PantopusColors.appTextSecondary,
                 )
                 Text(
-                    text = if (draft.atHome) "Your address" else "The exact spot: ${draft.place?.name ?: "your place"}",
+                    text = whereText,
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appText,
                     modifier = Modifier.weight(1f),
@@ -888,10 +947,11 @@ private fun NeighborPreview(
                 )
             }
         }
+        // An online plan has a link where the others have a place.
         Text(
             text =
-                "You can change or cancel it any time. If you move the time or the place, everyone who's in is asked " +
-                    "“Still coming?”",
+                "You can change or cancel it any time. If you move the time or the ${if (ui.isOnline) "link" else "place"}, " +
+                    "everyone who's in is asked “Still coming?”",
             style = PantopusTextStyle.caption,
             color = PantopusColors.appTextSecondary,
         )
@@ -913,12 +973,16 @@ private fun NeighborsCard(
             kind == PlanKind.PLAYDATE -> PlanFormat.dayPartPhrase(start.atZone(ui.zone))
             else -> PlanFormat.whenLine(start.atZone(ui.zone), end?.atZone(ui.zone))
         }
-    // The place's city once looked up (as on iOS); a plan at home can use the home's city meanwhile.
-    val near = ui.previewArea ?: ui.home?.city?.takeIf { draft.atHome }?.let { "Near $it" }
+    // The place's city once looked up (as on iOS); a plan at home can use the home's city meanwhile. An online plan
+    // says "Online" there (Plans step 3).
+    val near = if (ui.isOnline) PREVIEW_ONLINE_WHERE else ui.previewArea ?: ui.home?.city?.takeIf { draft.atHome }?.let { "Near $it" }
     val point = previewPoint(ui)
     Column(modifier = Modifier.fillMaxWidth().planCard()) {
         Box(modifier = Modifier.fillMaxWidth().height(120.dp).background(PantopusColors.appSurfaceSunken)) {
-            if (point != null) {
+            if (ui.isOnline) {
+                // No map for an online plan: the kind's soft color and the video glyph (board Online).
+                PlanOnlineHero(kind, modifier = Modifier.fillMaxSize(), ring = 56.dp, corner = 18.dp, glyph = 28.dp)
+            } else if (point != null) {
                 PlanAreaPreviewMap(center = point, kind = kind, modifier = Modifier.fillMaxSize())
             } else {
                 PlanAreaGlow(color = kind.colors.accent, radiusPx = 180f, modifier = Modifier.fillMaxSize())
@@ -928,13 +992,18 @@ private fun NeighborsCard(
             modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = 14.dp, bottom = Spacing.s4),
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
-            PlanTypeTag(kind)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                PlanTypeTag(kind)
+                if (ui.isOnline) PlanOnlineChip()
+            }
             Text(text = draft.title.ifBlank { kind.label }, style = planH3, color = PantopusColors.appText)
             Text(
                 text = listOfNotNull(whenText, near).filter(String::isNotBlank).joinToString(" · "),
                 style = PantopusTextStyle.small,
                 color = PantopusColors.appTextSecondary,
             )
+            // "Every Tue and Thu until Feb 4" (Plans step 2), as others will see it under the date.
+            PlanRepeatLine(ui.repeatLine, strong = false)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 PlanAvatar(name = ui.hostName, avatarUrl = ui.hostAvatar, size = 30.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {

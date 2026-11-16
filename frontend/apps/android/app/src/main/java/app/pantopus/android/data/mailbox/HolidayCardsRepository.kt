@@ -3,6 +3,7 @@ package app.pantopus.android.data.mailbox
 import android.content.Context
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
+import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
 import app.pantopus.android.data.api.models.mailbox.CardSignature
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
@@ -47,8 +48,8 @@ import javax.inject.Singleton
 
 /**
  * Christmas cards (launch keys `holiday_cards` + `mailbox`): the season's pictures and today's card, sending one card a
- * day, taking it back, and the people a card can go to. [latest] is what the Mailbox's "Send a Christmas card" row and
- * the send screens show, so a card sent or taken back shows on both at once.
+ * day, taking it back, emailing it again, and the people a card can go to. [latest] is what the Mailbox's "Send a
+ * Christmas card" row and the send screens show, so a card sent or taken back shows on both at once.
  */
 @Suppress("TooManyFunctions") // Every card route the app calls, with the per-account answers the card doors share.
 @Singleton
@@ -309,6 +310,16 @@ class HolidayCardsRepository
             return result
         }
 
+        /**
+         * `POST /api/mailbox/cards/:id/email-again`: one more try at a card's email that didn't go out. Whatever the server
+         * answered (it went, it still didn't, or the card moved on meanwhile), Sent reads where the card is now.
+         */
+        suspend fun emailAgain(cardId: String): NetworkResult<CardEmailedAgainResponse> {
+            val result = safeApiCall { api.emailAgain(cardId) }
+            if (result.reachedServer()) movedOnFlow.tryEmit(cardId)
+            return result
+        }
+
         /** `GET /api/mailbox/sent`: a page of the cards the person sent, newest first, after [before] (the last `next`). */
         suspend fun sent(
             before: String?,
@@ -385,8 +396,8 @@ class HolidayCardsRepository
             private val movedOnFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
             /**
-             * A sent card moved on (picked up or opened) or is gone: a take-back was refused, or its page read it in another
-             * state than Sent shows. Sent and the Mailbox's flag read again.
+             * A sent card moved on (picked up or opened) or is gone: a take-back was refused, its page read it in another
+             * state than Sent shows, or Email it again was answered. Sent and the Mailbox's flag read again.
              */
             val movedOn: SharedFlow<String> = movedOnFlow.asSharedFlow()
 
@@ -448,6 +459,13 @@ sealed interface CardLook {
         val error: NetworkError,
     ) : CardLook
 }
+
+/** The server answered, whatever it said; not offline, a lost connection or an answer that couldn't be read. */
+internal fun NetworkResult<*>.reachedServer(): Boolean =
+    when (this) {
+        is NetworkResult.Success -> true
+        is NetworkResult.Failure -> error.code != null
+    }
 
 private const val HTTP_UNAUTHORIZED = 401
 private const val HTTP_FORBIDDEN = 403

@@ -24,8 +24,11 @@ const planChat = require('./planChat');
 const planNotify = require('./planNotifications');
 const planInvites = require('./planInvites');
 const planBusiness = require('./planBusiness');
+const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
+const planGuests = require('./planGuests');
 const { findGame } = require('./planGames');
+const { validTimezone } = require('../../utils/timezone');
 
 class PlanError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -87,6 +90,11 @@ function auditBusinessPlan(plan, viewer, action, metadata = {}) {
   });
 }
 
+/** Seats taken now: accepted requests and guests without an account who said they're in (planGuests.js). */
+async function seatsNow(plan, requests) {
+  return planService.seatsTaken(plan, requests, await planGuests.guestSeats(plan.post_id));
+}
+
 async function activeRequests(postId) {
   const { data, error } = await supabaseAdmin
     .from('PlanRequest')
@@ -133,8 +141,8 @@ async function userNames(userIds) {
 
 function firstOf(name) {
   const text = String(name || '').trim();
-  // Someone with no name is "A neighbor" (planService.displayName): kept whole, never "A asked to join…".
-  return !text || text === 'A neighbor' ? 'A neighbor' : text.split(' ')[0];
+  // Someone with no name is "Someone" (planService.displayName): kept whole, never "S asked to join…".
+  return !text || text === planService.NO_NAME ? planService.NO_NAME : text.split(' ')[0];
 }
 
 function partyLabel(name, partySize) {
@@ -144,27 +152,32 @@ function partyLabel(name, partySize) {
 
 /** The response body after a write: PlanDetail or PlanCard for the person who wrote. */
 async function planBodyFor(postId, viewer) {
-  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker }, { gps: viewer.gps, point: viewer.origin });
+  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests }, { gps: viewer.gps, point: viewer.origin });
   const { body } = await planService.getForViewer(postId, fresh);
   return body;
 }
 
 // ── Validation ───────────────────────────────────────────────
 
-function validateTimes(startsAt, endsAt, { allowPastStart = false, maxDaysAhead = rules.LIMITS.maxDaysAhead } = {}) {
+function validateTimes(startsAt, endsAt, { allowPastStart = false, maxDaysAhead = rules.LIMITS.maxDaysAhead, isPrivate = false } = {}) {
   const start = new Date(startsAt).getTime();
   const end = new Date(endsAt).getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end)) fail(422, 'validation', 'Choose when the plan starts and ends.');
   const now = Date.now();
   if (!allowPastStart && start < now - rules.LIMITS.startGraceMinutes * 60 * 1000) fail(422, 'validation', "A plan can't start in the past.");
-  if (start > now + maxDaysAhead * 24 * 60 * 60 * 1000) fail(422, 'validation', `Plans can start up to ${maxDaysAhead} days ahead.`);
+  if (start > now + maxDaysAhead * 24 * 60 * 60 * 1000) {
+    fail(422, 'validation', `${isPrivate ? 'Private plans' : 'Plans'} can start up to ${maxDaysAhead} days ahead.`);
+  }
   const minutes = (end - start) / 60000;
   if (minutes < rules.LIMITS.minDurationMinutes) fail(422, 'validation', 'A plan lasts at least 15 minutes.');
   if (minutes > rules.LIMITS.maxDurationMinutes) fail(422, 'validation', 'A plan lasts at most 8 hours.');
   if (end <= now) fail(422, 'validation', 'This plan would already be over.');
 }
 
-/** Rules a plan can use: none for playdates, only "people I've hosted" at home, "anyone nearby" only for pickup games and walks. */
+/**
+ * Rules a plan can use: none for playdates, only "people I've hosted" at home, "anyone nearby" only for pickup games
+ * and walks in a public place (it is for meeting in person, so never online; the newer kinds don't take it either).
+ */
 function normalizeAutoRules(kind, placeKind, requested) {
   const list = [...new Set(Array.isArray(requested) ? requested : [])];
   for (const rule of list) {
@@ -173,7 +186,7 @@ function normalizeAutoRules(kind, placeKind, requested) {
   if (kind === 'playdate') return [];
   return list.filter((rule) => {
     if (placeKind === 'home') return rule === 'hosted_before';
-    if (rule === 'anyone_nearby') return kind === 'pickup_game' || kind === 'walk_coffee';
+    if (rule === 'anyone_nearby') return placeKind !== 'online' && (kind === 'pickup_game' || kind === 'walk_coffee');
     return true;
   });
 }
@@ -227,7 +240,15 @@ function normalizeDetails(kind, details, resolvedGame = null) {
     if (subject.length > 60) fail(422, 'validation', 'Keep the subject under 60 characters.');
     out.subject = subject;
     out.study_style = oneOf(input.study_style, rules.STUDY_STYLES, 'way to study') || 'quiet';
+  } else if (kind === 'food_drinks') {
+    out.food_kind = oneOf(input.food_kind, rules.FOOD_KINDS, 'kind of get-together') || 'dinner';
+  } else if (kind === 'game_night') {
+    out.game_kind = oneOf(input.game_kind, rules.GAME_KINDS, 'kind of game') || 'board_games';
+  } else if (kind === 'outdoors') {
+    out.outdoor_kind = oneOf(input.outdoor_kind, rules.OUTDOOR_KINDS, 'kind of outing') || 'hike';
+    out.pace = oneOf(input.pace, rules.PACES, 'pace') || 'easy';
   }
+  // something_else has no details: its title says what it is.
   return out;
 }
 
@@ -253,13 +274,70 @@ const AT_HOME_MESSAGES = {
   pickup_game: 'That’s at your home. Choose a public place nearby, like a park or a court.',
   playdate: 'That’s at your home. Playdates meet in public places: choose one nearby.',
   study_group: 'That’s at your home. Study groups meet in public places, like a library or a café.',
+  // The newer kinds may be at home too (step 4).
+  food_drinks: 'That’s at your home. To host there, choose “My place”: only people you accept see your address.',
+  game_night: 'That’s at your home. To host there, choose “My place”: only people you accept see your address.',
+  outdoors: 'That’s at your home. To host there, choose “My place”: only people you accept see your address.',
+  something_else: 'That’s at your home. To host there, choose “My place”: only people you accept see your address.',
   // H11 moves a public plan to another public place only.
   move: 'That’s at your home. Choose another public place nearby.',
 };
 
-/** The place, from the body: a public place, or the host's own home. */
-function resolvePlace(viewer, kind, place, { moving = false } = {}) {
+const ONLINE_LINK_MESSAGE = 'Add the link people will join with. It has to start with https://';
+const NEEDS_LOCATION_ONLINE = 'Add your home or share your location to host an online plan for people nearby.';
+
+/**
+ * An online plan's place: its link, and where it "is", the host's own area, so a public one is shown to people near
+ * the host. The point is the host's first trusted home with a point, else a fresh fix sent with the request; a
+ * series' next date keeps the date before's (`seriesPoint`). A private plan with neither is posted with no area
+ * (0, 0: in no list or map box); a public one can't be.
+ */
+function resolveOnlinePlace(viewer, kind, place, { isPrivate = false, details = null, seriesPoint = null } = {}) {
+  if (!rules.ONLINE_KINDS.includes(kind)) {
+    fail(422, 'validation', `A ${planNotify.noun({ kind, details: details && typeof details === 'object' ? details : {} })} meets in person.`);
+  }
+  const parsed = planPlace.parseOnlineLink(place.link, rules.ONLINE_LINK_MAX);
+  if (!parsed) fail(422, 'validation', ONLINE_LINK_MESSAGE);
+  const home = viewer.homes.find((h) => h.trusted && h.point) || null;
+  let point = null;
+  if (seriesPoint) point = seriesPoint;
+  else if (home) point = home.point;
+  else if (viewer.gps) point = { latitude: viewer.gps.latitude, longitude: viewer.gps.longitude };
+  const noArea = !point || (Number(point.latitude) === 0 && Number(point.longitude) === 0);
+  if (noArea && !isPrivate) fail(403, 'needs_location', NEEDS_LOCATION_ONLINE);
+  return {
+    kind: 'online',
+    name: planPlace.ONLINE_NAME,
+    address: null,
+    latitude: noArea ? 0 : Number(point.latitude),
+    longitude: noArea ? 0 : Number(point.longitude),
+    home_id: null,
+    // The home the point came from: its city names the area when the map can't.
+    home: seriesPoint ? null : home,
+    link: parsed.link,
+    link_host: parsed.host,
+    noArea,
+    // With no area there is no place to read a time zone from: the app sends the phone's (an IANA name).
+    timezone: noArea ? validTimezone(typeof place.timezone === 'string' ? place.timezone.slice(0, 64) : null) || null : null,
+  };
+}
+
+/**
+ * The time zone a plan keeps: its place's, or for an online plan posted with no area the one it already has (a
+ * series' next date, an edit), else the phone's own (`place.timezone`), else the host's home's, else the default.
+ */
+function placeTimezone(viewer, place, { keepTimezone = null } = {}) {
+  if (!place.noArea) return planPlace.timezoneFor(place.latitude, place.longitude);
+  if (keepTimezone) return keepTimezone;
+  if (place.timezone) return place.timezone;
+  const home = viewer.homes.find((h) => h.point);
+  return home ? planPlace.timezoneFor(home.point.latitude, home.point.longitude) : rules.DEFAULT_TIMEZONE;
+}
+
+/** The place, from the body: a public place, the host's own home, or online (a link). */
+function resolvePlace(viewer, kind, place, { moving = false, isPrivate = false, details = null, seriesPoint = null } = {}) {
   if (!place || typeof place !== 'object') fail(422, 'validation', 'Choose where the plan happens.');
+  if (place.kind === 'online') return resolveOnlinePlace(viewer, kind, place, { isPrivate, details, seriesPoint });
   if (place.kind === 'home') {
     if (kind === 'playdate') fail(422, 'validation', 'Playdates meet in public places.');
     if (kind === 'study_group') fail(422, 'validation', 'Study groups meet in public places.');
@@ -339,56 +417,121 @@ function assertHostNear(viewer, place) {
   fail(403, 'not_near', 'You can host within 3 miles of where you live or where you are now.');
 }
 
-async function assertHostLimits(userId) {
+/** A host's limits. Public and private plans are counted apart: a dinner with friends never uses a public slot. */
+async function assertHostLimits(userId, { isPrivate = false, seriesDate = false } = {}) {
+  const audience = isPrivate ? 'invited' : 'nearby';
+  const limits = isPrivate ? rules.PRIVATE_LIMITS : rules.LIMITS;
   const [upcoming, today] = await Promise.all([
     supabaseAdmin.from('Plan').select('post_id, post:Post!inner(event_end_date)', { count: 'exact', head: true })
-      .eq('host_user_id', userId).eq('status', 'open').gt('post.event_end_date', nowIso()),
+      .eq('host_user_id', userId).eq('audience', audience).eq('status', 'open').gt('post.event_end_date', nowIso()),
     supabaseAdmin.from('Plan').select('post_id', { count: 'exact', head: true })
-      .eq('host_user_id', userId).gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      .eq('host_user_id', userId).eq('audience', audience).gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
   ]);
   if (upcoming.error || today.error) throw new Error(`Failed to count plans: ${(upcoming.error || today.error).message}`);
-  if ((upcoming.count || 0) >= rules.LIMITS.upcomingPlansPerHost) {
-    fail(429, 'too_many_plans', 'You can host 3 upcoming plans at a time.');
+  if ((upcoming.count || 0) >= limits.upcomingPlansPerHost) {
+    fail(429, 'too_many_plans', isPrivate
+      ? `You can host ${limits.upcomingPlansPerHost} upcoming private plans at a time.`
+      : 'You can host 3 upcoming plans at a time.');
   }
-  if ((today.count || 0) >= rules.LIMITS.newPlansPerDay) {
-    fail(429, 'too_many_plans', 'You can post 5 plans a day.');
+  // The day's limit is on what a person posts themselves. A series' own next date isn't one of those: the plan
+  // it follows has ended, so the series still holds one upcoming slot, as it did.
+  if (!seriesDate && (today.count || 0) >= limits.newPlansPerDay) {
+    fail(429, 'too_many_plans', isPrivate ? `You can post ${limits.newPlansPerDay} private plans a day.` : 'You can post 5 plans a day.');
   }
+}
+
+/**
+ * Who the plan is for, from the body: people nearby (the default), or only the people the host invites. A private
+ * plan needs its switch and invitations, and is never a business's.
+ */
+function checkedAudience(viewer, input, hostAs) {
+  const audience = oneOf(input.audience, rules.AUDIENCES, 'who can see the plan') || 'nearby';
+  if (audience !== 'invited') return 'nearby';
+  if (hostAs) fail(422, 'validation', "A business's plan can't be private.");
+  if (!viewer.privateFlag) fail(422, 'private_unavailable', "Private plans aren't available yet.");
+  return 'invited';
 }
 
 // ── Create ───────────────────────────────────────────────────
 
+const UPDATE_PANTOPUS = 'Update Pantopus to do that.';
+
+/**
+ * An online plan and the newer kinds: only from an app that can draw them (`more=1`), while their switches are on,
+ * and never a business's. A series' own next date carries on whatever the switches say: a plan already posted
+ * stays as it is.
+ */
+function assertMoreAllowed(viewer, { kind, online, hostAs, series = false }) {
+  const newKind = rules.NEW_KINDS.includes(kind);
+  if (!newKind && !online) return;
+  if (!viewer.more) fail(422, 'validation', UPDATE_PANTOPUS);
+  if (!series && newKind && !viewer.kindsFlag) fail(422, 'kinds_unavailable', "That kind of plan isn't available yet.");
+  if (!series && online && !viewer.onlineFlag) fail(422, 'online_unavailable', "Online plans aren't available yet.");
+  if (hostAs && newKind) fail(422, 'validation', "A business can't host that kind of plan.");
+  if (hostAs && online) fail(422, 'validation', "A business's plan meets at one of the business's own locations.");
+}
+
 /** A new plan's input checked by the hosting rules: what createPlan would save, or a PlanError. */
-async function checkedPlanInput(viewer, input) {
+async function checkedPlanInput(viewer, input, internal = {}) {
   const kind = input.kind;
-  if (!rules.KINDS.includes(kind)) fail(422, 'validation', 'Choose what kind of plan this is.');
+  if (!rules.ALL_KINDS.includes(kind)) fail(422, 'validation', 'Choose what kind of plan this is.');
+  const online = input.place?.kind === 'online';
+  assertMoreAllowed(viewer, { kind, online, hostAs: input.host_as != null, series: Boolean(internal.series) });
   // Posting as a business (`host_as`): who may, for which business, where, and what it is called
   // (planBusiness.checkedHostAs). Null for a neighbor's own plan, which is checked exactly as before.
   const hostAs = input.host_as != null ? await planBusiness.checkedHostAs(viewer, input) : null;
   if (!hostAs && kind === 'playdate' && !viewer.playdatesFlag) fail(404, 'not_found', "Playdates aren't available yet.");
 
+  const audience = checkedAudience(viewer, input, hostAs);
+  const isPrivate = audience === 'invited';
   const title = cleanTitle(input.title);
   const about = cleanText(input.about, 500, 'About') || '';
   const guestNote = cleanText(input.guest_note, 500, 'The note');
-  validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead } : {});
+  // A series posts its own next date: up to two months out (a monthly plan), at a place its host already posted at.
+  const series = internal.series || null;
+  validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead }
+    : series ? { maxDaysAhead: planSeries.LIMITS.maxDaysAhead }
+      : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
+  // Room for up to 100 on a private plan a person hosts, with the switch on (H1); else 30.
+  const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(hostAs), guestAnswers: viewer.guestAnswersFlag });
   const spots = Number(input.spots);
-  if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+  if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
+  // Kids welcome (H1): guests say how many adults and kids. A person's plan, with the switch on; a playdate has its own.
+  const kidsWelcome = !hostAs && kind !== 'playdate' && viewer.guestAnswersFlag && bool(input.kids_welcome, 'Kids welcome') === true;
   // A business's plan is at one of its own locations: no home guard and no 3-mile rule.
-  const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place);
-  if (!hostAs) assertHostNear(viewer, place);
-  const autoRules = hostAs ? hostAs.autoRules : normalizeAutoRules(kind, place.kind, input.auto_rules);
+  const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place, {
+    isPrivate, details: input.details, seriesPoint: series ? series.point || null : null,
+  });
+  // A private plan may be anywhere: the 3-mile rule keeps the public map honest, and this one isn't on it. An
+  // online plan is in the host's own area already.
+  if (!hostAs && !isPrivate && !series && place.kind !== 'online') assertHostNear(viewer, place);
+  // The people invited to a private plan get in by their invitation: it has no rules of its own.
+  const autoRules = hostAs ? hostAs.autoRules : isPrivate ? [] : normalizeAutoRules(kind, place.kind, input.auto_rules);
   // Since November 7 no plan asks for a verified address, whatever this says (askEligibility). A playdate keeps
   // 'verified' because the table's plan_playdate_rules check requires it of a neighbor's.
-  const joinRequirement = hostAs ? 'located' : kind === 'playdate' ? 'verified'
+  const joinRequirement = hostAs ? 'located' : kind === 'playdate' ? 'verified' : isPrivate ? 'located'
     : (oneOf(input.join_requirement, ['located', 'verified'], 'who can ask') || 'located');
+  const guestsCanInvite = isPrivate && bool(input.guests_can_invite, 'Guests can bring a friend') === true;
   const resolvedGame = viewer.sportsFlag && kind === 'watch_party'
     ? await require('./planGames').resolveGame(input.details?.game?.id, input.details?.game?.team) : null;
   if (viewer.sportsFlag && kind === 'watch_party' && /^(tsdb|cfbd):/.test(input.details?.game?.id || '') && !resolvedGame) {
     fail(409, 'game_unavailable', 'This game is no longer available. Choose another game or enter your own.');
   }
   const details = normalizeDetails(kind, input.details, resolvedGame);
+  // How it repeats: a series' next date carries the series' own pattern; a new plan's comes from the body.
+  let repeat = null;
+  if (series) {
+    repeat = series.repeat;
+  } else if (input.repeat !== undefined && input.repeat !== null) {
+    if (hostAs) fail(422, 'validation', "A business's plan can't repeat yet. Post each date.");
+    if (!viewer.repeatFlag) fail(422, 'repeat_unavailable', "Repeating plans aren't available yet.");
+    repeat = planSeries.checkedRepeat(input.repeat, { startsAt: input.starts_at, timezone: placeTimezone(viewer, place) });
+  }
   if (hostAs) await planBusiness.assertBusinessLimits(hostAs.business.id);
-  else await assertHostLimits(viewer.id);
-  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs };
+  else await assertHostLimits(viewer.id, { isPrivate, seriesDate: Boolean(series) });
+  const timezone = hostAs ? planPlace.timezoneFor(place.latitude, place.longitude)
+    : placeTimezone(viewer, place, { keepTimezone: series ? series.timezone || null : null });
+  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone, kidsWelcome };
 }
 
 /**
@@ -396,19 +539,23 @@ async function checkedPlanInput(viewer, input) {
  * start, or null: a second tap on the same "Post plan" (the assistant's card, a
  * retried request) gets the plan already posted instead of a copy.
  */
-async function recentSamePlan(hostId, input) {
+async function recentSamePlan(hostId, input, { more = false } = {}) {
   const start = new Date(input?.starts_at);
   const title = typeof input?.title === 'string' ? input.title.replace(/\s+/g, ' ').trim() : '';
-  if (!rules.KINDS.includes(input?.kind) || !title || Number.isNaN(start.getTime())) return null;
-  const { data, error } = await supabaseAdmin.from('Plan')
+  if (!(more ? rules.ALL_KINDS : rules.KINDS).includes(input?.kind) || !title || Number.isNaN(start.getTime())) return null;
+  let query = supabaseAdmin.from('Plan')
     .select('post_id, post:Post!inner(title, event_date)')
     .eq('host_user_id', hostId)
     .eq('kind', input.kind)
+    // A private plan posted right after a public one of the same name (or the other way) is its own plan.
+    .eq('audience', input.audience === 'invited' ? 'invited' : 'nearby')
     .eq('status', 'open')
     .eq('post.title', title)
     .eq('post.event_date', start.toISOString())
-    .gt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
-    .limit(1);
+    .gt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString());
+  // An app that can't draw an online plan never gets one back as its "already posted".
+  if (!more) query = query.neq('place_kind', 'online');
+  const { data, error } = await query.limit(1);
   if (error) return null;
   return data && data[0] ? data[0].post_id : null;
 }
@@ -425,17 +572,26 @@ async function previewPlan(user, input) {
     ...checked,
     startsAt: new Date(input.starts_at).toISOString(),
     endsAt: new Date(input.ends_at).toISOString(),
-    timezone: planPlace.timezoneFor(checked.place.latitude, checked.place.longitude),
   };
 }
 
-async function createPlan(user, input) {
+/**
+ * @param {object} user   who posts
+ * @param {object} input  the request body
+ * @param {{ series?: { id: string, index: number, repeat: object, point?: object, timezone?: string } }} [internal]
+ *   never from a request: a series posting its own next date (planSeries.postNext), which skips the second-tap
+ *   check and the 3-mile rule. An online date keeps the date before's area point and time zone.
+ */
+async function createPlan(user, input, internal = {}) {
   const viewer = await loadViewer(user, { gps: input.gps });
   // A second tap on the same "Post plan": a neighbor's is caught before the checks, as before; a business's
   // after them, once the person is known to post for that business.
-  const repeat = input.host_as == null ? await recentSamePlan(viewer.id, input) : null;
-  if (repeat) return planBodyFor(repeat, viewer);
-  const { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs } = await checkedPlanInput(viewer, input);
+  const secondTap = input.host_as == null && !internal.series ? await recentSamePlan(viewer.id, input, { more: viewer.more }) : null;
+  if (secondTap) return planBodyFor(secondTap, viewer);
+  const {
+    kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone,
+    kidsWelcome,
+  } = await checkedPlanInput(viewer, input, internal);
   // The host: the person, or the business they post for. The business's own account is the plan's host and its
   // post's author, so nothing a guest reads names the staff member (who is kept in posted_by_user_id).
   const hostId = hostAs ? hostAs.business.id : viewer.id;
@@ -444,12 +600,24 @@ async function createPlan(user, input) {
     if (again) return planBodyFor(again, viewer);
   }
 
-  const area = planPlace.areaPointFor(kind, place.latitude, place.longitude);
+  // The occasion that started it (H3), while the host has its switch: a person's plan only.
+  let occasion = null;
+  if (!hostAs && input.occasion != null && (await require('./planOccasions').enabledFor(viewer.id))) {
+    occasion = require('./planOccasions').checkedKey(input.occasion);
+    if (!occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+  }
+  // The host form's bring list (H2, A3), while the host has its switch: a person's plan only.
+  const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
+    ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
+    : null;
+  // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
+  const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
   // location's (never the home city of the staff member posting).
   const fallbackCity = hostAs ? place.city : place.home?.city || viewer.homes.find((h) => h.city)?.city || null;
-  const { label, city } = await planPlace.areaLabelFor(area, { fallbackCity });
-  const timezone = planPlace.timezoneFor(place.latitude, place.longitude);
+  const { label, city } = place.noArea
+    ? { label: planPlace.ONLINE_NAME, city: null }
+    : await planPlace.areaLabelFor(area, { fallbackCity });
   const startsAt = new Date(input.starts_at).toISOString();
   const endsAt = new Date(input.ends_at).toISOString();
   const placeRef = hostAs ? place.ref : await placeRefOf(place);
@@ -498,6 +666,13 @@ async function createPlan(user, input) {
       label: hostAs.label,
       guests_can_invite: hostAs.guestsCanInvite,
     } : {}),
+    audience,
+    ...(audience === 'invited' ? { guests_can_invite: guestsCanInvite } : {}),
+    ...(repeat ? {
+      repeat,
+      series_id: internal.series ? internal.series.id : post.id,
+      series_index: internal.series ? internal.series.index : 1,
+    } : {}),
     kind,
     spots,
     auto_rules: autoRules,
@@ -513,6 +688,11 @@ async function createPlan(user, input) {
     place_longitude: place.longitude,
     place_home_id: place.home_id,
     place_ref: placeRef,
+    // Only an online plan has a link (the table's plan_online_has_link).
+    ...(place.kind === 'online' ? { online_link: place.link } : {}),
+    ...(kidsWelcome ? { kids_welcome: true } : {}),
+    ...(bringList ? { bring_list: bringList } : {}),
+    ...(occasion ? { occasion } : {}),
     timezone,
     status: 'open',
   });
@@ -521,7 +701,13 @@ async function createPlan(user, input) {
     throw new Error(`Failed to save the plan: ${planError.message}`);
   }
 
-  recordFunnelEvent('plan_created', { userId: viewer.id, meta: { plan_id: post.id, kind, ...(hostAs ? { business: true } : {}) } });
+  recordFunnelEvent('plan_created', { userId: viewer.id, meta: {
+    plan_id: post.id, kind, ...(hostAs ? { business: true } : {}), ...(audience === 'invited' ? { private: true } : {}),
+    ...(place.kind === 'online' ? { online: true } : {}),
+    ...(repeat ? { repeats: repeat.freq, series_index: internal.series ? internal.series.index : 1 } : {}),
+    ...(occasion ? { occasion } : {}),
+  } });
+  if (occasion && !internal.series) recordFunnelEvent('plan_occasion_started', { userId: viewer.id, meta: { plan_id: post.id, kind, occasion } });
   if (hostAs) {
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
     return planBodyFor(post.id, viewer);
@@ -531,7 +717,19 @@ async function createPlan(user, input) {
       .eq('post_id', input.hosted_again_from).eq('host_user_id', viewer.id).maybeSingle();
     if (earlier) recordFunnelEvent('plan_hosted_again', { userId: viewer.id, meta: { plan_id: post.id, from_plan_id: earlier.post_id, kind } });
   }
-  return planBodyFor(post.id, viewer);
+  // A private plan's first invitations go out as it is posted (the preview's "Post and invite 2"). The plan is
+  // posted either way; what happened to each invitation rides along on the answer, so the app can say.
+  const inviteIds = audience === 'invited' && Array.isArray(input.invite_user_ids) ? input.invite_user_ids.slice(0, 30) : [];
+  if (inviteIds.length === 0) return planBodyFor(post.id, viewer);
+  let invited;
+  try {
+    const sent = await planInvites.createInvites(user, post.id, { user_ids: inviteIds, confirm_shares_address: true });
+    invited = { invite_results: sent.results };
+  } catch (err) {
+    logger.warn('plans.create.invites_failed', { planId: post.id, error: err.message });
+    invited = { invite_results: [], invite_error: err instanceof PlanError ? err.message : "We couldn't send the invitations. Invite them from the plan." };
+  }
+  return { ...(await planBodyFor(post.id, viewer)), ...invited };
 }
 
 // Schedule cards are snapshots. A later provider update or host edit requires
@@ -564,11 +762,19 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const reviewedGame = await checkedSportsRevision(viewer, plan, patch.sports_revision);
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over, so it can’t change.');
+  // The bring list's items are checked before anything is saved (H2).
+  if (patch.bring != null) require('./planBring').checkedItems(patch.bring);
 
   const postUpdate = {};
   const planUpdate = {};
   let timeMoved = false;
   let placeChanged = false;
+  const isPrivate = rules.isPrivate(plan);
+  // Making a private plan public would put it on the map for people it was never meant for, and making a public
+  // one private would drop the people already asking: who a plan is for is set when it is posted.
+  if (patch.audience !== undefined && patch.audience !== (isPrivate ? 'invited' : 'nearby')) {
+    fail(422, 'audience_fixed', 'Who can see a plan can’t change after it’s posted.');
+  }
 
   if (patch.title !== undefined) postUpdate.title = cleanTitle(patch.title);
   if (patch.about !== undefined) postUpdate.content = cleanText(patch.about, 500, 'About') || '';
@@ -581,6 +787,7 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     validateTimes(startsAt, endsAt, {
       allowPastStart: state === 'live' && !startChanged,
       ...(plan.business_user_id ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead } : {}),
+      ...(isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {}),
     });
     postUpdate.event_date = new Date(startsAt).toISOString();
     postUpdate.event_end_date = new Date(endsAt).toISOString();
@@ -589,24 +796,42 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   }
 
   let placeKind = plan.place_kind;
+  // Another link for a plan already online: the place changed, in its own words ("Sam changed the link").
+  let linkChanged = false;
   // A business's plan moves only between the business's own locations (`business_location_id`).
   if (plan.business_user_id && patch.place !== undefined) {
     fail(422, 'validation', "A business's plan meets at one of the business's own locations.");
   }
   const movingBusiness = Boolean(plan.business_user_id) && patch.business_location_id !== undefined;
-  if (patch.place !== undefined || movingBusiness) {
+  const toOnline = !movingBusiness && patch.place && typeof patch.place === 'object' && patch.place.kind === 'online';
+  if (toOnline) {
+    // Moving a plan online is posting an online plan: the app must draw it and the switch be on. A plan already
+    // online may change its link whatever the switch says.
+    if (!viewer.more) fail(422, 'validation', UPDATE_PANTOPUS);
+    if (!rules.isOnline(plan) && !viewer.onlineFlag) fail(422, 'online_unavailable', "Online plans aren't available yet.");
+  }
+  if (toOnline && rules.isOnline(plan)) {
+    // The plan keeps its area; only the link changes.
+    const parsed = planPlace.parseOnlineLink(patch.place.link, rules.ONLINE_LINK_MAX);
+    if (!parsed) fail(422, 'validation', ONLINE_LINK_MESSAGE);
+    linkChanged = parsed.link !== plan.online_link;
+    placeChanged = linkChanged;
+    if (linkChanged) planUpdate.online_link = parsed.link;
+  } else if (patch.place !== undefined || movingBusiness) {
     const place = movingBusiness
       ? await planBusiness.placeAt(plan.business, patch.business_location_id)
-      : resolvePlace(viewer, plan.kind, patch.place, { moving: true });
-    if (!movingBusiness) assertHostNear(viewer, place);
+      : resolvePlace(viewer, plan.kind, patch.place, { moving: true, isPrivate, details: plan.details });
+    if (!movingBusiness && !isPrivate && place.kind !== 'online') assertHostNear(viewer, place);
     placeKind = place.kind;
     placeChanged = place.kind !== plan.place_kind
       || String(place.home_id || '') !== String(plan.place_home_id || '')
       || rules.distanceMeters(place, { latitude: plan.place_latitude, longitude: plan.place_longitude }) > 25
       || (place.name || '') !== (plan.place_name || '');
-    const area = planPlace.areaPointFor(plan.kind, place.latitude, place.longitude);
+    const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(plan.kind, place.latitude, place.longitude);
     const fallbackCity = movingBusiness ? place.city || plan.city || null : place.home?.city || plan.city || null;
-    const { label, city } = await planPlace.areaLabelFor(area, { fallbackCity });
+    const { label, city } = place.noArea
+      ? { label: planPlace.ONLINE_NAME, city: null }
+      : await planPlace.areaLabelFor(area, { fallbackCity });
     Object.assign(planUpdate, {
       place_kind: place.kind,
       place_name: place.name,
@@ -617,9 +842,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       // The key follows the place: a move to a place typed by hand, or to a home, clears it.
       place_ref: movingBusiness ? place.ref : await placeRefOf(place),
       ...(movingBusiness ? { business_location_id: place.business_location_id } : {}),
+      // Moving online sets the link; moving back to a place clears it (plan_online_has_link).
+      ...(place.kind === 'online' || rules.isOnline(plan) ? { online_link: place.kind === 'online' ? place.link : null } : {}),
       area_label: label,
       city,
-      timezone: planPlace.timezoneFor(place.latitude, place.longitude),
+      timezone: movingBusiness ? planPlace.timezoneFor(place.latitude, place.longitude)
+        : placeTimezone(viewer, place, { keepTimezone: rules.timezoneForPlan(plan) }),
     });
     Object.assign(postUpdate, {
       latitude: area.latitude,
@@ -631,11 +859,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   }
 
   const requests = await activeRequests(postId);
-  const going = planService.seatsTaken(plan, requests);
+  const going = await seatsNow(plan, requests);
   let spotsGrew = false;
   if (patch.spots !== undefined) {
+    const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(plan.business_user_id), guestAnswers: viewer.guestAnswersFlag });
     const spots = Number(patch.spots);
-    if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+    if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
     if (spots < going) fail(422, 'validation', `${going} ${going === 1 ? 'person is' : 'people are'} in, so spots can’t go below that.`);
     spotsGrew = spots > plan.spots;
     planUpdate.spots = spots;
@@ -646,10 +875,41 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (patch.guests_can_invite !== undefined) {
       planUpdate.guests_can_invite = planBusiness.checkedGuestsCanInvite(patch.guests_can_invite) === true;
     }
+  } else if (isPrivate) {
+    if (patch.guests_can_invite !== undefined) {
+      planUpdate.guests_can_invite = bool(patch.guests_can_invite, 'Guests can bring a friend') === true;
+    }
   } else if (patch.auto_rules !== undefined || patch.place !== undefined) {
     planUpdate.auto_rules = normalizeAutoRules(plan.kind, placeKind, patch.auto_rules !== undefined ? patch.auto_rules : plan.auto_rules);
   }
-  if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id) {
+  // How it repeats, from this date on: a new pattern, or null to stop (this date stays; none follows).
+  if (patch.repeat !== undefined) {
+    if (patch.repeat === null) {
+      planUpdate.repeat = null;
+    } else {
+      if (plan.business_user_id) fail(422, 'validation', "A business's plan can't repeat yet. Post each date.");
+      if (!plan.repeat && !viewer.repeatFlag) fail(422, 'repeat_unavailable', "Repeating plans aren't available yet.");
+      // The new pattern starts at this date, whichever date of its series it is: its days, its year and its
+      // count are measured from here, and the dates before it stay counted ("5 of 16").
+      planUpdate.repeat = planSeries.checkedRepeat(patch.repeat, {
+        startsAt: postUpdate.event_date || plan.post.event_date,
+        timezone: planUpdate.timezone || rules.timezoneForPlan(plan),
+        before: plan.series_id ? (plan.series_index || 1) - 1 : 0,
+      });
+      if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
+    }
+  }
+  // The occasion (H3): another from the list, or null for none, with the switch on.
+  if (patch.occasion !== undefined && !plan.business_user_id && (await require('./planOccasions').enabledFor(viewer.id))) {
+    const occasion = patch.occasion === null ? null : require('./planOccasions').checkedKey(patch.occasion);
+    if (patch.occasion !== null && !occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+    planUpdate.occasion = occasion;
+  }
+  // Kids welcome (H1): with the switch on, on a person's plan that isn't a playdate.
+  if (patch.kids_welcome !== undefined && viewer.guestAnswersFlag && !plan.business_user_id && plan.kind !== 'playdate') {
+    planUpdate.kids_welcome = bool(patch.kids_welcome, 'Kids welcome') === true;
+  }
+  if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id && !isPrivate) {
     planUpdate.join_requirement = oneOf(patch.join_requirement, ['located', 'verified'], 'who can ask');
   }
   if (patch.details !== undefined) {
@@ -672,6 +932,17 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (newDay !== oldDay && newDay > rules.localParts(new Date(), tz).date) planUpdate.host_summary_sent_at = null;
   }
 
+  // A move to the host's home (H1, contract 6.8): "I say yes first" turns on, and guests from the open link who never
+  // had the host's own yes wait for it again. They are held before the plan row moves, so no key of theirs reads the
+  // home in between: a failure here leaves the plan where it was, and if saving the move fails after it, they stay
+  // waiting (the safe side) and the host can let them in.
+  const movingHome = placeChanged && planGuests.movesToHome(plan, placeKind);
+  let heldForHome = [];
+  if (movingHome) {
+    planUpdate.open_invite_ok_first = true;
+    heldForHome = await planGuests.holdForHome(postId);
+  }
+
   const stamp = nowIso();
   if (Object.keys(postUpdate).length > 0) {
     const { error } = await supabaseAdmin.from('Post').update({ ...postUpdate, updated_at: stamp, is_edited: true, edited_at: stamp }).eq('id', postId);
@@ -681,7 +952,17 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     const { error } = await supabaseAdmin.from('Plan').update({ ...planUpdate, updated_at: stamp }).eq('post_id', postId);
     if (error) throw new Error(`Failed to save the change: ${error.message}`);
   }
+  if (movingHome) {
+    // Anyone from the open link who answered between the hold and the move waits too.
+    const later = await planGuests.holdForHome(postId)
+      .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
+    heldForHome = [...heldForHome, ...later.filter((r) => !heldForHome.some((h) => h.id === r.id))];
+  }
   if (postUpdate.title && postUpdate.title !== plan.post.title) await planChat.renameRoom(plan, postUpdate.title);
+  // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
+  if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
+    await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {
@@ -699,16 +980,25 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       if (error) throw new Error(`Failed to ask "Still coming?": ${error.message}`);
       const hostFirst = await hostFirstOf(updated);
       for (const request of accepted) {
-        await planNotify.changed({ plan: updated, request, hostFirst, timeMoved, placeChanged });
+        await planNotify.changed({ plan: updated, request, hostFirst, timeMoved, placeChanged, linkChanged });
       }
       if (updated.chat_room_id) {
         // "Sam moved the plan to Sunday at 2:00 PM", in the push's words.
         const when = planNotify.whenText(updated.post.event_date, updated.timezone, { long: true, at: true });
         await planChat.systemLine(updated.chat_room_id, updated.host_user_id,
-          timeMoved && placeChanged ? `${hostFirst} moved the plan to ${when}, at a new place`
-            : timeMoved ? `${hostFirst} moved the plan to ${when}` : `${hostFirst} changed the place`);
+          timeMoved && placeChanged ? `${hostFirst} moved the plan to ${when}, ${planNotify.newPlaceWords(updated, linkChanged)}`
+            : timeMoved ? `${hostFirst} moved the plan to ${when}` : `${hostFirst} changed the ${linkChanged ? 'link' : 'place'}`);
       }
     }
+  }
+  // Guests the move to a home made wait (6.8): one email each, and one notice to the host.
+  if (heldForHome.length > 0) {
+    await planGuests.movedToHome(updated, heldForHome).catch((err) => logger.warn('plans.edit.move_home_failed', { planId: postId, error: err.message }));
+  }
+  // Guests without an account who are in (H1): their page says what changed, and one email goes (not to a guest who
+  // waits, so a guest the move made wait gets only its own email).
+  if (timeMoved || placeChanged) {
+    await planGuests.planChanged(updated, { timeMoved, placeChanged }).catch((err) => logger.warn('plans.edit.guests_failed', { planId: postId, error: err.message }));
   }
   if (spotsGrew) await offerOpenSpots(updated, { io });
   await auditBusinessPlan(plan, viewer, 'plans.edit', { fields: [...Object.keys(postUpdate), ...Object.keys(planUpdate)] });
@@ -717,7 +1007,11 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
 
 // ── Cancel ───────────────────────────────────────────────────
 
-async function cancelPlan(user, postId, { note, sports_revision: sportsRevision } = {}) {
+/**
+ * `repeat` (a repeating plan): 'keep' cancels this date only and posts the next one now ("Skip Thursday"); anything
+ * else, and every app from before repeating plans, cancels this date and stops the series.
+ */
+async function cancelPlan(user, postId, { note, sports_revision: sportsRevision, repeat: afterwards } = {}) {
   const viewer = await loadViewer(user);
   const plan = await loadHostedPlan(postId, viewer);
   if (plan.status === 'cancelled') return planBodyFor(postId, viewer);
@@ -727,6 +1021,18 @@ async function cancelPlan(user, postId, { note, sports_revision: sportsRevision 
   const cancelNote = cleanText(note, 280, 'The note');
   if (await cancelOpenPlan(plan, { hostFirst: await hostFirstOf(plan), cancelNote })) {
     await auditBusinessPlan(plan, viewer, 'plans.cancel');
+    if (plan.repeat && afterwards === 'keep') {
+      const next = await planSeries.postNext(plan).catch((err) => {
+        logger.warn('plans.cancel.next_failed', { planId: postId, error: err.message });
+        return { posted: null };
+      });
+      // The app opens the date that took its place.
+      return { ...(await planBodyFor(postId, viewer)), next_plan_id: next.posted || null };
+    }
+    if (plan.repeat) {
+      const { error } = await supabaseAdmin.from('Plan').update({ repeat: null, updated_at: nowIso() }).eq('post_id', postId);
+      if (error) logger.warn('plans.cancel.stop_failed', { planId: postId, error: error.message });
+    }
   }
   return planBodyFor(postId, viewer);
 }
@@ -760,6 +1066,9 @@ async function cancelOpenPlan(plan, { hostFirst, cancelNote }) {
     await planNotify.cancelled({ plan: updated, request, hostFirst, note: cancelNote, wasIn: request.status === 'accepted' });
   }
   await planInvites.notifyCancelled(updated, hostFirst, cancelNote);
+  // Guests without an account who are in (H1): the one email about it.
+  await planGuests.planCancelled(updated, cancelNote)
+    .catch((err) => logger.warn('plans.cancel.guests_failed', { postId, error: err.message }));
   return true;
 }
 
@@ -791,10 +1100,11 @@ async function enforceCapacity(plan) {
   const accepted = requests
     .filter((r) => r.status === 'accepted')
     .sort((a, b) => (new Date(a.decided_at || a.created_at) - new Date(b.decided_at || b.created_at)) || String(a.id).localeCompare(String(b.id)));
-  let seats = 0;
+  // Guests without an account hold their seats first: they have no waitlist to go back to.
+  let seats = await planGuests.guestSeats(plan.post_id);
   const overflow = [];
   for (const request of accepted) {
-    seats += rules.seatsFor(plan.kind, request.party_size);
+    seats += rules.seatsFor(plan, request.party_size, request.kids_count);
     if (seats > plan.spots) overflow.push(request.id);
   }
   if (overflow.length > 0) {
@@ -843,7 +1153,7 @@ async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false
   const roomId = await planChat.ensureRoom(plan, { io });
   await planChat.addMember(roomId, request.user_id, { io });
   const names = await userNames([request.user_id]);
-  const who = partyLabel(names.get(String(request.user_id)), plan.kind === 'playdate' ? 1 : request.party_size);
+  const who = partyLabel(names.get(String(request.user_id)), rules.seatsFor(plan, request.party_size, request.kids_count));
   await planChat.systemLine(roomId, byRule ? request.user_id : plan.host_user_id,
     byRule ? `${who} ${who.includes(' + ') ? 'are' : 'is'} in` : `${hostFirst} let in ${who}`);
   if (viaWaitlist) {
@@ -853,8 +1163,8 @@ async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false
   }
   if (byRule) {
     await activeRequests(plan.post_id)
-      .then((requests) => planNotify.guestAutoJoined({
-        plan, request, guestName: who, rule, goingCount: planService.seatsTaken(plan, requests), viaWaitlist,
+      .then(async (requests) => planNotify.guestAutoJoined({
+        plan, request, guestName: who, rule, goingCount: await seatsNow(plan, requests), viaWaitlist,
       }))
       .catch((err) => logger.warn('plans.notify.auto_joined_failed', { planId: plan.post_id, error: err.message }));
   }
@@ -870,9 +1180,9 @@ async function offerOpenSpots(plan, { io = null } = {}) {
   const hostFirst = await hostFirstOf(plan);
   for (let round = 0; round < 30; round += 1) {
     const requests = await activeRequests(plan.post_id);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
     if (spotsLeft <= 0) return;
-    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan.kind, r.party_size) <= spotsLeft);
+    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan, r.party_size, r.kids_count) <= spotsLeft);
     if (!next) return;
     const rule = await ruleFor(plan, next.user_id);
     const stamp = nowIso();
@@ -899,7 +1209,11 @@ async function offerOpenSpots(plan, { io = null } = {}) {
 
 // ── Asking ───────────────────────────────────────────────────
 
-function cleanAsk(plan, body) {
+/**
+ * @param {{ guestAnswers?: boolean }} [opts]  the host has the switch (H1): a private plan takes up to 10 people in one
+ *   answer, and a plan with kids welcome takes adults (party_size) and kids (kids_count).
+ */
+function cleanAsk(plan, body, { guestAnswers = false } = {}) {
   const out = {};
   if (plan.kind === 'playdate') {
     out.party_size = 1;
@@ -912,9 +1226,17 @@ function cleanAsk(plan, body) {
     out.kids_age_bands = rules.KIDS_AGE_BANDS.filter((b) => bands.includes(b));
     out.stays_with_kids = true;
   } else {
+    const max = guestAnswers && rules.isPrivate(plan) ? rules.PRIVATE_PARTY_MAX : rules.PARTY_MAX;
     const party = body.party_size === undefined ? 1 : Number(body.party_size);
-    if (!Number.isInteger(party) || party < 1 || party > 4) fail(422, 'validation', 'You can bring up to 3 people.');
+    if (!Number.isInteger(party) || party < 1 || party > max) fail(422, 'validation', `You can bring up to ${max - 1} people.`);
     out.party_size = party;
+    if (guestAnswers && plan.kids_welcome) {
+      const kids = body.kids_count === undefined || body.kids_count === null ? 0 : Number(body.kids_count);
+      if (!Number.isInteger(kids) || kids < 0 || kids > rules.PRIVATE_PARTY_MAX) fail(422, 'validation', 'Kids can be 0 to 10.');
+      // A public plan keeps one answer to 4 seats, kids included.
+      if (!rules.isPrivate(plan) && party + kids > rules.PARTY_MAX) fail(422, 'validation', 'You can bring up to 3 people.');
+      out.kids_count = kids > 0 ? kids : null;
+    }
   }
   out.note = cleanText(body.note, 280, 'Your hello');
   return out;
@@ -957,9 +1279,10 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
   // A second ask while waiting changes only what it sends; the rest stays as asked.
   const keep = (key) => (body[key] !== undefined ? body[key] : mine[key]);
+  const guestAnswers = await planGuests.switchFor(plan.host_user_id);
   const ask = cleanAsk(plan, waiting
     ? { party_size: keep('party_size'), note: keep('note'), kids_count: keep('kids_count'), kids_age_bands: keep('kids_age_bands'), stays_with_kids: keep('stays_with_kids') }
-    : body);
+    : body, { guestAnswers });
   const stamp = nowIso();
 
   // Already in line: a second ask changes who's coming and the hello. It doesn't use an ask.
@@ -971,7 +1294,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   if (mine && mine.status === 'accepted') return { status: 200, body: await requestResult(postId, viewer, mine.id) };
 
   const requests = ctx.requestsByPlan.get(postId) || [];
-  const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+  const spotsLeft = plan.spots - (await seatsNow(plan, requests));
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   const eligibility = planService.askEligibility(plan, viewer, ctx, { myRequest: mine, spotsLeft, state });
   if (!eligibility.can_ask && eligibility.cannot_ask_reason !== 'full_use_waitlist') {
@@ -982,7 +1305,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // The host's invitation is their yes: in at once (the waitlist when it's full), or, for an email invite opened by
   // an account the address isn't verified for, an ordinary ask the host answers.
   const invite = ctx.myInviteByPlan.get(postId) || null;
-  const seats = rules.seatsFor(plan.kind, ask.party_size);
+  const seats = rules.seatsFor(plan, ask.party_size, ask.kids_count);
   let status = 'waitlisted';
   let decidedBy = null;
   let rule = null;
@@ -1000,8 +1323,9 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     status,
     decided_by: decidedBy,
     decided_at: decidedBy ? stamp : null,
-    // A business never learns how far away a guest lives: nothing is saved for its plans.
-    distance_band: plan.business_user_id ? null : requesterBand(plan, viewer, { invited: Boolean(invite) }),
+    // A business never learns how far away a guest lives: nothing is saved for its plans. Nor for an online plan,
+    // which nobody travels to.
+    distance_band: plan.business_user_id || rules.isOnline(plan) ? null : requesterBand(plan, viewer, { invited: Boolean(invite) }),
     // How the guest arrived at a business's plan (planBusiness.wayInFor). Null on a neighbor's plan.
     ...(plan.business_user_id ? { way_in: await planBusiness.wayInFor(plan, viewer.id, body.via, { invite }) } : {}),
     queued_at: stamp,
@@ -1076,14 +1400,16 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
     .update(patch).eq('id', mine.id).eq('status', mine.status).select('id');
   if (updateError) throw new Error(`Failed to update your request: ${updateError.message}`);
   if (changed && changed.length > 0 && leaving) {
+    // What they were bringing goes back on the list (H2).
+    await require('./planBring').clearClaims(postId, 'user', mine.id);
     const names = await userNames([viewer.id]);
-    const who = partyLabel(names.get(viewer.id), mine.party_size);
+    const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
       await planChat.systemLine(plan.chat_room_id, viewer.id, `${who} can't make it`);
     }
     // The host hears it before a spot goes to someone waiting (who then has their own notice).
     await activeRequests(postId)
-      .then((requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: planService.seatsTaken(plan, requests) }))
+      .then(async (requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: await seatsNow(plan, requests) }))
       .catch((err) => logger.warn('plans.notify.guest_left_failed', { planId: postId, error: err.message }));
     await offerOpenSpots(plan, { io });
   }
@@ -1129,7 +1455,7 @@ async function listRequests(user, postId) {
       id: r.id,
       user: {
         user_id: id,
-        display_name: forBusiness ? firstOf(names.get(id)) : names.get(id) || 'A neighbor',
+        display_name: forBusiness ? firstOf(names.get(id)) : names.get(id) || planService.NO_NAME,
         avatar_url: planService.avatarUrl(planService.withLocalAvatar(row || { id }, people)),
         verified_address: forBusiness ? false : verified.has(id),
         distance_band: forBusiness ? null : r.distance_band || null,
@@ -1141,7 +1467,8 @@ async function listRequests(user, postId) {
       },
       party_size: r.party_size,
       note: r.note || null,
-      kids_count: plan.kind === 'playdate' ? r.kids_count ?? null : null,
+      // A playdate's kids, or with kids welcome (H1, `guests=1`) how many kids come with them.
+      kids_count: plan.kind === 'playdate' || (viewer.guests && plan.kids_welcome) ? r.kids_count ?? null : null,
       kids_age_bands: plan.kind === 'playdate' ? r.kids_age_bands || [] : null,
       created_at: planService.iso(r.queued_at || r.created_at),
       invited: inviteByUser.has(id),
@@ -1173,8 +1500,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (!count) fail(409, 'confirm_shares_address', 'Accepting shares your address with them.');
     }
     const requests = await activeRequests(postId);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
-    if (rules.seatsFor(plan.kind, request.party_size) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
+    if (rules.seatsFor(plan, request.party_size, request.kids_count) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
     const { data: moved, error } = await supabaseAdmin.from('PlanRequest')
       .update({ status: 'accepted', decided_by: 'host', decided_at: stamp, updated_at: stamp })
       .eq('id', request.id).in('status', ['pending', 'waitlisted']).select(planService.REQUEST_COLUMNS);
@@ -1205,6 +1532,7 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (error) throw new Error(`Failed to remove: ${error.message}`);
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
+        await require('./planBring').clearClaims(postId, 'user', request.id);
         await planNotify.declined({ plan, request, hostFirst });
         await offerOpenSpots(plan, { io });
       }
@@ -1295,6 +1623,7 @@ async function reportPlan(user, postId, { reason, details }) {
 }
 
 module.exports = {
+  seatsNow,
   PlanError,
   hostFirstOf,
   cancelForGoneBusiness,

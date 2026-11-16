@@ -8,6 +8,8 @@ import SwiftUI
 /// Pulse post detail entry point.
 @MainActor
 public struct PulsePostDetailView: View {
+    /// A toast with a button (View on "Saved.") stays long enough to reach with VoiceOver.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @State private var viewModel: PulsePostDetailViewModel
     @State private var showsShareSheet = false
     @State private var shareSessionId: String?
@@ -32,6 +34,10 @@ public struct PulsePostDetailView: View {
     /// Opens a business's page: a "Nearby Providers" row passes its
     /// *username*, a business author its id (`/business/:key` takes either).
     private let onOpenBusiness: @MainActor (String) -> Void
+    /// Opens another post's page in this stack (a quote's original); nil hands the link to the router.
+    private let onOpenPost: (@MainActor (String) -> Void)?
+    /// Opens My posts on the Saved tab ("View" on "Saved."); nil leaves the toast without it.
+    private let onOpenSaved: (@MainActor () -> Void)?
 
     public init(
         postId: String,
@@ -41,6 +47,8 @@ public struct PulsePostDetailView: View {
         onOpenProfile: @escaping @MainActor (String) -> Void = { _ in },
         onEdit: @escaping @MainActor (String) -> Void = { _ in },
         onOpenBusiness: @escaping @MainActor (String) -> Void = { _ in },
+        onOpenSaved: (@MainActor () -> Void)? = nil,
+        onOpenPost: (@MainActor (String) -> Void)? = nil,
         onContentLoaded: @escaping @MainActor () -> Void = {}
     ) {
         _viewModel = State(initialValue: viewModel ?? PulsePostDetailViewModel(
@@ -51,6 +59,8 @@ public struct PulsePostDetailView: View {
         self.onOpenProfile = onOpenProfile
         self.onEdit = onEdit
         self.onOpenBusiness = onOpenBusiness
+        self.onOpenPost = onOpenPost
+        self.onOpenSaved = onOpenSaved
         self.onContentLoaded = onContentLoaded
     }
 
@@ -62,7 +72,7 @@ public struct PulsePostDetailView: View {
                 isPresented: $bindable.showsOverflowMenu,
                 titleVisibility: .hidden
             ) {
-                Button(viewModel.isSaved ? "Remove bookmark" : "Save post") {
+                Button(viewModel.isSaved ? "Remove from Saved" : "Save post") {
                     Task { await viewModel.toggleSave() }
                 }
                 if viewModel.conversation != nil {
@@ -75,9 +85,8 @@ public struct PulsePostDetailView: View {
                             .disabled(viewModel.isPreparingShare)
                     }
                 } else if viewModel.canSharePost {
-                    Button(viewModel.isReposted ? "Undo repost" : "Repost") {
-                        Task { await viewModel.toggleRepost() }
-                    }
+                    // Opens the Repost chooser (contract §2).
+                    Button(viewModel.isReposted ? "Undo repost" : "Repost") { viewModel.openRepostChooser() }
                 }
                 if viewModel.isOwner {
                     authorOptions
@@ -157,6 +166,7 @@ public struct PulsePostDetailView: View {
                     _ = await viewModel.refreshConversationAfterMutation(reportFailure: false)
                 }
             }
+            .modifier(PulsePostDetailRepostSurfaces(viewModel: viewModel))
             // Opens out of its card in the feed; drag it down to close it back in.
             .itemZoomDestination(.post, id: viewModel.postId)
     }
@@ -165,10 +175,11 @@ public struct PulsePostDetailView: View {
         ZStack(alignment: .bottom) {
             content
             if let toast = viewModel.toastMessage {
-                ToastView(message: ToastMessage(text: toast, kind: viewModel.toastKind))
+                let action = savedToastAction
+                ToastView(message: ToastMessage(text: toast, kind: viewModel.toastKind), action: action)
                     .padding(.bottom, Spacing.s10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .dismissToast(after: toast, minimum: 2.5) {
+                    .dismissToast(after: toast, minimum: action == nil ? 2.5 : (voiceOverEnabled ? 12 : 5)) {
                         viewModel.toastMessage = nil
                     }
             }
@@ -301,7 +312,8 @@ public struct PulsePostDetailView: View {
             onCommentLike: { id in Task { await viewModel.toggleCommentLike(commentId: id) } },
             onCommentDelete: { id in commentPendingDelete = id },
             onRefresh: { [viewModel] in await viewModel.refresh() },
-            onAsk: askAction(detail.post)
+            onAsk: askAction(detail.post),
+            onOpenQuotedPost: openQuotedPost
         )
     }
 }
@@ -394,6 +406,24 @@ extension PulsePostDetailView {
         let words = post.content.split(whereSeparator: \.isWhitespace)
         let start = words.prefix(8).joined(separator: " ")
         return words.count > 8 ? start + "\u{2026}" : (start.isEmpty ? "This post" : start)
+    }
+
+    /// "View" on "Saved.", where the host can open My posts.
+    private var savedToastAction: ToastAction? {
+        guard viewModel.toastOffersSaved, let onOpenSaved else { return nil }
+        return ToastAction(title: "View") {
+            viewModel.toastMessage = nil
+            onOpenSaved()
+        }
+    }
+
+    /// A quote's original opens on its own page, in this stack when the host can push it.
+    private func openQuotedPost(_ postId: String) {
+        if let onOpenPost {
+            onOpenPost(postId)
+        } else {
+            DeepLinkRouter.shared.handle(path: "/posts/\(postId)")
+        }
     }
 
     private var overflowAction: ContentDetailTopBarAction {

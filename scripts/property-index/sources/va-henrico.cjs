@@ -9,6 +9,7 @@ const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -78,9 +79,13 @@ function fromRow(row) {
     put(facts, 'basement_finished_sqft', positive(row.SQFT_FINISHED_BASEMENT));
   }
   if (kind === 'building') put(facts, 'units', inRange(row.NUMBER_UNITS_APARTMENT, 2000));
+  let mapped = null;
   if (kind !== 'unit') {
     if (positive(row.PARCEL_ACREAGE)) put(facts, 'lot_acres', positive(row.PARCEL_ACREAGE));
-    else put(facts, 'lot_sqft', positive(row.Shape__Area) >= 100 ? Math.round(positive(row.Shape__Area)) : null);
+    else {
+      put(facts, 'lot_sqft', positive(row.Shape__Area) >= 100 ? Math.round(positive(row.Shape__Area)) : null);
+      mapped = 'lot_sqft';
+    }
   }
   const [land, building] = [positive(row.LAND_VALUE_CURRENT), positive(row.IMPROVEMENTS_VALUE_CURRENT)];
   put(facts, 'value_year', positive(row.TAX_YEAR));
@@ -91,7 +96,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.LAST_SALE_PRICE));
     put(facts, 'sale_date', isoDate(row.LAST_SALE_DATE));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.CITY) || '').toUpperCase(), zip: zipCode(row.ZIP_CODE) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.CITY) || '').toUpperCase(), zip: zipCode(row.ZIP_CODE) }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

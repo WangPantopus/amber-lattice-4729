@@ -86,8 +86,10 @@ public enum YouRoute: Hashable {
     /// composer (prefill + `PATCH /api/gigs/:id`). Pushed from the My
     /// tasks per-row "Edit" action; routes to the gig's detail on save.
     case editGig(gigId: String)
-    /// T5.3.3 — My posts. The "me.posts" Activity-section row pushes here.
-    case myPosts
+    /// T5.3.3 — My posts. The "me.posts" Activity-section row pushes here; on
+    /// one of its tabs (`MyPostsTab`; nil: Active). "View" on a "Saved."
+    /// toast opens Saved (PULSEREPOST contract §5).
+    case myPosts(initialTab: String?)
     /// Compose a Pulse post from the You tab's My posts surface.
     case composePost(intent: String)
     /// P3.5 — Edit an existing Pulse post. Pushed from the per-row Edit
@@ -764,7 +766,7 @@ public struct YouTabRoot: View {
     /// was pushed in another tab and asks the root to open this cover).
     static func route(for destination: ProfileOwnerDestination) -> YouRoute {
         switch destination {
-        case .myPosts: .myPosts
+        case .myPosts: .myPosts(initialTab: nil)
         case .connections: .connections
         case .supportTrains: .supportTrains
         case .savedPlaces: .savedPlaces
@@ -1390,9 +1392,10 @@ public struct YouTabRoot: View {
                 mode: .edit(listingId: listingId, jumpToStep: jumpToStep),
                 onListingUpdated: popAfterListingUpdate
             )
-        case .myPosts:
+        case let .myPosts(initialTab):
             MyPostsView(
                 viewModel: MyPostsViewModel(
+                    initialTab: initialTab ?? MyPostsTab.active,
                     onOpenPost: { dto in
                         Task { @MainActor in path.append(.pulsePost(postId: dto.id)) }
                     },
@@ -1439,7 +1442,9 @@ public struct YouTabRoot: View {
                 onOpenBusiness: { business in
                     // A "Nearby Providers" row (username) or a business author (id) → `/business/:key`.
                     Task { @MainActor in path.append(.businessProfile(businessId: business)) }
-                }
+                },
+                onOpenSaved: { path.append(.myPosts(initialTab: MyPostsTab.saved)) },
+                onOpenPost: { id in path.append(.pulsePost(postId: id)) }
             )
         case .myBids:
             MyBidsView(

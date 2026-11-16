@@ -26,6 +26,7 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import app.pantopus.android.data.api.models.moments.MomentLimitsResponse
 import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -76,7 +77,67 @@ data class PreparedVideo(
     val video: File,
     val poster: File,
     val frames: List<File>,
+    /** How long it runs. */
+    val durationMs: Long = 0L,
 )
+
+/**
+ * What a Moment may be (`GET /api/moments/limits`, contract v3.11). The defaults are what a server from before it takes:
+ * one Moment's video runs up to 30 seconds, and a longer one isn't posted.
+ */
+data class MomentLimits(
+    /** The longest one Moment's video runs (the server answers `MEDIA_TOO_LONG` past it). */
+    val videoMs: Long = 30_000L,
+    /** How many Moments a longer library video may be posted as, one after another. */
+    val parts: Int = 1,
+    /** The largest video file an upload may be: 50 MB, or less when storage takes less. */
+    val videoBytes: Long = 50L * 1024 * 1024,
+    /** Moments a day (a video's later parts don't count). */
+    val dailyLimit: Int = 20,
+) {
+    /** The longest library video: [parts] Moments of [videoMs]. */
+    val longestMs: Long get() = videoMs * parts
+
+    /** "Videos can be up to 5 minutes." */
+    val tooLongMessage: String get() = "Videos can be up to ${spoken(longestMs)}."
+
+    /** "1 minute", "30 seconds": how long [ms] is, as the camera and the notices say it. */
+    fun spoken(ms: Long): String {
+        val seconds = ms / 1000
+        return when {
+            seconds == 60L -> "1 minute"
+            seconds > 60L && seconds % 60L == 0L -> "${seconds / 60} minutes"
+            else -> "$seconds seconds"
+        }
+    }
+
+    companion object {
+        /** The server's answer; anything it leaves out or gets wrong keeps what an older server takes. */
+        fun from(response: MomentLimitsResponse): MomentLimits {
+            val old = MomentLimits()
+            val video = response.video
+            return MomentLimits(
+                videoMs = video?.maxSeconds?.takeIf { it > 0 }?.let { (it * 1000).toLong() } ?: old.videoMs,
+                parts = video?.maxParts?.takeIf { it >= 1 } ?: old.parts,
+                videoBytes = video?.maxBytes?.takeIf { it > 0 } ?: old.videoBytes,
+                dailyLimit = response.dailyLimit?.takeIf { it > 0 } ?: old.dailyLimit,
+            )
+        }
+    }
+}
+
+/**
+ * One part of a library video longer than one Moment (contract v3.11): where it starts and ends in the video, and
+ * which part it is (1 first) of how many.
+ */
+data class MomentVideoPart(
+    val startMs: Long,
+    val endMs: Long,
+    val index: Int,
+    val count: Int,
+) {
+    val durationMs: Long get() = endMs - startMs
+}
 
 /**
  * Prepares what a Moment uploads, on the phone: photos re-encoded as JPEG (2048 px at most on the long side, which
@@ -84,8 +145,8 @@ data class PreparedVideo(
  * video's poster frame plus two more frames.
  */
 object MomentMedia {
-    /** Videos run up to 30 seconds (the server answers `MEDIA_TOO_LONG` past that). */
-    const val MAX_VIDEO_MS = 30_000L
+    /** Exporters round the last frame up: a 30.0 s clip can read 30.04 s (the server allows half a second too). */
+    const val DURATION_SLACK_MS = 500L
 
     /** What the camera and the library leave in the working folder goes after a day (see [folder]). */
     const val LIBRARY_WINDOW_MS = 24 * 60 * 60 * 1000L
@@ -96,6 +157,54 @@ object MomentMedia {
     private const val FRAME_QUALITY = 80
     private const val VIDEO_SHORT_SIDE = 720
     private const val VIDEO_BITRATE = 4_000_000
+
+    /** A video is never sized below this, however long: a part that would need less says it's too large instead. */
+    private const val MIN_VIDEO_BITRATE = 1_500_000
+
+    /** What the AAC sound takes (media3's encoder default, 128 Kibit/s), left out of the video's share. */
+    private const val AUDIO_BITRATE = 131_072
+
+    /** The share of the largest file a video is sized to fill: the rest is room for the container and the encoder. */
+    private const val SIZE_SHARE = 0.92
+
+    /** A library video of [durationMs] can be posted: as one Moment, or as up to [MomentLimits.parts] of them. */
+    fun fits(
+        durationMs: Long,
+        limits: MomentLimits,
+    ): Boolean = durationMs <= limits.longestMs + DURATION_SLACK_MS
+
+    /**
+     * How a video of [durationMs] posts (contract v3.11): one Moment while it fits one, else as few parts of equal
+     * length as fit, never a short last part (130 seconds at 60 a Moment is three of 43.3), at most
+     * [MomentLimits.parts].
+     */
+    fun parts(
+        durationMs: Long,
+        limits: MomentLimits,
+    ): List<MomentVideoPart> {
+        val count =
+            if (durationMs <= limits.videoMs + DURATION_SLACK_MS) {
+                1
+            } else {
+                ((durationMs + limits.videoMs - 1) / limits.videoMs).toInt().coerceIn(1, limits.parts)
+            }
+        return (0 until count).map { at ->
+            MomentVideoPart(startMs = durationMs * at / count, endMs = durationMs * (at + 1) / count, index = at + 1, count = count)
+        }
+    }
+
+    /**
+     * The video bit rate that makes [durationMs] of video and its sound fit in [SIZE_SHARE] of [maxBytes]: 4 Mbit/s
+     * when that fits, never under 1.5.
+     */
+    fun videoBitrate(
+        durationMs: Long,
+        maxBytes: Long,
+    ): Int {
+        val seconds = durationMs.coerceAtLeast(1_000L) / 1000.0
+        val fits = (maxBytes * SIZE_SHARE * 8 / seconds - AUDIO_BITRATE).toLong()
+        return fits.coerceIn(MIN_VIDEO_BITRATE.toLong(), VIDEO_BITRATE.toLong()).toInt()
+    }
 
     /** The folder the camera and the library write into; cleared of anything older than a day on each new Moment. */
     fun folder(context: Context): File =
@@ -187,18 +296,27 @@ object MomentMedia {
 
     /**
      * A video as it uploads, with [onProgress] from 0 to 1 while it exports: about 720p (720 px on its short side, never
-     * scaled up) H.264 with AAC sound, unless the in-app camera already recorded it that way. Then its poster frame
-     * (near the start) and two more frames (a third and two thirds in).
+     * scaled up) H.264 with AAC sound, at the bit rate that fits it in [maxBytes] ([videoBitrate]), unless the in-app
+     * camera already recorded it that way and it fits. With [part], only that stretch of the video. Then its poster
+     * frame (near the start) and two more frames (a third and two thirds in).
      */
     @OptIn(UnstableApi::class)
     suspend fun prepareVideo(
         context: Context,
         source: MomentMediaFile.Video,
+        part: MomentVideoPart? = null,
+        maxBytes: Long = MomentLimits().videoBytes,
         onProgress: (Float) -> Unit,
     ): PreparedVideo {
-        val video = if (source.recordedHere) source.file else export(context, source.file, onProgress)
+        val asRecorded = source.recordedHere && part == null && source.file.length() in 1..maxBytes
+        val video =
+            if (asRecorded) {
+                source.file
+            } else {
+                export(context, source.file, part, videoBitrate(part?.durationMs ?: source.durationMs, maxBytes), onProgress)
+            }
         onProgress(1f)
-        val duration = videoDurationMs(video).takeIf { it > 0 } ?: source.durationMs
+        val duration = videoDurationMs(video).takeIf { it > 0 } ?: part?.durationMs ?: source.durationMs
         val frames =
             withContext(Dispatchers.IO) {
                 val retriever = MediaMetadataRetriever()
@@ -220,13 +338,15 @@ object MomentMedia {
                 }
             }
         val poster = frames.firstOrNull() ?: error("Couldn't read that video.")
-        return PreparedVideo(video = video, poster = poster, frames = frames.drop(1))
+        return PreparedVideo(video = video, poster = poster, frames = frames.drop(1), durationMs = duration)
     }
 
     @OptIn(UnstableApi::class)
     private suspend fun export(
         context: Context,
         source: File,
+        part: MomentVideoPart?,
+        bitrate: Int,
         onProgress: (Float) -> Unit,
     ): File {
         val (width, height) = displaySize(source)
@@ -250,7 +370,7 @@ object MomentMedia {
                         .setEncoderFactory(
                             DefaultEncoderFactory
                                 .Builder(context)
-                                .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(VIDEO_BITRATE).build())
+                                .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(bitrate).build())
                                 .build(),
                         ).addListener(
                             object : Transformer.Listener {
@@ -271,9 +391,24 @@ object MomentMedia {
                                 }
                             },
                         ).build()
+                // A part of a longer video is only its stretch (the last runs to the end of the file).
+                val clip =
+                    part?.let {
+                        MediaItem.ClippingConfiguration
+                            .Builder()
+                            .setStartPositionMs(it.startMs)
+                            .apply { if (it.index < it.count) setEndPositionMs(it.endMs) }
+                            .build()
+                    }
+                val media =
+                    MediaItem
+                        .Builder()
+                        .setUri(Uri.fromFile(source))
+                        .apply { if (clip != null) setClippingConfiguration(clip) }
+                        .build()
                 val item =
                     EditedMediaItem
-                        .Builder(MediaItem.fromUri(Uri.fromFile(source)))
+                        .Builder(media)
                         .setEffects(Effects(emptyList(), presentation))
                         .build()
                 transformer.start(item, out.path)

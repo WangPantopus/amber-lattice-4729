@@ -657,6 +657,8 @@ export interface SentHolidayCard {
   /** Sent as a link anyone can open (launch key card_table). `by_email` is true too, so older apps still show something sensible. */
   by_link?: boolean;
   arrival: HolidayCardArrival;
+  /** By email, set to go at your 7 a.m. or on Christmas morning: when (absent once it went, or when it went at once). */
+  email_send_at?: string;
   /** When it goes into their mailbox; null by email (when they open the email). */
   arrives_at: string | null;
   /** The day it goes into their mailbox, by their clock ("2026-10-31"); null by email. */
@@ -762,7 +764,12 @@ export interface HolidayCards {
   /** The collections "Pick a card" shows, in order (none from a server before collections: one grid of every design). */
   collections?: HolidayCardCollection[];
   /** The arrivals open now, to a person and by email. */
-  arrivals: { person: HolidayCardArrival[]; email: HolidayCardArrival[] };
+  /**
+   * `email` is the two choices older apps word for a card by email (now, sealed until Christmas); `email_all` (when the
+   * server has it) all four, its email going at your next 7 a.m. (`next_round_at`) or on Christmas morning. A link keeps
+   * `email`.
+   */
+  arrivals: { person: HolidayCardArrival[]; email: HolidayCardArrival[]; email_all?: HolidayCardArrival[] };
   /** Your next 7 a.m. round and Christmas morning, where you are. */
   next_round_at: string;
   christmas_morning_at: string;
@@ -883,6 +890,8 @@ export interface HolidayCardPreview {
     picture?: string } | null;
   /** By email: the page its link opens (the address masked, as on that page). */
   link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean } | null;
+  /** By email, set to go at your 7 a.m. or on Christmas morning: when (null: as it's sealed). */
+  email_send_at?: string | null;
 }
 
 /** POST /api/mailbox/cards/preview */
@@ -892,8 +901,9 @@ export async function previewHolidayCard(data: Parameters<typeof sendHolidayCard
 
 /**
  * One card to a list (digital stamps on): the same picture and note for up to `max_recipients` people or addresses,
- * each its own card under its own request ID (kept for every look and retry). One choice of arrival for the list: an
- * address reads "next_morning" as right away and "christmas_morning" as sealed until Christmas.
+ * each its own card under its own request ID (kept for every look and retry). One choice of arrival for the list. With
+ * `emails_keep_arrival` an address keeps it too (its email at your 7 a.m. or on Christmas morning); without it an address
+ * reads "next_morning" as right away and "christmas_morning" as sealed until Christmas, as older apps word it.
  */
 export interface HolidayCardList {
   design: string;
@@ -903,12 +913,16 @@ export interface HolidayCardList {
   recipients: { to: { user_id: string } | { email: string }; request_id: string }[];
   /** One signature for the whole list, as one note. */
   signature?: CardSignature | null;
+  /** Each address keeps the list's choice (send it when the server offers `arrivals.email_all`). */
+  emails_keep_arrival?: boolean;
 }
 
 /** One card on a list's look: ready to go, sent by an earlier try of the list, or refused (and why). */
 export type HolidayCardListLine =
   | { request_id: string; status: 'ready'; to_name: string | null; by_email: boolean; arrival: HolidayCardArrival;
-    arrives_on: string | null; opens_on: string | null }
+    arrives_on: string | null; opens_on: string | null;
+    /** By email, set to go at your 7 a.m. or on Christmas morning: when (absent: it goes now). */
+    email_send_at?: string }
   | { request_id: string; status: 'already_sent'; card: SentHolidayCard }
   | { request_id: string; status: 'refused'; error: string; code: string };
 
@@ -954,11 +968,20 @@ export interface SentPiece {
   sent_at: string;
   /** Their name as it was when sent; by email the masked address, or whoever claimed it. */
   to_name: string | null;
+  /** By email, set to go at your 7 a.m. or on Christmas morning: when. Absent once it went (or when it went at once). */
+  email_send_at?: string;
   /** A letter to a Home itself: `to_name` ("their household", "your household") is said whole, never as a first name. */
   to_household?: boolean;
   by_email: boolean;
   /** Sent as a link anyone can open (launch key card_table). `to_name` is "them" until someone opens it. */
   by_link?: boolean;
+  /**
+   * A card by email whose email hasn't gone out while it waits: 'retrying' while the server keeps trying (about an hour),
+   * then 'failed'. Absent when the email went (or for anything else).
+   */
+  email_status?: 'retrying' | 'failed';
+  /** With `email_status`: the address they typed, whole, so they can see a mistake in it. */
+  email_to?: string | null;
   arrival: HolidayCardArrival | null;
   /**
    * To a person: before the 7 a.m. pickup, picked up (a Christmas-morning card on its way), in their mailbox.
@@ -1030,6 +1053,14 @@ export async function recordHolidayCardShare(data: {
  */
 export async function getHolidayCardShareVideo(design: string): Promise<{ url: string; width: number; height: number }> {
   return get<{ url: string; width: number; height: number }>(`/api/mailbox/cards/share-video/${encodeURIComponent(design)}`);
+}
+
+/**
+ * POST /api/mailbox/cards/:id/email-again: one more try of a card's email that didn't go out (Sent's `email_status`).
+ * 200 once the mail server took it; otherwise the server's words (503 CARD_EMAIL_FAILED, 429 CARD_EMAIL_BUSY, 409).
+ */
+export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: true }> {
+  return post<{ emailed: true }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/email-again`);
 }
 
 /** POST /api/mailbox/cards/:id/take-back: before the 7 a.m. pickup (by email: before they open it). */

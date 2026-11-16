@@ -117,7 +117,9 @@ struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Spacing.s2) {
-            Spacer().frame(width: CGFloat(comment.indentLevel) * 36)
+            // A reply steps in under the comment it answers; deeper replies step in less, so a thread of threads
+            // still has room for its words on a phone.
+            Spacer().frame(width: comment.indentLevel > 0 ? 36 + CGFloat(comment.indentLevel - 1) * 20 : 0)
             Button(action: { onAvatarTap() }) {
                 AvatarWithIdentityRing(
                     name: comment.authorName,
@@ -154,6 +156,10 @@ struct CommentRow: View {
                             .pantopusTextStyle(.caption)
                             .foregroundStyle(Theme.Color.appTextStrong)
                             .lineSpacing(3)
+                            // Every line of the reply, whatever height the row is offered: in the post's page
+                            // beside a list (Today's Around you on the open iPhone Duo) a reply was cut to one line
+                            // with "…", where the same reply wrapped in Pulse's column and on a pushed page.
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     if !comment.attachmentURLs.isEmpty {
                         attachmentStrip

@@ -11,6 +11,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { getJson, layerRows, layerAreas, cached } = require('../lib/services.cjs');
 const { year, isoDate, monthDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -77,9 +78,13 @@ function fromRow(row) {
     put(facts, 'rooms', inRange(row.ROOMS, 40));
   }
   // A condominium's parcel is its share of the complex (its shape, the unit's footprint), so a condominium home gets no lot.
+  let mapped = null;
   if (kind !== 'unit' && homeType !== 'townhouse') {
     if (positive(row.ACRES)) put(facts, 'lot_acres', positive(row.ACRES));
-    else put(facts, 'lot_sqft', positive(row.area) >= 100 ? Math.round(positive(row.area)) : null);
+    else {
+      put(facts, 'lot_sqft', positive(row.area) >= 100 ? Math.round(positive(row.area)) : null);
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'market_value', money(row.TOTAL_VALU));
   put(facts, 'market_land_value', money(row.LAND_VALUE));
@@ -89,7 +94,7 @@ function fromRow(row) {
     put(facts, 'sale_price', price);
     put(facts, 'sale_date', monthDate(row.SALE_DATE));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.SITE_ADD2 ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip: null }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(row.SITE_ADD2 ?? '').replace(/\s+/g, ' ').trim().toUpperCase(), zip: null }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work }) {

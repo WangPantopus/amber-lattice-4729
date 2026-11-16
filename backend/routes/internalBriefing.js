@@ -769,20 +769,42 @@ async function sendReminderPush({ userId, title, body, reminderType, data }) {
  * POST /api/internal/briefing/mail-morning
  * The Mail tab's morning notice ("Your mail is here"), called by the mail notification Lambda every five minutes.
  * Each call sends the notice to the people whose own morning it is and whose round brought them mail they can read,
- * once per person per local day (services/mailMorningNotice). Answers counts only.
+ * once per person per local day (services/mailMorningNotice). Answers counts only. A pass over many people can take
+ * longer than the caller waits: after MAIL_MORNING_ANSWER_MS the call is answered { status: 'ok', still_running: true }
+ * and the pass goes on to the end; calls that come meanwhile answer { busy: true } and leave it to finish. A pass that
+ * fails after its call was answered is told to the next call instead (500), so the caller's alarm still hears of it.
  */
+const MAIL_MORNING_ANSWER_MS = 45 * 1000;
+let mailMorningLateFailure = null;
 router.post('/mail-morning', verifyInternalApiKey, async (req, res) => {
   // Launch cut #10 (Mailbox): no mail notices while the mailbox is off.
   if (skipForLaunchCut('mailbox', 'mail-morning')) {
     return res.json({ status: 'skipped', reason: 'feature_hidden' });
   }
+  if (mailMorningLateFailure) {
+    const error = mailMorningLateFailure;
+    mailMorningLateFailure = null;
+    logger.error('Mail morning notices: the last pass failed after its call was answered', { error });
+    return res.status(500).json({ status: 'failed', error: "Couldn't send this morning's mail notices.", code: 'MAIL_MORNING_FAILED' });
+  }
   try {
     const { runMorningNotices } = require('../services/mailMorningNotice');
-    const stats = await runMorningNotices({
+    const run = runMorningNotices({
       send: async (push) => (await sendReminderPush(push)).payload || { status: 'failed' },
+    }).then((stats) => {
+      logger.info('Mail morning notices', stats);
+      return stats;
     });
-    logger.info('Mail morning notices', stats);
-    return res.json({ status: 'ok', ...stats });
+    let timer;
+    const waited = new Promise((resolve) => { timer = setTimeout(() => resolve(null), MAIL_MORNING_ANSWER_MS); });
+    const stats = await Promise.race([run, waited]).finally(() => clearTimeout(timer));
+    if (stats) return res.json({ status: 'ok', ...stats });
+    // Still going: it finishes on its own. Nobody is waiting for it any more, so a failure is kept for the next call.
+    run.catch((err) => {
+      logger.error('Mail morning notices failed', { error: err.message });
+      mailMorningLateFailure = err.message || 'failed';
+    });
+    return res.json({ status: 'ok', still_running: true });
   } catch (err) {
     logger.error('Mail morning notices failed', { error: err.message });
     return res.status(500).json({ status: 'failed', error: "Couldn't send this morning's mail notices.", code: 'MAIL_MORNING_FAILED' });

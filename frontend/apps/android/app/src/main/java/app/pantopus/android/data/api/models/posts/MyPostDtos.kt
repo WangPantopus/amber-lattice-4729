@@ -37,8 +37,10 @@ data class MyPostDto(
     @Json(name = "archived_at") val archivedAt: String? = null,
     /** Who wrote it; the Saved tab's rows (other people's posts) name the author. */
     val author: PostAuthorBriefDto? = null,
-    /** Saved-list order is the bookmark time, which can differ from when the post was written. */
+    /** Saved-list order is the save time, which can differ from when the post was written. */
     val savedAt: String? = null,
+    /** Reposts-list order is the repost time (`GET /api/posts/reposts`). */
+    @Json(name = "reposted_at") val repostedAt: String? = null,
     /** Lifecycle state: `open`, `solved`, `archived`. */
     val state: String? = null,
     /** How the post ended (S7); null while open. */
@@ -62,14 +64,20 @@ data class PostAuthorBriefDto(
     val displayName: String? = null,
 )
 
-/** Offset paging of `GET /api/posts/saved`: offsets count saves, so a short page isn't the end. */
+/**
+ * Offset paging of `GET /api/posts/saved` and `GET /api/posts/reposts`: offsets count saves (reposts), so a short page
+ * isn't the end.
+ */
 @JsonClass(generateAdapter = true)
 data class SavedPostsPagination(
     val nextOffset: Int? = null,
     val hasMore: Boolean? = null,
 )
 
-/** Envelope for `GET /api/posts/saved`: the viewer's saved posts they can still open, newest save first. */
+/**
+ * Envelope for `GET /api/posts/saved`: the viewer's saved posts they can still open, newest save first. `GET
+ * /api/posts/reposts` mirrors it exactly (newest repost first).
+ */
 @JsonClass(generateAdapter = true)
 data class SavedPostsResponse(
     val posts: List<MyPostDto> = emptyList(),

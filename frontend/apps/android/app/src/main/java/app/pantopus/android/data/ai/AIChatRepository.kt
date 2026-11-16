@@ -38,9 +38,10 @@ private const val HTTP_TOO_MANY_REQUESTS = 429
  * Draft cards this app shows beyond the original ones (`cards` in the chat request): pickup days, action
  * cards and link buttons (AI assistant phase 1 contract, sections 3 to 5), each card's done state in
  * history (phase 3 contract §4.3), the Remember card (phase 3 §5.2), the check-back cards (phase 3 §7.1) and the
- * standing rule cards (phase 3 §18.3).
+ * standing rule cards (phase 3 §18.3). `identity_ask`: this app runs the identity check for Mail and the Wallet from the
+ * thread ("Verify it's me" under a reply whose lookup needed it), then sends the question again.
  */
-private val AI_CARDS = listOf("pickup_schedule", "action", "link", "state", "memory", "follow_up", "rules")
+private val AI_CARDS = listOf("pickup_schedule", "action", "link", "state", "memory", "follow_up", "rules", "identity_ask")
 
 /**
  * Added to `cards` when this phone's identity check for Mail and the Wallet (fingerprint, face or the screen lock)

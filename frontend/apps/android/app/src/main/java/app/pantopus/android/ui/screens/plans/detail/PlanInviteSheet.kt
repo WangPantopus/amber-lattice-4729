@@ -1,5 +1,8 @@
 package app.pantopus.android.ui.screens.plans.detail
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,6 +62,9 @@ import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanInviteCountsDto
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusCheckbox
 import app.pantopus.android.ui.components.PrimaryButton
@@ -88,12 +94,34 @@ import app.pantopus.android.ui.theme.Spacing
 internal fun PlanInviteSheet(
     plan: PlanDto,
     onDismiss: () -> Unit,
+    /** Make a text invite as it opens (a private plan's "Text a link" on its preview, Plans step 1). */
+    textFirst: Boolean = false,
     vm: PlanInviteViewModel = hiltViewModel(key = "planInvite-${plan.id}"),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toast = remember { ToastController() }
-    LaunchedEffect(plan.id) { vm.start(plan.id) }
+    LaunchedEffect(plan.id) {
+        // One link for everyone (Plans for the holidays, A4): a private plan of a person's that isn't a playdate.
+        vm.start(plan.id, openLink = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate, atHome = plan.isAtHome)
+        if (textFirst) vm.makeTextInvite()
+    }
+    // The open link: to the clipboard ("Link copied."), or to the share sheet with the host's words.
+    LaunchedEffect(ui.openLinkCopy) {
+        val url = ui.openLinkCopy ?: return@LaunchedEffect
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("Plan link", url))
+        vm.openLinkCopied()
+    }
+    LaunchedEffect(ui.openLinkShare) {
+        val link = ui.openLinkShare ?: return@LaunchedEffect
+        val send =
+            Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, listOf(link.message, link.url).filter(String::isNotBlank).joinToString(" "))
+        runCatching { context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        vm.openLinkShared()
+    }
     LaunchedEffect(ui.notice) {
         ui.notice?.let {
             toast.info(it)
@@ -128,7 +156,7 @@ internal fun PlanInviteSheet(
                     verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 ) {
                     InviteHeader(plan, onDismiss)
-                    InviteBody(ui, vm)
+                    InviteBody(ui, vm, privatePlan = plan.isPrivate)
                 }
                 SendBar(ui, onSend = vm::send)
             }
@@ -143,6 +171,7 @@ internal fun PlanInviteSheet(
 private fun ColumnScope.InviteBody(
     ui: PlanInviteUi,
     vm: PlanInviteViewModel,
+    privatePlan: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.weight(1f).testTag("planInviteSearch")) {
@@ -177,9 +206,16 @@ private fun ColumnScope.InviteBody(
         PlanInviteLoad.Loaded -> {
             People(ui, onToggle = vm::toggle)
             TextInviteCard(making = ui.makingLink, onText = vm::makeTextInvite)
+            PlanOpenLinkCard(ui, vm)
             Sent(ui, onCancel = vm::cancel)
             Text(
-                text = "Each invitation is for one person. Emails and texts show the plan's card and area, never your address.",
+                text =
+                    if (privatePlan) {
+                        // A private plan at a public place shows the person invited its place by name (Plans step 1).
+                        "Each invitation is for one person. Emails and texts show the plan's card, never your address."
+                    } else {
+                        "Each invitation is for one person. Emails and texts show the plan's card and area, never your address."
+                    },
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )
@@ -509,7 +545,12 @@ private fun SentRow(
             PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl)
         } else {
             PlanIconTile(
-                if (row.channel == "email") PantopusIcon.Mail else PantopusIcon.MessageCircle,
+                when (row.channel) {
+                    "email" -> PantopusIcon.Mail
+                    // A guest from the one link for everyone (Plans for the holidays).
+                    "open" -> PantopusIcon.Link
+                    else -> PantopusIcon.MessageCircle
+                },
                 PantopusColors.primary100,
                 PantopusColors.primary700,
                 size = 40.dp,
@@ -528,7 +569,7 @@ private fun SentRow(
             Text(
                 text = PlanInviteLines.state(row),
                 style = PantopusTextStyle.small,
-                color = if (row.emailFailed || row.state == "asked") PantopusColors.warning else PantopusColors.appTextSecondary,
+                color = if (row.emailFailed || row.state in WAITS_ON_HOST) PantopusColors.warning else PantopusColors.appTextSecondary,
             )
         }
         if (row.canCancel) {
@@ -625,10 +666,14 @@ internal object PlanInviteLines {
             when (row.channel) {
                 "email" -> "By email"
                 "link" -> "By text"
+                "open" -> "From your link"
                 else -> "On Pantopus"
             }
         return when (row.state) {
             "opened" -> "Opened your text invite · Hasn't answered yet"
+            // Plans for the holidays (guests=1): a guest from the open link waits for the host's yes, and Maybe.
+            "waiting_ok" -> "$how · Waiting for your yes"
+            "maybe" -> "Said maybe"
             "in" -> "Said yes · In"
             "waitlisted" -> "Said yes · On the waitlist"
             "asked" -> "Opened your email invitation from another address · Waiting for your yes in Requests"
@@ -645,8 +690,12 @@ internal object PlanInviteLines {
             listOfNotNull(
                 counts.invited.takeIf { it > 0 }?.let { "$it waiting" },
                 counts.isIn.takeIf { it > 0 }?.let { "$it in" },
+                counts.maybe.takeIf { it > 0 }?.let { "$it maybe" },
                 counts.cantMakeIt.takeIf { it > 0 }?.let { "$it can't make it" },
             )
         return if (parts.isEmpty()) "Invited" else "Invited · " + parts.joinToString(" · ")
     }
 }
+
+/** States that wait on the host's yes: an email opened from another address, a guest from the one link (Plans for the holidays). */
+private val WAITS_ON_HOST = setOf("asked", "waiting_ok")

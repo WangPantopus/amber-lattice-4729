@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanScopeChip
 import app.pantopus.android.ui.screens.plans.planGlass
@@ -129,6 +130,8 @@ fun PlanPlainScaffold(
     title: String? = null,
     closeIcon: Boolean = false,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
+    /** A button on the bar's right (Who's coming's "+"); a 44 dp space keeps the title centered without one. */
+    trailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize().background(PantopusColors.appBg)) {
@@ -152,7 +155,7 @@ fun PlanPlainScaffold(
                 modifier = Modifier.weight(1f).semantics { heading() },
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Spacer(modifier = Modifier.size(44.dp))
+            if (trailing != null) trailing() else Spacer(modifier = Modifier.size(44.dp))
         }
         Column(
             modifier =
@@ -327,7 +330,9 @@ fun Context.addToCalendar(plan: PlanDto) {
             .putExtra(CalendarContract.Events.EVENT_TIMEZONE, plan.timezone ?: ZoneId.systemDefault().id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     end?.let { intent.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, it.toEpochMilli()) }
-    listOfNotNull(plan.place?.name, plan.place?.address).joinToString(", ").takeIf(String::isNotBlank)?.let {
+    // An online plan's "where" is its link (Plans step 3): the person adding it is in, so they may read it.
+    val where = plan.place?.link?.takeIf { plan.isOnline } ?: listOfNotNull(plan.place?.name, plan.place?.address).joinToString(", ")
+    where.takeIf(String::isNotBlank)?.let {
         intent.putExtra(CalendarContract.Events.EVENT_LOCATION, it)
     }
     runCatching { startActivity(intent) }

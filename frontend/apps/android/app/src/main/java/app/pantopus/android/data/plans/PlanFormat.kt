@@ -187,8 +187,33 @@ object PlanFormat {
                     else -> "walk"
                 }
             PlanKind.STUDY_GROUP -> "study group"
-            null -> "plan"
+            // Plans step 4, as the server's notices say them (a detail not chosen is its default: dinner, a hike).
+            PlanKind.FOOD_DRINKS -> FOOD_NOUNS[plan.details?.foodKind ?: "dinner"] ?: "get-together"
+            PlanKind.GAME_NIGHT -> "game night"
+            PlanKind.OUTDOORS -> OUTDOOR_NOUNS[plan.details?.outdoorKind ?: "hike"] ?: "outing"
+            PlanKind.SOMETHING_ELSE, null -> "plan"
         }
+
+    /** "Happy hour" for drinks: a noun a sentence can use, as the server's notices (planNotifications.js). */
+    private val FOOD_NOUNS =
+        mapOf(
+            "dinner" to "dinner",
+            "potluck" to "potluck",
+            "drinks" to "happy hour",
+            "brunch" to "brunch",
+            "bbq" to "barbecue",
+        )
+    private val OUTDOOR_NOUNS = mapOf("hike" to "hike", "bike_ride" to "bike ride", "run" to "run")
+
+    /** What an online plan says where others say the area (Plans step 3). */
+    const val ONLINE = "Online"
+
+    /** Where a row, a card or a list says a plan is: "Online" for an online plan, else its area ("Near Prune Hill"). */
+    fun areaLabel(plan: PlanDto): String? = if (plan.isOnline) ONLINE else plan.area?.label
+
+    /** "Online · hosted from Camas" (board Online), or just "Online" when the plan has no town (a private plan with no area). */
+    fun onlineWhere(plan: PlanDto): String =
+        listOfNotNull(ONLINE, plan.area?.city?.trim()?.takeIf(String::isNotEmpty)?.let { "hosted from $it" }).joinToString(" · ")
 
     /** "Seahawks game" for a game's watch party (boards J3, H10, A4), else the plan's title. */
     fun shortTitle(plan: PlanDto): String = plan.details?.game?.label?.let { "$it game" } ?: plan.title
@@ -317,6 +342,8 @@ object PlanFormat {
             PlanViewerStanding.HOSTING -> {
                 parts += "You're hosting"
                 parts += whenText
+                // An online plan says so, as it does where others give the area (Plans step 3).
+                if (plan.isOnline) parts += ONLINE
             }
             else -> {
                 // An invitation not answered yet: "Sam invited you · Sun 1:25 PM" (as on iOS).
@@ -327,6 +354,10 @@ object PlanFormat {
                 if (plan.isBusiness) {
                     // A business's row names the business where a neighbor's names an area (board G2).
                     (plan.place?.name ?: plan.host?.displayName)?.let { parts += it }
+                } else if (plan.isOnline) {
+                    // An online plan says "Online" where others give the area and the distance (Plans step 3).
+                    parts += ONLINE
+                    parts += studyParts(plan)
                 } else if (plan.isPlaydate) {
                     area?.let { parts += it }
                     KidsAgeBand.rangeLabel(plan.details?.kidsAgeBands)?.let { parts += it }
@@ -343,6 +374,59 @@ object PlanFormat {
             }
         }
         return parts.filter { it.isNotBlank() }.joinToString(" · ")
+    }
+
+    /**
+     * A row under "Yours" (Plans for the holidays, board 1): when, then the person's part: "Thu, Nov 26 · You're
+     * hosting", "Sat 6:00 PM · You're in", "You said maybe", "Invited"; a request or the waitlist as the shipped words.
+     */
+    fun yoursSubtitle(
+        plan: PlanDto,
+        now: Instant = Instant.now(),
+    ): String {
+        val whenText = rowWhen(plan, now) ?: hiddenWhen(plan)
+        val part =
+            when {
+                plan.standing == PlanViewerStanding.HOSTING -> "You're hosting"
+                plan.standing == PlanViewerStanding.IN -> "You're in"
+                plan.standing == PlanViewerStanding.REQUESTED -> "Requested"
+                plan.standing == PlanViewerStanding.WAITLISTED -> "On the waitlist"
+                plan.saidMaybe -> "You said maybe"
+                plan.invitedNoAnswer -> "Invited"
+                else -> null
+            }
+        return listOfNotNull(whenText, part).joinToString(" · ")
+    }
+
+    /**
+     * "2 adults, 1 kid", "3 adults", "1 adult" (Plans for the holidays, as the server writes them); [and] joins with
+     * "and" ("2 adults and 1 kid"). No kids part at 0.
+     */
+    fun people(
+        adults: Int,
+        kids: Int,
+        and: Boolean = false,
+    ): String {
+        val a = adults.coerceAtLeast(1)
+        val parts = mutableListOf("$a ${if (a == 1) "adult" else "adults"}")
+        if (kids > 0) parts += "$kids ${if (kids == 1) "kid" else "kids"}"
+        return parts.joinToString(if (and) " and " else ", ")
+    }
+
+    /**
+     * A headcount: "6 adults, 3 kids", "1 adult", "2 kids"; null when nobody is coming (the count says "0 coming"
+     * alone).
+     */
+    fun headcount(
+        adults: Int,
+        kids: Int,
+    ): String? {
+        val parts =
+            listOfNotNull(
+                adults.takeIf { it > 0 }?.let { "$it ${if (it == 1) "adult" else "adults"}" },
+                kids.takeIf { it > 0 }?.let { "$it ${if (it == 1) "kid" else "kids"}" },
+            )
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(", ")
     }
 
     /** A study group's subject and style, ["Spanish", "Quiet study"]; empty without a subject, and for other kinds. */
@@ -388,7 +472,7 @@ object PlanFormat {
             // A business's own rule, as its team reads it: anyone gets in right away.
             PlanAutoRule.OPEN in plan.autoRules.orEmpty() -> "Anyone gets in right away"
             !plan.hostApproves && PlanAutoRule.ANYONE_NEARBY in rules -> "Lets in anyone nearby automatically"
-            !plan.hostApproves && PlanAutoRule.VERIFIED in rules -> "Lets in verified neighbors automatically"
+            !plan.hostApproves && PlanAutoRule.VERIFIED in rules -> "Lets in people with a verified address automatically"
             !plan.hostApproves -> "You can get in right away"
             plan.isPlaydate -> "$host approves each family"
             else -> "$host approves each person"

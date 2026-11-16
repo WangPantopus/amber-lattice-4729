@@ -16,7 +16,8 @@ const MAX_PHOTO_BYTES = 10 * MB;
 // Supabase Storage refuses a file over 50 MB on the Free plan; 30 s of 720p H.264 is 15–25 MB.
 const MAX_VIDEO_BYTES = 50 * MB;
 const MAX_STILL_BYTES = 10 * MB;
-const MAX_VIDEO_MS = 30 * 1000;
+// One Moment's video; a longer one is posted as several, one after another (momentStore MAX_PARTS).
+const MAX_VIDEO_MS = 60 * 1000;
 // Exporters round the last frame up; a 30.0 s clip can read 30.04 s.
 const VIDEO_MS_TOLERANCE = 500;
 const PHOTO_TYPES = ['image/jpeg', 'image/heic', 'image/heif', 'image/png'];
@@ -29,8 +30,10 @@ function failure(message, status = 503, code = 'MOMENT_STORAGE_UNAVAILABLE') {
   return Object.assign(new Error(message), { status, statusCode: status, code });
 }
 
-// A public bucket would serve every Moment to anyone with its address. The verified name is kept for a few minutes.
+// A public bucket would serve every Moment to anyone with its address. The verified name is kept for a few minutes,
+// with the largest file the bucket takes (null when it sets none).
 let verifiedBucket = null;
+let warnedSmallBucket = false;
 async function privateBucket(expected) {
   const name = (process.env.MOMENTS_BUCKET || process.env.HOME_DOCUMENTS_BUCKET || '').trim();
   if (!/^[a-z0-9][a-z0-9-]{2,62}$/.test(name) || (expected !== undefined && expected !== name)) {
@@ -40,8 +43,20 @@ async function privateBucket(expected) {
   let result;
   try { result = await db.storage.getBucket(name); } catch (_) { result = null; }
   if (!result || result.error || result.data?.public !== false) throw failure('Moments storage is unavailable. Please try again.');
-  verifiedBucket = { name, until: Date.now() + 5 * 60 * 1000 };
+  const limit = Number(result.data.file_size_limit) > 0 ? Number(result.data.file_size_limit) : null;
+  if (limit && limit < MAX_VIDEO_BYTES && !warnedSmallBucket) {
+    // The apps are told a video may be MAX_VIDEO_BYTES; a bucket that takes less refuses some of them.
+    warnedSmallBucket = true;
+    logger.warn('moments.bucket_limit_below_video_limit', { bucket: name, bucket_limit: limit, video_limit: MAX_VIDEO_BYTES });
+  }
+  verifiedBucket = { name, limit, until: Date.now() + 5 * 60 * 1000 };
   return name;
+}
+
+/** The largest video file an upload may be: ours, or less when the bucket takes less. The apps size their videos to it. */
+async function maxVideoBytes() {
+  try { await privateBucket(); } catch (_) { return MAX_VIDEO_BYTES; }
+  return Math.min(MAX_VIDEO_BYTES, verifiedBucket?.limit || MAX_VIDEO_BYTES);
 }
 
 function sha256(buffer) {
@@ -59,15 +74,31 @@ function isMomentKey(key) {
   return typeof key === 'string' && key.startsWith(PREFIX) && !key.includes('..');
 }
 
+function tooLarge(bytes, limit) {
+  logger.warn('moments.file_over_storage_limit', { bytes, bucket_limit: limit || null });
+  return failure('This file is too large to post.', 413, 'MEDIA_TOO_LARGE');
+}
+
 // Stores bytes under a key named by their own hash, so a retry writes the same object and an existing one is kept.
+// A file storage won't take for its size is MEDIA_TOO_LARGE, not "try again": sending the same file again can't work,
+// and an app that took it for a busy server kept sending it (November 14).
 async function put(bucket, key, buffer, contentType) {
+  const limit = verifiedBucket?.name === bucket ? verifiedBucket.limit : null;
+  if (limit && buffer.length > limit) throw tooLarge(buffer.length, limit);
   let result;
+  let thrown = null;
   try {
     result = await db.storage.from(bucket).upload(key, buffer, { contentType, cacheControl: String(LINK_SECONDS), upsert: false });
-  } catch (_) { result = null; }
+  } catch (error) { result = null; thrown = error; }
   if (result && !result.error) return;
-  const message = String(result?.error?.message || result?.error?.error || '');
-  if (/exists|duplicate/i.test(message) || Number(result?.error?.statusCode) === 409) return;
+  const refusal = result?.error || {};
+  const message = String(refusal.message || refusal.error || thrown?.message || '');
+  const status = Number(refusal.statusCode) || Number(refusal.status) || null;
+  if (/exists|duplicate/i.test(message) || status === 409) return;
+  if (status === 413 || /maximum allowed size|too large|EntityTooLarge/i.test(`${message} ${refusal.error || ''}`)) {
+    throw tooLarge(buffer.length, limit);
+  }
+  logger.warn('moments.storage_put_failed', { status, error: message.slice(0, 200), bytes: buffer.length, content_type: contentType });
   throw failure('The file could not be saved. Please try again.');
 }
 
@@ -274,7 +305,7 @@ async function download(bucket, key) {
 module.exports = {
   LINK_SECONDS, STORAGE_CONTRACT, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_STILL_BYTES, MAX_VIDEO_MS, VIDEO_MS_TOLERANCE,
   PHOTO_TYPES, VIDEO_TYPES,
-  failure, privateBucket, sha256, keyFor, isMomentKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
+  failure, privateBucket, maxVideoBytes, sha256, keyFor, isMomentKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
   removeAccountFiles, download,
   videoFacts, jpegFacts, photoFacts, thumbnail, checkImage,
 };

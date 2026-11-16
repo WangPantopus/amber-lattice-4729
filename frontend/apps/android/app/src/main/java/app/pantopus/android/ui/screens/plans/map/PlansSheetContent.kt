@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.plans.map
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +50,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,18 +59,23 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanMoreTimeDto
 import app.pantopus.android.data.api.models.plans.PlanMoreTimesDto
+import app.pantopus.android.data.api.models.plans.PlansElsewhereDto
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanHostFilter
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.PlanWindow
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -77,14 +84,17 @@ import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.LocalPlanSheet
 import app.pantopus.android.ui.screens.plans.components.PLAN_BUSINESS_SPOKEN
 import app.pantopus.android.ui.screens.plans.components.PLAN_FREE
+import app.pantopus.android.ui.screens.plans.components.PLAN_PRIVATE_SPOKEN
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanGuestsSeeCard
 import app.pantopus.android.ui.screens.plans.components.PlanHostRow
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanKindLeading
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanRow
 import app.pantopus.android.ui.screens.plans.components.PlanRowEnd
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
@@ -96,6 +106,9 @@ import app.pantopus.android.ui.screens.plans.components.PlanSwatch
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTypeTag
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesHostCard
 import app.pantopus.android.ui.screens.plans.teams.PlansSportsEmpty
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -145,6 +158,21 @@ private fun spotsEnd(plan: PlanDto): PlanRowEnd =
         else -> PlanRowEnd.Note("${plan.spotsLeft} spots")
     }
 
+/**
+ * A row's end under "Yours" (Plans for the holidays, board 1): one count. A host's requests first (they wait on the
+ * host), then "{n} coming" where the server counts adults and kids, else the shipped count.
+ */
+internal fun yoursEnd(plan: PlanDto): PlanRowEnd {
+    val requests = plan.requestsCount ?: 0
+    val coming = plan.headcount?.total
+    return when {
+        plan.standing == PlanViewerStanding.HOSTING && requests > 0 -> hostingEnd(plan)
+        coming != null -> PlanRowEnd.Note("$coming coming")
+        plan.standing == PlanViewerStanding.HOSTING -> hostingEnd(plan)
+        else -> spotsEnd(plan)
+    }
+}
+
 /** A hosted plan's row end: its requests, else how many are going. */
 private fun hostingEnd(plan: PlanDto): PlanRowEnd {
     val requests = plan.requestsCount ?: 0
@@ -176,6 +204,7 @@ internal fun ordinal(n: Int): String {
 internal fun rowSpoken(
     plan: PlanDto,
     end: PlanRowEnd,
+    subtitle: String = PlanFormat.rowSubtitle(plan),
 ): String {
     val endWords =
         when (end) {
@@ -187,7 +216,11 @@ internal fun rowSpoken(
     // A business's plan: what it calls it ("Clinic"), and that a business hosts it (the badge's words).
     val kind = plan.labelText?.takeIf { plan.isBusiness } ?: plan.planKind?.label
     val business = PLAN_BUSINESS_SPOKEN.takeIf { plan.isBusiness }
-    return listOfNotNull(kind, business, plan.title, PlanFormat.rowSubtitle(plan), endWords).joinToString(", ")
+    // A private plan says so after its kind, as its lock badge shows it (Plans step 1).
+    val privateWord = PLAN_PRIVATE_SPOKEN.takeIf { plan.isPrivate }
+    // A repeating plan says how (Plans step 2), as its row's third line shows it.
+    val repeatWords = PlanRepeatWords.cardLine(plan.repeat)
+    return listOfNotNull(kind, business, privateWord, plan.title, subtitle, repeatWords, endWords).joinToString(", ")
 }
 
 /** One plan as a row of the list; at the sheet's lowest stop ([peek], board F1) a chevron ends it, as on iOS. */
@@ -200,21 +233,52 @@ internal fun PlanListRow(
     peek: Boolean = false,
     /** Opens one of a venue's later plans from its fold (the full list only; null leaves the fold out). */
     fold: PlanFoldScope? = null,
+    /** A row under "Yours" (Plans for the holidays): the person's part ends the second line, a count ends the row. */
+    yours: Boolean = false,
 ) {
-    val status = rowEnd(plan, mine)
+    val status = if (yours) yoursEnd(plan) else rowEnd(plan, mine)
+    val repeatLine = PlanRepeatWords.cardLine(plan.repeat)
+    val subtitle = if (yours) PlanFormat.yoursSubtitle(plan) else PlanFormat.rowSubtitle(plan)
     PlanRow(
         title = plan.title,
-        subtitle = PlanFormat.rowSubtitle(plan),
+        subtitle = subtitle,
         end = if (peek) PlanRowEnd.Chevron else status,
         first = first,
-        leading = { PlanKindLeading(plan.planKind, business = plan.isBusiness) },
+        leading = { PlanKindLeading(plan.planKind, business = plan.isBusiness, isPrivate = plan.isPrivate) },
         // TalkBack still hears the status or spots a peek row doesn't show (as VoiceOver does on iOS).
-        spoken = rowSpoken(plan, status),
+        spoken = rowSpoken(plan, status, subtitle),
         onClick = { onOpen(plan) },
+        below = if (repeatLine != null) ({ PlanRowRepeat(repeatLine) }) else null,
     )
     val more = plan.moreTimes?.takeIf { it.count > 0 && plan.isBusiness }
     if (fold != null && more != null) PlanFold(plan.id, more, fold)
 }
+
+/** A repeating plan's row (Plans step 2): "Every Tue and Thu until Feb 4" with the repeat glyph, under its when and where. */
+@Composable
+private fun PlanRowRepeat(text: String) {
+    Row(
+        modifier = Modifier.padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.ArrowsRepeat, contentDescription = null, size = 12.dp, tint = PantopusColors.appTextSecondary)
+        Text(
+            text = text,
+            style = PantopusTextStyle.small.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = PantopusColors.appTextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A hosted plan that repeats and goes on, under Your plans: it shows as the host's card (board Regulars). */
+private val PlanDto.isHostedSeries: Boolean
+    get() {
+        val open = planState != PlanState.CANCELLED && planState != PlanState.ENDED
+        return open && standing == PlanViewerStanding.HOSTING && repeats && !isBusiness
+    }
 
 /** What a venue's fold needs from the list: the window it says "this week" by, and how to open a plan by id. */
 internal class PlanFoldScope(
@@ -336,7 +400,7 @@ private fun PlanFoldLine(
 private val FOLD_INDENT = 56.dp
 
 /**
- * The All / Neighbors / Businesses filter under the list's title (boards G1, G2 and P3): only once a business has a
+ * The All / People / Businesses filter under the list's title (boards G1, G2 and P3): only once a business has a
  * plan in the area, so Plans looks as it always has until then.
  */
 @Composable
@@ -371,7 +435,7 @@ private fun PlansHostFilterEmpty(
                 if (state.hostShown == PlanHostFilter.BUSINESSES) {
                     "No ${other}businesses have plans here ${state.window.phrase}."
                 } else {
-                    "No ${other}neighbors have plans here ${state.window.phrase}."
+                    "No ${other}people have plans here ${state.window.phrase}."
                 },
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextSecondary,
@@ -410,14 +474,28 @@ internal fun ColumnScope.PlansPeekContent(
                         modifier = Modifier.padding(vertical = Spacing.s3),
                     )
                 } else {
-                    PlanListRow(soonest, first = true, mine = soonest in state.mineShown, onOpen = onOpen, peek = true)
+                    PlanListRow(
+                        soonest,
+                        first = true,
+                        mine = soonest in state.mineShown,
+                        onOpen = onOpen,
+                        peek = true,
+                        yours = state.flags.guestAnswersOn && soonest in state.mineShown,
+                    )
                 }
             }
         }
     }
     if (state.listStatus == PlansListStatus.Loaded) {
         all.drop(1).take(PEEK_ROWS - 1).forEach { plan ->
-            PlanListRow(plan, first = false, mine = plan in state.mineShown, onOpen = onOpen, peek = true)
+            PlanListRow(
+                plan,
+                first = false,
+                mine = plan in state.mineShown,
+                onOpen = onOpen,
+                peek = true,
+                yours = state.flags.guestAnswersOn && plan in state.mineShown,
+            )
         }
     }
 }
@@ -471,6 +549,8 @@ internal fun PlansListContent(
     onRetry: () -> Unit,
     onOpenId: (String) -> Unit = {},
     onHostFilter: (PlanHostFilter) -> Unit = {},
+    /** A hosted repeating plan's Skip, Change and Stop repeating under Your plans (Plans step 2); null shows it as a row. */
+    seriesActions: ((PlanDto) -> PlanSeriesActions)? = null,
 ) {
     val sections = remember(state.others, state.mineShown) { daySections(state.others) }
     val fold = remember(state.window, onOpenId) { PlanFoldScope(state.window, onOpenId) }
@@ -486,9 +566,21 @@ internal fun PlansListContent(
             item(key = "loading") { PlanRowsSkeleton(rows = 4) }
         }
         if (state.mineShown.isNotEmpty()) {
-            item(key = "mine-title") { SectionTitle("Your plans", top = 10.dp) }
+            // "Yours" with Plans for the holidays (board 1), "Your plans" before it.
+            item(key = "mine-title") { SectionTitle(if (state.flags.guestAnswersOn) "Yours" else "Your plans", top = 10.dp) }
             items(state.mineShown, key = { "mine-${it.id}" }) { plan ->
-                PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen)
+                val series = seriesActions?.takeIf { plan.isHostedSeries }
+                if (series != null) {
+                    PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
+                } else {
+                    PlanListRow(
+                        plan,
+                        first = plan == state.mineShown.first(),
+                        mine = true,
+                        onOpen = onOpen,
+                        yours = state.flags.guestAnswersOn,
+                    )
+                }
             }
         }
         sections.forEach { (title, plans) ->
@@ -504,7 +596,7 @@ internal fun PlansListContent(
             // Only your own plans nearby (as on iOS): say so instead of ending the list in silence.
             item(key = "no-others") {
                 Text(
-                    text = "No other ${state.kind?.label?.lowercase() ?: "plans"} near you yet.",
+                    text = "No other ${otherKindWords(state.kind)} near you yet.",
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appTextSecondary,
                     modifier = Modifier.padding(vertical = Spacing.s3),
@@ -586,6 +678,17 @@ private fun MoreNearbyRow(
         onClick = onClick,
     )
 }
+
+/** "No other … near you yet.": the five kinds as before, the newer four (Plans step 4) in words a sentence can use. */
+private fun otherKindWords(kind: PlanKind?): String =
+    when (kind) {
+        null -> "plans"
+        PlanKind.FOOD_DRINKS -> "get-togethers"
+        PlanKind.GAME_NIGHT -> "game nights"
+        PlanKind.OUTDOORS -> "outings"
+        PlanKind.SOMETHING_ELSE -> "plans like this"
+        else -> kind.label.lowercase()
+    }
 
 /** The window inside a sentence: "right now", "today", "this week", "this weekend" (as on iOS). */
 private val PlanWindow.phrase: String
@@ -673,8 +776,10 @@ internal fun PlanCardContent(
             modifier = Modifier.onSizeChanged { sheet?.reportPeek(it.height) },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                 PlanTypeTag(kind, label = plan.labelText.takeIf { plan.isBusiness })
+                if (plan.isPrivate) PlanPrivateChip()
+                if (plan.isOnline) PlanOnlineChip()
                 Spacer(modifier = Modifier.weight(1f))
                 CardCloseButton(onClose)
             }
@@ -685,6 +790,7 @@ internal fun PlanCardContent(
                 modifier = Modifier.clickable(role = Role.Button, onClick = onDetails).semantics { heading() },
             )
             Text(text = cardWhereLine(plan), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+            PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat), strong = false)
         }
         plan.business?.let { business ->
             PlanHostRow(
@@ -696,7 +802,7 @@ internal fun PlanCardContent(
             )
         } ?: plan.host?.let { host ->
             PlanHostRow(
-                name = host.displayName ?: "Neighbor",
+                name = host.displayName ?: "Someone",
                 verified = host.verifiedAddress,
                 caption = hostCaption(plan),
                 seed = host.userId,
@@ -763,11 +869,19 @@ private fun CardCloseButton(onClose: () -> Unit) {
     }
 }
 
-/** "Sun, Oct 18 · 1:25–4:45 PM · Near Prune Hill · under 1 mi" (a business's plan names its place, not an area). */
+/**
+ * "Sun, Oct 18 · 1:25–4:45 PM · Near Prune Hill · under 1 mi" (a business's plan names its place, not an area, and so
+ * does a private plan whose place the viewer may see).
+ */
 internal fun cardWhereLine(plan: PlanDto): String =
     listOfNotNull(
         PlanFormat.whenLine(plan),
-        if (plan.isBusiness) plan.place?.name ?: plan.area?.label else plan.area?.label,
+        when {
+            // An online plan says "Online" where the others say the area (Plans step 3).
+            plan.isOnline -> PlanFormat.ONLINE
+            plan.isBusiness || plan.isPrivate -> plan.place?.name ?: plan.area?.label
+            else -> plan.area?.label
+        },
         PlanFormat.distance(plan.distanceBand),
     ).joinToString(" · ")
 
@@ -829,10 +943,13 @@ internal fun mainAction(plan: PlanDto): PlanMainAction? {
 /** "Join" for a business's plan that lets people in right away (board G3), "Ask to join" otherwise. */
 internal fun askWord(plan: PlanDto): String = if (plan.isBusiness && !plan.hostApproves) "Join" else "Ask to join"
 
-/** What "Invite a neighbor" shares (board F4, the same words as iOS). */
-const val PLANS_INVITE_MESSAGE = "I'm on Pantopus to make small plans with neighbors. Join me."
+/** What "Invite a friend" shares (board F4, the same words as iOS). */
+const val PLANS_INVITE_MESSAGE = "I'm on Pantopus to make plans with people nearby. Join me."
 
-/** Nothing planned this week (board F4): a game to host if there is one, the other types, and an invite. */
+/**
+ * Nothing planned this week (board F4): a game to host if there is one, a private plan with people you know (Plans step
+ * 1, with `plans_private`), the other types, and an invite.
+ */
 @Composable
 internal fun PlansEmptyContent(
     state: PlansMapUiState,
@@ -840,6 +957,7 @@ internal fun PlansEmptyContent(
     onInvite: () -> Unit,
     onShowElsewhere: () -> Unit,
     onGamesChanged: () -> Unit,
+    onHostPrivate: () -> Unit = {},
 ) {
     val scroll = rememberScrollState()
     val sheet = LocalPlanSheet.current
@@ -861,7 +979,7 @@ internal fun PlansEmptyContent(
                     modifier = Modifier.semantics { heading() },
                 )
                 Text(
-                    text = "Plans here start with one neighbor. Yours could be the first.",
+                    text = "Plans here start with one person. Yours could be the first.",
                     style = PantopusTextStyle.small,
                     color = PantopusColors.appTextSecondary,
                 )
@@ -871,55 +989,130 @@ internal fun PlansEmptyContent(
                 GameSuggestion(game, onLongClick) { onHost(PlanKind.WATCH_PARTY, game) }
             }
         }
-        val others = state.kinds.filter { it != PlanKind.WATCH_PARTY }
+        if (state.flags.privateOn) PrivatePlanStart(onClick = onHostPrivate)
         Text(
             text = "Or start something else",
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextSecondary,
             modifier = Modifier.padding(top = 2.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            others.forEach { kind ->
-                PlanStackButton(
-                    title = kind.label,
-                    onClick = { onHost(kind, null) },
-                    modifier = Modifier.weight(1f),
-                    leading = { PlanSwatch(kind) },
-                    spoken = "Host a ${kind.noun}",
-                )
-            }
-        }
+        OtherKinds(state.kinds.filter { it != PlanKind.WATCH_PARTY }, onHost = { kind -> onHost(kind, null) })
         PlanDivider(modifier = Modifier.padding(top = Spacing.s1))
-        state.elsewhere?.takeIf { it.count > 0 && !it.city.isNullOrBlank() }?.let { other ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PantopusIconImage(
-                    icon = PantopusIcon.MapPin,
-                    contentDescription = null,
-                    size = 16.dp,
-                    tint = PantopusColors.appTextSecondary,
-                )
-                Text(
-                    text =
-                        "${other.count} plan${if (other.count == 1) "" else "s"} in ${other.city}" +
-                            (other.miles?.let { ", $it mi away" } ?: ""),
-                    style = PantopusTextStyle.small,
-                    color = PantopusColors.appText,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "Show",
-                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
-                    color = PantopusColors.primary700,
-                    modifier =
-                        Modifier
-                            .heightIn(min = 44.dp)
-                            .clickable(role = Role.Button, onClick = onShowElsewhere)
-                            .padding(horizontal = Spacing.s1, vertical = 12.dp),
-                )
+        state.elsewhere?.takeIf { it.count > 0 && !it.city.isNullOrBlank() }?.let { other -> ElsewhereRow(other, onShowElsewhere) }
+        GhostButton(title = "Invite a friend", onClick = onInvite)
+        Spacer(modifier = Modifier.height(Spacing.s2))
+    }
+}
+
+/**
+ * F4's other kinds, as stacked buttons: one row of up to four as always, or (with the newer kinds of Plans step 4,
+ * board Main) rows of four.
+ */
+@Composable
+private fun OtherKinds(
+    kinds: List<PlanKind>,
+    onHost: (PlanKind) -> Unit,
+) {
+    val rows = if (kinds.size <= KINDS_PER_ROW) listOf(kinds) else kinds.chunked(KINDS_PER_ROW)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        rows.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                row.forEach { kind ->
+                    val noun = kind.noun
+                    PlanStackButton(
+                        title = kind.label,
+                        onClick = { onHost(kind) },
+                        modifier = Modifier.weight(1f).testTag("planKind.${kind.wire}"),
+                        leading = { PlanSwatch(kind) },
+                        spoken = "Host ${if (noun.first() in "aeiou") "an" else "a"} $noun",
+                    )
+                }
+                // A short last row keeps the grid's columns.
+                if (rows.size > 1) repeat(KINDS_PER_ROW - row.size) { Spacer(modifier = Modifier.weight(1f)) }
             }
         }
-        GhostButton(title = "Invite a neighbor", onClick = onInvite)
-        Spacer(modifier = Modifier.height(Spacing.s2))
+    }
+}
+
+private const val KINDS_PER_ROW = 4
+
+/** "3 plans in Vancouver, 8 mi away" with "Show" (board F4): the closest town with plans, when nothing is near. */
+@Composable
+private fun ElsewhereRow(
+    other: PlansElsewhereDto,
+    onShow: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        PantopusIconImage(
+            icon = PantopusIcon.MapPin,
+            contentDescription = null,
+            size = 16.dp,
+            tint = PantopusColors.appTextSecondary,
+        )
+        Text(
+            text =
+                "${other.count} plan${if (other.count == 1) "" else "s"} in ${other.city}" +
+                    (other.miles?.let { ", $it mi away" } ?: ""),
+            style = PantopusTextStyle.small,
+            color = PantopusColors.appText,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "Show",
+            style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.primary700,
+            modifier =
+                Modifier
+                    .heightIn(min = 44.dp)
+                    .clickable(role = Role.Button, onClick = onShow)
+                    .padding(horizontal = Spacing.s1, vertical = 12.dp),
+        )
+    }
+}
+
+/**
+ * "Plan with people you know" (board Main, Plans step 1): opens the host flow with Who can see this already on "Only
+ * people I invite".
+ */
+@Composable
+private fun PrivatePlanStart(onClick: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(PantopusColors.appSurfaceSunken)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(14.dp)
+                .semantics(mergeDescendants = true) { role = Role.Button }
+                .testTag("plansPrivateStart"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PantopusColors.appSurface)
+                    .border(1.dp, PantopusColors.appBorderStrong, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = 20.dp, tint = PantopusColors.appTextStrong)
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Plan with people you know",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.appText,
+            )
+            Text(
+                text = "Private: only the people you invite see it",
+                style = PantopusTextStyle.small,
+                color = PantopusColors.appTextSecondary,
+            )
+        }
+        PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
     }
 }
 
@@ -993,7 +1186,7 @@ internal fun PlansNoLocationContent(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(text = "See plans near you", style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
             Text(
-                text = "Pantopus uses your location to show what neighbors are planning close by.",
+                text = "Pantopus uses your location to show what people are planning close by.",
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )
@@ -1143,7 +1336,10 @@ private fun RegularsRow(
     }
 }
 
-/** Posted (board H8): the plan is on the map, with a way to invite friends. */
+/**
+ * Posted (board H8): the plan is on the map, with a way to invite friends. A private plan (Plans step 1) is on no one
+ * else's map: it says who can see it, and offers Invite with no link to share.
+ */
 @Composable
 internal fun PlanPostedContent(
     plan: PlanDto,
@@ -1151,6 +1347,8 @@ internal fun PlanPostedContent(
     onSeePlan: () -> Unit,
     onDone: () -> Unit,
     onInvite: (() -> Unit)? = null,
+    /** What went wrong with the invitations sent as it was posted (Plans step 1). */
+    note: String? = null,
 ) {
     val scroll = rememberScrollState()
     Column(
@@ -1159,57 +1357,88 @@ internal fun PlanPostedContent(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = "Your plan is on the map",
+                text =
+                    when {
+                        plan.isPrivate -> "Your private plan is posted"
+                        // An online plan has no pin (Plans step 3): it is in the list for people nearby (iPhone's words).
+                        plan.isOnline -> "Your plan is posted"
+                        else -> "Your plan is on the map"
+                    },
                 style = planH2,
                 color = PantopusColors.appText,
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                text = "Neighbors near you can see it now. We'll tell you when someone asks to join.",
+                text =
+                    when {
+                        plan.isPrivate -> "Only the people you invite can see it. We'll tell you when they answer."
+                        plan.isOnline -> "People nearby can see it in the list now. We'll tell you when someone asks to join."
+                        else -> "People nearby can see it now. We'll tell you when someone asks to join."
+                    },
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )
-        }
-        Column(
-            modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-                PlanIconTile(
-                    icon = if (onInvite != null) PantopusIcon.UserPlus else PantopusIcon.Link,
-                    background = PantopusColors.primary100,
-                    tint = PantopusColors.primary700,
+            note?.let {
+                Text(
+                    text = it,
+                    style = PantopusTextStyle.small,
+                    color = PantopusColors.warning,
+                    modifier = Modifier.testTag("planPostedInviteNote"),
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Invite friends",
-                        style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
-                        color = PantopusColors.appText,
-                    )
-                    Text(
-                        text =
-                            when {
-                                // People invited are in when they say yes (planInvites.js), as on iOS.
-                                onInvite != null && plan.isAtHome ->
-                                    "People you invite are in when they say yes, and see your address then."
-                                onInvite != null -> "People you invite are in as soon as they say yes."
-                                plan.isAtHome -> "They see the plan's card, never your address."
-                                else -> "They see the plan's card and its area."
-                            },
-                        style = PantopusTextStyle.small,
-                        color = PantopusColors.appTextSecondary,
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (onInvite != null) {
-                    GhostButton(title = "Invite", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planPostedInvite"))
-                }
-                GhostButton(title = "Share link", onClick = onShare, modifier = Modifier.weight(1f))
             }
         }
+        PostedInviteCard(plan, onShare, onInvite)
         PrimaryButton(title = "See your plan", onClick = onSeePlan, modifier = Modifier.height(50.dp))
         PlanTextButton(title = "Done", onClick = onDone)
         Spacer(modifier = Modifier.height(Spacing.s2))
+    }
+}
+
+/** H8's "Invite friends": Invite, and for a plan anyone nearby can see, its link to share. */
+@Composable
+private fun PostedInviteCard(
+    plan: PlanDto,
+    onShare: () -> Unit,
+    onInvite: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+            PlanIconTile(
+                icon = if (onInvite != null) PantopusIcon.UserPlus else PantopusIcon.Link,
+                background = PantopusColors.primary100,
+                tint = PantopusColors.primary700,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Invite friends",
+                    style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.appText,
+                )
+                Text(
+                    text =
+                        when {
+                            // People invited are in when they say yes (planInvites.js), as on iOS.
+                            onInvite != null && plan.isAtHome ->
+                                "People you invite are in when they say yes, and see your address then."
+                            onInvite != null -> "People you invite are in as soon as they say yes."
+                            plan.isAtHome -> "They see the plan's card, never your address."
+                            plan.isOnline -> "They see the plan's card. The link shows only to people who are in."
+                            else -> "They see the plan's card and its area."
+                        },
+                    style = PantopusTextStyle.small,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (onInvite != null) {
+                GhostButton(title = "Invite", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planPostedInvite"))
+            }
+            // A private plan is never shared by link: each invitation is for one person (Plans step 1).
+            if (!plan.isPrivate) GhostButton(title = "Share link", onClick = onShare, modifier = Modifier.weight(1f))
+        }
     }
 }

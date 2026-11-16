@@ -11,6 +11,10 @@ const KIND_TOKEN: Record<PlanKind, string> = {
   pickup_game: 'pickup',
   walk_coffee: 'walk',
   study_group: 'study',
+  food_drinks: 'food',
+  game_night: 'game',
+  outdoors: 'outdoors',
+  something_else: 'else',
 };
 
 /** A plan kind's colors as CSS variables, light and dark: `--plan-c` (ink) and `--plan-cs` (tint). */
@@ -73,6 +77,33 @@ export function KindGlyph({ kind, className }: { kind: string; className?: strin
           <path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z" />
         </Icon>
       );
+    // The four newer kinds, as boards Type and Main draw them: a fork and knife, a die, a mountain, a plus.
+    case 'food_drinks':
+      return (
+        <Icon className={className}>
+          <path d="M6 3v6a2.5 2.5 0 0 0 5 0V3M8.5 3v18" />
+          <path d="M17 21V3c-2 1.5-3 4-3 7v3h3" />
+        </Icon>
+      );
+    case 'game_night':
+      return (
+        <Icon className={className}>
+          <rect x="4" y="4" width="16" height="16" rx="3.5" />
+          <path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01" />
+        </Icon>
+      );
+    case 'outdoors':
+      return (
+        <Icon className={className}>
+          <path d="M3 19l6-10 4 6 2.5-3.5L21 19z" />
+        </Icon>
+      );
+    case 'something_else':
+      return (
+        <Icon className={className}>
+          <path d="M12 5v14M5 12h14" />
+        </Icon>
+      );
     default:
       return (
         <Icon className={className}>
@@ -81,4 +112,14 @@ export function KindGlyph({ kind, className }: { kind: string; className?: strin
         </Icon>
       );
   }
+}
+
+/** An online plan's glyph (board Online): a video camera. */
+export function OnlineGlyph({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <rect x="3" y="6.5" width="12.5" height="11" rx="2.5" />
+      <path d="M15.5 10.5L21 7.5v9l-5.5-3" />
+    </Icon>
+  );
 }

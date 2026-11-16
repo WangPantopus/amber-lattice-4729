@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageCircle, Star, CalendarDays, Search, Megaphone,
@@ -14,12 +15,19 @@ import * as api from '@pantopus/api';
 import CommentThread from './CommentThread';
 import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
-import { PostMediaPreview, resolvePostMediaSlots } from './PostMediaGrid';
+import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from './PostMediaGrid';
 import PostMediaLightbox from './PostMediaLightbox';
 import { PostLinkContent } from './LinkPreviewCard';
 import LinkPreviewCard from './LinkPreviewCard';
 import PostMetadata from './PostMetadata';
 import { canSharePost, sharePostLink } from './sharePostLink';
+import RepostChooser from './RepostChooser';
+import QuotedPostCard from './QuotedPostCard';
+import { readQuotedPost, useRepostToggle } from './repost';
+import {
+  FEED_TOAST_ACTION_MS, FEED_TOAST_ACTION_TEST_ID, SAVED_POSTS_PATH, SAVED_TOAST, UNSAVED_TOAST, type FeedToastAction,
+} from './feedToasts';
+import { openQuoteComposer } from '@/lib/feedComposerEvents';
 import { formatTimeAgo as timeAgo, getPostTypeConfig, POST_TYPE_ICONS_LUCIDE, postReaction } from '@pantopus/ui-utils';
 import { PostReactionBar, reactedPostPatch, reactionFieldsOf, serverReactionPatch } from './PostReactions';
 import { chosenUsername } from '@pantopus/utils';
@@ -61,6 +69,7 @@ export default function PostDetailPanel({
   commentDisabledMessage = null,
 }: PostDetailPanelProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
   // The post and its comments come from the shared cache (hooks/usePostDetail):
@@ -71,25 +80,33 @@ export default function PostDetailPanel({
   const { setPost, setComments, postQuery, commentsQuery, unavailable } = detail;
   const loading = open && postQuery.isFetching;
   const [commentPosting, setCommentPosting] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ message: string; action?: FeedToastAction } | null>(null);
+  const [repostChooserOpen, setRepostChooserOpen] = useState(false);
+  const repostButtonRef = useRef<HTMLButtonElement>(null);
   /** Index into `post.media_urls` when viewing full-screen image; `null` = closed */
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
+  const media = useShownMedia(post);
   const panelRef = useRef<HTMLDivElement>(null);
   const targetVersion = useRef(0);
 
   useEffect(() => {
     targetVersion.current += 1;
     setCommentPosting(false);
-    setToast('');
+    setToast(null);
+    setRepostChooserOpen(false);
     return () => { targetVersion.current += 1; };
   }, [postId, currentUserId, open]);
 
-  const showToast = (message: string) => {
+  // A message with a button ("View") stays longer, so there's time to reach it.
+  const toastShown = useRef(0);
+  const showToast = (message: string, action?: FeedToastAction) => {
     const target = targetVersion.current;
-    setToast(message);
+    const shown = ++toastShown.current;
+    setToast({ message, action });
     window.setTimeout(() => {
-      if (target === targetVersion.current) setToast('');
-    }, 2500);
+      if (target === targetVersion.current && shown === toastShown.current) setToast(null);
+    }, action ? FEED_TOAST_ACTION_MS : 2500);
   };
 
   const refreshCommentState = async () => {
@@ -261,7 +278,11 @@ export default function PostDetailPanel({
     onSuccess: (res, { postId }, context) => {
       patchPostInFeedCaches(queryClient, postId, { userHasSaved: res.saved });
       onPostChange?.(postId, { userHasSaved: res.saved });
-      if (context?.target === targetVersion.current) showToast(res.saved ? 'Post saved' : 'Removed from saved');
+      // Say where it went: "View" opens My posts on its Saved tab.
+      if (context?.target === targetVersion.current) {
+        if (res.saved) showToast(SAVED_TOAST, { label: 'View', onClick: () => { onClose(); router.push(SAVED_POSTS_PATH); } });
+        else showToast(UNSAVED_TOAST);
+      }
     },
     onError: (err, { postId }, context) => {
       if (context) patchPostInFeedCaches(queryClient, postId, { userHasSaved: context.prevSaved });
@@ -282,22 +303,20 @@ export default function PostDetailPanel({
     });
   };
 
-  const handleRepost = async () => {
+  // Repost or Undo repost from the chooser: shown at once here, on the cards and in the feed, put back if refused.
+  const repostTarget = useRef(0);
+  const { toggleRepost, repostingIds } = useRepostToggle({
+    findPost: (id) => (post?.id === id ? post : undefined),
+    applyPatch: (id, patch) => {
+      patchPostInFeedCaches(queryClient, id, patch);
+      onPostChange?.(id, patch);
+    },
+    showToast: (message) => { if (repostTarget.current === targetVersion.current) showToast(message); },
+  });
+  const handleRepost = (reposted: boolean) => {
     if (!post) return;
-    const target = targetVersion.current;
-    try {
-      const res = await api.posts.repostPost(post.id, !post.userHasReposted);
-      const patch = {
-        userHasReposted: res.reposted,
-        share_count: res.shareCount,
-      };
-      patchPostInFeedCaches(queryClient, post.id, patch);
-      onPostChange?.(post.id, patch);
-      if (target === targetVersion.current) showToast(res.reposted ? 'Post reposted' : 'Repost removed');
-    } catch (err) {
-      console.warn('Failed to repost post', err);
-      if (target === targetVersion.current) showToast('Failed to update repost');
-    }
+    repostTarget.current = targetVersion.current;
+    void toggleRepost(post.id, reposted);
   };
 
   const handleShare = async () => {
@@ -324,6 +343,7 @@ export default function PostDetailPanel({
 
   const config = getPostTypeConfig(post?.post_type || 'general');
   const isEvent = postReaction(post?.post_type) === 'going';
+  const quoted = readQuotedPost(post?.quoted_post);
   // P0.4 audit follow-up: prefer post.author (typed identity) over the
   // legacy post.creator slot. Both are populated today; new code reads
   // the new shape so the legacy slot can retire.
@@ -502,9 +522,9 @@ export default function PostDetailPanel({
 
               {post.content && <LinkPreviewCard content={post.content} />}
 
-              {post.media_urls && post.media_urls.length > 0 && (
+              {media.shown.length > 0 && (
                 <div className="space-y-2 px-5 pb-4">
-                  {post.media_urls.map((url, idx) => (
+                  {media.shown.map((idx, pos) => (
                     <div
                       key={idx}
                       role="button"
@@ -517,15 +537,23 @@ export default function PostDetailPanel({
                       }}
                       onClick={() => setLightboxIndex(idx)}
                       className={`relative ${(post.media_types?.[idx] ?? "image") !== "image" ? "h-80" : ""} block w-full cursor-zoom-in overflow-hidden rounded-xl border-0 bg-transparent p-0 text-left transition hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500`}
-                      aria-label={`View attachment ${idx + 1} full size`}
+                      aria-label={`View attachment ${pos + 1} full size`}
                     >
-                      <PostMediaPreview url={url} thumbnailUrl={post.media_thumbnails?.[idx]}
-                        slot={resolvePostMediaSlots(post.media_urls!, post.media_types, post.media_live_urls)[idx]}
-                        imageClassName="max-h-80 w-full rounded-xl object-cover" onPress={() => setLightboxIndex(idx)} />
+                      <PostMediaPreview url={post.media_urls[idx]} thumbnailUrl={post.media_thumbnails?.[idx]}
+                        slot={resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx]}
+                        imageClassName="max-h-80 w-full rounded-xl object-cover" onPress={() => setLightboxIndex(idx)}
+                        onUnavailable={media.onUnavailable} />
 
                     </div>
 
                   ))}
+                </div>
+              )}
+
+              {/* The post it quotes: opens the original's own page */}
+              {quoted && (
+                <div className="px-5 pb-4">
+                  <QuotedPostCard state={quoted} testId={`pulseQuotedPost_${post.id}`} />
                 </div>
               )}
 
@@ -565,15 +593,37 @@ export default function PostDetailPanel({
                   <Bookmark className={`h-4 w-4 ${post.userHasSaved ? 'fill-current' : ''}`} />
                   <span>{post.userHasSaved ? 'Saved' : 'Save'}</span>
                 </button>
-                <button
-                  onClick={handleRepost}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition ${
-                    post.userHasReposted ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'text-app-muted hover-bg-app'
-                  }`}
-                >
-                  <Repeat2 className="h-4 w-4" />
-                  <span>{post.userHasReposted ? 'Reposted' : 'Repost'}</span>
-                </button>
+                {/* Repost opens the chooser: Repost or Undo repost, Repost with your words */}
+                <div className="relative">
+                  <button
+                    ref={repostButtonRef}
+                    type="button"
+                    onClick={() => setRepostChooserOpen((shown) => !shown)}
+                    disabled={repostingIds.has(post.id)}
+                    aria-busy={repostingIds.has(post.id) || undefined}
+                    aria-haspopup="menu"
+                    aria-expanded={repostChooserOpen}
+                    className={`flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      repostingIds.has(post.id) ? 'opacity-60 ' : ''
+                    }${
+                      post.userHasReposted ? 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300' : 'text-app-muted hover-bg-app'
+                    }`}
+                  >
+                    <Repeat2 className="h-4 w-4" aria-hidden="true" />
+                    <span>{post.userHasReposted ? 'Reposted' : 'Repost'}</span>
+                  </button>
+                  {repostChooserOpen && (
+                    <RepostChooser
+                      reposted={Boolean(post.userHasReposted)}
+                      onRepost={() => handleRepost(!post.userHasReposted)}
+                      onQuote={() => openQuoteComposer(post)}
+                      onClose={() => setRepostChooserOpen(false)}
+                      triggerRef={repostButtonRef}
+                      // Over its own cell: the left column, or the right one when an event's Going leads the row.
+                      positionClassName={isEvent ? 'right-0 bottom-full mb-1' : 'left-0 bottom-full mb-1'}
+                    />
+                  )}
+                </div>
                 {canSharePost(post) && (
                   <button
                     type="button"
@@ -620,15 +670,32 @@ export default function PostDetailPanel({
         {/* The live region stays mounted so screen readers announce each message. */}
         <div role="status" aria-live="polite">
           {toast && (
-            <div className="pointer-events-none absolute bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-xl">
-              {toast}
+            <div className={`absolute bottom-5 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-xl ${
+              toast.action ? 'pointer-events-auto flex items-center gap-4' : 'pointer-events-none'
+            }`}>
+              <span>{toast.message}</span>
+              {toast.action && (
+                <button
+                  type="button"
+                  data-testid={FEED_TOAST_ACTION_TEST_ID}
+                  onClick={() => {
+                    const { action } = toast;
+                    setToast(null);
+                    action?.onClick();
+                  }}
+                  className="flex-shrink-0 rounded-lg px-2 py-0.5 -my-0.5 text-sm font-semibold text-sky-300 hover:text-sky-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition"
+                >
+                  {toast.action.label}
+                </button>
+              )}
             </div>
           )}
         </div>
       </aside>
 
       {post?.media_urls && <PostMediaLightbox urls={post.media_urls} mediaTypes={post.media_types}
-        liveUrls={post.media_live_urls} index={lightboxIndex} onIndexChange={setLightboxIndex} onClose={() => setLightboxIndex(null)} />}
+        liveUrls={post.media_live_urls} index={lightboxIndex} onIndexChange={setLightboxIndex} onClose={() => setLightboxIndex(null)}
+        shown={media.shown} />}
 
     </>,
     document.body

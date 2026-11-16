@@ -45,11 +45,16 @@ async function planPins(user, box, query = {}) {
   const gps = gpsLat != null && gpsLng != null && query.gps_timestamp
     ? { latitude: gpsLat, longitude: gpsLng, timestamp: String(query.gps_timestamp) }
     : null;
-  // `biz=1`: this app can draw a business's pin (Plans with businesses); see routes/plans.js.
-  const viewer = await loadViewer({ ...user, plansBiz: query.biz === '1' }, { point, gps });
+  // `biz=1`: this app can draw a business's pin (Plans with businesses); `more=1`: the newer kinds' pins. See
+  // routes/plans.js.
+  const viewer = await loadViewer({ ...user, plansBiz: query.biz === '1', plansMore: query.more === '1' }, { point, gps });
 
-  const asked = String(query.kinds || '').split(',').map((k) => k.trim()).filter((k) => rules.KINDS.includes(k));
-  let kinds = asked.length ? asked : rules.KINDS;
+  const known = viewer.more ? rules.ALL_KINDS : rules.KINDS;
+  const askedAny = String(query.kinds || '').split(',').map((k) => k.trim()).filter(Boolean);
+  const asked = askedAny.filter((k) => known.includes(k));
+  // Only kinds this app can't draw: no pins, not every pin.
+  if (askedAny.length > 0 && asked.length === 0 && askedAny.every((k) => rules.ALL_KINDS.includes(k))) return [];
+  let kinds = asked.length ? asked : known;
   if (!viewer.seesPlaydates) kinds = kinds.filter((k) => k !== 'playdate');
   // Only kinds this viewer can't see (kinds=playdate with plans_playdates off): no pins, not every pin.
   if (kinds.length === 0) return [];
@@ -57,14 +62,20 @@ async function planPins(user, box, query = {}) {
 
   // A little wider than the box: a plan the viewer is in shows at its exact place.
   const pad = 0.02;
-  const rows = await planService.queryOpenPlansInBox({
-    south: box.south - pad, north: box.north + pad, west: box.west - pad, east: box.east + pad,
-  }, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz });
+  const [publicRows, ownPrivate] = await Promise.all([
+    // Never an online plan: it has no place to pin, whoever is looking.
+    planService.queryOpenPlansInBox({
+      south: box.south - pad, north: box.north + pad, west: box.west - pad, east: box.east + pad,
+    }, { kinds, scopeAccess: viewer.scopeAccess, biz: viewer.biz, more: viewer.more, online: false }),
+    // The viewer's own private plans (host, invited, in or waiting): pins for them alone.
+    planService.ownPrivatePlans(viewer, { kinds, online: false }),
+  ]);
+  const rows = [...publicRows.filter((plan) => planService.isVisibleTo(plan, viewer)), ...ownPrivate]
+    .filter((plan) => !rules.isOnline(plan));
   // One pin for a venue: a business's later plans there fold under its soonest (the list does the same), and
   // the list's filter (host=all|neighbors|businesses) filters the pins too.
   const wanted = viewer.biz ? planService.hostFilter(query.host) : 'all';
   const folded = planService.foldVenues(rows
-    .filter((plan) => planService.isVisibleTo(plan, viewer))
     .filter((plan) => planService.windowMatches(plan, window))
     .filter((plan) => planService.hostedBy(plan, wanted))
     .sort(planService.soonestFirst));
@@ -77,7 +88,8 @@ async function planPins(user, box, query = {}) {
     const card = planService.buildCard(plan, viewer, ctx);
     const isIn = card.viewer.role === 'host' || card.viewer.role === 'guest';
     // A business's plan is at the business's own address, which is public: its pin is exact for everyone.
-    const exact = isIn || Boolean(card.business);
+    // So is a private plan's, for the person invited to it at a public place (their card names the place).
+    const exact = isIn || Boolean(card.business) || (card.audience === 'invited' && Boolean(card.place));
     const shown = exact ? planService.exactPoint(plan) : planService.areaPoint(plan);
     if (!inBox(shown, box)) continue;
     pins.push({
@@ -102,6 +114,7 @@ async function planPins(user, box, query = {}) {
       state: card.state,
       viewer_role: card.viewer.role,
       viewer_request_status: card.viewer.request_status,
+      audience: card.audience,
       // Only on a business's pin: who hosts, what they call it, and how many more times this week.
       ...(card.business ? {
         business: { user_id: card.business.user_id, name: card.business.name, verified: card.business.verified },

@@ -15,6 +15,7 @@ import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.identity.ProfileChanges
 import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.feed.FeedPost
+import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.feed.FeedResponse
 import app.pantopus.android.data.api.models.location.ViewingLocationDto
 import app.pantopus.android.data.api.models.posts.PostReactionEmoji
@@ -96,6 +97,13 @@ private data class PulsePostOverride(
     val likeCount: Int? = null,
     /** An emoji post's counts and the viewer's emoji after their pick. */
     val reactions: PostReactionSummary? = null,
+    /** The "reposted" line after the viewer's repost or undo here (contract §1); null keeps the row's own. */
+    val repostLine: RepostLine? = null,
+)
+
+/** A "reposted" line set here; its [value] may be null (the viewer's undo left no names). */
+private data class RepostLine(
+    val value: FeedRepostedBy?,
 )
 
 /** Pulse feed view-model. */
@@ -253,9 +261,18 @@ class PulseFeedViewModel
         private val _toastMessage = MutableStateFlow<String?>(null)
         val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
+        /** The toast's button ("View" after a save, "Undo" after a hide), shown while the toast says its words. */
+        private val _toastAction = MutableStateFlow<PulseToastActionFor?>(null)
+        val toastAction: StateFlow<PulseToastActionFor?> = _toastAction.asStateFlow()
+        private var toastSerial = 0L
+
         /** The post whose overflow sheet is open, if any. */
         private val _overflowPostId = MutableStateFlow<String?>(null)
         val overflowPostId: StateFlow<String?> = _overflowPostId.asStateFlow()
+
+        /** The post whose Repost chooser is open (contract §2), if any. */
+        private val _repostChooserPostId = MutableStateFlow<String?>(null)
+        val repostChooserPostId: StateFlow<String?> = _repostChooserPostId.asStateFlow()
 
         /** The post awaiting a report-reason pick, if any. */
         private val _reportingPostId = MutableStateFlow<String?>(null)
@@ -549,6 +566,16 @@ class PulseFeedViewModel
 
         fun dismissToast() {
             _toastMessage.value = null
+            _toastAction.value = null
+        }
+
+        /** A toast with a button; the next toast (which sets only its words) leaves the button behind. */
+        private fun showToast(
+            message: String,
+            action: PulseToastAction,
+        ) {
+            _toastAction.value = PulseToastActionFor(message, action, ++toastSerial)
+            _toastMessage.value = message
         }
 
         fun openOverflow(postId: String) {
@@ -557,6 +584,25 @@ class PulseFeedViewModel
 
         fun dismissOverflow() {
             _overflowPostId.value = null
+        }
+
+        /** ↻ on a card, or Repost in its menu: the chooser opens instead of reposting at once (contract §2). */
+        fun openRepostChooser(postId: String) {
+            _overflowPostId.value = null
+            _repostChooserPostId.value = postId
+        }
+
+        fun dismissRepostChooser() {
+            _repostChooserPostId.value = null
+        }
+
+        /**
+         * "Repost with your words": the chooser closes and the post's card is copied for the composer's quoted card
+         * (the composer reads it fresh too). The screen then opens the composer.
+         */
+        fun prepareQuote(postId: String) {
+            _repostChooserPostId.value = null
+            seedPostForOpen(postId)
         }
 
         fun beginReport(postId: String) {
@@ -778,8 +824,8 @@ class PulseFeedViewModel
         }
 
         /**
-         * `POST /api/posts/:id/save` — optimistic bookmark toggle with
-         * rollback (RN `useFeedData.ts:126`).
+         * `POST /api/posts/:id/save` — optimistic save toggle with rollback (RN `useFeedData.ts:126`). "Saved." comes
+         * with "View", which opens My posts on the Saved tab (contract §5).
          */
         fun toggleSave(postId: String) {
             val post = loadedPosts.firstOrNull { it.id == postId } ?: return
@@ -793,11 +839,15 @@ class PulseFeedViewModel
                     when (val result = repo.toggleSave(postId, saved = !original)) {
                         is NetworkResult.Success -> {
                             putOverride(postId) { it.copy(isSaved = result.data.saved) }
-                            _toastMessage.value = if (result.data.saved) "Saved to your bookmarks." else "Removed from bookmarks."
+                            if (result.data.saved) {
+                                showToast(PulsePostCopy.SAVED, PulseToastAction.ViewSaved)
+                            } else {
+                                _toastMessage.value = PulsePostCopy.UNSAVED
+                            }
                         }
                         is NetworkResult.Failure -> {
                             putOverride(postId) { it.copy(isSaved = original) }
-                            _toastMessage.value = "Couldn't update your bookmark."
+                            _toastMessage.value = PulsePostCopy.SAVE_FAILED
                         }
                     }
                 } finally {
@@ -809,20 +859,23 @@ class PulseFeedViewModel
         }
 
         /**
-         * `POST /api/posts/:id/share` with `shareType: "repost"` —
-         * optimistic toggle + count, rolled back on failure
-         * (RN `useFeedData.ts:140`).
+         * "Repost" / "Undo repost" in the chooser: `POST /api/posts/:id/share` with `shareType: "repost"` — optimistic
+         * toggle, count and "reposted" line ("You reposted" at once, contract §1), rolled back on failure (RN
+         * `useFeedData.ts:140`). The card stays where it is; the next read lists it at the top.
          */
         fun toggleRepost(postId: String) {
+            _repostChooserPostId.value = null
             val post = loadedPosts.firstOrNull { it.id == postId } ?: return
             if (!reposting.add(postId)) return
             actionRevision++
             val original = effectiveIsReposted(post)
             val originalCount = effectiveShareCount(post)
+            val originalLine = effectiveRepostedBy(post)
             putOverride(postId) {
                 it.copy(
                     isReposted = !original,
                     shareCount = (originalCount + if (original) -1 else 1).coerceAtLeast(0),
+                    repostLine = RepostLine(originalLine.afterViewerRepost(!original)),
                 )
             }
             rebuildLoadedState()
@@ -832,14 +885,19 @@ class PulseFeedViewModel
                         is NetworkResult.Success -> {
                             val reposted = result.data.reposted ?: !original
                             putOverride(postId) {
-                                it.copy(isReposted = reposted, shareCount = result.data.shareCount ?: originalCount)
+                                it.copy(
+                                    isReposted = reposted,
+                                    shareCount = result.data.shareCount ?: originalCount,
+                                    repostLine = RepostLine(originalLine.afterViewerRepost(reposted)),
+                                )
                             }
-                            _toastMessage.value =
-                                if (reposted) "Reposted to your network." else "Repost removed."
+                            _toastMessage.value = if (reposted) PulsePostCopy.REPOSTED else PulsePostCopy.REPOST_REMOVED
                         }
                         is NetworkResult.Failure -> {
-                            putOverride(postId) { it.copy(isReposted = original, shareCount = originalCount) }
-                            _toastMessage.value = "Could not update repost."
+                            putOverride(postId) {
+                                it.copy(isReposted = original, shareCount = originalCount, repostLine = RepostLine(originalLine))
+                            }
+                            _toastMessage.value = PulsePostCopy.REPOST_FAILED
                         }
                     }
                 } finally {
@@ -860,7 +918,15 @@ class PulseFeedViewModel
                 if (post.id in liking || post.id in saving || post.id in reposting) return@forEach
                 if (post.id !in overrides) return@forEach
                 putOverride(post.id) {
-                    it.copy(hasReacted = null, likeCount = null, reactions = null, isSaved = null, isReposted = null, shareCount = null)
+                    it.copy(
+                        hasReacted = null,
+                        likeCount = null,
+                        reactions = null,
+                        isSaved = null,
+                        isReposted = null,
+                        shareCount = null,
+                        repostLine = null,
+                    )
                 }
             }
         }
@@ -910,35 +976,106 @@ class PulseFeedViewModel
 
         /**
          * `POST /api/posts/hide/:id` — drops the row immediately, restores
-         * it if the call fails.
+         * it if the call fails. "Post hidden." comes with "Undo" (contract §6).
          */
         fun hidePost(postId: String) {
+            rememberHiddenRow(postId)
             // The hide is recorded app-wide (RN's `addHiddenPost`), so the
             // post stays gone on every other surface too.
             moderation.addHiddenPost(postId)
             rebuildLoadedState()
             viewModelScope.launch {
                 when (feedActions.hidePost(postId)) {
-                    is NetworkResult.Success -> _toastMessage.value = "Post hidden from your feed."
+                    is NetworkResult.Success -> showToast(PulsePostCopy.HIDDEN, PulseToastAction.UndoHide(postId))
                     is NetworkResult.Failure -> {
+                        hiddenRows.remove(postId)
                         moderation.removeHiddenPost(postId)
-                        _toastMessage.value = "Couldn't hide that post."
+                        _toastMessage.value = PulsePostCopy.HIDE_FAILED
                         rebuildLoadedState()
                     }
                 }
             }
         }
 
+        private val unhiding = mutableSetOf<String>()
+
+        /** A row hidden here and where it stood (the row above it), so Undo puts it back in its place. */
+        private data class HiddenRow(
+            val post: FeedPost,
+            val previousId: String?,
+            val index: Int,
+            val query: FeedQuery?,
+        )
+
+        private val hiddenRows = mutableMapOf<String, HiddenRow>()
+
+        private fun rememberHiddenRow(postId: String) {
+            val index = loadedPosts.indexOfFirst { it.id == postId }
+            if (index < 0) return
+            hiddenRows[postId] = HiddenRow(loadedPosts[index], loadedPosts.getOrNull(index - 1)?.id, index, lastQuery)
+        }
+
         /**
-         * `POST /api/posts/:id/not-helpful` — ranking signal only; the row
-         * stays put (RN `useFeedData.ts:187`).
+         * Undo's row back where it was: a read since the hide (the hide marks the feed changed) may have dropped it or
+         * listed it lower. Only into the list it was hidden from; on another query the next read decides.
+         */
+        private fun restoreHiddenRow(postId: String) {
+            val row = hiddenRows.remove(postId) ?: return
+            if (row.query != lastQuery) return
+            val current = loadedPosts.firstOrNull { it.id == postId } ?: row.post
+            val others = loadedPosts.filterNot { it.id == postId }
+            val anchor = row.previousId?.let { id -> others.indexOfFirst { it.id == id } } ?: -1
+            val at =
+                when {
+                    row.previousId == null -> 0
+                    anchor >= 0 -> anchor + 1
+                    else -> row.index.coerceAtMost(others.size)
+                }
+            loadedPosts = others.toMutableList().apply { add(at, current) }
+        }
+
+        /**
+         * "Undo" on a hide (or on "Not helpful here"'s hide): `DELETE /api/posts/hide/:id`. The post leaves the app's
+         * hidden list and its card comes back where it was at once; a failed call (an older server's 404 too) hides it
+         * again and says so. The not-helpful flag itself stays.
+         */
+        fun undoHide(postId: String) {
+            if (!unhiding.add(postId)) return
+            dismissToast()
+            restoreHiddenRow(postId)
+            moderation.removeHiddenPost(postId)
+            rebuildLoadedState()
+            viewModelScope.launch {
+                try {
+                    if (feedActions.unhidePost(postId) is NetworkResult.Failure) {
+                        moderation.addHiddenPost(postId)
+                        _toastMessage.value = PulsePostCopy.UNDO_FAILED
+                        rebuildLoadedState()
+                    }
+                } finally {
+                    unhiding.remove(postId)
+                }
+            }
+        }
+
+        /**
+         * `POST /api/posts/:id/not-helpful` (contract §7). A newer server also hides the post for the person
+         * (`hidden: true`): the card leaves as a hide's does, with "Undo". An older server only counts the flag: the
+         * card stays.
          */
         fun markNotHelpful(postId: String) {
             viewModelScope.launch {
-                when (feedActions.markNotHelpful(postId, _surface.value.moderationSurface)) {
+                when (val result = feedActions.markNotHelpful(postId, _surface.value.moderationSurface)) {
                     is NetworkResult.Success ->
-                        _toastMessage.value = "Thanks! We'll show fewer posts like this."
-                    is NetworkResult.Failure -> _toastMessage.value = "Couldn't send that feedback."
+                        if (result.data.hidden) {
+                            rememberHiddenRow(postId)
+                            moderation.addHiddenPost(postId)
+                            rebuildLoadedState()
+                            showToast(PulsePostCopy.NOT_HELPFUL_HIDDEN, PulseToastAction.UndoHide(postId))
+                        } else {
+                            _toastMessage.value = PulsePostCopy.NOT_HELPFUL_KEPT
+                        }
+                    is NetworkResult.Failure -> _toastMessage.value = PulsePostCopy.NOT_HELPFUL_FAILED
                 }
             }
         }
@@ -1356,9 +1493,15 @@ class PulseFeedViewModel
             }
         }
 
-        /** Copy only the card the reader tapped, synchronously and within the shared store's lifetime. */
+        /**
+         * Copy only the card the reader tapped, synchronously and within the shared store's lifetime: a row, or the post
+         * a row quotes (its quoted card opens that post).
+         */
         fun seedPostForOpen(postId: String) {
-            loadedPosts.firstOrNull { it.id == postId }?.let(repo::seedDetail)
+            val post =
+                loadedPosts.firstOrNull { it.id == postId }
+                    ?: loadedPosts.firstNotNullOfOrNull { row -> row.quotedPost?.post?.takeIf { it.id == postId } }
+            post?.let(repo::seedDetail)
         }
 
         /** A fresh read after Close may return an Ask restored elsewhere (web, another phone); an older read cannot undo Close. */
@@ -1611,6 +1754,11 @@ class PulseFeedViewModel
 
         private fun effectiveShareCount(post: FeedPost): Int = overrides[post.id]?.shareCount ?: post.shareCount
 
+        private fun effectiveRepostedBy(post: FeedPost): FeedRepostedBy? {
+            val line = overrides[post.id]?.repostLine
+            return if (line != null) line.value else post.repostedBy
+        }
+
         private fun effectiveIsSolved(post: FeedPost): Boolean = overrides[post.id]?.isSolved ?: (post.state == "solved")
 
         private fun effectiveHasReacted(post: FeedPost): Boolean = overrides[post.id]?.hasReacted ?: post.userHasLiked
@@ -1638,6 +1786,7 @@ class PulseFeedViewModel
                         keptOpen = post.id in keptOpenIds || !post.lifecycleMetadata?.keptOpenAt.isNullOrBlank(),
                         likePending = post.id in liking,
                         savePending = post.id in saving,
+                        repostedBy = effectiveRepostedBy(post),
                     ),
             )
 

@@ -73,7 +73,8 @@ export default function SentRow({
           ) : null}
           <span className="min-w-0 text-[13px] leading-[18px]">
             <span className="block break-words text-app-text-strong">{toLine}</span>
-            <span className="block text-app-text-secondary">{statusLine}</span>
+            {/* A card whose email didn't go out stands out in the list (its page says what to do). */}
+            <span className={`block ${piece.email_status ? 'font-medium text-app-error' : 'text-app-text-secondary'}`}>{statusLine}</span>
           </span>
         </span>
       </Link>

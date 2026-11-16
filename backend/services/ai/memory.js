@@ -340,8 +340,10 @@ async function draftMemory(args, ctx) {
   return cardResult(draft, args.note, sensitive ? 'Tap Remember to keep it private: Pantopus uses it only when you ask about it.' : 'Tap Remember to save it.');
 }
 
+// Alerts are for the first five kinds (plan_kinds below); the newer kinds' words are here so nothing reads "undefined".
 const ALERT_NOUNS = {
   watch_party: 'a watch party', pickup_game: 'a pickup game', walk_coffee: 'a walk and coffee', study_group: 'a study group', playdate: 'a playdate',
+  food_drinks: 'a food and drinks plan', game_night: 'a game night', outdoors: 'an outdoor plan', something_else: 'a plan',
 };
 
 function alertSentence(kinds, miles) {

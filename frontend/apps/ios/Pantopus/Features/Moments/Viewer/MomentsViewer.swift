@@ -26,6 +26,8 @@ struct MomentsViewer: View {
     @Bindable var session: MomentsWatchSession
     @FocusState var replyFocused: Bool
     @State var showsMenu = false
+    /// "Delete this Moment?", from the … menu on your own.
+    @State var confirmsDelete = false
     @State var showsReport = false
     @State var showsBlock = false
     /// Where the finger has moved the viewer, down or sideways (`MomentsViewerMotion.swift`): never read by this
@@ -208,7 +210,7 @@ struct MomentsViewer: View {
     /// Paused by a menu, a sheet or a dialog over the viewer, or on a table by its pause button. Beside the card and on a
     /// table, Seen by covers nothing: your Moment keeps playing next to the list (board O6).
     private var covered: Bool {
-        showsMenu || showsReport || showsBlock || session.profile != nil
+        showsMenu || showsReport || showsBlock || confirmsDelete || session.profile != nil
             || (session.showsSeenBy && !seenByBeside) || (session.paused && duo.pose == .table)
     }
 }

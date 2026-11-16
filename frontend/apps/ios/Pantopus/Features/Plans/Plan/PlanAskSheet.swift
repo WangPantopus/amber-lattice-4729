@@ -231,6 +231,8 @@ struct PlanAskSheet: View {
                 ? "\(hostFirst) sees your first name and how many are coming. Never your address."
                 : "\(hostFirst) sees your first name, how many are coming and your note. Never your address."
         }
+        // Nobody travels to an online plan: the server keeps no distance for it.
+        if card.isOnline { return "\(hostFirst) sees your first name and your verified badge. Never your address." }
         return card.kind == .playdate
             ? "\(hostFirst) sees your first name, your verified badge, about how far away you live and your kids' ages. Never their names."
             : "\(hostFirst) sees your first name, your verified badge and about how far away you live. Never your address."
@@ -280,11 +282,17 @@ struct PlanAskSheet: View {
     }
 }
 
-/// Board P2 stepper: 48 pt, a minus and a plus around the value.
+/// Board P2 stepper: 48 pt, a minus and a plus around the value. With `holdStep`, holding the plus steps by
+/// that many (Plans for the holidays, board 3: "Room for" up to 100 steps by 5).
 struct PlanStepper: View {
     @Binding var value: Int
     let range: ClosedRange<Int>
     let label: String
+    var holdStep: Int?
+
+    /// The plus is held down: after a moment it steps by `holdStep` until let go.
+    @State private var holding: Task<Void, Never>?
+    @State private var heldSteps = false
 
     var body: some View {
         HStack(spacing: Spacing.s1) {
@@ -294,7 +302,11 @@ struct PlanStepper: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appText)
                 .frame(minWidth: 36)
-            stepButton(.plus, "One more", enabled: value < range.upperBound) { value += 1 }
+            if let holdStep {
+                plusButton(holdStep: holdStep)
+            } else {
+                stepButton(.plus, "One more", enabled: value < range.upperBound) { value += 1 }
+            }
         }
         .padding(.horizontal, Spacing.s1)
         .frame(minHeight: 48)
@@ -309,6 +321,40 @@ struct PlanStepper: View {
             @unknown default: break
             }
         }
+        .accessibilityActions {
+            if let holdStep, value < range.upperBound {
+                Button("\(holdStep) more") { value = min(range.upperBound, value + holdStep) }
+            }
+        }
+    }
+
+    /// A tap adds one; holding adds `holdStep` at a time, to the next multiple of it (14, 15, 20, 25...).
+    private func plusButton(holdStep: Int) -> some View {
+        let enabled = value < range.upperBound
+        return Button {
+            if !heldSteps, value < range.upperBound { value += 1 }
+            heldSteps = false
+        } label: {
+            Icon(.plus, size: 16, color: Theme.Color.appText)
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.Color.appSurfaceSunken))
+        }
+        .buttonStyle(PlanPressReportingStyle { pressed in
+            holding?.cancel()
+            guard pressed else { return }
+            heldSteps = false
+            holding = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(450))
+                while !Task.isCancelled, value < range.upperBound {
+                    heldSteps = true
+                    value = min(range.upperBound, (value / holdStep + 1) * holdStep)
+                    try? await Task.sleep(for: .milliseconds(280))
+                }
+            }
+        })
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel("One more")
     }
 
     private func stepButton(_ icon: PantopusIcon, _ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -321,6 +367,16 @@ struct PlanStepper: View {
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
         .accessibilityLabel(label)
+    }
+}
+
+/// A plain button that says when it is pressed and let go (the stepper's hold).
+private struct PlanPressReportingStyle: ButtonStyle {
+    let onPress: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, pressed in onPress(pressed) }
     }
 }
 

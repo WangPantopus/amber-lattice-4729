@@ -11,6 +11,8 @@ import SwiftUI
 
 public struct PulsePostPurposePickerView: View {
     private let target: PulsePostingTarget
+    /// The screen's title: "New post", or "Repost with your words" while a quote picks its kind.
+    private let title: String
     private let onSelect: @MainActor (PulseComposePurpose) -> Void
     private let onBack: @MainActor () -> Void
 
@@ -21,8 +23,10 @@ public struct PulsePostPurposePickerView: View {
     public init(
         target: PulsePostingTarget,
         onSelect: @escaping @MainActor (PulseComposePurpose) -> Void,
-        onBack: @escaping @MainActor () -> Void
+        onBack: @escaping @MainActor () -> Void,
+        title: String = "New post"
     ) {
+        self.title = title
         self.target = target
         self.onSelect = onSelect
         self.onBack = onBack
@@ -30,7 +34,7 @@ public struct PulsePostPurposePickerView: View {
 
     public var body: some View {
         FormShell(
-            title: "New post",
+            title: title,
             leading: .back,
             rightActionLabel: nil,
             isValid: false,

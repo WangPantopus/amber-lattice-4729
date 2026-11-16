@@ -125,6 +125,7 @@ struct PlanPlaceSuggestions: View {
         case .pickupGame: "game"
         case .walkCoffee: "walk"
         case .studyGroup: "study group"
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: PlanKindsMore.noun(model.kind, details: model.details) ?? "plan"
         }
     }
 

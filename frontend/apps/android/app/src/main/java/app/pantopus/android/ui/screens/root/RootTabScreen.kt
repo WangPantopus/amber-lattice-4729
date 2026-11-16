@@ -361,6 +361,7 @@ import app.pantopus.android.ui.screens.moments.map.MomentsMapScreen
 import app.pantopus.android.ui.screens.moments.momentsRoutes
 import app.pantopus.android.ui.screens.my_bids.MyBidsScreen
 import app.pantopus.android.ui.screens.my_posts.MyPostsScreen
+import app.pantopus.android.ui.screens.my_posts.MyPostsTab
 import app.pantopus.android.ui.screens.my_tasks.MyTasksScreen
 import app.pantopus.android.ui.screens.nearby.NEIGHBORHOOD_INVITE_MESSAGE
 import app.pantopus.android.ui.screens.nearby.NearbyViewModel
@@ -1132,6 +1133,18 @@ private object ChildRoutes {
     /** My posts (T5.3.3). Reached from the You / Me Activity-section row. */
     const val MY_POSTS = "my-posts"
 
+    /**
+     * The same screen with the optional `tab` arg (the "Saved." toast's View opens Saved). The NavHost registers this
+     * pattern, so a plain [MY_POSTS] navigate still matches with `tab == null`.
+     */
+    const val MY_POSTS_ROUTE = "my-posts?tab={tab}"
+
+    /** Query-arg key for [MY_POSTS_ROUTE]. */
+    const val MY_POSTS_TAB_KEY = "tab"
+
+    /** Builder for My posts opened on one tab (`MyPostsTab.SAVED`, …). */
+    fun myPosts(tab: String): String = "my-posts?tab=${Uri.encode(tab)}"
+
     /** Discover hub (T5.4.1 / P11). Reached from the Hub Discovery rail's
      *  "See all" CTA or via `pantopus://discover-hub`. */
     const val DISCOVER_HUB = "discover-hub"
@@ -1547,10 +1560,16 @@ private object ChildRoutes {
 
     /** Today's sky, shared from under the sun card: the file's name in the share folder ([skyShareFile]). */
     const val COMPOSE_ATTACHMENT_KEY = "attachment"
+
+    /** "Repost with your words": the id of the post the new post quotes ([quotePost]; empty otherwise). */
+    const val COMPOSE_QUOTE_KEY = PulseComposeViewModel.QUOTED_POST_KEY
     const val COMPOSE_POST =
         "feed/compose?$COMPOSE_INTENT_KEY={$COMPOSE_INTENT_KEY}&$COMPOSE_BODY_KEY={$COMPOSE_BODY_KEY}" +
             "&$COMPOSE_TITLE_KEY={$COMPOSE_TITLE_KEY}&$COMPOSE_DRAFT_FIELDS_KEY={$COMPOSE_DRAFT_FIELDS_KEY}" +
-            "&$COMPOSE_ATTACHMENT_KEY={$COMPOSE_ATTACHMENT_KEY}"
+            "&$COMPOSE_ATTACHMENT_KEY={$COMPOSE_ATTACHMENT_KEY}&$COMPOSE_QUOTE_KEY={$COMPOSE_QUOTE_KEY}"
+
+    /** The composer opened by "Repost with your words", with [postId] quoted under the text box. */
+    fun quotePost(postId: String): String = "${composePost(PulseIntent.All.key)}&$COMPOSE_QUOTE_KEY=${Uri.encode(postId)}"
 
     /** P3.5 — Edit an existing Pulse post. Re-uses the compose flow. */
     const val EDIT_POST_POST_ID_KEY = "postId"
@@ -2388,7 +2407,7 @@ private val SAVED_PAGE_OFFLINE_STRIP_ROUTES =
         PantopusRoute.Messages.path, PantopusRoute.Pulse.path, ChildRoutes.PLACE_DASHBOARD, ChildRoutes.PLACE_DETAIL,
         ChildRoutes.SAVED_PLACE_DETAIL,
         ChildRoutes.PULSE_FEED, ChildRoutes.PULSE_POST, ChildRoutes.CHAT_CONVERSATION, ChildRoutes.PROFILE,
-        ChildRoutes.PUBLIC_PROFILE, ChildRoutes.NOTIFICATIONS_ROUTE, ChildRoutes.CONNECTIONS_ROUTE, ChildRoutes.MY_POSTS,
+        ChildRoutes.PUBLIC_PROFILE, ChildRoutes.NOTIFICATIONS_ROUTE, ChildRoutes.CONNECTIONS_ROUTE, ChildRoutes.MY_POSTS_ROUTE,
         ChildRoutes.SAVED_PLACES, ChildRoutes.MENU, ChildRoutes.EXPLORE_ROUTE,
         ChildRoutes.SETTINGS_NOTIFICATIONS, ChildRoutes.SETTINGS_PRIVACY,
     )
@@ -3106,6 +3125,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 openPlansLink(PlansRoutes.requests(pending.id))
                 DeepLinkRouter.consume()
             }
+            is DeepLinkRouter.Destination.PlanGuests -> {
+                openPlansLink(PlansRoutes.guests(pending.id))
+                DeepLinkRouter.consume()
+            }
             DeepLinkRouter.Destination.NewPlan -> {
                 openPlansLink(PlansRoutes.host())
                 DeepLinkRouter.consume()
@@ -3280,6 +3303,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onCheckClaim = { homeId -> navController.navigate(ChildRoutes.waitingRoom(homeId)) },
                         // An agenda task row opens the task's own page.
                         onOpenTask = { homeId, taskId -> navController.navigate(ChildRoutes.householdTaskDetail(homeId, taskId)) },
+                        // An Around you post opens its page (reply threads) over Today.
+                        onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
+                        // "Repost with your words" on an Around you post: the Pulse composer with the headline quoted.
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                         scrollToTop = todayReselects,
                         radonHomeId = radonHomeId,
                         onRadonShown = { radonHomeId = null },
@@ -3357,10 +3384,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                     onHost = { kind, game ->
                                         navController.navigate(PlansRoutes.host(kind = kind?.wire, game = game?.id))
                                     },
+                                    // "Plan with people you know" (Plans step 1): starts on "Only people I invite".
+                                    onHostPrivate = { navController.navigate(PlansRoutes.host(startPrivate = true)) },
+                                    // "Change" on a repeating plan's card under Your plans (Plans step 2).
+                                    onChangePlan = { id -> navController.navigate(PlansRoutes.change(id)) },
                                     // The list's "More nearby" rows: only with the Pulse redesign on (Nearby has them).
                                     onOpenPulse = { navController.navigateToRootTab(PantopusRoute.Pulse) },
                                     onOpenConnections = { navController.navigate(ChildRoutes.CONNECTIONS) },
-                                    onInvite = { inviteShare.share(appContext, PLANS_INVITE_MESSAGE, "Invite a neighbor") },
+                                    onInvite = { inviteShare.share(appContext, PLANS_INVITE_MESSAGE, "Invite a friend") },
                                     onAskPantopus = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                                     onOpenMenu = openMenu,
                                 ),
@@ -3387,6 +3418,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 )
                             },
                             onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
+                            onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
+                            onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                         )
                     }
                 }
@@ -3504,6 +3537,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             ),
                         quietStateCard = quietStateCard,
                         onRefreshQuietStateCard = quietMeter::refresh,
+                        onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                     )
                 }
                 composable(PantopusRoute.Tasks.path) {
@@ -3594,6 +3629,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenConnections = { navController.navigate(ChildRoutes.CONNECTIONS) },
                         onOpenSupportTrains = { navController.navigate(ChildRoutes.SUPPORT_TRAINS) },
                         onOpenSavedPlaces = { navController.navigate(ChildRoutes.SAVED_PLACES) },
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
+                        onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
                     )
                 }
 
@@ -5484,6 +5521,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 onOpenHelp = { navController.navigate(ChildRoutes.SETTINGS_HELP) },
                                 onLogOut = { youViewModel.signOut() },
                             ),
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
+                        onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
                     )
                 }
                 composable(
@@ -5616,6 +5655,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         plansOn = plansFlags.plans,
+                        onOpenPost = { quotedId -> navController.navigate(ChildRoutes.pulsePost(quotedId)) },
+                        onQuotePost = { quotedId -> navController.navigate(ChildRoutes.quotePost(quotedId)) },
+                        onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
                     )
                 }
                 composable(
@@ -5939,6 +5981,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 ChildRoutes.composePost(PulseIntent.Ask.key, starter.placeholder),
                             )
                         },
+                        onOpenSavedPosts = { navController.navigate(ChildRoutes.myPosts(MyPostsTab.SAVED)) },
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                     )
                 }
                 composable(ChildRoutes.BEACONS_FEED) {
@@ -6279,6 +6323,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 type = NavType.StringType
                                 defaultValue = ""
                             },
+                            navArgument(ChildRoutes.COMPOSE_QUOTE_KEY) {
+                                type = NavType.StringType
+                                defaultValue = ""
+                            },
                         ),
                 ) { entry ->
                     val raw = entry.arguments?.getString(ChildRoutes.COMPOSE_INTENT_KEY) ?: PulseIntent.All.key
@@ -6290,6 +6338,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         // "Before you ask": the post opens on top; back returns to the draft.
                         onOpenPost = { postId -> navController.navigate(ChildRoutes.pulsePost(postId)) },
                         prefillAttachment = skyShareFile(appContext, entry.arguments?.getString(ChildRoutes.COMPOSE_ATTACHMENT_KEY)),
+                        quotedPostId = entry.arguments?.getString(ChildRoutes.COMPOSE_QUOTE_KEY)?.takeIf { it.isNotBlank() },
                     )
                 }
                 composable(
@@ -6487,12 +6536,23 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         preselectedCategoryKey = null,
                     )
                 }
-                composable(ChildRoutes.MY_POSTS) {
+                composable(
+                    route = ChildRoutes.MY_POSTS_ROUTE,
+                    arguments =
+                        listOf(
+                            navArgument(ChildRoutes.MY_POSTS_TAB_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
+                ) { entry ->
                     MyPostsScreen(
                         onBack = { navController.popBackStack() },
                         onOpenPost = { dto -> navController.navigate(ChildRoutes.pulsePost(dto.id)) },
                         onCompose = { navController.navigate(ChildRoutes.composePost("")) },
                         onEditPost = { dto -> navController.navigate(ChildRoutes.editPost(dto.id)) },
+                        initialTab = entry.arguments?.getString(ChildRoutes.MY_POSTS_TAB_KEY),
                     )
                 }
                 composable(ChildRoutes.MENU) {

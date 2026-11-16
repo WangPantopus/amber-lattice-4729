@@ -248,14 +248,19 @@ class PostsRepository
             includeArchived: Boolean,
         ): Stored<MyPostsResponse> = store.peek(StoreKeys.userPosts(userId, limit, includeArchived))
 
-        /** `GET /api/posts/user/:userId` as feed rows: a person's latest posts on their profile, as Pulse cards. */
+        /**
+         * `GET /api/posts/user/:userId?include_reposts=true` as feed rows: a person's latest posts on their profile, as
+         * Pulse cards, with the posts they reposted (their own author, `reposted_by`, `reposted_at`) merged in.
+         */
         suspend fun profilePosts(
             userId: String,
             force: Boolean = false,
         ): NetworkResult<FeedResponse> {
             val stored =
                 store.read(StoreKeys.profilePosts(userId), force) { etag ->
-                    conditionalApiCall { api.profilePostsConditional(userId, StoreKeys.PROFILE_POSTS_LIMIT, etag) }
+                    conditionalApiCall {
+                        api.profilePostsConditional(userId, StoreKeys.PROFILE_POSTS_LIMIT, etag, includeReposts = true)
+                    }
                 }
             return stored.data?.let { NetworkResult.Success(it) } ?: stored.asResult()
         }
@@ -301,6 +306,22 @@ class PostsRepository
         }
 
         fun savedPostsCopy(limit: Int): Stored<SavedPostsResponse> = store.peek(StoreKeys.savedPosts(limit))
+
+        /** `GET /api/posts/reposts` — My posts' Reposts tab, read as the Saved tab is. */
+        suspend fun repostedPosts(
+            limit: Int = 50,
+            offset: Int = 0,
+            force: Boolean = false,
+        ): NetworkResult<SavedPostsResponse> {
+            if (offset != 0) return safeApiCall { api.repostedPosts(limit, offset) }
+            val stored =
+                store.read(StoreKeys.repostedPosts(limit), force) { etag ->
+                    conditionalApiCall { api.repostedPostsConditional(limit, etag) }
+                }
+            return stored.data?.let { NetworkResult.Success(it) } ?: stored.asResult()
+        }
+
+        fun repostedPostsCopy(limit: Int): Stored<SavedPostsResponse> = store.peek(StoreKeys.repostedPosts(limit))
 
         /** `DELETE /api/posts/:id`. */
         suspend fun deletePost(id: String): NetworkResult<Unit> = safeApiCall { api.deletePost(id) }.also(::markPostsChanged)
@@ -448,6 +469,8 @@ private fun FeedPost.detailSeed(): PostDetailResponse? {
             eventEndDate = eventEndDate,
             eventVenue = eventVenue,
             lostFoundType = lostFoundType,
+            lifecycleMetadata = lifecycleMetadata,
+            quotedPost = quotedPost,
         ),
     )
 }

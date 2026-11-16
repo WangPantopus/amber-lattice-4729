@@ -35,6 +35,9 @@ class FeedActionsRepository
         /** `POST /api/posts/hide/:id`. */
         suspend fun hidePost(id: String): NetworkResult<FeedActionAckResponse> = safeApiCall { api.hidePost(id) }.feedChanged()
 
+        /** `DELETE /api/posts/hide/:id`: Undo on "Post hidden." (an older server's 404 is a failure). */
+        suspend fun unhidePost(id: String): NetworkResult<FeedActionAckResponse> = safeApiCall { api.unhidePost(id) }.feedChanged()
+
         /** `POST /api/posts/mute`. */
         suspend fun mute(
             entityType: FeedMuteEntityType,

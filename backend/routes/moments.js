@@ -132,6 +132,26 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
   }
 });
 
+/**
+ * GET /limits — what a Moment may be, for the apps to shape a video before it goes up: the longest one Moment's video
+ * runs, how many Moments a longer one is posted as, and the largest file an upload may be (less than ours when
+ * storage takes less). An app that can't read this keeps to 30 seconds and one part.
+ */
+router.get('/limits', async (req, res) => {
+  try {
+    res.json({
+      video: {
+        max_seconds: media.MAX_VIDEO_MS / 1000,
+        max_parts: store.MAX_PARTS,
+        max_bytes: await media.maxVideoBytes(),
+      },
+      daily_limit: store.DAILY_LIMIT,
+    });
+  } catch (error) {
+    sendError(res, error, 'limits');
+  }
+});
+
 // ─── Posting ────────────────────────────────────────────────────────────────
 
 const createSchema = Joi.object({
@@ -165,6 +185,13 @@ const createSchema = Joi.object({
     accuracy_m: Joi.number().allow(null),
     speed_mps: Joi.number().allow(null),
   }).allow(null),
+  // A video longer than one Moment (GET /limits) is posted as several, in order (optional): the same `id` on each,
+  // which part this is and of how many. Later parts need the first; they count as one post and notify once.
+  series: Joi.object({
+    id: Joi.string().uuid().required(),
+    index: Joi.number().integer().min(1).max(store.MAX_PARTS).required(),
+    count: Joi.number().integer().min(2).max(store.MAX_PARTS).required(),
+  }).allow(null),
 });
 
 // The row id a retry key stands for, so the same tap never makes two Moments.
@@ -183,6 +210,9 @@ router.post('/', createLimiter, async (req, res) => {
       if (body.caption) throw store.fail(400, 'MOMENT_INVALID', 'A text card has no caption.');
     } else if (body.text || body.background) {
       throw store.fail(400, 'MOMENT_INVALID', 'Only a text card has text and a background.');
+    }
+    if (body.series && (body.kind !== 'video' || body.series.index > body.series.count)) {
+      throw store.fail(400, 'MOMENT_INVALID', 'Only a video is posted in parts.');
     }
     const id = retryId(req.user.id, body.client_request_id);
     if (id) {
@@ -233,6 +263,7 @@ router.post('/', createLimiter, async (req, res) => {
       takenAt: store.takenAtShown(body.location.source === 'capture' ? body.location.taken_at : body.taken_at),
       venueId: venue ? body.venue_id : null,
       altitude,
+      series: body.series || null,
     }), id);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });

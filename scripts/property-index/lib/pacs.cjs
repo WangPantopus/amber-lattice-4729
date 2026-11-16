@@ -30,15 +30,18 @@ async function* lines(zip, table) {
 /** Real property and mobile homes, without a protected person's account. Stops at a file that doesn't fit the layout. */
 async function* properties(zip, stats = {}) {
   let full = 0;
+  let seen = 0;
   for await (const line of lines(zip, 'PROP')) {
-    full = full || line.length;
+    seen += 1;
     const type = cut(line, 13, 17);
     if (line.length < 4860 || !/^0?\d{4}$/.test(cut(line, 18, 22)) || !/^(R|P|MH|MN|A)$/.test(type)) {
-      // A line break inside a field cuts a record into pieces (Kaufman's file has three such records). More than a few means the layout moved.
+      // A line break inside a field cuts a record into pieces (Kaufman's file has three such records, Wise's about thirty, each in three
+      // pieces). More than a few, or more than one line in a thousand, means the layout moved. The full length is learned from good lines.
       stats.broken = (stats.broken || 0) + 1;
-      if (line.length < full && stats.broken <= 30) continue;
+      if (line.length < (full || Infinity) && (stats.broken <= 30 || stats.broken <= seen / 1000)) continue;
       throw new Error(`A property line doesn't fit the layout (${line.length} characters)`);
     }
+    full = full || line.length;
     if (type !== 'R' && type !== 'MH') continue;
     if (line[989] === 'T' || line[2568] === 'T' || line[4858] === 'T' || PROTECTED.test(cut(line, 609, 678))) {
       stats.protected = (stats.protected || 0) + 1;
@@ -57,8 +60,11 @@ async function* properties(zip, stats = {}) {
   }
 }
 
-/** The largest improvement on each wanted account: what's on it, in a district's own words (`classify` names each detail). */
-async function mainImprovements(zip, wanted, classify, attributes = []) {
+/**
+ * The largest improvement on each wanted account: what's on it, in a district's own words (`classify` names each detail).
+ * `accept` keeps an attribute's line only when its value fits (Guadalupe writes its water source and its bath count under the same name).
+ */
+async function mainImprovements(zip, wanted, classify, attributes = [], accept = () => true) {
   const byAccount = new Map();
   for await (const line of lines(zip, 'IMP_DET')) {
     const id = accountOf(line);
@@ -93,7 +99,8 @@ async function mainImprovements(zip, wanted, classify, attributes = []) {
       const held = main.get(accountOf(line));
       if (!held || held.id !== cut(line, 17, 28)) continue;
       const name = cut(line, 53, 77);
-      if (attributes.includes(name) && !held[name]) held[name] = cut(line, 78, 87).toUpperCase();
+      const value = cut(line, 78, 87).toUpperCase();
+      if (attributes.includes(name) && !held[name] && accept(name, value)) held[name] = value;
     }
   }
   return main;

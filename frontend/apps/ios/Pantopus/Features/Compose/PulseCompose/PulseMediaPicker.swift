@@ -14,16 +14,21 @@ struct PulseMediaPicker: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.selectionLimit = max(1, limit)
-        config.filter = .any(of: [.images, .videos, .livePhotos])
-        config.preferredAssetRepresentationMode = .current
-        let picker = PHPickerViewController(configuration: config)
+        let picker = Self.picker(limit: limit)
         picker.delegate = context.coordinator
         return picker
     }
 
     func updateUIViewController(_: PHPickerViewController, context _: Context) {}
+
+    /// Photos, Live Photos and videos, up to `limit` at once.
+    static func picker(limit: Int) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = max(1, limit)
+        config.filter = .any(of: [.images, .videos, .livePhotos])
+        config.preferredAssetRepresentationMode = .current
+        return PHPickerViewController(configuration: config)
+    }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let onPicked: ([PulseComposePhoto], String?) -> Void
@@ -51,6 +56,132 @@ struct PulseMediaPicker: UIViewControllerRepresentable {
                 )
             }
         }
+    }
+}
+
+/// The composer's Photos and Files pickers, presented with UIKit over the screen the composer is on rather than as
+/// SwiftUI sheets. Both pickers run outside the app. Opened as a sheet from a composer shown over a tab's first screen
+/// (Repost with your words from Today's Around you, a Sports starter over the Pulse feed), the picker closed again at
+/// once: as it came up SwiftUI took the composer's view out and put it back, and dropped the sheet with it. UIKit keeps
+/// a picker it presented open until the person picks or cancels.
+@MainActor
+final class PulseSystemPickers {
+    /// A view in the composer: the pickers open over the screen it is on.
+    fileprivate weak var anchor: UIView?
+    /// The open picker's delegate, which UIKit holds only weakly.
+    private var delegate: NSObject?
+    private weak var photosPicker: UIViewController?
+    /// A picker waiting for the + menu to finish closing.
+    private var pending: (picker: UIViewController, onUnavailable: () -> Void)?
+
+    /// The Photos picker. It stays up while what was picked loads, then closes and `onPicked` gets it (nothing on
+    /// Cancel). Swiping it down does nothing, as with the sheet it replaces: Cancel and Add close it.
+    func openPhotos(limit: Int, onPicked: @escaping ([PulseComposePhoto], String?) -> Void) {
+        let coordinator = PulseMediaPicker.Coordinator { [weak self] media, error in
+            self?.photosPicker?.dismiss(animated: true)
+            self?.delegate = nil
+            onPicked(media, error)
+        }
+        let picker = PulseMediaPicker.picker(limit: limit)
+        picker.delegate = coordinator
+        picker.isModalInPresentation = true
+        delegate = coordinator
+        photosPicker = picker
+        present(picker) { onPicked([], nil) }
+    }
+
+    /// The Files picker for PDFs. `onPicked` gets the chosen files, `onCancel` runs when it closes without any.
+    func openDocuments(onPicked: @escaping ([URL]) -> Void, onCancel: @escaping () -> Void) {
+        let documents = DocumentsDelegate(
+            onPicked: { [weak self] urls in
+                self?.delegate = nil
+                onPicked(urls)
+            },
+            onCancel: { [weak self] in
+                self?.delegate = nil
+                onCancel()
+            }
+        )
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf], asCopy: false)
+        picker.allowsMultipleSelection = true
+        picker.delegate = documents
+        delegate = documents
+        present(picker, onUnavailable: onCancel)
+    }
+
+    /// Presents over the composer's screen once the + menu that asked has finished closing (UIKit won't present over
+    /// a screen whose menu is still on its way out). Without a screen to present on, `onUnavailable` runs.
+    private func present(_ picker: UIViewController, onUnavailable: @escaping () -> Void) {
+        pending = (picker, onUnavailable)
+        presentPending(tries: 20)
+    }
+
+    private func presentPending(tries: Int) {
+        guard let pending else { return }
+        guard var top = anchor?.nearestViewController else {
+            self.pending = nil
+            delegate = nil
+            pending.onUnavailable()
+            return
+        }
+        while let above = top.presentedViewController, !above.isBeingDismissed {
+            top = above
+        }
+        if top.presentedViewController != nil || top.transitionCoordinator != nil, tries > 0 {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                self?.presentPending(tries: tries - 1)
+            }
+            return
+        }
+        self.pending = nil
+        top.present(pending.picker, animated: true)
+    }
+
+    private final class DocumentsDelegate: NSObject, UIDocumentPickerDelegate {
+        let onPicked: ([URL]) -> Void
+        let onCancel: () -> Void
+
+        init(onPicked: @escaping ([URL]) -> Void, onCancel: @escaping () -> Void) {
+            self.onPicked = onPicked
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onPicked(urls)
+        }
+
+        func documentPickerWasCancelled(_: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+
+/// Puts `PulseSystemPickers` on the composer's screen: a hidden view the pickers present from.
+struct PulseSystemPickersAnchor: UIViewRepresentable {
+    let pickers: PulseSystemPickers
+
+    func makeUIView(context _: Context) -> UIView {
+        let view = UIView()
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context _: Context) {
+        pickers.anchor = view
+    }
+}
+
+private extension UIView {
+    /// The view controller whose view holds this one.
+    var nearestViewController: UIViewController? {
+        var responder = next
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
     }
 }
 

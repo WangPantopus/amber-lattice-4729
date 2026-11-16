@@ -23,11 +23,13 @@ import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.api.net.refusesStoredCopy
+import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.auth.AuthenticatedDispatchGuard
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.hub.HubRepository
 import app.pantopus.android.data.hub.NotificationPreferencesRepository
 import app.pantopus.android.data.place.PlaceRepository
+import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.saved_places.AroundYouPlace
 import app.pantopus.android.data.saved_places.AroundYouRepository
 import app.pantopus.android.data.saved_places.SavedPlacesRepository
@@ -41,6 +43,7 @@ import app.pantopus.android.ui.screens.homes.tasks.HomeTaskAccessFactory
 import app.pantopus.android.ui.screens.homes.tasks.HomeTaskCreationFactory
 import app.pantopus.android.ui.screens.place.detail.AddressCalendarActions
 import app.pantopus.android.ui.screens.place.detail.RadonTodayMemory
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -103,6 +106,36 @@ class TodayTabViewModel
         /** Around you's reads (unit tests build this without Hilt, and Today then shows no switch). */
         @Inject lateinit var aroundYou: AroundYouRepository
 
+        /** Around you's posts' taps (reactions, saves, reports, shares). */
+        @Inject lateinit var postsRepository: PostsRepository
+
+        /** Who Around you's cards are for. */
+        @Inject lateinit var authRepository: AuthRepository
+
+        private val _aroundToast = MutableStateFlow<String?>(null)
+
+        /** Feedback from a tap on an Around you post ("Saved.", "Reposted. Your connections see it, …"). */
+        val aroundToast: StateFlow<String?> = _aroundToast.asStateFlow()
+
+        fun dismissAroundToast() {
+            _aroundToast.value = null
+        }
+
+        /**
+         * Around you's headlines as Pulse cards (each is a post by the Pantopus curator account), with what the viewer's
+         * taps did to them: the profile's card controller, so the same taps, endpoints and menus. Null without Hilt.
+         */
+        val aroundCards: ProfilePostCards? by lazy {
+            if (!::postsRepository.isInitialized || !::authRepository.isInitialized) return@lazy null
+            ProfilePostCards(
+                scope = viewModelScope,
+                posts = postsRepository,
+                viewerId = { (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id },
+                onToast = { _aroundToast.value = it },
+                profileColors = false,
+            )
+        }
+
         private val _locating = MutableStateFlow(false)
 
         /** "Use my location" is reading a fix, or loading the city's day it found. */
@@ -131,24 +164,44 @@ class TodayTabViewModel
         val pullFailed: StateFlow<Boolean> = _pullFailed.asStateFlow()
 
         /**
-         * Around you, Today's second half (2026-11-14): local headlines for the place shown. Null until read; the last
-         * answer for a place stays when a read fails, and another place starts blank.
+         * Around you, Today's second half (2026-11-14): local headlines for the place shown. The last answer for a place
+         * stays when a read fails; another place starts from the answer the store kept for it, or blank without one.
          */
         private val _around = MutableStateFlow<AroundYouDto?>(null)
         val around: StateFlow<AroundYouDto?> = _around.asStateFlow()
         private var aroundPlace: AroundYouPlace? = null
 
+        /** The Around you answer the store kept for [place], without a request (null: none, or an area's). */
+        fun keptAround(place: AroundYouPlace?): AroundYouDto? =
+            if (place != null && ::aroundYou.isInitialized) aroundYou.copy(place) else null
+
         /** Reads Around you for [place] (null: nothing is shown, so nothing is kept). */
         fun readAround(place: AroundYouPlace?) {
             if (place != aroundPlace) {
                 aroundPlace = place
-                _around.value = null
+                // The answer kept for this place (on the phone, after a relaunch) shows at once, so Today opens with the
+                // switch it had last time instead of growing it a moment later.
+                val kept = keptAround(place)
+                _around.value = kept
+                // A copy never undoes a tap (-1 is no read's revision).
+                kept?.let { aroundCards?.show(it.posts, readRevision = -1) }
             }
             if (place == null || !::aroundYou.isInitialized) return
+            // A tap made while this read is out keeps its value over the read's (ProfilePostCards.show).
+            val revision = aroundCards?.actionRevision ?: 0
             viewModelScope.launch {
                 val result = aroundYou.read(place)
-                if (result is NetworkResult.Success && aroundPlace == place) _around.value = result.data
+                if (result is NetworkResult.Success && aroundPlace == place) {
+                    _around.value = result.data
+                    aroundCards?.show(result.data.posts, readRevision = revision)
+                }
             }
+        }
+
+        /** An Around you card was tapped: its post page opens at once from the card's copy (as from Pulse). */
+        fun seedAroundPost(postId: String) {
+            if (!::postsRepository.isInitialized) return
+            _around.value?.posts?.firstOrNull { it.id == postId }?.let(postsRepository::seedDetail)
         }
 
         /** The home this tab shows, once resolved. */

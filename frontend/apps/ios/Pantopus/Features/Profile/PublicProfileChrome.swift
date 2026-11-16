@@ -528,7 +528,8 @@ struct PublicProfilePostsFeed: View {
         }
         let going: @MainActor () -> Void = { Task { await model.tapReaction(postId: postId) } }
         let save: @MainActor () -> Void = { Task { await model.toggleSave(postId: postId) } }
-        let repost: @MainActor () -> Void = { Task { await model.toggleRepost(postId: postId) } }
+        // ↻ opens the Repost chooser (PULSEREPOST contract §2).
+        let repost: @MainActor () -> Void = { model.openRepostChooser(postId: postId) }
         let rsvp: (@MainActor () -> Void)? = card.attendees == nil ? nil : going
         var options: (@MainActor () -> Void)?
         if model.hasOptions(card) {
@@ -542,7 +543,14 @@ struct PublicProfilePostsFeed: View {
             onRSVP: rsvp,
             onOverflow: options,
             onToggleSave: save,
-            onToggleRepost: repost
+            onToggleRepost: repost,
+            onOpenQuotedPost: open,
+            // The chooser opens from this card's ↻, pointing at it.
+            repostChooser: PulseCardRepostChooser(
+                target: Binding(get: { model.repostChooser }, set: { model.repostChooser = $0 }),
+                onToggle: { postId in Task { await model.toggleRepost(postId: postId) } },
+                onQuote: { postId in model.beginQuote(postId: postId) }
+            )
         )
     }
 

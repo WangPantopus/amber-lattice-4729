@@ -33,27 +33,93 @@ public struct ToastMessage: Identifiable, Equatable, Sendable {
     }
 }
 
+/// A button at the end of a toast ("View", "Undo"): what the message just did
+/// can be followed or taken back from it.
+public struct ToastAction {
+    public let title: String
+    public let accessibilityIdentifier: String
+    public let perform: @MainActor () -> Void
+
+    public init(
+        title: String,
+        accessibilityIdentifier: String = "pulseFeedToastAction",
+        perform: @escaping @MainActor () -> Void
+    ) {
+        self.title = title
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.perform = perform
+    }
+}
+
 /// Banner floated at the bottom of the screen, clear of its edges. A message
 /// that fits on one line is a pill; a longer one wraps, centred, in a rounded
-/// rectangle whose corners stay clear of the first and last lines.
+/// rectangle whose corners stay clear of the first and last lines. An action,
+/// when given, sits after the words in the same banner.
 public struct ToastView: View {
     public let message: ToastMessage
+    private let action: ToastAction?
 
-    public init(message: ToastMessage) {
+    public init(message: ToastMessage, action: ToastAction? = nil) {
         self.message = message
+        self.action = action
     }
 
     public var body: some View {
+        if let action {
+            actionBody(action)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                label
+                    .fixedSize()
+                    .clipShape(RoundedRectangle(cornerRadius: Radii.pill))
+                label
+                    .fixedSize(horizontal: false, vertical: true)
+                    .clipShape(RoundedRectangle(cornerRadius: Radii.xl))
+            }
+            .padding(.horizontal, Spacing.s4)
+            .accessibilityLabel(message.text)
+        }
+    }
+
+    /// The words and the action's button, as one pill when they fit on a line.
+    private func actionBody(_ action: ToastAction) -> some View {
         ViewThatFits(in: .horizontal) {
-            label
+            actionLabel(action)
                 .fixedSize()
                 .clipShape(RoundedRectangle(cornerRadius: Radii.pill))
-            label
+            actionLabel(action)
                 .fixedSize(horizontal: false, vertical: true)
                 .clipShape(RoundedRectangle(cornerRadius: Radii.xl))
         }
         .padding(.horizontal, Spacing.s4)
-        .accessibilityLabel(message.text)
+        // A container, so the words and the button keep their own names and identifiers.
+        .accessibilityElement(children: .contain)
+    }
+
+    private func actionLabel(_ action: ToastAction) -> some View {
+        HStack(spacing: Spacing.s3) {
+            Text(message.text)
+                .pantopusTextStyle(.small)
+                .pantopusLineHeight(.small)
+                .multilineTextAlignment(.leading)
+                .foregroundStyle(foreground)
+            Button(action: action.perform) {
+                Text(action.title)
+                    .pantopusTextStyle(.small)
+                    .fontWeight(.bold)
+                    .foregroundStyle(foreground)
+                    .padding(.horizontal, Spacing.s1)
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
+                    .hitArea(horizontal: 6, vertical: 8)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(action.accessibilityIdentifier)
+        }
+        .padding(.leading, Spacing.s4)
+        .padding(.trailing, Spacing.s3)
+        .padding(.vertical, Spacing.s1)
+        .background(background)
     }
 
     private var label: some View {

@@ -11,7 +11,7 @@ export type {
   PostType, PostVisibility, PostFormat, LocationPrecision, VisibilityScope,
   SafetyAlertKind, FeedSurface, DistributionTarget, PostAs, PersonalPostAs, PersonaPostAudience, Audience,
   FeedScope, TrustLevel, MapLayerType, PostCreator, PostComment,
-  PostingIdentity, Post, MatchedBusiness,
+  PostingIdentity, Post, QuotedPost, MatchedBusiness,
 } from '@pantopus/types/post';
 
 import type {
@@ -285,6 +285,8 @@ export async function createPost(data: {
   purpose?: string;
   profileVisibilityScope?: 'public' | 'connections' | 'local_context' | 'hidden';
   showOnProfile?: boolean;
+  /** "Repost with your words": the post this one quotes (refused with QUOTED_POST_UNAVAILABLE or QUOTED_POST_NOT_ALLOWED). */
+  quotedPostId?: string;
 }): Promise<{ message: string; post: Post }> {
   return post('/api/posts', data);
 }
@@ -322,6 +324,11 @@ export async function deletePost(postId: string): Promise<{ message: string }> {
 
 export async function hidePost(postId: string): Promise<{ message: string }> {
   return post(`/api/posts/hide/${postId}`);
+}
+
+/** Undoes a hide (also fine when the post wasn't hidden). An older server answers 404. */
+export async function unhidePost(postId: string): Promise<{ message: string }> {
+  return del(`/api/posts/hide/${postId}`);
 }
 
 export async function muteEntity(data: {
@@ -383,7 +390,8 @@ export async function precheckPost(data: {
   return post('/api/posts/precheck', data);
 }
 
-export async function markNotHelpful(postId: string, surface = 'nearby'): Promise<{ flagged: boolean }> {
+/** Flags a post as not helpful here; `hidden: true` when the server also hid it for you (missing from older servers). */
+export async function markNotHelpful(postId: string, surface = 'nearby'): Promise<{ flagged: boolean; hidden?: boolean }> {
   return post(`/api/posts/${postId}/not-helpful`, { surface });
 }
 
@@ -474,6 +482,11 @@ export async function getUserPosts(userId: string, params?: {
   cursorId?: string;
   /** Your own posts as that audience sees them (owner only); `anyone` answers `sign_in_required`. */
   as?: 'anyone' | 'neighbors' | 'connections';
+  /**
+   * A profile's Posts: also the posts this person reposted, each at the time they reposted it (the owner and their
+   * connections only). Never sent from My posts. An older server ignores it.
+   */
+  include_reposts?: boolean;
 }): Promise<{ posts: Post[]; pagination: CursorPagination; sign_in_required?: boolean; preview_as?: string }> {
   return get(`/api/posts/user/${userId}`, params);
 }
@@ -567,4 +580,12 @@ export async function getSavedPosts(params?: {
   offset?: number;
 }): Promise<{ posts: Post[]; pagination?: { limit: number; offset: number; nextOffset: number; hasMore: boolean } }> {
   return get('/api/posts/saved', params);
+}
+
+/** The posts you reposted, newest repost first, each with `reposted_at` (GET /api/posts/reposts; 404 on older servers). */
+export async function getRepostedPosts(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<{ posts: Post[]; pagination?: { limit: number; offset: number; nextOffset: number; hasMore: boolean } }> {
+  return get('/api/posts/reposts', params);
 }

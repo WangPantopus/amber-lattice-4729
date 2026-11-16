@@ -320,6 +320,8 @@ const createPostSchema = Joi.object({
   // Cross-surface references
   refListingId: Joi.string().uuid().optional(),
   refTaskId: Joi.string().uuid().optional(),
+  // "Repost with your words": the post this one is about (stored as quoted_post_id).
+  quotedPostId: Joi.string().uuid().optional(),
   // Radius for radius-based visibility
   radiusMiles: Joi.number().min(1).max(25000).optional(),
   // v1.1: Distribution targets & cross-post
@@ -734,7 +736,7 @@ async function serializePostForViewer(post, viewerUserId, authorRows = null) {
 // A reader who isn't signed in (the web's public post page and its link preview,
 // frontend/apps/web/src/app/posts/[id]/page.tsx) gets what that page shows and nothing else.
 const SIGNED_OUT_POST_FIELDS = ['id', 'title', 'content', 'post_type', 'state', 'media_urls', 'media_live_urls',
-  'ref_task_id', 'ref_listing_id', 'location_name', 'created_at'];
+  'ref_task_id', 'ref_listing_id', 'location_name', 'created_at', 'post_metadata'];
 
 // A signed-in reader who isn't the author gets what the web, iOS and Android post pages read: the post, its
 // approximate place, the Lost & Found contact (phone|<digits> when the poster asked for calls), what decides whether
@@ -750,8 +752,16 @@ const READER_POST_FIELDS = [
   'event_date', 'event_end_date', 'event_venue', 'safety_alert_kind', 'deal_business_name', 'deal_expires_at',
   'lost_found_type', 'lost_found_contact_pref', 'service_category', 'ref_task_id', 'ref_listing_id',
   'like_count', 'comment_count', 'share_count', 'userHasLiked', 'userHasSaved', 'userHasReposted', 'comments',
-  'reactions', 'userReaction',
+  'reactions', 'userReaction', 'quoted_post', 'post_metadata',
 ];
+
+// The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
+// and its name, an Official or curator notice's source). Only the server sets those keys (POST /api/posts,
+// services/aroundYouService.js); the rest of the metadata stays with the author.
+function sourceMetadata(post) {
+  const { source_url: url, source_name: name } = post?.post_metadata || {};
+  return url ? { source_url: url, ...(name ? { source_name: name } : {}) } : null;
+}
 
 // "Photo taken here": the author's own photo or video placed the post (set at posting, in post_metadata).
 function photoBasisFields(post) {
@@ -761,6 +771,7 @@ function photoBasisFields(post) {
 
 function signedOutPostView(post) {
   const view = Object.fromEntries(SIGNED_OUT_POST_FIELDS.map((field) => [field, post[field] ?? null]));
+  view.post_metadata = sourceMetadata(post);
   // The author as the post shows them, without the profile or home id behind it.
   const { id: _creatorId, ...creator } = post.creator || {};
   view.creator = post.creator ? creator : null;
@@ -768,7 +779,7 @@ function signedOutPostView(post) {
 }
 
 function readerPostView(post) {
-  return Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null]));
+  return { ...Object.fromEntries(READER_POST_FIELDS.map((field) => [field, post[field] ?? null])), post_metadata: sourceMetadata(post) };
 }
 
 
@@ -1057,7 +1068,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       distributionTargets, crossPostToConnections, gpsTimestamp, gpsLatitude, gpsLongitude, mediaLocations,
       purpose, profileVisibilityScope, showOnProfile,
       geocodeProvider, geocodeAccuracy, geocodePlaceId,
-      topic, sportsScope, postMetadata, sourceUrl,
+      topic, sportsScope, postMetadata, sourceUrl, quotedPostId,
     } = req.body;
     // P2.4 / unified-IA §4.1 — defense-in-depth. Persona-context posts
     // must go through the audience-zone composer (P2.5) and the
@@ -1450,6 +1461,25 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       : postAs === 'business' ? (businessId || null)
       : (localProfile?.id || null);
 
+    // "Repost with your words": the post this one is about must be one its writer can read now. A Moment can't be
+    // reposted, and the words go to the audience the writer chose, never to the original's.
+    let quotedPost = null;
+    if (quotedPostId) {
+      const { data: original, error: originalError } = await supabaseAdmin.from('Post')
+        .select(POST_VISIBILITY_SELECT).eq('id', quotedPostId).maybeSingle();
+      if (originalError) {
+        logger.warn('Quoted post read failed', { quotedPostId, errorCode: originalError.code });
+        return res.status(503).json({ error: 'This post could not be loaded. Please try again.' });
+      }
+      if (original?.is_story === true || req.body.isStory === true) {
+        return res.status(400).json({ error: "This post can't be reposted.", code: 'QUOTED_POST_NOT_ALLOWED' });
+      }
+      if (!original || original.archived_at || !(await canViewPost(original, userId).catch(() => false))) {
+        return res.status(404).json({ error: "This post isn't available anymore.", code: 'QUOTED_POST_UNAVAILABLE' });
+      }
+      quotedPost = original;
+    }
+
     const postData = {
       user_id: userId,
       author_user_id: userId,
@@ -1504,6 +1534,8 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       // Cross-surface
       ref_listing_id: refListingId || null,
       ref_task_id: refTaskId || null,
+      // "Repost with your words"
+      quoted_post_id: quotedPost?.id || null,
       // Radius
       radius_miles: radiusMiles || null,
       // v1.1: GPS timestamp for Place eligibility
@@ -1734,14 +1766,17 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
         personaContext,
         targets: postData.distribution_targets || [],
       });
+      if (quotedPost) notifyQuote(quotedPost, post, userId);
     }
 
-    const responsePost = await serializePostForViewer({
+    const serializedPost = await serializePostForViewer({
       ...post,
       media_urls: normalizeMediaUrls(post.media_urls),
       media_thumbnails: normalizeAlignedMediaUrls(post.media_thumbnails),
       media_live_urls: normalizeAlignedMediaUrls(post.media_live_urls),
     }, userId);
+    // "Repost with your words": the reply carries the card the lists will draw.
+    const responsePost = quotedPost ? (await feedService.attachQuotedPosts([serializedPost], userId))[0] : serializedPost;
 
     res.status(201).json({
       message: 'Post created successfully',
@@ -2283,6 +2318,57 @@ router.get('/saved', verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/posts/reposts — the posts this person reposted, newest repost first (My posts' Reposts tab).
+ * Paged like /saved: offsets count reposts, not the posts left after the visibility check.
+ * MUST be before /:id route to avoid matching "reposts" as an ID
+ */
+router.get('/reposts', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+    const scopeAccess = await postScopeAccess(userId);
+    const { data: shares, error } = await scopeAccess.query(supabaseAdmin
+      .from('PostShare')
+      .select(`
+        id, created_at,
+        post:post_id!inner (
+          *, creator:user_id (${SAFE_CREATOR_SELECT}), home:home_id (id, address, city)
+        )
+      `), 'post')
+      .eq('user_id', userId)
+      .eq('share_type', 'repost')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      logger.error('Error fetching reposts', { error: error.message, userId });
+      return res.status(500).json({ error: 'Failed to fetch reposts' });
+    }
+
+    // Only posts the viewer can still open, as on /saved: never an archived post, a Moment, or one its page refuses.
+    const withPost = (shares || []).filter(s => s.post);
+    const viewable = await Promise.all(withPost.map((s) => (
+      s.post.archived_at || s.post.is_story === true ? false : canViewPost(s.post, userId).catch(() => false)
+    )));
+    const valid = withPost.filter((_, i) => viewable[i] === true);
+    const repostedAt = new Map(valid.map(s => [s.post.id, s.created_at]));
+    const serialized = await enrichFeedPosts(valid.map(s => normalizeFeedPostRow(s.post, new Set(), new Set())), userId);
+    const repostedBy = { names: [feedService.VIEWER_REPOST_NAME], count: 1, viewer: true };
+
+    const read = (shares || []).length;
+    res.json({
+      posts: serialized.map(post => ({ ...post, reposted_by: repostedBy, reposted_at: repostedAt.get(post.id) })),
+      pagination: { limit, offset, nextOffset: offset + read, hasMore: read === limit },
+    });
+  } catch (err) {
+    logger.error('Reposts fetch error', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch reposts' });
+  }
+});
+
 // ============ POSTING IDENTITIES ============
 
 /**
@@ -2496,6 +2582,26 @@ router.post('/hide/:id', verifyToken, async (req, res) => {
   } catch (err) {
     logger.error('Hide post error', { error: err.message });
     res.status(500).json({ error: 'Failed to hide post' });
+  }
+});
+
+/**
+ * DELETE /api/posts/hide/:id — Show a post this person hid again (the Undo on "Post hidden"). Repeating it changes nothing.
+ */
+router.delete('/hide/:id', verifyToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    if (!UUID_RE.test(String(postId))) return res.status(404).json({ error: 'Post not found' });
+
+    const { error } = await supabaseAdmin.from('PostHide').delete().eq('user_id', userId).eq('post_id', postId);
+    if (error) throw error;
+
+    feedService.invalidateFilterCache(userId);
+    res.json({ message: 'Post unhidden' });
+  } catch (err) {
+    logger.error('Unhide post error', { error: err.message });
+    res.status(500).json({ error: 'Failed to unhide post' });
   }
 });
 
@@ -2995,9 +3101,13 @@ router.get('/:id', optionalAuth, async (req, res) => {
       comments: commentRows,
     }, userId, authorRows);
 
+    // "Repost with your words": the post this one is about, as its card.
+    const shownPost = post.quoted_post_id
+      ? (await feedService.attachQuotedPosts([responsePost], userId))[0]
+      : responsePost;
     res.json({
       // The author's menu offers Pin to profile / Unpin from profile (PRF SRV-3).
-      post: isOwner ? { ...responsePost, profile_pinned: Boolean(post.profile_pinned_at) } : readerPostView(responsePost),
+      post: isOwner ? { ...shownPost, profile_pinned: Boolean(post.profile_pinned_at) } : readerPostView(shownPost),
     });
   } catch (err) {
     logger.error('Post fetch error', { error: err.message, postId: req.params.id });
@@ -3747,6 +3857,27 @@ router.get('/:id/comments', verifyToken, async (req, res) => {
   }
 });
 
+// "Repost with your words": the original's author hears about the new post, when they may read it (a post for the
+// writer's connections reaches only those).
+function notifyQuote(original, quote, userId) {
+  if (original.user_id === userId) return;
+  Promise.all([getUserDisplayName(userId), canViewPost(quote, original.user_id)]).then(([name, readable]) => {
+    if (!readable) return null;
+    return notificationService.createNotification({
+      userId: original.user_id,
+      type: 'post_reposted',
+      title: `${name} reposted your post with their words`,
+      body: quote.content.length > 100 ? `${quote.content.substring(0, 100)}…` : quote.content,
+      icon: '🔁',
+      link: `/posts/${quote.id}`,
+      metadata: { post_id: quote.id, quoted_post_id: original.id, user_id: userId },
+      idempotencyKey: `post-quoted:${quote.id}`,
+    });
+  }).catch(err => {
+    logger.warn('Quote notification failed (non-blocking)', { error: err.message, postId: quote.id });
+  });
+}
+
 function notifyRepost(post, postId, userId) {
   getUserDisplayName(userId).then(name => {
     const { link, extraMeta } = postEngagementNotificationLink(post, postId);
@@ -4132,45 +4263,97 @@ async function sendProfilePosts(req, res, { pinned = false } = {}) {
     // targets (for example place + followers cross-posts) to appear when the profile
     // scope allows them.
 
-    // Moments never show on a profile, their author's own included (they live on the Moments map).
-    let query = supabaseAdmin.from('Post')
-      .select(`*, creator:user_id (${SAFE_CREATOR_SELECT}), home:home_id (id, address, city)`)
-      .eq('user_id', userId)
-      .not('is_story', 'is', true);
-    query = pinned
-      ? query.not('profile_pinned_at', 'is', null).order('profile_pinned_at', { ascending: false })
-      : query.order('created_at', { ascending: false });
-    query = query.order('id', { ascending: false }).limit(parsedLimit);
-
     // A previewed audience is verified in no Pulse area, so it reads only posts without a verified-neighbors wall.
-    query = audience ? scopeAccessForHomes(null).query(query) : (await postScopeAccess(requestingUserId)).query(query);
-
-    // Archived posts are left out of every list except the owner's own My posts,
-    // which asks for them to fill its Archived tab (and to restore them).
-    if (pinned || !(isOwn && includeArchived === 'true')) query = query.is('archived_at', null);
-
-    if (isOwn) {
+    const scopeAccess = audience ? scopeAccessForHomes(null) : await postScopeAccess(requestingUserId);
+    const PROFILE_POST_SELECT = `*, creator:user_id (${SAFE_CREATOR_SELECT}), home:home_id (id, address, city)`;
+    // The posts this person wrote that this viewer's list may hold (the checks further down still apply).
+    // Moments never show on a profile, their author's own included (they live on the Moments map).
+    const writtenPosts = (columns = PROFILE_POST_SELECT) => {
+      let written = scopeAccess.query(supabaseAdmin.from('Post')
+        .select(columns)
+        .eq('user_id', userId)
+        .not('is_story', 'is', true));
+      // Archived posts are left out of every list except the owner's own My posts,
+      // which asks for them to fill its Archived tab (and to restore them).
+      if (pinned || !(isOwn && includeArchived === 'true')) written = written.is('archived_at', null);
       // Own profile: see everything (no filters on visibility), the posts written for a business too, so the
       // writer can still edit or delete them.
+      if (isOwn) return written;
+      return written
+        // Non-own profiles: only show posts marked for profile display
+        .eq('show_on_profile', true)
+        // Exclude posts explicitly hidden from profiles
+        .neq('profile_visibility_scope', 'hidden')
+        // A post written for a business is the business's (its page lists it), never its writer's. Both ways of
+        // writing one (POST /api/posts as the business, the retired POST /api/businesses/:id/posts) store post_as.
+        .or('post_as.is.null,post_as.neq.business');
+    };
+
+    // Reposts (include_reposts=true, the profile's own list): the posts this person reposted, each at the time they
+    // reposted it, merged newest first with the posts they wrote. A repost is seen by the person who made it and their
+    // connections, so nobody else gets them, and nobody gets one of a post they can't read.
+    const withReposts = !pinned && req.query.include_reposts === 'true' && (isOwn || !!connection);
+    let posts;
+    let repostedAt = new Map();
+    let pagination = null;
+    if (withReposts) {
+      const REPOSTS = ', connection_reposts:PostShare(user_id, created_at)';
+      const { rows, floor } = await feedService.reachedRows({
+        written: () => feedService.withConnectionReposts(writtenPosts(PROFILE_POST_SELECT + REPOSTS), [userId]),
+        reposted: (ids) => feedService.withConnectionReposts(scopeAccess.query(feedService.onlyShownPosts(
+          supabaseAdmin.from('Post').select(PROFILE_POST_SELECT + REPOSTS).is('archived_at', null))), [userId])
+          .neq('user_id', userId)
+          .in('id', ids),
+        sharerIds: [userId],
+        // Their own posts stay at the time they wrote them.
+        reachedOf: (row) => (row.user_id === userId
+          ? feedService.reachedAt({ created_at: row.created_at }, true)
+          : feedService.reachedAt(row, false)),
+        upper: cursorCreatedAt && cursorId ? { at: cursorCreatedAt, id: cursorId } : null,
+        // Read past the page, as the feeds do: a read exactly one page long could stop at its own last row.
+        batch: parsedLimit + 20,
+      });
+      const listed = rows.slice(0, parsedLimit);
+      posts = listed.map(({ row }) => row);
+      repostedAt = new Map(listed.filter(({ row }) => row.user_id !== userId).map(({ row, reached }) => [row.id, reached.at]));
+      const last = listed[listed.length - 1];
+      // A page cut at the limit continues after its last post; one that listed every row above the time its reads
+      // reached continues below that time.
+      pagination = {
+        nextCursor: rows.length > parsedLimit ? { createdAt: last.reached.at, id: last.row.id }
+          : floor ? { createdAt: floor, id: feedService.CURSOR_MAX_ID } : null,
+        hasMore: rows.length > parsedLimit || !!floor,
+      };
     } else {
-      // Non-own profiles: only show posts marked for profile display
-      query = query.eq('show_on_profile', true);
-      // Exclude posts explicitly hidden from profiles
-      query = query.neq('profile_visibility_scope', 'hidden');
-      // A post written for a business is the business's (its page lists it), never its writer's. Both ways of
-      // writing one (POST /api/posts as the business, the retired POST /api/businesses/:id/posts) store post_as.
-      query = query.or('post_as.is.null,post_as.neq.business');
+      let query = writtenPosts();
+      query = pinned
+        ? query.not('profile_pinned_at', 'is', null).order('profile_pinned_at', { ascending: false })
+        : query.order('created_at', { ascending: false });
+      query = query.order('id', { ascending: false }).limit(parsedLimit);
+      if (!pinned) query = applyCursorCondition(query, cursorCreatedAt, cursorId);
+      const { data, error } = await query;
+      if (error) {
+        logger.error('Error fetching user posts', { error: error.message, userId });
+        return res.status(500).json({ error: 'Failed to fetch posts' });
+      }
+      posts = data;
     }
 
-    if (!pinned) query = applyCursorCondition(query, cursorCreatedAt, cursorId);
-
-    const { data: posts, error } = await query;
-    if (error) {
-      logger.error('Error fetching user posts', { error: error.message, userId });
-      return res.status(500).json({ error: 'Failed to fetch posts' });
+    // The reposts of the page: only what this viewer may read, and nothing they hid or whose author they muted or
+    // blocked. The posts this person wrote go through the profile's own checks below.
+    let filtered = (posts || []).filter((post) => !repostedAt.has(post.id));
+    let reposts = (posts || []).filter((post) => repostedAt.has(post.id));
+    if (reposts.length) {
+      if (audience) {
+        reposts = reposts.filter((post) => audienceCanReadPost(post, audience));
+      } else {
+        const [readable, filters] = await Promise.all([
+          readablePosts(reposts, requestingUserId),
+          feedService.getMuteAndHideFilters(requestingUserId),
+        ]);
+        reposts = feedService.applyMuteHideFilters(readable, filters, 'profile', requestingUserId);
+      }
     }
-
-    let filtered = posts || [];
 
     // Non-own profiles: enforce relationship-scoped profile visibility
     if (!isOwn) {
@@ -4204,14 +4387,26 @@ async function sendProfilePosts(req, res, { pinned = false } = {}) {
         : await readablePosts(filtered, requestingUserId);
     }
 
-    const normalized = filtered.map(r => normalizeFeedPostRow(r, new Set(), new Set()));
+    // In the order read: written and reposted posts together, newest first.
+    const kept = new Set([...filtered, ...reposts].map((post) => post.id));
+    const normalized = (posts || []).filter((post) => kept.has(post.id))
+      .map(r => normalizeFeedPostRow(r, new Set(), new Set()));
     // A preview is serialized for a visitor: their location precision, and nothing marked as liked or saved.
-    const serialized = await enrichFeedPosts(normalized, audience ? PREVIEW_VIEWER_ID : requestingUserId);
+    let serialized = await enrichFeedPosts(normalized, audience ? PREVIEW_VIEWER_ID : requestingUserId);
+    if (reposts.length) {
+      // "You reposted" on your own profile, the person's name on theirs.
+      const name = isOwn ? feedService.VIEWER_REPOST_NAME
+        : (await localDisplayNames([userId]).catch(() => new Map())).get(String(userId)) || 'Pantopus member';
+      const repostedBy = { names: [name], count: 1, ...(isOwn ? { viewer: true } : {}) };
+      serialized = serialized.map((post) => (repostedAt.has(post.id)
+        ? { ...post, reposted_by: repostedBy, reposted_at: repostedAt.get(post.id) }
+        : post));
+    }
 
     // Pages follow the rows read, not the posts left after the checks, so a short page isn't the end.
     res.json({
       posts: serialized,
-      ...page(posts || []),
+      ...(pagination ? { pagination } : page(posts || [])),
       ...(audience ? { preview_as: audience } : {}),
     });
   } catch (err) {
@@ -4305,7 +4500,15 @@ router.post('/:id/not-helpful', verifyToken, async (req, res) => {
         .eq('id', postId);
     }
 
-    res.json({ flagged: true });
+    // The person who said so stops seeing the post (the lists read newest first, so the flag alone changed nothing
+    // for them); DELETE /api/posts/hide/:id shows it again. A failed hide leaves the flag recorded.
+    const { error: hideError } = await supabaseAdmin
+      .from('PostHide')
+      .upsert({ user_id: userId, post_id: postId }, { onConflict: 'user_id,post_id', ignoreDuplicates: true });
+    if (hideError) logger.warn('Not helpful: hide failed', { error: hideError.message, postId });
+    else feedService.invalidateFilterCache(userId);
+
+    res.json({ flagged: true, hidden: !hideError });
   } catch (err) {
     logger.error('Not helpful error', { error: err.message });
     res.status(500).json({ error: 'Failed to flag post' });

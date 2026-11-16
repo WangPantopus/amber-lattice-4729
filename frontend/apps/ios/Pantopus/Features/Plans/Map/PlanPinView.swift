@@ -25,6 +25,8 @@ struct PlanPinLook: Equatable {
     var badge: Badge?
     /// A business hosts it: the business badge, where no status badge sits (board P1).
     var isBusiness = false
+    /// A private plan: a small lock on the head's other corner (Plans step 1).
+    var isPrivate = false
 
     enum Badge: Equatable {
         /// You're in: green check.
@@ -72,6 +74,7 @@ struct PlanPinView: View {
                 } else if look.isBusiness {
                     PlanBusinessBadge(size: 15).offset(x: size * 0.47, y: -size * 0.47)
                 }
+                if look.isPrivate { PlanPrivateBadge(size: 15).offset(x: -size * 0.47, y: -size * 0.47) }
             }
             .frame(width: size + ring * 2, height: size + ring * 2)
             .frame(height: tipY, alignment: .top)

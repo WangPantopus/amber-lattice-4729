@@ -486,6 +486,7 @@ public struct RootTabView: View {
             openPlans(.plan(id: id, intent: invite.map { .invite(token: $0) } ?? .view))
         case let .planRequests(id):
             openPlans(.requests(planId: id))
+        case let .planGuests(id): openPlans(.whosComing(planId: id))
         case .planNew:
             openPlans(nil)
         // The Moments tab, and one Moment in the viewer over it (the "added a
@@ -768,6 +769,8 @@ public struct TodayTabRoot: View {
     @State private var briefingKind: String?
     @State private var systemSheet: SystemSheetRequest?
     @State private var showsNotificationSettings = false
+    /// The room the tab's screens have, for Around you's two pages on the open iPhone Duo.
+    @State private var screenSpace = TodayScreenSpace()
     private let onAddHome: () -> Void
 
     public init(onAddHome: @escaping () -> Void = {}) {
@@ -775,6 +778,15 @@ public struct TodayTabRoot: View {
     }
 
     public var body: some View {
+        ZStack {
+            // Behind the stack and always laid out, where a screen under a pushed one is not.
+            TodayScreenSpaceReader(space: screenSpace)
+            stack
+        }
+        .environment(\.todayScreenSpace, screenSpace)
+    }
+
+    private var stack: some View {
         NavigationStack {
             Group {
                 // A morning-push deep link opens that briefing; on its own the

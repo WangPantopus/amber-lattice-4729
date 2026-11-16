@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.perf.ReportContentShown
 import app.pantopus.android.core.routing.DeepLinkRouter
@@ -126,6 +127,10 @@ fun TodayTabScreen(
     onSendChristmasCard: (() -> Unit)? = null,
     /** "Type my address" and "Add your address" (TABCARD §4a): Place's address-first screen, not the Add Home steps. */
     onTypeAddress: () -> Unit = onClaim,
+    /** An Around you post's page (its reply threads), over Today. */
+    onOpenPost: (postId: String) -> Unit = {},
+    /** "Repost with your words" on an Around you post: the Pulse composer with it quoted. Null leaves it out. */
+    onQuotePost: ((postId: String) -> Unit)? = null,
     viewModel: TodayTabViewModel = hiltViewModel(),
     needsYou: NeedsYouViewModel = hiltViewModel(),
     christmasCards: ChristmasCardDoorsViewModel = hiltViewModel(),
@@ -156,10 +161,17 @@ fun TodayTabScreen(
     // Around you (2026-11-14): Today's second half for the place shown. Without something to show there is no switch,
     // and Today is the page it was.
     val around by viewModel.around.collectAsStateWithLifecycle()
+    val aroundToast by viewModel.aroundToast.collectAsStateWithLifecycle()
     val aroundPlace = state.aroundPlace
-    LaunchedEffect(aroundPlace) { viewModel.readAround(aroundPlace) }
+    // Read again each time Today shows, so coming back from a post's page shows its replies and reactions.
+    LifecycleResumeEffect(aroundPlace) {
+        viewModel.readAround(aroundPlace)
+        onPauseOrDispose {}
+    }
     var half by rememberSaveable { mutableStateOf(TodayHalf.Home) }
-    val aroundPage = around?.takeIf { it.showsSwitch && aroundPlace != null }
+    // The answer kept for this place draws the switch in Today's first frame, before the read above has started.
+    val keptAround = remember(aroundPlace) { viewModel.keptAround(aroundPlace) }
+    val aroundPage = (around ?: keptAround)?.takeIf { it.showsSwitch && aroundPlace != null }
     val showsAround = half == TodayHalf.Around && aroundPage != null
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { scroll.animateScrollTo(0) } }
     LaunchedEffect(radonHomeId, state) {
@@ -221,7 +233,19 @@ fun TodayTabScreen(
                 )
             }
             if (showsAround && aroundPage != null) {
-                TodayAroundYouPage(aroundPage, top = top, nowMs = nowMs)
+                TodayAroundYouHost(
+                    page = aroundPage,
+                    top = top,
+                    nowMs = nowMs,
+                    controller = viewModel.aroundCards,
+                    toast = aroundToast,
+                    onDismissToast = viewModel::dismissAroundToast,
+                    onOpenPost = { postId ->
+                        viewModel.seedAroundPost(postId)
+                        onOpenPost(postId)
+                    },
+                    onQuotePost = onQuotePost,
+                )
                 return@PullToRefreshUnderHeader
             }
             when (val current = state) {

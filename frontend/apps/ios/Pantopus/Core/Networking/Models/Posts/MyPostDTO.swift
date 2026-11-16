@@ -174,6 +174,8 @@ public struct MyPostDTO: Decodable, Sendable, Hashable, Identifiable {
 
 /// `GET /api/posts/saved` envelope: the viewer's saved posts they can still
 /// open, newest save first. Offsets count saves, so a short page isn't the end.
+/// `GET /api/posts/reposts` answers the same shape for the posts the viewer
+/// reposted (PULSEREPOST contract §4).
 public struct SavedPostsResponse: Decodable, Sendable {
     public struct Pagination: Decodable, Sendable {
         public let nextOffset: Int?

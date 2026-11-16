@@ -251,7 +251,7 @@ struct HolidayCardLookStep: View {
     private var emailSections: some View {
         VStack(alignment: .leading, spacing: Spacing.s0) {
             if !recipient.isLink {
-                sectionLabel(arrival == .sealedChristmas ? "The email they get, now" : "The email they get, right away")
+                sectionLabel(emailHeading)
                     .padding(.top, 18)
             }
             if let email = preview.email {
@@ -375,6 +375,12 @@ private extension HolidayCardLookStep {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, Spacing.s1)
             .accessibilityAddTraits(.isHeader)
+    }
+
+    /// When the email goes: at the sender's 7 a.m. or on Christmas morning (this phone's clock), else now.
+    var emailHeading: String {
+        if let sendAt = preview.emailSendAt { return "The email they get \(HolidayCardWords.dayAndTime(sendAt)), your time" }
+        return arrival == .sealedChristmas ? "The email they get, now" : "The email they get, right away"
     }
 
     /// The sender's own photo beside the card, never covered (memories plan step 4).

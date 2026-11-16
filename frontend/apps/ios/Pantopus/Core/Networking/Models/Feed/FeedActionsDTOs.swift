@@ -136,9 +136,23 @@ public struct FeedNotHelpfulRequest: Encodable, Sendable, Hashable {
     }
 }
 
-/// `POST /api/posts/:id/not-helpful` response.
+/// `POST /api/posts/:id/not-helpful` response. Newer servers also hide the
+/// post for the person who flagged it and say so with `hidden: true`
+/// (PULSEREPOST contract §7); older ones send `flagged` alone.
 public struct FeedNotHelpfulResponse: Decodable, Sendable, Hashable {
     public let flagged: Bool
+    /// The post is now hidden for the viewer, as Hide does; nil from older servers.
+    public let hidden: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case flagged, hidden
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        flagged = c.lenient(Bool.self, forKey: .flagged) ?? true
+        hidden = c.lenient(Bool.self, forKey: .hidden)
+    }
 }
 
 /// `PATCH /api/posts/:id/solve` response — the backend returns the

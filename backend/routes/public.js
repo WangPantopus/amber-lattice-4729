@@ -28,6 +28,7 @@ const ballotSummary = require('../services/ballot/summary');
 const ballotGovernments = require('../services/ballot/governments');
 const { publicPlan } = require('../services/plans/planPublic');
 const planInvites = require('../services/plans/planInvites');
+const planGuests = require('../services/plans/planGuests');
 
 // ============================================================
 // Public Preview Endpoints
@@ -40,17 +41,105 @@ const planInvites = require('../services/plans/planInvites');
 // point, no viewer; a playdate answers only its kind and city (planPublic.js).
 // With an invitation's token, `invite` says whose it is and, for an email
 // invitation, a hint of the address to sign up with (planInvites.publicInvite).
+//
+// Plans for the holidays (H1): also `open` (the plan's open link) and `guest` (a guest's own key, else the web's
+// HttpOnly cookie for this plan), which add `answer` and `for_guest` (planGuests.forPage).
 router.get('/plans/:id', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const plan = await publicPlan(req.params.id);
+    const token = typeof req.query.invite === 'string' ? req.query.invite : null;
+    const openToken = typeof req.query.open === 'string' ? req.query.open : null;
+    const guestKey = typeof req.query.guest === 'string' ? req.query.guest : guestCookie(req);
+    const plan = await publicPlan(req.params.id, { inviteToken: token, openToken, guestKey });
     if (!plan) return res.status(404).json({ error: 'not_found', message: "This plan isn't available." });
-    const invite = typeof req.query.invite === 'string' ? await planInvites.publicInvite(req.params.id, req.query.invite) : null;
+    // A removed guest's key on a private plan: the invitation is no longer open, and nothing else.
+    if (plan.removed && !plan.kind) return res.json({ private: true, removed: true });
+    // A private plan without a live invitation: the page says it is private, and nothing else is read or counted.
+    if (plan.private && !plan.kind) return res.json({ private: true });
+    const invite = token ? await planInvites.publicInvite(req.params.id, token) : null;
     recordFunnelEvent('plan_share_opened', { meta: { plan_id: req.params.id, kind: plan.kind, ...(invite ? { invite: invite.channel } : {}) } });
     return res.json(invite ? { ...plan, invite } : plan);
   } catch (err) {
     console.error('[public/plans] failed:', err.message);
     return res.status(500).json({ error: 'server_error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ── Answers without an account (Plans for the holidays, H1) ──
+// The guest's key rides in the HttpOnly cookie the answer sets (planGuests.cookieName), or as `guest`.
+function guestCookie(req) {
+  const value = req.cookies?.[planGuests.cookieName(req.params.id)];
+  return planGuests.isKey(value) ? value : null;
+}
+
+function planError(res, err, where) {
+  const { PlanError } = require('../services/plans/planActions');
+  if (err instanceof PlanError) return res.status(err.status).json({ error: err.code, message: err.message, ...err.extra });
+  console.error(`[public/plans/${where}] failed:`, err.message);
+  return res.status(500).json({ error: 'server_error', message: 'Something went wrong. Please try again.' });
+}
+
+function answered(req, res, result) {
+  res.set('Cache-Control', 'no-store');
+  // The key comes back in a browser only away from a home, on the first answer: kept in an HttpOnly cookie for this
+  // plan, and left out of the body the page reads.
+  if (result.set_cookie && result.guest) {
+    res.cookie(planGuests.cookieName(req.params.id), result.guest, planGuests.cookieOptions(process.env.NODE_ENV === 'production'));
+  }
+  const { set_cookie: _set, guest, ...body } = result;
+  return res.json({ ...body, has_key: Boolean(guest) });
+}
+
+// POST /api/public/plans/:id/answers { open | invite | guest, name, adults, kids, email, answer: in | maybe | cant }
+router.post('/plans/:id/answers', async (req, res) => {
+  try {
+    const result = await planGuests.answer(req.params.id, req.body || {}, { cookieKey: guestCookie(req) });
+    return answered(req, res, result);
+  } catch (err) {
+    return planError(res, err, 'answers');
+  }
+});
+
+// PATCH /api/public/plans/:id/answers/mine { guest?, answer?, name?, adults?, kids? }: the guest changes their answer.
+router.patch('/plans/:id/answers/mine', async (req, res) => {
+  try {
+    const result = await planGuests.answer(req.params.id, req.body || {}, { cookieKey: guestCookie(req), patch: true });
+    return answered(req, res, result);
+  } catch (err) {
+    return planError(res, err, 'answers_mine');
+  }
+});
+
+// ── The bring list for a guest without an account (H2): their key as `guest`, else the cookie ──
+function guestKeyOf(req) {
+  return planGuests.isKey(req.body?.guest) ? req.body.guest : guestCookie(req);
+}
+
+// POST | DELETE /api/public/plans/:id/bring/:itemId/claim: claim an item, or give it back. Answers { bring }.
+router.post('/plans/:id/bring/:itemId/claim', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestClaim(req.params.id, guestKeyOf(req), req.params.itemId));
+  } catch (err) {
+    return planError(res, err, 'bring_claim');
+  }
+});
+router.delete('/plans/:id/bring/:itemId/claim', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestGiveBack(req.params.id, guestKeyOf(req), req.params.itemId));
+  } catch (err) {
+    return planError(res, err, 'bring_give_back');
+  }
+});
+
+// POST /api/public/plans/:id/bring/items { label, note? }: add one thing they'll bring (when guests may add).
+router.post('/plans/:id/bring/items', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestAdd(req.params.id, guestKeyOf(req), req.body || {}));
+  } catch (err) {
+    return planError(res, err, 'bring_add');
   }
 });
 

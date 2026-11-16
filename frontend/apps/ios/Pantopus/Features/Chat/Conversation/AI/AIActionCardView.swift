@@ -410,8 +410,11 @@ private struct AIActionDoneRow: View {
 }
 
 /// The link buttons under a reply. A link the app can't open gets no button.
+/// "Verify it's me" (`ChatAILink.asksIdentity`) opens nothing: it runs the
+/// identity check, after which the thread asks the question again.
 struct AILinkButtons: View {
     let links: [ChatAILink]
+    var onVerifyIdentity: (@MainActor () -> Void)?
     @Environment(\.openPantopusLink) private var openLink
 
     private struct Openable: Identifiable {
@@ -425,31 +428,51 @@ struct AILinkButtons: View {
 
     private var openable: [Openable] {
         links.compactMap { link in
-            PantopusLinkOpener.url(link.url).map { Openable(link: link, url: $0) }
+            link.asksIdentity ? nil : PantopusLinkOpener.url(link.url).map { Openable(link: link, url: $0) }
         }
     }
 
+    private var identityAsk: ChatAILink? {
+        onVerifyIdentity == nil ? nil : links.first(where: \.asksIdentity)
+    }
+
     var body: some View {
-        if !openable.isEmpty {
+        if !openable.isEmpty || identityAsk != nil {
             VStack(alignment: .leading, spacing: Spacing.s1) {
+                if let identityAsk {
+                    Button { onVerifyIdentity?() } label: {
+                        capsule(identityAsk.label, icon: .lock)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("chatAIVerifyIdentity")
+                }
                 ForEach(openable) { item in
                     Button { openLink(item.url) } label: {
-                        HStack(spacing: 6) {
-                            Text(item.link.label)
-                                .multilineTextAlignment(.leading)
-                            Icon(.arrowRight, size: 11, strokeWidth: 2.5, color: Theme.Color.primaryInk)
-                        }
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(Theme.Color.primaryInk)
-                        .padding(.horizontal, Spacing.s3)
-                        .frame(minHeight: 34)
-                        .background(Theme.Color.primary50)
-                        .clipShape(Capsule())
+                        capsule(item.link.label, icon: .arrowRight)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("chatAILink")
                 }
             }
         }
+    }
+
+    private func capsule(_ label: String, icon: PantopusIcon) -> some View {
+        HStack(spacing: 6) {
+            if icon == .lock {
+                Icon(icon, size: 12, strokeWidth: 2.5, color: Theme.Color.primaryInk)
+            }
+            Text(label)
+                .multilineTextAlignment(.leading)
+            if icon != .lock {
+                Icon(icon, size: 11, strokeWidth: 2.5, color: Theme.Color.primaryInk)
+            }
+        }
+        .font(.system(size: 12.5, weight: .semibold))
+        .foregroundStyle(Theme.Color.primaryInk)
+        .padding(.horizontal, Spacing.s3)
+        .frame(minHeight: 34)
+        .background(Theme.Color.primary50)
+        .clipShape(Capsule())
     }
 }

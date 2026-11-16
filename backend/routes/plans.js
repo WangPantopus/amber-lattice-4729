@@ -19,18 +19,26 @@ const { loadViewer } = require('../services/plans/planViewer');
 const planService = require('../services/plans/planService');
 const planActions = require('../services/plans/planActions');
 const planInvites = require('../services/plans/planInvites');
+const planGuests = require('../services/plans/planGuests');
 const planGames = require('../services/plans/planGames');
 const planPlaces = require('../services/plans/planPlaces');
 const { suggestPlaces } = require('../services/ai/planPlaceSuggest');
-const { KINDS, WINDOWS } = require('../services/plans/planRules');
+const { KINDS, ALL_KINDS, WINDOWS } = require('../services/plans/planRules');
 
 const router = express.Router();
 router.use(verifyToken, requireFeatureFlag('plans'));
 // `biz=1` on a request: this app can draw a business's plan (Plans with businesses). Without it, on every
 // route here, a business's plan does not exist, which is what keeps one from reaching an older app that would
-// draw it as a neighbor's. Read by services/plans/planViewer.js.
+// draw it as a neighbor's. `more=1`: this app can draw an online plan and the four newer kinds; without it those
+// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. `guests=1`: this app can
+// draw guests without an account, Maybe, adults and kids, and room over 30 (Plans for the holidays, H1); without it
+// the server answers as it did before. Read by services/plans/planViewer.js.
 router.use((req, _res, next) => {
-  if (req.user) req.user.plansBiz = req.query.biz === '1';
+  if (req.user) {
+    req.user.plansBiz = req.query.biz === '1';
+    req.user.plansMore = req.query.more === '1';
+    req.user.plansGuests = req.query.guests === '1';
+  }
   next();
 });
 
@@ -75,9 +83,11 @@ function warmPlaces(viewer) {
   planPlaces.warmAround(viewer.locations.filter((l) => l.kind === 'home' || l.kind === 'gps'));
 }
 
-function kindsFromQuery(value) {
+/** The kinds a list asked for, of the ones this viewer's app can draw. */
+function kindsFromQuery(value, viewer) {
   if (!value) return [];
-  return String(value).split(',').map((k) => k.trim()).filter((k) => KINDS.includes(k));
+  const known = viewer.more ? ALL_KINDS : KINDS;
+  return String(value).split(',').map((k) => k.trim()).filter((k) => known.includes(k));
 }
 
 // GET /api/plans: the list under the map, soonest first, within 5 miles.
@@ -88,7 +98,7 @@ router.get('/', async (req, res) => {
     const window = WINDOWS.includes(req.query.window) ? req.query.window : 'week';
     const viewer = await loadViewer(req.user, { point, gps: gpsFromQuery(req.query) });
     warmPlaces(viewer);
-    let kinds = kindsFromQuery(req.query.kinds);
+    let kinds = kindsFromQuery(req.query.kinds, viewer);
     if (!viewer.seesPlaydates) kinds = kinds.filter((k) => k !== 'playdate');
     if (req.query.kinds && kinds.length === 0) return res.json({ items: [], next_cursor: null, nearest_elsewhere: null });
     // host=all|neighbors|businesses: the list's filter, for a viewer businesses' plans exist for.
@@ -172,7 +182,8 @@ router.get('/places/nearby', async (req, res) => {
     const point = pointFromQuery(req.query);
     if (!point) return fail(res, 422, 'validation', 'A latitude and longitude are needed to find places nearby.');
     const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 60) : '';
-    const kind = KINDS.includes(req.query.kind) ? req.query.kind : null;
+    // Any kind orders the places: the list is the same public places either way.
+    const kind = ALL_KINDS.includes(req.query.kind) ? req.query.kind : null;
     const sport = typeof req.query.sport === 'string' ? req.query.sport.slice(0, 30) : null;
     const result = await planPlaces.placesNear({
       ...point,
@@ -199,7 +210,7 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
     const input = body(req);
     const point = pointFromQuery(input);
     if (!point) return fail(res, 422, 'validation', 'A latitude and longitude are needed to find places nearby.');
-    if (!KINDS.includes(input.kind)) return fail(res, 422, 'validation', 'Choose what kind of plan it is.');
+    if (!ALL_KINDS.includes(input.kind)) return fail(res, 422, 'validation', 'Choose what kind of plan it is.');
     const details = input.details && typeof input.details === 'object' && !Array.isArray(input.details) ? input.details : {};
     const spots = Number.isInteger(input.spots) && input.spots > 0 && input.spots <= 50 ? input.spots : null;
     const result = await suggestPlaces({
@@ -220,6 +231,31 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
   } catch (err) {
     logger.warn('plans.places.suggest_unavailable', { error: err?.message });
     return fail(res, 503, 'unavailable', PLACES_UNAVAILABLE);
+  }
+});
+
+// GET /api/plans/occasions: the occasions in season (Plans for the holidays H3), each with what it fills in on the host
+// form: { occasions: [{ key, text, kind, details, fills }] }. 404 while plans_occasions is off; none without the newer
+// kinds (`more=1` and plans_kinds), whose kinds they start.
+router.get('/occasions', async (req, res) => {
+  try {
+    const planOccasions = require('../services/plans/planOccasions');
+    if (!(await planOccasions.enabledFor(req.user))) return fail(res, 404, 'not_found', "This isn't available right now.");
+    const viewer = await loadViewer(req.user, { point: pointFromQuery(req.query), gps: gpsFromQuery(req.query) });
+    if (!viewer.kindsFlag) return res.json({ occasions: [] });
+    return res.json(await planOccasions.inSeason(viewer));
+  } catch (err) {
+    return serverError(res, err, 'occasions', req);
+  }
+});
+
+// GET /api/plans/invites/people[?q=]: the people this person can invite, before the plan exists (a private plan's
+// preview): { people: [{ user_id, display_name, avatar_url, reason }] }.
+router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planInvites.peopleBeforePosting(req.user, req.query.q));
+  } catch (err) {
+    return serverError(res, err, 'invites_people_before', req);
   }
 });
 
@@ -388,6 +424,90 @@ router.post('/:id/invites/link', requireFeatureFlag('plans_invites'), async (req
     return res.status(201).json(await planInvites.createLinkInvite(req.user, req.params.id, body(req)));
   } catch (err) {
     return serverError(res, err, 'invite_link', req);
+  }
+});
+
+// ── Plans for the holidays, H1 (services/plans/planGuests.js): 404 while plans_guest_answers is off for the host ──
+
+// POST /api/plans/:id/invites/open-link { host_says_yes_first?, rotate?, confirm_shares_address? }: the plan's one
+// link for everyone. Answers { url, message, host_says_yes_first }.
+router.post('/:id/invites/open-link', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.makeOpenLink(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link', req);
+  }
+});
+
+// DELETE /api/plans/:id/invites/open-link: turns the link off. Answers already given stay.
+router.delete('/:id/invites/open-link', async (req, res) => {
+  try {
+    return res.json(await planGuests.closeOpenLink(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link_off', req);
+  }
+});
+
+// POST /api/plans/:id/invites/remind: everyone who hasn't answered, the way each was invited; once a plan a day.
+router.post('/:id/invites/remind', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.remind(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_remind', req);
+  }
+});
+
+// POST /api/plans/:id/invites/maybe: an invited person says Maybe.
+router.post('/:id/invites/maybe', async (req, res) => {
+  try {
+    return res.json(await planGuests.sayMaybe(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'invite_maybe', req);
+  }
+});
+
+// POST /api/plans/:id/invites/:inviteId/ok: the host lets in a guest waiting from the open link; their email goes.
+router.post('/:id/invites/:inviteId/ok', async (req, res) => {
+  try {
+    return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId));
+  } catch (err) {
+    return serverError(res, err, 'invite_ok', req);
+  }
+});
+
+// ── The bring list, H2 (services/plans/planBring.js): 404 while plans_bring_list is off for the host ──
+
+// PUT /api/plans/:id/bring { items: [{ id?, label, note?, mine? }], guests_can_add? } (the host). Answers { bring }.
+router.put('/:id/bring', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').replace(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_replace', req);
+  }
+});
+
+// POST /api/plans/:id/bring/items { label, note? }: someone in adds one thing they'll bring (when guests may add).
+router.post('/:id/bring/items', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').add(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_add', req);
+  }
+});
+
+// POST | DELETE /api/plans/:id/bring/:itemId/claim: someone in (or the host) claims an item, or gives it back.
+router.post('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').claim(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_claim', req);
+  }
+});
+router.delete('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').giveBack(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_give_back', req);
   }
 });
 

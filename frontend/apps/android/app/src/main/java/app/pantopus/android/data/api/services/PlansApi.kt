@@ -11,6 +11,7 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import app.pantopus.android.data.api.models.plans.HostAsResponse
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanCancelReply
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -23,9 +24,12 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
@@ -33,6 +37,7 @@ import app.pantopus.android.data.api.models.plans.PlansListResponse
 import app.pantopus.android.data.api.models.plans.PublicPlanDto
 import app.pantopus.android.data.api.models.plans.StillComingBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -47,7 +52,7 @@ import retrofit2.http.Query
  * Nearby Plans: every `/api/plans` route of the build brief (section 5), the Plans layer of
  * `GET /api/posts/map`, and the flag read. Every Plans route answers 404 while the `plans` flag is off for the
  * viewer, so the app checks [flag] first and treats a 404 as "not available", never as an error.
- * Routes: `backend/routes/plans.js` (P1). Every request here also carries `biz=1` (`PlansBizInterceptor`).
+ * Routes: `backend/routes/plans.js` (P1). Every request here also carries `biz=1` and `more=1` (`PlansBizInterceptor`).
  */
 interface PlansApi {
     /** `GET /api/feature-flags/:flagName` (`backend/routes/featureFlags.js:30`): `plans` or `plans_playdates`. */
@@ -151,6 +156,26 @@ interface PlansApi {
         @Body body: CancelPlanBody,
     ): Unit
 
+    /**
+     * `POST /api/plans/:id/cancel` with `repeat: "keep"` (Plans step 2): cancels this date of a repeating plan only and
+     * posts the next one now; the answer carries `next_plan_id`. Route `backend/routes/plans.js:299`.
+     */
+    @POST("api/plans/{id}/cancel")
+    suspend fun cancelThisDate(
+        @Path("id") id: String,
+        @Body body: CancelPlanBody,
+    ): PlanCancelReply
+
+    /**
+     * `PATCH /api/plans/:id` with a raw body carrying `"repeat": null` (Plans step 2), with any other changed fields:
+     * stops the series; this date stays and none follows. Raw, because [UpdatePlanBody] leaves nulls out.
+     */
+    @PATCH("api/plans/{id}")
+    suspend fun stopRepeating(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): PlanDto
+
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")
     suspend fun ask(
@@ -235,6 +260,15 @@ interface PlansApi {
     ): PlanInvitePeopleResponse
 
     /**
+     * `GET /api/plans/invites/people?q=`: the people this person can invite before the plan exists (a private plan's
+     * preview, Plans step 1), in the same order as the plan's own list, without `state`.
+     */
+    @GET("api/plans/invites/people")
+    suspend fun invitePeopleBefore(
+        @Query("q") query: String? = null,
+    ): PlanInvitePeopleResponse
+
+    /**
      * `POST /api/plans/:id/invites` (host): people on Pantopus and addresses. 409 `confirm_shares_address` the first
      * time at a home; 429 `too_many_invites`; 422 `invalid_email`.
      */
@@ -244,7 +278,10 @@ interface PlansApi {
         @Body body: PlanInviteBody,
     ): PlanInviteListDto
 
-    /** `POST /api/plans/:id/invites/link` (host): a one-person link to text. */
+    /**
+     * `POST /api/plans/:id/invites/link` (host): a one-person link to text. On a private plan whose host lets guests
+     * bring a friend, a guest who is in makes their one link here too (409 `friend_invite_used` after that).
+     */
     @POST("api/plans/{id}/invites/link")
     suspend fun inviteLink(
         @Path("id") id: String,
@@ -268,6 +305,43 @@ interface PlansApi {
     /** `POST /api/plans/:id/invites/decline`: "Can't make it". Saying "I'm in" is the ordinary ask. */
     @POST("api/plans/{id}/invites/decline")
     suspend fun declineInvite(
+        @Path("id") id: String,
+    ): PlanInvitePlanResponse
+
+    // ---- Plans for the holidays, H1 (contract 6.4; backend/routes/plans.js, services/plans/planGuests.js) ----
+
+    /**
+     * `POST /api/plans/:id/invites/open-link` (host): makes or returns the plan's one link for everyone, or changes "I
+     * say yes first". At a home the first time answers 409 `confirm_shares_address`.
+     */
+    @POST("api/plans/{id}/invites/open-link")
+    suspend fun openLink(
+        @Path("id") id: String,
+        @Body body: PlanOpenLinkBody,
+    ): PlanOpenLinkResponse
+
+    /** `DELETE /api/plans/:id/invites/open-link` (host): turns the link off; people who already answered stay. */
+    @DELETE("api/plans/{id}/invites/open-link")
+    suspend fun closeOpenLink(
+        @Path("id") id: String,
+    ): Unit
+
+    /** `POST /api/plans/:id/invites/:inviteId/ok` (host): lets a guest who waits in; their email goes. */
+    @POST("api/plans/{id}/invites/{inviteId}/ok")
+    suspend fun letIn(
+        @Path("id") id: String,
+        @Path("inviteId") inviteId: String,
+    ): PlanInviteListDto
+
+    /** `POST /api/plans/:id/invites/remind` (host): reminds everyone who hasn't answered, once a day. */
+    @POST("api/plans/{id}/invites/remind")
+    suspend fun remind(
+        @Path("id") id: String,
+    ): PlanRemindResponse
+
+    /** `POST /api/plans/:id/invites/maybe`: an invited account says Maybe; the ask or "Can't make it" replaces it later. */
+    @POST("api/plans/{id}/invites/maybe")
+    suspend fun maybeInvite(
         @Path("id") id: String,
     ): PlanInvitePlanResponse
 

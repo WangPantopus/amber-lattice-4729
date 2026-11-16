@@ -43,6 +43,20 @@ struct MomentPosting: Identifiable, Equatable {
     var hours = 24
     /// Posted with no location: only the strip shows it while it posts, never the map (contract v3.4).
     var noLocation = false
+    /// The photo, or the video's poster, in the outbox: the strip shows what is posting.
+    var picture: URL?
+    /// A part of a video posted as several Moments: the parts' shared name, and which part this is (0 first).
+    var series: String?
+    var part = 0
+    /// Not the last part: "Your Moment is live" is said once, when the last one is.
+    var quiet = false
+}
+
+/// One Moment made by the Post sheet with the files that go up for it.
+struct MomentsUploadPart {
+    let moment: MomentDTO
+    let media: MomentPreparedMedia
+    let folderId: String
 }
 
 /// What a waiting upload needs after a relaunch.
@@ -55,6 +69,9 @@ private struct MomentOutboxManifest: Codable {
     let media: MomentPreparedMedia
     var hours: Int?
     var noLocation: Bool?
+    var series: String?
+    var part: Int?
+    var quiet: Bool?
 }
 
 @Observable
@@ -97,26 +114,6 @@ final class MomentsUploader {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// A photo or video Moment was made (the Post sheet did that): its file, made in `folderId`, goes up from here.
-    func upload(_ moment: MomentDTO, media prepared: MomentPreparedMedia, folderId: String) {
-        let posting = MomentPosting(
-            id: folderId,
-            kind: moment.kind,
-            momentId: moment.id,
-            // With "Show the area instead" the pin is the area's point.
-            latitude: moment.latitude,
-            longitude: moment.longitude,
-            progress: 0,
-            phase: .uploading,
-            hours: moment.hours,
-            noLocation: moment.noLocation
-        )
-        postings.insert(posting, at: 0)
-        media[folderId] = prepared
-        save(id: folderId, momentId: moment.id, media: prepared)
-        run(folderId)
-    }
-
     /// A text card is live the moment it's made: the map says so and reads its rings again.
     func wentLive(_ moment: MomentDTO) {
         // A Moment with no location has no spot to bring into view.
@@ -137,8 +134,12 @@ final class MomentsUploader {
         run(id)
     }
 
-    /// Give up on one: its files go.
+    /// Give up on one: its files go. So do the parts after it of the same video: a video with a hole in it isn't
+    /// wanted. The parts before it stay.
     func discard(_ id: String) {
+        let gone = postings.first { $0.id == id }
+        let later = postings.filter { $0.series != nil && $0.series == gone?.series && $0.part > (gone?.part ?? 0) }.map(\.id)
+        defer { later.forEach(discard) }
         tasks.removeValue(forKey: id)?.cancel()
         MomentsBackgroundUpload.shared.cancel(id)
         let momentId = postings.first { $0.id == id }?.momentId
@@ -163,7 +164,7 @@ final class MomentsUploader {
             do {
                 try await step(id)
                 return
-            } catch let failure as MomentsFailure where failure.isTransient && attempt < 8 {
+            } catch let failure as MomentsFailure where attempt < failure.retries {
                 attempt += 1
                 let delay = min(30.0, pow(2, Double(attempt)))
                 try? await Task.sleep(for: .seconds(delay))
@@ -241,7 +242,8 @@ final class MomentsUploader {
         // The body stays in the folder while the system sends it; it goes with the folder.
         let body = try MomentsUploadBody.write(media: media, folder: folder, boundary: boundary)
         // Should the app be swiped away now, iOS stops the transfer and nothing runs to say so: the reminder is set first.
-        MomentsUploadReminder.schedule(id, account: Self.signedInAccount)
+        // A later part waits behind the ones before it: its reminder allows for them.
+        MomentsUploadReminder.schedule(id, account: Self.signedInAccount, behind: postings.first { $0.id == id }?.part ?? 0)
         return await MomentsBackgroundUpload.shared.send(id: id, request: request, bodyFile: body, progress: progress)
     }
 
@@ -268,6 +270,7 @@ final class MomentsUploader {
             }
         }
         let hours = postings.first { $0.id == id }?.hours ?? 24
+        let quiet = postings.first { $0.id == id }?.quiet ?? false
         if state == .held {
             notice = "Your Moment is waiting for a quick review before it shows."
             finish(id)
@@ -278,7 +281,7 @@ final class MomentsUploader {
                 $0.progress = 1
             }
             removeFiles(id)
-            if state == .live {
+            if state == .live, !quiet {
                 if let posting = postings.first(where: { $0.id == id }), !posting.noLocation {
                     liveSpot = CLLocationCoordinate2D(latitude: posting.latitude, longitude: posting.longitude)
                 }
@@ -300,7 +303,7 @@ final class MomentsUploader {
     private func fail(_ id: String, _ failure: MomentsFailure) {
         logger.warning("Moment upload stopped: \(failure.message)")
         switch failure {
-        case .mediaTooLong, .mediaRejected, .unavailable, .ended, .notFound:
+        case .mediaTooLong, .mediaTooLarge, .mediaRejected, .unavailable, .ended, .notFound:
             // Trying again won't help: say why and let it go.
             notice = failure == .ended || failure == .notFound ? "Your Moment ended before its file went up." : failure.message
             discard(id)
@@ -329,6 +332,12 @@ final class MomentsUploader {
         change(&postings[index])
     }
 
+    /// The picture of what's in outbox folder `id`: the photo itself, or the video's poster.
+    private static func picture(_ id: String, media: MomentPreparedMedia) -> URL? {
+        guard let folder = try? outboxRoot().appendingPathComponent(id, isDirectory: true) else { return nil }
+        return folder.appendingPathComponent(media.poster ?? media.file)
+    }
+
     private static var signedInAccount: String? {
         guard case let .signedIn(user) = AuthManager.shared.state else { return nil }
         return user.id
@@ -342,14 +351,20 @@ final class MomentsUploader {
         resumed = true
         MomentsBackgroundUpload.shared.start()
         let folders = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        var waiting: [MomentOutboxManifest] = []
         for folder in folders {
-            let id = folder.lastPathComponent
-            let saved = manifest(id)
-            guard let saved, saved.account == account else {
-                // Never made on the server: nothing to finish. Another account's waits for it.
-                if saved == nil { try? FileManager.default.removeItem(at: folder) }
+            guard let saved = manifest(folder.lastPathComponent) else {
+                // Never made on the server: nothing to finish.
+                try? FileManager.default.removeItem(at: folder)
                 continue
             }
+            // Another account's waits for it.
+            if saved.account == account { waiting.append(saved) }
+        }
+        // A folder listing has no order of its own: a long video's parts come back in theirs.
+        waiting.sort { ($0.series ?? $0.id, $0.part ?? 0) < ($1.series ?? $1.id, $1.part ?? 0) }
+        for saved in waiting {
+            let id = saved.id
             postings.append(MomentPosting(
                 id: id,
                 kind: saved.media.kind,
@@ -359,7 +374,11 @@ final class MomentsUploader {
                 progress: 0,
                 phase: .uploading,
                 hours: saved.hours ?? 24,
-                noLocation: saved.noLocation ?? false
+                noLocation: saved.noLocation ?? false,
+                picture: Self.picture(id, media: saved.media),
+                series: saved.series,
+                part: saved.part ?? 0,
+                quiet: saved.quiet ?? false
             ))
             pickedUp.insert(id)
             run(id)
@@ -378,7 +397,10 @@ final class MomentsUploader {
             longitude: posting.longitude,
             media: media,
             hours: posting.hours,
-            noLocation: posting.noLocation
+            noLocation: posting.noLocation,
+            series: posting.series,
+            part: posting.part,
+            quiet: posting.quiet
         )
         guard let data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(
@@ -422,5 +444,45 @@ final class MomentsUploader {
             try? excluded.setResourceValues(values)
         }
         return root
+    }
+}
+
+// MARK: - A video's parts
+
+extension MomentsUploader {
+    /// The Post sheet made a photo or video Moment, or one for each part of a long video: their files go up from
+    /// here, in order (the session sends one at a time), each from its own outbox folder.
+    func upload(parts: [MomentsUploadPart]) {
+        let series = parts.count > 1 ? parts.first?.folderId : nil
+        let block = parts.enumerated().map { index, part in
+            MomentPosting(
+                id: part.folderId,
+                kind: part.moment.kind,
+                momentId: part.moment.id,
+                // With "Show the area instead" the pin is the area's point.
+                latitude: part.moment.latitude,
+                longitude: part.moment.longitude,
+                progress: 0,
+                phase: .uploading,
+                hours: part.moment.hours,
+                noLocation: part.moment.noLocation,
+                picture: Self.picture(part.folderId, media: part.media),
+                series: series,
+                part: index,
+                quiet: index < parts.count - 1
+            )
+        }
+        postings.insert(contentsOf: block, at: 0)
+        for (posting, part) in zip(block, parts) {
+            media[posting.id] = part.media
+            save(id: posting.id, momentId: part.moment.id, media: part.media)
+            run(posting.id)
+        }
+    }
+
+    /// A long video's parts pin at one spot: the map draws the one going up now, the strip all of them.
+    func showsPin(_ posting: MomentPosting) -> Bool {
+        guard let series = posting.series else { return true }
+        return !postings.contains { $0.series == series && $0.part < posting.part && $0.phase != .live }
     }
 }

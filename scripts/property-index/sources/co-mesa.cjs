@@ -8,6 +8,7 @@ const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -84,7 +85,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.SPRICE));
     put(facts, 'sale_date', isoDate(row.SDATE));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: word(row.SITUS_CITY) || '', zip: zipCode(row.SITUS_ZIP) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: word(row.SITUS_CITY) || '', zip: zipCode(row.SITUS_ZIP) }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 async function* build({ work, today }) {

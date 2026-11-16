@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanDto
+import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -17,15 +18,18 @@ import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
 import app.pantopus.android.data.plans.PlanOrigin
 import app.pantopus.android.data.plans.PlanRead
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.hasPrivatePart
+import app.pantopus.android.data.plans.isDrawable
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.PlansRoutes
 import app.pantopus.android.ui.screens.plans.plansVerificationTarget
@@ -70,6 +74,8 @@ data class AskDraft(
     val ageBands: Set<String> = emptySet(),
     /** "I'll stay with my kids": the parent ticks it for a new ask (as on iOS); an edited ask kept it. */
     val staysWithKids: Boolean = false,
+    /** Plans for the holidays (A7): kids coming, 0 to 10, on a plan with kids welcome ([partySize] is then the adults). */
+    val kids: Int = 0,
     val sending: Boolean = false,
     val error: String? = null,
 )
@@ -89,6 +95,19 @@ data class PlanDetailUi(
     val requests: PlanRequestsResponse? = null,
     /** The person looking, to tell "you" apart in the people going. */
     val viewerId: String? = null,
+    /** "Bring a friend" (Plans step 1): the guest's one link, ready for their share sheet. */
+    val friendLink: PlanTextInvite? = null,
+    /** The guest made their friend link on this visit (the card's `used` says so after the next read too). */
+    val friendInvited: Boolean = false,
+    val makingFriendLink: Boolean = false,
+    /** A repeating plan's next date to open in this one's place, once skipping it posted one (Plans step 2). */
+    val nextPlanId: String? = null,
+    /** Plans for the holidays (A6): the host's answers, read when the card carries `answers` (H1 is on for them). */
+    val guests: PlanInviteListDto? = null,
+    /** "Remind the {n} who haven't answered" is on its way. */
+    val reminding: Boolean = false,
+    /** Today's reminder went (one a plan a day). */
+    val remindedToday: Boolean = false,
 )
 
 /**
@@ -124,6 +143,7 @@ class PlanDetailViewModel
 
         private var loadJob: Job? = null
         private var requestsJob: Job? = null
+        private var guestsJob: Job? = null
         private var askedOnOpen = false
         private var active = true
         private var readGeneration = 0L
@@ -136,6 +156,8 @@ class PlanDetailViewModel
                 storedCardOnly = true
                 _ui.update { it.copy(state = PlanDetailUiState.Ready(card, fresh = false)) }
             }
+            // Opened in place of a date its host skipped (Plans step 2): this page says so.
+            events.takeArrivalNote(planId)?.let { note -> _ui.update { it.copy(notice = note) } }
         }
 
         /** Every appearance: read the plan fresh (opening an invitation first, once). */
@@ -143,38 +165,55 @@ class PlanDetailViewModel
             if (!active || loadJob?.isActive == true) return
             loadJob =
                 viewModelScope.launch {
-                    claimInviteOnce()
+                    val missed = claimInviteOnce()
                     read()
+                    if (missed) inviteMissedNotice()
                 }
         }
 
         /**
          * Opened from an email or text invitation: it becomes this account's. Someone else already used it, or the host
-         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS).
+         * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS). True when the
+         * invitation wasn't found.
          */
-        private suspend fun claimInviteOnce() {
-            val token = inviteToken ?: return
-            if (inviteClaimed) return
+        private suspend fun claimInviteOnce(): Boolean {
+            val token = inviteToken?.takeUnless { inviteClaimed } ?: return false
             val generation = readGeneration
             val result = repository.claimInvite(planId, token)
-            if (!active || generation != readGeneration) return
+            if (!active || generation != readGeneration) return false
             inviteClaimed = true
-            when (result) {
-                is NetworkResult.Success ->
+            return when (result) {
+                is NetworkResult.Success -> {
                     result.data.plan?.let { plan ->
                         storedCardOnly = false
-                        _ui.update { it.copy(state = PlanDetailUiState.Ready(plan, fresh = false)) }
+                        // A plan of a kind or place this app can't draw (a later server's) isn't available here, as a
+                        // read of it says (Plans steps 3 and 4): never drawn wrong for a moment.
+                        val state = if (plan.isDrawable) PlanDetailUiState.Ready(plan, fresh = false) else PlanDetailUiState.Gone
+                        _ui.update { it.copy(state = state) }
                     }
+                    false
+                }
                 is NetworkResult.Failure -> {
-                    val sentence =
-                        when {
-                            result.error == NetworkError.NotFound -> "This invitation isn't available anymore. You can still ask to join."
-                            result.error.planCode == "invite_used" -> result.error.planMessage
-                            else -> null
-                        }
-                    sentence?.let { line -> _ui.update { it.copy(notice = line) } }
+                    if (result.error.planCode == "invite_used") _ui.update { it.copy(notice = result.error.planMessage) }
+                    // Taken back, or never this plan's: said once the plan is read (see [inviteMissedNotice]).
+                    result.error == NetworkError.NotFound
                 }
             }
+        }
+
+        /**
+         * The invitation isn't there anymore. A plan the person can still see takes requests as any shared plan does; a
+         * private plan (Plans step 1) shows nothing without its invitation, so nothing is offered.
+         */
+        private fun inviteMissedNotice() {
+            val canAsk = _ui.value.state is PlanDetailUiState.Ready
+            val line =
+                if (canAsk) {
+                    "This invitation isn't available anymore. You can still ask to join."
+                } else {
+                    "This invitation isn't available anymore."
+                }
+            _ui.update { it.copy(notice = line) }
         }
 
         /** "Can't make it" to an invitation (someone already in or waiting is taken out first). */
@@ -232,6 +271,53 @@ class PlanDetailViewModel
                 openAsk()
             }
             if (plan.standing == PlanViewerStanding.HOSTING) loadRequests()
+            if (plan.standing == PlanViewerStanding.HOSTING && plan.answers != null) loadGuests()
+        }
+
+        /** The host's answers for the counts, the people line and Remind (Plans for the holidays, A6). */
+        private fun loadGuests() {
+            guestsJob?.cancel()
+            val generation = readGeneration
+            guestsJob =
+                viewModelScope.launch {
+                    val reply = (repository.invites(planId) as? NetworkResult.Success)?.data ?: return@launch
+                    if (active && generation == readGeneration) _ui.update { it.copy(guests = reply) }
+                }
+        }
+
+        /** "Remind the {n} who haven't answered": once a plan a day, the way each was invited. */
+        fun remind() {
+            if (_ui.value.reminding || _ui.value.remindedToday) return
+            _ui.update { it.copy(reminding = true) }
+            viewModelScope.launch {
+                val result = repository.remind(planId)
+                _ui.update {
+                    when (result) {
+                        is NetworkResult.Success -> {
+                            val n = result.data.reminded
+                            val notice = if (n == 1) "Reminded 1 person." else "Reminded $n people."
+                            it.copy(reminding = false, remindedToday = true, notice = notice)
+                        }
+                        is NetworkResult.Failure ->
+                            if (result.error.planCode in setOf("reminded_today", "too_many")) {
+                                it.copy(reminding = false, remindedToday = true)
+                            } else {
+                                it.copy(reminding = false, notice = result.error.planMessage)
+                            }
+                    }
+                }
+            }
+        }
+
+        /** "Maybe" to an invitation (Plans for the holidays, A7): the host sees it; I'm in or Can't make it replaces it. */
+        fun maybeInvite() {
+            _ui.update { it.copy(askOpen = false) }
+            act(done = "${hostFirst()} sees your maybe") {
+                when (val result = repository.maybeInvite(planId)) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
+            }
         }
 
         private fun loadRequests() {
@@ -322,6 +408,11 @@ class PlanDetailViewModel
             _ui.update { it.copy(reveal = false) }
         }
 
+        /** An online plan's "Join" couldn't open its link (no browser): say so (Plans step 3). */
+        fun linkUnopened() {
+            _ui.update { it.copy(notice = PLAN_LINK_UNOPENED) }
+        }
+
         fun noticeShown() {
             _ui.update { it.copy(notice = null) }
         }
@@ -333,7 +424,9 @@ class PlanDetailViewModel
             if (!ready.fresh) return
             val plan = ready.plan
             // Only a request still waiting fills the sheet ("Change who's coming"); a withdrawn or declined one starts fresh.
-            val mine = plan.myRequest?.takeIf { plan.standing == PlanViewerStanding.REQUESTED }
+            // With Plans for the holidays a guest who is in changes their numbers here too ("Change", A8).
+            val changing = plan.standing == PlanViewerStanding.IN && plan.kidsWelcome != null
+            val mine = plan.myRequest?.takeIf { plan.standing == PlanViewerStanding.REQUESTED || changing }
             _ui.update {
                 it.copy(
                     askOpen = true,
@@ -344,6 +437,7 @@ class PlanDetailViewModel
                             kidsCount = mine?.kidsCount ?: 1,
                             ageBands = mine?.kidsAgeBands.orEmpty().toSet(),
                             staysWithKids = mine != null && plan.kind == PlanKind.PLAYDATE.wire,
+                            kids = mine?.kidsCount?.takeIf { plan.takesKids } ?: 0,
                         ),
                 )
             }
@@ -376,6 +470,13 @@ class PlanDetailViewModel
                             kidsCount = draft.kidsCount,
                             kidsAgeBands = draft.ageBands.toList(),
                             staysWithKids = true,
+                        )
+                    } else if (plan.takesKids) {
+                        // Plans for the holidays (A7): adults as the party, kids beside them (none sent as no kids).
+                        AskToJoinBody(
+                            partySize = draft.partySize,
+                            note = draft.note.trim().takeIf(String::isNotEmpty),
+                            kidsCount = draft.kids.takeIf { it > 0 },
                         )
                     } else {
                         AskToJoinBody(partySize = draft.partySize, note = draft.note.trim().takeIf(String::isNotEmpty))
@@ -450,6 +551,89 @@ class PlanDetailViewModel
         }
 
         fun removeGuest(requestId: String) = act(done = "Removed. They no longer see the plan.") { repository.remove(planId, requestId) }
+
+        // ---- A repeating plan (Plans step 2, board Regulars) ----
+
+        /** "Skip Thursday": cancels this date only; the next date, posted at once, opens in its place and says so. */
+        fun skipDate() = cancelOneDate(note = null, opensNext = true)
+
+        /** "Cancel this date" on the cancel sheet: the same, with the host's note, staying on this (now cancelled) date. */
+        fun cancelThisDate() {
+            val note = _ui.value.cancelNote
+            _ui.update { it.copy(cancelOpen = false) }
+            cancelOneDate(note = note, opensNext = false)
+        }
+
+        private fun cancelOneDate(
+            note: String?,
+            opensNext: Boolean,
+        ) {
+            if (_ui.value.busy) return
+            _ui.update { it.copy(busy = true) }
+            viewModelScope.launch {
+                when (val result = repository.cancelThisDate(planId, note)) {
+                    is NetworkResult.Success -> {
+                        val next = result.data
+                        if (opensNext && next != null) {
+                            events.noteOnArrival(next, PlanRepeatWords.SKIPPED_NEXT)
+                            _ui.update { it.copy(busy = false, nextPlanId = next) }
+                        } else {
+                            val said = if (next != null) PlanRepeatWords.CANCELLED_NEXT else PlanRepeatWords.CANCELLED_NO_NEXT
+                            _ui.update { it.copy(busy = false, notice = said) }
+                        }
+                    }
+                    is NetworkResult.Failure -> _ui.update { it.copy(busy = false, notice = result.error.planMessage) }
+                }
+                read()
+            }
+        }
+
+        /** The next date opened in this one's place. */
+        fun nextDateOpened() {
+            _ui.update { it.copy(nextPlanId = null) }
+        }
+
+        /** "Stop repeating": `repeat: null`; this date stays and none follows. */
+        fun stopRepeating() =
+            act(done = PlanRepeatWords.STOPPED) {
+                when (val result = repository.stopRepeating(planId)) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
+            }
+
+        // ---- Bring a friend (a guest on a private plan, Plans step 1) ----
+
+        /** Makes the guest's one friend link (`POST /:id/invites/link`), for their phone's share sheet. */
+        fun bringFriend() {
+            if (_ui.value.makingFriendLink) return
+            _ui.update { it.copy(makingFriendLink = true) }
+            viewModelScope.launch {
+                when (val result = repository.inviteLink(planId, confirmSharesAddress = false)) {
+                    is NetworkResult.Success ->
+                        _ui.update {
+                            it.copy(
+                                makingFriendLink = false,
+                                friendInvited = true,
+                                friendLink = PlanTextInvite(result.data.message, result.data.url),
+                            )
+                        }
+                    is NetworkResult.Failure -> {
+                        // Already made (on another phone, say): the row says so, and the server's sentence says why.
+                        val used = result.error.planCode == "friend_invite_used"
+                        _ui.update {
+                            it.copy(makingFriendLink = false, friendInvited = it.friendInvited || used, notice = result.error.planMessage)
+                        }
+                    }
+                }
+                read()
+            }
+        }
+
+        /** The share sheet opened with the friend link. */
+        fun friendLinkShared() {
+            _ui.update { it.copy(friendLink = null, notice = "Done. That link works for one person.") }
+        }
 
         private fun act(
             done: String? = null,

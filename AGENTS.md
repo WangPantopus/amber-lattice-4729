@@ -45,7 +45,10 @@ PRs, screenshots and chat. Preserve unrelated local work.
   On November 14 the founder took the curator account's news posts out of
   Pulse and gave Today two halves under a big At home | Around you switch
   (drawn as Pulse's List | Map): At home is Today as it was, and Around you
-  lists local headlines that open at their outlets. The switch shows only
+  lists local headlines that open at their outlets. Since that evening each
+  headline is a post by the curator account, drawn with the Pulse card
+  (reactions, reply threads, Repost); those posts list only on Today, and a
+  person's repost may show one to their connections in Pulse. The switch shows only
   where there is something to list, and all of it is behind the backend's
   `AROUND_YOU` switch (on for staging, off in production until set).
   The founder doesn't want "Neighborhood" as a name in the app. The side menu

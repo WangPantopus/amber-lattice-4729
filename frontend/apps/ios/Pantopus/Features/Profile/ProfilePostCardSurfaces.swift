@@ -5,8 +5,13 @@
 //  The modals behind a profile's Pulse cards (`ProfilePostCardsModel`): the
 //  card's "Post options" menu (Open plan on your own plan's post, Share…,
 //  Pin to profile on your own posts, Report post), Pulse's report-reason
-//  picker and the system share sheet.
+//  picker, the Repost chooser and the composer its "Repost with your words"
+//  opens (PULSEREPOST contract §2, §8), and the system share sheet.
 //  Copy and ids follow the Pulse feed's (`FeedPostActionSurfaces`).
+//  On a list it stands behind every card (a profile). Given a post, it is
+//  that card's alone: on a wide screen (the iPhone Duo open) the system draws
+//  these menus as a bubble pointing at the view they are attached to, so
+//  Today's Around you attaches each card's to its own "Post options" button.
 //
 
 import SwiftUI
@@ -18,12 +23,42 @@ private struct ProfilePostShareTarget: Identifiable {
     let sessionId: String?
 }
 
+/// "Repost with your words": the composer over the screen with the card's post quoted. Once for a list of cards:
+/// behind all of them on a profile (`ProfilePostCardSurfaces`), and on Today's Around you page, whose cards each
+/// have their own menus.
+@MainActor
+struct ProfilePostQuoteComposer: ViewModifier {
+    let model: ProfilePostCardsModel
+
+    func body(content: Content) -> some View {
+        content
+            .fullScreenCover(item: Binding(get: { model.quoteDraft }, set: { model.quoteDraft = $0 })) { quote in
+                PulseComposeFlowView(
+                    quoting: quote,
+                    onCancel: { model.quoteDraft = nil },
+                    onPosted: { _ in model.quoteDraft = nil }
+                )
+            }
+    }
+}
+
 @MainActor
 struct ProfilePostCardSurfaces: ViewModifier {
     let model: ProfilePostCardsModel
+    /// The one post these menus are for; nil for whichever card of the model asks.
+    var postId: String?
     @State private var shareTarget: ProfilePostShareTarget?
 
     func body(content: Content) -> some View {
+        // One card's menus leave the composer to the screen: every card presenting it would present it many times.
+        if postId == nil {
+            menus(content).modifier(ProfilePostQuoteComposer(model: model))
+        } else {
+            menus(content)
+        }
+    }
+
+    private func menus(_ content: Content) -> some View {
         content
             .confirmationDialog(
                 "Post options",
@@ -49,6 +84,7 @@ struct ProfilePostCardSurfaces: ViewModifier {
             } message: {
                 Text("Reports are reviewed by the Pantopus team. The author isn't told who reported.")
             }
+            // The Repost chooser is presented by each card's ↻ (PulseCardRepostChooser).
             .sheet(item: $shareTarget) { target in
                 SystemShareSheet(items: [target.url]) {
                     Task { await model.recordShare(postId: target.id, sessionId: target.sessionId) }
@@ -97,15 +133,21 @@ struct ProfilePostCardSurfaces: ViewModifier {
 
     private var presentingOptions: Binding<Bool> {
         Binding(
-            get: { model.overflowPostId != nil },
-            set: { shown in if !shown { model.overflowPostId = nil } }
+            get: { isMine(model.overflowPostId) },
+            set: { shown in if !shown, isMine(model.overflowPostId) { model.overflowPostId = nil } }
         )
     }
 
     private var presentingReport: Binding<Bool> {
         Binding(
-            get: { model.reportingPostId != nil },
-            set: { shown in if !shown { model.reportingPostId = nil } }
+            get: { isMine(model.reportingPostId) },
+            set: { shown in if !shown, isMine(model.reportingPostId) { model.reportingPostId = nil } }
         )
+    }
+
+    /// A post is asking, and it is this modifier's (any post's, without one of its own).
+    private func isMine(_ asking: String?) -> Bool {
+        guard let asking else { return false }
+        return postId == nil || postId == asking
     }
 }

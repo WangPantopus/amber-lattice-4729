@@ -19,6 +19,15 @@ public enum FeedActionsEndpoints {
         Endpoint(method: .post, path: "/api/posts/hide/\(id)")
     }
 
+    /// `DELETE /api/posts/hide/:id` — undoes a hide (Hide's and "Not helpful
+    /// here"'s Undo); idempotent, answers `{ message: "Post unhidden" }`. An
+    /// older server answers 404, which reads as a failure (PULSEREPOST
+    /// contract §6). Route `backend/routes/posts.js` beside `POST /hide/:id`
+    /// (line 2480 on dev).
+    public static func unhidePost(id: String) -> Endpoint {
+        Endpoint(method: .delete, path: "/api/posts/hide/\(id)")
+    }
+
     /// `POST /api/posts/mute` — mutes a user or a business across every
     /// feed surface. Route `backend/routes/posts.js:2117`.
     public static func mute(entityType: FeedMuteEntityType, entityId: String) -> Endpoint {
@@ -81,8 +90,10 @@ public enum FeedActionsEndpoints {
     }
 
     /// `POST /api/posts/:id/not-helpful` — community "this isn't useful
-    /// here" signal. `surface` is normalised server-side to
-    /// `nearby` / `connections`. Route `backend/routes/posts.js:3191`.
+    /// here" signal; newer servers also hide the post for the viewer
+    /// (`hidden: true`, PULSEREPOST contract §7). `surface` is normalised
+    /// server-side to `nearby` / `connections`. Route
+    /// `backend/routes/posts.js:4267`.
     public static func notHelpful(id: String, surface: String) -> Endpoint {
         Endpoint(
             method: .post,

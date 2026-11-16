@@ -42,6 +42,8 @@ public struct PulsePostDetailLoadedContent: View {
     private let onRefresh: (@Sendable () async -> Void)?
     /// "Ask Pantopus" about this post, under its reactions; nil hides it.
     private let onAsk: (@MainActor () -> Void)?
+    /// Opens a quote's original from its card (PULSEREPOST contract §8.3).
+    private let onOpenQuotedPost: (@MainActor (String) -> Void)?
 
     public init(
         detail: PulsePostDetailContent,
@@ -68,7 +70,8 @@ public struct PulsePostDetailLoadedContent: View {
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
         onRefresh: (@Sendable () async -> Void)? = nil,
-        onAsk: (@MainActor () -> Void)? = nil
+        onAsk: (@MainActor () -> Void)? = nil,
+        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil
     ) {
         self.detail = detail
         self.commentsState = commentsState
@@ -95,6 +98,7 @@ public struct PulsePostDetailLoadedContent: View {
         self.onCommentDelete = onCommentDelete
         self.onRefresh = onRefresh
         self.onAsk = onAsk
+        self.onOpenQuotedPost = onOpenQuotedPost
     }
 
     /// Under the reactions: Ask, then the matched local businesses.
@@ -109,6 +113,18 @@ public struct PulsePostDetailLoadedContent: View {
                     NearbyProvidersCard(rows: nearbyProviders, onOpenBusiness: onOpenBusiness)
                 }
             }
+        )
+    }
+
+    /// "Repost with your words": the quoted post under this post's words and media, above its reactions.
+    private var quotedCard: AnyView? {
+        guard let quoted = PulseQuotedPost(detail.post.quotedPost) else { return nil }
+        return AnyView(
+            PulseQuotedPostView(
+                quoted: quoted,
+                accessibilityID: "pulseQuotedPost_\(detail.post.id)",
+                onOpen: onOpenQuotedPost
+            )
         )
     }
 
@@ -177,6 +193,7 @@ public struct PulsePostDetailLoadedContent: View {
                     mediaLocationBadge: detail.post.locationName,
                     detailLine: detail.post.dealDetailLine ?? detail.post.lostFoundDetailLine ?? detail.post.alertDetailLine,
                     eventDetails: detail.post.eventDetails,
+                    source: detail.post.source,
                     composerAvatarURL: nil,
                     composerAvatarName: "You",
                     composerText: $composerText,
@@ -193,6 +210,7 @@ public struct PulsePostDetailLoadedContent: View {
                     onCommentReply: detail.post.isRemovedByModerator ? nil : onCommentReply,
                     onCommentLike: onCommentLike,
                     onCommentDelete: onCommentDelete,
+                    aboveReactions: quotedCard,
                     belowReactions: belowReactions,
                     repliesClosedNote: detail.post.isRemovedByModerator ? "Replies are off for this post." : nil
                 ) { userId in

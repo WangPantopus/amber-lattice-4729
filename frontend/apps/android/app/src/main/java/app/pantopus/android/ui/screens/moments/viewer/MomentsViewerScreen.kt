@@ -232,6 +232,8 @@ fun MomentsViewerScreen(
     var confirmingBlock by remember { mutableStateOf(false) }
     var seenByOpen by remember { mutableStateOf(false) }
     var confirmingDelete by remember { mutableStateOf(false) }
+    // Delete was asked from the More menu (not Seen by): the confirm button carries the menu's test id, as on iPhone.
+    var deleteFromMenu by remember { mutableStateOf(false) }
     var away by remember { mutableStateOf(false) }
     // A finger is dragging to the person before or after, or pinching a photo bigger.
     var handling by remember { mutableStateOf(false) }
@@ -255,6 +257,28 @@ fun MomentsViewerScreen(
             saveNote = null
         }
     }
+    // Save to Photos from the More menu says how it went in the viewer's own note (no sheet is up to say it).
+    var savingFromMenu by remember { mutableStateOf<MomentDto?>(null) }
+    val saveToPhotos: (MomentDto) -> Unit = { saved ->
+        scope.launch { toast.show(if (MomentGallerySaver.save(context, saved)) "Saved to Photos" else "Couldn't save to Photos.") }
+    }
+    val menuStorage =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val saved = savingFromMenu
+            savingFromMenu = null
+            when {
+                !granted -> toast.show("Allow storage to save")
+                saved != null -> saveToPhotos(saved)
+            }
+        }
+    val saveFromMenu: (MomentDto) -> Unit = { saved ->
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && !context.canWriteStorage()) {
+            savingFromMenu = saved
+            menuStorage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            saveToPhotos(saved)
+        }
+    }
 
     var reply by remember { mutableStateOf("") }
     var muted by remember { mutableStateOf(false) }
@@ -272,8 +296,7 @@ fun MomentsViewerScreen(
     var active by remember { mutableIntStateOf(0) }
     val activeNow by rememberUpdatedState(active)
     val player = players[active]
-    val standby = players[1 - active]
-    // The Moment whose video the standby player holds.
+    // The Moment whose video the standby player (the one not on screen) holds.
     var standbyFor by remember { mutableStateOf<String?>(null) }
     // One state for every video (the players' listeners hold it), back to false for each new Moment.
     var videoStarted by remember { mutableStateOf(false) }
@@ -326,15 +349,21 @@ fun MomentsViewerScreen(
         val next = upNext
         val link = next?.mediaUrl
         if (next != null && next.kind == "video" && link != null && next.id != moment?.id && standbyFor != next.id) {
-            standby.playWhenReady = false
-            standby.volume = 0f
-            standby.setMediaItem(MediaItem.fromUri(link))
-            standby.prepare()
+            // The standby player as it is now, read here: when one video follows another (a long video's parts) the
+            // players have just traded places, and the one this composition saw as standby is the one on screen.
+            val free = players[1 - active]
+            free.playWhenReady = false
+            free.volume = 0f
+            free.setMediaItem(MediaItem.fromUri(link))
+            free.prepare()
             standbyFor = next.id
         }
     }
-    LaunchedEffect(muted, active) { player.volume = if (muted) 0f else 1f }
-    LaunchedEffect(moment?.id, paused, active) { if (moment?.kind == "video") player.playWhenReady = !paused }
+    // The player on screen as it is now, read here: right after the players trade places this composition's `player` is
+    // the standby one, which must stay quiet and paused (it would play the next part in the background and be over by
+    // the time it is shown).
+    LaunchedEffect(muted, active) { players[active].volume = if (muted) 0f else 1f }
+    LaunchedEffect(moment?.id, paused, active) { if (moment?.kind == "video") players[active].playWhenReady = !paused }
     LaunchedEffect(videoStarted) { if (videoStarted) moment?.let(viewModel::shown) }
 
     // The clock: a photo shows for about 6 seconds, a text card a little longer when it's long, a video for its length.
@@ -671,12 +700,22 @@ fun MomentsViewerScreen(
                     mine = mine,
                     showsSound = moment?.kind == "video",
                     muted = muted,
-                    showsMore = !mine && ring != null,
+                    // Your own Moment has it too (founder 11-15): Save to Photos and Delete, as in Seen by.
+                    showsMore = ring != null,
                     onSound = { muted = !muted },
                     onMore = { menuOpen = true },
                     onClose = close,
                     menuOpen = menuOpen,
                     onDismissMenu = { menuOpen = false },
+                    onSave = {
+                        menuOpen = false
+                        moment?.let(saveFromMenu)
+                    },
+                    onDelete = {
+                        menuOpen = false
+                        deleteFromMenu = true
+                        confirmingDelete = true
+                    },
                     onReport = {
                         menuOpen = false
                         reporting = true
@@ -888,7 +927,10 @@ fun MomentsViewerScreen(
                     scope.launch { saveNote = if (MomentGallerySaver.save(context, moment)) "Saved" else "Couldn't save" }
                 }
             },
-            onDelete = { confirmingDelete = true },
+            onDelete = {
+                deleteFromMenu = false
+                confirmingDelete = true
+            },
         )
     }
     if (confirmingDelete) {
@@ -902,7 +944,10 @@ fun MomentsViewerScreen(
                         confirmingDelete = false
                         viewModel.delete { seenByOpen = false }
                     },
-                    modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("moments.seenBy.deleteConfirm"),
+                    modifier =
+                        Modifier
+                            .semantics { testTagsAsResourceId = true }
+                            .testTag(if (deleteFromMenu) "moments.menu.deleteConfirm" else "moments.seenBy.deleteConfirm"),
                 ) { Text("Delete", color = PantopusColors.error) }
             },
             dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") } },
@@ -1063,12 +1108,14 @@ private fun PeekPage(
                 mine = mine,
                 showsSound = peek.brief.kind == "video",
                 muted = muted,
-                showsMore = !mine,
+                showsMore = true,
                 onSound = {},
                 onMore = {},
                 onClose = {},
                 menuOpen = false,
                 onDismissMenu = {},
+                onSave = {},
+                onDelete = {},
                 onReport = {},
                 onMute = {},
                 onBlock = {},
@@ -1173,6 +1220,9 @@ private fun ViewerHeader(
     onClose: () -> Unit,
     menuOpen: Boolean,
     onDismissMenu: () -> Unit,
+    /** Your own Moment's menu: Save to Photos and Delete. */
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
     onReport: () -> Unit,
     onMute: () -> Unit,
     onBlock: () -> Unit,
@@ -1328,6 +1378,10 @@ private fun ViewerHeader(
                     containerColor = PantopusColors.momentMenuSurface,
                     modifier = Modifier.semantics { testTagsAsResourceId = true },
                 ) {
+                    if (mine) {
+                        OwnMenuItems(onSave = onSave, onDelete = onDelete)
+                        return@DropdownMenu
+                    }
                     DropdownMenuItem(
                         text = { Text("Report", color = Color.White) },
                         leadingIcon = {
@@ -1369,6 +1423,30 @@ private fun ViewerHeader(
             modifier = Modifier.testTag("moments.viewer.close"),
         )
     }
+}
+
+/** Your own Moment's More menu (founder 11-15, as on iPhone): what Seen by also offers, where a person looks first. */
+@Composable
+private fun OwnMenuItems(
+    onSave: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text("Save to Photos", color = Color.White) },
+        leadingIcon = {
+            PantopusIconImage(icon = PantopusIcon.Download, contentDescription = null, size = 18.dp, tint = Color.White)
+        },
+        onClick = onSave,
+        modifier = Modifier.testTag("moments.menu.save"),
+    )
+    DropdownMenuItem(
+        text = { Text("Delete", color = PantopusColors.momentMenuDanger) },
+        leadingIcon = {
+            PantopusIconImage(icon = PantopusIcon.Trash2, contentDescription = null, size = 18.dp, tint = PantopusColors.momentMenuDanger)
+        },
+        onClick = onDelete,
+        modifier = Modifier.testTag("moments.menu.delete"),
+    )
 }
 
 @Composable

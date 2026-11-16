@@ -5,6 +5,8 @@ package app.pantopus.android.ui.screens.plans.detail
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,18 +21,26 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanCannotAsk
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.PlanKindDetails
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenBusiness
@@ -40,7 +50,9 @@ import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanHostRow
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanNote
+import app.pantopus.android.ui.screens.plans.components.PlanOnlineChip
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsCaption
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsMeter
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
@@ -53,6 +65,8 @@ import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.map.planH4
 import app.pantopus.android.ui.screens.plans.opensPlanBusiness
 import app.pantopus.android.ui.screens.plans.opensPlanProfile
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatInvitedLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -74,10 +88,19 @@ internal fun answerTime(plan: PlanDto): String? {
     }
 }
 
-/** "Near Prune Hill · under 1 mi · at Sam's place" (or "a public place"); a business's: "Lacamas Pickleball Club · about 1 mi". */
+/**
+ * "Near Prune Hill · under 1 mi · at Sam's place" (or "a public place"); a business's: "Lacamas Pickleball Club · about 1
+ * mi"; a private plan's place shown to the person invited: "Heritage Park, Camas · about 2 mi" (board Invited).
+ */
 internal fun whereLine(plan: PlanDto): String {
+    // An online plan (Plans step 3, board Online): "Online · hosted from Camas", no distance, no place.
+    if (plan.isOnline) return PlanFormat.onlineWhere(plan)
     if (plan.isBusiness) {
         return listOfNotNull(plan.place?.name ?: plan.host?.displayName, PlanFormat.distance(plan.distanceBand)).joinToString(" · ")
+    }
+    if (plan.placeShownToInvitee) {
+        val name = listOfNotNull(plan.place?.name, plan.area?.city).filter(String::isNotBlank).joinToString(", ")
+        return listOfNotNull(name.takeIf(String::isNotBlank), PlanFormat.distance(plan.distanceBand)).joinToString(" · ")
     }
     val at =
         when {
@@ -115,10 +138,30 @@ internal fun detailsLine(plan: PlanDto): String? {
                     if (d.dogsWelcome == true) "dogs welcome" else null,
                 )
             PlanKind.STUDY_GROUP -> PlanFormat.studyParts(plan)
-            else -> emptyList()
+            else -> newKindParts(plan.planKind, d)
         }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
+
+/** Plans step 4's facts: "Potluck", "Trivia", "Hike · Easy pace"; none for something else or a choice of "Other". */
+private fun newKindParts(
+    kind: PlanKind?,
+    d: PlanDetailsDto,
+): List<String> =
+    when (kind) {
+        PlanKind.FOOD_DRINKS -> listOfNotNull(PlanKindDetails.label(PlanKindDetails.FOOD, d.foodKind))
+        PlanKind.GAME_NIGHT -> listOfNotNull(PlanKindDetails.label(PlanKindDetails.GAMES, d.gameKind))
+        PlanKind.OUTDOORS ->
+            listOfNotNull(
+                PlanKindDetails.label(PlanKindDetails.OUTDOORS, d.outdoorKind),
+                when (d.pace) {
+                    "easy" -> "Easy pace"
+                    "brisk" -> "Brisk pace"
+                    else -> null
+                },
+            )
+        else -> emptyList()
+    }
 
 /** "paddles", "rackets", "balls" or "gear": what a pickup host brings extra (H4 "I have extra paddles"). */
 internal fun extraGearWord(sport: String?): String =
@@ -129,12 +172,18 @@ internal fun extraGearWord(sport: String?): String =
         else -> "gear"
     }
 
-/** The type tag and the title (h2). */
+/** The type tag (and "Private" beside it on a private plan, Plans step 1) and the title (h2). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlanHeading(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
-        plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
+            plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+            if (plan.isPrivate) PlanPrivateChip()
+            // Board Online (Plans step 3).
+            if (plan.isOnline) PlanOnlineChip()
+        }
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
     }
 }
@@ -146,6 +195,8 @@ internal fun PlanTitleBlock(plan: PlanDto) {
         PlanHeading(plan)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
             PlanInfoLine(PantopusIcon.Calendar, PlanFormat.whenLine(plan, long = true))
+            // "Every Tue and Thu until Feb 4" (boards Preview and Invited, Plans step 2).
+            PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
             PlanInfoLine(PantopusIcon.MapPin, whereLine(plan))
             if (plan.isPlaydate) {
                 KidsAgeBand.rangeLabel(plan.details?.kidsAgeBands)?.let { PlanInfoLine(PantopusIcon.AdultChild, "Kids $it") }
@@ -181,7 +232,7 @@ internal fun PlanHostCard(
     val host = plan.host ?: return
     // The host's card opens their profile, as on iOS.
     PlanHostRow(
-        name = host.displayName ?: "Neighbor",
+        name = host.displayName ?: "Someone",
         verified = host.verifiedAddress && ruleCaption == null,
         caption = ruleCaption ?: hostCaption(plan),
         seed = host.userId,
@@ -216,22 +267,34 @@ internal fun PlanSpots(
     }
 }
 
-/** J1 and J2: a plan before you're in. */
+/** J1 and J2: a plan before you're in; [afterTitle] goes under its title block (a private plan's invitation banner). */
 @Composable
-internal fun ColumnScope.PlanBeforeInBody(plan: PlanDto) {
+internal fun ColumnScope.PlanBeforeInBody(
+    plan: PlanDto,
+    afterTitle: (@Composable () -> Unit)? = null,
+) {
     PlanTitleBlock(plan)
+    afterTitle?.invoke()
     PlanHostCard(plan)
     PlanSpots(plan, note = if (plan.isPlaydate) null else "Names show once you're in")
     plan.about?.takeIf(String::isNotBlank)?.let { Text(text = it, style = PantopusTextStyle.body, color = PantopusColors.appText) }
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
+    // Invited to a repeating plan (board Invited, Plans step 2): one answer is for this date only.
+    if (plan.openInvite != null && plan.repeats) PlanRepeatInvitedLine()
     if (plan.isPlaydate) {
         PlanNote(
-            "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family.",
+            if (plan.isPrivate) {
+                // The families a host invites to a private playdate get in right away (Plans step 1).
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools."
+            } else {
+                "Parents stay with their kids. Only ages are shared, never names, photos or schools. The host approves each family."
+            },
         )
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PlanInfoLine(PantopusIcon.Users, PlanFormat.howPeopleGetIn(plan))
-            PlanInfoLine(PantopusIcon.ShieldCheck, "Free, and for adults")
+            // Plans for the holidays: a plan with kids welcome doesn't say it's for adults.
+            PlanInfoLine(PantopusIcon.ShieldCheck, if (plan.takesKids) "Free, and kids are welcome" else "Free, and for adults")
         }
     }
 }
@@ -287,7 +350,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Verify your address to join",
                 enabled = true,
-                caption = "This plan is for verified neighbors.",
+                caption = "This plan is for people with a verified address.",
                 action = AskAction.Verify,
             )
         PlanCannotAsk.NEEDS_LOCATION ->
@@ -301,7 +364,7 @@ private fun cannotAskFooter(reason: String?): AskFooter =
             AskFooter(
                 "Too far to join",
                 enabled = false,
-                caption = "This plan is for neighbors who live or are close by.",
+                caption = "This plan is for people who live or are close by.",
                 action = AskAction.None,
             )
         PlanCannotAsk.FULL_USE_WAITLIST ->
@@ -350,12 +413,13 @@ internal fun ColumnScope.PlanRequestedBody(plan: PlanDto) {
             text =
                 listOfNotNull(
                     PlanFormat.whenLine(plan, long = true),
-                    plan.area?.label,
+                    PlanFormat.areaLabel(plan),
                     PlanFormat.distance(plan.distanceBand),
                 ).joinToString(" · "),
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
     YourRequestCard(plan)
     PlanSpots(plan)
@@ -418,11 +482,15 @@ internal fun ColumnScope.PlanWaitlistBody(plan: PlanDto) {
         // "Sunday, Oct 18 · 5:30–7:30 PM · …", the long date as J5 and iOS write it.
         Text(
             text =
-                listOfNotNull(PlanFormat.whenLine(plan, long = true), plan.area?.label, PlanFormat.distance(plan.distanceBand))
-                    .joinToString(" · "),
+                listOfNotNull(
+                    PlanFormat.whenLine(plan, long = true),
+                    PlanFormat.areaLabel(plan),
+                    PlanFormat.distance(plan.distanceBand),
+                ).joinToString(" · "),
             style = PantopusTextStyle.small,
             color = PantopusColors.appTextStrong,
         )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
         detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
     }
     PlanSpots(plan, note = if (plan.waitlistCount > 0) "${plan.waitlistCount} waiting" else null)
@@ -522,7 +590,7 @@ internal fun PlaydateLocked(
         Column(modifier = Modifier.fillMaxWidth().planCard().padding(Spacing.s4), verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             PlanIconTile(PantopusIcon.Lock, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 48.dp, glyph = 22.dp)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
-                Text(text = "Playdates are for verified neighbors", style = planH4, color = PantopusColors.appText)
+                Text(text = "Playdates are for people with a verified address", style = planH4, color = PantopusColors.appText)
                 Text(
                     text =
                         "Verify your address to see the time, the place and who's going, and to " +

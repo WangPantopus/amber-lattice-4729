@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  What the Plans sheet holds: the first plans at its lowest stop (F1), the
-//  whole list pulled up (F2: Your plans, then each day, then More nearby
+//  whole list pulled up (F2: Yours, then each day, then More nearby
 //  with Pulse and Connections while the Pulse redesign is on), a tapped
 //  pin's card (F3), "Nothing planned yet" (F4) and "See plans near you" (F5).
 //  In the column beside the map (the open iPhone Duo) it is the whole list,
@@ -200,7 +200,9 @@ extension PlanRowModel {
             subtitle: subtitle,
             trailing: trailing,
             accessibilityLabel: accessibilityLabel,
-            isBusiness: isBusiness
+            isBusiness: isBusiness,
+            isPrivate: isPrivate,
+            repeatLine: repeatLine
         )
     }
 }
@@ -223,7 +225,7 @@ struct PlansListSheet: View {
             PlansSheetScroll {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !viewModel.visibleYourPlans.isEmpty {
-                        section("Your plans", cards: viewModel.visibleYourPlans, mine: true)
+                        section(PlansFlags.shared.guestAnswers ? "Yours" : "Your plans", cards: viewModel.visibleYourPlans, mine: true)
                     }
                     ForEach(days, id: \.title) { day in
                         section(day.title, cards: day.cards, mine: false)
@@ -233,7 +235,7 @@ struct PlansListSheet: View {
                             .padding(.top, Spacing.s4)
                             .hiddenUnderPlansTabBar()
                     } else if days.isEmpty {
-                        Text("No other \(viewModel.kindFilter?.title.lowercased() ?? "plans") near you yet.")
+                        Text(PlanKindsMore.noneNearby(viewModel.kindFilter))
                             .planFont(.small)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             .padding(.top, Spacing.s4)
@@ -318,14 +320,27 @@ struct PlansListSheet: View {
                 .padding(.bottom, 2)
                 .hiddenUnderPlansTabBar()
             ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                PlanRow(
-                    model: mine ? .mine(card, requestsCount: card.requestsCount) : .listed(card),
-                    showsDivider: index > 0
-                ) {
-                    actions.openPlan(card, card.id, .view)
+                if mine, PlanSeriesHostCard.shows(card) {
+                    // The host's repeating plan (board Regulars, Plans step 2): skip, change or stop it here.
+                    PlanSeriesListCard(
+                        card: card,
+                        onOpen: { actions.openPlan(card, card.id, .view) },
+                        onChange: { openChange(card) },
+                        onOpenNext: { actions.openPlan(nil, $0, .view) }
+                    )
+                    .padding(.vertical, Spacing.s2)
+                    .itemZoomSource(.plan, id: card.id)
+                    .hiddenUnderPlansTabBar()
+                } else {
+                    PlanRow(
+                        model: mine ? .mine(card, requestsCount: card.requestsCount) : .listed(card),
+                        showsDivider: index > 0
+                    ) {
+                        actions.openPlan(card, card.id, .view)
+                    }
+                    .itemZoomSource(.plan, id: card.id)
+                    .hiddenUnderPlansTabBar()
                 }
-                .itemZoomSource(.plan, id: card.id)
-                .hiddenUnderPlansTabBar()
                 // A venue's later plans fold under its soonest one (board P3), "Your plans" too: the plan you're
                 // in comes from your own plans, which don't carry the fold, so it is read from the list's row.
                 if let more = card.moreTimes ?? viewModel.cards.first(where: { $0.id == card.id })?.moreTimes,
@@ -344,6 +359,11 @@ struct PlansListSheet: View {
                 }
             }
         }
+    }
+
+    /// The Change screen for a repeating plan's "Change"; the plan itself where there is no such route.
+    private func openChange(_ card: PlanCardDTO) {
+        if let openChange = actions.openChange { openChange(card.id) } else { actions.openPlan(card, card.id, .view) }
     }
 
     private func moreNearby(

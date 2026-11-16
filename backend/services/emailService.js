@@ -529,6 +529,158 @@ Don’t send me invitations: ${unsubscribeLink}
 }
 
 // ============================================================
+//  PLANS: EMAILS TO A GUEST WITHOUT AN ACCOUNT
+// ============================================================
+
+/**
+ * The words of the three emails a guest without an account gets for a plan (Plans for the holidays, H1;
+ * docs/product/plans-holidays/06-screens.md, "The emails"): You're in, one reminder, and a change or cancellation;
+ * and, to a guest a move to the host's home makes wait (contract 6.8), the move.
+ * Never an address: the guest's own link opens the page that shows it.
+ * @param {'in'|'reminder'|'changed'|'moved_home'|'cancelled'} kind
+ * @param {Object} words - { hostFirst, title, icon, when, people, day, openCount, changed, newPlace, cancelNote }
+ *   people: "2 adults and 1 kid"; day: 'Today' | 'Tomorrow'; changed: 'time' | 'place' | 'both'.
+ */
+function planGuestEmailContent(kind, words) {
+  const title = words.title || 'your plan';
+  const footer = `You got this because you answered ${words.hostFirst}’s invitation on Pantopus.`;
+  if (kind === 'in') {
+    return {
+      subject: `You’re in: ${title}`,
+      heading: 'You’re in',
+      lines: [`${words.hostFirst} has you down for ${words.people}.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['The address and the bring list are on that page. This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'reminder') {
+    const open = Number(words.openCount) || 0;
+    return {
+      subject: `${words.day === 'Today' ? 'Today' : 'Tomorrow'}: ${title}`,
+      heading: words.day === 'Today' ? 'Today' : 'Tomorrow',
+      lines: [],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: open > 0 ? [`${open} ${open === 1 ? 'thing is' : 'things are'} still open on the bring list.`] : [],
+      footer,
+    };
+  }
+  if (kind === 'changed') {
+    const what = words.changed === 'both' ? 'the time and place' : words.changed === 'place' ? 'the place' : 'the time';
+    return {
+      subject: `${words.hostFirst} changed ${what} of ${title}`,
+      heading: `${words.hostFirst} changed ${what}`,
+      lines: [],
+      facts: [title, words.changed !== 'place' ? words.when : null, words.changed !== 'time' ? words.newPlace : null].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'moved_home') {
+    // The plan moved to the host's home and this guest now waits for the host's yes: no address, only that it comes.
+    return {
+      subject: `${words.hostFirst} changed the place of ${title}`,
+      heading: `${words.hostFirst} changed the place`,
+      lines: [`${title} is now at ${words.hostFirst}’s home. ${words.hostFirst} lets each guest in. When ${words.hostFirst} says yes, the address comes to this email.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  return {
+    subject: `${words.hostFirst} cancelled ${title}`,
+    heading: `${words.hostFirst} cancelled`,
+    lines: words.cancelNote ? [words.cancelNote] : [],
+    facts: [title, words.when].filter(Boolean),
+    button: null,
+    after: [],
+    footer,
+  };
+}
+
+/**
+ * Send one email to a guest without an account, in the invitation email's frame with its unsubscribe link and the
+ * mail app's one-click unsubscribe header. `link` is the guest's own link (null for a cancellation).
+ * @param {Object} opts - { toEmail, kind, words, link, unsubscribeLink, oneClickUnsubscribeLink }
+ */
+async function sendPlanGuestEmail({ toEmail, kind, words, link, unsubscribeLink, oneClickUnsubscribeLink }) {
+  const content = planGuestEmailContent(kind, words);
+  const [title, ...otherFacts] = content.facts;
+  const paragraph = (text) => `<p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 20px;">${escapeHtml(text)}</p>`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f9fafb; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:480px; margin:40px auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+
+    <!-- Header -->
+    <div style="background:#111827; padding:32px 32px 24px; text-align:center;">
+      <div style="font-size:32px; margin-bottom:8px;">${escapeHtml(words.icon || '📅')}</div>
+      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">${escapeHtml(content.heading)}</h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:32px;">
+      ${content.lines.map(paragraph).join('\n      ')}
+
+      <!-- The plan's card -->
+      <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px;">
+        <p style="color:#111827; font-size:16px; font-weight:600; line-height:1.4; margin:0 0 6px;">${escapeHtml(title || '')}</p>
+        ${otherFacts.map((fact) => `<p style="color:#4b5563; font-size:14px; line-height:1.5; margin:0;">${escapeHtml(fact)}</p>`).join('\n        ')}
+      </div>
+
+      ${link && content.button ? `<!-- CTA -->
+      <div style="text-align:center; margin:28px 0;">
+        <a href="${escapeHtml(link)}" style="display:inline-block; background:#111827; color:#ffffff; font-size:15px; font-weight:600; padding:14px 32px; border-radius:10px; text-decoration:none;">
+          ${escapeHtml(content.button)}
+        </a>
+      </div>` : '<div style="height:20px;"></div>'}
+
+      ${content.after.map((text) => `<p style="color:#6b7280; font-size:13px; line-height:1.5; text-align:center; margin:0 0 8px;">${escapeHtml(text)}</p>`).join('\n      ')}
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
+      <p style="color:#9ca3af; font-size:11px; margin:0;">
+        ${escapeHtml(content.footer)}
+      </p>
+      <p style="color:#d1d5db; font-size:10px; margin:8px 0 0;">
+        <a href="${escapeHtml(unsubscribeLink)}" style="color:#9ca3af; text-decoration:underline;">Don’t send me invitations</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = [
+    ...content.lines,
+    content.facts.join('\n'),
+    link && content.button ? `${content.button}: ${link}` : null,
+    ...content.after,
+    `${content.footer}\nDon’t send me invitations: ${unsubscribeLink}`,
+  ].filter(Boolean).join('\n\n');
+
+  return sendEmail({
+    to: toEmail,
+    subject: content.subject,
+    html,
+    text: `\n${text}\n`,
+    headers: {
+      'List-Unsubscribe': `<${oneClickUnsubscribeLink}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  });
+}
+
+// ============================================================
 //  PASSWORD RESET EMAIL
 // ============================================================
 
@@ -1455,6 +1607,8 @@ module.exports = {
   sendCardWaitingEmail,
   planInviteEmailContent,
   sendPlanInviteEmail,
+  planGuestEmailContent,
+  sendPlanGuestEmail,
   sendPasswordResetEmail,
   sendVerificationEmail,
   sendMonthlyReceipt,

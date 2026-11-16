@@ -135,11 +135,23 @@ export const fetchPublicBookingByToken = cache(
 /**
  * A Nearby Plans share link: the plan's public card (area only), or `{ kind: 'playdate', city }`. A business's plan
  * (board D6) is the same card plus `business`, `label`, `label_text`, `place` and `price`, and comes as the whole
- * card for a playdate too (a kids' class); a neighbor's plan has none of those keys.
+ * card for a playdate too (a kids' class); a person's plan has none of those keys.
+ *
+ * A private plan (only the people its host invites can see it) answers `{ private: true }` and nothing else, unless
+ * the link carries a live invitation to it: then the same card, with `private: true`.
  */
 export type PublicPlan = {
   id?: string;
-  kind: 'watch_party' | 'playdate' | 'pickup_game' | 'walk_coffee' | 'study_group';
+  kind:
+    | 'watch_party'
+    | 'playdate'
+    | 'pickup_game'
+    | 'walk_coffee'
+    | 'study_group'
+    | 'food_drinks'
+    | 'game_night'
+    | 'outdoors'
+    | 'something_else';
   title?: string;
   about?: string;
   starts_at?: string | null;
@@ -148,7 +160,8 @@ export type PublicPlan = {
   day_part?: string | null;
   timezone?: string;
   area?: { label: string; city: string | null; precision: string };
-  place_kind?: 'public' | 'home';
+  /** 'online': people join with a link, which this page never gets. */
+  place_kind?: 'public' | 'home' | 'online';
   host?: { display_name: string; avatar_url: string | null; verified_address: boolean; plans_hosted: number };
   spots?: number;
   going_count?: number;
@@ -169,6 +182,57 @@ export type PublicPlan = {
   place?: { name: string; address: string | null } | null;
   /** A business's plan: null is Free. */
   price?: PublicPlanPrice | null;
+  /** A repeating plan: how often ("Every Tue and Thu") and its last date (YYYY-MM-DD). */
+  repeat?: { text: string; short: string; last_on: string } | null;
+  /** A private plan. Without a live invitation in the link this is the only key, and there is no card to show. */
+  private?: boolean;
+  /** The occasion that started it (H3): its name stands where the kind's would. */
+  occasion?: { key: string; text: string } | null;
+  /**
+   * Plans for the holidays (H1), while the host has the switch: with a way in (an invitation's token, the open link)
+   * or the guest's own key, the form and the guest's own answer. Absent otherwise: the page is today's.
+   */
+  answer?: PublicPlanAnswer | null;
+  /** With the guest's own key, while they are in: the place, the note for people in and who is going. */
+  for_guest?: PublicPlanForGuest | null;
+  /** The guest's key is a guest's the host removed: the invitation is no longer open, and nothing else. */
+  removed?: boolean;
+};
+
+export type PublicPlanGuestState = 'in' | 'waiting_ok' | 'maybe' | 'cant';
+
+export type PublicPlanAnswer = {
+  can: boolean;
+  via: 'open' | 'email' | 'link';
+  needs_email: boolean;
+  kids_welcome: boolean;
+  room_left: number;
+  host_says_yes_first: boolean;
+  mine: {
+    state: PublicPlanGuestState;
+    name: string;
+    adults: number;
+    kids: number;
+    email_hint: string | null;
+    /** What changed since this guest answered; a waiting guest's page says so too (a move to the host's home). */
+    changed?: 'time' | 'place' | 'both' | null;
+  } | null;
+};
+
+export type PublicPlanForGuest = {
+  place: { name: string; address: string | null; latitude: number | null; longitude: number | null; link?: string | null };
+  guest_note: string | null;
+  going: string[];
+  /** The bring list (H2), while the host has it on. */
+  bring: PublicPlanBring | null;
+  changed: 'time' | 'place' | 'both' | null;
+};
+
+export type PublicPlanBring = {
+  rev: number;
+  guests_can_add: boolean;
+  open_count: number;
+  items: { id: string; label: string; note: string | null; claim: { name: string; mine: boolean } | null }[];
 };
 
 export type PublicPlanBusiness = {
@@ -193,8 +257,24 @@ export function planInviteToken(value: unknown): string | null {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value) ? value : null;
 }
 
-export const fetchPublicPlan = cache(async (id: string, invite: string | null = null): Promise<PublicFetchResult<PublicPlan>> => {
-  const query = invite ? `?invite=${encodeURIComponent(invite)}` : '';
+/** A guest's key or the open link's token: 43 base64url characters, as an invitation's token. */
+export const planSecret = planInviteToken;
+
+/**
+ * The plan's public answer. `invite` and `open` are the page's ways in; `guest` is the guest's own key, which the page
+ * reads from its HttpOnly cookie and sends from the server only (never in a link the page shows).
+ */
+export const fetchPublicPlan = cache(async (
+  id: string,
+  invite: string | null = null,
+  open: string | null = null,
+  guest: string | null = null,
+): Promise<PublicFetchResult<PublicPlan>> => {
+  const params = new URLSearchParams();
+  if (invite) params.set('invite', invite);
+  if (open) params.set('open', open);
+  if (guest) params.set('guest', guest);
+  const query = params.toString() ? `?${params.toString()}` : '';
   const result = await fetchPublicJson<PublicPlan>(
     `/api/public/plans/${encodeURIComponent(id)}${query}`,
     { noStore: true },

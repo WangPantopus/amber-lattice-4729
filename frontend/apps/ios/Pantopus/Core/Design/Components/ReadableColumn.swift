@@ -39,6 +39,13 @@ public extension View {
         modifier(ReadableColumn())
     }
 
+    /// The same, in a narrower column: `width` at the default text size. For a screen of cards that carry
+    /// pictures (Today's Around you and its post page), where the reading width's cards run the open iPhone Duo's
+    /// whole upright screen with pictures to match.
+    func readableColumn(width: CGFloat) -> some View {
+        modifier(ReadableColumn(width: width))
+    }
+
     /// For a screen inside `readableColumn()` that lays out its own readable columns on a wide screen: where the
     /// screen is at least `width` wide, the column leaves this screen the whole width.
     func readableColumnWidens(from width: CGFloat) -> some View {
@@ -74,12 +81,19 @@ private struct ReadableColumnBesideFoldKey: PreferenceKey {
 private struct ReadableColumn: ViewModifier {
     /// Apple's readable content width at the default text size (UIKit's `readableContentGuide`); it grows with
     /// larger text, so the lines keep about the same number of words.
-    @ScaledMetric(relativeTo: .body) private var readableWidth: CGFloat = 672
+    @ScaledMetric private var readableWidth: CGFloat
     @State private var widensFrom: CGFloat?
     @State private var besideFold = false
     /// The Duo's fold while it is half folded across the screen, with the room to keep clear beside it; nil
     /// otherwise.
     @State private var fold: CGRect?
+
+    /// Apple's readable content width at the default text size.
+    static let readingWidth: CGFloat = 672
+
+    init(width: CGFloat = ReadableColumn.readingWidth) {
+        _readableWidth = ScaledMetric(wrappedValue: width, relativeTo: .body)
+    }
 
     func body(content: Content) -> some View {
         // The width is read in the layout pass that uses it. Kept in @State from `onGeometryChange`, it arrived a pass

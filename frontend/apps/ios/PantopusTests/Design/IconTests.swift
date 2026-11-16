@@ -124,7 +124,9 @@ final class IconTests: XCTestCase {
         // the previous and next Moment.
         "circle-dashed", "volume-2", "volume-x", "switch-camera", "skip-back", "skip-forward",
         // Moment heights: the "Elevation" chip and a Moment's height.
-        "mountain"
+        "mountain",
+        // Plans step 4: the die of a game night (the other new kinds reuse utensils, mountain and plus).
+        "plan-game"
     ]
 
     func testInventoryMatches() {

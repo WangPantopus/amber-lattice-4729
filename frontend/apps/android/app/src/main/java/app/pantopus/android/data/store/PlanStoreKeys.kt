@@ -72,7 +72,10 @@ object PlanStoreKeys {
         saveWhen = { reply -> reply.items.none(PlanDto::carriesPrivatePart) },
     )
 
-    /** Hosting, going, asked and waitlisted: the list's "Your plans" and the Today cards. */
+    /**
+     * Hosting, going, asked and waitlisted: the list's "Your plans" and the Today cards. Invitations and recent plans
+     * count too: a private plan's invitation carries its place before the person answers.
+     */
     val mine =
         StoreKey<MyPlansResponse>(
             "api/plans/mine",
@@ -80,7 +83,8 @@ object PlanStoreKeys {
             topics = setOf(TOPIC, "plan:*"),
             type = MyPlansResponse::class.java,
             saveWhen = { reply ->
-                (reply.hosting + reply.going + reply.asked + reply.waitlisted).none(PlanDto::carriesPrivatePart)
+                (reply.hosting + reply.going + reply.asked + reply.waitlisted + reply.invited + reply.recent)
+                    .none(PlanDto::carriesPrivatePart)
             },
         )
 }

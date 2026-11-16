@@ -305,7 +305,9 @@ struct HolidayCardListSentView: View {
                 .accessibilityIdentifier("sendCardTakeBackConfirm")
             Button("Cancel", role: .cancel) {}
         } message: { card in
-            Text(card.byEmail
+            Text(card.emailSendAt != nil
+                ? "\(HolidayCardWords.notEmailedYet) \(HolidayCardWords.stampComesBack)"
+                : card.byEmail
                 ? "The link in their email will say you took it back. \(HolidayCardWords.stampComesBack)"
                 : "It won’t go out with the morning mail. \(HolidayCardWords.stampComesBack)")
         }

@@ -16,6 +16,7 @@ import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.change.PlanChangeScreen
 import app.pantopus.android.ui.screens.plans.detail.PlanDetailScreen
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestsScreen
 import app.pantopus.android.ui.screens.plans.host.HostFlowScreen
 import app.pantopus.android.ui.screens.plans.requests.PlanRequestsScreen
 
@@ -29,6 +30,7 @@ object PlansRoutes {
     const val GAME_KEY = "game"
     const val AGAIN_KEY = "again"
     const val VIA_KEY = "via"
+    const val PRIVATE_KEY = "private"
 
     /** Opened from a business's page (B6): a join from there tells the server `via: business_page`. */
     const val VIA_BUSINESS_PAGE = "business_page"
@@ -46,8 +48,15 @@ object PlansRoutes {
     /** Change the time or place (H11). */
     const val CHANGE = "plans/{$PLAN_ID_KEY}/change"
 
-    /** Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan. */
-    const val HOST = "plans-host?$KIND_KEY={$KIND_KEY}&$GAME_KEY={$GAME_KEY}&$AGAIN_KEY={$AGAIN_KEY}"
+    /** Who's coming (Plans for the holidays, A5): the host's answers. */
+    const val GUESTS = "plans/{$PLAN_ID_KEY}/guests"
+
+    /**
+     * Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan, and
+     * `private` starts "Who can see this" on "Only people I invite" (the empty state's "Plan with people you know").
+     */
+    const val HOST =
+        "plans-host?$KIND_KEY={$KIND_KEY}&$GAME_KEY={$GAME_KEY}&$AGAIN_KEY={$AGAIN_KEY}&$PRIVATE_KEY={$PRIVATE_KEY}"
 
     fun plan(
         id: String,
@@ -63,14 +72,17 @@ object PlansRoutes {
 
     fun change(id: String): String = "plans/${Uri.encode(id)}/change"
 
+    fun guests(id: String): String = "plans/${Uri.encode(id)}/guests"
+
     fun host(
         kind: String? = null,
         game: String? = null,
         again: String? = null,
+        startPrivate: Boolean = false,
     ): String =
         "plans-host?$KIND_KEY=${Uri.encode(
             kind.orEmpty(),
-        )}&$GAME_KEY=${Uri.encode(game.orEmpty())}&$AGAIN_KEY=${Uri.encode(again.orEmpty())}"
+        )}&$GAME_KEY=${Uri.encode(game.orEmpty())}&$AGAIN_KEY=${Uri.encode(again.orEmpty())}&$PRIVATE_KEY=$startPrivate"
 }
 
 /** Where Plans hands off to the rest of the app. */
@@ -165,12 +177,15 @@ fun NavGraphBuilder.plansRoutes(
                 onBack = { if (!nav.popBackStack()) external.openNearby() },
                 onOpenPlan = { id -> nav.navigate(PlansRoutes.plan(id)) },
                 onOpenRequests = { id -> nav.navigate(PlansRoutes.requests(id)) },
+                onOpenGuests = { id -> nav.navigate(PlansRoutes.guests(id)) },
                 onChange = { id -> nav.navigate(PlansRoutes.change(id)) },
                 onHost = { kind, again -> nav.navigate(PlansRoutes.host(kind = kind, again = again)) },
                 onOpenChat = external.openChat,
                 onOpenVerification = external.openVerification,
                 onSeeAllPlans = external.openNearby,
                 onAskPantopus = external.askPantopus,
+                // A skipped date's next one (Plans step 2) takes its place, so Back goes where the skipped one came from.
+                onOpenNextDate = { id -> nav.navigate(PlansRoutes.plan(id)) { popUpTo(PlansRoutes.PLAN) { inclusive = true } } },
             )
         }
     }
@@ -180,6 +195,14 @@ fun NavGraphBuilder.plansRoutes(
     ) {
         PlansLocals(external) {
             PlanRequestsScreen(onBack = { if (!nav.popBackStack()) external.openNearby() })
+        }
+    }
+    composable(
+        route = PlansRoutes.GUESTS,
+        arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
+    ) {
+        PlansLocals(external) {
+            PlanGuestsScreen(onBack = { if (!nav.popBackStack()) external.openNearby() })
         }
     }
     composable(
@@ -203,6 +226,10 @@ fun NavGraphBuilder.plansRoutes(
                 navArgument(PlansRoutes.AGAIN_KEY) {
                     type = NavType.StringType
                     defaultValue = ""
+                },
+                navArgument(PlansRoutes.PRIVATE_KEY) {
+                    type = NavType.BoolType
+                    defaultValue = false
                 },
             ),
     ) {

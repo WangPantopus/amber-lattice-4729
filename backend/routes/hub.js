@@ -745,7 +745,7 @@ router.get('/today/around', verifyToken, async (req, res) => {
     const { resolveLocation } = require('../services/context/locationResolver');
     const { aroundYou, EMPTY } = require('../services/aroundYouService');
     const location = await resolveLocation(req.user.id);
-    return res.json(location.source === 'none' ? EMPTY : await aroundYou(location));
+    return res.json(location.source === 'none' ? EMPTY : await aroundYou({ ...location, userId: req.user.id }));
   } catch (err) {
     logger.error('Hub around error', { error: err.message, userId: req.user.id });
     return res.status(500).json({ error: 'Failed to load what is around you' });

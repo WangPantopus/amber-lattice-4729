@@ -37,32 +37,46 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanHostInvitesDto
+import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.plans.KidsAgeBand
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.isAtHome
+import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.ui.components.DestructiveButton
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
+import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanSpotsMeter
 import app.pantopus.android.ui.screens.plans.components.PlanStatusChip
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanWell
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestCounts
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestCountsRow
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestsUi
+import app.pantopus.android.ui.screens.plans.guests.guestCounts
 import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.map.planH3
 import app.pantopus.android.ui.screens.plans.opensPlanProfile
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesHostCard
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -82,24 +96,19 @@ internal fun ColumnScope.PlanHostBody(
     onChange: () -> Unit,
     onCancel: () -> Unit,
     onRemove: (PlanPersonDto) -> Unit,
+    series: PlanSeriesActions? = null,
+    /** Plans for the holidays (A6): the host's answers, for the people line; null while they load. */
+    guests: PlanInviteListDto? = null,
+    /** Opens Who's coming (A5). */
+    onOpenGuests: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        PlanStatusChip(
-            text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
-            icon = PantopusIcon.Flag,
-            iconTint = PantopusColors.primary600,
-        )
-        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
-        val where = if (plan.isAtHome) "Your place" else plan.place?.name ?: plan.area?.label
-        Text(
-            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
-            style = PantopusTextStyle.small,
-            color = PantopusColors.appTextStrong,
-        )
-    }
+    HostHeading(plan)
     if (closed) HostClosedBanner(plan)
+    HostSeries(plan, closed, series)
+    // An online plan's link, as the people in see it (Plans step 3); "Join" is in the footer. Nothing once it's over.
+    PlanOnlineLinkCard(plan, hosting = true)
     val pending = requests?.pending.orEmpty()
     val waiting = requests?.waitlisted.orEmpty()
     val waitingCount = requests?.waitlisted?.size ?: plan.waitlistCount
@@ -111,22 +120,141 @@ internal fun ColumnScope.PlanHostBody(
         WaitlistCard(waitingCount, waiting.mapNotNull { it.user?.displayName }, onOpenRequests)
     }
     InviteCard(plan, closed, onOpen = onInvite)
-    GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
+    // Plans for the holidays (A6): the three counts and the people line with their numbers, both opening Who's coming,
+    // in place of the going list (Who's coming has every guest, with or without an account, and Remove).
+    HostPeople(plan, guests, onOpenGuests) {
+        GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
+    }
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)
     }
     if (!closed) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Plans for the holidays (A6 item 4): "Share link" first, opening the invite sheet's one link for everyone.
+            if (plan.showsShareLink) {
+                GhostButton(title = "Share link", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planShareLink"))
+            }
             if (plan.chatRoomId != null) {
                 GhostButton(title = "Message guests", onClick = onMessageGuests, modifier = Modifier.weight(1f))
             }
-            GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
+            // No Share for a private plan: the Invite row above invites each person (Plans step 1).
+            if (!plan.isPrivate) GhostButton(title = "Share", onClick = { context.sharePlan(plan) }, modifier = Modifier.weight(1f))
         }
         Column {
-            PlanTextButton(title = "Change the time or place", onClick = onChange, enabled = !busy)
+            PlanTextButton(title = changeTitle(plan), onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
         }
+    }
+}
+
+/**
+ * Who is coming, on the host's page: the counts and the people line (Plans for the holidays, A6) on a private plan
+ * whose card carries `answers`; otherwise the shipped going list ([going]). A public plan keeps it (as on iPhone).
+ */
+@Composable
+private fun HostPeople(
+    plan: PlanDto,
+    guests: PlanInviteListDto?,
+    onOpenGuests: () -> Unit,
+    going: @Composable () -> Unit,
+) {
+    val counts = plan.hostCounts
+    if (counts != null) HostAnswers(counts, PlanGuestsUi(plan = plan, list = guests), onOpenGuests) else going()
+}
+
+/** The host's counts (Plans for the holidays, A6) on a private plan whose card carries `answers`; null otherwise. */
+private val PlanDto.hostCounts: PlanGuestCounts? get() = guestCounts()?.takeIf { isPrivate }
+
+/** "Share link" leads the buttons (A6 item 4) on such a plan while its host can invite. */
+private val PlanDto.showsShareLink: Boolean get() = hostCounts != null && invites?.canInvite == true
+
+/**
+ * The host's answers (Plans for the holidays, board 4, A6 item 2): the three counts, then the people coming with their
+ * numbers ("Dana + 2 kids, Sam, Priya + 1 and 2 more") and a chevron. Either opens Who's coming.
+ */
+@Composable
+private fun HostAnswers(
+    counts: PlanGuestCounts,
+    guests: PlanGuestsUi,
+    onOpen: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("planHostAnswers"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        Box(modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open who's coming", onClick = onOpen)) {
+            PlanGuestCountsRow(counts)
+        }
+        val line = guests.comingLine
+        if (line != null) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button, onClickLabel = "Open who's coming", onClick = onOpen)
+                        .semantics(mergeDescendants = true) {}
+                        .testTag("planHostPeopleLine"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+            ) {
+                PlanAvatarStack(names = guests.coming.take(4).map { it.name to (it.userId ?: it.key) })
+                Text(text = line, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary, modifier = Modifier.weight(1f))
+                PantopusIconImage(
+                    icon = PantopusIcon.ChevronRight,
+                    contentDescription = null,
+                    size = 16.dp,
+                    tint = PantopusColors.appTextMuted,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A repeating plan that is still open (board Regulars, Plans step 2): the series, Skip, Change and Stop repeating,
+ * whatever the switch says.
+ */
+@Composable
+private fun HostSeries(
+    plan: PlanDto,
+    closed: Boolean,
+    series: PlanSeriesActions?,
+) {
+    if (closed || series == null || !plan.repeats) return
+    PlanSeriesHostCard(plan, series)
+}
+
+/** H9's way to H11: "Change the time or place", or for an online plan "Change the time or link" (as on iPhone). */
+private fun changeTitle(plan: PlanDto): String = if (plan.isOnline) "Change the time or link" else "Change the time or place"
+
+/** "You're hosting" (and "Private", Plans step 1), the title, and when and where. */
+@Composable
+private fun HostHeading(plan: PlanDto) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            PlanStatusChip(
+                text = if (plan.planState == PlanState.CANCELLED) "Cancelled" else "You're hosting",
+                icon = PantopusIcon.Flag,
+                iconTint = PantopusColors.primary600,
+            )
+            // A private plan says so: only the people the host invites see it.
+            if (plan.isPrivate) PlanPrivateChip()
+        }
+        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        // An online plan says "Online" also while its private parts are being read again (it has no place to name).
+        val where =
+            when {
+                plan.isAtHome -> "Your place"
+                plan.isOnline -> PlanFormat.ONLINE
+                else -> plan.place?.name ?: plan.area?.label
+            }
+        Text(
+            text = listOfNotNull(PlanFormat.whenLine(plan, long = true), where).joinToString(" · "),
+            style = PantopusTextStyle.small,
+            color = PantopusColors.appTextStrong,
+        )
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
 }
 
@@ -341,7 +469,7 @@ private fun GuestRow(
 ) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    val name = person.displayName ?: "Neighbor"
+    val name = person.displayName ?: "Someone"
     val title = if (person.partySize > 1) "$name + ${person.partySize - 1}" else name
     val kids =
         person.kidsCount?.let { count ->
@@ -440,6 +568,7 @@ internal fun PlanCancelSheet(
     onNote: (String) -> Unit,
     onCancel: () -> Unit,
     onKeep: () -> Unit,
+    onCancelDate: (() -> Unit)? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // People in count with their parties ("Chris + 1" is two), as on H9 and H11; everyone asking or waiting is told too.
@@ -471,7 +600,21 @@ internal fun PlanCancelSheet(
                 placeholder = "Sorry, something came up.",
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                DestructiveButton(title = "Cancel plan", onClick = onCancel, modifier = Modifier.height(50.dp))
+                if (onCancelDate != null) {
+                    // A repeating plan (Plans step 2): this date only (the next one is posted now), or the rest too.
+                    DestructiveButton(
+                        title = "Cancel this date",
+                        onClick = onCancelDate,
+                        modifier = Modifier.height(50.dp).testTag("planCancelThisDate"),
+                    )
+                    DestructiveButton(
+                        title = "Cancel and stop repeating",
+                        onClick = onCancel,
+                        modifier = Modifier.height(50.dp).testTag("planCancelStopRepeating"),
+                    )
+                } else {
+                    DestructiveButton(title = "Cancel plan", onClick = onCancel, modifier = Modifier.height(50.dp))
+                }
                 GhostButton(title = "Keep plan", onClick = onKeep, modifier = Modifier.height(50.dp))
             }
             PlanWell {

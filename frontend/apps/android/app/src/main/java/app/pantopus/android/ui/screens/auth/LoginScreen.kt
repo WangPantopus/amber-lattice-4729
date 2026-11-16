@@ -963,7 +963,10 @@ internal fun waitingLinkLine(path: String?): String? {
             null, is DeepLinkRouter.Destination.Unknown, is DeepLinkRouter.Destination.ResetPassword,
             is DeepLinkRouter.Destination.VerifyEmail, is DeepLinkRouter.Destination.JoinInvite,
             -> return null
-            is DeepLinkRouter.Destination.Plan, is DeepLinkRouter.Destination.PlanRequests -> "open the plan you were sent"
+            is DeepLinkRouter.Destination.Plan,
+            is DeepLinkRouter.Destination.PlanRequests,
+            is DeepLinkRouter.Destination.PlanGuests,
+            -> "open the plan you were sent"
             is DeepLinkRouter.Destination.Post -> "open the post you were sent"
             is DeepLinkRouter.Destination.SupportTrain, is DeepLinkRouter.Destination.SupportTrainManage ->
                 "open the Support Train you were sent"

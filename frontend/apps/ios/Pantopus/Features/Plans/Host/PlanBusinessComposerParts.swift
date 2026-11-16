@@ -24,7 +24,7 @@ struct PlanHostAsSection: View {
             PlanFormCard {
                 option(
                     title: "You, \(model.hostName)",
-                    subtitle: "A plan with neighbors. Always free.",
+                    subtitle: "A plan with people nearby. Always free.",
                     selected: model.hostAs == nil,
                     action: { model.hostAs = nil },
                     leading: { PlanAvatar(name: model.hostName, size: 40) }

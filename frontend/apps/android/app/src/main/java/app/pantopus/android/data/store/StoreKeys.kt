@@ -30,6 +30,7 @@ import app.pantopus.android.data.api.models.postsmap.PostsMapResponse
 import app.pantopus.android.data.api.models.profile.PublicProfileDto
 import app.pantopus.android.data.api.models.relationships.PendingRequestsResponse
 import app.pantopus.android.data.api.models.relationships.RelationshipsListResponse
+import app.pantopus.android.data.api.models.saved_places.AroundYouDto
 import app.pantopus.android.data.api.models.saved_places.SavedPlacesListResponse
 import app.pantopus.android.data.api.models.settings.PrivacySettingsResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
@@ -125,6 +126,25 @@ object StoreKeys {
             kind = StoreKind.TODAY,
             topics = setOf(StoreTopics.TODAY, "place:$id"),
             type = PlaceIntelligence::class.java,
+        )
+
+    /**
+     * Around you (Today's second half) for a Home: kept, saved on the phone, so Today opens with its At home | Around
+     * you switch instead of growing it once the read answers. Every look still reads it again.
+     */
+    fun homeAround(homeId: String) =
+        StoreKey<AroundYouDto>(
+            "api/homes/$homeId/around",
+            kind = StoreKind.TODAY,
+            type = AroundYouDto::class.java,
+        )
+
+    /** Around you for the viewer's saved place, kept the same way. */
+    fun savedPlaceAround(id: String) =
+        StoreKey<AroundYouDto>(
+            "api/saved-places/$id/around",
+            kind = StoreKind.TODAY,
+            type = AroundYouDto::class.java,
         )
 
     /** Public preview shared by the saved-address root and its details. */
@@ -296,13 +316,13 @@ object StoreKeys {
     )
 
     /**
-     * A person's posts on their profile, read as feed rows for the Pulse card. Its own entry
-     * (`shape`, never sent) so it can't meet a [userPosts] reply of another type.
+     * A person's posts on their profile, read as feed rows for the Pulse card, with the posts they reposted
+     * (`include_reposts`). Its own entry (`shape`, never sent) so it can't meet a [userPosts] reply of another type.
      */
     fun profilePosts(userId: String) =
         StoreKey<FeedResponse>(
             "api/posts/user/$userId",
-            mapOf("limit" to PROFILE_POSTS_LIMIT.toString(), "shape" to "feed"),
+            mapOf("limit" to PROFILE_POSTS_LIMIT.toString(), "include_reposts" to "true", "shape" to "feed"),
             kind = StoreKind.POST,
             topics = setOf(StoreTopics.POSTS, "profile:$userId"),
         )
@@ -313,6 +333,15 @@ object StoreKeys {
     fun savedPosts(limit: Int) =
         StoreKey<SavedPostsResponse>(
             "api/posts/saved",
+            mapOf("limit" to limit.toString()),
+            kind = StoreKind.POST,
+            topics = setOf(StoreTopics.POSTS, StoreTopics.PROFILE_ME),
+        )
+
+    /** My posts' Reposts tab: the first page of `GET /api/posts/reposts`, kept as the Saved tab's is. */
+    fun repostedPosts(limit: Int) =
+        StoreKey<SavedPostsResponse>(
+            "api/posts/reposts",
             mapOf("limit" to limit.toString()),
             kind = StoreKind.POST,
             topics = setOf(StoreTopics.POSTS, StoreTopics.PROFILE_ME),

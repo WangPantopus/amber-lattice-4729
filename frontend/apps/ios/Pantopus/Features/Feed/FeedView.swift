@@ -117,6 +117,13 @@ public struct FeedView: View {
     /// Changes when the feed's tab is tapped again: on this screen (not with a
     /// post open over it) the list goes back to the top, where the header is.
     private let scrollToTop: UUID?
+    /// Opens My posts on the Saved tab: "View" on the "Saved." toast
+    /// (PULSEREPOST contract §5). Nil leaves the toast without it.
+    private let onOpenSaved: (@MainActor () -> Void)?
+    /// "Repost with your words" opens the composer on the host's stack, as ✎ does (`onCompose`). Nil opens it over
+    /// the feed instead. A sheet opened from a composer the feed itself presents closes again at once, so the
+    /// photo picker never stayed up there.
+    private let onQuote: (@MainActor (PulseComposeQuote) -> Void)?
 
     init(
         viewModel: PulseFeedViewModel? = nil,
@@ -134,7 +141,9 @@ public struct FeedView: View {
         onRefresh: (@MainActor () async -> Void)? = nil,
         mapSwitchOnTop: Bool = false,
         scrollToTop: UUID? = nil,
-        asksPantopus: Bool = false
+        asksPantopus: Bool = false,
+        onOpenSaved: (@MainActor () -> Void)? = nil,
+        onQuote: (@MainActor (PulseComposeQuote) -> Void)? = nil
     ) {
         // Swift 5.10 crashes while lowering PulseFeedViewModel() in a default-argument thunk.
         let resolved = viewModel ?? PulseFeedViewModel()
@@ -161,6 +170,8 @@ public struct FeedView: View {
         self.mapSwitchOnTop = mapSwitchOnTop
         self.scrollToTop = scrollToTop
         self.asksPantopus = asksPantopus
+        self.onOpenSaved = onOpenSaved
+        self.onQuote = onQuote
     }
 
     public var body: some View {
@@ -615,13 +626,35 @@ public struct FeedView: View {
 
     @ViewBuilder private var toastOverlay: some View {
         if let toast = viewModel.toastMessage {
-            ToastView(message: ToastMessage(text: toast, kind: .neutral))
+            let action = toastButton(viewModel.toastAction)
+            ToastView(message: ToastMessage(text: toast, kind: .neutral), action: action)
                 .padding(.bottom, Spacing.s16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .accessibilityIdentifier("pulseFeedToast")
-                .dismissToast(after: toast, minimum: 2.5) {
+                // A toast with a button stays long enough to reach it, with VoiceOver too.
+                .dismissToast(after: toast, minimum: action == nil ? 2.5 : (voiceOverEnabled ? 12 : 5)) {
                     viewModel.toastMessage = nil
                 }
+        }
+    }
+
+    /// "View" (My posts' Saved tab) or "Undo" (a hide) on the toast; none
+    /// when the host can't open My posts.
+    private func toastButton(_ action: PulseFeedToastAction?) -> ToastAction? {
+        switch action {
+        case .viewSaved?:
+            guard let onOpenSaved else { return nil }
+            return ToastAction(title: PulseFeedToastAction.viewSaved.title) {
+                viewModel.toastMessage = nil
+                onOpenSaved()
+            }
+        case let .undoHide(postId)?:
+            return ToastAction(title: PulseFeedToastAction.undoHide(postId: postId).title) {
+                viewModel.toastMessage = nil
+                run { await viewModel.undoHide(postId: postId) }
+            }
+        case nil:
+            return nil
         }
     }
 
@@ -1285,7 +1318,8 @@ public struct FeedView: View {
         } else {
             onOverflow = { @MainActor in viewModel.overflowPostId = row.id }
             onToggleSave = { @MainActor in run { await viewModel.toggleSave(postId: row.id) } }
-            onToggleRepost = { @MainActor in run { await viewModel.toggleRepost(postId: row.id) } }
+            // ↻ opens the Repost chooser: Repost (or Undo repost) and Repost with your words.
+            onToggleRepost = { @MainActor in viewModel.openRepostChooser(postId: row.id) }
         }
         var onOpenAuthorLink: (@MainActor () -> Void)?
         if let link = row.authorLink, let onOpenAuthor {
@@ -1300,10 +1334,26 @@ public struct FeedView: View {
             onDismissSeeded: onDismissSeeded,
             onToggleSave: onToggleSave,
             onToggleRepost: onToggleRepost,
-            onOpenAuthor: onOpenAuthorLink
+            onOpenAuthor: onOpenAuthorLink,
+            onOpenQuotedPost: onOpenPost,
+            // The chooser opens from this card's ↻, pointing at it.
+            repostChooser: seeded ? nil : PulseCardRepostChooser(
+                target: Binding(get: { viewModel.repostChooser }, set: { viewModel.repostChooser = $0 }),
+                onToggle: { postId in run { await viewModel.toggleRepost(postId: postId) } },
+                onQuote: beginQuote
+            )
         )
         // The post opens out of this card and closes back into it.
         .itemZoomSource(.post, id: row.id)
+    }
+
+    /// "Repost with your words": the composer opens on the host's stack when it has one, over the feed otherwise.
+    private func beginQuote(_ postId: String) {
+        if let onQuote, let quote = viewModel.quote(for: postId) {
+            onQuote(quote)
+        } else {
+            viewModel.beginQuote(postId: postId)
+        }
     }
 
     private func errorFrame(message: String) -> some View {
@@ -1412,7 +1462,8 @@ private struct PulseHeaderFlickRows<Flick: Gesture>: ViewModifier {
 }
 
 /// Every modal the Pulse card overflow menu drives: the menu itself, the
-/// report-reason picker, the delete + mute confirms, the system share
+/// report-reason picker, the delete + mute confirms, the Repost chooser and
+/// the composer it opens for "Repost with your words", the system share
 /// sheet, and the Pulse preferences sheet. Split out of `FeedView.body`
 /// so the type-checker (and SwiftLint's body-length rule) stay happy.
 @MainActor
@@ -1488,6 +1539,7 @@ private struct FeedPostActionSurfaces: ViewModifier {
             } message: {
                 Text("It leaves Pulse. You can restore it from My posts.")
             }
+            .modifier(PulseFeedRepostSurfaces(viewModel: viewModel))
             .sheet(item: $shareTarget) { target in
                 SystemShareSheet(items: [target.url]) {
                     run { await viewModel.recordShare(postId: target.id, sessionId: target.sessionId) }
@@ -1513,14 +1565,15 @@ private struct FeedPostActionSurfaces: ViewModifier {
                 }
                 .accessibilityIdentifier("pulseFeedOverflowOpenPlan")
             }
-            Button(actions.isSaved ? "Remove bookmark" : "Save post") {
+            Button(actions.isSaved ? "Remove from Saved" : "Save post") {
                 dismissOverflow()
                 run { await viewModel.toggleSave(postId: row.id) }
             }
             .accessibilityIdentifier("pulseFeedOverflowSave")
+            // One item, which opens the Repost chooser (contract §2).
             Button(actions.isReposted ? "Undo repost" : "Repost") {
                 dismissOverflow()
-                run { await viewModel.toggleRepost(postId: row.id) }
+                viewModel.openRepostChooser(postId: row.id)
             }
             .accessibilityIdentifier("pulseFeedOverflowRepost")
             if viewModel.shareURL(postId: row.id) != nil {

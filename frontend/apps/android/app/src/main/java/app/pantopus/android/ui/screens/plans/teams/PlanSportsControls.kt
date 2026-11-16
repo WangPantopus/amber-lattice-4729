@@ -87,7 +87,7 @@ fun PlansSportsEmpty(
         sports?.canChoose != true -> content(game, null)
         sports.state == "unset" && !dismissed ->
             Column {
-                Text("Watch games with neighbors?", style = PantopusTextStyle.body, color = PantopusColors.appText)
+                Text("Watch games with people nearby?", style = PantopusTextStyle.body, color = PantopusColors.appText)
                 PlanTextButton("Choose teams", { showsTeams = true })
                 PlanTextButton("Not into sports", { teams.setOff(true) }, enabled = !ui.saving)
                 PlanTextButton("×", {

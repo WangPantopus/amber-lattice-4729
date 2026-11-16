@@ -22,9 +22,12 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
@@ -43,7 +46,10 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreKeys
 import app.pantopus.android.data.store.StoreTopics
 import app.pantopus.android.data.store.Stored
+import com.squareup.moshi.Moshi
 import kotlinx.coroutines.delay
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import retrofit2.Response
 import javax.inject.Inject
@@ -69,6 +75,7 @@ class PlansRepository
         private val api: PlansApi,
         private val store: ScreenStore,
         private val tokens: TokenStorage,
+        private val moshi: Moshi,
     ) {
         /** Public cards seen lately, so a plan opened from the map or a list shows its card at once. */
         private val cards =
@@ -115,9 +122,12 @@ class PlansRepository
             viewport: PlanViewport,
             kinds: String?,
             window: PlanWindow,
-        ): PlanPinsResponse? = store.peek(pinsKey(viewport, kinds, window, origin)).data
+        ): PlanPinsResponse? = store.peek(pinsKey(viewport, kinds, window, origin)).data?.drawable()
 
-        /** Pins for [viewport]; each pin's distance band is measured from where the person browses from. */
+        /**
+         * Pins for [viewport]; each pin's distance band is measured from where the person browses from. Here and in every
+         * read below, a plan of a kind this app can't draw is left out (Plans steps 3 and 4: the next kind needs no marker).
+         */
         suspend fun pins(
             viewport: PlanViewport,
             kinds: String?,
@@ -125,24 +135,26 @@ class PlansRepository
             force: Boolean = false,
         ): Stored<PlanPinsResponse> {
             val from = origin
-            return store.read(pinsKey(viewport, kinds, window, from), force) { etag ->
-                conditionalApiCall {
-                    api.pins(
-                        south = viewport.south,
-                        west = viewport.west,
-                        north = viewport.north,
-                        east = viewport.east,
-                        kinds = kinds,
-                        window = window.wire,
-                        etag = etag,
-                        latitude = from?.latitude?.let(StoreKeys::roundCoordinate),
-                        longitude = from?.longitude?.let(StoreKeys::roundCoordinate),
-                        gpsLatitude = from?.gps?.let { from.latitude },
-                        gpsLongitude = from?.gps?.let { from.longitude },
-                        gpsTimestamp = from?.gps?.toString(),
-                    )
+            val stored =
+                store.read(pinsKey(viewport, kinds, window, from), force) { etag ->
+                    conditionalApiCall {
+                        api.pins(
+                            south = viewport.south,
+                            west = viewport.west,
+                            north = viewport.north,
+                            east = viewport.east,
+                            kinds = kinds,
+                            window = window.wire,
+                            etag = etag,
+                            latitude = from?.latitude?.let(StoreKeys::roundCoordinate),
+                            longitude = from?.longitude?.let(StoreKeys::roundCoordinate),
+                            gpsLatitude = from?.gps?.let { from.latitude },
+                            gpsLongitude = from?.gps?.let { from.longitude },
+                            gpsTimestamp = from?.gps?.toString(),
+                        )
+                    }
                 }
-            }
+            return stored.copy(data = stored.data?.drawable())
         }
 
         private fun pinsKey(
@@ -168,7 +180,7 @@ class PlansRepository
             kinds: String?,
         ): PlansListResponse? {
             val session = cacheSession()
-            return store.peek(listKey(latitude, longitude, window, kinds)).data?.also { remember(it, session) }
+            return store.peek(listKey(latitude, longitude, window, kinds)).data?.drawable()?.also { remember(it, session) }
         }
 
         suspend fun list(
@@ -197,7 +209,8 @@ class PlansRepository
                             gpsTimestamp = gps?.toString(),
                         )
                     }
-                }.also { stored -> stored.data?.let { remember(it, session) } }
+                }.let { stored -> stored.copy(data = stored.data?.drawable()) }
+                .also { stored -> stored.data?.let { remember(it, session) } }
         }
 
         private fun listKey(
@@ -212,13 +225,14 @@ class PlansRepository
             kinds,
         )
 
-        fun mineCopy(): MyPlansResponse? = store.peek(PlanStoreKeys.mine).data
+        fun mineCopy(): MyPlansResponse? = store.peek(PlanStoreKeys.mine).data?.drawable()
 
         fun isMineCurrent(): Boolean = store.isCurrent(PlanStoreKeys.mine)
 
         suspend fun mine(force: Boolean = false): Stored<MyPlansResponse> {
             val session = cacheSession()
-            return store.read(PlanStoreKeys.mine, force) { etag -> conditionalApiCall { api.mine(etag) } }.also { stored ->
+            val read = store.read(PlanStoreKeys.mine, force) { etag -> conditionalApiCall { api.mine(etag) } }
+            return read.copy(data = read.data?.drawable()).also { stored ->
                 stored.data?.let { reply ->
                     (reply.hosting + reply.going + reply.asked + reply.waitlisted).forEach { rememberCard(it, session) }
                 }
@@ -285,6 +299,11 @@ class PlansRepository
             session: CacheSession,
         ): PlanRead {
             val body = response.body()
+            // A kind or a place this app can't draw (a later server's): as if it weren't there, never drawn wrong.
+            if (response.isSuccessful && body != null && !body.isDrawable) {
+                forget(id, session)
+                return PlanRead.Missing
+            }
             if (response.isSuccessful && body != null) {
                 rememberCard(body, session)
                 return PlanRead.Found(body)
@@ -336,7 +355,8 @@ class PlansRepository
          */
         suspend fun businessPlans(businessUserId: String): List<PlanDto> {
             val session = cacheSession()
-            val items = (safeApiCall { api.businessPlans(businessUserId) } as? NetworkResult.Success)?.data?.items.orEmpty()
+            val reply = (safeApiCall { api.businessPlans(businessUserId) } as? NetworkResult.Success)?.data
+            val items = reply?.items.orEmpty().filter { it.isDrawable }
             items.forEach { rememberCard(it, session) }
             return items
         }
@@ -358,6 +378,38 @@ class PlansRepository
             id: String,
             note: String?,
         ): NetworkResult<Unit> = write(id, chats = true) { api.cancel(id, CancelPlanBody(note?.takeIf(String::isNotBlank))) }
+
+        /**
+         * Cancels this date of a repeating plan only and posts the next one now (Plans step 2: "Skip Thursday", "Cancel
+         * this date"). Success carries the next date's id, or null when the series is over.
+         */
+        suspend fun cancelThisDate(
+            id: String,
+            note: String?,
+        ): NetworkResult<String?> {
+            val body = CancelPlanBody(note?.takeIf(String::isNotBlank), repeat = REPEAT_KEEP)
+            return when (val result = write(id, chats = true) { api.cancelThisDate(id, body) }) {
+                is NetworkResult.Success -> NetworkResult.Success(result.data.nextPlanId?.takeIf(String::isNotBlank))
+                is NetworkResult.Failure -> result
+            }
+        }
+
+        /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateStoppingRepeat(id, UpdatePlanBody())
+
+        /**
+         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and `"repeat": null`: the change screen's
+         * other changes and "Doesn't repeat" together, so either both go through or neither does.
+         */
+        suspend fun updateStoppingRepeat(
+            id: String,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
+            val session = cacheSession()
+            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body)).put(REPEAT_FIELD, JSONObject.NULL)
+            val raw = fields.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
+        }
 
         suspend fun ask(
             id: String,
@@ -515,6 +567,10 @@ class PlansRepository
         ): NetworkResult<PlanInvitePeopleResponse> =
             safeApiCall(surfaceForbiddenBody = true) { api.invitePeople(id, query.takeIf(String::isNotBlank)) }
 
+        /** The people to invite before a private plan exists (its preview). */
+        suspend fun invitePeopleBefore(query: String = ""): NetworkResult<PlanInvitePeopleResponse> =
+            safeApiCall(surfaceForbiddenBody = true) { api.invitePeopleBefore(query.takeIf(String::isNotBlank)) }
+
         suspend fun invite(
             id: String,
             body: PlanInviteBody,
@@ -543,6 +599,39 @@ class PlansRepository
 
         /** "Can't make it" to an invitation. */
         suspend fun declineInvite(id: String): NetworkResult<PlanInvitePlanResponse> = write(id, chats = true) { api.declineInvite(id) }
+
+        // ---- Plans for the holidays, H1 (contract 6.4) ----
+
+        /** The plan's one link for everyone: made the first time, then the same; also saves "I say yes first". */
+        suspend fun openLink(
+            id: String,
+            hostSaysYesFirst: Boolean?,
+            confirmSharesAddress: Boolean,
+        ): NetworkResult<PlanOpenLinkResponse> =
+            write(id) {
+                val body = PlanOpenLinkBody(hostSaysYesFirst = hostSaysYesFirst, confirmSharesAddress = confirmSharesAddress.takeIf { it })
+                api.openLink(id, body)
+            }
+
+        /** "Turn this link off". */
+        suspend fun closeOpenLink(id: String): NetworkResult<Unit> = write(id) { api.closeOpenLink(id) }
+
+        /** "Let in": a guest who waits for the host's yes is in. */
+        suspend fun letIn(
+            id: String,
+            inviteId: String,
+        ): NetworkResult<PlanInviteListDto> = write(id) { api.letIn(id, inviteId) }
+
+        /** "Remind": everyone who hasn't answered, the way each was invited. */
+        suspend fun remind(id: String): NetworkResult<PlanRemindResponse> = write(id) { api.remind(id) }
+
+        /** "Maybe" to an invitation. */
+        suspend fun maybeInvite(id: String): NetworkResult<PlanInvitePlanResponse> {
+            val session = cacheSession()
+            return write(id) { api.maybeInvite(id) }.also { result ->
+                (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
+            }
+        }
 
         /** Right after signing in: the newest invitation not opened yet (an email invite finds its verified address). */
         suspend fun nextInvite(): NetworkResult<PlanNextInviteResponse> = safeApiCall { api.nextInvite() }
@@ -586,10 +675,15 @@ class PlansRepository
             }
         }
 
+        /** Keeps [plan]'s card, or forgets it when this app can't draw its kind or place (Plans steps 3 and 4). */
         private fun rememberCard(
             plan: PlanDto,
             session: CacheSession,
         ) {
+            if (!plan.isDrawable) {
+                forget(plan.id, session)
+                return
+            }
             synchronized(cards) {
                 if (isCurrent(session)) cards[plan.id] = publicCard(plan)
             }
@@ -621,6 +715,8 @@ class PlansRepository
                 invites = null,
                 requestsCount = null,
                 autoRules = null,
+                inviteResults = null,
+                inviteError = null,
                 startsAt = plan.startsAt.takeUnless { plan.kind == "playdate" },
                 endsAt = plan.endsAt.takeUnless { plan.kind == "playdate" },
                 askingClosesAt = plan.askingClosesAt.takeUnless { plan.kind == "playdate" },
@@ -629,6 +725,9 @@ class PlansRepository
         private companion object {
             const val CARD_CACHE = 64
             const val GPS_MAX_AGE_SECONDS = 300L
+            const val REPEAT_KEEP = "keep"
+            const val REPEAT_FIELD = "repeat"
+            const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }
 

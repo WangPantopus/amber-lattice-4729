@@ -1957,7 +1957,7 @@ private struct EngagementStrip: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(cta.accessibilityLabel)
-                    .accessibilityIdentifier("rowEngagementCTA")
+                    .accessibilityIdentifier(cta.accessibilityIdentifier ?? "rowEngagementCTA")
                 }
             }
         }
