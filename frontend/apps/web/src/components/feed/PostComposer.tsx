@@ -27,8 +27,10 @@ import ServiceOfferFields from './composer/ServiceOfferFields';
 import VisibilityPicker from './composer/VisibilityPicker';
 import PostPrecheck from './composer/PostPrecheck';
 import MediaUpload from './composer/MediaUpload';
+import SkyPlaceLine from './composer/SkyPlaceLine';
+import { SKY_WORDS, taggedPlaceKind } from './composer/skyWords';
 import PostAssist, { usePostAssist } from './composer/PostAssist';
-import { nearestMediaLocation, readMediaLocations, useMediaLocations, type MediaLocation } from './composer/mediaLocation';
+import { mediaTakenNear, nearestMediaLocation, readMediaLocations, useMediaLocations, type MediaLocation } from './composer/mediaLocation';
 import { PURPOSE_TO_POST_TYPE, getPostTypeConfig } from '@pantopus/ui-utils';
 import QuotedPostCard from './QuotedPostCard';
 
@@ -449,6 +451,34 @@ export default function PostComposer({
       current = false;
     };
   }, [checksPlace, pickedLocation, mediaLocations, f.selectedIntent]);
+
+  // The Sky (phase A, contract 10.2): the area a post at the picked spot floats over. A searched place's check above
+  // carries it; a spot from the device asks the same route once per pick. Nothing is drawn unless it answers `sky`.
+  const [deviceSky, setDeviceSky] = useState<api.posts.PlaceEligibility | null>(null);
+  const skyApplies = checksPlace && activePostAs === 'personal';
+  useEffect(() => {
+    setDeviceSky(null);
+    if (!skyApplies || !pickedLocation || pickedLocation.source === 'search') return;
+    let current = true;
+    api.posts
+      .checkPlaceEligibility({ latitude: pickedLocation.latitude, longitude: pickedLocation.longitude })
+      .then((r) => {
+        if (current && r.sky) setDeviceSky(r);
+      })
+      .catch(() => {
+        // No line: the post is placed as the server decides.
+      });
+    return () => {
+      current = false;
+    };
+  }, [skyApplies, pickedLocation]);
+  const skyCheck = pickedLocation?.source === 'search' ? placeCheck : deviceSky;
+  const skyArea = skyApplies && skyCheck?.sky ? skyCheck.area?.label ?? null : null;
+  // Exact only at a tagged venue where one of the draft's own photos was taken; an address or a bare photo floats.
+  const skyPhotoAtVenue = Boolean(skyArea && pickedLocation
+    && taggedPlaceKind(pickedLocation.geocodePlaceId, pickedLocation.geocodeAccuracy) === 'venue'
+    && mediaTakenNear(mediaLocations, pickedLocation.latitude, pickedLocation.longitude));
+  const [placePickerRequest, setPlacePickerRequest] = useState(0);
 
   // A post its own photo placed says "Photo taken here" instead of carrying the visitor badge the precheck warns about.
   const precheckNotes = placeCheck?.basis === 'photo'
@@ -1311,8 +1341,17 @@ export default function PostComposer({
                   accentColor={activeIntent.color}
                   textColor={activeIntent.textColor}
                   darkTextColor={activeIntent.darkTextColor}
+                  openRequest={placePickerRequest}
                 />
               </div>
+            )}
+
+            {showPostLocation && f.location && skyArea && (
+              <SkyPlaceLine
+                area={skyArea}
+                pinnedAt={skyPhotoAtVenue ? f.location.locationName : null}
+                onPin={() => setPlacePickerRequest((n) => n + 1)}
+              />
             )}
 
             {placeRefused && (
@@ -1331,7 +1370,7 @@ export default function PostComposer({
             {placeCheck?.eligible && placeCheck.basis === 'photo' && (
               <p role="status" className="flex items-start gap-1.5 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
                 <Camera className="mt-px h-3.5 w-3.5 flex-shrink-0" />
-                <span>Your photo was taken here, so you can post to this place. Your post will say “Photo taken here.”</span>
+                <span>{!skyArea || skyPhotoAtVenue ? SKY_WORDS.photoPins : SKY_WORDS.photoFloats}</span>
               </p>
             )}
 
