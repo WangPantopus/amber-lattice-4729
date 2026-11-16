@@ -386,7 +386,7 @@ Each opens the screen named. The words are the server's.
 | --- | --- |
 | "Dana Lee is in: 2 adults, 1 kid." | A5 |
 | "Dana Lee wants to come. Let them in?" with the buttons "Let in" and "Not this time" | A5; the buttons act without opening the app, as "I'm in" does on an invitation today |
-| "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." (contract 6.8) | A5. No buttons |
+| "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." (contract 6.8; type `plan_moved_home`) | A5. No buttons |
 | "3 things are taken. 2 are still open." | A6 |
 | "2 things are still open for Thanksgiving dinner." | A8 |
 
