@@ -11,6 +11,7 @@ const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { parse } = require('../../../backend/services/propertyRecords/addressKey');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { fillHomes, bathFacts, describe } = require('../lib/fill.cjs');
@@ -55,7 +56,7 @@ function fromRow(row) {
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.ACREAGE));
   put(facts, 'market_value', positive(row.TOTAPR1));
   put(facts, 'assessed_value', positive(row.CNTASSDVAL));
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.CITY) || '').toUpperCase(), zip: zipCode(row.ZIP) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: String(word(row.CITY) || '').toUpperCase(), zip: zipCode(row.ZIP) }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 async function* build({ work }) {

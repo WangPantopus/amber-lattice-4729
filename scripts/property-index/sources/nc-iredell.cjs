@@ -9,6 +9,7 @@ const path = require('node:path');
 const { layerRows, layerAreas, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -81,6 +82,7 @@ function fromRow(row) {
   // A condominium unit's acreage is blank and its shape is its building's, so it gets no lot; other parcels with no acreage take their shape's area.
   if (positive(row.TaxAcres)) put(facts, 'lot_acres', positive(row.TaxAcres));
   else if (String(row.Building_Use || '').trim() !== '04') put(facts, 'lot_sqft', positive(row.area) >= 100 ? positive(row.area) : null);
+  const mapped = positive(row.TaxAcres) ? null : 'lot_sqft';
   put(facts, 'assessed_value', positive(row.Total_Value));
   put(facts, 'assessed_land_value', positive(row.Land_Value));
   put(facts, 'assessed_building_value', positive(row.Bldg_Value));
@@ -89,7 +91,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.Sales_Price));
     put(facts, 'sale_date', isoDate(row.Sale_Date));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {
