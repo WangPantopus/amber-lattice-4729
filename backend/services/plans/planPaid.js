@@ -463,7 +463,7 @@ async function confirmMine(user, postId, { io = null } = {}) {
 /** The webhook saw the card accepted: let the guest in (the same steps as confirm). */
 async function onPaymentAuthorized(payment) {
   // A check at the place (B5) is its own payment: its steps are the check's.
-  if (payment?.metadata?.type === 'plan_check') return require('./planChecks').onPaymentAuthorized(payment);
+  if (['plan_check', 'plan_tip'].includes(payment?.metadata?.type)) return require('./planChecks').onPaymentAuthorized(payment);
   const requestId = payment?.metadata?.request_id;
   const postId = payment?.metadata?.plan_id;
   if (payment?.payment_type !== 'plan_payment' || !requestId || !postId) return;
