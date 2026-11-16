@@ -15,6 +15,8 @@ enum PlansRoute: Hashable {
     case requests(planId: String)
     /// Plans for the holidays (board 17): the host's "Who's coming".
     case whosComing(planId: String)
+    /// Plans for the holidays (board 19): the host's bring list for a posted plan.
+    case bringList(planId: String)
     /// Change the time or place (H11).
     case change(planId: String)
     /// A host's public profile (J1's host card).

@@ -139,9 +139,11 @@ public struct CreatePlanBody: Encodable, Sendable {
     /// Plans for the holidays H1: guests say how many adults and kids. Left out unless the host's
     /// `plans_guest_answers` is on.
     public var kidsWelcome: Bool?
+    /// H2: the bring list, set on the form ("Add to this plan"). Left out without `plans_bring_list`.
+    public var bring: PlanBringBody?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label, audience
+        case kind, title, about, place, spots, details, gps, label, audience, bring
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"

@@ -14,6 +14,8 @@ enum PlanComposerStep: Hashable {
     case preview
     /// Plans step 2: how it repeats, from the Details form's Repeats row.
     case repeats
+    /// Plans for the holidays H2: the bring list, from "Add to this plan".
+    case bringList
 }
 
 struct PlanComposerRoot: View {
@@ -59,7 +61,8 @@ struct PlanComposerRoot: View {
                                 step: "2 of 3",
                                 onBack: { onFinish(nil) },
                                 onPreview: { openPreview() },
-                                onRepeats: { path.append(.repeats) }
+                                onRepeats: { path.append(.repeats) },
+                                onBringList: { path.append(.bringList) }
                             )
                         } else {
                             PlanTypePicker(
@@ -86,10 +89,16 @@ struct PlanComposerRoot: View {
                                 step: "2 of 3",
                                 onBack: { path.removeLast() },
                                 onPreview: { openPreview() },
-                                onRepeats: { path.append(.repeats) }
+                                onRepeats: { path.append(.repeats) },
+                                onBringList: { path.append(.bringList) }
                             )
                             .readableColumn()
                             .toolbar(.hidden, for: .navigationBar)
+                        case .bringList:
+                            if let bring = model.privacy.bring {
+                                PlanBringListScreen(editor: bring, onDone: { path.removeLast() }, onBack: { path.removeLast() })
+                                    .readableColumn()
+                            }
                         case .repeats:
                             PlanRepeatsScreen(
                                 draft: model.repeating,

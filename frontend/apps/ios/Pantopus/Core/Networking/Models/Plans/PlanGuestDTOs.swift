@@ -69,20 +69,23 @@ public struct PlanCardGuestsPart: Decodable, Sendable, Hashable {
     public let kidsWelcome: Bool
     public let headcount: PlanHeadcountDTO?
     public let answers: PlanAnswerCountsDTO?
+    /// H2: the bring list, while the host has `plans_bring_list` (no marker needed).
+    public let bring: PlanBringDTO?
 
     /// What every card from a server before H1 is.
-    static let none = PlanCardGuestsPart(isOn: false, kidsWelcome: false, headcount: nil, answers: nil)
+    static let none = PlanCardGuestsPart(isOn: false, kidsWelcome: false, headcount: nil, answers: nil, bring: nil)
 
     enum CodingKeys: String, CodingKey {
-        case headcount, answers
+        case headcount, answers, bring
         case kidsWelcome = "kids_welcome"
     }
 
-    init(isOn: Bool, kidsWelcome: Bool, headcount: PlanHeadcountDTO?, answers: PlanAnswerCountsDTO?) {
+    init(isOn: Bool, kidsWelcome: Bool, headcount: PlanHeadcountDTO?, answers: PlanAnswerCountsDTO?, bring: PlanBringDTO?) {
         self.isOn = isOn
         self.kidsWelcome = kidsWelcome
         self.headcount = headcount
         self.answers = answers
+        self.bring = bring
     }
 
     public init(from decoder: any Decoder) throws {
@@ -91,6 +94,7 @@ public struct PlanCardGuestsPart: Decodable, Sendable, Hashable {
         kidsWelcome = (try? container.decodeIfPresent(Bool.self, forKey: .kidsWelcome)) ?? false
         headcount = try? container.decodeIfPresent(PlanHeadcountDTO.self, forKey: .headcount)
         answers = try? container.decodeIfPresent(PlanAnswerCountsDTO.self, forKey: .answers)
+        bring = try? container.decodeIfPresent(PlanBringDTO.self, forKey: .bring)
     }
 }
 
