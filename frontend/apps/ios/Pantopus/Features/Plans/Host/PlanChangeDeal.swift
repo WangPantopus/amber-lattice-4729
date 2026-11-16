@@ -23,6 +23,12 @@ struct PlanChangeDealRow: View {
     @State private var isSaving = false
     @State private var error: String?
 
+    init(card: PlanCardDTO, business: PlanHostAsBusinessDTO?) {
+        self.card = card
+        self.business = business
+        _deal = State(initialValue: card.deal)
+    }
+
     var body: some View {
         if business?.can.deals == true, deal != nil || card.goingCount == 0 {
             VStack(alignment: .leading, spacing: Spacing.s2) {
@@ -43,7 +49,6 @@ struct PlanChangeDealRow: View {
                 }
                 if let error { PlanDealFieldError(text: error) }
             }
-            .onAppear { if deal == nil { deal = card.deal } }
             .sheet(item: $editing) { draft in
                 PlanChangeDealSheet(card: card, business: business, draft: draft, isSaving: isSaving) { save(draft) } onCancel: {
                     editing = nil
@@ -148,6 +153,7 @@ private struct PlanChangeDealSheet: View {
                 payHere: card.dealOnBill
             )
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planChangeDealSheet")
     }
 
