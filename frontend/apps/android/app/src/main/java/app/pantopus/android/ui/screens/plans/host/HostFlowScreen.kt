@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.ui.components.PrimaryButton
+import app.pantopus.android.ui.screens.plans.bring.PlanBringEditor
 import app.pantopus.android.ui.screens.plans.components.LARGE_TEXT_SCALE
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanBusinessShape
@@ -86,6 +87,14 @@ fun HostFlowScreen(
             HostStep.Details ->
                 if (ui.repeatsOpen) {
                     HostRepeatsStep(ui, viewModel)
+                } else if (ui.bringOpen && ui.draft.bring != null) {
+                    // The bring list (Plans for the holidays, A9) over the details; Done and Back come back to them.
+                    PlanBringEditor(
+                        draft = ui.draft.bring!!,
+                        onChange = viewModel::editBringList,
+                        onDone = viewModel::closeBringList,
+                        onBack = viewModel::closeBringList,
+                    )
                 } else {
                     HostDetailsStep(ui, viewModel, onBack = { if (!viewModel.back()) onClose() })
                 }

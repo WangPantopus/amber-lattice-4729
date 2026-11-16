@@ -293,6 +293,65 @@ data class PlanDto(
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */
     @Json(name = "answers") val answers: PlanAnswersDto? = null,
+    /** Plans for the holidays, H2 (contract 7): the bring list, for the host and people in; none without items. */
+    @Json(name = "bring") val bring: PlanBringDto? = null,
+)
+
+/** The bring list on a card (Plans for the holidays, H2): what is needed and who is bringing it. */
+@JsonClass(generateAdapter = true)
+data class PlanBringDto(
+    @Json(name = "rev") val rev: Int = 0,
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean = false,
+    @Json(name = "open_count") val openCount: Int = 0,
+    @Json(name = "items") val items: List<PlanBringItemDto> = emptyList(),
+) {
+    /** How many items someone is bringing. */
+    val taken: Int get() = items.count { it.claim != null }
+}
+
+/** One thing on the bring list; [claim] is who is bringing it (a first name), null while it is open. */
+@JsonClass(generateAdapter = true)
+data class PlanBringItemDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "label") val label: String = "",
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "claim") val claim: PlanBringClaimDto? = null,
+)
+
+/** Who is bringing an item: their first name, and whether it is the person looking. */
+@JsonClass(generateAdapter = true)
+data class PlanBringClaimDto(
+    @Json(name = "name") val name: String = "",
+    @Json(name = "mine") val mine: Boolean = false,
+)
+
+/** The bring list as the host sends it (create, change, `PUT …/bring`): kept items carry their id. */
+@JsonClass(generateAdapter = true)
+data class PlanBringInput(
+    @Json(name = "items") val items: List<PlanBringItemInput>,
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean,
+)
+
+/** One item the host sends; [mine] claims it for the host (true) or gives it back (false). */
+@JsonClass(generateAdapter = true)
+data class PlanBringItemInput(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "label") val label: String,
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "mine") val mine: Boolean? = null,
+)
+
+/** `POST /api/plans/:id/bring/items`: a guest adds one thing, claimed by them. */
+@JsonClass(generateAdapter = true)
+data class PlanBringAddBody(
+    @Json(name = "label") val label: String,
+    @Json(name = "note") val note: String? = null,
+)
+
+/** Every bring-list route answers the list as it is now. */
+@JsonClass(generateAdapter = true)
+data class PlanBringResponse(
+    @Json(name = "bring") val bring: PlanBringDto? = null,
 )
 
 /** `headcount` on a plan card and on the host's invitation list (Plans for the holidays, contract 6.4 and 6.5). */
@@ -523,6 +582,8 @@ data class CreatePlanBody(
     @Json(name = "invite_user_ids") val inviteUserIds: List<String>? = null,
     /** Plans for the holidays, H1: guests say how many adults and kids (a private plan, sent only while it's on). */
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** Plans for the holidays, H2: the bring list made on the form (A3, A9); none leaves it out. */
+    @Json(name = "bring") val bring: PlanBringInput? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */

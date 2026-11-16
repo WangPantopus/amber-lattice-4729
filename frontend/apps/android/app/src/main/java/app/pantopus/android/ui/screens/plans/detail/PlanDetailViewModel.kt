@@ -6,8 +6,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
+import app.pantopus.android.data.api.models.plans.PlanMyRequestDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -108,6 +110,10 @@ data class PlanDetailUi(
     val reminding: Boolean = false,
     /** Today's reminder went (one a plan a day). */
     val remindedToday: Boolean = false,
+    /** Plans for the holidays (A8): a claim, a give back or an added item is on its way. */
+    val bringBusy: Boolean = false,
+    /** The line under the bring list ("Sam got to that one first."). */
+    val bringNotice: String? = null,
 )
 
 /**
@@ -309,6 +315,38 @@ class PlanDetailViewModel
             }
         }
 
+        /** "I'll bring it" (Plans for the holidays, A8); someone first: the row shows them and the line says so. */
+        fun claimBring(itemId: String) = bringAction { repository.claimBring(planId, itemId) }
+
+        /** "Give back". */
+        fun giveBackBring(itemId: String) = bringAction { repository.giveBackBring(planId, itemId) }
+
+        /** "Bring something else": added and claimed by this person. */
+        fun addBring(label: String) = bringAction { repository.addBring(planId, label) }
+
+        private fun bringAction(call: suspend () -> NetworkResult<PlanBringResponse>) {
+            if (_ui.value.bringBusy) return
+            _ui.update { it.copy(bringBusy = true, bringNotice = null) }
+            viewModelScope.launch {
+                val result = call()
+                _ui.update { current ->
+                    val ready = current.state as? PlanDetailUiState.Ready
+                    when (result) {
+                        is NetworkResult.Success -> {
+                            val plan = ready?.plan?.copy(bring = result.data.bring)
+                            current.copy(
+                                bringBusy = false,
+                                state = if (plan != null && ready != null) ready.copy(plan = plan) else current.state,
+                            )
+                        }
+                        // "Sam got to that one first." (409 taken) or another refusal, under the list.
+                        is NetworkResult.Failure -> current.copy(bringBusy = false, bringNotice = result.error.planMessage)
+                    }
+                }
+                if (result is NetworkResult.Failure) read()
+            }
+        }
+
         /** "Maybe" to an invitation (Plans for the holidays, A7): the host sees it; I'm in or Can't make it replaces it. */
         fun maybeInvite() {
             _ui.update { it.copy(askOpen = false) }
@@ -493,12 +531,28 @@ class PlanDetailViewModel
                             _ui.update { it.copy(state = PlanDetailUiState.Ready(reply, fresh = false)) }
                         }
                         if (status == PlanRequestStatus.ACCEPTED) _ui.update { it.copy(reveal = true) }
+                        keptNumbersLine(plan, body, result.data.plan?.myRequest)?.let { line -> _ui.update { it.copy(notice = line) } }
                         read()
                     }
                     is NetworkResult.Failure ->
                         _ui.update { it.copy(ask = it.ask.copy(sending = false, error = askError(result.error))) }
                 }
             }
+        }
+
+        /**
+         * Someone already in who changed their numbers ("Change", Plans for the holidays A8): the server keeps the first
+         * adults and kids for a request it already took, so say so, as iOS does, instead of showing nothing.
+         */
+        private fun keptNumbersLine(
+            before: PlanDto,
+            sent: AskToJoinBody,
+            kept: PlanMyRequestDto?,
+        ): String? {
+            val changing = before.standing == PlanViewerStanding.IN && before.kidsWelcome != null
+            if (!changing || kept == null) return null
+            val same = (kept.partySize ?: 1) == sent.partySize && (kept.kidsCount ?: 0) == (sent.kidsCount ?: 0)
+            return if (same) null else "Couldn't change your numbers here yet. Tell ${hostFirst()} in the group chat."
         }
 
         /** The server's own sentence for a refused ask, as iOS shows it; the 10-request limit says what to do. */

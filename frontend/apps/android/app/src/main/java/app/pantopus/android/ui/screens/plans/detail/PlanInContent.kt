@@ -47,6 +47,7 @@ import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
+import app.pantopus.android.ui.screens.plans.bring.PlanBringGuestCard
 import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
@@ -82,6 +83,8 @@ internal fun ColumnScope.PlanInBody(
     onOpenChat: () -> Unit,
     /** Plans for the holidays (A8): "Change" on the banner opens the answer sheet (A7); null leaves it out. */
     onChangeAnswer: (() -> Unit)? = null,
+    /** Plans for the holidays (A8 item 2): the bring list's actions; null leaves the list out. */
+    bring: PlanBringActions? = null,
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -96,6 +99,17 @@ internal fun ColumnScope.PlanInBody(
         InPlaceTitle(plan)
     }
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
+    val list = plan.bring
+    if (list != null && bring != null) {
+        PlanBringGuestCard(
+            bring = list,
+            busy = bring.busy,
+            notice = bring.notice,
+            onClaim = { bring.onClaim(it.id) },
+            onGiveBack = { bring.onGiveBack(it.id) },
+            onAdd = bring.onAdd,
+        )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         if (!plan.isOnline) {
             PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
@@ -266,6 +280,15 @@ private fun InBanner(
             },
     )
 }
+
+/** What a guest can do on the bring list (A8 item 2), and the line under it. */
+internal data class PlanBringActions(
+    val busy: Boolean,
+    val notice: String?,
+    val onClaim: (String) -> Unit,
+    val onGiveBack: (String) -> Unit,
+    val onAdd: (String) -> Unit,
+)
 
 /** "2 adults, 1 kid" with kids welcome, else "Just you" or "3 people": the person's own answer (A8). */
 internal fun myCounts(plan: PlanDto): String {
