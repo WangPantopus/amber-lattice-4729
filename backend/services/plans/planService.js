@@ -260,6 +260,9 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     moneyByRequest: new Map(),
     // The bill at the place (B5): whether each business with pay_here on has the switch.
     payHereByHost: new Map(),
+    // A tip after a paid plan (B6): the paid requests that already tipped, and each tips_on business's switch.
+    tippedRequests: new Set(),
+    tipsByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -306,6 +309,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
       if (moneyError) throw new Error(`Failed to load plan details: ${moneyError.message}`);
       for (const row of money || []) ctx.moneyByRequest.set(row.id, row);
     }
+  }
+  // A tip after a paid plan (B6): read only for priced plans with tips on, from businesses with the switch.
+  const tipPlans = plans.filter((p) => p.tips_on && p.price_cents && p.business_user_id);
+  if (tipPlans.length > 0 && ctx.moneyByRequest.size > 0) {
+    ctx.tipsByHost = await require('./planChecks').switchByHost(tipPlans.map((p) => p.host_user_id));
+    const { data: tips } = await supabaseAdmin.from('Payment').select('sold_id').eq('sold_type', 'plan_tip')
+      .in('sold_id', [...ctx.moneyByRequest.keys()]).in('payment_status', ['captured_hold', 'transfer_scheduled', 'transfer_pending', 'transferred', 'refunded_partial']);
+    for (const row of tips || []) ctx.tippedRequests.add(row.sold_id);
   }
   // The bill at the place (B5): read only for plans with pay_here on.
   const payHerePlans = plans.filter((p) => p.pay_here && p.business_user_id);
@@ -798,6 +809,11 @@ function addBusinessFields(card, plan, viewer, ctx) {
     const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
       reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null) : null;
     if (paid && myRequest.status === 'accepted') card.paid = paid;
+    // "Leave a tip for {business}?" (C4, B6): once, for 7 days after the plan ends.
+    if (paid && myRequest.status === 'accepted' && ctx.tipsByHost?.get(String(plan.host_user_id))) {
+      const tipLater = require('./planChecks').tipLaterView(plan, paid.cents - (paid.refunded_cents || 0), ctx.tippedRequests.has(myRequest.id));
+      if (tipLater) card.tip_later = tipLater;
+    }
   }
   // "Pay at {business}" (D2, B5) for the business's staff and the guests who are in, while it has the switch.
   if (plan.pay_here && ctx.payHereByHost?.get(String(plan.host_user_id))) {

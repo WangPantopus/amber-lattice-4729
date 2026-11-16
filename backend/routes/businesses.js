@@ -5657,6 +5657,26 @@ router.post('/:businessId/invoices', verifyToken, validate(createInvoiceSchema),
 /**
  * GET /:businessId/invoices — List invoices with pagination and status filter
  */
+// GET /api/businesses/:businessId/statement?month=YYYY-MM (the business graph's shared contract 5.4, built by Plans for
+// the holidays B6): behind business_statement (read for the business), for staff with finance.view. No screen yet.
+router.get('/:businessId/statement', verifyToken, async (req, res) => {
+  try {
+    const { businessId } = req.params;
+    const { isFeatureEnabled } = require('../services/featureFlagService');
+    if (!(await isFeatureEnabled('business_statement', String(businessId)))) return res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' });
+    const { hasPermission } = require('../utils/businessPermissions');
+    if (!(await hasPermission(businessId, req.user.id, 'finance.view'))) {
+      return res.status(403).json({ error: "You can't see this business's statement.", code: 'FORBIDDEN' });
+    }
+    const statement = await require('../services/businessStatement').statementFor(businessId, req.query.month);
+    if (!statement) return res.status(422).json({ error: 'Choose a month as YYYY-MM.', code: 'VALIDATION', field: 'month' });
+    return res.json(statement);
+  } catch (err) {
+    logger.error('Statement failed', { businessId: req.params.businessId, error: err.message });
+    return res.status(500).json({ error: 'Failed to load the statement' });
+  }
+});
+
 router.get('/:businessId/invoices', verifyToken, async (req, res) => {
   try {
     const { businessId } = req.params;
