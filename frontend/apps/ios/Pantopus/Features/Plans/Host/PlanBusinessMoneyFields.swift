@@ -51,7 +51,7 @@ struct PlanBusinessPriceField: View {
         @Bindable var money = model.money
         VStack(alignment: .leading, spacing: Spacing.s2) {
             if model.hostAs?.payoutsReady == true {
-                PlanSwitchRow(title: "Price a spot", subtitle: "Off: the plan is free", isOn: $money.priceOn)
+                PlanPriceSwitch(isOn: $money.priceOn)
                     .accessibilityIdentifier("planPriceSpot")
                 if money.priceOn {
                     PlanDollarsField(
@@ -110,5 +110,18 @@ struct PlanDollarsField: View {
         .typesInFieldOnTap()
         .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurface))
         .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
+    }
+}
+
+/// "Price a spot" and its switch, off at the start (P1).
+struct PlanPriceSwitch: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            Text("Price a spot").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+        }
+        .tint(Theme.Color.successSolid)
+        .frame(minHeight: 44)
     }
 }

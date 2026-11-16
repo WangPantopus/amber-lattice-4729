@@ -58,7 +58,7 @@ struct PlanChangePriceRow: View {
         VStack(spacing: 0) {
             PlanNavBar(title: "Price a spot", leading: .close) { editing = false }
             VStack(alignment: .leading, spacing: Spacing.s4) {
-                PlanSwitchRow(title: "Price a spot", subtitle: "Off: the plan is free", isOn: $priceOn)
+                PlanPriceSwitch(isOn: $priceOn)
                     .accessibilityIdentifier("planChangePriceOn")
                 if priceOn {
                     PlanDollarsField(text: $dollars, placeholder: "18", label: "Price a spot", identifier: "planChangePriceAmount")
