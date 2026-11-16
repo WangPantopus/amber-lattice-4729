@@ -94,6 +94,7 @@ const expirePopupBusinesses = require('./expirePopupBusinesses');
 const draftBusinessReminder = require('./draftBusinessReminder');
 // Mail escrow expiry
 const mailEscrowExpiry = require('./mailEscrowExpiry');
+const cardEmailSend = require('./cardEmailSend');
 const mailDeletedPurge = require('./mailDeletedPurge');
 // Home intelligence jobs
 const nfipTractWarm = require('./nfipTractWarm');
@@ -687,6 +688,13 @@ function startJobs(options = {}) {
 
   // Runs daily at 6:00 AM UTC. Expires unclaimed mail and notifies its sender.
   scheduleCron('0 6 * * *', wrapJob('mailEscrowExpiry', mailEscrowExpiry), {
+    scheduled: true,
+    timezone: 'UTC',
+  });
+
+  // Every 5 minutes: sends the emails of Christmas cards by email that are due (the sender's 7 a.m., Christmas morning)
+  // and tries again those that didn't go out.
+  scheduleCron('*/5 * * * *', wrapJob('cardEmailSend', cardEmailSend), {
     scheduled: true,
     timezone: 'UTC',
   });

@@ -23,7 +23,7 @@ import CardBack from './CardBack';
 import { ON_CLOTH_BUTTON, ON_CLOTH_MUTED, ON_CLOTH_TEXT } from './AtTheTable';
 import CardFlip from './CardFlip';
 import { CardFromEnvelope, SealedNotice, useCardOpening } from './HolidayCardView';
-import { cardMood, daysAway, longDay, SERIF } from './cardArt';
+import { cardMood, daysAway, emailGoesAt, longDay, SERIF } from './cardArt';
 import CardPrint from './CardPrint';
 import CardGreeting from './CardGreeting';
 import CardTable from './CardTable';
@@ -194,7 +194,7 @@ export default function LookItOver({
         <>
           {email ? (
             <section aria-label="The email they get" data-testid="sendCardLookEmail" className="mx-3 mt-[18px]">
-              <h3 className={`${sectionLabel} px-1`}>{sealed ? 'The email they get, now' : 'The email they get, right away'}</h3>
+              <h3 className={`${sectionLabel} px-1`}>{preview.email_send_at ? `The email they get ${emailGoesAt(preview.email_send_at)}, your time` : sealed ? 'The email they get, now' : 'The email they get, right away'}</h3>
               <div className="mt-2 overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white text-[#111827] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
                 <div className="border-b border-[#f3f4f6] px-3.5 py-2.5 text-[12px] leading-[17px] text-[#4e5563]">
                   <p className="truncate"><span className="font-semibold text-[#111827]">Pantopus</span> · to {toName}</p>

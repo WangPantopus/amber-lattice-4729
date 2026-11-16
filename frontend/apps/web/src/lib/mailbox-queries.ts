@@ -250,6 +250,15 @@ export function useTakeBackHolidayCard() {
   });
 }
 
+/** Email it again: one more try of a card's email that didn't go out. */
+export function useEmailHolidayCardAgain() {
+  const qc = useQueryClient();
+  return useMutation<{ emailed: true }, MailboxApiError, string>({
+    mutationFn: api.emailHolidayCardAgain,
+    onSettled: () => invalidateSentCards(qc),
+  });
+}
+
 /** Sent: the cards you sent, newest first, 25 at a time (the server's cursor pages on). */
 export function useSentCards(options?: { enabled?: boolean }) {
   return useInfiniteQuery<{ items: SentPiece[]; next: string | null }, MailboxApiError>({
