@@ -306,6 +306,8 @@ async function nextInput(plan, times, host) {
     guests_can_invite: Boolean(plan.guests_can_invite),
     // Kids welcome (H1): kept while the host has the switch (createPlan reads it only then).
     ...(plan.kids_welcome ? { kids_welcome: true } : {}),
+    // The occasion (H3), kept while the host has its switch.
+    ...(plan.occasion ? { occasion: plan.occasion } : {}),
   };
 }
 

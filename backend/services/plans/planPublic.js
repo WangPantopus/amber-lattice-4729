@@ -125,6 +125,8 @@ function publicCard(card) {
     share_url: card.share_url,
     // A repeating plan: how often, and its last date ("Every Tue and Thu", "2027-02-04"). Null otherwise.
     repeat: card.repeat ? { text: card.repeat.text, short: card.repeat.short, last_on: card.repeat.last_on } : null,
+    // The occasion that started it (H3), while its host has the switch: the tag reads its name.
+    ...(card.occasion ? { occasion: card.occasion } : {}),
   };
 }
 

@@ -234,6 +234,21 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
   }
 });
 
+// GET /api/plans/occasions: the occasions in season (Plans for the holidays H3), each with what it fills in on the host
+// form: { occasions: [{ key, text, kind, details, fills }] }. 404 while plans_occasions is off; none without the newer
+// kinds (`more=1` and plans_kinds), whose kinds they start.
+router.get('/occasions', async (req, res) => {
+  try {
+    const planOccasions = require('../services/plans/planOccasions');
+    if (!(await planOccasions.enabledFor(req.user))) return fail(res, 404, 'not_found', "This isn't available right now.");
+    const viewer = await loadViewer(req.user, { point: pointFromQuery(req.query), gps: gpsFromQuery(req.query) });
+    if (!viewer.kindsFlag) return res.json({ occasions: [] });
+    return res.json(await planOccasions.inSeason(viewer));
+  } catch (err) {
+    return serverError(res, err, 'occasions', req);
+  }
+});
+
 // GET /api/plans/invites/people[?q=]: the people this person can invite, before the plan exists (a private plan's
 // preview): { people: [{ user_id, display_name, avatar_url, reason }] }.
 router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, res) => {
