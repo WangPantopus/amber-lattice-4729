@@ -112,18 +112,29 @@ const isGuest = (row) => Boolean(row && row.guest_name && !row.invitee_user_id);
 const isGuestIn = (row) => isGuest(row) && row.status === 'accepted' && !row.needs_host_ok;
 const firstOf = (name) => actions().firstOf(name);
 
-/** The page's link for the open link: `/plans/<id>?open=<token>`. */
+/** The web's origin, from the plan share link's shape. */
+const siteBase = () => planService.shareUrl('x').replace(/\/plans\/x$/, '');
+
+/**
+ * The open link: `/plan-link/<id>?open=<token>` (contract 6.9). Not under `/plans/`, which every iPhone build opens
+ * in the app (apple-app-site-association lists it) and no store build knows an open link: the web page serves it, and
+ * its "Open app" carries the token into an app that does.
+ */
 function openUrl(postId, token) {
-  return `${planService.shareUrl(postId)}?open=${encodeURIComponent(token)}`;
+  return `${siteBase()}/plan-link/${postId}?open=${encodeURIComponent(token)}`;
 }
 
 /**
  * The guest's own link, in their emails only. It goes to a web page the apps don't open (so an installed app never
- * takes it), which keeps the key in the HttpOnly cookie and opens `/plans/<id>` without it.
+ * takes it), which keeps the key in the HttpOnly cookie and opens the guest's page, `/plan-link/<id>`, without it.
  */
 function guestUrl(postId, key) {
-  const base = planService.shareUrl('x').replace(/\/plans\/x$/, '');
-  return `${base}/plan-invitation/${postId}?key=${encodeURIComponent(key)}`;
+  return `${siteBase()}/plan-invitation/${postId}?key=${encodeURIComponent(key)}`;
+}
+
+/** Is `token` this plan's live open link? */
+function isOpenToken(plan, token) {
+  return takesOpenLink(plan) && sameSecret(token, plan.open_invite_token);
 }
 
 /** Is the switch on for this host (with private plans and invitations, which it needs)? */
@@ -209,7 +220,8 @@ async function rowsByEmail(postId, email) {
   const rows = data || [];
   return {
     live: rows.find((r) => r.status !== 'cancelled') || null,
-    removed: rows.some((r) => r.status === 'cancelled' && r.guest_name),
+    // A guest the host removed, or a person with an account (6.9) removed or turned down with the address on their row.
+    removed: rows.some((r) => r.status === 'cancelled' && (r.guest_name || r.invitee_user_id)),
   };
 }
 
@@ -254,8 +266,9 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
   if (!takesAnswers(plan)) return none;
   const mine = guestKey ? await rowByKey(plan.post_id, guestKey) : null;
   if (mine && mine.status === 'cancelled') return { ...none, removed: true };
+  const openLive = Boolean(openToken) && isOpenToken(plan, openToken);
   let via = mine ? mine.channel : null;
-  if (!via && openToken && takesOpenLink(plan) && sameSecret(openToken, plan.open_invite_token)) via = 'open';
+  if (!via && openLive) via = 'open';
   if (!via && inviteToken) {
     const row = await rowByToken(plan.post_id, inviteToken);
     // An invitation an account opened is answered in the app.
@@ -273,6 +286,8 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
     room_left: Math.max(0, plan.spots - seats),
     host_says_yes_first: via === 'open' && Boolean(plan.open_invite_ok_first),
     mine: mine ? mineView(mine) : null,
+    // The page was opened with the plan's live open link (6.9): its "Open app" carries the link into the app.
+    open_live: openLive && invites().isOpenForAnswers(plan),
   };
   let forGuest = null;
   if (isGuestIn(mine) && plan.status !== 'cancelled') {
@@ -724,7 +739,32 @@ async function makeOpenLink(user, postId, body = {}) {
     .update({ open_invite_token: token, open_invite_ok_first: yesFirst, updated_at: nowIso() }).eq('post_id', plan.post_id);
   if (error) throw new Error(`Failed to make the link: ${error.message}`);
   if (fresh) recordFunnelEvent('plan_open_link_made', { userId: viewer.id, meta: { plan_id: plan.post_id, kind: plan.kind, rotated: Boolean(plan.open_invite_token) } });
+  // People with an account who opened the link and haven't said they're in follow "I say yes first" as a guest's next
+  // answer does (6.9).
+  if (yesFirst !== Boolean(plan.open_invite_ok_first)) await setOpenAccountsYesFirst(plan.post_id, yesFirst);
   return { url: openUrl(plan.post_id, token), message: openLinkMessage(plan), host_says_yes_first: yesFirst };
+}
+
+/**
+ * The open link's invitations to accounts (6.9) whose person hasn't asked yet and was never let in by hand: whether
+ * their "I'm in" waits for the host's yes. The row's needs_host_ok is what the ask reads; someone already waiting
+ * keeps waiting, as a guest does, and someone in stays in.
+ */
+async function setOpenAccountsYesFirst(postId, yesFirst) {
+  const { data: rows, error } = await supabaseAdmin.from('PlanInvite').select('id, invitee_user_id')
+    .eq('post_id', postId).eq('channel', 'open').not('invitee_user_id', 'is', null).neq('status', 'cancelled')
+    .is('host_ok_at', null).eq('needs_host_ok', !yesFirst);
+  if (error) throw new Error(`Failed to load the link's invitations: ${error.message}`);
+  if (!rows || rows.length === 0) return;
+  const { data: asks, error: askError } = await supabaseAdmin.from('PlanRequest').select('user_id')
+    .eq('post_id', postId).in('user_id', rows.map((r) => r.invitee_user_id)).in('status', planService.ACTIVE_REQUEST_STATUSES);
+  if (askError) throw new Error(`Failed to load the link's invitations: ${askError.message}`);
+  const asked = new Set((asks || []).map((r) => String(r.user_id)));
+  const ids = rows.filter((r) => !asked.has(String(r.invitee_user_id))).map((r) => r.id);
+  if (ids.length === 0) return;
+  const { error: updateError } = await supabaseAdmin.from('PlanInvite')
+    .update({ needs_host_ok: yesFirst, updated_at: nowIso() }).in('id', ids).is('host_ok_at', null);
+  if (updateError) throw new Error(`Failed to update the link's invitations: ${updateError.message}`);
 }
 
 /** DELETE /api/plans/:id/invites/open-link: the link stops letting anyone answer. Answers already given stay. */
@@ -745,14 +785,30 @@ async function guestRowFor(plan, inviteId) {
   return data;
 }
 
+/** This account's ask on the plan while it waits for the host (pending, or on the waitlist), or null. */
+async function waitingAskOf(plan, userId) {
+  const { data, error } = await supabaseAdmin.from('PlanRequest').select('id, status')
+    .eq('post_id', plan.post_id).eq('user_id', userId).in('status', ['pending', 'waitlisted']).maybeSingle();
+  if (error) throw new Error(`Failed to load the ask: ${error.message}`);
+  return data || null;
+}
+
 /**
  * POST /api/plans/:id/invites/:inviteId/ok: lets a waiting guest in, records the host's own yes (host_ok_at, 6.8),
  * and sends "You're in" with their link. That email is never held by the plan's three; it counts as one of them only
  * when it is the guest's first "You're in" (6.6).
  */
-async function letIn(user, postId, inviteId) {
+async function letIn(user, postId, inviteId, body = {}, { io = null } = {}) {
   const { viewer, plan } = await hostPlanWithSwitch(user, postId);
   const row = await guestRowFor(plan, inviteId);
+  // A guest who waited in a browser and has since taken the answer into the app (6.9 item 8) waits as an ask: "Let in"
+  // on the notice they sent is the ordinary accept of it, with its address confirmation the first time at a home.
+  if (row.channel === 'open' && row.invitee_user_id) {
+    const ask = await waitingAskOf(plan, row.invitee_user_id);
+    if (!ask) fail(409, 'not_waiting', 'They’re not waiting any more.');
+    await actions().decide(user, postId, ask.id, 'accept', body || {}, { io });
+    return invites().listForHost(user, postId);
+  }
   if (!isGuest(row) || row.status !== 'accepted') fail(409, 'not_waiting', 'They’re not waiting any more.');
   if (row.needs_host_ok) {
     if (!invites().isOpenForAnswers(plan)) fail(409, 'ended', 'This plan has started.');
@@ -988,22 +1044,197 @@ async function holdForHome(postId) {
 }
 
 /**
+ * A plan moving to the host's home (6.9 item 7), for people with an account whose invitation came by the open link
+ * and whom the host never let in by hand (host_ok_at): each who is in goes back to waiting. They leave the plan's
+ * chat first, as anyone who is no longer in does, then their ask returns to pending, so they read no address. Their
+ * bring-list claims stay, as a waiting guest's do. Everyone else from the link who hasn't been let in by hand waits
+ * for the host's yes from now on when they say they're in (needs_host_ok), as a guest's next answer does.
+ *
+ * Someone the host accepted by hand (their ask was decided by the host) stays in, and that yes is recorded.
+ * `strict`: a chat that can't be left stops the move (before the plan row moves); after it, the failure is logged.
+ * Answers the asks it made wait.
+ */
+async function holdAccountsForHome(plan, { io = null, strict = true } = {}) {
+  const postId = plan.post_id;
+  const { data: rows, error } = await supabaseAdmin.from('PlanInvite').select('id, invitee_user_id')
+    .eq('post_id', postId).eq('channel', 'open').not('invitee_user_id', 'is', null).neq('status', 'cancelled')
+    .is('host_ok_at', null);
+  if (error) throw new Error(`Failed to hold people for the move: ${error.message}`);
+  if (!rows || rows.length === 0) return [];
+  const inviteByUser = new Map(rows.map((r) => [String(r.invitee_user_id), r]));
+  const { data: inNow, error: requestError } = await supabaseAdmin.from('PlanRequest').select(planService.REQUEST_COLUMNS)
+    .eq('post_id', postId).in('user_id', [...inviteByUser.keys()]).eq('status', 'accepted');
+  if (requestError) throw new Error(`Failed to hold people for the move: ${requestError.message}`);
+  const held = [];
+  const stamp = nowIso();
+  for (const request of inNow || []) {
+    const invite = inviteByUser.get(String(request.user_id));
+    if (request.decided_by === 'host') {
+      // Let in by hand: that is the host's yes.
+      await supabaseAdmin.from('PlanInvite').update({ host_ok_at: request.decided_at || stamp, updated_at: stamp }).eq('id', invite.id);
+      inviteByUser.delete(String(request.user_id));
+      continue;
+    }
+    try {
+      await require('./planChat').removeMember(plan.chat_room_id, request.user_id, { io });
+    } catch (err) {
+      logger.error('plans.guests.move_chat_failed', { planId: postId, error: err.message });
+      if (strict) fail(503, 'unavailable', "We couldn't move the plan. Please try again.");
+      continue;
+    }
+    const { data: moved, error: moveError } = await supabaseAdmin.from('PlanRequest')
+      .update({
+        status: 'pending', decided_by: null, decided_at: null, reconfirm_requested_at: null, reconfirmed: null,
+        reconfirm_reason: null, on_my_way_at: null, updated_at: stamp,
+      })
+      .eq('id', request.id).eq('status', 'accepted').select(planService.REQUEST_COLUMNS);
+    if (moveError) throw new Error(`Failed to hold people for the move: ${moveError.message}`);
+    if (moved && moved.length) held.push(moved[0]);
+  }
+  const waitIds = [...inviteByUser.values()].map((r) => r.id);
+  if (waitIds.length > 0) {
+    const { error: waitError } = await supabaseAdmin.from('PlanInvite')
+      .update({ needs_host_ok: true, updated_at: stamp }).in('id', waitIds).is('host_ok_at', null).eq('needs_host_ok', false);
+    if (waitError) throw new Error(`Failed to hold people for the move: ${waitError.message}`);
+  }
+  return held;
+}
+
+/**
  * After the plan moved to the host's home (6.8): each guest it made wait gets one email, outside the plan's three,
  * with their link (it opens the waiting page), so nobody goes to the old place; it is still held for an address that
  * opted out and by the address's five a day. They don't also get the ordinary change email (planChanged skips a
- * guest who waits). The host gets one notice, opening Who's coming.
+ * guest who waits). Each person with an account it made wait (6.9 item 7) gets one notice, opening the plan. The host
+ * gets one notice counting them all, opening Who's coming.
  */
-async function movedToHome(plan, rows) {
-  if (!rows || rows.length === 0) return;
-  for (const row of rows) {
+async function movedToHome(plan, rows, asks = []) {
+  const count = (rows || []).length + (asks || []).length;
+  if (count === 0) return;
+  for (const row of rows || []) {
     try {
       await sendGuestEmail(plan, row, 'moved_home');
     } catch (err) {
       logger.warn('plans.guests.move_email_failed', { inviteId: row.id, error: err.message });
     }
   }
-  await planNotify.guestsWaitAfterMove({ plan, count: rows.length })
+  if ((asks || []).length > 0) {
+    const hostFirst = await actions().hostFirstOf(plan);
+    for (const request of asks) {
+      await planNotify.waitAfterMove({ plan, request, hostFirst })
+        .catch((err) => logger.warn('plans.guests.notice_failed', { planId: plan.post_id, error: err.message }));
+    }
+  }
+  await planNotify.guestsWaitAfterMove({ plan, count })
     .catch((err) => logger.warn('plans.guests.notice_failed', { planId: plan.post_id, error: err.message }));
+}
+
+// ── A browser answer follows the person into the app (6.9 item 8) ──
+
+/**
+ * A guest's answer in a browser becomes the account's whose verified email gave it. The caller has checked that the
+ * row's address is this account's verified email, and that the host has the switch.
+ *  - In becomes an accepted ask (adults as party_size, kids as kids_count, so the seats don't change), in the chat;
+ *    waiting for the host's yes becomes a pending ask with needs_host_ok; Maybe and Can't make it stay what they are.
+ *  - host_ok_at stays as the host's yes: an ask the host let in by hand is decided by the host.
+ *  - What they claimed on the bring list becomes the account's.
+ *  - The guest's keys end, so their old links read what a signed-out stranger reads.
+ * Nothing moves when the account already answered this plan in the app, holds another invitation to it, or the host
+ * said no to or removed it: their own standing stays as it is. Answers whether it moved.
+ */
+async function adoptAnswer(plan, row, userId, { io = null } = {}) {
+  if (!plan || !isGuest(row) || !['accepted', 'maybe', 'declined'].includes(row.status)) return false;
+  if (String(plan.host_user_id) === String(userId)) return false;
+  const [{ data: request, error: requestError }, { data: others, error: otherError }] = await Promise.all([
+    supabaseAdmin.from('PlanRequest').select(planService.REQUEST_COLUMNS).eq('post_id', plan.post_id).eq('user_id', userId).maybeSingle(),
+    supabaseAdmin.from('PlanInvite').select('id').eq('post_id', plan.post_id).eq('invitee_user_id', userId).limit(1),
+  ]);
+  if (requestError || otherError) throw new Error(`Failed to load the answer: ${(requestError || otherError).message}`);
+  if (request && !['withdrawn', 'left', 'expired'].includes(request.status)) return false;
+  if (others && others.length) return false;
+
+  const stamp = nowIso();
+  const waiting = row.status === 'accepted' && Boolean(row.needs_host_ok);
+  // The row first, only while it is still the guest's: two reads at once move it once.
+  const { data: moved, error } = await supabaseAdmin.from('PlanInvite').update({
+    invitee_user_id: userId, guest_name: null, guest_adults: null, guest_kids: null, guest_key_hashes: [],
+    needs_host_ok: waiting, claimed_at: stamp, opened_at: row.opened_at || stamp, updated_at: stamp,
+  }).eq('id', row.id).is('invitee_user_id', null).eq('status', row.status).select(GUEST_COLUMNS);
+  if (error) throw new Error(`Failed to move the answer: ${error.message}`);
+  if (!moved || moved.length === 0) return false;
+
+  if (row.status === 'accepted') {
+    const adults = Math.min(Math.max(Number(row.guest_adults) || 1, 1), rules.PRIVATE_PARTY_MAX);
+    const kids = plan.kids_welcome ? Math.min(Math.max(Number(row.guest_kids) || 0, 0), rules.PRIVATE_PARTY_MAX) : 0;
+    const values = {
+      status: waiting ? 'pending' : 'accepted',
+      party_size: adults,
+      kids_count: kids > 0 ? kids : null,
+      decided_by: waiting ? null : (row.host_ok_at ? 'host' : 'rule'),
+      decided_at: waiting ? null : (row.host_ok_at || stamp),
+      note: null,
+      distance_band: null,
+      queued_at: row.answered_at || stamp,
+      reconfirm_requested_at: null,
+      reconfirmed: null,
+      reconfirm_reason: null,
+      on_my_way_at: null,
+      updated_at: stamp,
+    };
+    const saved = request
+      ? await supabaseAdmin.from('PlanRequest').update({ ...values, ask_count: Math.min(rules.LIMITS.asksPerPlan, (request.ask_count || 1) + 1) })
+        .eq('id', request.id).in('status', ['withdrawn', 'left', 'expired']).select(planService.REQUEST_COLUMNS)
+      : await supabaseAdmin.from('PlanRequest')
+        .insert({ ...values, post_id: plan.post_id, user_id: userId, ask_count: 1, created_at: stamp }).select(planService.REQUEST_COLUMNS);
+    const ask = !saved.error && saved.data && saved.data[0];
+    if (!ask) {
+      // The answer stays the guest's, as it was.
+      const restore = {
+        invitee_user_id: null, guest_name: row.guest_name, guest_adults: row.guest_adults, guest_kids: row.guest_kids,
+        guest_key_hashes: row.guest_key_hashes || [], needs_host_ok: row.needs_host_ok, claimed_at: row.claimed_at || null,
+        opened_at: row.opened_at || null, updated_at: nowIso(),
+      };
+      await supabaseAdmin.from('PlanInvite').update(restore).eq('id', row.id).eq('invitee_user_id', userId);
+      logger.warn('plans.guests.adopt_failed', { inviteId: row.id, error: saved.error?.message || 'not saved' });
+      return false;
+    }
+    if (!waiting) {
+      try {
+        const roomId = await require('./planChat').ensureRoom(plan, { io });
+        await require('./planChat').addMember(roomId, userId, { io });
+      } catch (err) {
+        logger.warn('plans.guests.adopt_chat_failed', { planId: plan.post_id, error: err.message });
+      }
+    }
+    await require('./planBring').moveClaims(plan.post_id, { kind: 'guest', id: row.id }, { kind: 'user', id: ask.id });
+  } else {
+    await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
+  }
+  recordFunnelEvent('plan_guest_answered', { userId, meta: { plan_id: plan.post_id, kind: plan.kind, via: row.channel, answer: stateOf(row), into_app: true } });
+  return true;
+}
+
+/**
+ * Browser answers (rows of guests without an account) whose address is this account's verified email, from any
+ * plans: each moves where its host has the switch. Answers how many moved.
+ */
+async function adoptAnswers(rows, userId, { io = null } = {}) {
+  const guestsRows = (rows || []).filter(isGuest);
+  if (guestsRows.length === 0) return 0;
+  const plans = new Map((await planService.loadPlanRows(guestsRows.map((r) => r.post_id))).map((p) => [p.post_id, p]));
+  const switches = await switchByHost([...plans.values()].map((p) => p.host_user_id));
+  let moved = 0;
+  for (const row of guestsRows) {
+    const plan = plans.get(row.post_id);
+    if (!plan || !switches.get(String(plan.host_user_id)) || !takesAnswers(plan)) continue;
+    try {
+      // The row as it is now, with every column the move keeps or restores.
+      const { data: fresh } = await supabaseAdmin.from('PlanInvite').select(`${GUEST_COLUMNS}, claimed_at`).eq('id', row.id).maybeSingle();
+      if (fresh && (await adoptAnswer(plan, fresh, userId, { io }))) moved += 1;
+    } catch (err) {
+      logger.warn('plans.guests.adopt_failed', { inviteId: row.id, error: err.message });
+    }
+  }
+  return moved;
 }
 
 /**
@@ -1066,6 +1297,7 @@ module.exports = {
   hashKey,
   takesAnswers,
   takesOpenLink,
+  isOpenToken,
   stateOf,
   isGuest,
   switchFor,
@@ -1089,7 +1321,10 @@ module.exports = {
   planChanged,
   movesToHome,
   holdForHome,
+  holdAccountsForHome,
   movedToHome,
+  adoptAnswer,
+  adoptAnswers,
   planCancelled,
   sendReminders,
 };

@@ -811,6 +811,26 @@ async function guestsWaitAfterMove({ plan, count }) {
 }
 
 /**
+ * To a person with an account from the open link whom the move to a home made wait (contract 6.9 item 7): "Maya moved
+ * Friendsgiving to a home. Maya lets each guest in, and you'll hear when Maya says yes." Opens the plan, in its
+ * waiting state. Once a move. Their yes comes as the ordinary "You're in" (accepted).
+ */
+async function waitAfterMove({ plan, request, hostFirst }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  const title = plan.post.title;
+  return notify({
+    userId: request.user_id,
+    type: 'plan_moved_home_wait',
+    title: `${hostFirst} moved ${title} to a home. ${hostFirst} lets each guest in, and you'll hear when ${hostFirst} says yes.`,
+    body: [title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    metadata: { request_id: request.id, opens: 'plan' },
+    idempotencyKey: `plan_moved_home_wait:${request.id}:${new Date(plan.updated_at || Date.now()).toISOString()}`,
+  });
+}
+
+/**
  * "Still coming?" again, for a guest who hasn't answered: once per change (the change's
  * reconfirm_requested_at is in the key), with the same buttons as the first ask.
  */
@@ -872,5 +892,6 @@ module.exports = {
   guestAnswered,
   guestWaiting,
   guestsWaitAfterMove,
+  waitAfterMove,
   GUEST_BUNDLE_WINDOW_MS,
 };
