@@ -362,6 +362,13 @@ public enum PlansEndpoints {
         Endpoint(method: .post, path: "\(base)/\(planId)/invites/claim", query: biz(), body: PlanInviteClaimBody(token: token))
     }
 
+    /// `POST /api/plans/:id/invites/claim` `{ open }` (Plans for the holidays, contract 6.9): the plan's one link for
+    /// everyone, opened in the app, becomes an invitation for this account. `{ plan }`; every refusal is
+    /// `404 invite_unavailable`.
+    public static func claimOpenLink(planId: String, open: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/invites/claim", query: biz(), body: PlanOpenLinkClaimBody(open: open))
+    }
+
     /// `POST /api/plans/:id/invites/decline` — "Can't make it". Saying "I'm
     /// in" is the ordinary ask. Route `backend/routes/plans.js`.
     public static func declineInvite(planId: String) -> Endpoint {
