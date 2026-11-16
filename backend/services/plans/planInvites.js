@@ -226,7 +226,8 @@ function assertInvitable(plan, viewer) {
  * once, as accepting the first ask does (planActions.decide).
  */
 async function assertSharesAddressConfirmed(plan, body) {
-  if (plan.place_kind !== 'home' || body?.confirm_shares_address === true) return;
+  // The open link (H1) was made with this same confirmation.
+  if (plan.place_kind !== 'home' || body?.confirm_shares_address === true || plan.open_invite_token) return;
   const [accepted, invited] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true })
       .eq('post_id', plan.post_id).eq('decided_by', 'host').in('status', ['accepted', 'left', 'removed']),
