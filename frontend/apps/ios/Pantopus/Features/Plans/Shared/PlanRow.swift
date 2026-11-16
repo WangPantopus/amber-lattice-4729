@@ -18,6 +18,8 @@ enum PlanRowTrailing: Equatable {
     case status(String, PantopusIcon?)
     /// A business's plan: "Free" (Plans with businesses, board G2).
     case price
+    /// Plans for the holidays B1: a business's plan with a deal shows the deal's one tag ("Deal", "20% off").
+    case deal(String)
 }
 
 struct PlanRowModel: Identifiable, Equatable {
@@ -46,7 +48,7 @@ struct PlanRowModel: Identifiable, Equatable {
                 kind: card.kind,
                 title: card.title,
                 subtitle: [when, business.name].compactMap { $0 }.joined(separator: " · "),
-                trailing: trailing ?? .price,
+                trailing: trailing ?? card.deal?.tag.map { .deal($0) } ?? .price,
                 accessibilityLabel: spoken(card, now: now),
                 isBusiness: true
             )
@@ -343,12 +345,14 @@ struct PlanRow: View {
             StatusChip(text, variant: .neutral, icon: icon).accessibilityLabel(text)
         case .price:
             PlanPriceChip()
+        case let .deal(text):
+            PlanDealTag(text: text).accessibilityIdentifier("planDealTag")
         }
     }
 
     private var trailingSpoken: String {
         switch model.trailing {
-        case let .status(text, _): ". \(text)"
+        case let .status(text, _), let .deal(text): ". \(text)"
         case .chevron, .text, .price: ""
         }
     }

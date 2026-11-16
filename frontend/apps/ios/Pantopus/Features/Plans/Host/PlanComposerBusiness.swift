@@ -96,6 +96,7 @@ extension PlanComposerModel {
         body.hostAs = PlanHostAsBody(businessUserId: hostAs.userId)
         body.businessLocationId = location.id
         body.label = label
+        if offersDeal { body.deal = deal.input(start: start) }
         return body
     }
 }

@@ -347,6 +347,14 @@ final class PlanScreenViewModel {
         }
     }
 
+    /// Plans for the holidays B1: staff mark a guest's free thing used. It can't be undone.
+    func markDealUsed(requestId: String) async -> Bool {
+        await perform {
+            _ = try await api.request(PlansEndpoints.dealUsed(planId: planId, requestId: requestId), as: PlanDealUsedResponse.self)
+            await load()
+        }
+    }
+
     /// The request behind someone going, for "Remove from plan".
     func requestId(for person: PlanPersonDTO) -> String? {
         person.requestId

@@ -76,15 +76,19 @@ public struct PlanHostAsBusinessDTO: Decodable, Sendable, Hashable, Identifiable
     public let kinds: [PlanBusinessKindDTO]
     public let locations: [PlanBusinessLocationDTO]
     public let limits: PlanBusinessLimitsDTO
+    /// Plans for the holidays: which rows the form draws (a deal, a price, paying here), and whether it can charge now.
+    public let can: PlanBusinessCanDTO
+    public let payoutsReady: Bool
 
     public var id: String {
         userId
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, verified, kinds, locations, limits
+        case name, verified, kinds, locations, limits, can
         case userId = "user_id"
         case avatarUrl = "avatar_url"
+        case payoutsReady = "payouts_ready"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -98,6 +102,8 @@ public struct PlanHostAsBusinessDTO: Decodable, Sendable, Hashable, Identifiable
         locations = (try? container.decodeIfPresent(LossyList<PlanBusinessLocationDTO>.self, forKey: .locations))?.items ?? []
         limits = (try? container.decodeIfPresent(PlanBusinessLimitsDTO.self, forKey: .limits))
             ?? PlanBusinessLimitsDTO(spotsMax: 30, daysAhead: 60)
+        can = (try? container.decodeIfPresent(PlanBusinessCanDTO.self, forKey: .can)) ?? .none
+        payoutsReady = (try? container.decodeIfPresent(Bool.self, forKey: .payoutsReady)) ?? false
     }
 
     /// The kind as this business posts it, if it may.
