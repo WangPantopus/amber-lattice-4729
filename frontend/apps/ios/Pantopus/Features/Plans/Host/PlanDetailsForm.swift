@@ -17,6 +17,8 @@ struct PlanDetailsForm: View {
     let onPreview: () -> Void
     /// Plans step 2: the Repeats screen, from the When card's Repeats row.
     var onRepeats: () -> Void = {}
+    /// Plans for the holidays H2: the bring list (board 19), from "Add to this plan".
+    var onBringList: () -> Void = {}
 
     @State private var showsPlacePicker = false
 
@@ -35,7 +37,7 @@ struct PlanDetailsForm: View {
                     if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow
                     // Plans for the holidays (board 3): the extras, each behind its own switch, under "Room for".
-                    if model.offersGuestAnswers { PlanAddToPlanCard(model: model) }
+                    if model.offersAddToPlan { PlanAddToPlanCard(model: model, onBringList: onBringList) }
                     // A private plan's people get in right away: "Guests can bring a friend" instead (board Details).
                     if model.isBusiness { PlanWhoGetsInField(model: model) } else if model.isPrivate {
                         PlanGuestsCanInviteRow(model: model)

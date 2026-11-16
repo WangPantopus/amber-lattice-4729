@@ -21,6 +21,8 @@ struct PlanScreenSections: View {
     /// Plans for the holidays: "Change" on board 20's banners opens board 18's sheet; the host's counts open board 17.
     var onAnswer: () -> Void = {}
     var onOpenGuests: () -> Void = {}
+    /// Plans for the holidays H2: the host's bring list (board 19).
+    var onOpenBring: () -> Void = {}
 
     var body: some View {
         if let card = viewModel.card {
@@ -62,7 +64,8 @@ struct PlanScreenSections: View {
                         onCancel: onCancel,
                         onConfirm: onConfirm,
                         onOpenProfile: onOpenHost,
-                        onOpenGuests: onOpenGuests
+                        onOpenGuests: onOpenGuests,
+                        onOpenBring: onOpenBring
                     )
                 case .closed:
                     PlanClosedSection(
