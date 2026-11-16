@@ -538,15 +538,26 @@ async function sendInviteEmail(plan, row, token, hostFirst) {
  * (from every host together), else null.
  */
 async function emailHeld(email) {
-  const [optedOut, today] = await Promise.all([
+  const dayAgo = new Date(Date.now() - DAY_MS);
+  const [optedOut, today, later] = await Promise.all([
     supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
       .eq('email', email).not('email_opted_out_at', 'is', null),
     supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', email).eq('email_status', 'sent').gt('created_at', new Date(Date.now() - DAY_MS).toISOString()),
+      .eq('email', email).eq('email_status', 'sent').gt('created_at', dayAgo.toISOString()),
+    // Every email after an invitation's first (a guest's emails, Remind's invitation again), by its own time.
+    supabaseAdmin.from('PlanInvite').select('email_sent_times').eq('email', email).neq('email_sent_times', '{}').limit(200),
   ]);
-  if (optedOut.error || today.error) throw new Error(`Failed to check the address: ${(optedOut.error || today.error).message}`);
+  const failed = optedOut.error || today.error || later.error;
+  if (failed) throw new Error(`Failed to check the address: ${failed.message}`);
   if (optedOut.count) return 'opted_out';
-  return (today.count || 0) >= LIMITS.emailsPerAddressPerDay ? 'too_many' : null;
+  const laterToday = (later.data || [])
+    .reduce((sum, row) => sum + (row.email_sent_times || []).filter((t) => new Date(t) > dayAgo).length, 0);
+  return (today.count || 0) + laterToday >= LIMITS.emailsPerAddressPerDay ? 'too_many' : null;
+}
+
+/** An email after the invitation's first went to this row's address: its time joins the row's (at most 20). */
+function withEmailSent(row) {
+  return [...(row?.email_sent_times || []), nowIso()].slice(-20);
 }
 
 /** A member whose verified address is `email`, or null. */
@@ -608,7 +619,8 @@ async function resendInviteEmail(plan, row, hostFirst) {
     return false;
   }
   const { error } = await supabaseAdmin.from('PlanInvite')
-    .update({ token_hash: hashToken(token), email_status: 'sent', updated_at: nowIso() }).eq('id', row.id);
+    .update({ token_hash: hashToken(token), email_status: 'sent', email_sent_times: withEmailSent(row), updated_at: nowIso() })
+    .eq('id', row.id);
   if (error) logger.warn('plans.invites.remind_unsaved', { inviteId: row.id, error: error.message });
   return true;
 }
@@ -1231,6 +1243,7 @@ module.exports = {
   dateText,
   emailWords,
   emailHeld,
+  withEmailSent,
   hostPlan,
   assertInvitable,
   assertSharesAddressConfirmed,

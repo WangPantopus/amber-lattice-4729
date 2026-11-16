@@ -50,7 +50,7 @@ const LIMITS = Object.freeze({
 const GUEST_COLUMNS = [
   'id', 'post_id', 'host_user_id', 'channel', 'invitee_user_id', 'email', 'token_hash', 'status', 'needs_host_ok',
   'email_status', 'email_opted_out_at', 'guest_name', 'guest_adults', 'guest_kids', 'guest_key_hashes',
-  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'opened_at', 'answered_at',
+  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'email_sent_times', 'opened_at', 'answered_at',
   'created_at', 'updated_at',
 ].join(', ');
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -397,27 +397,14 @@ async function resolveAnswerRow(plan, body, { cookieKey = null, patch = false } 
   return null;
 }
 
-/** Why a guest email to this address can't go now: 'opted_out', 'too_many' (a day's or a plan's), else null. */
+/**
+ * Why a guest email to this address can't go now: 'opted_out', or 'too_many' (three a guest a plan, or five an
+ * address a day from every host together, every email counted by its own time), else null.
+ */
 async function guestEmailHeld(row) {
   if (!row?.email) return 'no_address';
   if ((Number(row.guest_emails) || 0) >= LIMITS.emailsPerGuestPerPlan) return 'too_many';
-  const dayAgo = new Date(Date.now() - DAY_MS).toISOString();
-  const [optedOut, invited, answered, reminded] = await Promise.all([
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).not('email_opted_out_at', 'is', null),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).eq('email_status', 'sent').gt('created_at', dayAgo),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).gt('address_sent_at', dayAgo),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).gt('reminded_at', dayAgo),
-  ]);
-  for (const r of [optedOut, invited, answered, reminded]) {
-    if (r.error) throw new Error(`Failed to check the address: ${r.error.message}`);
-  }
-  if (optedOut.count) return 'opted_out';
-  const today = (invited.count || 0) + (answered.count || 0) + (reminded.count || 0);
-  return today >= invites().LIMITS.emailsPerAddressPerDay ? 'too_many' : null;
+  return invites().emailHeld(row.email);
 }
 
 /** The words every guest email shares. */
@@ -437,6 +424,7 @@ async function saveEmailed(row, key, stamp) {
   const patch = {
     guest_key_hashes: withKey(row, key),
     guest_emails: (Number(row.guest_emails) || 0) + 1,
+    email_sent_times: invites().withEmailSent(row),
     updated_at: nowIso(),
     ...(stamp ? { [stamp]: nowIso() } : {}),
   };
