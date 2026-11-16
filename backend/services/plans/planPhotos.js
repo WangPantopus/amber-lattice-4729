@@ -62,7 +62,8 @@ async function switchByHost(hostIds) {
 const itemsOf = (value) => (value && Array.isArray(value.items) ? value.items : []);
 const endMs = (plan) => new Date(plan.post.event_end_date).getTime();
 /** Over (by time or by the tick), not cancelled. */
-const isOver = (plan) => plan.status !== 'cancelled' && rules.planState(plan, plan.post.event_date, plan.post.event_end_date) === 'ended';
+const isOver = (plan) => plan.status !== 'cancelled' && !(plan.date_options && !plan.date_options.picked)
+  && rules.planState(plan, plan.post.event_date, plan.post.event_end_date) === 'ended';
 const addingOpen = (plan) => isOver(plan) && Date.now() < endMs(plan) + LIMITS.days * DAY_MS;
 
 // ── Who ──────────────────────────────────────────────────────

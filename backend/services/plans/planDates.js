@@ -124,8 +124,15 @@ async function replaceFromForm(plan, raw) {
 
 // ── Ticks ────────────────────────────────────────────────────
 
+/** The times still ahead: a time that has started can't be ticked, picked or counted (08-extras section 2). */
+const liveOptions = (value, now = Date.now()) => (value?.options || []).filter((o) => new Date(o.starts_at).getTime() > now);
+
 function checkedIds(value, raw) {
   if (!Array.isArray(raw)) fail(422, 'validation', 'Tick the times that work for you.', { field: 'options' });
+  const live = new Set(liveOptions(value).map((o) => o.id));
+  if (raw.some((id) => typeof id === 'string' && !live.has(id) && (value.options || []).some((o) => o.id === id))) {
+    fail(422, 'validation', 'That time has started. Choose another.', { field: 'options' });
+  }
   const known = new Set((value.options || []).map((o) => o.id));
   const ids = [...new Set(raw.filter((id) => typeof id === 'string'))];
   if (ids.length !== raw.length || ids.some((id) => !known.has(id))) fail(422, 'validation', 'One of those times isn’t on the list any more.', { field: 'options' });
@@ -204,12 +211,13 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0 })
   if (!isPicking(plan)) return null;
   const tz = rules.timezoneForPlan(plan);
   const ticks = value.ticks || {};
+  const shown = liveOptions(value);
   // In the order they answered (a JSON object's keys don't keep it).
   const answeredKeys = Object.entries(value.answered || {}).filter(([k]) => ticks[k])
     .sort((x, y) => String(x[1]).localeCompare(String(y[1]))).map(([k]) => k);
-  const counts = new Map(value.options.map((o) => [o.id, answeredKeys.filter((k) => ticks[k].includes(o.id))]));
+  const counts = new Map(shown.map((o) => [o.id, answeredKeys.filter((k) => ticks[k].includes(o.id))]));
   const best = Math.max(0, ...[...counts.values()].map((v) => v.length));
-  const options = value.options.map((o) => {
+  const options = shown.map((o) => {
     const who = counts.get(o.id);
     const out = { id: o.id, starts_at: o.starts_at, ends_at: o.ends_at, text: optionText(o.starts_at, tz), can: who.length,
       can_text: `${who.length} can make it` };
@@ -346,7 +354,7 @@ async function settle(plan, value, option, { io }) {
           await invites().markAccepted(plan, userId, request);
           const names = await actions().userNames([userId]);
           await planNotify.requestReceived({ plan, request, hostFirst, requesterFirst: actions().firstOf(names.get(userId)) });
-          await noticeTo(plan, userId, pickedTitle(plan, when, `${hostFirst} says yes first.`), 'waiting');
+          await noticeTo(plan, userId, pickedTitle(plan, when, `You’ll hear when ${hostFirst} says yes.`), 'waiting');
         } else {
           out.waitlisted += 1;
           await invites().markAccepted(plan, userId, request);
@@ -444,7 +452,84 @@ async function admitQuietly(plan, request, { io }) {
   await planChat.systemLine(roomId, request.user_id, `${who} ${who.includes(' + ') ? 'are' : 'is'} in`);
 }
 
+// ── Times going by (the Plans tick) ──────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Each picking plan, on the Plans tick: its place in lists follows the earliest time still ahead; once, 24 hours before
+ * that time (never in the first hour after posting), the host hears "Pick a date for {title}. {9} of {14} have
+ * answered."; when every time has started with no pick, the plan's end is set to now so the lifecycle ends it as a plan
+ * whose time passed, and the host is told once "No date was picked for {title}, and its times have passed." The invited
+ * are told nothing.
+ */
+async function runTimes({ now = Date.now() } = {}) {
+  const { data, error } = await supabaseAdmin.from('Plan').select(planService.PLAN_SELECT)
+    .eq('status', 'open').not('date_options', 'is', null).is('date_options->>picked', null).limit(200);
+  if (error) throw new Error(`Failed to read plans picking a date: ${error.message}`);
+  const out = { moved: 0, reminded: 0, lapsed: 0 };
+  for (const plan of data || []) {
+    try {
+      if (!isPicking(plan)) continue;
+      const value = plan.date_options;
+      const ahead = liveOptions(value, now);
+      if (ahead.length) {
+        const first = ahead[0];
+        if (new Date(plan.post.event_date).toISOString() !== new Date(first.starts_at).toISOString()) {
+          await followEarliest(plan.post_id, { options: ahead });
+          out.moved += 1;
+        }
+        const due = now >= new Date(first.starts_at).getTime() - DAY_MS && now >= new Date(plan.created_at).getTime() + HOUR_MS;
+        if (due && !value.pick_reminded_at && (await enabledFor(plan.host_user_id))) {
+          let won = false;
+          await extras.swap(plan.post_id, COLUMN, (current) => {
+            if (!isPicking({ date_options: current }) || current.pick_reminded_at) return undefined;
+            won = true;
+            return { ...current, pick_reminded_at: nowIso() };
+          });
+          if (won) {
+            const parts = await cardParts(plan);
+            const answered = Object.keys(value.answered || {}).filter((k) => (value.ticks || {})[k]).length;
+            await planNotify.notify({
+              userId: plan.host_user_id, type: 'plan_date_pick',
+              title: `Pick a date for ${plan.post.title}. ${answered} of ${parts.invited} have answered.`,
+              body: null, link: `/plans/${plan.post_id}`, plan, recipientIsIn: true,
+              metadata: { opens: 'plan' }, idempotencyKey: `plan_date_pick:${plan.post_id}`,
+            });
+            out.reminded += 1;
+          }
+        }
+        continue;
+      }
+      // Every time has started: the plan ends now, as a plan whose time passed, and the host hears it once.
+      let lapsed = false;
+      await extras.swap(plan.post_id, COLUMN, (current) => {
+        if (!isPicking({ date_options: current }) || current.lapsed_at) return undefined;
+        lapsed = true;
+        return { ...current, lapsed_at: nowIso() };
+      });
+      if (!lapsed) continue;
+      const last = value.options[value.options.length - 1];
+      const end = new Date(Math.min(now, new Date(last.ends_at).getTime())).toISOString();
+      await supabaseAdmin.from('Post').update({ event_date: last.starts_at, event_end_date: end, updated_at: nowIso() }).eq('id', plan.post_id);
+      await planNotify.notify({
+        userId: plan.host_user_id, type: 'plan_date_lapsed',
+        title: `No date was picked for ${plan.post.title}, and its times have passed.`,
+        body: null, link: `/plans/${plan.post_id}`, plan, recipientIsIn: true,
+        metadata: { opens: 'plan' }, idempotencyKey: `plan_date_lapsed:${plan.post_id}`,
+      });
+      out.lapsed += 1;
+    } catch (err) {
+      logger.warn('plans.dates.times_failed', { planId: plan?.post_id, error: err.message });
+    }
+  }
+  return out;
+}
+
 module.exports = {
+  runTimes,
+  liveOptions,
   FLAG,
   LIMITS,
   enabledFor,
