@@ -31,6 +31,8 @@ final class PlanPrivateDraft {
     var kidsWelcome = false
     /// Plans for the holidays H2: the bring list being drafted; nil while "Bring list" is off.
     var bring: PlanBringEditor?
+    /// Plans for the holidays H3: the occasion the plan was started from (its name titles the form).
+    var occasion: PlanOccasionDTO?
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
