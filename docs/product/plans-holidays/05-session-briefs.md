@@ -185,6 +185,80 @@ that its buttons act.
 
 ---
 
+## Brief 4: the open link for a person who has the app (added November 15)
+
+The founder accepted this design on November 15 ("Yes, go ahead"). It is the
+contract's section 6.9, with its "Done when" lines in section 16, the screens
+A10, A11 and A5's added paragraph in [06-screens.md](06-screens.md), and
+pictures 21, 22 and 23. Everything above in this file still holds: areas,
+rules, checks, "do not".
+
+**Why.** The open link's address sits under `/plans/`, which every iPhone
+build opens in the app, and no app knows an open link. A person who has
+Pantopus would land on a private plan they cannot answer.
+
+### 4a. Server and web (stream HOLSRV), one PR
+
+| Build | From |
+| --- | --- |
+| The open link's address becomes `/plan-link/<id>?open=<token>` | 6.9 item 1 |
+| The web serves the guest's page (W1, W2, W3) at `/plan-link/<id>`, with no redirect to `/plans/`; `/plan-invitation/<id>?key=` opens `/plan-link/<id>` | 6.9 item 2 |
+| "Open app" on a page with a live open link opens `pantopus://plans/<id>?open=<token>` | 6.9 item 3; `OpenInAppButton` |
+| `POST /api/plans/:id/invites/claim` takes `open`: every row of the table | 6.9 item 5 |
+| `my_invite.via`, and the host's list: `via`, the ask's id, `asked` for a person from the link who waits | 6.9 items 5 and 6 |
+| The move to a home covers people with an account from the link; their notice | 6.9 item 7 |
+| A browser answer becomes the account's, with the answer, the numbers, the host's yes and the bring-list claims; this replaces "answers anew" for email invitations | 6.9 item 8 |
+| One additive migration widening `plan_invite_channel_fields` | 6.9, Data |
+
+Start from `planInvites.claimInvite`, `attachEmailInvites` and `assertInvitable`;
+`planGuests.makeOpenLink`, `holdForHome` and `movedToHome`; `planActions.askToJoin`
+and the accept and decline of an ask; `planBring` for the claims;
+`frontend/apps/web/src/app/(site)/plans/[id]/` and `plan-invitation/[id]/route.ts`;
+`components/public-share/OpenInAppButton.tsx`.
+
+Check for real: section 16's lines for 6.9 that need no phone, on the rig with
+two accounts and a browser. The home address is the thing to try to break: a
+person who claimed with "I say yes first" on, a removed person, a blocked
+person, and an account whose email is typed but not verified, each reading the
+plan through the app's routes. With the switch off, every answer is today's.
+
+Tell the founder and the two app sessions when it is on `dev`.
+
+### 4b. iPhone (stream HOLIOS), one PR, after 4a is on `dev`
+
+| Build | From |
+| --- | --- |
+| `DeepLinkRouter`: `open` on `/plans/<id>` beside `invite`, for `pantopus://` and `https://` | 6.9 item 4 |
+| Signed in: claim with `open`, then the plan it answers; `404 invite_unavailable` shows the shipped screen | A10 |
+| Signed out: the link is kept through sign-in or sign-up, as plan links are today, then claimed | 6.9 item 4 |
+| The line under "I'm in" for `my_invite.via == open` with the host's yes needed | A10 item 5 |
+| Who's coming: a person with an account from the link, in all three sections; "Let in" and "Not this time" on their ask | A5's added paragraph; picture 23 |
+| The notice to a person the move makes wait opens the plan | "Notices the apps must handle" |
+
+Do not add `/plan-link/` to `apple-app-site-association`.
+
+Check for real, on a simulator against a local stack: "Open app" from the
+browser page opens the plan with "{Host} invited you"; with and without "I say
+yes first"; the host's phone shows the person under "Waiting for you" and lets
+them in; a removed person; signed out, then signed in; relaunch. With the
+store build installed instead, the open link and the emailed link tapped in
+Messages end on the browser page.
+
+### 4c. Android (stream HOLAND), one PR, after 4a is on `dev`
+
+The same as 4b, and:
+
+| Build | From |
+| --- | --- |
+| `DeepLinkRouter` also resolves `https://…/plan-link/<id>?open=<token>` to the plan: signed in it claims; signed out, or without `open`, it goes on to the browser (`WebLinkFallback`) | 6.9 item 4 |
+
+Check for real, on an emulator: as 4b, and the open link tapped in Messages
+opens the plan in the app when signed in. With the store build installed
+instead, tap the open link and the emailed "You're in" link from Messages and
+from Gmail, and write down where each ends: it must be the browser page, with
+the form or the address, never the app's page for a private plan (contract 17,
+item 9).
+
 ## Words for the founder to start them
 
 A new session on Opus 5.5 at Extra High for each, with one line:

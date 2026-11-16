@@ -75,6 +75,12 @@ States:
 | The link is off or unknown | Today's private-plan page: "Only the people invited can see this plan." |
 | While sending | The tapped button shows progress; all three are off |
 
+**Where the page lives, and "Open app" (contract 6.9).** The open link and the
+emailed link lead to `/plan-link/<id>`, which draws W1, W2 and W3 as
+`/plans/<id>` does today. On a page opened with a live open link, the bar's
+"Open app" opens `pantopus://plans/<id>?open=<token>`, so a person who has the
+app answers there as themselves. Nothing else on the page changes.
+
 ### W2. After "I'm in", waiting
 
 Picture `15-browser-waiting-for-yes.png` (board `WebWait.dc.html`). Shown when
@@ -291,6 +297,16 @@ invitation list's rows with sections; the shipped list's actions stay.
    opened has nobody to remind" when there is one. Off, reading "Reminded
    today", after a reminder today. Hidden when nobody can be reminded.
 
+People with an account who came by the link (contract 6.9, picture
+`23-whos-coming-from-the-link.png`, board `LinkHost.dc.html`): a row whose
+`via` is `open`. Waiting for the host's yes, it is a card under "Waiting for
+you" like a guest's, with the person's shipped name and picture and
+"{2 adults} · on Pantopus · from your link"; "Let in" is the shipped accept of
+their ask (with its address confirmation the first time at a home) and "Not
+this time" the shipped decline. Not answered yet, it sits under "Haven't
+answered" with "Opened your link". In, it is a row under "Coming" like any
+person with an account.
+
 Actions: "Let in" is `POST …/invites/:inviteId/ok`; "Not this time" and a
 swipe or long-press "Remove" on any guest row are `DELETE …/invites/:inviteId`
 after "Remove {name}? Their invitation will stop working." (no email goes to a
@@ -378,6 +394,41 @@ An occasion with a starter list (A2) opens this screen already filled in.
 
 ---
 
+### A10. A plan opened from a shared link
+
+Picture `21-shared-link-in-the-app.png` (board `LinkApp.dc.html`). H1,
+contract 6.9. Not a new screen: the shipped page of a private plan the person
+is invited to and has not answered, reached by claiming the open link.
+
+How the person gets here: on Android, tapping `https://…/plan-link/<id>?open=…`
+with a build that knows it; on both, "Open app" on the browser page
+(`pantopus://plans/<id>?open=…`); and `https://…/plans/<id>?open=…`. Signed
+in, the app calls `POST /api/plans/:id/invites/claim` with `open` and shows
+the plan it answers. `404 invite_unavailable` shows the shipped "This
+invitation isn't available anymore." Signed out: see the contract, 6.9 item 4.
+
+What is on it, all shipped unless marked:
+
+1. The map with the area, never a point, and the area's name.
+2. The invitation banner with the host's picture: "{Host} invited you" and
+   the shipped second line (with the host's yes needed: "Say you're in and
+   {Host} gets a request. You see the address once they say yes.").
+3. The occasion or kind tag, "Private", the title, the area, the time, the
+   host's words, the host and how many are coming.
+4. "I'm in", which opens A7.
+5. New, under "I'm in", when `my_invite.via` is `open` and the host's yes is
+   needed: "{Host} says yes to each person who uses this link". Without the
+   yes needed it is the shipped line.
+
+### A11. After "I'm in" from a shared link, waiting
+
+Picture `22-shared-link-waiting.png` (board `LinkWait.dc.html`). H1, contract
+6.9. The shipped state of a person whose ask waits for the host (J5), with its
+shipped actions ("Change who's coming", "Withdraw request"). The board shows
+it in this build's words; where the shipped state is laid out differently, the
+shipped layout stays. The address, the people and the chat open when the host
+says yes, with the shipped notice.
+
 ## Notices the apps must handle (H1, H2)
 
 Each opens the screen named. The words are the server's.
@@ -387,6 +438,7 @@ Each opens the screen named. The words are the server's.
 | "Dana Lee is in: 2 adults, 1 kid." | A5 |
 | "Dana Lee wants to come. Let them in?" with the buttons "Let in" and "Not this time" | A5; the buttons act without opening the app, as "I'm in" does on an invitation today |
 | "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." (contract 6.8; type `plan_moved_home`) | A5. No buttons |
+| "Maya moved Friendsgiving to a home. Maya lets each guest in, and you'll hear when Maya says yes." (contract 6.9, to a person with an account the move makes wait) | The plan, in its waiting state (A11) |
 | "3 things are taken. 2 are still open." | A6 |
 | "2 things are still open for Thanksgiving dinner." | A8 |
 
