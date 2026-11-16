@@ -123,10 +123,13 @@ The "Done when" lists in the contract, section 16, are the bar. In short:
       `plans_business` on for testers; run the by-hand trial; send the terms to
       a lawyer and the sales-tax question to an accountant.
 
-## 7. Later, not planned here
+## 7. The extras
 
-Find a date, Chip in, Gift exchange, Photos afterwards, Groups, and one person
-paying for a group. Each needs its boards drawn and confirmed before it gets a
-contract. Find a date and Gift exchange fit the bring list's pattern (one JSON
-value on the plan, changed by revision number), so they are not expected to need
-a new table.
+Find a date, chip in, gift exchange, photos afterwards, the same people again,
+and one person paying for a group were drawn and written up on November 16 and
+are being built: [08-extras.md](08-extras.md) holds their design, contract,
+screens and "Done when", and its section 8 the order and who builds what
+([brief 8](05-session-briefs.md)). None adds a table.
+
+Still later, and needing the founder's word: a named group kept between plans,
+which would need a new table.

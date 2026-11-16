@@ -32,6 +32,8 @@ struct PlanChangeScreen: View {
     @State private var repeating: PlanRepeatDraft?
     /// An online plan's new link (Plans step 3), nil while it's the same.
     @State private var newLink: String?
+    /// Plans for the holidays: a private plan's room and "Kids welcome", sent only when changed.
+    @State private var room = PlanRoomChange()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +49,7 @@ struct PlanChangeScreen: View {
                         } else if card.isOnline {
                             PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)
                         } else if card.placeKind != .home { place(card) }
+                        if card.changesRoom { PlanChangeRoomRows(room: $room, seatsTaken: card.goingCount) }
                         if asksStillComing(card) { warning(card) }
                         if asksStillComing(card) { preview(card) }
                     } else {
@@ -152,6 +155,7 @@ struct PlanChangeScreen: View {
         start = detail.card.startsAtDate ?? Date()
         end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
         repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
+        room = PlanRoomChange(card: detail.card)
     }
 
     private func when(_ card: PlanCardDTO) -> some View {
@@ -315,6 +319,7 @@ struct PlanChangeScreen: View {
             )
         }
         body.businessLocationId = newLocationId
+        if let card = plan?.card { room.apply(to: &body, card: card) }
         if let newLink {
             // The server's check first, with its sentence.
             guard let parsed = PlanOnlineLink.parse(newLink) else {

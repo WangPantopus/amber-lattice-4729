@@ -120,6 +120,7 @@ async function loadViewer(user, opts = {}) {
   const bizMarker = user.plansBiz === true;
   const more = user.plansMore === true;
   const guests = user.plansGuests === true;
+  const extras = user.plansExtras === true;
   const planBusiness = require('./planBusiness');
   const [
     playdatesFlag, filters, homes, savedPlaces, scopeAccess, sportsFlag, invitesFlag, bizFlag, bizKidsFlag, privateFlag, repeatFlag,
@@ -193,6 +194,9 @@ async function loadViewer(user, opts = {}) {
     // the switch (with private plans and invitations, which it needs). Read for the host wherever a plan is read.
     guests,
     guestAnswersFlag: Boolean(guestAnswersFlag && privateFlag && invitesFlag),
+    // The app can draw the extras of Plans for the holidays (`extras=1`, 08-extras.md). Each extra's switch is read
+    // for the plan's host.
+    extras,
     // Plans with businesses (planBusiness.js): whether a business's plan exists for this viewer, whether one
     // for kids does, and the businesses whose plans they post or run.
     biz,

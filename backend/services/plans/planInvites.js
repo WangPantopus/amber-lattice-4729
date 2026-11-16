@@ -274,7 +274,7 @@ const STATE_ORDER = { waiting_ok: -1, asked: 0, in: 1, waitlisted: 2, maybe: 3, 
  *   without an account are named with their numbers, Maybe and waiting_ok are states, and the list adds the headcount,
  *   the open link and who can be reminded. Without it, the open link's rows are left out and counted in `in`.
  */
-async function hostView(plan, rows, { guests = false } = {}) {
+async function hostView(plan, rows, { guests = false, chipIn = null } = {}) {
   const userIds = [...new Set(rows.map((r) => r.invitee_user_id).filter(Boolean).map(String))];
   const [people, requests] = await Promise.all([
     names(userIds),
@@ -335,6 +335,12 @@ async function hostView(plan, rows, { guests = false } = {}) {
       // A guest from the open link waiting for the host's yes: POST …/invites/:id/ok.
       view.can_ok = state === 'waiting_ok';
     }
+    // Chip in (the extras, `extras=1`): whether each person in said they paid, and whom "Mark paid" names.
+    if (chipIn && state === 'in') {
+      const extras = require('./planExtras');
+      const who = userId ? extras.personKey(userId) : extras.guestKey(row.id);
+      view.chip_in = { paid: chipIn.has(who), who };
+    }
     // One row a person: an account invite and an email the same person opened show once, at the furthest state.
     const key = view.person ? `user:${view.person.user_id}` : `invite:${row.id}`;
     const seen = byKey.get(key);
@@ -367,6 +373,14 @@ async function addGuestParts(out, plan, rows, requestRows) {
   out.counts.maybe = out.invites.filter((i) => i.state === 'maybe').length;
   out.counts.waiting_ok = out.invites.filter((i) => i.state === 'waiting_ok').length;
   out.counts.no_answer = out.counts.invited;
+  // Find a date: whoever saved their times has answered (none of these included).
+  if (require('./planDates').isPicking(plan)) {
+    const extras = require('./planExtras');
+    const answered = new Set(Object.keys(plan.date_options.answered || {}));
+    const tickedRows = rows.filter((r) => r.status === 'pending'
+      && answered.has(r.invitee_user_id ? extras.personKey(r.invitee_user_id) : extras.guestKey(r.id))).length;
+    out.counts.no_answer = Math.max(0, out.counts.no_answer - tickedRows);
+  }
   const requests = await actions().activeRequests(plan.post_id);
   const guestRowsIn = rows.filter((r) => planGuests.isGuest(r) && ['accepted', 'maybe'].includes(r.status));
   let adults = 0;
@@ -385,7 +399,11 @@ async function addGuestParts(out, plan, rows, requestRows) {
   out.open_link = planGuests.openLinkView(plan);
   const asked = new Set(requestRows.filter((r) => ['pending', 'waitlisted', 'accepted'].includes(r.status)).map((r) => String(r.user_id)));
   const dayAgo = Date.now() - DAY_MS;
+  // Find a date: whoever ticked times has answered.
+  const extras = require('./planExtras');
+  const ticked = require('./planDates').isPicking(plan) ? new Set(Object.keys(plan.date_options.answered || {})) : null;
   const remindable = rows.filter((r) => r.status === 'pending' && !r.reminded_at
+    && !(ticked && ticked.has(r.invitee_user_id ? extras.personKey(r.invitee_user_id) : extras.guestKey(r.id)))
     && (r.channel === 'email' || (r.invitee_user_id && !asked.has(String(r.invitee_user_id)))));
   const remindedToday = rows.some((r) => r.reminded_at && new Date(r.reminded_at).getTime() > dayAgo
     && (r.status === 'pending' || (r.answered_at && new Date(r.answered_at) > new Date(r.reminded_at))));
@@ -397,8 +415,15 @@ const guestsOn = (viewer) => Boolean(viewer.guests && viewer.guestAnswersFlag);
 
 async function listForHost(user, postId) {
   const { viewer, plan } = await hostPlan(user, postId);
-  const view = await hostView(plan, await loadInvites(postId), { guests: guestsOn(viewer) });
+  const view = await hostView(plan, await loadInvites(postId), { guests: guestsOn(viewer), chipIn: await chipInFor(plan, viewer) });
   return { ...view, can_invite: Boolean(viewer.invitesFlag) && isOpenForAnswers(plan) && hostMayInvite(plan) };
+}
+
+/** Who said they paid (chip in, the extras), for an app that sent `extras=1` while the host has the switch; else null. */
+async function chipInFor(plan, viewer) {
+  if (!viewer.extras || !plan.chip_in || !require('./planExtras').takesExtras(plan)) return null;
+  const planChipIn = require('./planChipIn');
+  return (await planChipIn.enabledFor(plan.host_user_id)) ? planChipIn.paidSet(plan.chip_in) : null;
 }
 
 // ── People the host can invite ───────────────────────────────

@@ -154,7 +154,7 @@ function partyLabel(name, partySize) {
 
 /** The response body after a write: PlanDetail or PlanCard for the person who wrote. */
 async function planBodyFor(postId, viewer) {
-  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests }, { gps: viewer.gps, point: viewer.origin });
+  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests, plansExtras: viewer.extras }, { gps: viewer.gps, point: viewer.origin });
   const { body } = await planService.getForViewer(postId, fresh);
   return body;
 }
@@ -586,6 +586,15 @@ async function previewPlan(user, input) {
  */
 async function createPlan(user, input, internal = {}) {
   const viewer = await loadViewer(user, { gps: input.gps });
+  // Find a date (the extras, 08-extras section 2), while the host has its switch: 2 to 5 times instead of one. The
+  // plan's time is the earliest until the host picks. Never with a repeat.
+  let dateOptions = null;
+  if (input.date_options != null && input.host_as == null && !internal.series && (await require('./planDates').enabledFor(viewer.id))) {
+    if (input.repeat) fail(422, 'validation', 'A plan that repeats can’t let guests pick the date.', { field: 'date_options' });
+    const times = require('./planDates').checkedTimes(input.date_options);
+    input = { ...input, starts_at: times[0].starts_at, ends_at: times[0].ends_at };
+    dateOptions = require('./planDates').initialValue(times);
+  }
   // A second tap on the same "Post plan": a neighbor's is caught before the checks, as before; a business's
   // after them, once the person is known to post for that business.
   const secondTap = input.host_as == null && !internal.series ? await recentSamePlan(viewer.id, input, { more: viewer.more }) : null;
@@ -612,6 +621,18 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  // The gift exchange (the extras), while the host has its switch: a private plan of a person's, not a playdate.
+  const gift = !hostAs && input.gift != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planGift').enabledFor(viewer.id))
+    ? require('./planGift').initialValue(input.gift, input.starts_at) : null;
+  if (dateOptions && (audience !== 'invited' || kind === 'playdate')) {
+    fail(422, 'validation', 'Only a private plan can let guests pick the date.', { field: 'date_options' });
+  }
+  // Chip in (the extras, 08-extras section 3), while the host has its switch: a private plan of a person's, not a
+  // playdate. Checked before anything is saved.
+  const chipIn = !hostAs && input.chip_in != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planChipIn').enabledFor(viewer.id))
+    ? require('./planChipIn').initialValue(input.chip_in) : null;
   // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
   const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
   // Guests pay their bill here, and tips (B5), while the business has the switch: needs payouts set up as a price does.
@@ -703,6 +724,9 @@ async function createPlan(user, input, internal = {}) {
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
     ...(kidsWelcome ? { kids_welcome: true } : {}),
     ...(bringList ? { bring_list: bringList } : {}),
+    ...(chipIn ? { chip_in: chipIn } : {}),
+    ...(dateOptions ? { date_options: dateOptions } : {}),
+    ...(gift ? { gift } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
@@ -779,6 +803,21 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over, so it can’t change.');
   // The bring list's items are checked before anything is saved (H2).
   if (patch.bring != null) require('./planBring').checkedItems(patch.bring);
+  // So is chip in (the extras), while the host has its switch on a plan that may have it.
+  const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
+    && (await require('./planChipIn').enabledFor(plan.host_user_id));
+  if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
+  if (patch.gift && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    require('./planGift').checkedInput(patch.gift, patch.starts_at || plan.post.event_date);
+  }
+  // Find a date: while the date is being picked the times offered change, not the plan's time.
+  const planDates = require('./planDates');
+  if (planDates.isPicking(plan)) {
+    if (patch.starts_at !== undefined || patch.ends_at !== undefined) {
+      fail(422, 'picking', 'Pick a date first, or change the times you offered.');
+    }
+    if (patch.date_options !== undefined) planDates.checkedTimes(patch.date_options);
+  }
 
   const postUpdate = {};
   const planUpdate = {};
@@ -1008,6 +1047,16 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
     await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
   }
+  // The gift exchange: the budget and the draw time, or null to call it off.
+  if (patch.gift !== undefined && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    await require('./planGift').replaceFromForm(await planService.loadPlanRow(postId), patch.gift);
+  }
+  // Find a date: the times offered (a removed time's ticks go, and nobody is told).
+  if (patch.date_options !== undefined && planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
+    await planDates.replaceFromForm(plan, patch.date_options);
+  }
+  // Chip in (the extras): replaced, keeping who paid, or taken away with null.
+  if (chipInChange) await require('./planChipIn').replaceFromForm(plan, patch.chip_in);
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {
@@ -1367,6 +1416,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   const viewer = await loadViewer(user, { gps: body.gps });
   const plan = await loadVisiblePlan(postId, viewer);
   if (planBusiness.runsPlan(plan, viewer)) fail(409, 'host', "You're hosting this plan.");
+  // Find a date: while the date is being picked, the invited tick times (PUT …/dates/mine) instead.
+  if (require('./planDates').isPicking(plan)) fail(409, 'picking', 'Tick the times that work for you.');
   // A business that may no longer host takes nobody new, and nobody waiting moves up by asking again.
   if (plan.business_user_id && !planBusiness.hostsNow(plan)) fail(409, 'ended', REASON_ERRORS.ended[1]);
   const ctx = await planService.loadCardContext([plan], viewer);
@@ -1571,6 +1622,7 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   if (changed && changed.length > 0 && leaving) {
     // What they were bringing goes back on the list (H2).
     await require('./planBring').clearClaims(postId, 'user', mine.id);
+    await require('./planGift').onLeave(postId, require('./planExtras').personKey(viewer.id));
     const names = await userNames([viewer.id]);
     const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
@@ -1705,6 +1757,7 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
         await require('./planBring').clearClaims(postId, 'user', request.id);
+        await require('./planGift').onLeave(postId, require('./planExtras').personKey(request.user_id));
         // The business removed a guest who paid (B2): all of it back.
         if (plan.price_cents) await planPaid().onBusinessEnds(plan, [request.id], 'removed');
         await planNotify.declined({ plan, request, hostFirst });
@@ -1798,6 +1851,9 @@ async function reportPlan(user, postId, { reason, details }) {
 
 module.exports = {
   quoteToJoin,
+  // For the extras (planDates): the time checks and the answer after a write.
+  _validateTimes: validateTimes,
+  _planBodyFor: planBodyFor,
   // For planPaid (paid spots): the same steps a join takes.
   _activeRequests: activeRequests,
   _seatsNow: seatsNow,

@@ -95,9 +95,14 @@ extension PlanComposerModel {
         }
         if fills.audience == .invited, offersPrivate { privacy.audience = .invited }
         if fills.placeKind == "home", canHostAtHome { setWhere(.home) }
-        if fills.kidsWelcome, offersGuestAnswers { privacy.kidsWelcome = true }
+        // Each occasion sets its own extras: going back and picking another doesn't keep the last one's.
+        privacy.kidsWelcome = fills.kidsWelcome && offersGuestAnswers
+        // The occasion's room (server #4227), within what this form allows once who it's for is set.
+        if let room = fills.spots, room > 0 { spots = min(room, spotsLimit) }
         if let bring = fills.bring, offersBringList, !bring.labels.isEmpty {
             privacy.bring = PlanBringEditor(labels: bring.labels, guestsCanAdd: bring.guestsCanAdd)
+        } else {
+            privacy.bring = nil
         }
         if let starts = PlanTime.parse(fills.startsAt), starts > Date() {
             start = starts

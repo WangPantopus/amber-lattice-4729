@@ -210,6 +210,10 @@ export type PublicPlanAnswer = {
   host_says_yes_first: boolean;
   /** The page was opened with the plan's live open link (contract 6.9): "Open app" carries it into the app. */
   open_live?: boolean;
+  /** Find a date (the extras): while the host picks, the times to tick in place of the three answers. */
+  dates?: PublicPlanDates | null;
+  /** Photos afterwards (the extras): a guest who was in may look, on a plan that is over. */
+  photos?: { count: number; add_text: string; note: string } | null;
   mine: {
     state: PublicPlanGuestState;
     name: string;
@@ -228,6 +232,52 @@ export type PublicPlanForGuest = {
   /** The bring list (H2), while the host has it on. */
   bring: PublicPlanBring | null;
   changed: 'time' | 'place' | 'both' | null;
+  /** Chip in (the extras, 08-extras section 3), while the host has it on. Every word is the server's. */
+  chip_in?: PublicPlanChipIn | null;
+  /** The gift exchange (the extras): whom this guest drew is in their own page only. */
+  gift?: PublicPlanGift | null;
+};
+
+export type PublicPlanGift = {
+  budget_cents: number;
+  budget_text: string;
+  draw_at: string;
+  draw_text: string;
+  state: 'open' | 'drawn';
+  joined: number;
+  joined_text: string;
+  can_join: boolean;
+  mine: {
+    in: boolean;
+    wish: string | null;
+    giving_to: { name: string; wish: string | null } | null;
+    wish_text?: string | null;
+    secret_text?: string;
+  };
+};
+
+export type PublicPlanDates = {
+  state: 'picking';
+  host_line: string;
+  answered: number;
+  invited: number;
+  answered_text: string;
+  options: { id: string; starts_at: string; ends_at: string; text: string; can: number; can_text: string; mine?: boolean }[];
+  mine?: { answered: boolean };
+};
+
+export type PublicPlanChipIn = {
+  text: string;
+  amount_cents: number;
+  note: string;
+  service: string;
+  link: string;
+  paid_count: number;
+  of: number;
+  paid_text: string;
+  pay_text: string;
+  straight_text: string;
+  mine: { paid: boolean } | null;
 };
 
 export type PublicPlanBring = {

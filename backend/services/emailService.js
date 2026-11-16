@@ -555,6 +555,64 @@ function planGuestEmailContent(kind, words) {
       footer,
     };
   }
+  // Find a date (Plans for the holidays, the extras): the host picked the time, or a guest's ticks are saved.
+  if (kind === 'date_in') {
+    return {
+      subject: `${title} is ${words.when}. You’re in.`,
+      heading: 'You’re in',
+      lines: [`${words.hostFirst} has you down for ${words.people}.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['The address and the bring list are on that page. This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'date_ask') {
+    return {
+      subject: `${title} is ${words.when}. Can you make it?`,
+      heading: 'Can you make it?',
+      lines: [],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  // The gift exchange (the extras): never the name, only that it is on their invitation.
+  if (kind === 'gift_drawn' || kind === 'gift_redrawn') {
+    const again = kind === 'gift_redrawn';
+    return {
+      subject: again ? `Names were drawn again for ${title}` : `Names are drawn for ${title}`,
+      heading: again ? 'Names were drawn again' : 'Names are drawn',
+      lines: [`${again ? 'Names were drawn again' : 'Names are drawn'} for ${title}. Open your invitation to see who you’re giving to.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'date_full') {
+    return {
+      subject: `${title} is ${words.when}`,
+      heading: `${title} is full right now`,
+      lines: [`It’s ${words.when}, a time you ticked, but it filled up with people who answered first. You’re down as Maybe, so ${words.hostFirst} sees you’d still like to come. You can change that from your invitation.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'dates_saved') {
+    return {
+      subject: `Your times for ${title}`,
+      heading: 'Your times are saved',
+      lines: [`${words.hostFirst} is picking a date. You’ll hear when ${words.hostFirst} chooses one.`],
+      facts: [title],
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
   if (kind === 'reminder') {
     const open = Number(words.openCount) || 0;
     return {

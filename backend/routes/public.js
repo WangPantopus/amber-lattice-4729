@@ -143,6 +143,63 @@ router.post('/plans/:id/bring/items', async (req, res) => {
   }
 });
 
+// ── Find a date (the extras): a guest without an account ticks the times that work, by a way in or their key ──
+// PUT /api/public/plans/:id/dates/mine { open | invite | guest, name, adults, kids, email, options }. Answers
+// { state: 'saved' | 'check_email', mine, has_key }; away from a home the first answer's key is set in the cookie.
+router.put('/plans/:id/dates/mine', async (req, res) => {
+  try {
+    const result = await planGuests.answerDates(req.params.id, req.body || {}, { cookieKey: guestCookie(req) });
+    return answered(req, res, result);
+  } catch (err) {
+    return planError(res, err, 'dates_mine');
+  }
+});
+
+// ── Photos afterwards (the extras): a guest without an account who was in looks, by their key ──
+// GET /api/public/plans/:id/photos. Answers the grid (links signed for minutes) with "Add yours in the app."
+router.get('/plans/:id/photos', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const key = planGuests.isKey(req.query.guest) ? req.query.guest : guestCookie(req);
+    return res.json(await require('../services/plans/planPhotos').guestList(req.params.id, key));
+  } catch (err) {
+    return planError(res, err, 'photos');
+  }
+});
+
+// ── The gift exchange (the extras): a guest without an account who is in joins, by their key ──
+// POST /api/public/plans/:id/gift/join { wish }, PATCH | DELETE /api/public/plans/:id/gift/mine. Answers { gift }.
+const giftPublic = (method, path, label, handler) => router[method](path, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return planError(res, err, label);
+  }
+});
+giftPublic('post', '/plans/:id/gift/join', 'gift_join', (req) => require('../services/plans/planGift').guestJoin(req.params.id, guestKeyOf(req), req.body || {}));
+giftPublic('patch', '/plans/:id/gift/mine', 'gift_wish', (req) => require('../services/plans/planGift').guestSetWish(req.params.id, guestKeyOf(req), req.body || {}));
+giftPublic('delete', '/plans/:id/gift/mine', 'gift_leave', (req) => require('../services/plans/planGift').guestLeave(req.params.id, guestKeyOf(req)));
+
+// ── Chip in (the extras): a guest without an account who is in says they paid the host, by their key ──
+// POST | DELETE /api/public/plans/:id/chip-in/paid. Answers { chip_in }.
+router.post('/plans/:id/chip-in/paid', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planChipIn').guestMarkPaid(req.params.id, guestKeyOf(req), true));
+  } catch (err) {
+    return planError(res, err, 'chip_in_paid');
+  }
+});
+router.delete('/plans/:id/chip-in/paid', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planChipIn').guestMarkPaid(req.params.id, guestKeyOf(req), false));
+  } catch (err) {
+    return planError(res, err, 'chip_in_unpaid');
+  }
+});
+
 // ── POST /api/public/plans/invites/unsubscribe ──────────────
 // "Don't send me invitations" from a Plans invitation email: { token } from the
 // web page, or the mail app's one-click POST to …/unsubscribe/:token (RFC 8058).

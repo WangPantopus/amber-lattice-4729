@@ -221,10 +221,13 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var deal: PlanDealChange?
     /// B2: a new price a spot, or `.remove` (sent as `null`); only while nobody is in or paying.
     public var priceCents: PlanPriceChange?
+    /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
+    public var kidsWelcome: Bool?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
         case priceCents = "price_cents"
+        case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"

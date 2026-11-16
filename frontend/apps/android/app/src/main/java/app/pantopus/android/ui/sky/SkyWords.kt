@@ -14,8 +14,8 @@ import java.util.Locale
 object SkyWords {
     // The place line
 
-    /** "Floating over Washougal, WA". */
-    fun floatingOver(area: String): String = "Floating over $area"
+    /** "Around Washougal, WA". */
+    fun floatingOver(area: String): String = "Around $area"
 
     /** "At Esther Short Park". */
     fun at(place: String): String = "At $place"
@@ -30,7 +30,7 @@ object SkyWords {
 
     // At home
 
-    const val HOME_TITLE = "You're at home, so this floats over the area"
+    const val HOME_TITLE = "You're at home, so this shows only the area"
     const val HOME_BODY = "A Moment made at home never shows the spot. Photos can still show where you are."
 
     // Elevation
@@ -68,7 +68,7 @@ object SkyWords {
     // The Pulse composer
 
     /** An address or a bare photo: the post floats. */
-    const val PHOTO_FLOATS = "Your photo was taken here. The post floats over the area."
+    const val PHOTO_FLOATS = "Your photo was taken here. The post shows only the area."
 
     // Your row on the Moments map
 

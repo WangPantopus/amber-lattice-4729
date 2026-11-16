@@ -44,6 +44,8 @@ async function enabledFor(userId) {
 
 /** A plan whose people can be invited again, or that can invite them: a person's plan, never a playdate. */
 const personsPlan = (plan) => Boolean(plan) && !plan.business_user_id && plan.kind !== 'playdate';
+/** A plan whose times all passed with no date picked had nobody in (find a date). */
+const neverPicked = (plan) => Boolean(plan.date_options && !plan.date_options.picked);
 
 function isOver(plan) {
   return rules.planState(plan, plan.post.event_date, plan.post.event_end_date) === 'ended';
@@ -103,7 +105,7 @@ async function pastPlans(user) {
     .order('created_at', { ascending: false })
     .limit(PLANS_READ);
   if (error) throw new Error(`Failed to load your plans: ${error.message}`);
-  const plans = (data || []).filter((p) => personsPlan(p) && isOver(p))
+  const plans = (data || []).filter((p) => personsPlan(p) && isOver(p) && !neverPicked(p))
     .sort((a, b) => new Date(b.post.event_end_date) - new Date(a.post.event_end_date));
   const people = await peopleIn(plans);
   const out = [];
@@ -120,7 +122,7 @@ async function pastPlans(user) {
 async function pastPlanFor(viewer, postId) {
   if (!planService.isUuid(postId)) fail(404, 'not_found', "That plan isn't available.");
   const plan = await planService.loadPlanRow(postId);
-  if (!plan || String(plan.host_user_id) !== viewer.id || !personsPlan(plan) || plan.status === 'cancelled' || !isOver(plan)) {
+  if (!plan || String(plan.host_user_id) !== viewer.id || !personsPlan(plan) || plan.status === 'cancelled' || !isOver(plan) || neverPicked(plan)) {
     fail(404, 'not_found', "That plan isn't available.");
   }
   return plan;
