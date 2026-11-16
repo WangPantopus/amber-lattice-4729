@@ -79,7 +79,7 @@ struct PlanFooter: View {
             AnyView(VStack(spacing: Spacing.s2) {
                 Button { Task { _ = await viewModel.remindEveryone() } } label: {
                     PlanButtonLabel(
-                        title: "Remind the \(viewModel.remindable) who haven't answered",
+                        title: "Remind the \(viewModel.remindable) who \(viewModel.remindable == 1 ? "hasn't" : "haven't") answered",
                         kind: .primary,
                         isLoading: viewModel.isWorking
                     )

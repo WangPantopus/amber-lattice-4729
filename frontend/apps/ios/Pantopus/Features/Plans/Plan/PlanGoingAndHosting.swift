@@ -257,27 +257,10 @@ struct PlanHostingSection: View {
             } else {
                 going
             }
-            HStack(spacing: 10) {
-                // Board 4: "Share link" first, opening one link for everyone.
-                if card.takesOpenLink {
-                    Button(action: onInvite) { PlanButtonLabel(title: "Share link", icon: .share, kind: .secondary) }
-                        .planButton(.secondary, size: .small)
-                        .accessibilityIdentifier("planShareLink")
-                }
-                // A business's team isn't in its plan's chat yet (contract B7): no chat, no button.
-                if !(card.isBusiness && viewModel.plan?.chatRoomId == nil) {
-                    Button(action: onOpenChat) { PlanButtonLabel(title: "Message guests", icon: .messageCircle, kind: .secondary) }
-                        .planButton(.secondary, size: .small)
-                        .disabled(viewModel.plan?.chatRoomId == nil)
-                        .accessibilityIdentifier("planMessageGuests")
-                }
-                // A private plan is shared by invitation only: "Invite friends" above (Plans step 1).
-                if !card.isPrivate, let url = card.shareUrl.flatMap(URL.init(string:)) {
-                    ShareLink(item: url, message: Text(card.title)) {
-                        PlanButtonLabel(title: "Share", icon: .share, kind: .secondary)
-                    }
-                    .planButton(.secondary, size: .small)
-                }
+            // Side by side; one under another when the words don't fit beside each other (the largest text).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { hostButtons }
+                VStack(spacing: 10) { hostButtons }
             }
             VStack(spacing: 0) {
                 Button(card.isOnline ? "Change the time or link" : "Change the time or place", action: onChange)
@@ -287,6 +270,30 @@ struct PlanHostingSection: View {
                     .planButton(.textDanger, size: .small)
                     .accessibilityIdentifier("planCancel")
             }
+        }
+    }
+
+    /// "Share link" (board 4), "Message guests" and, on a public plan, "Share".
+    @ViewBuilder private var hostButtons: some View {
+        // Board 4: "Share link" first, opening one link for everyone.
+        if card.takesOpenLink {
+            Button(action: onInvite) { PlanButtonLabel(title: "Share link", icon: .share, kind: .secondary) }
+                .planButton(.secondary, size: .small)
+                .accessibilityIdentifier("planShareLink")
+        }
+        // A business's team isn't in its plan's chat yet (contract B7): no chat, no button.
+        if !(card.isBusiness && viewModel.plan?.chatRoomId == nil) {
+            Button(action: onOpenChat) { PlanButtonLabel(title: "Message guests", icon: .messageCircle, kind: .secondary) }
+                .planButton(.secondary, size: .small)
+                .disabled(viewModel.plan?.chatRoomId == nil)
+                .accessibilityIdentifier("planMessageGuests")
+        }
+        // A private plan is shared by invitation only: "Invite friends" above (Plans step 1).
+        if !card.isPrivate, let url = card.shareUrl.flatMap(URL.init(string:)) {
+            ShareLink(item: url, message: Text(card.title)) {
+                PlanButtonLabel(title: "Share", icon: .share, kind: .secondary)
+            }
+            .planButton(.secondary, size: .small)
         }
     }
 

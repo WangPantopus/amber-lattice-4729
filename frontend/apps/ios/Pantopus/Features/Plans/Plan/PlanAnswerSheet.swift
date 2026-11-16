@@ -226,38 +226,24 @@ struct PlanAnswerBanner: View {
     let line: String
     let onChange: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(spacing: Spacing.s3) {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(kind == .isIn ? Theme.Color.successSolid : Theme.Color.appSurface)
-                .overlay {
-                    if kind == .maybe {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1)
+        Group {
+            if typeSize.isAccessibilitySize {
+                // The largest text: "Change" goes under the words instead of breaking beside them.
+                VStack(alignment: .leading, spacing: Spacing.s1) {
+                    HStack(spacing: Spacing.s3) { glyph
+                        words
                     }
+                    changeButton
                 }
-                .frame(width: 34, height: 34)
-                .overlay(Icon(
-                    kind == .isIn ? .check : .helpCircle,
-                    size: 18,
-                    strokeWidth: kind == .isIn ? 2.6 : 2,
-                    color: kind == .isIn ? Theme.Color.appTextInverse : Theme.Color.appTextStrong
-                ))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(kind == .isIn ? "You're in" : "You said maybe").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
-                Text(line)
-                    .planFont(.small)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: Spacing.s3) { glyph
+                    words
+                    changeButton
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            Button("Change", action: onChange)
-                .planFont(.bodyStrong)
-                .foregroundStyle(Theme.Color.primaryInk)
-                .frame(minWidth: 44, minHeight: 44)
-                .accessibilityLabel("Change your answer")
-                .accessibilityIdentifier("planAnswerChange")
         }
         .padding(.leading, 14)
         .padding(.trailing, Spacing.s2)
@@ -266,6 +252,47 @@ struct PlanAnswerBanner: View {
             .fill(kind == .isIn ? Theme.Color.successBg : Theme.Color.appSurfaceSunken))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(kind == .isIn ? "planInBanner" : "planMaybeBanner")
+    }
+
+    private var glyph: some View {
+        RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(kind == .isIn ? Theme.Color.successSolid : Theme.Color.appSurface)
+            .overlay {
+                if kind == .maybe {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .overlay(Icon(
+                kind == .isIn ? .check : .helpCircle,
+                size: 18,
+                strokeWidth: kind == .isIn ? 2.6 : 2,
+                color: kind == .isIn ? Theme.Color.appTextInverse : Theme.Color.appTextStrong
+            ))
+            .accessibilityHidden(true)
+    }
+
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(kind == .isIn ? "You're in" : "You said maybe").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
+            Text(line)
+                .planFont(.small)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var changeButton: some View {
+        Button("Change", action: onChange)
+            .planFont(.bodyStrong)
+            .foregroundStyle(Theme.Color.primaryInk)
+            .lineLimit(1)
+            .fixedSize()
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("Change your answer")
+            .accessibilityIdentifier("planAnswerChange")
     }
 }
 

@@ -78,7 +78,7 @@ struct PlanPeopleLine: View {
         var names: [String] = []
         for person in people {
             if person.userId == me {
-                names.append(myPartySize > 1 ? "you + \(myPartySize - 1)" : "you")
+                names.append(kidsWelcome ? withNumbers("you", person) : myPartySize > 1 ? "you + \(myPartySize - 1)" : "you")
             } else {
                 // A business is named in full ("Lacamas Pickleball Club (host)"), a neighbor by first name.
                 let first = person.isHost && business != nil ? person.displayName : PlanCardLines.firstName(person.displayName)
