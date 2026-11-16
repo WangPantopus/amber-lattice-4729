@@ -398,6 +398,9 @@ checkRoute('post', '/:id/checks/mine', 'check_start', (req) => planChecks().star
 checkRoute('post', '/:id/checks/:checkId/quote', 'check_quote', (req) => planChecks().quote(req.user, req.params.id, req.params.checkId, req.body || {}));
 checkRoute('post', '/:id/checks/:checkId/pay', 'check_pay', (req) => planChecks().pay(req.user, req.params.id, req.params.checkId, req.body || {}));
 checkRoute('post', '/:id/checks/:checkId/confirm', 'check_confirm', (req) => planChecks().confirm(req.user, req.params.id, req.params.checkId));
+// A tip after a paid plan (B6): { amount_cents } answers the payment sheet's values; confirm answers "You tipped $5.00".
+checkRoute('post', '/:id/tip', 'tip_later', (req) => planChecks().tipLater(req.user, req.params.id, req.body || {}));
+checkRoute('post', '/:id/tip/confirm', 'tip_confirm', (req) => planChecks().tipConfirm(req.user, req.params.id));
 // Staff: refund all or { amount_cents }, until 48 hours after the plan ends.
 checkRoute('post', '/:id/checks/:checkId/refund', 'check_refund', (req) => planChecks().refund(req.user, req.params.id, req.params.checkId, req.body || {}));
 

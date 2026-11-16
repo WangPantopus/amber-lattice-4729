@@ -472,8 +472,116 @@ async function confirm(user, postId, checkId) {
   return { check: await checkView(plan, fresh, req) };
 }
 
-/** The webhook saw a check's card accepted: the same steps as confirm. */
+
+// ── A tip after a paid plan (B6, contract 11.5; 07-screens C4) ──
+
+const TIP_LATER_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The card's tip_later for a guest who paid for a spot, on a plan with tips on, from its end for 7 days, once: the three
+ * choices as percents of what they paid. Null otherwise.
+ */
+function tipLaterView(plan, paidCents, tipped, now = Date.now()) {
+  if (!plan.tips_on || !paidCents || tipped) return null;
+  const end = new Date(plan.post?.event_end_date || plan.post?.event_date).getTime();
+  if (!(end <= now && now < end + TIP_LATER_MS)) return null;
+  return {
+    until: new Date(end + TIP_LATER_MS).toISOString(),
+    choices: TIP_PERCENTS.map((pct) => {
+      const t = Math.max(100, Math.round((paidCents * pct) / 100));
+      return { label: `${pct}%`, tip_cents: t, tip_text: money(t) };
+    }),
+  };
+}
+
+async function tipFor(user, postId) {
+  const { loadViewer } = require('./planViewer');
+  const planService = require('./planService');
+  const viewer = await loadViewer(user);
+  if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
+  const plan = await planService.loadPlanRow(postId);
+  if (!plan || !plan.business_user_id || !plan.tips_on || !viewer.biz || !(await enabledFor(plan.host_user_id))) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
+  const { data: request } = await supabaseAdmin.from('PlanRequest').select('id, user_id, status, paid_cents, refunded_cents, fee_basis, way_in')
+    .eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
+  const paid = request ? (request.paid_cents || 0) - (request.refunded_cents || 0) : 0;
+  if (!request || !request.paid_cents || paid <= 0) fail(403, 'not_paid', 'Only people who paid for a spot can tip here.');
+  const { data: tips } = await supabaseAdmin.from('Payment').select('id, payment_status, amount_total, stripe_payment_intent_id, stripe_customer_id')
+    .eq('sold_type', 'plan_tip').eq('sold_id', request.id).order('created_at', { ascending: false });
+  return { viewer, plan, request, paid, tips: tips || [] };
+}
+
+const TIPPED = ['captured_hold', 'transfer_scheduled', 'transfer_pending', 'transferred', 'refunded_partial'];
+
+/** POST /api/plans/:id/tip { amount_cents }: the payment sheet's values for a tip after a paid plan, once, for 7 days. */
+async function tipLater(user, postId, body = {}) {
+  const { viewer, plan, request, paid, tips } = await tipFor(user, postId);
+  if (tips.some((t) => TIPPED.includes(t.payment_status))) fail(409, 'already_tipped', 'You already left a tip for this plan.');
+  if (!tipLaterView(plan, paid, false)) fail(409, 'tip_closed', 'Tips here open when the plan ends and close 7 days later.');
+  const amount = Number(body.amount_cents);
+  const most = Math.max(2000, paid);
+  if (!Number.isInteger(amount) || amount < 100 || amount > most) fail(422, 'validation', `A tip can be $1 to ${money(most)}.`, { field: 'amount_cents' });
+  const svc = require('../../stripe/stripeService');
+  const open = tips.find((t) => t.amount_total === amount && ['authorize_pending', 'authorization_failed'].includes(t.payment_status));
+  let paymentId = open?.id || null;
+  let clientSecret = open ? await svc.getPaymentIntentClientSecret(open.stripe_payment_intent_id).catch(() => null) : null;
+  if (!clientSecret) {
+    for (const t of tips.filter((x) => ['authorize_pending', 'authorization_failed', 'authorized'].includes(x.payment_status))) {
+      await svc.cancelAuthorization(t.id).catch(() => null);
+    }
+    const made = await svc.createPaymentIntentForGig({
+      payerId: viewer.id, payeeId: plan.business_user_id, gigId: null, amount, feeRateSubjectId: plan.business_user_id,
+      paymentType: 'plan_payment',
+      metadata: { type: 'plan_tip', plan_id: plan.post_id, request_id: request.id, business_user_id: plan.business_user_id },
+      description: `Pantopus plan tip - ${plan.post.title}`.slice(0, 200),
+      idempotencyKey: `plan-tip:${request.id}:${amount}:${tips.length}`,
+      // Nothing to Pantopus; the card fee is the business's (priceSale's plan_tip). Paid out with the next run.
+      sale: { soldType: 'plan_tip', soldId: request.id, basis: request.fee_basis || planPaid().basisOf(request.way_in), payoutAfter: new Date().toISOString() },
+    });
+    if (!made?.success) throw new Error('The payment could not be started');
+    paymentId = made.paymentId;
+    clientSecret = made.clientSecret;
+  }
+  const { data: payment } = await supabaseAdmin.from('Payment').select('stripe_customer_id').eq('id', paymentId).maybeSingle();
+  const ephemeral = await svc.createEphemeralKey(payment.stripe_customer_id);
+  return { payment: { payment_id: paymentId, amount_cents: amount, amount_text: money(amount), client_secret: clientSecret,
+    customer_id: payment.stripe_customer_id, ephemeral_key: ephemeral?.secret || null, publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null } };
+}
+
+/** The tip's card was accepted: captured, its card fee fixed. Answers 'paid' or 'not_paid'. */
+async function finalizeTip(paymentId) {
+  const status = await planPaid().captureNow(paymentId);
+  if (!TIPPED.includes(status)) return 'not_paid';
+  await require('../../stripe/stripeService').settleCardFeeShare(paymentId).catch((err) => logger.warn('plans.tip.card_fee_later', { paymentId, error: err.message }));
+  return 'paid';
+}
+
+/** POST /api/plans/:id/tip/confirm: answers { state: 'paid', text: "You tipped $5.00" }. Safe to call twice. */
+async function tipConfirm(user, postId) {
+  const { viewer, plan, tips } = await tipFor(user, postId);
+  const done = tips.find((t) => TIPPED.includes(t.payment_status));
+  if (done) return { state: 'paid', text: `You tipped ${money(done.amount_total)}` };
+  const open = tips.find((t) => ['authorize_pending', 'authorized', 'capture_pending'].includes(t.payment_status));
+  if (!open) fail(409, 'no_payment', 'No tip was started for this plan.');
+  let outcome;
+  try {
+    outcome = await finalizeTip(open.id);
+  } catch (err) {
+    logger.warn('plans.tip.confirm_failed', { planId: postId, error: err.message });
+    fail(503, 'payment_check_failed', "We couldn't confirm this payment yet. Please try again in a moment.");
+  }
+  if (outcome !== 'paid') fail(409, 'payment_not_complete', "This payment hasn't gone through yet.");
+  recordFunnelEvent('plan_tip_paid', { userId: viewer.id, meta: { plan_id: plan.post_id, cents: open.amount_total } });
+  return { state: 'paid', text: `You tipped ${money(open.amount_total)}` };
+}
+
+/** The webhook saw a check's (or a tip's, B6) card accepted: the same steps as confirm. */
 async function onPaymentAuthorized(payment) {
+  if (payment?.metadata?.type === 'plan_tip') {
+    await finalizeTip(payment.id).catch((err) => logger.warn('plans.tip.webhook_finalize_failed', { paymentId: payment.id, error: err.message }));
+    return;
+  }
   const checkId = payment?.metadata?.check_id;
   if (payment?.metadata?.type !== 'plan_check' || !checkId) return;
   await finalize(checkId).catch((err) => logger.warn('plans.check.webhook_finalize_failed', { paymentId: payment.id, error: err.message }));
@@ -579,4 +687,5 @@ async function refund(user, postId, checkId, body = {}) {
 module.exports = {
   FLAG, TIP_PERCENTS, TIPS_ON_KINDS, enabledFor, switchByHost, payHereForNewPlan, payHereChange, cardView,
   sendCheck, startMine, mine, quote, pay, confirm, finalize, onPaymentAuthorized, staffList, refund, pricedCheck,
+  tipLaterView, tipLater, tipConfirm,
 };
