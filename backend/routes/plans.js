@@ -379,6 +379,28 @@ router.post('/:id/requests/mine/confirm', async (req, res) => {
   }
 });
 
+// The bill at the place (B5, contract 11.2), behind plans_pay_here. Every amount is the server's.
+const planChecks = () => require('../services/plans/planChecks');
+const checkRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+// Staff with plans.manage: send a guest a check { request_id, amount_cents, no_deal_cents }, and the guest list.
+checkRoute('post', '/:id/checks', 'check_send', (req) => planChecks().sendCheck(req.user, req.params.id, req.body || {}));
+checkRoute('get', '/:id/checks', 'check_list', (req) => planChecks().staffList(req.user, req.params.id));
+// A guest who is in: their open check (or the last paid one), and starting their own { amount_cents } (no deal on the bill).
+checkRoute('get', '/:id/checks/mine', 'check_mine', (req) => planChecks().mine(req.user, req.params.id));
+checkRoute('post', '/:id/checks/mine', 'check_start', (req) => planChecks().startMine(req.user, req.params.id, req.body || {}));
+// The guest: another tip's total (no side effect), the payment sheet's values, and confirm after the sheet closes.
+checkRoute('post', '/:id/checks/:checkId/quote', 'check_quote', (req) => planChecks().quote(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/pay', 'check_pay', (req) => planChecks().pay(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/confirm', 'check_confirm', (req) => planChecks().confirm(req.user, req.params.id, req.params.checkId));
+// Staff: refund all or { amount_cents }, until 48 hours after the plan ends.
+checkRoute('post', '/:id/checks/:checkId/refund', 'check_refund', (req) => planChecks().refund(req.user, req.params.id, req.params.checkId, req.body || {}));
+
 // POST /api/plans/:id/requests/:requestId/deal-used (B1): staff with plans.manage mark a guest's free thing used.
 router.post('/:id/requests/:requestId/deal-used', async (req, res) => {
   try {

@@ -45,6 +45,8 @@ const PLAN_NOTICE_TYPES = [
   'plan_guest_answered', 'plan_guest_waiting', 'plan_bring_claimed', 'plan_bring_open',
   // The host moved a plan to their home and guests from the open link wait (6.8), people with an account too (6.9).
   'plan_moved_home', 'plan_moved_home_wait',
+  // The business track: deals (B1), money back on a paid spot or a group price (B2, B4), a check at the place (B5).
+  'plan_deal_close', 'plan_deal_unlocked', 'plan_deal_short', 'plan_deal_removed', 'plan_refunded', 'plan_check',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -85,7 +87,8 @@ async function claimNotice(row, patch) {
 /** Has this notice's moment passed? */
 function isStale(row, plan, request, invite = null) {
   if (!plan) return true;
-  if (plan.status === 'cancelled' && row.type !== 'plan_cancelled') return true;
+  // Money coming back is news whatever happened to the plan (a cancellation refunds everyone).
+  if (plan.status === 'cancelled' && !['plan_cancelled', 'plan_refunded'].includes(row.type)) return true;
   const ended = new Date(plan.post.event_end_date).getTime() <= Date.now();
   switch (row.type) {
     // Answered or taken back in the meantime, or asking closed.
@@ -114,6 +117,12 @@ function isStale(row, plan, request, invite = null) {
     // Answered, left, or asked about a later change since.
     case 'plan_still_coming_reminder': return !request || request.status !== 'accepted' || request.reconfirmed != null
       || ended || new Date(request.reconfirm_requested_at).toISOString() !== row.metadata?.asked_at;
+    case 'plan_deal_close':
+    case 'plan_deal_unlocked':
+    case 'plan_deal_short':
+    case 'plan_deal_removed':
+    case 'plan_check': return ended;
+    case 'plan_refunded': return false;
     default: return false;
   }
 }
