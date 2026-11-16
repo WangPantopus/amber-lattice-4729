@@ -21,6 +21,7 @@ const walletService = require('../services/walletService');
 const walletSettlement = require('../services/walletSettlementService');
 const { getBusinessPrimaryOwnerId, getBusinessPayoutAccount } = require('../utils/businessPermissions');
 const { capturedFeeCents } = require('../stripe/gigPaymentProof');
+const { recordBusinessContact } = require('../services/businessCustomers');
 const { PAYMENT_STATES, transitionPaymentStatus } = require('../stripe/paymentStateMachine');
 const { createNotification } = require('../services/notificationService');
 const { sendAlert, SEVERITY } = require('../services/alertingService');
@@ -158,9 +159,13 @@ async function confirmInvoiceForRelease(payment) {
     payment.payee_id = ownerId;
   }
   if (invoice.status !== 'paid') {
+    const paidAt = payment.captured_at || new Date().toISOString();
     await supabaseAdmin.from('BusinessInvoice')
-      .update({ status: 'paid', paid_at: payment.captured_at || new Date().toISOString() })
+      .update({ status: 'paid', paid_at: paidAt })
       .eq('id', invoice.id).neq('status', 'paid').neq('status', 'void');
+    // The business now knows this person as a customer (shared piece 3); never fails the release.
+    await recordBusinessContact({ businessUserId: payment.metadata?.business_user_id, userId: payment.payer_id,
+      feature: 'invoice', basis: 'own', at: paidAt });
   }
   return true;
 }
