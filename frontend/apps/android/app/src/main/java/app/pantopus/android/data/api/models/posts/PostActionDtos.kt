@@ -69,6 +69,19 @@ data class PlaceEligibilityResponse(
     /** Which way in counted: `resident`, `business`, `gps` or `photo`. */
     val basis: String? = null,
     val trustLevel: String? = null,
+    /** The Sky (phase A): there only while the server's `sky_places` switch is on for you. */
+    val sky: Boolean? = null,
+    /** The Sky: the area a post here floats over (its town, point and disc). */
+    val area: PostSkyAreaDto? = null,
+)
+
+/** The Sky: the area a Pulse post floats over (`GET /api/posts/place-eligibility`). */
+@JsonClass(generateAdapter = true)
+data class PostSkyAreaDto(
+    val label: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @Json(name = "radius_m") val radiusM: Double? = null,
 )
 
 /** Mirrors the server's audience gate; a stale copy still needs permission before opening the chooser. */

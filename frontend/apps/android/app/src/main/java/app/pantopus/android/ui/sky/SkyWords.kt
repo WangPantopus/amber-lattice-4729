@@ -65,6 +65,11 @@ object SkyWords {
 
     const val SHARE_TIME_PASSED = "It's past 7 pm, so Tonight at 8 isn't on offer. Pick another time."
 
+    // The Pulse composer
+
+    /** An address or a bare photo: the post floats. */
+    const val PHOTO_FLOATS = "Your photo was taken here. The post floats over the area."
+
     // Your row on the Moments map
 
     /** The row's title when it holds only your Moments waiting to share. */
