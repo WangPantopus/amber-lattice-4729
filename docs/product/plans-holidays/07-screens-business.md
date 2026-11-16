@@ -130,9 +130,11 @@ from the plan's "Change" while nobody is in.
    joins" / "Each guest gets it when they pay"; "A group deal" / "Unlocks for
    all when enough people join in time". With something free the second line of
    "For everyone" reads "Each guest gets it there".
-4. "What they get": "Percent off", "Dollars off", "Something free", "Two for
-   one". In B1 only "Something free" is offered; the money kinds arrive with B4
-   (on a price) and B5 (on the bill). A kind not yet offered is not drawn.
+4. "What they get": "Percent off", "Dollars off", "Something free". In B1
+   only "Something free" is offered; the money kinds arrive with B4 (on a
+   price) and B5 (on the bill). A kind not yet offered is not drawn. "Two for
+   one", on the picture, is not in this build: a check is one amount, so the
+   server could not work out what it takes off.
 5. "How much": for percent, a number from 5 to 50 and "%"; for dollars, an
    amount; for something free, "What is it?" with a field, 1 to 40 characters
    ("appetizer for the table"). "On": "Food" (`food`), "Everything but
@@ -311,8 +313,10 @@ guests below…") is left out.
 
 On the business's form: "Guests can pay their bill here" (`pay_here`), off at
 the start and needing payouts set up as a price does. Turned on, "Take tips"
-(`tips_on`) appears under it, starting on for a Food & drinks plan and off for
-every other kind (02-payments, section 6).
+(`tips_on`) appears under it, starting on for the kinds a business hosts
+where food and drink are served (a watch party, and a walk or coffee) and off
+for every other kind (02-payments, section 6; a business has no "Food &
+drinks" kind). The business may switch it either way.
 
 ### C4. A tip after a paid plan, and the statement (B6)
 
@@ -333,12 +337,15 @@ business graph's own work and are drawn there.
 - The step count reads "of 4" only with deals on and a business chosen.
 - With a price, the shipped line "Free, and for adults" reads the server's
   `price.line` in place of "Free".
-- B4 offers "Percent off" and "Dollars off" on "The spot"; "Two for one" comes
-  with the bill.
+- B4 offers "Percent off" and "Dollars off" on "The spot". "Two for one" is
+  not built.
 - The price row and the two pay rows are on the host form. The Change screen
   shows what the server lets change (contract 10.2).
 - Android is light only; "light and dark" in rule 7 is iPhone and the web.
-- The faces line shows only when the server sends `known_going`.
+- The faces line shows only when the server sends `known_going`, which this
+  build does not; the sentence shows alone.
+- On the host-as answer, `can.price` says whether to draw the price row, and
+  `payouts_ready` whether the business can charge now.
 
 ## Notices the apps must handle (business track)
 

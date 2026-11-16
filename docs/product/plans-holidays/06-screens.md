@@ -246,6 +246,18 @@ link, with or without the app."
 Saving sends `kids_welcome`, `spots` and (H2) `bring` with the plan, on the
 shipped create and change calls.
 
+**The Change screen** (added November 16, after the two-phone check found a
+host could not raise the room after posting). The shipped Change screen of a
+private plan gains two rows, drawn as the form's: "Room for", from the seats
+already taken up to 100, and "Kids welcome". They save with the shipped change
+call. Lowering the room below the seats taken is not offered. Nothing else on
+the Change screen changes; it still offers no move from a public place to "My
+place".
+
+**The plan's tag when in** (same check): the occasion or kind tag shows on the
+plan's page for a person who is in, as it does before they answer. Android
+left it out.
+
 ### A4. Inviting: one link for everyone
 
 Picture `16-share-a-link.png` (board `Share.dc.html`). H1. The shipped invite

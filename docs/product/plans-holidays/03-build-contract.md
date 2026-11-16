@@ -574,6 +574,10 @@ A plan among friends only. A business's plan has no bring list.
   December 10 to December 31; Birthday always.
 - The app draws the "Coming up" strip from that answer and opens the host form
   with the values filled in. Everything stays editable.
+- **An occasion fills in its room too** (added November 16, after the
+  two-phone check: the form started at 6 and the first "Let in" met a full
+  plan). `spots`: 12 for Thanksgiving dinner, Friendsgiving, Gift exchange and
+  Birthday; 20 for Holiday party and New Year's Eve.
 - A plan saves `occasion`. A card adds `"occasion": { "key": "thanksgiving",
   "text": "Thanksgiving dinner" }`, which the plan's tag reads in place of its
   kind's name. The kind, its color and its pin are unchanged.
@@ -594,7 +598,7 @@ A plan among friends only. A business's plan has no bring list.
 | Field | Values |
 | --- | --- |
 | `scope` | `everyone`, `group` |
-| `kind` | `free_item` in this step. `percent`, `amount`, `two_for_one` come with money (10.4, 11) |
+| `kind` | `free_item` in this step. `percent` and `amount` come with money (10.4, 11). `two_for_one` is not built |
 | `item` | 1 to 40 characters, for `free_item` |
 | `value` | The percent (5 to 50) or cents, for the money kinds |
 | `applies_to` | For the money kinds: `spot`, `food`, `no_alcohol` |
