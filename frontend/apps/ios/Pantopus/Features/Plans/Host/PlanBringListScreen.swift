@@ -171,8 +171,19 @@ struct PlanBringItemEditor: View {
     @State var item: PlanBringEditor.Item
     let onSave: (PlanBringEditor.Item) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        // Scrolls, and opens full height at the largest text sizes, so the title and the switch's words fit.
+        ScrollView {
+            fields
+        }
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Theme.Color.appSurface)
+    }
+
+    private var fields: some View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             HStack {
                 Text("Change it")
@@ -222,13 +233,9 @@ struct PlanBringItemEditor: View {
             .planButton(.primary)
             .disabled(item.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("planBringItemSave")
-            Spacer(minLength: 0)
         }
         .padding(Spacing.s4)
         .padding(.top, Spacing.s2)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(Theme.Color.appSurface)
     }
 }
 

@@ -225,7 +225,9 @@ struct PlanBrowsingSection: View {
             }
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 PlanFactRow(icon: .users, text: PlanCardLines.approval(card))
-                if !card.isBusiness { PlanFactRow(icon: .shieldCheck, text: "Free, and for adults") }
+                if !card.isBusiness {
+                    PlanFactRow(icon: .shieldCheck, text: card.kidsWelcome ? "Free, and kids are welcome" : "Free, and for adults")
+                }
             }
         }
         if card.isRepeating, card.myInvite?.isOpen == true { PlanFactRow(icon: .check, text: PlanRepeatCopy.invitedLine) }

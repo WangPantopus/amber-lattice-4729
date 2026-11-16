@@ -17,13 +17,19 @@ struct PlanBringHostCard: View {
     let bring: PlanBringDTO
     let onOpen: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var rowLayout: AnyLayout {
+        PlanBringRowLayout.make(typeSize)
+    }
+
     var body: some View {
         PlanCardBox(padding: 14) {
             VStack(alignment: .leading, spacing: 0) {
                 PlanBringHeader(trailing: "\(bring.takenCount) of \(bring.items.count) taken")
                 ForEach(bring.items) { item in
                     Divider().overlay(Theme.Color.appBorder)
-                    HStack(spacing: Spacing.s3) {
+                    rowLayout {
                         PlanBringWords(item: item)
                         if let claim = item.claim {
                             PlanBringWho(name: claim.mine ? "You" : claim.name, isYou: claim.mine)
@@ -61,6 +67,11 @@ struct PlanBringGuestCard: View {
     @State private var line: String?
     @State private var asksForItem = false
     @State private var newItem = ""
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var rowLayout: AnyLayout {
+        PlanBringRowLayout.make(typeSize)
+    }
 
     var body: some View {
         PlanCardBox(padding: 14) {
@@ -105,7 +116,7 @@ struct PlanBringGuestCard: View {
     }
 
     private func row(_ item: PlanBringItemDTO) -> some View {
-        HStack(spacing: Spacing.s3) {
+        rowLayout {
             VStack(alignment: .leading, spacing: 0) {
                 Text(item.label).planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
                 if item.claim?.mine == true {
@@ -160,14 +171,44 @@ struct PlanBringGuestCard: View {
 private struct PlanBringHeader: View {
     let trailing: String
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Bring list").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText).accessibilityAddTraits(.isHeader)
-            Spacer()
-            Text(trailing).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 2) {
+                    title
+                    count
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    title
+                    Spacer()
+                    count
+                }
+            }
         }
         .padding(.bottom, Spacing.s2)
         .accessibilityElement(children: .combine)
+    }
+
+    private var title: some View {
+        Text("Bring list").planFont(.bodyStrong).foregroundStyle(Theme.Color.appText).accessibilityAddTraits(.isHeader)
+    }
+
+    private var count: some View {
+        Text(trailing).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
+    }
+}
+
+/// A row's words, then who is bringing it or its button: side by side, or the second under the first at the
+/// largest text sizes, so a name or "I'll bring it" never squeezes the item's name.
+private enum PlanBringRowLayout {
+    static func make(_ typeSize: DynamicTypeSize) -> AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.s2))
+            : AnyLayout(HStackLayout(spacing: Spacing.s3))
     }
 }
 
@@ -203,6 +244,7 @@ private struct PlanBringOpenChip: View {
         Text("Still open")
             .planFont(.caption)
             .foregroundStyle(Theme.Color.appTextSecondary)
+            .fixedSize()
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(Capsule().fill(Theme.Color.appSurfaceSunken))
