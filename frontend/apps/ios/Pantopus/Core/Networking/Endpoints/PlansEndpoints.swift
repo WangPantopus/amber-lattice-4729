@@ -424,6 +424,21 @@ public enum PlansEndpoints {
         Endpoint(method: .get, path: "\(base)/occasions", query: biz())
     }
 
+    // MARK: - Plans for the holidays, the business track B1 (404 while `plans_deals` is off for the business)
+
+    /// `POST /api/plans/deal-preview` (staff with `plans.manage`) — the sentence guests will read, how it's claimed,
+    /// and each field's error; nothing is saved. Route `backend/routes/plans.js:316`,
+    /// `planDeals.preview`.
+    public static func dealPreview(_ body: PlanDealPreviewBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/deal-preview", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/requests/:requestId/deal-used` (staff) — marks a guest's free thing used; no undo.
+    /// Route `backend/routes/plans.js:426`, `planDeals.markUsed`.
+    public static func dealUsed(planId: String, requestId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/\(requestId)/deal-used", query: biz())
+    }
+
     // MARK: - Plans for the holidays, H2 (404 while `plans_bring_list` is off for the host)
 
     /// `PUT /api/plans/:id/bring` (host) — the whole list, `{ bring }`. Kept ids keep their claims; `mine` claims or

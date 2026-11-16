@@ -143,9 +143,11 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var bring: PlanBringBody?
     /// H3: the occasion the plan was started from (a key). Left out for an ordinary plan.
     public var occasion: String?
+    /// Plans for the holidays B1: a business's deal. Left out for "No deal".
+    public var deal: PlanDealInput?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label, audience, bring, occasion
+        case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
@@ -207,11 +209,13 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var businessLocationId: String?
     /// Repeating plans (step 2): a new pattern from this date on, or `.stop` (sent as `null`). Nil leaves it.
     public var repeatChange: PlanRepeatChange?
+    /// Plans for the holidays B1: a business's new deal, or `.remove` (sent as `null`). Nil leaves it.
+    public var deal: PlanDealChange?
     /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
     public var kidsWelcome: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case title, about, place, spots, gps, label
+        case title, about, place, spots, gps, label, deal
         case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"

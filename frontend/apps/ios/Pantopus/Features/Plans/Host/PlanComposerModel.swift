@@ -66,6 +66,7 @@ final class PlanComposerModel {
     let repeating = PlanRepeatDraft()
     /// Plans steps 3 and 4: the newer kinds' choices and an online plan's link.
     let more = PlanMoreDraft()
+    let deal = PlanDealDraft() // Plans for the holidays B1: the business's deal (board 09)
 
     private(set) var isPosting = false
     var postError: String?

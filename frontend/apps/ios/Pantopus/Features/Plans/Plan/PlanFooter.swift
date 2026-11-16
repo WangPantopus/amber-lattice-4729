@@ -69,11 +69,13 @@ struct PlanFooter: View {
                     .accessibilityIdentifier("planCantMakeIt")
             })
         case .going:
-            AnyView(
+            AnyView(VStack(spacing: Spacing.s2) {
                 Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
-            )
+                // D2 item 5: leaving gives up a deal that's ready.
+                if card.myDeal?.state == .ready { caption("Leaving gives up your deal") }
+            })
         case .hosting where card.answerCounts != nil && viewModel.remindable > 0 && card.state == .upcoming:
             // Board 4: one reminder each, the way they were invited.
             AnyView(VStack(spacing: Spacing.s2) {
@@ -179,6 +181,8 @@ struct PlanFooter: View {
     /// playdate says "Maya approves each family" (J2); other plans already say
     /// how people get in above the footer.
     private func askCaption(_ card: PlanCardDTO) -> String? {
+        // Plans for the holidays B1 (D1 item 5): the deal's line under the join button, in the server's words.
+        if card.isBusiness, let line = card.deal?.joinText { return line }
         // A business's plan (board G3): in right away, or the business approves each person.
         if card.isBusiness {
             return Self.joinsRightAway(card)
@@ -272,6 +276,8 @@ enum PlanConfirmation: Identifiable, Equatable {
     /// A repeating plan's date skipped (Plans step 2): "Skip Thursday's walk?", and the button's "Skip Thursday".
     case skipDate(title: String, message: String, label: String)
     case stopRepeating
+    /// Plans for the holidays B1: staff mark a guest's free thing used ("Mark Dana's free appetizer used?").
+    case markDealUsed(name: String, item: String, requestId: String)
 
     var id: String {
         switch self {
@@ -283,6 +289,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case let .removeGuest(_, requestId, _, _): "remove.\(requestId)"
         case .skipDate: "skipDate"
         case .stopRepeating: "stopRepeating"
+        case let .markDealUsed(_, _, requestId): "dealUsed.\(requestId)"
         }
     }
 
@@ -295,6 +302,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case let .removeGuest(name, _, _, _): "Remove \(PlanCardLines.firstName(name))?"
         case let .skipDate(title, _, _): title
         case .stopRepeating: "Stop repeating?"
+        case let .markDealUsed(name, item, _): "Mark \(PlanCardLines.firstName(name))'s \(item) used?"
         }
     }
 
@@ -318,6 +326,8 @@ enum PlanConfirmation: Identifiable, Equatable {
             message
         case .stopRepeating:
             PlanRepeatCopy.stopMessage
+        case .markDealUsed:
+            "This can't be undone."
         }
     }
 
@@ -330,6 +340,7 @@ enum PlanConfirmation: Identifiable, Equatable {
         case .removeGuest: "Remove"
         case let .skipDate(_, _, label): label
         case .stopRepeating: "Stop repeating"
+        case .markDealUsed: "Mark used"
         }
     }
 
@@ -352,6 +363,8 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.skipDate()
         case .stopRepeating:
             await viewModel.stopRepeating() ? "It won't repeat. This date stays." : nil
+        case let .markDealUsed(_, _, requestId):
+            await viewModel.markDealUsed(requestId: requestId) ? "Marked used" : nil
         }
     }
 }
