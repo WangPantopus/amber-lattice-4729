@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
+import app.pantopus.android.data.api.models.plans.PlanMyRequestDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -530,12 +531,28 @@ class PlanDetailViewModel
                             _ui.update { it.copy(state = PlanDetailUiState.Ready(reply, fresh = false)) }
                         }
                         if (status == PlanRequestStatus.ACCEPTED) _ui.update { it.copy(reveal = true) }
+                        keptNumbersLine(plan, body, result.data.plan?.myRequest)?.let { line -> _ui.update { it.copy(notice = line) } }
                         read()
                     }
                     is NetworkResult.Failure ->
                         _ui.update { it.copy(ask = it.ask.copy(sending = false, error = askError(result.error))) }
                 }
             }
+        }
+
+        /**
+         * Someone already in who changed their numbers ("Change", Plans for the holidays A8): the server keeps the first
+         * adults and kids for a request it already took, so say so, as iOS does, instead of showing nothing.
+         */
+        private fun keptNumbersLine(
+            before: PlanDto,
+            sent: AskToJoinBody,
+            kept: PlanMyRequestDto?,
+        ): String? {
+            val changing = before.standing == PlanViewerStanding.IN && before.kidsWelcome != null
+            if (!changing || kept == null) return null
+            val same = (kept.partySize ?: 1) == sent.partySize && (kept.kidsCount ?: 0) == (sent.kidsCount ?: 0)
+            return if (same) null else "Couldn't change your numbers here yet. Tell ${hostFirst()} in the group chat."
         }
 
         /** The server's own sentence for a refused ask, as iOS shows it; the 10-request limit says what to do. */
