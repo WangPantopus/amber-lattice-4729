@@ -1504,7 +1504,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     await planNotify.requestReceived({
       plan, request, hostFirst, requesterFirst: firstOf(names.get(viewer.id)),
       // The address an email invitation went to (never a guest's own, from the open link: 6.9).
-      invitedEmail: invite?.needs_host_ok && invite.channel === 'email' ? invite.email : null,
+      // An address invited from an earlier plan's guest is named, never shown (08-extras section 6).
+      invitedEmail: invite?.needs_host_ok && invite.channel === 'email' ? invite.known_name || invite.email : null,
     });
   }
   return { status: mine ? 200 : 201, body: await requestResult(postId, viewer, request.id) };
@@ -1602,7 +1603,7 @@ async function listRequests(user, postId) {
     // Connections are a person's: a business's team sees none.
     plan.business_user_id ? new Map() : planService.mutualConnectionCounts(viewer.id, userIds),
     userIds.length
-      ? supabaseAdmin.from('PlanInvite').select('invitee_user_id, channel, email, needs_host_ok')
+      ? supabaseAdmin.from('PlanInvite').select('invitee_user_id, channel, email, needs_host_ok, known_name')
         .eq('post_id', postId).in('invitee_user_id', userIds).neq('status', 'cancelled')
       : { data: [] },
   ]);
@@ -1640,7 +1641,8 @@ async function listRequests(user, postId) {
       kids_age_bands: plan.kind === 'playdate' ? r.kids_age_bands || [] : null,
       created_at: planService.iso(r.queued_at || r.created_at),
       invited: inviteByUser.has(id),
-      opened_invite_to: inviteByUser.get(id)?.needs_host_ok && inviteByUser.get(id).channel === 'email' ? inviteByUser.get(id).email : null,
+      opened_invite_to: inviteByUser.get(id)?.needs_host_ok && inviteByUser.get(id).channel === 'email'
+        ? inviteByUser.get(id).known_name || inviteByUser.get(id).email : null,
     };
   };
   const byQueue = (a, b) => new Date(a.queued_at) - new Date(b.queued_at);
