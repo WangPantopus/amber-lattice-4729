@@ -29,6 +29,7 @@ import OpenInAppButton from '@/components/public-share/OpenInAppButton';
 import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
+import GuestAnswer from './GuestAnswer';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
 // place, the host's note and the people going are only in the app, for people
@@ -38,6 +39,9 @@ import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/pla
 // paying happen in the app. Everything it adds is behind `plan.business`, so a person's plan reads as before.
 // A private plan shows only that it is private, unless the link carries a live invitation to it.
 // An online plan (board Online) says "Online" where the area would be and draws no map; its link is only in the app.
+// Plans for the holidays (H1), while the host has the switch: a guest answers here with no account (GuestAnswer, boards
+// W1 to W3). The page's ways in are ?invite= and ?open=; the guest's own key lives in an HttpOnly cookie for this plan,
+// which only the page's server reads and sends on. Without an `answer` from the server the page is today's.
 export const dynamic = 'force-dynamic';
 
 type Kind = PublicPlan['kind'];
@@ -118,7 +122,7 @@ function kindNoun(plan: PublicPlan): string {
 /** People join this plan with a link, which only the app shows, to the people who are in. */
 const isOnline = (plan: PublicPlan) => plan.place_kind === 'online';
 
-type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<{ invite?: string | string[] }> };
+type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<{ invite?: string | string[]; open?: string | string[] }> };
 
 /**
  * An invitation's token from ?invite= and, once the plan is read, the invitation it opens (null when there's none or
@@ -127,6 +131,17 @@ type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<{ invi
 async function inviteFrom(searchParams: PageProps['searchParams']): Promise<string | null> {
   const value = (await searchParams)?.invite;
   return planInviteToken(Array.isArray(value) ? value[0] : value);
+}
+
+/** The plan's open link (?open=), for answers without an account (H1). */
+async function openFrom(searchParams: PageProps['searchParams']): Promise<string | null> {
+  const value = (await searchParams)?.open;
+  return planInviteToken(Array.isArray(value) ? value[0] : value);
+}
+
+/** The guest's own key, from this plan's HttpOnly cookie (set by an answer, or by the link in their email). */
+async function guestKeyFor(id: string): Promise<string | null> {
+  return planInviteToken((await cookies()).get(`pantopus_plan_guest_${id.toLowerCase()}`)?.value);
 }
 
 function inviteQuery(token: string | null, invite: PublicPlanInvite | null): string {
@@ -573,13 +588,17 @@ const isPrivateOnly = (plan: PublicPlan) => plan.private === true && !plan.kind;
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const token = await inviteFrom(searchParams);
-  const { data: plan } = await fetchPublicPlan(id, token);
+  const { data: plan } = await fetchPublicPlan(id, token, await openFrom(searchParams), await guestKeyFor(id));
   const base = { robots: { index: false, follow: false } };
   if (!plan) {
     return { ...base, title: 'Plan not available | Pantopus', description: "This plan isn't available." };
   }
   if (isPrivateOnly(plan)) {
     return { ...base, title: 'A private plan | Pantopus', description: 'Only the people invited can see this plan.' };
+  }
+  // A guest's own page (H1) says only the plan's card in its preview: never a place.
+  if (plan.answer && plan.title) {
+    return { ...base, title: `${plan.title} | Pantopus`, description: [KIND_LABEL[plan.kind], whenText(plan), whereText(plan)].filter(Boolean).join(' · ') };
   }
   // A texted invitation's preview says whose it is. Its page goes to someone who may not have the app yet, so
   // Safari's banner, which drops the invitation through an install, stays off; the page's buttons carry it.
@@ -627,7 +646,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 export default async function PublicPlanPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const token = await inviteFrom(searchParams);
-  const [result, viewer] = await Promise.all([fetchPublicPlan(id, token), fetchPlanViewer(id)]);
+  const open = await openFrom(searchParams);
+  const guestKey = await guestKeyFor(id);
+  const [result, viewer] = await Promise.all([fetchPublicPlan(id, token, open, guestKey), fetchPlanViewer(id)]);
   const plan = result.data;
   const userAgent = (await headers()).get('user-agent') || '';
   const invite = plan?.invite ?? null;
@@ -656,6 +677,57 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
             <a href={path} className={PRIMARY_BUTTON}>
               Try again
             </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (plan.removed && isPrivateOnly(plan)) {
+    // A guest the host removed (H1): the invitation is no longer open, and nothing else.
+    return (
+      <main className="min-h-screen bg-app text-app-text">
+        <div className="mx-auto w-full max-w-md pb-10">
+          <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query="" />
+          <div className="flex flex-col gap-4 px-4 pt-[18px]">
+            <div className="flex flex-col gap-3 rounded-[20px] border border-app-border bg-app-surface p-4 shadow-sm">
+              <span className="grid h-12 w-12 place-items-center rounded-[13px] bg-app-surface-sunken text-app-text-strong">
+                <LockIcon className="h-[22px] w-[22px]" />
+              </span>
+              <h1 className="text-[17px] font-semibold leading-[22px]">This invitation is no longer open.</h1>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (plan.answer && plan.kind) {
+    // A guest without an account (H1): the invitation and its form, the wait, or their part (boards W1 to W3).
+    const hostShort = plan.host?.display_name || 'Someone';
+    const hostFirst = firstNameOf(hostShort);
+    return (
+      <main className="min-h-screen bg-app text-app-text">
+        <div className="mx-auto w-full max-w-md pb-10">
+          <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={query} />
+          <div className="px-4 pt-[18px]">
+            <GuestAnswer
+              planId={id}
+              plan={plan}
+              hostFirst={hostFirst}
+              hostShort={hostShort}
+              hostAvatar={<HostAvatar name={hostShort} avatarUrl={plan.host?.avatar_url ?? null} />}
+              when={whenText(plan)}
+              area={whereText(plan)}
+              open={open}
+              invite={token}
+              emailHint={invite?.email_hint ?? null}
+              // The store for this device (/get chooses it). The plan's own link isn't carried through the install:
+              // a guest has no account for the app to open it with.
+              storeHref={IOS_APP_STORE_URL || ANDROID_PLAY_STORE_URL ? '/get' : null}
+              mapsBase={platform === 'ios' ? 'apple' : 'google'}
+              pageUrl={buildPlanShareUrl(id)}
+            />
           </div>
         </div>
       </main>
