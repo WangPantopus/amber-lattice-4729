@@ -68,6 +68,7 @@ States:
 | State | What shows |
 | --- | --- |
 | A field is missing or wrong | The field's own line in the error color: "Add your name.", "That email doesn't look right." The form keeps what was typed |
+| The address asked not to be emailed (`email_opted_out`) | Under the email field, in the error color: "This address asked Pantopus not to email it. Use another one." The form keeps what was typed |
 | The plan is full (`409 full`) | Under the buttons: "This is full. You can say Maybe, and {Host} will see it." "I'm in" turns off |
 | Too many tries (`too_many`) | "Try again in a little while." |
 | The plan ended or was cancelled | The card, then "This plan is over." or "{Host} cancelled this plan." No form |

@@ -133,6 +133,8 @@ Checks:
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
 | `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
+| `guest_emails` | `integer`, default 0 | How many of the plan's three emails the guest has had (6.6). Added by the server session |
+| `changed_at`, `changed_reason` | `timestamptz`, `text` (`time`, `place`, `both`) | The plan's time or place changed since the guest answered: their page says so, and the one change email goes once. Added by the server session |
 
 Checks widened:
 
@@ -180,6 +182,10 @@ family.
   note, who is going or the bring list.** It reads the card and the guest's own
   answer, so the page can say what happened. The bring list's guest routes
   refuse there.
+- **The emailed link is `/plan-invitation/<id>?key=…`**, a web route that
+  keeps the key in the cookie and opens `/plans/<id>` without it. It is not
+  under `/plans/` because the iPhone app claims that path; the Android app
+  claims every path and hands a page it has no screen for to the browser.
 - **A guest may hold several keys, and none replaces another.** The link in the
   first email still works after the reminder goes out, and the browser's cookie
   does not stop working because an email was sent. On the day, people look for
@@ -251,6 +257,14 @@ address its link, at a home or not. Otherwise anyone who knows a guest's email
 could take over their answer from the open link. With a valid key, the answer
 changes the row.
 
+- **Maybe and Can't make it at a home** answer `maybe` and `cant` with no key
+  and no email. Only "I'm in" answers `check_email`.
+- **An address that said "don't send me invitations"** gets no email, so at a
+  home it could never see the address and "Check your email" would not be
+  true. Wherever the form asks for an email, an answer with such an address is
+  refused: `409 email_opted_out`, "This address asked Pantopus not to email it.
+  Use another one." Nothing is saved. (Decided November 15 after the server
+  session's build; not built when written.)
 - `in` when the room is full: refused `409 full`, with `can_maybe: true`.
 - `in` from the open link with `open_invite_ok_first`: saved with
   `needs_host_ok = true`. The seats are held (K5). The host is told. The guest's
@@ -281,7 +295,10 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
   "url": "…", "host_says_yes_first": true }`. A guest's email is never in it.
 - `POST /api/plans/:id/invites/:inviteId/ok` lets a waiting guest in and sends
   their email. `DELETE /api/plans/:id/invites/:inviteId` (exists) removes a
-  guest; their key stops working and they are told once.
+  guest; their keys stop working and their page says "This invitation is no
+  longer open." No email goes, as none goes today to a person with an account
+  the host removes. (Corrected November 15: this line said "told once", with
+  no words fixed anywhere.)
 - `POST /api/plans/:id/invites/remind` reminds everyone who has not answered,
   the way each was invited: a push to an account, an email to an address.
   Unopened text invitations have nobody to remind. Once a plan a day, once a
@@ -712,3 +729,13 @@ payout is not sent before `payout_after`.
    guest who clears cookies and has no email on file (a text invitation).
 5. The date the Gift exchange, Find a date and Chip in extras are drawn; each
    needs its own boards before a contract.
+6. **A plan that moves to a home after guests answered** (the founder's call;
+   as built, nothing changes for them). Away from a home, a guest from the open
+   link is in without the host's yes and their browser holds a key. If the host
+   then changes the place to a home, those guests see the address with no yes
+   from the host and no email. The host can see every name before moving. The
+   designer's recommendation: when a plan moves to a home, guests without an
+   account who came by the open link wait for the host's yes, their seats held,
+   and "I say yes first" turns on. Not built, not drawn.
+7. A guest held by the day's five gets "Check your email" and no email until
+   they answer again a day later. Nothing tells them. Left as it is.
