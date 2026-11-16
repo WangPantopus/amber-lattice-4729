@@ -81,6 +81,15 @@
           "statement": "The Sedgwick County Appraiser is the origin of these records; the City of Wichita publishes this copy. Data users must comply with K.S.A. 45-230, which restricts selling, giving or receiving lists of names and addresses from public records for sales solicitation."
         },
         {
+          "id": "oh-union",
+          "publisher": "Union County Auditor, Ohio",
+          "url": "https://www.unioncountyohio.gov/property-search-tools",
+          "license": "Union County GIS services and real estate extract files (no license stated)",
+          "license_url": "https://www.unioncountyohio.gov/gis-mapping",
+          "dataset": "Parcels with appraisal data, and the land table of the Auditor's weekly real estate extract",
+          "statement": "The Union County Auditor is the origin and publisher of these records, on the county's GIS server and its GIS Enterprise Portal."
+        },
+        {
           "id": "ak-ketchikan",
           "publisher": "Ketchikan Gateway Borough, Alaska",
           "url": "https://www.arcgis.com/home/item.html?id=2787be973b534a969d57bda80010eb0e",
@@ -96,6 +105,22 @@
           "license": "Published by the Assessor; no license or limit on use stated",
           "dataset": "Tax parcels with the Assessor's appraisal records (dated copies; June 2026)",
           "statement": "The Cleveland County Assessor is both the origin and the publisher of these records."
+        },
+        {
+          "id": "va-richmond",
+          "publisher": "City of Richmond Assessor of Real Estate, Virginia",
+          "url": "https://www.rva.gov/assessor-real-estate/data-request",
+          "license": "Public Data Set offered free by the Assessor's Office; no license or limit on use stated",
+          "dataset": "Public Data Set (Property Information), refreshed about the 15th of each month",
+          "statement": "The City of Richmond assumes no liability for any errors, omissions, or inaccuracies in the information provided."
+        },
+        {
+          "id": "va-powhatan",
+          "publisher": "Powhatan County, Virginia",
+          "url": "https://services5.arcgis.com/nip9boeHfv9Av5yj/arcgis/rest/services/Vision_Powhatan/FeatureServer",
+          "license": "Published by the county; no license or limit on use stated",
+          "dataset": "Assessment tables (residential construction, year built, parcels and assessments)",
+          "statement": "Powhatan County provides its maps and data as a public information service; parcels the county keeps off the internet carry no facts here."
         },
         {
           "id": "va-charlottesville",
@@ -270,6 +295,15 @@
           "url": "https://services3.arcgis.com/bDx73HOFAO3oSeDq/arcgis/rest/services/OpenGov/FeatureServer/2",
           "license": "No terms posted",
           "dataset": "Parcels (bedrooms, baths, finished area, year built)"
+        },
+        {
+          "id": "nc-brunswick",
+          "publisher": "Brunswick County, North Carolina (GIS and Tax Office)",
+          "url": "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1",
+          "license": "Public record under North Carolina's Public Records Law, as the county's site states; no terms posted on the layer",
+          "license_url": "https://www.brunswickcountync.gov/privacy",
+          "dataset": "Parcels with the Tax Office's building facts (bedrooms, full and half baths, heated area, year built)",
+          "statement": "As a condition providing electronic GIS data, Brunswick County reserves the right to require the data requester agree in writing that the data will not be resold or otherwise used for trade or commercial purposes. (The public layer asks for no such agreement, and Pantopus never resells the data.)"
         },
         {
           "id": "mn-wright",

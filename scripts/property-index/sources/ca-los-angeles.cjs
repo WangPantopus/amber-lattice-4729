@@ -8,6 +8,7 @@ const path = require('node:path');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, streetParts } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -97,7 +98,7 @@ function fromRow(row) {
   put(facts, 'assessed_building_value', building);
   put(facts, 'assessed_value', (land || 0) + (building || 0) || null);
   const city = String(word(row.SitusCity) || '').toUpperCase().replace(/\s+CA$/, '');
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city, zip: zipCode(row.SitusZIP) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city, zip: zipCode(row.SitusZIP) }, facts, ...mapLot(facts, 'lot_sqft') };
 }
 
 async function* build({ work }) {

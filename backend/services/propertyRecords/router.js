@@ -10,8 +10,8 @@
  *   switches/<name>.json   { v: 1, counties: { "<fips>": { mode: 'off'|'shadow'|'live', withheld: [fact, ...], estimates: true } },
  *                            shared_facts: ["<fips>", ...], similar_homes: ["<fips>", ...],
  *                            appeal_packet: ["<fips>", ...], new_columns: ["<fips>", ...], derived_rows: ["<fips>", ...],
- *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], listed_units: ["<fips>", ...],
- *                            past_date: ["<fips>", ...] }
+ *                            measured_rows: ["<fips>", ...], bath_totals: ["<fips>", ...], mapped_lots: ["<fips>", ...],
+ *                            listed_units: ["<fips>", ...], past_date: ["<fips>", ...] }
  *
  * `estimates: true` shows a live county's owners a Pantopus estimate (propertyRecords/valueEstimate.js). Without it, none.
  * `shared_facts` names the live counties where an address with several homes on record shows what all of them agree
@@ -33,6 +33,11 @@
  * stopped being split into them (2.5 read as two full and a half), in the copy's facts and again under `held.bath_totals`,
  * so its page stays as it was until it's named here; named, those facts are left out (joinHeld). A total doesn't say them:
  * two full and two half baths is 3.0. A file without the list leaves them on screen, as before.
+ * `mapped_lots` names the live counties whose lot sizes measured from a parcel map (a shape's area, GIS or calculated acres,
+ * not the recorded acreage) say so on Property details. Such a lot stays in the copy's facts as before and is marked under
+ * `held.mapped_lots` with the county's words in `held_from.mapped_lots` ("Measured from Mecklenburg County's parcel map");
+ * named here, the copy carries them as `copy.mapped.from` for each lot fact it still states (joinHeld). Founder, Nov 15:
+ * "Yes, label them". A file without the list shows the lots as before, with no words.
  * `listed_units` names the live counties where a record takes the unit number an address list gives it (`listed_unit`,
  * written by a connector whose own file has no unit, identity.js withListedUnits), so a condo's owner finds its own unit
  * instead of several homes. A file without the list has it off everywhere.
@@ -67,7 +72,7 @@ let appealPackets = new Set();
 let listedUnits = new Set();
 let pastDates = new Set();
 // The held facts' lists, in the order they apply (format.js `held`).
-const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals'];
+const HELD = ['new_columns', 'derived_rows', 'measured_rows', 'bath_totals', 'mapped_lots'];
 let held = {};
 let modes = config.listedModes();
 let liveStates = new Set();
@@ -270,6 +275,8 @@ const heldFor = (fips) => (modeFor(fips) === 'live' ? HELD.filter((name) => held
  * ({ facts, from }) the same way, its words taking each fact's year (`held.measured_years`) where they say {year}; a fact
  * whose words need a year it doesn't have isn't served. bath_totals takes facts out instead: the copy's full and half
  * baths split from a bare total, which its facts (and its building's) hold as before until the county is on the list.
+ * mapped_lots adds words only: `copy.mapped` ({ from }) names each lot fact the copy (or its building) still states with the
+ * value marked, in the county's words, for Property details and Place to say where it came from.
  * @param {object} copy     a stored copy
  * @param {string[]} names  the lists that show, in order
  */
@@ -304,6 +311,16 @@ function joinHeld(copy, names) {
       const split = kept.bath_totals[part];
       if (split && out[part]) out[part] = Object.fromEntries(Object.entries(out[part]).filter(([name]) => !(name in split)));
     }
+  }
+  if (names.includes('mapped_lots') && kept.mapped_lots) {
+    const from = {};
+    for (const part of ['facts', 'building']) {
+      for (const [name, value] of Object.entries(kept.mapped_lots[part] || {})) {
+        const said = words.mapped_lots?.[name];
+        if (typeof said === 'string' && out[part]?.[name] === value) from[name] = said;
+      }
+    }
+    if (Object.keys(from).length) out.mapped = { from };
   }
   return out;
 }

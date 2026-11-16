@@ -7,6 +7,7 @@ const path = require('node:path');
 const { layerRows, layerAreas, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -48,9 +49,13 @@ function fromRow(row) {
     put(facts, 'stories', positive(row.Stories));
   }
   if (kind === 'building') put(facts, 'gross_sqft', positive(row.FinishedArea));
+  let mapped = null;
   if (kind !== 'unit') {
     if (positive(row.DeededAcres)) put(facts, 'lot_acres', positive(row.DeededAcres));
-    else put(facts, 'lot_sqft', positive(row.area) >= 100 ? positive(row.area) : null);
+    else {
+      put(facts, 'lot_sqft', positive(row.area) >= 100 ? positive(row.area) : null);
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'value_year', positive(row.AssessmentYear));
   put(facts, 'market_value', positive(row.FairMarketValue));
@@ -59,7 +64,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.SalePrice));
     put(facts, 'sale_date', isoDate(row.SaleDate));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.Zip) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.Zip) }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work, today }) {

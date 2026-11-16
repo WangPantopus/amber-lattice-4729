@@ -164,18 +164,27 @@ class TodayTabViewModel
         val pullFailed: StateFlow<Boolean> = _pullFailed.asStateFlow()
 
         /**
-         * Around you, Today's second half (2026-11-14): local headlines for the place shown. Null until read; the last
-         * answer for a place stays when a read fails, and another place starts blank.
+         * Around you, Today's second half (2026-11-14): local headlines for the place shown. The last answer for a place
+         * stays when a read fails; another place starts from the answer the store kept for it, or blank without one.
          */
         private val _around = MutableStateFlow<AroundYouDto?>(null)
         val around: StateFlow<AroundYouDto?> = _around.asStateFlow()
         private var aroundPlace: AroundYouPlace? = null
 
+        /** The Around you answer the store kept for [place], without a request (null: none, or an area's). */
+        fun keptAround(place: AroundYouPlace?): AroundYouDto? =
+            if (place != null && ::aroundYou.isInitialized) aroundYou.copy(place) else null
+
         /** Reads Around you for [place] (null: nothing is shown, so nothing is kept). */
         fun readAround(place: AroundYouPlace?) {
             if (place != aroundPlace) {
                 aroundPlace = place
-                _around.value = null
+                // The answer kept for this place (on the phone, after a relaunch) shows at once, so Today opens with the
+                // switch it had last time instead of growing it a moment later.
+                val kept = keptAround(place)
+                _around.value = kept
+                // A copy never undoes a tap (-1 is no read's revision).
+                kept?.let { aroundCards?.show(it.posts, readRevision = -1) }
             }
             if (place == null || !::aroundYou.isInitialized) return
             // A tap made while this read is out keeps its value over the read's (ProfilePostCards.show).

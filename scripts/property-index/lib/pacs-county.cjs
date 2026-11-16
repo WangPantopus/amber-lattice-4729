@@ -81,8 +81,9 @@ async function newestFile(page, pattern) {
 }
 
 // `kinds` names a district's own detail words the shared list doesn't know ([pattern, kind] pairs, tried first); `accept` keeps an
-// attribute's line only when its value fits. Both default to nothing, so a district without them reads exactly as before.
-function pacsCounty({ fips, county, publisher, source, page, pattern, bedrooms = [], baths = [], uses = {}, kinds = [], accept, dataset = 'certified appraisal export' }) {
+// attribute's line only when its value fits. `locate` finds the file where a district's page doesn't link it plainly: it resolves to
+// { url, name, headers }. All default to nothing, so a district without them reads exactly as before.
+function pacsCounty({ fips, county, publisher, source, page, pattern, bedrooms = [], baths = [], uses = {}, kinds = [], accept, locate, dataset = 'certified appraisal export' }) {
   const attributes = [...new Set([...bedrooms, ...baths, 'Fireplaces'])];
 
   function fromProperty(row, imp, words) {
@@ -119,9 +120,9 @@ function pacsCounty({ fips, county, publisher, source, page, pattern, bedrooms =
   }
 
   async function* build({ work }) {
-    const url = await newestFile(page, pattern);
-    const zip = path.join(work, source, path.basename(new URL(url).pathname));
-    download(url, zip);
+    const found = locate ? await locate() : { url: await newestFile(page, pattern) };
+    const zip = path.join(work, source, found.name || path.basename(new URL(found.url).pathname));
+    download(found.url, zip, found.headers);
     const asOf = await exportDate(zip);
     const words = await codes(zip, 'STATE_CD');
     const stats = {};

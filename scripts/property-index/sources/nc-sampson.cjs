@@ -11,7 +11,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -77,13 +77,14 @@ function fromRow(row) {
     put(facts, 'exterior_walls', word(row.CONSTRUCTI));
   }
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.ACREAGE) || positive(row.CALC_ACRES));
+  const mapped = positive(row.ACREAGE) ? null : 'lot_acres';
   put(facts, 'assessed_value', positive(row.ASSESSED_V));
   const saleDate = isoDate(row.DATE_RECOR);
   if (saleDate && isHomeSale(positive(row.SALE_PRICE))) {
     put(facts, 'sale_price', positive(row.SALE_PRICE));
     put(facts, 'sale_date', saleDate);
   }
-  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts };
+  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts, ...mapLot(facts, mapped) };
   // Read since the county went live, held off its screens until its new_columns switch is on (lib/held.cjs): the
   // county's own words for the home's system, "HEAT AND A/C", "A/C ONLY", "HEAT ONLY" or "NONE", say whether it's cooled.
   const system = String(row.SYSTEM ?? '').replace(/\s+/g, ' ').trim().toUpperCase();

@@ -3,10 +3,11 @@
 //  Pantopus
 //
 //  A sent card, opened from Sent (Mail canvas, boards "M3-SentCard" and
-//  "M4-SentEmail"): Back to Sent, "Your card to <name>", the envelope as it
-//  lies in their Mailbox, the card you sent (both sides, your note), its
-//  trail, and Take it back while it can be. Like real mail, a card never
-//  tells its sender when it was opened.
+//  "M4-SentEmail"): Back to Sent, "Your card to <name>" (then, when its
+//  email didn't go out, `MailSentEmailBox` with Email it again), the
+//  envelope as it lies in their Mailbox, the card you sent (both sides,
+//  your note), its trail, and Take it back while it can be. Like real mail,
+//  a card never tells its sender when it was opened.
 //
 
 import SwiftUI
@@ -46,6 +47,7 @@ struct MailSentPieceView: View {
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mailSentPiece")
+        .mailSentToast($viewModel.toast)
         .modifier(CardTablePreviewCover(
             content: $tableContent,
             owner: viewModel,
@@ -131,6 +133,8 @@ struct MailSentPieceView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, Spacing.s1)
+            // An email that didn't go out shows first, before the envelope and the card.
+            MailSentEmailBox(piece: piece, viewModel: viewModel)
             section(mailbox) {
                 MailPieceView(model: envelope)
                 // While nobody has opened it, its link can still be copied.

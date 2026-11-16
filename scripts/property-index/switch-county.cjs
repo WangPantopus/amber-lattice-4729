@@ -34,6 +34,11 @@
 //     --bath-totals with --mode live or off: the county's homes show a bath total its file gives on its own as Bathrooms
 //     only, leaving out the full and half baths its page showed when a total was split into them (2.5 as two full and a
 //     half; router.js), or show them again. Only the file's bath_totals list changes.
+//   node scripts/property-index/switch-county.cjs --mapped-lots --county 37119 --mode live --target production --bucket <name>
+//     --mapped-lots with --mode live or off: a lot size the county's parcel map measured (a shape's area, GIS or calculated
+//     acres, not the recorded acreage) says so on Property details and Place ("Measured from Mecklenburg County's parcel
+//     map"; lib/held.cjs mapLot, router.js), or shows as before with no words. Live takes only a county whose release marks
+//     such lots. Only the file's mapped_lots list changes.
 //   node scripts/property-index/switch-county.cjs --listed-units --county 55079 --mode live --target production --bucket <name>
 //     --listed-units with --mode live or off: someone who names a unit an address list gives a record (a condo whose own
 //     file has no unit number) finds that home, or gets the several homes there as before
@@ -71,13 +76,15 @@ const newColumns = process.argv.includes('--new-columns');
 const derivedRows = process.argv.includes('--derived-rows');
 const measuredRows = process.argv.includes('--measured-rows');
 const bathTotals = process.argv.includes('--bath-totals');
+const mappedLots = process.argv.includes('--mapped-lots');
 const listedUnits = process.argv.includes('--listed-units');
 const pastDate = process.argv.includes('--past-date');
 // A list beside the counties' lines, changed by itself: [the file's key, what the log calls it].
 const list = (sharedFacts && ['shared_facts', 'shared facts']) || (similarHomes && ['similar_homes', 'similar homes'])
   || (appealPacket && ['appeal_packet', 'appeal packets']) || (newColumns && ['new_columns', 'new columns'])
   || (derivedRows && ['derived_rows', 'derived rows']) || (measuredRows && ['measured_rows', 'measured rows'])
-  || (bathTotals && ['bath_totals', 'bath totals as Bathrooms only']) || (listedUnits && ['listed_units', 'listed units']) || (pastDate && ['past_date', 'answers past their date']) || null;
+  || (bathTotals && ['bath_totals', 'bath totals as Bathrooms only']) || (mappedLots && ['mapped_lots', 'lot sizes labeled as the parcel map\'s'])
+  || (listedUnits && ['listed_units', 'listed units']) || (pastDate && ['past_date', 'answers past their date']) || null;
 const root = opt('--root');
 const remote = `s3://${opt('--bucket')}/${opt('--prefix') || 'index'}`;
 
@@ -85,7 +92,7 @@ if (!counties.length) refuse('A county is its five-digit FIPS code');
 if (mode && !['off', 'shadow', 'live'].includes(mode)) refuse('A county is off, shadow or live');
 if (!/^[a-z]+$/.test(target)) refuse('Name the environment: production or staging');
 if (estimates && !['on', 'off'].includes(estimates)) refuse('Estimates are on or off');
-if ([sharedFacts, similarHomes, appealPacket, newColumns, derivedRows, measuredRows, bathTotals, listedUnits, pastDate].filter(Boolean).length > 1) refuse('One list at a time: --shared-facts, --similar-homes, --appeal-packet, --new-columns, --derived-rows, --measured-rows, --bath-totals, --listed-units or --past-date');
+if ([sharedFacts, similarHomes, appealPacket, newColumns, derivedRows, measuredRows, bathTotals, mappedLots, listedUnits, pastDate].filter(Boolean).length > 1) refuse('One list at a time: --shared-facts, --similar-homes, --appeal-packet, --new-columns, --derived-rows, --measured-rows, --bath-totals, --mapped-lots, --listed-units or --past-date');
 if (list && !['live', 'off'].includes(mode)) refuse(`${list[1][0].toUpperCase()}${list[1].slice(1)} are live or off: pass --mode live or --mode off`);
 if (list && (withhold || estimates)) refuse(`${list[1][0].toUpperCase()}${list[1].slice(1)} change by themselves: leave out --withhold and --estimates`);
 if (!mode && !withhold && !estimates) refuse('Nothing to change: pass --mode, --withhold, --estimates or several');
@@ -142,6 +149,8 @@ if (mode === 'shadow' || mode === 'live') {
     else if (entry.status === 'withdrawn') problems.push(`${county}'s source was withdrawn`);
     else if (homes === null) problems.push(`${county}'s release ${entry.release} has no report to show it holds homes`);
     else if (!homes) problems.push(`${county}'s release ${entry.release} holds no homes, only parcels or other records`);
+    // A county whose serving release marks no lot as the map's would show nothing new: publish it first.
+    else if (mappedLots && mode === 'live' && !entry.held_from?.mapped_lots) problems.push(`${county}'s release ${entry.release} marks no lot sizes as the parcel map's: publish it first`);
     else releases.set(county, entry);
   }
 }
@@ -191,4 +200,4 @@ if (list) {
     log(`${target}: ${county} ${list[1]} ${namedBefore.get(county)} -> ${mode}; the county is ${line}${line === 'live' ? '' : ', so this applies once it is live'}`);
   }
 }
-log(`${target} now names ${count('live')} live, ${count('shadow')} shadow, ${count('off')} off, estimates on in ${Object.values(file.counties).filter((entry) => entry.estimates).length}, shared facts in ${(file.shared_facts || []).length}, similar homes in ${(file.similar_homes || []).length}, appeal packets in ${(file.appeal_packet || []).length}, new columns in ${(file.new_columns || []).length}, derived rows in ${(file.derived_rows || []).length}, measured rows in ${(file.measured_rows || []).length}, bath totals as Bathrooms only in ${(file.bath_totals || []).length}, listed units in ${(file.listed_units || []).length}, answers past their date in ${(file.past_date || []).length}; servers follow within about a minute`);
+log(`${target} now names ${count('live')} live, ${count('shadow')} shadow, ${count('off')} off, estimates on in ${Object.values(file.counties).filter((entry) => entry.estimates).length}, shared facts in ${(file.shared_facts || []).length}, similar homes in ${(file.similar_homes || []).length}, appeal packets in ${(file.appeal_packet || []).length}, new columns in ${(file.new_columns || []).length}, derived rows in ${(file.derived_rows || []).length}, measured rows in ${(file.measured_rows || []).length}, bath totals as Bathrooms only in ${(file.bath_totals || []).length}, lot sizes labeled as the parcel map's in ${(file.mapped_lots || []).length}, listed units in ${(file.listed_units || []).length}, answers past their date in ${(file.past_date || []).length}; servers follow within about a minute`);

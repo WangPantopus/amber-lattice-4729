@@ -17,6 +17,7 @@ const { dbfRows } = require('../lib/dbf.cjs');
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, realUnit, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -76,7 +77,7 @@ const FOOTINGS = { BASEMENT: 'Basement', 'CRAWL SPACE': 'Crawl space', FILL: 'Fi
 
 // Each parcel's largest building, in the county's own figures. How many it has goes on the record too.
 // Counties with a connector of their own, for the bedrooms and baths these parcels lack.
-const OWN_CONNECTOR = new Set(['37031', '37051', '37081', '37097', '37101', '37107', '37109', '37119', '37133', '37163', '37183']);
+const OWN_CONNECTOR = new Set(['37019', '37031', '37051', '37081', '37097', '37101', '37107', '37109', '37119', '37133', '37163', '37183']);
 
 async function buildingsOf(work, fips, lists) {
   const parcels = new Map();
@@ -140,7 +141,7 @@ function fromRow(row, fips, county, buildings) {
   if (positive(row.PARVAL)) put(facts, 'value_year', positive(row.REVISEYEAR));
   const sold = isoDate(row.SALEDATE);
   if (sold && sold > '1800') facts.sale_date = sold;
-  return { id: `pp:${kind}:${fips}:${parcel}`, kind, home_type: homeType, address: { ...parsed, city: String(word(row.SCITY) || '').toUpperCase(), zip: zipCode(row.SZIP) }, facts };
+  return { id: `pp:${kind}:${fips}:${parcel}`, kind, home_type: homeType, address: { ...parsed, city: String(word(row.SCITY) || '').toUpperCase(), zip: zipCode(row.SZIP) }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 /** Each county's newest file, with its older ones, newest first, from the bucket's listing. */

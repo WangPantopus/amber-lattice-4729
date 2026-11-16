@@ -9,7 +9,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -65,6 +65,7 @@ function fromRow(row) {
     put(facts, 'bathrooms', inRange(row.NumBathRooms, 12));
   }
   if (kind !== 'unit') put(facts, 'lot_acres', positive(row.DeededAcres) || positive(row.GISAcres));
+  const mapped = positive(row.DeededAcres) ? null : 'lot_acres';
   put(facts, 'market_value', positive(row.EMVTotal));
   put(facts, 'market_land_value', positive(row.EMVLand));
   put(facts, 'market_building_value', positive(row.EMVImprove));
@@ -73,7 +74,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.LastSalePrice));
     put(facts, 'sale_date', isoDate(row.LastSaleDate));
   }
-  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...street, city: word(row.PropertyCity) || '', zip: zipCode(row.PropertyZip) }, facts };
+  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...street, city: word(row.PropertyCity) || '', zip: zipCode(row.PropertyZip) }, facts, ...mapLot(facts, mapped) };
   // Read since the county went live, held off its screens until its new_columns switch is on (lib/held.cjs): the
   // county's own ZIP+4 for the property, where it has one.
   const plus4 = String(row.PropertyZip4 ?? '').trim();

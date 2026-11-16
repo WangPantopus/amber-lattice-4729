@@ -126,7 +126,7 @@ export default function SentPieceView({ id }: { id: string }) {
 
   const doTakeBack = async () => {
     const sentToday = calendarDay(new Date(piece.sent_at), timeZone) === calendarDay(new Date(), timeZone);
-    if (!(await askTakeBack({ byEmail: piece.by_email, byLink: piece.by_link, sentToday, postage: Boolean(holidayCards?.postage_enabled) }))) return;
+    if (!(await askTakeBack({ byEmail: piece.by_email, byLink: piece.by_link, sentToday, postage: Boolean(holidayCards?.postage_enabled), notEmailed: Boolean(piece.email_send_at || piece.email_status) }))) return;
     setTakeBackError(null);
     takeBack.mutate(piece.id, {
       onSuccess: () => { toast.success('You took your card back.'); router.push('/app/mailbox/sent'); },

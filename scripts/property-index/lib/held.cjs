@@ -51,4 +51,43 @@ function keepSplit(records, { zeroFull = false } = {}) {
   return kept;
 }
 
-module.exports = { hold, holdFacts, keepSplit };
+// A lot size the county's parcel map measured (a shape's area, GIS or calculated acres) instead of the recorded acreage: the
+// fact stays in the record's facts as before, and is marked under `held.mapped_lots` with its own value, so Property details
+// says where it came from once the founder names the county on the switch file's mapped_lots list (router.js). Founder,
+// Nov 15: "Yes, label them". The county's `held_from.mapped_lots` gives the words; build.cjs writes "Measured from <county>'s
+// parcel map" where a connector names none.
+const LOTS = ['lot_acres', 'lot_sqft'];
+
+/** For a record being returned: `{ held: { mapped_lots: { <fact>: value } } }` when `fact` is a lot the record states, else {}. */
+function mapLot(facts, fact) {
+  return LOTS.includes(fact) && facts?.[fact] > 0 ? { held: { mapped_lots: { [fact]: facts[fact] } } } : {};
+}
+
+/** The same mark on a record that already exists, beside any held facts it has. */
+function markMapLot(record, fact) {
+  if (!LOTS.includes(fact) || !(record.facts?.[fact] > 0)) return;
+  record.held = { ...record.held, mapped_lots: { ...record.held?.mapped_lots, [fact]: record.facts[fact] } };
+}
+
+/**
+ * After derive.cjs has filled the other unit of a lot (build.cjs): a mark whose lot a later read replaced goes, and a lot
+ * still the map's has both of its units marked, since the other was worked out from it. Returns how many records keep one.
+ */
+function settleMapLots(records) {
+  let kept = 0;
+  for (const record of records) {
+    const marked = record.held?.mapped_lots;
+    if (!marked) continue;
+    const still = Object.keys(marked).some((fact) => LOTS.includes(fact) && record.facts?.[fact] === marked[fact]);
+    if (still) {
+      record.held.mapped_lots = Object.fromEntries(LOTS.filter((fact) => record.facts?.[fact] > 0).map((fact) => [fact, record.facts[fact]]));
+      kept += 1;
+    } else {
+      delete record.held.mapped_lots;
+      if (!Object.keys(record.held).length) delete record.held;
+    }
+  }
+  return kept;
+}
+
+module.exports = { hold, holdFacts, keepSplit, mapLot, markMapLot, settleMapLots };

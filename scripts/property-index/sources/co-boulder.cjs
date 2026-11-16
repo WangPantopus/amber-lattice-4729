@@ -10,6 +10,7 @@ const { download } = require('../lib/tables.cjs');
 const { csvRows } = require('../lib/csv.cjs');
 const { year, isoDate, realUnit, streetParts, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -134,7 +135,7 @@ function fromRow(row, { building, land, value, sale }) {
     put(facts, 'sale_document', word(sale.deedNum));
   }
   const city = String(word(row.city) || '').toUpperCase();
-  return { id: `pp:${kind}:${FIPS}:${account}`, kind, home_type: homeType, address: { ...address, city: city === 'UNINCORPORATED' ? '' : city, zip: null }, facts };
+  return { id: `pp:${kind}:${FIPS}:${account}`, kind, home_type: homeType, address: { ...address, city: city === 'UNINCORPORATED' ? '' : city, zip: null }, facts, ...mapLot(facts, facts.lot_acres ? 'lot_acres' : 'lot_sqft') };
 }
 
 async function* build({ work }) {

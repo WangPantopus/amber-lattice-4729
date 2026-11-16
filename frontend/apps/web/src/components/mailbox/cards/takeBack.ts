@@ -11,24 +11,29 @@ export function takeBackMessage(error: MailboxApiError | null): string {
 /**
  * "Take your card back?": asked before a card is taken back, from the card flow (on its way, today's card) and from
  * Sent. With digital stamps on (`postage`) the card's stamp comes back. Otherwise taking back today's card frees the
- * day; an older one doesn't, so it doesn't say so.
+ * day; an older one doesn't, so it doesn't say so. `notEmailed`: a card by email whose email hasn't gone out (set for
+ * your 7 a.m. or Christmas morning, or it didn't go), so its link was never sent.
  */
 export function askTakeBack({
   byEmail,
   byLink = false,
   sentToday,
   postage = false,
+  notEmailed = false,
 }: {
   byEmail: boolean;
   byLink?: boolean;
   sentToday: boolean;
   postage?: boolean;
+  notEmailed?: boolean;
 }): Promise<boolean> {
   const what = byLink
     ? 'Your link will say you took it back.'
-    : byEmail
-      ? 'The link in their email will say you took it back.'
-      : 'It won’t go out with the morning mail.';
+    : byEmail && notEmailed
+      ? 'We haven’t emailed them yet, so nothing will go out.'
+      : byEmail
+        ? 'The link in their email will say you took it back.'
+        : 'It won’t go out with the morning mail.';
   return confirmStore.open({
     title: 'Take your card back?',
     description: postage ? `${what} Its stamp comes back to you.` : sentToday ? `${what} You can send a card again today.` : what,
