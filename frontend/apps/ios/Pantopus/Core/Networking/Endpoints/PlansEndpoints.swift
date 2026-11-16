@@ -67,8 +67,12 @@ public enum PlansEndpoints {
     /// build can draw a business's plan. Without `biz=1` a business's plan does
     /// not exist, even for its own team. A person without `plans_business` gets
     /// today's answers either way.
+    ///
+    /// Plans steps 3 and 4 (CONTRACT-step3-4.md section 0): the same requests say
+    /// with `more=1` that this build can draw an online plan and the four newer
+    /// kinds; without it those plans don't exist. Always sent, flags or not.
     static func biz(_ query: [String: String] = [:]) -> [String: String] {
-        query.merging(["biz": "1"]) { _, marker in marker }
+        query.merging(["biz": "1", "more": "1"]) { _, marker in marker }
     }
 
     // MARK: - Flags
@@ -211,21 +215,28 @@ public enum PlansEndpoints {
     // MARK: - Hosting
 
     /// `POST /api/plans` — returns PlanDetail (201). Errors: `not_near`
-    /// (403), `too_many_plans` (429), validation (422).
+    /// (403), `too_many_plans` (429), validation (422); a private plan
+    /// (`audience: invited`) with the switch off: `private_unavailable` (422);
+    /// a `repeat` with `plans_repeat` off: `repeat_unavailable` (422).
     /// Route `backend/routes/plans.js`.
     public static func create(_ body: CreatePlanBody) -> Endpoint {
         Endpoint(method: .post, path: base, query: biz(), body: body)
     }
 
-    /// `PATCH /api/plans/:id` — host edits. Route `backend/routes/plans.js`.
+    /// `PATCH /api/plans/:id` — host edits; `repeat` sets a new pattern from
+    /// this date on, or `null` stops it (422 `validation` with a sentence, or
+    /// `repeat_unavailable`). Route `backend/routes/plans.js`.
     public static func update(id: String, _ body: UpdatePlanBody) -> Endpoint {
         Endpoint(method: .patch, path: "\(base)/\(id)", query: biz(), body: body)
     }
 
     /// `POST /api/plans/:id/cancel` — tells everyone in and waiting, closes
-    /// the chat, removes the pin. Route `backend/routes/plans.js`.
-    public static func cancel(id: String, note: String?) -> Endpoint {
-        Endpoint(method: .post, path: "\(base)/\(id)/cancel", query: biz(), body: CancelPlanBody(note: note))
+    /// the chat, removes the pin. On a repeating plan `keepRepeating` cancels
+    /// this date only and posts the next one now; the answer then carries
+    /// `next_plan_id` (`PlanCancelResponse`). Without it the series stops.
+    /// Route `backend/routes/plans.js`, `cancelPlan` in planActions.js.
+    public static func cancel(id: String, note: String?, keepRepeating: Bool = false) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(id)/cancel", query: biz(), body: CancelPlanBody(note: note, keepRepeating: keepRepeating))
     }
 
     /// `POST /api/plans/:id/requests/:requestId/accept` — idempotent; 409
@@ -307,6 +318,13 @@ public enum PlansEndpoints {
         Endpoint(method: .get, path: "\(base)/\(planId)/invites/people", query: biz(text.isEmpty ? [:] : ["q": text]))
     }
 
+    /// `GET /api/plans/invites/people?q=` — the same people as above before the plan exists (a private
+    /// plan's preview, "Invite"), `{ people: [{ user_id, display_name, avatar_url, reason }] }`, no `state`.
+    /// Needs `plans_invites`. Route `backend/routes/plans.js` (`GET /invites/people`).
+    public static func peopleToInvite(query text: String = "") -> Endpoint {
+        Endpoint(method: .get, path: "\(base)/invites/people", query: biz(text.isEmpty ? [:] : ["q": text]))
+    }
+
     /// `POST /api/plans/:id/invites` (host) — people on Pantopus and addresses.
     /// 409 `confirm_shares_address` the first time at a home; 429
     /// `too_many_invites`; 422 `invalid_email`. Route `backend/routes/plans.js`.
@@ -315,7 +333,8 @@ public enum PlansEndpoints {
     }
 
     /// `POST /api/plans/:id/invites/link` (host) — a one-person link to text,
-    /// `{ invite_id, url, message }`. Route `backend/routes/plans.js`.
+    /// `{ invite_id, url, message }`. On a private plan with `guests_can_invite`, a guest who is in may
+    /// call it once ("Bring a friend"); again: 409 `friend_invite_used`. Route `backend/routes/plans.js`.
     public static func inviteLink(planId: String, confirmSharesAddress: Bool?) -> Endpoint {
         Endpoint(
             method: .post,

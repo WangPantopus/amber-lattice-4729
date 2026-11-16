@@ -4,6 +4,8 @@ import app.pantopus.android.BuildConfig
 import app.pantopus.android.data.api.ApiService
 import app.pantopus.android.data.api.models.common.TolerantJsonAdapterFactory
 import app.pantopus.android.data.api.models.feed.FeedPost
+import app.pantopus.android.data.api.models.feed.FeedQuotedPost
+import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.homes.UploadEvidenceRequestJsonAdapter
 import app.pantopus.android.data.api.models.notifications.NotificationDto
 import app.pantopus.android.data.api.models.posts.MyPostDto
@@ -215,6 +217,8 @@ object NetworkModule {
                         PostDetailDto::class.java,
                         NotificationDto::class.java,
                     ),
+                    // A post's quoted post and its "reposted" line read as none when they can't be read (contract §9).
+                    optionalTypes = setOf(FeedQuotedPost::class.java, FeedRepostedBy::class.java),
                 ),
             )
             .add(Instant::class.java, Rfc3339DateJsonAdapter().nullSafe())
@@ -244,7 +248,8 @@ object NetworkModule {
             .addInterceptor(chatMediaInterceptor)
             // Outermost: UTC timestamps reach Moshi as "Z", which Android 8–13 can parse.
             .addInterceptor(UtcTimestampInterceptor())
-            // `biz=1` on the Plans routes: this build can draw a business's plan (Plans with businesses).
+            // `biz=1` and `more=1` on the Plans routes: this build can draw a business's plan (Plans with businesses),
+            // an online plan and the four newer kinds (Plans steps 3 and 4).
             .addInterceptor(PlansBizInterceptor())
             // X-Client-Platform + X-Device-Id on every API request (both clients).
             // This client also loads Coil images; other hosts get neither header nor the bearer.

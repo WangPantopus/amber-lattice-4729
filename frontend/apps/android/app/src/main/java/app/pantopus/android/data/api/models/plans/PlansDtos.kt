@@ -68,6 +68,13 @@ data class PlanDetailsDto(
     @Json(name = "subject") val subject: String? = null,
     /** A study group's `quiet` or `together` ([app.pantopus.android.data.plans.PlanStudyStyle]). */
     @Json(name = "study_style") val studyStyle: String? = null,
+    // Plans step 4 (the four newer kinds, `PlanKindDetails`). Outdoors also sends `pace`.
+    /** Food & drinks: `dinner` (the server's default), `potluck`, `drinks`, `brunch`, `bbq` or `other`. */
+    @Json(name = "food_kind") val foodKind: String? = null,
+    /** Game night: `board_games` (the default), `cards`, `trivia`, `video_games` or `other`. */
+    @Json(name = "game_kind") val gameKind: String? = null,
+    /** Outdoors: `hike` (the default), `bike_ride`, `run` or `other`. */
+    @Json(name = "outdoor_kind") val outdoorKind: String? = null,
 )
 
 /**
@@ -85,9 +92,24 @@ data class PlanViewerDto(
     @Json(name = "auto_rule") val autoRule: String? = null,
     /** True once this viewer answered "How was it" (A5). */
     @Json(name = "feedback_given") val feedbackGiven: Boolean = false,
+    /**
+     * "Bring a friend" (Plans step 1): for a guest who is in on a private plan whose host lets guests bring a friend;
+     * null for everyone else and from older servers.
+     */
+    @Json(name = "friend_invite") val friendInvite: PlanFriendInviteDto? = null,
 )
 
-/** `place`: the exact place. Only in a host's or an accepted guest's [PlanDto]. */
+/** `viewer.friend_invite`: whether this guest may make their one friend link now, and whether they already did. */
+@JsonClass(generateAdapter = true)
+data class PlanFriendInviteDto(
+    @Json(name = "can_invite") val canInvite: Boolean = false,
+    @Json(name = "used") val used: Boolean = false,
+)
+
+/**
+ * `place`: the exact place. Only in a host's or an accepted guest's [PlanDto]. An online plan's (Plans step 3) is
+ * `{ name: "Online", address: null, latitude: null, longitude: null, note, link, link_host }`: no point, ever.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanPlaceDto(
     @Json(name = "name") val name: String? = null,
@@ -95,6 +117,10 @@ data class PlanPlaceDto(
     @Json(name = "latitude") val latitude: Double? = null,
     @Json(name = "longitude") val longitude: Double? = null,
     @Json(name = "note") val note: String? = null,
+    /** An online plan only: the link people join with. Only the host and people who are in get it. */
+    @Json(name = "link") val link: String? = null,
+    /** An online plan only: the link's host name without a leading `www.` ("meet.google.com"). */
+    @Json(name = "link_host") val linkHost: String? = null,
 )
 
 /** One of `people`: who's going. Only in a host's or an accepted guest's [PlanDto]. */
@@ -215,7 +241,15 @@ data class PlanDto(
     @Json(name = "state") val state: String? = null,
     @Json(name = "viewer") val viewer: PlanViewerDto? = null,
     @Json(name = "share_url") val shareUrl: String? = null,
-    // PlanDetail: the host and people who are in.
+    /**
+     * Who can see it (Plans step 1): `nearby` (anyone nearby, as every plan was) or `invited` (private: only its host,
+     * the people invited and the people in). Absent from an older server, which means `nearby`.
+     */
+    @Json(name = "audience") val audience: String? = null,
+    /** How it repeats (Plans step 2), for everyone who can read the card; null when it doesn't repeat or from an older server. */
+    @Json(name = "repeat") val repeat: PlanRepeatDto? = null,
+    // PlanDetail: the host and people who are in. A private plan at a public place also sends `place` to the person
+    // invited before they answer.
     @Json(name = "place") val place: PlanPlaceDto? = null,
     @Json(name = "people") val people: List<PlanPersonDto>? = null,
     @Json(name = "chat_room_id") val chatRoomId: String? = null,
@@ -245,6 +279,58 @@ data class PlanDto(
     @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
     /** The venue's later plans in the list's window, folded under this one; null when there are none. */
     @Json(name = "more_times") val moreTimes: PlanMoreTimesDto? = null,
+    /** Posting a private plan with `invite_user_ids` (Plans step 1): what happened to each person. */
+    @Json(name = "invite_results") val inviteResults: List<PlanInviteResultDto>? = null,
+    /** Posting a private plan: the invitations couldn't be sent at all (the plan is posted either way), in words to show. */
+    @Json(name = "invite_error") val inviteError: String? = null,
+)
+
+/**
+ * One of a monthly pattern's days (Plans step 2): a weekday of one week of the month (`week` 1 to 4, or -1 for the last,
+ * and `weekday` Monday 1 to Sunday 7: "the 1st Saturday") or a date (`day` 1 to 31: "the 15th"). Sent the same way.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanMonthDayDto(
+    @Json(name = "week") val week: Int? = null,
+    @Json(name = "weekday") val weekday: Int? = null,
+    @Json(name = "day") val day: Int? = null,
+)
+
+/**
+ * `repeat` on a card (Plans step 2): the pattern (`freq` weekly, biweekly or monthly; `weekdays` Monday 1 to Sunday 7;
+ * `month_days`; `until` or `count`), its words ("Every Tuesday and Thursday", short "Every Tue and Thu"), which date of
+ * the series this plan is of how many, and the series' last date (`YYYY-MM-DD`).
+ */
+@Suppress("LongParameterList")
+@JsonClass(generateAdapter = true)
+data class PlanRepeatDto(
+    @Json(name = "freq") val freq: String? = null,
+    @Json(name = "weekdays") val weekdays: List<Int>? = null,
+    @Json(name = "month_days") val monthDays: List<PlanMonthDayDto>? = null,
+    @Json(name = "until") val until: String? = null,
+    @Json(name = "count") val count: Int? = null,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "short") val shortText: String? = null,
+    @Json(name = "index") val index: Int? = null,
+    @Json(name = "total") val total: Int? = null,
+    @Json(name = "last_on") val lastOn: String? = null,
+)
+
+/** `repeat` in the create and change bodies (Plans step 2): one of [until] and [count] is sent, never both. */
+@JsonClass(generateAdapter = true)
+data class PlanRepeatInput(
+    @Json(name = "freq") val freq: String,
+    @Json(name = "weekdays") val weekdays: List<Int>? = null,
+    @Json(name = "month_days") val monthDays: List<PlanMonthDayDto>? = null,
+    @Json(name = "until") val until: String? = null,
+    @Json(name = "count") val count: Int? = null,
+)
+
+/** `POST /api/plans/:id/cancel` with `repeat: "keep"` (Plans step 2): the date that took its place, or null when the series is over. */
+@JsonClass(generateAdapter = true)
+data class PlanCancelReply(
+    @Json(name = "id") val id: String? = null,
+    @Json(name = "next_plan_id") val nextPlanId: String? = null,
 )
 
 /** `nearest_elsewhere` (F4): the closest town with plans 5 to 15 miles away when the page is empty. */
@@ -323,6 +409,8 @@ data class PlanPinDto(
     @Json(name = "label_text") val labelText: String? = null,
     @Json(name = "place_name") val placeName: String? = null,
     @Json(name = "more_times") val moreTimes: Int = 0,
+    /** `invited` for a private plan's pin (its host, the people invited and the people in see it); `nearby` or absent otherwise. */
+    @Json(name = "audience") val audience: String? = null,
 )
 
 /** `business` on a business's map pin. */
@@ -339,7 +427,10 @@ data class PlanPinsResponse(
     @Json(name = "markers") val markers: List<PlanPinDto> = emptyList(),
 )
 
-/** `place` in the create body. `home_id` only for `kind = home`. */
+/**
+ * `place` in the create body. `home_id` only for `kind = home`; an online plan (Plans step 3) sends only `kind:
+ * "online"`, `link` and `timezone`.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanPlaceInput(
     @Json(name = "kind") val kind: String,
@@ -350,6 +441,10 @@ data class PlanPlaceInput(
     @Json(name = "home_id") val homeId: String? = null,
     /** The place picker's id for a public place it listed (`osm:node/123`): the venue's key. Left out otherwise. */
     @Json(name = "place_id") val placeId: String? = null,
+    /** An online plan: the link people join with (https, at most 300 characters). */
+    @Json(name = "link") val link: String? = null,
+    /** An online plan: the phone's own IANA time zone, used when the plan has no area to read one from. */
+    @Json(name = "timezone") val timezone: String? = null,
 )
 
 /** `gps` in the create body: proves the host is nearby; never the pin. */
@@ -385,11 +480,19 @@ data class CreatePlanBody(
     @Json(name = "gps") val gps: PlanGpsInput? = null,
     /** A5 "Host again": the plan this one copies (records the funnel). */
     @Json(name = "hosted_again_from") val hostedAgainFrom: String? = null,
+    /** How it repeats (Plans step 2); left out for a plan that doesn't repeat, as before. */
+    @Json(name = "repeat") val repeat: PlanRepeatInput? = null,
     @Json(name = "host_as") val hostAs: PlanHostAsInput? = null,
     /** One of the business's own locations (`host_as` only). */
     @Json(name = "business_location_id") val businessLocationId: String? = null,
     /** What guests see it called: a key from the kind's list (`host_as` only). */
     @Json(name = "label") val label: String? = null,
+    /** `invited` posts a private plan (Plans step 1); left out for a plan anyone nearby can see, as before. */
+    @Json(name = "audience") val audience: String? = null,
+    /** A private plan only: each person invited may invite one more. */
+    @Json(name = "guests_can_invite") val guestsCanInvite: Boolean? = null,
+    /** A private plan only: up to 30 people (from `GET /api/plans/invites/people`) invited as it is posted. */
+    @Json(name = "invite_user_ids") val inviteUserIds: List<String>? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
@@ -405,15 +508,27 @@ data class UpdatePlanBody(
     @Json(name = "auto_rules") val autoRules: List<String>? = null,
     @Json(name = "details") val details: PlanDetailsDto? = null,
     @Json(name = "guest_note") val guestNote: String? = null,
+    /**
+     * A new pattern from this date on (Plans step 2). Stopping a series sends `"repeat": null`, which this body can't
+     * say (nulls are left out): `PlansRepository.stopRepeating` sends that one by itself.
+     */
+    @Json(name = "repeat") val repeat: PlanRepeatInput? = null,
     /** A business's plan: move it to another of the business's own locations (never a `place`). */
     @Json(name = "business_location_id") val businessLocationId: String? = null,
     @Json(name = "label") val label: String? = null,
+    /**
+     * A fresh fix with a move to a public place or online (Plans step 3), as the create body sends one: the server
+     * checks the host is nearby by their home, else this. Never for a private plan.
+     */
+    @Json(name = "gps") val gps: PlanGpsInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */
 @JsonClass(generateAdapter = true)
 data class CancelPlanBody(
     @Json(name = "note") val note: String? = null,
+    /** `keep` cancels this date of a repeating plan only and posts the next one (Plans step 2); left out, a cancel stops the series. */
+    @Json(name = "repeat") val repeat: String? = null,
 )
 
 /** `POST /api/plans/:id/requests` body. The kids fields are for playdates only. */

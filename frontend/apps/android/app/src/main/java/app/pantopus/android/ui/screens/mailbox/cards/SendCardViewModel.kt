@@ -559,8 +559,17 @@ class SendCardViewModel
                         else -> null
                     }
                 }
+            // Each address keeps the list's choice where the server offers every email choice.
+            val keep = true.takeIf { cards.value?.arrivals?.emailAll != null }
             return form.copy(listIds = ids) to
-                SendHolidayCardListBody(design, form.message.trim(), arrival, recipients, signature = form.signature)
+                SendHolidayCardListBody(
+                    design,
+                    form.message.trim(),
+                    arrival,
+                    recipients,
+                    signature = form.signature,
+                    emailsKeepArrival = keep,
+                )
         }
 
         /**
@@ -824,7 +833,13 @@ class SendCardViewModel
             theirs: HolidayCardArrivalsFor?,
         ): String? {
             val arrivals = cards.value?.arrivals ?: return current
-            val options = if (to is CardRecipient.Person) (theirs?.arrivals ?: arrivals.person) else arrivals.email
+            val options =
+                when {
+                    to is CardRecipient.Person -> theirs?.arrivals ?: arrivals.person
+                    // Every email choice where the server offers them, as step 4 shows them; else the two, as before.
+                    arrivals.emailAll != null -> arrivalOptions(arrivals, to, theirs)
+                    else -> arrivals.email
+                }
             return current?.takeIf { it in options } ?: options.firstOrNull()
         }
 

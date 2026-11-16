@@ -441,17 +441,21 @@ public struct RowEngagementCTA: Sendable {
     public let icon: PantopusIcon?
     public let label: String
     public let accessibilityLabel: String
+    /// The button's identifier; nil keeps the shared `rowEngagementCTA`.
+    public let accessibilityIdentifier: String?
     public let handler: @Sendable () -> Void
 
     public init(
         label: String,
         icon: PantopusIcon? = nil,
         accessibilityLabel: String? = nil,
+        accessibilityIdentifier: String? = nil,
         handler: @escaping @Sendable () -> Void
     ) {
         self.label = label
         self.icon = icon
         self.accessibilityLabel = accessibilityLabel ?? label
+        self.accessibilityIdentifier = accessibilityIdentifier
         self.handler = handler
     }
 }

@@ -219,7 +219,14 @@ private fun EmailLook(
     zone: ZoneId,
 ) {
     preview.email?.let { email ->
-        LookSection(if (sealed) "The email they get, now" else "The email they get, right away", horizontal = Spacing.s3) {
+        val heading =
+            when {
+                // Set for the sender's 7 a.m. or Christmas morning: nothing is emailed before then.
+                preview.emailSendAt != null -> "The email they get ${HolidayCardTimes.emailGoesAt(preview.emailSendAt, zone)}, your time"
+                sealed -> "The email they get, now"
+                else -> "The email they get, right away"
+            }
+        LookSection(heading, horizontal = Spacing.s3) {
             EmailPicture(email, to.email, from)
         }
     }

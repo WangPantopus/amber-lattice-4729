@@ -30,6 +30,7 @@ import MediaUpload from './composer/MediaUpload';
 import PostAssist, { usePostAssist } from './composer/PostAssist';
 import { nearestMediaLocation, readMediaLocations, useMediaLocations, type MediaLocation } from './composer/mediaLocation';
 import { PURPOSE_TO_POST_TYPE, getPostTypeConfig } from '@pantopus/ui-utils';
+import QuotedPostCard from './QuotedPostCard';
 
 const POST_TYPE_TO_API_PURPOSE: Record<PostType, string> = {
   ask_local: 'ask',
@@ -207,6 +208,8 @@ export interface PostComposerSubmitData {
   topic?: TopicKey;
   sportsScope?: string;
   postMetadata?: SportsComposerMetadata;
+  /** "Repost with your words": the post this one quotes. */
+  quotedPostId?: string;
 }
 
 interface PostComposerProps {
@@ -233,6 +236,13 @@ interface PostComposerProps {
   initialSportsPostType?: PostType | null;
   /** When set, "Turn off" leaves the Sports lane (feed topic) instead of only clearing local composer state. */
   onLeaveSportsTopic?: () => void;
+  /**
+   * "Repost with your words": the post shown under the text box, read-only, and quoted by the new post. The composer
+   * opens on a plain post to Connections (what Repost reaches); audience and type change as they always do.
+   */
+  quotedPost?: Post | null;
+  /** Cancel closes the composer (instead of clearing it back to the post types). */
+  onCancel?: () => void;
 }
 
 function visibilityForAudience(audience: Audience): PostVisibility {
@@ -280,10 +290,18 @@ export default function PostComposer({
   initialTopic = null, initialSportsScope = null, initialSportsMetadata,
   initialSportsContentSeed = null, initialSportsPostType = null,
   onLeaveSportsTopic,
+  quotedPost = null,
+  onCancel,
 }: PostComposerProps) {
   const isEdit = editPost != null;
+  // An edit never quotes: the edit screen keeps working as it did and sends no quotedPostId.
+  const quoting = quotedPost != null && !isEdit;
   const [editSeed] = useState(() => (editPost ? formStateFromPost(editPost) : undefined));
-  const { state: f, setField, selectIntent, reset, addMedia, removeMedia, dismissPrecheck } = usePostForm(editSeed);
+  // A quote opens on the plain post a Connections post is, to Connections.
+  const [quoteSeed] = useState<Partial<PostFormState> | undefined>(() => (
+    quoting ? { expanded: true, selectedIntent: 'general', visibility: 'connections' } : undefined
+  ));
+  const { state: f, setField, selectIntent, reset, addMedia, removeMedia, dismissPrecheck } = usePostForm(editSeed ?? quoteSeed);
   const [savingEdit, setSavingEdit] = useState(false);
   const createCommand = useRef<string | null>(null);
   const [identities, setIdentities] = useState<PostingIdentity[]>([]);
@@ -444,7 +462,7 @@ export default function PostComposer({
     setSubmitError(null);
   };
 
-  const contentPlaceholder = activeSurface === 'connections'
+  const contentPlaceholder = activeSurface === 'connections' || (quoting && f.visibility === 'connections')
     ? 'Share something with your connections…'
     : canUseGlobalAudience && selectedAudience === 'connections'
     ? 'Share something with your connections…'
@@ -560,8 +578,8 @@ export default function PostComposer({
   }, [f.selectedIntent]);
 
   useEffect(() => {
-    // The edit form lives in its own dialog and never collapses back to the purpose chips.
-    if (isEdit) return;
+    // The edit form lives in its own dialog and never collapses back to the purpose chips; nor does a quote.
+    if (isEdit || quoting) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (composerRef.current && !composerRef.current.contains(target)) {
@@ -574,7 +592,7 @@ export default function PostComposer({
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [isEdit, f.content, setField]);
+  }, [isEdit, quoting, f.content, setField]);
 
   /** Legacy UI used `public`; align with mobile + API (connections only). */
   useEffect(() => {
@@ -770,6 +788,7 @@ export default function PostComposer({
       purpose: apiPurposeForPostType(targetPostType),
       profileVisibilityScope: f.profileVisibilityScope,
       showOnProfile: true,
+      ...(quoting && quotedPost ? { quotedPostId: quotedPost.id } : {}),
       ...(composeTopic === 'sports'
         ? {
             topic: 'sports' as const,
@@ -1034,6 +1053,12 @@ export default function PostComposer({
                 autoCapitalize="sentences"
               />
             </div>
+            {/* The post being quoted, under the text box: shown, not opened */}
+            {quoting && quotedPost && (
+              <div className="mt-3 pl-11">
+                <QuotedPostCard state={{ kind: 'post', post: quotedPost }} testId="pulseQuoteComposerCard" interactive={false} />
+              </div>
+            )}
           </div>
 
           {!isEdit && (
@@ -1352,7 +1377,7 @@ export default function PostComposer({
 
               <div className="ml-auto flex items-center gap-2">
                 <button
-                  onClick={isEdit ? onCancelEdit : resetComposer}
+                  onClick={isEdit ? onCancelEdit : onCancel ?? resetComposer}
                   disabled={isEdit && savingEdit}
                   className="px-3 py-1.5 text-xs font-medium text-app-muted transition hover:text-app"
                 >

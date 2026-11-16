@@ -65,7 +65,10 @@ const RULE_FIELDS = 'id, user_id, home_id, kind, summary, config, enabled, pause
 const RUN_FIELDS = 'id, rule_id, status, summary, subject, outcome, created_at';
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const PLAN_NOUNS = { watch_party: 'watch party', pickup_game: 'pickup game', walk_coffee: 'walk', study_group: 'study group', playdate: 'playdate' };
+const PLAN_NOUNS = {
+  watch_party: 'watch party', pickup_game: 'pickup game', walk_coffee: 'walk', study_group: 'study group', playdate: 'playdate',
+  food_drinks: 'get-together', game_night: 'game night', outdoors: 'outing', something_else: 'plan',
+};
 const PICKUP_WORDS = { garbage: 'garbage', recycling: 'recycling', yard_waste: 'yard waste', bulk_pickup: 'bulk items' };
 const PLAN_WARNING = 'Pantopus posts it each week without asking. People nearby see it on the map, and its entry rules let people in as they do now.';
 const NOT_NEAR = "This plan's place is more than about 3 miles from their home. Pantopus posts a weekly plan without a location fix, so it can repeat one only at their home or within 3 miles of it. Say so in a sentence; no rule card.";
@@ -357,6 +360,11 @@ async function draftPlanRule(args, ctx) {
   if (!isUuid(args.plan_id)) return { error: 'plan_id must be a plan they host, from the screen context or find_plans.' };
   const plan = await planService.loadPlanRow(args.plan_id);
   if (!plan || String(plan.host_user_id) !== String(ctx.userId)) return { error: 'Only a plan they host can repeat. Use find_plans for the plans they host.' };
+  // A weekly repost is posted for people nearby, so it never copies a plan that was only for the people invited.
+  if (planRules.isPrivate(plan)) return { error: "That plan is private (only the people they invited see it), and Pantopus can't repeat a private plan yet. Say so in a sentence; no rule card." };
+  if (plan.repeat) return { error: 'That plan already repeats: they set it in the plan itself (Repeats). Say so in a sentence; no rule card. They change or stop it from the plan.' };
+  // A weekly repost is posted the way the assistant's own plan card is, for any app: never online, never a newer kind.
+  if (planRules.needsMore(plan)) return { error: "Pantopus can't post that plan each week (it is online, or a newer kind of plan). They can set it to repeat in the plan itself (Repeats). Say so in a sentence; no rule card." };
   if (plan.status === 'cancelled') return { error: 'That plan was cancelled. Say so: they can host it again, then ask for it every week.' };
   if (Date.parse(plan.post.event_end_date) < Date.now() - RECENT_MS) {
     return { error: 'That plan ended more than a week ago. Say so: they can host it again, then ask for it every week.' };
@@ -805,6 +813,16 @@ async function runPlanRepeat(rule, now) {
   if (!latest || String(latest.host_user_id) !== String(rule.user_id)) {
     return pause(rule, 'cannot_post', {
       title: `Couldn't post your weekly ${noun}`, body: "The plan it copies isn't available anymore, so Pantopus paused it.",
+    });
+  }
+  // The plan repeats by itself now (planSeries.js): one of the two posts it, not both. A plan moved online is
+  // reposted only by its own Repeats, which keeps its link (repostInput copies a place).
+  if (latest.repeat || planRules.needsMore(latest)) {
+    return pause(rule, 'cannot_post', {
+      title: `Paused: your weekly ${noun}`,
+      body: latest.repeat
+        ? 'This plan now repeats by itself (Repeats, in the plan), so Pantopus paused this rule.'
+        : 'This plan is online now, so Pantopus paused this rule. Set it to repeat in the plan itself (Repeats).',
     });
   }
   const latestEnd = Date.parse(latest.post.event_end_date);

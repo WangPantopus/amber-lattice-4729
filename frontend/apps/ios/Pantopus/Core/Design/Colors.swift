@@ -422,6 +422,22 @@ public extension Theme.Color {
     static let categoryPlanStudy = SwiftUI.Color("Category/PlanStudy", bundle: Theme.bundle)
     /// Study group tint — `#fce7f3`, dark `#3a1a2c`.
     static let categoryPlanStudyTint = SwiftUI.Color("Category/PlanStudyTint", bundle: Theme.bundle)
+    /// Plan kind: food & drinks (`--food` on the Plans boards' more.css) — `#b91c1c`, dark `#f87171`.
+    static let categoryPlanFood = SwiftUI.Color("Category/PlanFood", bundle: Theme.bundle)
+    /// Food & drinks tint — `#fee2e2`, dark `#3a1717`.
+    static let categoryPlanFoodTint = SwiftUI.Color("Category/PlanFoodTint", bundle: Theme.bundle)
+    /// Plan kind: game night (`--game`) — `#2563eb`, dark `#60a5fa`.
+    static let categoryPlanGame = SwiftUI.Color("Category/PlanGame", bundle: Theme.bundle)
+    /// Game night tint — `#dbeafe`, dark `#172a4d`.
+    static let categoryPlanGameTint = SwiftUI.Color("Category/PlanGameTint", bundle: Theme.bundle)
+    /// Plan kind: outdoors (`--out`) — `#0f766e`, dark `#2dd4bf`.
+    static let categoryPlanOutdoors = SwiftUI.Color("Category/PlanOutdoors", bundle: Theme.bundle)
+    /// Outdoors tint — `#ccfbf1`, dark `#0f2f2c`.
+    static let categoryPlanOutdoorsTint = SwiftUI.Color("Category/PlanOutdoorsTint", bundle: Theme.bundle)
+    /// Plan kind: something else (`--else`) — `#475569`, dark `#94a3b8`.
+    static let categoryPlanElse = SwiftUI.Color("Category/PlanElse", bundle: Theme.bundle)
+    /// Something else tint — `#e2e8f0`, dark `#262d38`.
+    static let categoryPlanElseTint = SwiftUI.Color("Category/PlanElseTint", bundle: Theme.bundle)
     /// The glyph on a plan pin or type swatch — white, dark `#0b1220`, so the
     /// glyph keeps its contrast on the lighter dark-mode kind colors.
     static let categoryPlanPinInk = SwiftUI.Color("Category/PlanPinInk", bundle: Theme.bundle)

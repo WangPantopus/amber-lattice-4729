@@ -13,26 +13,36 @@ import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
+import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlansSportsDto
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.GeoApi
 import app.pantopus.android.data.location.ViewingLocationRepository
+import app.pantopus.android.data.plans.PlanAudience
 import app.pantopus.android.data.plans.PlanAutoRule
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanLocationResolver
+import app.pantopus.android.data.plans.PlanOnlineLink
 import app.pantopus.android.data.plans.PlanPlaceQuery
+import app.pantopus.android.data.plans.PlanPostedInvite
+import app.pantopus.android.data.plans.PlanRepeatPattern
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanStudyStyle
 import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
+import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -116,7 +126,38 @@ data class HostDraft(
     val label: String? = null,
     /** Which of the business's own locations it meets at (B2). */
     val locationId: String? = null,
+    /** "Only people I invite" (Plans step 1): a private plan. False is "Anyone nearby", as every plan was. */
+    val isPrivate: Boolean = false,
+    /** A private plan: "Guests can bring a friend" (each person invited may invite one more). */
+    val guestsCanInvite: Boolean = false,
+    /** A private plan: the people chosen on the preview, in the order chosen, invited as it is posted. */
+    val inviteIds: List<String> = emptyList(),
+    /** How it repeats (Plans step 2), as last chosen on the Repeats screen; null doesn't repeat. */
+    val repeat: PlanRepeatPattern? = null,
+    /** Where is "Online" (Plans step 3): people join with [link]; no place, no home. */
+    val online: Boolean = false,
+    /** An online plan's link, as typed or pasted (checked by `PlanOnlineLink`). */
+    val link: String = "",
+    /** Plans step 4's details (`PlanKindDetails`), each starting on the server's default. Outdoors also uses [pace]. */
+    val foodKind: String = "dinner",
+    val gameKind: String = "board_games",
+    val outdoorKind: String = "hike",
 )
+
+/** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
+sealed interface HostInvitePeople {
+    data object Idle : HostInvitePeople
+
+    data object Loading : HostInvitePeople
+
+    data class Loaded(
+        val people: List<PlanInviteCandidateDto>,
+    ) : HostInvitePeople
+
+    data class Failed(
+        val message: String,
+    ) : HostInvitePeople
+}
 
 /** H1 to H8. */
 data class HostUi(
@@ -156,7 +197,60 @@ data class HostUi(
     val businesses: List<HostAsBusinessDto> = emptyList(),
     /** H1's "Host as" choice: a business's account, or null for yourself. Kept while the kind is chosen again. */
     val hostAsChoice: String? = null,
+    /** `plans_private` is on for this person: "Who can see this" shows on a person's own plan (Plans step 1). */
+    val privateOn: Boolean = false,
+    /** "Who can see this" as last chosen (or the empty state's "Plan with people you know"), kept while the kind changes. */
+    val privateChoice: Boolean = false,
+    /** A private plan's preview: the people to invite. */
+    val invitePeople: HostInvitePeople = HostInvitePeople.Idle,
+    /** `plans_repeat` is on for this person: the Repeats row shows on a person's own plan (Plans step 2). */
+    val repeatOn: Boolean = false,
+    /** The Repeats screen is open over the details. */
+    val repeatsOpen: Boolean = false,
+    /** `plans_online` is on for this person: Where offers "Online" for the kinds that can meet online (Plans step 3). */
+    val onlineOn: Boolean = false,
+    /** `plans_kinds` is on for this person: the type picker shows nine kinds (Plans step 4). */
+    val kindsOn: Boolean = false,
 ) {
+    /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
+    val showsRepeats: Boolean get() = repeatOn && business == null
+
+    /** How the draft repeats, moved to its current start (a new start moves the pre-selected day); null when it doesn't. */
+    val repeat: PlanRepeatPattern?
+        get() {
+            val date = draft.start?.toLocalDate() ?: return null
+            return draft.repeat?.takeIf { showsRepeats }?.alignedTo(date, date)
+        }
+
+    /** The Repeats row's value ("Doesn't repeat", "Every Tue and Thu"), or null while the row doesn't show. */
+    val repeatsValue: String? get() = if (showsRepeats) PlanRepeatWords.rowValue(repeat) else null
+
+    /** The preview's line: "Every Tue and Thu until Feb 4". */
+    val repeatLine: String?
+        get() {
+            val date = draft.start?.toLocalDate() ?: return null
+            return repeat?.let { PlanRepeatWords.draftLine(it, date) }
+        }
+
+    /** What the Repeats screen opens with: the draft's start and end, its kind, and the pattern so far. */
+    val repeatSetup: PlanRepeatSetup?
+        get() {
+            val start = draft.start ?: return null
+            return PlanRepeatSetup(start = start, end = draft.end, kind = draft.kind?.wire, walkKind = draft.walkKind, initial = repeat)
+        }
+
+    /** "Who can see this" shows: the switch is on and the plan is the person's own (a business's plan is never private). */
+    val showsAudience: Boolean get() = privateOn && business == null
+
+    /** The draft is a private plan: chosen, and still allowed. */
+    val isPrivate: Boolean get() = showsAudience && draft.isPrivate
+
+    /** Where offers "Online": the switch is on, the kind can meet online, and the plan is the person's own. */
+    val showsOnline: Boolean get() = onlineOn && business == null && draft.kind?.canBeOnline == true
+
+    /** The draft is an online plan: chosen, and still allowed. */
+    val isOnline: Boolean get() = showsOnline && draft.online
+
     /** The business the draft is posted for, or null for a neighbor's own plan. */
     val business: HostAsBusinessDto? get() = draft.hostAs?.let { id -> businesses.firstOrNull { it.userId == id } }
 
@@ -190,7 +284,7 @@ class HostFlowViewModel
         private val viewing: ViewingLocationRepository,
         private val events: PlansEvents,
         private val geo: GeoApi,
-        feature: PlansFeature,
+        private val feature: PlansFeature,
     ) : ViewModel() {
         /** The plan "Host again" copies (A5), sent as `hosted_again_from`. */
         private var againFrom: String? = null
@@ -206,6 +300,11 @@ class HostFlowViewModel
                     playdatesOn = feature.flags.value.playdatesOn,
                     hostName = shortName(feature.viewer?.displayName),
                     hostAvatar = feature.viewer?.avatarUrl,
+                    privateOn = feature.flags.value.privateOn,
+                    privateChoice = feature.flags.value.privateOn && savedStateHandle.get<Boolean>(PlansRoutes.PRIVATE_KEY) == true,
+                    repeatOn = feature.flags.value.repeatOn,
+                    onlineOn = feature.flags.value.onlineOn,
+                    kindsOn = feature.flags.value.kindsOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -218,7 +317,11 @@ class HostFlowViewModel
                 loadContext(gameId)
                 if (again != null) copyFrom(again)
             }
-            if (kind != null && (kind != PlanKind.PLAYDATE || _ui.value.playdatesOn)) choose(kind)
+            // A newer kind only while its switch is on (Plans step 4); otherwise the type step shows, saying why.
+            val switchedOff = kind?.isNew == true && !_ui.value.kindsOn
+            if (switchedOff) _ui.update { it.copy(error = KINDS_UNAVAILABLE) }
+            val playdateOk = kind != PlanKind.PLAYDATE || _ui.value.playdatesOn
+            if (kind != null && !switchedOff && playdateOk) choose(kind)
         }
 
         /** "Host again" (A5): the same plan a week later, ready to preview. */
@@ -235,6 +338,11 @@ class HostFlowViewModel
         ) {
             againFrom = planId
             val kind = PlanKind.from(plan.kind) ?: return
+            if (kind.isNew && !_ui.value.kindsOn) {
+                // The switch for the newer kinds is off (Plans step 4): say so rather than let the server refuse it.
+                _ui.update { it.copy(error = KINDS_UNAVAILABLE) }
+                return
+            }
             val zone = PlanFormat.zone(plan.timezone)
             var start = PlanFormat.instant(plan.startsAt)?.atZone(zone)?.toLocalDateTime() ?: return
             var end = PlanFormat.instant(plan.endsAt)?.atZone(zone)?.toLocalDateTime() ?: start.plusHours(1)
@@ -243,50 +351,31 @@ class HostFlowViewModel
                 start = start.plusWeeks(1)
                 end = end.plusWeeks(1)
             }
-            val place =
-                plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
-                    val lat = p.latitude
-                    val lng = p.longitude
-                    if (lat != null && lng != null) PickedPlace(p.name ?: "The same place", p.address, lat, lng, null, null) else null
-                }
-            val rules = plan.autoRules.orEmpty()
-            val d = plan.details
-            _ui.update {
-                it.copy(
-                    zone = zone,
-                    step = HostStep.Details,
-                    draft =
-                        HostDraft(
-                            kind = kind,
-                            title = plan.title,
-                            titleEdited = true,
-                            about = plan.about.orEmpty(),
-                            start = start,
-                            end = end,
-                            atHome = plan.placeKind == "home",
-                            place = place,
-                            spots = plan.spots.coerceIn(1, 30),
-                            approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
-                            autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
-                            hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
-                            note = plan.place?.note.orEmpty(),
-                            sport = d?.sport ?: "pickleball",
-                            level = d?.level ?: "any",
-                            extraGear = d?.extraGear == true,
-                            kidsAgeBands = d?.kidsAgeBands.orEmpty().toSet(),
-                            walkKind = d?.walkKind ?: "walk",
-                            pace = d?.pace ?: "easy",
-                            dogsWelcome = d?.dogsWelcome == true,
-                            pickupNow = false,
-                            subject = d?.subject.orEmpty(),
-                            studyStyle = PlanStudyStyle.from(d?.studyStyle),
-                        ),
-                )
+            // A private plan is hosted again as a private one, with nobody invited yet.
+            val keepPrivate = plan.isPrivate && _ui.value.privateOn
+            val draft = copiedDraft(plan, kind, start, end, keepPrivate)
+            _ui.update { it.copy(zone = zone, step = HostStep.Details, draft = draft, privateChoice = keepPrivate) }
+            showCopy(plan)
+        }
+
+        /**
+         * "Host again" opens the preview (board A5 → H7, as on iOS); a copy that needs a fix opens its details. A private
+         * plan copied while private plans are off is never posted for everyone without a word.
+         */
+        private fun showCopy(plan: PlanDto) {
+            if (plan.isPrivate && !_ui.value.privateOn) {
+                _ui.update { it.copy(error = "Private plans aren't available right now. This copy would be seen by people nearby.") }
+                return
             }
-            // "Host again" opens the preview (board A5 → H7, as on iOS); a copy that needs a fix opens its details.
+            if (plan.isOnline && !_ui.value.showsOnline) {
+                // Online plans are off now (Plans step 3): the copy waits on its details for a place, saying why.
+                _ui.update { it.copy(error = ONLINE_COPY_OFF) }
+                return
+            }
             if (validate(_ui.value.draft) == null) {
                 _ui.update { it.copy(step = HostStep.Preview) }
                 loadPreviewArea()
+                if (_ui.value.isPrivate) loadInvitePeople()
             }
         }
 
@@ -363,14 +452,16 @@ class HostFlowViewModel
                         HostDraft(kind = kind, spots = 6, approveEach = false, autoRule = PlanAutoRule.VERIFIED, title = "Coffee walk")
                     // A watch party's defaults (as on iOS), always at a public place.
                     PlanKind.STUDY_GROUP -> HostDraft(kind = kind, spots = 8)
+                    // Plans step 4, with iPhone's defaults (HostOnline.kt).
+                    else -> newKindDraft(kind)
                 }
-            val hours = if (kind == PlanKind.WATCH_PARTY || kind == PlanKind.STUDY_GROUP) 3L else 1L
+            val hours = hostedHours(kind)
             val timed =
                 if (kind == PlanKind.PICKUP_GAME) {
                     draft.copy(start = now.plusMinutes(PICKUP_LEAD_MINUTES), end = now.plusHours(2))
                 } else {
                     draft.copy(start = start, end = start.plusHours(hours))
-                }
+                }.copy(isPrivate = _ui.value.privateChoice && _ui.value.privateOn)
             _ui.update { it.copy(step = HostStep.Details, draft = timed, error = null) }
             // A watch party starts on the soonest game, its chip checked and its title and time filled in (board H2, as on iOS).
             if (kind == PlanKind.WATCH_PARTY) automaticGame()?.let(::pickGame)
@@ -389,6 +480,9 @@ class HostFlowViewModel
                 when (kind) {
                     PlanKind.PLAYDATE -> Triple(DAY_START, PLAYDATE_LATEST, PLAYDATE_HOUR)
                     PlanKind.WALK_COFFEE -> Triple(WALK_EARLIEST, NIGHT_START, WALK_HOUR)
+                    // Plans step 4, as on iPhone: an outing by day (9 AM next), food & drinks at dinner time (6 PM).
+                    PlanKind.OUTDOORS -> Triple(WALK_EARLIEST, OUTING_LATEST, OUTING_HOUR)
+                    PlanKind.FOOD_DRINKS -> Triple(DAY_START, NIGHT_START, DINNER_HOUR)
                     else -> Triple(DAY_START, NIGHT_START, EVENING_HOUR)
                 }
             if (soon.hour in earliest until latest) return soon
@@ -449,11 +543,24 @@ class HostFlowViewModel
         fun setAtHome(atHome: Boolean) =
             edit { draft ->
                 if (atHome) {
-                    draft.copy(atHome = true, approveEach = true, autoRule = null)
+                    draft.copy(atHome = true, approveEach = true, autoRule = null, online = false)
                 } else {
-                    draft.copy(atHome = false)
+                    draft.copy(atHome = false, online = false)
                 }
             }
+
+        /** Where (Plans step 3): "A place", "My place" / "My porch", or "Online" ([HostWhere]). */
+        fun setWhere(choice: String) {
+            if (choice != HostWhere.ONLINE) {
+                setAtHome(choice == HostWhere.HOME)
+                return
+            }
+            if (!_ui.value.showsOnline) return
+            edit { it.copy(online = true, atHome = false) }
+        }
+
+        /** An online plan's link, as typed or pasted (up to [LINK_INPUT_MAX]; the check refuses past 300). */
+        fun setLink(value: String) = edit { it.copy(link = value.take(LINK_INPUT_MAX)) }
 
         /** Now or later, for a pickup game (H4). */
         fun setPickupNow(now: Boolean) {
@@ -467,6 +574,56 @@ class HostFlowViewModel
                     draft.copy(pickupNow = false, start = start, end = start.plusHours(2))
                 }
             }
+        }
+
+        /** "Who can see this" (Plans step 1): anyone nearby, or only the people the host invites. */
+        fun setPrivate(invitedOnly: Boolean) {
+            if (!_ui.value.showsAudience) return
+            _ui.update { it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly), error = null) }
+        }
+
+        /** "Guests can bring a friend" on a private plan. */
+        fun setGuestsCanInvite(on: Boolean) = edit { it.copy(guestsCanInvite = on) }
+
+        /** A person on the private preview's list, chosen or not (up to 30 invited as it is posted). */
+        fun toggleInvite(userId: String) {
+            val chosen = _ui.value.draft.inviteIds
+            if (userId !in chosen && chosen.size >= MAX_INVITES_AT_POST) {
+                _ui.update { it.copy(error = "You can invite up to $MAX_INVITES_AT_POST people as you post. Invite more after.") }
+                return
+            }
+            edit { it.copy(inviteIds = if (userId in chosen) chosen - userId else chosen + userId) }
+        }
+
+        /** The private preview's people: read when it opens, and again from "Try again". */
+        fun loadInvitePeople() {
+            if (_ui.value.invitePeople == HostInvitePeople.Loading) return
+            _ui.update { it.copy(invitePeople = HostInvitePeople.Loading) }
+            viewModelScope.launch {
+                val next =
+                    when (val result = repository.invitePeopleBefore()) {
+                        is NetworkResult.Success -> HostInvitePeople.Loaded(result.data.people)
+                        is NetworkResult.Failure -> HostInvitePeople.Failed(result.error.planMessage)
+                    }
+                _ui.update { it.copy(invitePeople = next) }
+            }
+        }
+
+        // ---- Repeats (Plans step 2) ----
+
+        /** The Repeats row: the Repeats screen over the details. */
+        fun openRepeats() {
+            if (_ui.value.showsRepeats && _ui.value.draft.start != null) _ui.update { it.copy(repeatsOpen = true, error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen after a change: its pattern, or null for "Doesn't repeat". */
+        fun closeRepeats(pattern: PlanRepeatPattern?) {
+            _ui.update { it.copy(repeatsOpen = false, draft = it.draft.copy(repeat = pattern), error = null) }
+        }
+
+        /** Done (or Back) on the Repeats screen with nothing changed. */
+        fun leaveRepeats() {
+            _ui.update { it.copy(repeatsOpen = false) }
         }
 
         // ---- H6 ----
@@ -669,7 +826,7 @@ class HostFlowViewModel
 
         fun usePlace() {
             val place = _ui.value.placeCandidate ?: return
-            _ui.update { it.copy(step = HostStep.Details, draft = it.draft.copy(place = place, atHome = false)) }
+            _ui.update { it.copy(step = HostStep.Details, draft = it.draft.copy(place = place, atHome = false, online = false)) }
         }
 
         fun closePlaces() {
@@ -715,6 +872,7 @@ class HostFlowViewModel
             }
             _ui.update { it.copy(step = HostStep.Preview, error = null) }
             loadPreviewArea()
+            if (_ui.value.isPrivate && _ui.value.invitePeople !is HostInvitePeople.Loaded) loadInvitePeople()
         }
 
         /** The city the place is in, for the preview's "Near Camas" (iOS reverse-geocodes the same point). */
@@ -751,10 +909,15 @@ class HostFlowViewModel
             return true
         }
 
-        fun post() {
+        /**
+         * Posts the plan. [then] is a private plan's "Text a link" or "Email" on the preview: the invite sheet opens over
+         * the posted plan.
+         */
+        fun post(then: PlanPostedInvite? = null) {
             val ui = _ui.value
             val draft = ui.draft
             val kind = draft.kind ?: return
+            if (ui.posting || ui.postedId != null) return
             validate(draft)?.let { problem ->
                 _ui.update { it.copy(error = problem) }
                 return
@@ -766,28 +929,52 @@ class HostFlowViewModel
                     if (business != null) {
                         businessCreateBody(kind, draft, ui.zone, business)
                     } else {
-                        val fix = locations.gpsFix()
+                        // A private plan can be anywhere: no fix is needed to prove the host is nearby.
+                        val fix = if (ui.isPrivate) null else locations.gpsFix()
                         buildBody(kind, draft, ui, fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) })
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        events.posted(result.data.id)
+                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
                         _ui.update { it.copy(posting = false, postedId = result.data.id) }
                     }
-                    is NetworkResult.Failure ->
-                        _ui.update {
-                            it.copy(
-                                posting = false,
-                                error =
-                                    when (result.error.planCode) {
-                                        "not_near" -> "You can host within 3 miles of where you live or where you are now."
-                                        else -> result.error.planMessage
-                                    },
-                            )
-                        }
+                    is NetworkResult.Failure -> _ui.update { it.copy(posting = false, error = postError(result.error)) }
                 }
             }
         }
+
+        /**
+         * What went wrong with the invitations a private plan sent as it was posted: the server's sentence when none went
+         * out, or how many people couldn't be invited; null when all went well.
+         */
+        private fun inviteNote(plan: PlanDto): String? {
+            plan.inviteError?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
+            val missed = plan.inviteResults.orEmpty().count { it.outcome == "unavailable" }
+            return when (missed) {
+                0 -> null
+                1 -> "Couldn't invite 1 person. You can invite people from your plan."
+                else -> "Couldn't invite $missed people. You can invite people from your plan."
+            }
+        }
+
+        /** Why posting didn't work, in the server's words where it has them (Plans step 1 adds the private plan's refusals). */
+        private fun postError(error: NetworkError): String =
+            when (error.planCode) {
+                "not_near" -> "You can host within 3 miles of where you live or where you are now."
+                "private_unavailable" -> {
+                    // The switch went off since this screen opened: read it again for the other screens. This one keeps
+                    // "Who can see this", so the host chooses Anyone nearby themselves; nothing goes public unasked.
+                    feature.refresh()
+                    "Private plans aren't available right now. Choose Anyone nearby to post it."
+                }
+                // The same for Repeats (Plans step 2): the row stays, so the host can choose "Doesn't repeat". Plans steps
+                // 3 and 4 likewise: the server's sentence says the switch went off, and the host's choice stays as it was.
+                "repeat_unavailable", "online_unavailable", "kinds_unavailable" -> {
+                    feature.refresh()
+                    error.planMessage
+                }
+                else -> error.planMessage
+            }
 
         private fun buildBody(
             kind: PlanKind,
@@ -798,7 +985,9 @@ class HostFlowViewModel
             val zone = ui.zone
             val home = ui.home
             val place =
-                if (draft.atHome && home != null) {
+                if (ui.isOnline) {
+                    onlinePlaceInput(draft.link)
+                } else if (draft.atHome && home != null) {
                     PlanPlaceInput(kind = "home", name = "${ui.hostName.substringBefore(' ')}'s place", homeId = home.id)
                 } else {
                     val picked = draft.place
@@ -818,8 +1007,10 @@ class HostFlowViewModel
                         // Not for a pickup game: its form has no such box (board H4), as on iOS.
                         if (draft.hostedBefore && kind != PlanKind.PICKUP_GAME) add(PlanAutoRule.HOSTED_BEFORE)
                     }
-                }.distinct()
+                    // "Anyone nearby" is for meeting in person, and only for pickup games and walks (Plans steps 3 and 4).
+                }.distinct().filter { it != PlanAutoRule.ANYONE_NEARBY || (!ui.isOnline && !kind.isNew) }
             val game = ui.games.firstOrNull { it.id == draft.gameId }
+            val invitedOnly = ui.isPrivate
             return CreatePlanBody(
                 kind = kind.wire,
                 title = draft.title.trim(),
@@ -837,6 +1028,12 @@ class HostFlowViewModel
                 guestNote = draft.note.trim().takeIf(String::isNotEmpty),
                 gps = gps,
                 hostedAgainFrom = againFrom,
+                // How it repeats (Plans step 2): left out for a plan that doesn't, as before.
+                repeat = ui.repeat?.toInput(),
+                // A private plan (Plans step 1); a plan anyone nearby can see sends none of these, as before.
+                audience = PlanAudience.INVITED.takeIf { invitedOnly },
+                guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },
+                inviteUserIds = draft.inviteIds.take(MAX_INVITES_AT_POST).takeIf { invitedOnly && it.isNotEmpty() },
             )
         }
 
@@ -851,6 +1048,11 @@ class HostFlowViewModel
                 PlanKind.PICKUP_GAME -> PlanDetailsDto(sport = draft.sport, level = draft.level, extraGear = draft.extraGear)
                 PlanKind.WALK_COFFEE -> PlanDetailsDto(walkKind = draft.walkKind, pace = draft.pace, dogsWelcome = draft.dogsWelcome)
                 PlanKind.STUDY_GROUP -> PlanDetailsDto(subject = draft.subject.cleanSubject(), studyStyle = draft.studyStyle.wire)
+                PlanKind.FOOD_DRINKS -> PlanDetailsDto(foodKind = draft.foodKind)
+                PlanKind.GAME_NIGHT -> PlanDetailsDto(gameKind = draft.gameKind)
+                PlanKind.OUTDOORS -> PlanDetailsDto(outdoorKind = draft.outdoorKind, pace = draft.pace)
+                // Something else has no details: its title says what it is.
+                PlanKind.SOMETHING_ELSE -> PlanDetailsDto()
             }
 
         private fun validate(draft: HostDraft): String? {
@@ -860,16 +1062,39 @@ class HostFlowViewModel
             val end = draft.end
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
+            val tooFar = tooFarAhead(draft, now)
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
-                start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
+                tooFar != null -> tooFar
                 minutes < MIN_MINUTES -> "A plan lasts at least 15 minutes."
                 minutes > MAX_MINUTES -> "A plan lasts at most 8 hours."
                 kindProblem != null -> kindProblem
+                else -> placeProblem(draft)
+            }
+        }
+
+        /** What Where still needs: an online plan's link (Plans step 3), the host's home, or a place; null when nothing. */
+        private fun placeProblem(draft: HostDraft): String? =
+            when {
+                // Checked as the server checks it; an online plan has no place.
+                _ui.value.isOnline -> PlanOnlineLink.problem(draft.link)
                 draft.atHome && _ui.value.home == null -> "Add your home to host there, or choose a public place."
                 !draft.atHome && draft.place == null -> "Choose a place."
+                else -> null
+            }
+
+        /** A start too far ahead: 14 days for a plan anyone nearby can see, 60 for a private one (Plans step 1); else null. */
+        private fun tooFarAhead(
+            draft: HostDraft,
+            now: LocalDateTime,
+        ): String? {
+            val start = draft.start ?: return null
+            val invitedOnly = _ui.value.showsAudience && draft.isPrivate
+            return when {
+                invitedOnly && start.isAfter(now.plusDays(MAX_PRIVATE_DAYS_AHEAD)) -> "Private plans can start up to 60 days ahead."
+                !invitedOnly && start.isAfter(now.plusDays(MAX_DAYS_AHEAD)) -> "Plans can start up to 14 days from now."
                 else -> null
             }
         }
@@ -883,6 +1108,11 @@ class HostFlowViewModel
             }
 
         private companion object {
+            /** The server's sentence while `plans_kinds` is off (422 `kinds_unavailable`). */
+            const val KINDS_UNAVAILABLE = "That kind of plan isn't available yet."
+
+            /** "Host again" of an online plan while `plans_online` is off. */
+            const val ONLINE_COPY_OFF = "Online plans aren't available yet. Choose a place for this one."
             const val TITLE_MAX = 80
             const val SUBJECT_MAX = 60
             const val PICKUP_LEAD_MINUTES = 15L
@@ -892,8 +1122,13 @@ class HostFlowViewModel
             const val PLAYDATE_LATEST = 18
             const val PLAYDATE_HOUR = 10
             const val WALK_HOUR = 8
+            const val OUTING_LATEST = 19
+            const val OUTING_HOUR = 9
+            const val DINNER_HOUR = 18
             const val EVENING_HOUR = 19
             const val MAX_DAYS_AHEAD = 14L
+            const val MAX_PRIVATE_DAYS_AHEAD = 60L
+            const val MAX_INVITES_AT_POST = 30
             const val MIN_MINUTES = 15L
             const val QUARTER_HOUR = 15L
             const val GAME_ON_LEAD_MINUTES = 5L
@@ -935,3 +1170,54 @@ class HostFlowViewModel
             }
         }
     }
+
+/** "Host again" (A5): a person's own plan as a new draft starting [start]; [keepPrivate] keeps a private plan private. */
+private fun copiedDraft(
+    plan: PlanDto,
+    kind: PlanKind,
+    start: LocalDateTime,
+    end: LocalDateTime,
+    keepPrivate: Boolean,
+): HostDraft {
+    val place =
+        plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
+            val lat = p.latitude
+            val lng = p.longitude
+            if (lat != null && lng != null) PickedPlace(p.name ?: "The same place", p.address, lat, lng, null, null) else null
+        }
+    val rules = plan.autoRules.orEmpty()
+    val d = plan.details
+    return HostDraft(
+        kind = kind,
+        title = plan.title,
+        titleEdited = true,
+        about = plan.about.orEmpty(),
+        start = start,
+        end = end,
+        atHome = plan.placeKind == "home",
+        place = place,
+        spots = plan.spots.coerceIn(1, 30),
+        approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
+        autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
+        hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
+        note = plan.place?.note.orEmpty(),
+        sport = d?.sport ?: "pickleball",
+        level = d?.level ?: "any",
+        extraGear = d?.extraGear == true,
+        kidsAgeBands = d?.kidsAgeBands.orEmpty().toSet(),
+        walkKind = d?.walkKind ?: "walk",
+        pace = d?.pace ?: "easy",
+        dogsWelcome = d?.dogsWelcome == true,
+        pickupNow = false,
+        subject = d?.subject.orEmpty(),
+        studyStyle = PlanStudyStyle.from(d?.studyStyle),
+        isPrivate = keepPrivate,
+        guestsCanInvite = keepPrivate && plan.guestsCanInvite == true,
+        // Plans steps 3 and 4: an online plan is hosted again online with the same link (while Online is offered).
+        online = plan.isOnline,
+        link = plan.place?.link.orEmpty(),
+        foodKind = d?.foodKind ?: "dinner",
+        gameKind = d?.gameKind ?: "board_games",
+        outdoorKind = d?.outdoorKind ?: "hike",
+    )
+}

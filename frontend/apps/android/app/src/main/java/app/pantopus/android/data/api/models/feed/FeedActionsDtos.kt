@@ -78,6 +78,8 @@ data class FeedNotHelpfulRequest(
 @JsonClass(generateAdapter = true)
 data class FeedNotHelpfulResponse(
     val flagged: Boolean = false,
+    /** The flag also hid the post for the person (newer servers); an older server leaves it out. */
+    val hidden: Boolean = false,
 )
 
 /** The trimmed post returned by `PATCH /api/posts/:id/solve`. */
@@ -102,7 +104,7 @@ data class FeedSeededDismissResponse(
     val factId: String? = null,
 )
 
-/** Message-only acknowledgement (hide / mute routes). */
+/** Message-only acknowledgement (hide / unhide / mute routes). */
 @JsonClass(generateAdapter = true)
 data class FeedActionAckResponse(
     val message: String? = null,

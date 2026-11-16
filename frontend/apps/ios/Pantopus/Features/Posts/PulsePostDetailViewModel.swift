@@ -173,9 +173,21 @@ public final class PulsePostDetailViewModel {
 
     /// Transient error string surfaced in the toast overlay.
     public var toastMessage: String? {
-        // Every message is an error unless `showToast` says otherwise.
-        didSet { if toastMessage != nil { toastKind = .error } }
+        // Every message is an error unless `showToast` says otherwise, and has no button unless a save says so.
+        didSet {
+            if toastMessage != nil { toastKind = .error }
+            toastOffersSaved = false
+        }
     }
+
+    /// "Saved.": the toast offers View, which opens My posts on the Saved tab (PULSEREPOST contract §5).
+    public private(set) var toastOffersSaved = false
+
+    /// The Repost chooser is open for this post (contract §2).
+    public var repostChooser: PulseRepostTarget?
+
+    /// "Repost with your words" picked: the composer is open with this post quoted (contract §8).
+    public var quoteDraft: PulseComposeQuote?
 
     /// How the toast reads: an error unless an action went through.
     public private(set) var toastKind: ToastKind = .error
@@ -567,7 +579,8 @@ public final class PulsePostDetailViewModel {
         }
     }
 
-    /// Bookmark toggle — optimistic, reconciled with `{saved}`.
+    /// Save toggle — optimistic, reconciled with `{saved}`. "Saved." offers
+    /// View (contract §5).
     public func toggleSave() async {
         let isConversation = conversation != nil
         if isConversation, !beginConversationAction("save") { return }
@@ -585,14 +598,18 @@ public final class PulsePostDetailViewModel {
             var change = PulsePostChange(postId: postId)
             change.isSaved = response.saved
             PulsePostsRefresh.notifyPostChanged(change)
+            showToast(response.saved ? "Saved." : "Removed from Saved.", kind: .success)
+            toastOffersSaved = response.saved
         } catch {
             logger.warning("Save toggle failed: \(error)")
-            toastMessage = "Couldn't update your bookmark"
+            toastMessage = "Couldn't update Saved. Try again."
             isSaved = original
         }
     }
 
-    /// Repost toggle — optimistic, reconciled with `{reposted}`.
+    /// Repost toggle — optimistic, reconciled with `{reposted}`. Reached
+    /// from the Repost chooser (contract §2); says what it did as the feed
+    /// does (contract §1).
     public func toggleRepost() async {
         let original = isReposted
         isReposted.toggle()
@@ -608,6 +625,7 @@ public final class PulsePostDetailViewModel {
             change.isReposted = isReposted
             change.shareCount = response.shareCount
             PulsePostsRefresh.notifyPostChanged(change)
+            showToast(isReposted ? PulseFeedViewModel.repostedToast : "Repost removed.", kind: .success)
         } catch {
             logger.warning("Repost toggle failed: \(error)")
             toastMessage = "Couldn't update your repost"
@@ -836,8 +854,13 @@ public final class PulsePostDetailViewModel {
         !comment.isDeleted && !(comment.comment.isEmpty && (comment.attachments ?? []).isEmpty)
     }
 
+    /// How far a thread of replies steps in: a reply to a reply to a reply sits
+    /// three steps in, and anything deeper stays there (as the web's does).
+    private static let maxReplyIndent = 4
+
     private func buildCommentRows(_ comments: [PostCommentDTO]) -> (rows: [PostCommentRow], hidden: Int) {
-        // Group by parent → flatten with indentLevel capped at 1.
+        // Group by parent → each reply under the one it answers, stepped in by its depth (founder 2026-11-15:
+        // threads of threads read as threads).
         let topLevel = comments.filter { $0.parentCommentId == nil && Self.isShown($0) }
         let repliesByParent = Dictionary(
             grouping: comments.filter { $0.parentCommentId != nil && Self.isShown($0) }
@@ -849,22 +872,22 @@ public final class PulsePostDetailViewModel {
 
         for parent in topLevel {
             rows.append(row(from: parent, indent: 0))
-            // Reply is available on every row. Keep descendants in the thread
-            // while preserving the existing single-level visual indentation.
-            var replies: [PostCommentDTO] = []
-            var pending = Array((repliesByParent[parent.id] ?? [])
-                .sorted { $0.createdAt < $1.createdAt }.reversed())
+            // Reply is available on every row. Each reply follows the one it
+            // answers, oldest first, one step further in.
+            var replies: [(reply: PostCommentDTO, depth: Int)] = []
+            var pending = (repliesByParent[parent.id] ?? [])
+                .sorted { $0.createdAt < $1.createdAt }.reversed().map { (reply: $0, depth: 1) }
             var visited: Set<String> = [parent.id]
-            while let reply = pending.popLast() {
-                guard visited.insert(reply.id).inserted else { continue }
-                replies.append(reply)
-                pending.append(contentsOf: (repliesByParent[reply.id] ?? [])
-                    .sorted { $0.createdAt < $1.createdAt }.reversed())
+            while let next = pending.popLast() {
+                guard visited.insert(next.reply.id).inserted else { continue }
+                replies.append(next)
+                pending.append(contentsOf: (repliesByParent[next.reply.id] ?? [])
+                    .sorted { $0.createdAt < $1.createdAt }.reversed().map { (reply: $0, depth: next.depth + 1) })
             }
             totalReplyCount += replies.count
             let cap = showingAllReplies ? replies.count : min(maxInitialReplies, replies.count)
-            for reply in replies.prefix(cap) {
-                rows.append(row(from: reply, indent: 1))
+            for item in replies.prefix(cap) {
+                rows.append(row(from: item.reply, indent: min(item.depth, Self.maxReplyIndent)))
                 visibleReplyCount += 1
             }
         }

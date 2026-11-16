@@ -11,6 +11,22 @@
 
 import Foundation
 
+/// "How people get in" (H2 to H5).
+enum PlanApproval: Hashable {
+    case approveEach
+    case verifiedAuto
+    case anyoneNearby
+}
+
+/// The host's home, for "My place".
+struct PlanHomeChoice: Hashable {
+    let id: String
+    let street: String?
+    let city: String?
+    let latitude: Double
+    let longitude: Double
+}
+
 enum PlanComposerOptions {
     /// H4 "Sport".
     static let sports: [(value: String, label: String)] = [

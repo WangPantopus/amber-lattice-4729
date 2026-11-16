@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.plans.detail
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -33,8 +36,11 @@ import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
@@ -43,9 +49,13 @@ import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
+import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
+import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanStackButton
+import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.map.planH2
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -70,8 +80,42 @@ internal fun ColumnScope.PlanInBody(
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
-    InBanner(plan, reveal, reduceMotion)
+    if (plan.isOnline) {
+        // Board Online: the kind and "Online", the title, when and "Online · hosted from Camas", then "You're in" and
+        // the link's card. No place, no map, no directions (Plans step 3).
+        PlanTitleBlock(plan)
+        InBanner(plan, reveal, reduceMotion)
+        PlanOnlineLinkCard(plan, hosting = false)
+    } else {
+        InBanner(plan, reveal, reduceMotion)
+        InPlaceTitle(plan)
+    }
+    plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        if (!plan.isOnline) {
+            PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
+                context.openDirections(plan)
+            }, modifier = Modifier.weight(1f))
+        }
+        PlanStackButton(
+            title = "Calendar",
+            icon = PantopusIcon.Calendar,
+            onClick = { context.addToCalendar(plan) },
+            modifier = Modifier.weight(1f),
+            spoken = "Add to calendar",
+        )
+        if (plan.chatRoomId != null) {
+            PlanStackButton(title = "Group chat", icon = PantopusIcon.MessageCircle, onClick = onOpenChat, modifier = Modifier.weight(1f))
+        }
+    }
+    PeopleLine(plan, viewerId)
+}
+
+/** J7's title, the exact place (with its address) and when. */
+@Composable
+private fun InPlaceTitle(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (plan.isPrivate) PlanPrivateChip()
         Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
         plan.place?.let { place ->
             Row(
@@ -102,24 +146,73 @@ internal fun ColumnScope.PlanInBody(
             }
         }
         PlanInfoLine(PantopusIcon.Calendar, PlanFormat.whenLine(plan, long = true))
+        PlanRepeatLine(PlanRepeatWords.cardLine(plan.repeat))
     }
-    plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
-            context.openDirections(plan)
-        }, modifier = Modifier.weight(1f))
-        PlanStackButton(
-            title = "Calendar",
-            icon = PantopusIcon.Calendar,
-            onClick = { context.addToCalendar(plan) },
-            modifier = Modifier.weight(1f),
-            spoken = "Add to calendar",
+}
+
+/**
+ * "Bring a friend" on a private plan whose host allows it (Plans step 1): [invited] once the guest made their link on
+ * this visit, [making] while it is being made.
+ */
+internal data class PlanFriendInvite(
+    val invited: Boolean,
+    val making: Boolean,
+    val onBring: () -> Unit,
+)
+
+/**
+ * "Bring a friend" (Plans step 1): for a guest whose host lets guests bring one friend to a private plan, under J7. It
+ * opens the share sheet with a one-person link; after that, or when the card says it was used, the row reads "You
+ * invited a friend".
+ */
+@Composable
+internal fun PlanFriendInviteRow(
+    plan: PlanDto,
+    friend: PlanFriendInvite,
+) {
+    val state = plan.viewer?.friendInvite ?: return
+    if (!plan.isPrivate) return
+    val done = state.used || friend.invited
+    if (!done && !state.canInvite) return
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .planCard()
+                .then(
+                    if (done) Modifier else Modifier.clickable(enabled = !friend.making, role = Role.Button, onClick = friend.onBring),
+                ).padding(14.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("planBringFriend"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        PlanIconTile(
+            if (done) PantopusIcon.Check else PantopusIcon.UserPlus,
+            if (done) PantopusColors.successBg else PantopusColors.primary100,
+            if (done) PantopusColors.success else PantopusColors.primary700,
         )
-        if (plan.chatRoomId != null) {
-            PlanStackButton(title = "Group chat", icon = PantopusIcon.MessageCircle, onClick = onOpenChat, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (done) "You invited a friend" else "Bring a friend",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.appText,
+            )
+            Text(
+                text =
+                    if (done) {
+                        "${plan.hostFirst} sees who you invited. Each guest can bring one friend."
+                    } else {
+                        "${plan.hostFirst} lets each guest bring one. Send a link from your phone; it works for one person."
+                    },
+                style = PantopusTextStyle.small,
+                color = PantopusColors.appTextSecondary,
+            )
+        }
+        if (!done) {
+            PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
         }
     }
-    PeopleLine(plan, viewerId)
 }
 
 @Composable
@@ -130,15 +223,27 @@ private fun InBanner(
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
-        if (!reveal) return@LaunchedEffect
+        if (!reveal) {
+            // No reveal, or it just ended (an online plan's header ends it on its own clock): the banner shows in full,
+            // even when its own fade was still waiting to start.
+            progress.snapTo(1f)
+            return@LaunchedEffect
+        }
         progress.snapTo(0f)
         if (!reduceMotion) kotlinx.coroutines.delay(300)
         progress.animateTo(1f, tween(150))
     }
     val mine = plan.myRequest
-    // "Sam said yes · just now" (board J7), "· 12 min ago" later; a rule's yes gets its time too, as on iOS.
-    val said = if (mine?.decidedBy == "rule") "You got in right away" else "${plan.hostFirst} said yes"
-    val subtitle = listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
+    // "Sam said yes · just now" (board J7), "· 12 min ago" later; a rule's yes gets its time too, as on iOS. An online
+    // plan points at its link (board Online): "Sam let you in. The link is below."
+    val rule = mine?.decidedBy == "rule"
+    val said = if (rule) "You got in right away" else "${plan.hostFirst} said yes"
+    val subtitle =
+        when {
+            plan.isOnline && rule -> "You got in right away. The link is below."
+            plan.isOnline -> "${plan.hostFirst} let you in. The link is below."
+            else -> listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
+        }
     PlanBanner(
         title = "You're in",
         subtitle = subtitle,
@@ -258,10 +363,14 @@ private fun StillComingCard(
     ) {
         val host = plan.hostFirst
         val noun = PlanFormat.noun(plan)
+        // An online plan's new place is its link, in the server's push words (Plans step 3, as on iPhone).
+        val placeTitle = if (plan.isOnline) "$host changed the link" else "$host changed the place"
+        val newPlace = if (plan.isOnline) "It has a new link now." else "It's at a new place now."
+        val atNewPlace = if (plan.isOnline) "with a new link" else "at a new place"
         val (title, message) =
             when (plan.myRequest?.reconfirmReason) {
-                "place" -> "$host changed the place" to "It's at a new place now. Still coming?"
-                "both" -> "$host changed the $noun" to "Now ${PlanFormat.dayAt(plan)}, at a new place. Still coming?"
+                "place" -> placeTitle to "$newPlace Still coming?"
+                "both" -> "$host changed the $noun" to "Now ${PlanFormat.dayAt(plan)}, $atNewPlace. Still coming?"
                 else -> "$host moved the $noun" to "Now ${PlanFormat.dayAt(plan)}. Still coming?"
             }
         Text(

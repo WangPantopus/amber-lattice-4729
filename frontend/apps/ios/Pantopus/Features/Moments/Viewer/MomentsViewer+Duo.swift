@@ -50,7 +50,7 @@ extension MomentsViewer {
         let close = MomentsStripButtons.Item(id: "moments.viewer.close", icon: .x, label: "Close") { model.close() }
         guard !isReplying else { return [close] }
         var items = [close]
-        if !model.isMine, model.ring?.author != nil {
+        if model.isMine || model.ring?.author != nil {
             items.append(MomentsStripButtons.Item(id: "moments.viewer.more", icon: .moreHorizontal, label: "More") {
                 showsMenu = true
             })

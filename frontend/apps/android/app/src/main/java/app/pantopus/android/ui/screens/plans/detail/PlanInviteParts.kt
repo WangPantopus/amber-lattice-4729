@@ -1,10 +1,22 @@
 package app.pantopus.android.ui.screens.plans.detail
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanMyInviteDto
@@ -13,10 +25,15 @@ import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.PrimaryButton
+import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
+import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusTextStyle
+import app.pantopus.android.ui.theme.Radii
+import app.pantopus.android.ui.theme.Spacing
 
 /*
  * The person a host invited (founder decision, October 31): "Sam invited you" over the plan, and "I'm in" and "Can't
@@ -71,6 +88,41 @@ internal object PlanInviteCopy {
                 "No request needed. You see $place once you say you're in."
             }
         return "$host invited you" to message
+    }
+}
+
+/**
+ * A private plan's invitation (board Invited, Plans step 1): the host's picture, "Priya invited you" and "Only the people
+ * Priya invites can see this plan.", under the plan's title.
+ */
+@Composable
+internal fun PlanPrivateInviteBanner(plan: PlanDto) {
+    val host = plan.hostFirst
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.xl))
+                .background(PantopusColors.infoBg)
+                .padding(horizontal = 14.dp, vertical = Spacing.s3)
+                .semantics(mergeDescendants = true) {}
+                .testTag("planInvitedBanner"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        PlanAvatar(name = plan.host?.displayName ?: host, seed = plan.host?.userId, avatarUrl = plan.host?.avatarUrl)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$host invited you",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.appText,
+            )
+            Text(
+                text = "Only the people $host invites can see this plan.",
+                style = PantopusTextStyle.small,
+                color = PantopusColors.appTextSecondary,
+            )
+        }
     }
 }
 

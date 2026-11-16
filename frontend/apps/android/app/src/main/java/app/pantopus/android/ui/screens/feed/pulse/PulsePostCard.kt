@@ -50,12 +50,14 @@ import app.pantopus.android.data.api.models.feed.FeedMuteEntityType
 import app.pantopus.android.data.api.models.posts.PostReactionEmoji
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
+import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.ui.screens.moments.components.momentsRing
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatar
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatarTint
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridWithViewer
 import app.pantopus.android.ui.screens.shared.media.PostMediaItem
+import app.pantopus.android.ui.screens.shared.media.PostSourceLink
 import app.pantopus.android.ui.screens.shared.media.postLinkedText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -162,10 +164,14 @@ data class PulsePostCardContent(
     val savePending: Boolean = false,
     /** How the post ended, or when a heads-up ends (S7): "Answered", "Gone", "Ends Wed 4pm"; null shows none. */
     val status: PostStatus? = null,
-    /** Connections: "Ben C. and 2 others reposted", the line above the author; null when no connection reposted it. */
+    /** "You and 2 others reposted", the line above the author (any list); null when nobody it counts reposted it. */
     val repostedBy: String? = null,
     /** What the author's photo and name open; null when they open nothing. */
     val authorLink: PulseAuthorLink? = null,
+    /** Where the post's story was published ("Read at The Columbian"); null on most posts. */
+    val source: PostSource? = null,
+    /** "Repost with your words": the quoted post's compact card under the text and media; null on an ordinary post. */
+    val quoted: PulseQuotedCard? = null,
 ) {
     val isCurator: Boolean get() = origin == "curator"
 
@@ -216,12 +222,14 @@ fun PulsePostCard(
     onOverflow: (() -> Unit)? = null,
     /** Dismisses a cold-start seeded fact. `null` hides the affordance. */
     onDismissSeeded: (() -> Unit)? = null,
-    /** Bookmark toggle in the engagement strip. `null` hides it. */
+    /** Save toggle in the engagement strip. `null` hides it. */
     onToggleSave: (() -> Unit)? = null,
-    /** Repost toggle in the engagement strip. `null` hides it. */
+    /** ↻ in the engagement strip: opens the Repost chooser. `null` hides it. */
     onToggleRepost: (() -> Unit)? = null,
     /** Opens the author's profile or page from their photo and name. `null` leaves them plain. */
     onOpenAuthor: (() -> Unit)? = null,
+    /** Opens the quoted post's page, with its id; `null` leaves the quoted card still. */
+    onOpenQuoted: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -264,6 +272,7 @@ fun PulsePostCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            content.source?.let { source -> PostSourceLink(source, testTag = "pulsePostSource_${content.id}") }
             // An Event's when and where, under its text (as on the web card).
             content.event?.let { event ->
                 PulseEventDetailRows(
@@ -281,12 +290,18 @@ fun PulsePostCard(
                 testTag = "pulsePostMedia_${content.id}",
                 usesSharpPreviews = true,
                 edgeToEdge = true,
+                // An outlet's picture that's gone leaves no hole.
+                dropsFailedPictures = content.source != null,
             )
         }
         Column(
             modifier = Modifier.padding(horizontal = Spacing.s4).padding(bottom = Spacing.s4),
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
+            // The post it quotes, under its own text and media; a tap on it opens that post, not this one.
+            content.quoted?.let { quoted ->
+                PulseQuotedPostCard(card = quoted, testTag = "pulseQuotedPost_${content.id}", onOpen = onOpenQuoted)
+            }
             content.attendees?.let { attendees ->
                 AttendeeStrip(attendees = attendees, onRSVP = onRSVP, postId = content.id)
             }
@@ -640,7 +655,7 @@ private fun ReactionStrip(
                         .semantics {
                             if (content.savePending) disabled()
                             contentDescription =
-                                if (content.actions.isSaved) "Remove bookmark" else "Save post"
+                                if (content.actions.isSaved) PulsePostCopy.REMOVE_SAVED_LABEL else PulsePostCopy.SAVE_LABEL
                         }
                         .testTag("pulsePostSave_${content.id}"),
                 contentAlignment = Alignment.Center,
@@ -911,6 +926,13 @@ internal fun PulseIntent.tintColors(): Pair<Color, Color> =
         PulseIntent.VisitorGuide -> PantopusColors.info to PantopusColors.infoBg
     }
 
+/** What the card's label says about the post it quotes; the quoted card itself reads the rest. */
+private fun quotedA11yPart(quoted: PulseQuotedCard): String =
+    when (quoted) {
+        is PulseQuotedCard.Post -> "Quotes a post by ${quoted.authorName}"
+        PulseQuotedCard.Unavailable -> PulsePostCopy.QUOTED_UNAVAILABLE
+    }
+
 private fun buildA11yLabel(content: PulsePostCardContent): String {
     val parts = mutableListOf<String>()
     content.repostedBy?.let { parts.add(it) }
@@ -921,12 +943,14 @@ private fun buildA11yLabel(content: PulsePostCardContent): String {
     if (content.isVisitor) parts.add("Visitor")
     content.title?.takeIf { it.isNotEmpty() }?.let { parts.add(it) }
     if (content.body.isNotEmpty()) parts.add(content.body)
+    content.source?.let { parts.add(it.label) }
     content.event?.whenText?.let { parts.add(it) }
     content.event?.place?.let { parts.add(it) }
     content.status?.let { parts.add(it.spoken) }
     if (content.mediaUrls.isNotEmpty()) {
         parts.add("${content.mediaUrls.size} attached ${if (content.mediaUrls.size == 1) "photo" else "photos"}")
     }
+    content.quoted?.let { parts.add(quotedA11yPart(it)) }
     // A part that already ends a sentence keeps its own mark: TalkBack reads a doubled period aloud ("2 period").
     return parts.map(String::trimEnd).filter(String::isNotEmpty).joinToString(" ") { part ->
         if (part.last() in ".?!") part else "$part."

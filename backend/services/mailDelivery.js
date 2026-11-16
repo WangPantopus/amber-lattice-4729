@@ -48,13 +48,33 @@ function isSpecialDelivery(piece, timeZone, now = new Date()) {
   return false;
 }
 
+// The most zones kept at once. Past it the ones that ran out go, then the oldest: emptying the whole cache made the
+// morning notice, which asks for everyone with new mail on every run, read each zone again.
+const ZONE_CACHE_MAX = 50000;
+
+function trimZoneCache() {
+  if (zoneCache.size < ZONE_CACHE_MAX) return;
+  const now = Date.now();
+  for (const [key, hit] of zoneCache) if (hit.until <= now) zoneCache.delete(key);
+  // A Map keeps the order its keys were added in, so the first are the oldest.
+  for (const key of zoneCache.keys()) {
+    if (zoneCache.size < ZONE_CACHE_MAX * 0.9) break;
+    zoneCache.delete(key);
+  }
+}
+
 function cached(key, read) {
   const hit = zoneCache.get(key);
   if (hit && hit.until > Date.now()) return hit.zone;
-  if (zoneCache.size > 5000) zoneCache.clear();
-  const zone = read().then((value) => value, () => null);
-  zoneCache.set(key, { zone, until: Date.now() + ZONE_CACHE_MS });
-  return zone;
+  trimZoneCache();
+  const entry = { until: Date.now() + ZONE_CACHE_MS };
+  // A read that failed isn't kept: the next ask reads again instead of answering "no zone" (Pacific) for ten minutes.
+  entry.zone = read().then((value) => value, () => {
+    if (zoneCache.get(key) === entry) zoneCache.delete(key);
+    return null;
+  });
+  zoneCache.set(key, entry);
+  return entry.zone;
 }
 
 /** A Home's time zone from its location, or null when it has none. */
@@ -63,7 +83,9 @@ function homeTimeZone(homeId) {
   return cached(`home:${homeId}`, async () => {
     const { data, error } = await supabaseAdmin.from('Home')
       .select('id, location, map_center_lat, map_center_lng').eq('id', homeId).maybeSingle();
-    if (error || !data) return null;
+    // Thrown, not answered as "no zone": cached() keeps an answer for ten minutes and drops a failed read.
+    if (error) throw new Error(error.message);
+    if (!data) return null;
     return resolveHomeTimezone(data, null);
   });
 }

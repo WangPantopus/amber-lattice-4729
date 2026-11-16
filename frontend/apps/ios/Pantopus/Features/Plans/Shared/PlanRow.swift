@@ -29,6 +29,10 @@ struct PlanRowModel: Identifiable, Equatable {
     let accessibilityLabel: String
     /// A business hosts it: the badge on the kind tile (board P1).
     var isBusiness = false
+    /// A private plan: the lock on the kind tile (Plans step 1).
+    var isPrivate = false
+    /// A repeating plan (Plans step 2): "Every Tue and Thu until Feb 4", under the when line.
+    var repeatLine: String?
 
     /// A row in a public list (the map's sheet, Today and Tomorrow, J8).
     static func listed(_ card: PlanCardDTO, trailing: PlanRowTrailing? = nil, now: Date = Date()) -> PlanRowModel {
@@ -48,8 +52,9 @@ struct PlanRowModel: Identifiable, Equatable {
             )
         }
         let distance = PlanFormat.distance(card.distanceBand)
-        // The row says just the place's name ("Downtown", "Prune Hill"), as on the board and Android.
-        let area = card.area.label.hasPrefix("Near ") ? String(card.area.label.dropFirst(5)) : card.area.label
+        // The row says just the place's name ("Downtown", "Prune Hill"), as on the board and Android; "Online" for
+        // an online plan.
+        let area = card.areaWord.hasPrefix("Near ") ? String(card.areaWord.dropFirst(5)) : card.areaWord
         var parts: [String] = []
         if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
             parts.append(when)
@@ -70,6 +75,9 @@ struct PlanRowModel: Identifiable, Equatable {
             parts.append(contentsOf: study)
         } else if let distance {
             parts.append(distance)
+        } else if card.isOnline, !parts.contains(area) {
+            // No distance to an online plan: it says "Online" instead.
+            parts.append(area)
         }
         return PlanRowModel(
             id: card.id,
@@ -77,7 +85,9 @@ struct PlanRowModel: Identifiable, Equatable {
             title: card.title,
             subtitle: parts.joined(separator: " · "),
             trailing: trailing ?? spotsTrailing(card),
-            accessibilityLabel: spoken(card, now: now)
+            accessibilityLabel: spoken(card, now: now),
+            isPrivate: card.isPrivate,
+            repeatLine: PlanRepeatCopy.line(card)
         )
     }
 
@@ -98,7 +108,9 @@ struct PlanRowModel: Identifiable, Equatable {
                 subtitle: ["You're hosting", when].compactMap { $0 }.joined(separator: " · "),
                 trailing: trailing,
                 accessibilityLabel: "You're hosting. " + row.accessibilityLabel,
-                isBusiness: row.isBusiness
+                isBusiness: row.isBusiness,
+                isPrivate: row.isPrivate,
+                repeatLine: row.repeatLine
             )
         }
         // An invitation not answered yet: "Sam invited you · Sun 1:25 PM".
@@ -112,7 +124,9 @@ struct PlanRowModel: Identifiable, Equatable {
                 subtitle: "\(host) invited you · \(row.subtitle)",
                 trailing: row.trailing,
                 accessibilityLabel: "\(host) invited you. " + row.accessibilityLabel,
-                isBusiness: row.isBusiness
+                isBusiness: row.isBusiness,
+                isPrivate: row.isPrivate,
+                repeatLine: row.repeatLine
             )
         }
         let status: PlanRowTrailing = switch viewer?.requestStatus {
@@ -167,7 +181,7 @@ struct PlanRowModel: Identifiable, Equatable {
     /// a study group adds its subject and style ("Spanish, Quiet study").
     static func spoken(_ card: PlanCardDTO, now: Date = Date()) -> String {
         let calendar = PlanFormat.calendar(for: card.timezone)
-        var parts = [card.kind.spokenTitle, card.title]
+        var parts = [card.isPrivate ? "Private \(card.kind.spokenTitle.lowercased())" : card.kind.spokenTitle, card.title]
         if card.state == .live {
             parts.append("happening now")
         } else if let start = card.startsAtDate {
@@ -176,10 +190,11 @@ struct PlanRowModel: Identifiable, Equatable {
             // A playdate before you're in: "Saturday morning".
             parts.append(PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, now: now, calendar: calendar))
         }
-        parts.append(card.business.map { "hosted by \($0.name)" } ?? card.area.label)
+        parts.append(card.business.map { "hosted by \($0.name)" } ?? card.areaWord)
         if let distance = PlanFormat.spokenDistance(card.distanceBand) { parts.append(distance) }
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")
+        if let line = PlanRepeatCopy.spoken(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
         if card.isBusiness { parts.append("Free") }
         return parts.joined(separator: ", ")
     }
@@ -197,7 +212,7 @@ struct PlanRow: View {
             VStack(spacing: 0) {
                 if showsDivider { Divider().overlay(Theme.Color.appBorder) }
                 HStack(spacing: Spacing.s3) {
-                    PlanKindTile(kind: model.kind, isBusiness: model.isBusiness)
+                    PlanKindTile(kind: model.kind, isBusiness: model.isBusiness, isPrivate: model.isPrivate)
                     if typeSize.isAccessibilitySize {
                         // At the largest text sizes the status goes under the words, which keep the width.
                         stacked(lines: 4)
@@ -241,6 +256,7 @@ struct PlanRow: View {
                 .planFont(.footnote)
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .lineLimit(lines)
+            if let repeatLine = model.repeatLine { PlanRepeatLine(text: repeatLine, compact: true).padding(.top, 1) }
         }
     }
 

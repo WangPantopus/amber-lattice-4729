@@ -33,6 +33,8 @@ enum MailSentWords {
         case .delivered:
             return piece.sealed ? "In their mailbox, sealed until Christmas" : "In their mailbox since \(day)"
         case .emailWaiting:
+            if let trouble = piece.emailStatus { return emailStatusLine(trouble) }
+            if let sendAt = piece.emailSendAt { return "Email goes \(HolidayCardWords.dayAndTime(sendAt, calendar: calendar))" }
             return piece.isLetter ? "Waiting for them to claim it" : "Waiting for them to open the email"
         case .claimed:
             return piece.isLetter ? "They claimed your letter" : "They joined Pantopus and have it"
@@ -72,6 +74,30 @@ enum MailSentWords {
         }
     }
 
+    // MARK: A card by email whose email didn't go out
+
+    /// Its row's and its page's status line.
+    static func emailStatusLine(_ trouble: MailSentPiece.EmailStatus) -> String {
+        trouble == .failed ? "The email didn’t go out" : "The email didn’t go out yet. Trying again"
+    }
+
+    /// The heading of its box on the card's page.
+    static func emailTroubleTitle(_ trouble: MailSentPiece.EmailStatus) -> String {
+        trouble == .failed ? "The email didn’t go out" : "The email hasn’t gone out yet"
+    }
+
+    /// The box's words, with the address they typed; with digital stamps on
+    /// (`postage`), a card given up on says its stamp comes back.
+    static func emailTroubleBody(_ piece: MailSentPiece, trouble: MailSentPiece.EmailStatus, postage: Bool) -> String {
+        let address = piece.emailTo ?? piece.toName
+        if trouble == .retrying {
+            return "We couldn’t reach \(address) yet. We’ll keep trying for an hour, or you can email it again now."
+        }
+        let words = "We couldn’t email \(address). If the address is right, email it again. "
+            + "If it has a mistake, take the card back and send it to the right one."
+        return postage ? "\(words) Your stamp comes back." : words
+    }
+
     /// Until when it can be taken back.
     static func takeBackLine(_ piece: MailSentPiece, calendar: Calendar = .current) -> String {
         if piece.byLink { return "You can take it back until someone opens it." }
@@ -82,9 +108,10 @@ enum MailSentWords {
         return "It waits for the carrier until \(when) (your clock)."
     }
 
-    /// The confirm's words: the card's own, then its stamp coming back with
-    /// digital stamps on (`postage`), else the day freed again only for a
-    /// card sent today.
+    /// The confirm's words: the card's own (by email, while its email waits
+    /// for its time or didn't go out, nothing goes out: taking it back stops
+    /// the tries), then its stamp coming back with digital stamps on
+    /// (`postage`), else the day freed again only for a card sent today.
     static func takeBackConfirm(
         _ piece: MailSentPiece,
         postage: Bool = false,
@@ -93,6 +120,8 @@ enum MailSentWords {
     ) -> String {
         let first = piece.byLink
             ? "Your link will say you took it back."
+            : piece.emailSendAt != nil || piece.emailStatus != nil
+            ? HolidayCardWords.notEmailedYet
             : piece.byEmail
             ? "The link in their email will say you took it back."
             : "It won’t go out with the morning mail."
@@ -119,9 +148,19 @@ enum MailSentWords {
         }
     }
 
+    /// A step with words of its own: a card withdrawn, or "Emailed" while the
+    /// email hasn't gone out (it didn't go, or it waits for the time chosen); nil for the usual words.
+    private static func ownTrailTitle(_ step: MailSentPiece.TrailStep, piece: MailSentPiece) -> String? {
+        if step.step == "not_delivered" { return "Couldn’t be delivered" }
+        guard step.step == "emailed", !step.done else { return nil }
+        if let trouble = piece.emailStatus { return trouble == .failed ? "The email didn’t go out" : "Emailing them · trying again" }
+        if let sendAt = piece.emailSendAt { return "Email goes \(HolidayCardWords.dayAndTime(sendAt))" }
+        return nil
+    }
+
     /// A step's words: "Sealed by you", "Delivered with Maya’s 7 a.m. mail" …
     static func trailTitle(_ step: MailSentPiece.TrailStep, piece: MailSentPiece) -> String {
-        if step.step == "not_delivered" { return "Couldn’t be delivered" }
+        if let words = ownTrailTitle(step, piece: piece) { return words }
         if piece.byLink, let words = linkTrailTitle(step, piece: piece) { return step.done ? words : "\(words) · not yet" }
         let first = HolidayCardWords.possessive(recipientFirst(piece))
         let title = switch step.step {

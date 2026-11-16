@@ -37,18 +37,35 @@ struct AddressTodayTabView: View {
     /// Around you (2026-11-14): Today's second half for the place shown, and which half shows.
     @State private var aroundYou = TodayAroundYouModel()
     @State private var half: TodayHalf = .home
+    /// Around you's two pages (the open iPhone Duo held sideways): the room the tab's screens have, and only at
+    /// the text sizes that leave a page room.
+    @Environment(\.todayScreenSpace) private var screenSpace
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(onAddHome: @escaping () -> Void) {
         self.onAddHome = onAddHome
     }
 
     var body: some View {
-        content
+        let pages = aroundPages
+        return content(pages)
             // The day scrolls under the title, which slides away while it
             // scrolls down and comes back near the top (founder request 2026-11-07).
-            .scrollAwayHeader { header }
+            .scrollAwayHeader { header(pages) }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Theme.Color.appBg)
+            // Around you's open post, the page right of the hinge, the screen's whole height.
+            .overlay(alignment: .topLeading) {
+                // Not while the open post is still on the stack, on its way here (a fold or a turn under way).
+                if let pages, aroundYou.showsPostColumn {
+                    TodayAroundYouPostColumn(model: aroundYou)
+                        .frame(width: pages.trailingWidth)
+                        .frame(maxHeight: .infinity)
+                        .padding(.leading, pages.trailingX)
+                }
+            }
+            // A post's pictures and its story open over Today, whichever screen the post is on.
+            .presentsPosts(aroundYou.presentations)
             .task(id: resolveKey) {
                 guard rootTabs.selected == .today else { return }
                 await resolveHome()
@@ -58,9 +75,10 @@ struct AddressTodayTabView: View {
             .task(id: resolveKey) {
                 if rootTabs.selected == .today { await needsYou.load() }
             }
-            // Around you reads once the place is known, and again each time Today shows.
+            // Around you reads once the place is known, and again each time Today
+            // shows; its kept copy shows (with the switch) while the read is out.
             .task(id: aroundKey) {
-                if rootTabs.selected == .today { await aroundYou.load(for: detail) }
+                if rootTabs.selected == .today { await aroundYou.load(for: detail, viewerId: currentUserID) }
             }
             .refreshesOnStoreChange(onBackground: discardTemporaryPlace) {
                 guard rootTabs.selected == .today else { return }
@@ -87,6 +105,14 @@ struct AddressTodayTabView: View {
         half == .around && aroundYou.available && detail != nil
     }
 
+    /// Around you in two pages: its posts on a screen that holds a list and a post side by side, at the text
+    /// sizes that leave a page room (as At home's two columns and Messages do).
+    private var aroundPages: TodayAroundYouColumns? {
+        guard showsAround, aroundYou.page?.hasPosts == true, !dynamicTypeSize.isAccessibilitySize else { return nil }
+        guard let screenSpace else { return nil }
+        return TodayAroundYouColumns(width: screenSpace.width, hinge: screenSpace.hinge)
+    }
+
     private var currentUserID: String? {
         if case let .signedIn(user) = auth.state { user.id } else { nil }
     }
@@ -103,8 +129,16 @@ struct AddressTodayTabView: View {
     }
 
     /// The side menu first, then the title, date and address, and the chat
-    /// button at the end (founder decisions 2026-10-20 and 2026-11-08).
-    private var header: some View {
+    /// button at the end (founder decisions 2026-10-20 and 2026-11-08). Over
+    /// Around you's two pages it is the list's page wide, so the open post
+    /// beside it has the screen's height.
+    private func header(_ pages: TodayAroundYouColumns?) -> some View {
+        headerRows
+            .frame(width: pages?.leadingWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var headerRows: some View {
         VStack(spacing: Spacing.s2) {
             HStack(alignment: .top, spacing: Spacing.s1) {
                 NavigationMenuButton(accessibilityIdentifier: "today.menu")
@@ -166,16 +200,22 @@ struct AddressTodayTabView: View {
     }
 
     /// Today's page: At home stays in place under Around you, so coming back
-    /// to it is instant and keeps where it was scrolled.
-    private var content: some View {
+    /// to it is instant and keeps where it was scrolled. In two pages Around
+    /// you's list is the leading one.
+    private func content(_ pages: TodayAroundYouColumns?) -> some View {
         ZStack(alignment: .top) {
             atHome
                 .opacity(showsAround ? 0 : 1)
                 .allowsHitTesting(!showsAround)
                 .accessibilityHidden(showsAround)
             if showsAround, let page = aroundYou.page {
-                TodayAroundYouPage(page: page) { await aroundYou.load(for: detail) }
-                    .background(Theme.Color.appBg)
+                TodayAroundYouPage(page: page, model: aroundYou, postBeside: pages != nil) {
+                    await aroundYou.load(for: detail, viewerId: currentUserID)
+                }
+                .background(Theme.Color.appBg)
+                .frame(width: pages?.leadingWidth)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.Color.appBg)
             }
         }
     }

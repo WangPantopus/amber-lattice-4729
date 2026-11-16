@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.posts.PostReactionEmoji
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
+import app.pantopus.android.data.api.models.posts.PostSource
 import app.pantopus.android.ui.components.AvatarWithIdentityRing
 import app.pantopus.android.ui.components.IdentityPillar
 import app.pantopus.android.ui.components.Shimmer
@@ -74,6 +75,7 @@ import app.pantopus.android.ui.screens.shared.content_detail.headers.PostIntent
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridStyle
 import app.pantopus.android.ui.screens.shared.media.PostMediaGridWithViewer
 import app.pantopus.android.ui.screens.shared.media.PostMediaItem
+import app.pantopus.android.ui.screens.shared.media.PostSourceLink
 import app.pantopus.android.ui.screens.shared.media.postLinkedText
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -172,6 +174,8 @@ fun BodyReactionsBody(
     detailLine: String? = null,
     /** An Event's when and where, under the text; null on other posts. */
     eventDetails: PulseEventDetails? = null,
+    /** Where the post's story was published ("Read at The Columbian"), under the text; null on most posts. */
+    source: PostSource? = null,
     replyingToName: String? = null,
     onCancelReply: () -> Unit = {},
     onCommentReply: ((PostCommentRow) -> Unit)? = null,
@@ -194,6 +198,8 @@ fun BodyReactionsBody(
      */
     commentsLoading: Boolean = false,
     loadingCommentCount: Int = 0,
+    /** Drawn under the text and media, above the reaction bar: a quote post's quoted card. Null for none. */
+    belowMedia: (@Composable () -> Unit)? = null,
 ) {
     val placeholders = commentsLoading && comments.isEmpty() && loadingCommentCount > 0
     Column(
@@ -208,6 +214,9 @@ fun BodyReactionsBody(
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = Spacing.s4),
             )
+        }
+        source?.let {
+            PostSourceLink(it, testTag = "pulsePostDetail-source", modifier = Modifier.padding(horizontal = Spacing.s4))
         }
         eventDetails?.let { event ->
             PulseEventDetailRows(
@@ -227,7 +236,12 @@ fun BodyReactionsBody(
                 usesSharpPreviews = true,
                 edgeToEdge = true,
                 locationBadge = mediaLocationBadge,
+                // An outlet's picture that's gone leaves no hole.
+                dropsFailedPictures = source != null,
             )
+        }
+        belowMedia?.let { slot ->
+            Box(modifier = Modifier.padding(horizontal = Spacing.s4)) { slot() }
         }
         ReactionsBar(
             counts = reactions,
@@ -653,8 +667,10 @@ private fun CommentRow(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
+        // A reply steps in under the comment it answers; deeper replies step in less, so a thread of threads still
+        // has room for its words on a phone.
         if (row.indentLevel > 0) {
-            Spacer(Modifier.width((row.indentLevel * 36).dp))
+            Spacer(Modifier.width((36 + (row.indentLevel - 1) * 20).dp))
         }
         Box(
             modifier =

@@ -224,10 +224,8 @@ export default function HubTodayPage() {
   const briefing = today && today.display_mode !== 'hidden' ? today : areaBriefing;
   // Around you, Today's second half (2026-11-14): local headlines for the place this briefing is about. The switch
   // shows only when the server has something to show; "At home" is the page as it was.
-  const around = useQuery({
-    ...aroundYouQuery(areaView ? userId : null, areaView && keptArea ? keptArea : null),
-    enabled: hasToken && !!briefing,
-  });
+  const aroundRead = aroundYouQuery(areaView ? userId : null, areaView && keptArea ? keptArea : null);
+  const around = useQuery({ ...aroundRead, enabled: hasToken && !!briefing });
   const [half, setHalf] = useState<TodayHalf>('home');
   const aroundData = briefing && around.data?.available ? around.data : null;
   const showAround = !!aroundData && half === 'around';
@@ -316,7 +314,7 @@ export default function HubTodayPage() {
         </div>
 
         {aroundData ? <TodayHalfSwitch half={half} onChange={setHalf} /> : null}
-        {showAround && aroundData ? <AroundYouPanel data={aroundData} now={hydrated ? aroundNow : null} /> : null}
+        {showAround && aroundData ? <AroundYouPanel data={aroundData} now={hydrated ? aroundNow : null} queryKey={aroundRead.queryKey} /> : null}
 
         {/* At home: Today as it was. It stays mounted under Around you, so coming back is instant. */}
         <div className={showAround ? 'hidden' : undefined} data-testid="todayAtHome">

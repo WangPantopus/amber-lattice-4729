@@ -44,8 +44,10 @@ import SwiftUI
 public enum MyPostsTab {
     public static let active = "active"
     public static let archived = "archived"
-    /// Saved posts; its list lives in `SavedPostsModel`.
+    /// Saved posts; its list lives in a `PostCollectionModel`.
     public static let saved = "saved"
+    /// The posts you reposted (PULSEREPOST contract §4); a `PostCollectionModel` too.
+    public static let reposts = "reposts"
 }
 
 // MARK: - Intent palette
@@ -124,16 +126,22 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
             // under-report).
             ListOfRowsTab(id: MyPostsTab.active, label: "Active", count: loadedAtLeastOnce && nextPage == nil ? counts.active : nil),
             ListOfRowsTab(id: MyPostsTab.archived, label: "Archived", count: loadedAtLeastOnce ? counts.archived : nil),
-            ListOfRowsTab(id: MyPostsTab.saved, label: "Saved")
+            ListOfRowsTab(id: MyPostsTab.saved, label: "Saved"),
+            ListOfRowsTab(id: MyPostsTab.reposts, label: "Reposts")
         ]
     }
 
-    public var selectedTab: String = MyPostsTab.active {
+    public var selectedTab: String {
         didSet {
             guard oldValue != selectedTab else { return }
-            // Every visit to the Saved tab re-reads it, so posts saved elsewhere since show up.
-            if selectedTab == MyPostsTab.saved {
-                Task { [weak self] in await self?.saved.load() }
+            // Every visit to the Saved or Reposts tab re-reads it, so posts saved or reposted elsewhere show up.
+            if let collection {
+                Task { await collection.load() }
+                return
+            }
+            // Opened on Saved or Reposts: your own posts haven't been read yet.
+            guard ownLoadStarted else {
+                Task { [weak self] in await self?.load() }
                 return
             }
             // Before a successful load there is no list to show; keep the error.
@@ -143,11 +151,26 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     }
 
     /// The Saved tab's list (other people's posts, paged by save offset).
-    public let saved: SavedPostsModel
+    public let saved: PostCollectionModel
 
-    private var onSavedTab: Bool {
-        selectedTab == MyPostsTab.saved
+    /// The Reposts tab's list (the posts you reposted, paged by repost offset).
+    public let reposts: PostCollectionModel
+
+    /// The Saved or Reposts tab's list, while one of them is selected.
+    private var collection: PostCollectionModel? {
+        switch selectedTab {
+        case MyPostsTab.saved: saved
+        case MyPostsTab.reposts: reposts
+        default: nil
+        }
     }
+
+    private var onCollectionTab: Bool {
+        collection != nil
+    }
+
+    /// A read of your own posts has started (opening on Saved or Reposts starts none).
+    @ObservationIgnored private var ownLoadStarted = false
 
     public var fab: FABAction? {
         FABAction(
@@ -161,8 +184,8 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     }
 
     public var topBarAction: TopBarAction? {
-        // The type/date filter applies to your own posts only.
-        guard !onSavedTab else { return nil }
+        // The type/date filter applies to your own posts only (not Saved or Reposts).
+        guard !onCollectionTab else { return nil }
         return TopBarAction(
             icon: .filter,
             accessibilityLabel: "Filter posts"
@@ -203,19 +226,19 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         if loadedAtLeastOnce { rebuild() }
     }
 
-    /// The list shell's state: your posts, or the Saved tab's list.
+    /// The list shell's state: your posts, or the Saved or Reposts tab's list.
     public var state: ListOfRowsState {
-        onSavedTab ? saved.state : ownState
+        collection?.state ?? ownState
     }
 
     private var ownState: ListOfRowsState = .loading
 
     public var loadMoreError: String? {
-        onSavedTab ? saved.loadMoreError : nil
+        collection?.loadMoreError
     }
 
     public func retryLoadMore() async {
-        if onSavedTab { await saved.loadMoreIfNeeded() }
+        await collection?.loadMoreIfNeeded()
     }
 
     /// Bound to the view's `.confirmationDialog(item:)` so the row's
@@ -295,9 +318,12 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     /// from the rows loaded so far.
     private var awaitingPages = false
 
+    /// - Parameter initialTab: The tab it opens on (`MyPostsTab`): "View" on a "Saved." toast opens Saved
+    ///   (PULSEREPOST contract §5).
     init(
         api: APIClient = .shared,
         currentUserId: @escaping @MainActor () -> String? = { MyPostsViewModel.defaultCurrentUserId() },
+        initialTab: String = MyPostsTab.active,
         onOpenPost: @escaping @MainActor (MyPostDTO) -> Void = { _ in },
         onCompose: @escaping @MainActor () -> Void = {},
         onEditPost: @escaping @MainActor (MyPostDTO) -> Void = { _ in },
@@ -309,8 +335,11 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         self.onCompose = onCompose
         self.onEditPost = onEditPost
         self.now = now
+        selectedTab = [MyPostsTab.active, MyPostsTab.archived, MyPostsTab.saved, MyPostsTab.reposts]
+            .contains(initialTab) ? initialTab : MyPostsTab.active
         store = ScreenStore.store(for: api)
-        saved = SavedPostsModel(api: api, onOpenPost: onOpenPost, now: now)
+        saved = PostCollectionModel(kind: .saved, api: api, onOpenPost: onOpenPost, now: now)
+        reposts = PostCollectionModel(kind: .reposts, api: api, onOpenPost: onOpenPost, now: now)
         showStoredCopy()
     }
 
@@ -327,13 +356,13 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     // MARK: - ListOfRowsDataSource
 
     public func load() async {
-        if onSavedTab { return await saved.load() }
+        if let collection { return await collection.load() }
         if !loadedAtLeastOnce { ownState = .loading }
         await fetch(force: false)
     }
 
     public func refresh() async {
-        if onSavedTab { return await saved.load() }
+        if let collection { return await collection.load() }
         // Refresh re-queries the wire, which today returns only active
         // posts. Drop the local archive overrides so the user doesn't
         // see stale optimistic state if they've been gone for a while.
@@ -345,7 +374,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     /// the rows and the cursor, so the footer asks again when it scrolls
     /// back into view (as Notifications does).
     public func loadMoreIfNeeded() async {
-        if onSavedTab { return await saved.loadMoreIfNeeded() }
+        if let collection { return await collection.loadMoreIfNeeded() }
         guard !loadingMore, nextPage != nil else { return }
         let generation = fetchGeneration
         loadingMore = true
@@ -377,6 +406,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     }
 
     private func fetch(force: Bool) async {
+        ownLoadStarted = true
         fetchGeneration += 1
         let generation = fetchGeneration
         // No paging off the old cursor while the list is being replaced.

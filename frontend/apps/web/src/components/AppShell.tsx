@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncE
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import * as api from '@pantopus/api';
-import type { User } from '@pantopus/types';
+import type { Post, User } from '@pantopus/types';
 import { getAuthToken } from '@pantopus/api';
 import ProfileToggle from './ProfileToggle';
 import NotificationBell from './NotificationBell';
@@ -55,7 +55,9 @@ import { useTabScroll } from '@/hooks/useTabScroll';
 import { useSyncChanged } from '@/hooks/useSyncChanged';
 import usePromoTriggers from '@/hooks/usePromoTriggers';
 import { prefetchHomeTiles } from '@/utils/tilePrefetch';
-import { FEED_COMPOSER_OPEN_EVENT, MAGIC_TASK_OPEN_EVENT, notifyFeedPostCreated } from '@/lib/feedComposerEvents';
+import {
+  FEED_COMPOSER_OPEN_EVENT, MAGIC_TASK_OPEN_EVENT, notifyFeedPostCreated, type FeedComposerOpenDetail,
+} from '@/lib/feedComposerEvents';
 import { launchFeatures, webFeatureFlags } from '@/lib/featureFlags';
 import { useFeatureFlagState } from '@/hooks/useFeatureFlag';
 import { useShellReadsReleased } from '@/lib/shellReads';
@@ -331,8 +333,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     appDispatch({ type: 'SET_DISCOVER_QUERY', value: searchParams.get('q') || '' });
   }, [pathname, searchParams]);
 
+  // "Repost with your words": the composer opens with the post it quotes under the text box.
+  const [quotedPost, setQuotedPost] = useState<Post | null>(null);
   useEffect(() => {
-    const openComposer = () => appDispatch({ type: 'SET_FEED_COMPOSER_OPEN', value: true });
+    const openComposer = (event: Event) => {
+      setQuotedPost((event as CustomEvent<FeedComposerOpenDetail | undefined>).detail?.quotedPost ?? null);
+      appDispatch({ type: 'SET_FEED_COMPOSER_OPEN', value: true });
+    };
     // Launch cut #4 (Open Gigs): the open-post task composer is hidden.
     const openMagicTask = () => { if (launchFeatures.openGigs) appDispatch({ type: 'SET_COMPOSER_OPEN', value: true }); };
     window.addEventListener(FEED_COMPOSER_OPEN_EVENT, openComposer);
@@ -739,7 +746,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <div className="fixed left-1/2 top-1/2 z-[71] w-[min(100vw-2rem,44rem)] max-h-[88vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[28px] border border-app bg-surface shadow-2xl">
             <div className="flex items-center justify-between border-b border-app px-5 py-4">
               <div>
-                <h3 className="text-sm font-semibold text-app">Post to Pulse</h3>
+                <h3 className="text-sm font-semibold text-app">{quotedPost ? 'Repost with your words' : 'Post to Pulse'}</h3>
                 <p className="text-xs text-app-muted">Choose where this post should go without leaving the page.</p>
               </div>
               <button onClick={() => appDispatch({ type: 'SET_FEED_COMPOSER_OPEN', value: false })} className="rounded-lg p-1.5 text-app-muted transition hover:text-app hover-bg-app" aria-label="Close Pulse composer">
@@ -748,6 +755,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
             <div className="p-4">
               <PostComposer
+                // A quote opens fresh for its post: Connections and a plain post, the original under the text box.
+                key={quotedPost?.id ?? 'new-post'}
+                quotedPost={quotedPost}
+                // The audience choice (Neighborhood | Connections) and the post types of the Pulse composer.
+                activeSurface={quotedPost ? 'place' : undefined}
+                onCancel={quotedPost ? () => appDispatch({ type: 'SET_FEED_COMPOSER_OPEN', value: false }) : undefined}
                 onPost={handleCreateFeedPost}
                 isPosting={feedPosting}
                 user={

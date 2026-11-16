@@ -50,7 +50,15 @@ const ICON_BY_KIND = {
   pickup_game: '🏓',
   walk_coffee: '☕',
   study_group: '📚',
+  food_drinks: '🍽️',
+  game_night: '🎲',
+  outdoors: '🥾',
+  something_else: '📅',
 };
+
+// "Happy hour" for drinks: a noun a sentence can use ("Your happy hour is today").
+const FOOD_NOUNS = { dinner: 'dinner', potluck: 'potluck', drinks: 'happy hour', brunch: 'brunch', bbq: 'barbecue' };
+const OUTDOOR_NOUNS = { hike: 'hike', bike_ride: 'bike ride', run: 'run' };
 
 // ── Words ────────────────────────────────────────────────────
 
@@ -72,6 +80,10 @@ function noun(plan) {
       return 'walk';
     }
     case 'study_group': return 'study group';
+    // A detail not chosen is its default (planActions.normalizeDetails): dinner, a hike.
+    case 'food_drinks': return FOOD_NOUNS[plan.details?.food_kind || 'dinner'] || 'get-together';
+    case 'game_night': return 'game night';
+    case 'outdoors': return OUTDOOR_NOUNS[plan.details?.outdoor_kind || 'hike'] || 'outing';
     default: return 'plan';
   }
 }
@@ -129,9 +141,16 @@ function areaPhrase(plan) {
   return /^near\s/i.test(label) ? `near ${label.slice(5)}` : `in ${label}`;
 }
 
-/** Where, as a notice may say it: "at Sam's place" at home, else the area. */
+/** Where, as a notice may say it: "at Sam's place" at home, "online", else the area. Never a link. */
 function placePhrase(plan, hostFirst) {
+  if (plan.place_kind === 'online') return 'online';
   return plan.place_kind === 'home' ? `at ${hostFirst}'s place` : areaPhrase(plan);
+}
+
+/** After "Now Sunday at 2:00 PM, " or "Sam moved the plan to …, ": "with a new link", "online" or "at a new place". */
+function newPlaceWords(plan, linkChanged = false) {
+  if (linkChanged) return 'with a new link';
+  return plan.place_kind === 'online' ? 'online' : 'at a new place';
 }
 
 const AGE_TEXT = { under_2: 'under 2', '2_3': '2–3', '4_5': '4–5', '6_8': '6–8', '9_12': '9–12' };
@@ -412,21 +431,25 @@ async function declined({ plan, request, hostFirst }) {
   });
 }
 
-async function changed({ plan, request, hostFirst, timeMoved, placeChanged }) {
+async function changed({ plan, request, hostFirst, timeMoved, placeChanged, linkChanged = false }) {
   // Board H11: "Now Sunday at 2:00 PM. Still coming?" (the apps preview the same words).
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true, at: true });
   let title;
   let body;
   if (timeMoved && placeChanged) {
     title = `${hostFirst} changed the ${noun(plan)}`;
-    body = `Now ${when}, at a new place. Still coming?`;
+    body = `Now ${when}, ${newPlaceWords(plan, linkChanged)}. Still coming?`;
   } else if (timeMoved) {
     title = `${hostFirst} moved the ${noun(plan)}`;
     body = `Now ${when}. Still coming?`;
+  } else if (linkChanged) {
+    // Never the link itself: it is in the plan, for the people in.
+    title = `${hostFirst} changed the link`;
+    body = 'It has a new link now. Still coming?';
   } else {
     // The apps preview this push on H11 before saving; the new area's name isn't known until then.
     title = `${hostFirst} changed the place`;
-    body = "It's at a new place now. Still coming?";
+    body = plan.place_kind === 'online' ? "It's online now. Still coming?" : "It's at a new place now. Still coming?";
   }
   return notify({
     userId: request.user_id,
@@ -496,7 +519,8 @@ async function reminder({ plan, request, goingCount, band }) {
   const when = sameDay
     ? `at ${timeText(startsAt, tz).replace(/\s?[AP]M$/, '')}`
     : whenText(plan.post.event_date, tz, { long: true, at: true });
-  const parts = [band ? band.replace(/ away$/, '') : null, `${goingCount} going`].filter(Boolean);
+  // No distance for an online plan (one moved online may still have a band from when it was in person).
+  const parts = [band && plan.place_kind !== 'online' ? band.replace(/ away$/, '') : null, `${goingCount} going`].filter(Boolean);
   return notify({
     userId: request.user_id,
     type: 'plan_reminder',
@@ -505,7 +529,9 @@ async function reminder({ plan, request, goingCount, band }) {
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: true,
-    metadata: { request_id: request.id },
+    // An online plan's reminder carries no buttons: "On my way" is for a place to get to. A tap opens the plan,
+    // where Join and "Can't make it" are.
+    metadata: { request_id: request.id, ...(plan.place_kind === 'online' ? { category: null } : {}) },
   });
 }
 
@@ -568,7 +594,7 @@ async function hostSummaryLetter({ plan, comingCount, spotsLeft, requestsCount, 
 
 // How a rule let someone in, as the host set it (who gets in), or the host's own invitation.
 const RULE_TEXT = {
-  verified: 'Verified neighbor',
+  verified: 'Verified address',
   hosted_before: "You've hosted them before",
   anyone_nearby: 'Anyone nearby can join',
   invite: 'You invited them',
@@ -612,29 +638,64 @@ async function guestAutoJoined({ plan, request, guestName, rule, goingCount, via
 
 // ── Invitations (planInvites.js) ─────────────────────────────
 
-/** "Sam invited you to a watch party", "Sam invited you for coffee". */
+/** "Sam invited you to a watch party", "Sam invited you for coffee", "… to dinner", "… to an outing". */
 function invitedTitle(plan, hostFirst) {
   const what = noun(plan);
-  return what === 'coffee' ? `${hostFirst} invited you for coffee` : `${hostFirst} invited you to a ${what}`;
+  if (what === 'coffee') return `${hostFirst} invited you for coffee`;
+  if (rules.NEW_KINDS.includes(plan.kind) && !plan.business_user_id) {
+    if (plan.kind === 'food_drinks' && plan.details?.food_kind === 'drinks') return `${hostFirst} invited you for drinks`;
+    if (what === 'dinner' || what === 'brunch') return `${hostFirst} invited you to ${what}`;
+    if (/^[aeiou]/.test(what)) return `${hostFirst} invited you to an ${what}`;
+  }
+  return `${hostFirst} invited you to a ${what}`;
 }
 
 /**
  * The host invited someone on Pantopus: the push has I'm in / Can't make it (not for a playdate, which asks the
  * kids' ages first). Like every notice, the area only; a playdate's title stays in the app.
  */
-async function invited({ plan, invite, userId, hostFirst }) {
+async function invited({ plan, invite, userId, hostFirst, series = false }) {
   const tz = rules.timezoneForPlan(plan);
   const playdate = plan.kind === 'playdate';
   const when = whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
+  // The next date of a repeating plan, to someone who came before: "Thursday's walk is posted".
+  const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(new Date(plan.post.event_date));
   return notify({
     userId,
     type: 'plan_invite',
-    title: invitedTitle(plan, hostFirst),
+    title: series ? `${weekday}’s ${noun(plan)} is posted` : invitedTitle(plan, hostFirst),
     body: [playdate ? null : plan.post.title, playdate ? capitalized(when) : when, placePhrase(plan, hostFirst)].filter(Boolean).join(' · '),
     link: `/plans/${plan.post_id}`,
     plan,
-    metadata: { invite_id: invite.id, host_name: hostFirst, ...(plan.kind === 'playdate' ? { category: null } : {}) },
+    metadata: { invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(plan.kind === 'playdate' ? { category: null } : {}) },
     idempotencyKey: `plan_invite:${invite.id}`,
+  });
+}
+
+/**
+ * To the host of a repeating plan: its last date is near ("keep it going?"), it has finished, or its next date
+ * couldn't be posted (a limit, or the place no longer fits the rules), which stops it.
+ */
+async function seriesNotice({ plan, what, reason = null, lastOn = null }) {
+  const what_ = noun(plan);
+  const lastDay = lastOn
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${lastOn}T12:00:00Z`))
+    : null;
+  const words = {
+    ending: { title: `Your repeating ${what_} ends soon`, body: `The last one is ${lastDay}. Open it to keep it going.` },
+    ended: { title: `Your repeating ${what_} has finished`, body: 'That was the last one. Host it again any time.' },
+    stopped: { title: `Your repeating ${what_} stopped`, body: `The next one couldn’t be posted. ${reason || ''}`.trim() },
+  }[what];
+  if (!words) return null;
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_series',
+    title: words.title,
+    body: `${plan.post.title} · ${words.body}`,
+    link: `/plans/${plan.post_id}`,
+    plan,
+    metadata: { series_id: plan.series_id || plan.post_id, what },
+    idempotencyKey: `plan_series:${what}:${plan.post_id}`,
   });
 }
 
@@ -659,9 +720,11 @@ async function inviteDeclined({ plan, userId, guestName, goingCount }) {
  */
 async function stillComingReminder({ plan, request, hostFirst }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true, at: true });
+  // For an online plan, "a new place" is a new link (or the move online): said without the link.
+  const online = plan.place_kind === 'online';
   let what = `Now ${when}.`;
-  if (request.reconfirm_reason === 'place') what = "It's at a new place now.";
-  else if (request.reconfirm_reason === 'both') what = `Now ${when}, at a new place.`;
+  if (request.reconfirm_reason === 'place') what = online ? 'It has a new link now.' : "It's at a new place now.";
+  else if (request.reconfirm_reason === 'both') what = `Now ${when}, ${online ? 'with a new link' : 'at a new place'}.`;
   return notify({
     userId: request.user_id,
     type: 'plan_still_coming_reminder',
@@ -676,6 +739,7 @@ async function stillComingReminder({ plan, request, hostFirst }) {
 }
 
 module.exports = {
+  seriesNotice,
   hostSummaryLetter,
   CATEGORY_BY_TYPE,
   ICON_BY_KIND,
@@ -686,6 +750,7 @@ module.exports = {
   bandText,
   areaPhrase,
   placePhrase,
+  newPlaceWords,
   inQuietHours,
   nextQuietEnd,
   isNearPlan,

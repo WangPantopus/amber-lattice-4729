@@ -28,6 +28,9 @@
   display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
   -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto;
 }
+.film { display: block; height: 100%; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 8px; background: #141013; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5); object-fit: cover; }
+.filmNote { margin: 0; font-size: 0.78125rem; line-height: 1.35; color: var(--cream-faint); text-align: center; }
+.preview[hidden], .seg[hidden] { display: none; }
 .drawing { height: 100%; max-width: 100%; border-radius: 8px; background: rgba(246, 236, 217, 0.06); }
 .drawing[data-format='story'] { aspect-ratio: 9 / 16; }
 .drawing[data-format='post'] { aspect-ratio: 4 / 5; }

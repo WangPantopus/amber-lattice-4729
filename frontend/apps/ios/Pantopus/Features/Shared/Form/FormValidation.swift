@@ -25,6 +25,13 @@ public extension FormValidator {
         }
     }
 
+    /// Ensures the trimmed value is non-empty, saying `message` when it is.
+    static func required(message: String) -> FormValidator {
+        FormValidator { value in
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? message : nil
+        }
+    }
+
     /// Ensures length does not exceed `max` characters.
     static func maxLength(_ max: Int) -> FormValidator {
         FormValidator { value in

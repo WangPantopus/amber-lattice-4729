@@ -3,8 +3,9 @@
 //  Pantopus
 //
 //  Christmas cards (launch keys `holiday_cards` + `mailbox`): the season's
-//  pictures and today's card, sending one, and taking it back. The server
-//  answers 404 while either key is off.
+//  pictures and today's card, sending one, taking it back, and emailing a
+//  card by email again when its email didn't go out. The server answers
+//  404 while either key is off.
 //
 
 import Foundation
@@ -69,6 +70,13 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .post, path: "/api/mailbox/cards/shared", body: body)
     }
 
+    /// `GET /api/mailbox/cards/share-video/:design` — route `backend/routes/mailbox.js` (next to `POST /cards/shared`).
+    /// The video a card shares as (the server's launch key `card_share_video`; 404 while it's off): the picture's card
+    /// arriving on the table, the same for everyone, with no note or name in it.
+    public static func shareVideo(design: String) -> Endpoint {
+        Endpoint(method: .get, path: "/api/mailbox/cards/share-video/\(design)")
+    }
+
     /// `GET /api/mailbox/cards/:id/link`: the link again, for its sender, while it waits. 409 with the reason otherwise.
     public static func link(cardId: String) -> Endpoint {
         Endpoint(method: .get, path: "/api/mailbox/cards/\(cardId)/link")
@@ -105,5 +113,14 @@ public enum HolidayCardEndpoints {
     /// email: until they open it).
     public static func takeBack(cardId: String) -> Endpoint {
         Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/take-back")
+    }
+
+    /// `POST /api/mailbox/cards/:id/email-again` — route
+    /// `backend/routes/mailbox.js:2978`. "Email it again" on a card by email
+    /// whose email didn't go out (Sent's `email_status`), for its sender. A
+    /// 503 `CARD_EMAIL_FAILED` (it still didn't go) is a routine answer, not
+    /// an app error; 429 `CARD_EMAIL_BUSY` within a minute of the last try.
+    public static func emailAgain(cardId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/email-again", reportsServerErrors: false)
     }
 }

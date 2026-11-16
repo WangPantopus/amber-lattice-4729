@@ -61,6 +61,8 @@ public struct PulseComposeContentState: Equatable {
     public var assistCanUndo: Bool
     /// The phone has a camera ("Take photo").
     public var canTakePhoto: Bool
+    /// "Repost with your words": the quoted post's card under the text box (PULSEREPOST contract §8).
+    public var quoted: PulseQuotedPost?
 
     public init(
         activeIntent: PulseComposeIntent,
@@ -91,7 +93,8 @@ public struct PulseComposeContentState: Equatable {
         assistHasMaterial: Bool = false,
         assistPhotoCount: Int = 0,
         assistCanUndo: Bool = false,
-        canTakePhoto: Bool = false
+        canTakePhoto: Bool = false,
+        quoted: PulseQuotedPost? = nil
     ) {
         self.activeIntent = activeIntent
         self.identity = identity
@@ -122,6 +125,7 @@ public struct PulseComposeContentState: Equatable {
         self.assistPhotoCount = assistPhotoCount
         self.assistCanUndo = assistCanUndo
         self.canTakePhoto = canTakePhoto
+        self.quoted = quoted
     }
 }
 
@@ -167,6 +171,8 @@ public struct PulseComposeContentActions {
     public var onAssistChoosePhotos: () -> Void
     /// "Take photo" in the attachments menu.
     public var onTakePhoto: () -> Void
+    /// "Change" beside "Posting to …" ("Repost with your words"): back to picking where the post goes. Nil hides it.
+    public var onChangeTarget: (() -> Void)?
 
     public init(
         onSelectIntent: @escaping (PulseComposeIntent) -> Void = { _ in },
@@ -195,7 +201,8 @@ public struct PulseComposeContentActions {
         onUndoSuggestion: @escaping () -> Void = {},
         onAssistTakePhoto: @escaping () -> Void = {},
         onAssistChoosePhotos: @escaping () -> Void = {},
-        onTakePhoto: @escaping () -> Void = {}
+        onTakePhoto: @escaping () -> Void = {},
+        onChangeTarget: (() -> Void)? = nil
     ) {
         self.onSelectIntent = onSelectIntent
         self.onSelectIdentity = onSelectIdentity
@@ -224,6 +231,7 @@ public struct PulseComposeContentActions {
         self.onAssistTakePhoto = onAssistTakePhoto
         self.onAssistChoosePhotos = onAssistChoosePhotos
         self.onTakePhoto = onTakePhoto
+        self.onChangeTarget = onChangeTarget
     }
 }
 
@@ -285,6 +293,11 @@ public struct PulseComposeContent: View {
                 )
             }
             intentSpecificSection
+            // "Repost with your words": the quoted post under the text box, read-only.
+            if let quoted = state.quoted {
+                PulseQuotedPostView(quoted: quoted, accessibilityID: "pulseQuoteComposerCard")
+                    .padding(.horizontal, Spacing.s4)
+            }
             beforeYouAskSection
             photosSection
             // Place tags are create-only (PostUpdateRequest carries no
@@ -351,6 +364,17 @@ public struct PulseComposeContent: View {
                 Text("Posting to \(label)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.Color.appTextSecondary)
+                if let onChangeTarget = actions.onChangeTarget {
+                    Spacer(minLength: Spacing.s2)
+                    Button("Change", action: onChangeTarget)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.Color.primaryInk)
+                        .frame(minHeight: 32)
+                        .hitArea(horizontal: 8, vertical: 6)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change where this post goes")
+                        .accessibilityIdentifier("composePulseChangeTarget")
+                }
             }
             .padding(.horizontal, Spacing.s4)
             .accessibilityIdentifier("composePulsePostingBanner")
@@ -1027,12 +1051,24 @@ public struct PulseComposeContent: View {
 
     private var announceSection: some View {
         FormFieldGroup(announceSectionTitle) {
-            textField(.title, label: "Headline", placeholder: "What's the news?")
+            // "Repost with your words" on a plain post: the words alone, no headline (the view-model's rule).
+            if !isPlainQuote {
+                textField(.title, label: "Headline", placeholder: "What's the news?")
+            }
             if !state.isFlowMode, !state.isIntentLocked {
                 audienceChipRow
             }
-            bodyField(label: "Details", placeholder: announceBodyPlaceholder, minHeight: 96)
+            bodyField(
+                label: isPlainQuote ? "Your words" : "Details",
+                placeholder: isPlainQuote ? "Say something about this post…" : announceBodyPlaceholder,
+                minHeight: 96
+            )
         }
+    }
+
+    /// A quote that goes out as a plain post (no Nearby category picked).
+    private var isPlainQuote: Bool {
+        state.quoted != nil && state.composePurpose == nil
     }
 
     private var announceSectionTitle: String {

@@ -28,6 +28,10 @@ struct PlanChangeScreen: View {
     @State private var business: PlanHostAsBusinessDTO?
     @State private var newLocationId: String?
     @State private var choosingLocation = false
+    /// How it repeats (Plans step 2), sent only when the host changed it; nil where repeating isn't offered.
+    @State private var repeating: PlanRepeatDraft?
+    /// An online plan's new link (Plans step 3), nil while it's the same.
+    @State private var newLink: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,15 +40,17 @@ struct PlanChangeScreen: View {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     if let card = plan?.card {
                         when(card)
-                        if card.isBusiness { businessPlace(card) } else if card.placeKind != .home { place(card) }
+                        if card.isBusiness {
+                            businessPlace(card)
+                        } else if card.isOnline {
+                            PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)
+                        } else if card.placeKind != .home { place(card) }
                         if asksStillComing(card) { warning(card) }
                         if asksStillComing(card) { preview(card) }
                     } else {
                         Shimmer(width: nil, height: 120, cornerRadius: Radii.xl)
                     }
-                    if let error {
-                        Text(error).planFont(.small).foregroundStyle(Theme.Color.error).fixedSize(horizontal: false, vertical: true)
-                    }
+                    if let error, plan == nil { PlanChangeErrorLine(text: error) }
                 }
                 .padding(.horizontal, Spacing.s4)
                 .padding(.top, Spacing.s2)
@@ -70,6 +76,8 @@ struct PlanChangeScreen: View {
             Text.planOverline("Where")
             Button {
                 let draft = PlanComposerModel(start: PlansHostStart(kind: card.kind))
+                // A private plan moves anywhere (Plans step 1): the picker's map has no 3-mile circle.
+                draft.privacy.audience = card.privatePart.audience
                 draft.place = newPlace
                 // H6 reads each place's hours for the plan's time and orders by fit, as when hosting.
                 draft.title = card.title
@@ -119,7 +127,7 @@ struct PlanChangeScreen: View {
                 ForEach(locations) { location in
                     Button(PlanBusinessLocationRow.line(location, business: business)) {
                         // Choosing the place it's already at changes nothing.
-                        let here = card.businessPlace.map {
+                        let here = card.businessPlace?.coordinate.map {
                             abs($0.latitude - location.latitude) < 0.00001 && abs($0.longitude - location.longitude) < 0.00001
                         } ?? false
                         newLocationId = here ? nil : location.id
@@ -131,6 +139,8 @@ struct PlanChangeScreen: View {
     }
 
     private func load() async {
+        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
+        guard plan == nil else { return }
         guard let detail = try? await PlansStoreReads.detail(id: planId) else {
             error = "We couldn't load this plan."
             return
@@ -139,6 +149,7 @@ struct PlanChangeScreen: View {
         plan = detail
         start = detail.card.startsAtDate ?? Date()
         end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
+        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
     }
 
     private func when(_ card: PlanCardDTO) -> some View {
@@ -147,7 +158,11 @@ struct PlanChangeScreen: View {
             VStack(spacing: 0) {
                 DatePicker(
                     selection: $start,
-                    in: Date()...Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? 14) * 86400),
+                    // A repeating plan's later date may already be further out (a monthly one): the picker keeps it.
+                    in: Date()...max(
+                        Date().addingTimeInterval(TimeInterval(business?.limits.daysAhead ?? (card.isPrivate ? 60 : 14)) * 86400),
+                        card.startsAtDate ?? Date()
+                    ),
                     displayedComponents: [.date, .hourAndMinute]
                 ) {
                     Text("Starts").planFont(.body)
@@ -167,6 +182,10 @@ struct PlanChangeScreen: View {
                     Text("Ends").planFont(.body)
                 }
                 .padding(.vertical, 10)
+                if let repeating {
+                    Divider().overlay(Theme.Color.appBorder)
+                    PlanChangeRepeatsRow(draft: repeating, card: card, start: start, end: end)
+                }
             }
             .padding(.horizontal, 14)
             .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurface))
@@ -190,9 +209,9 @@ struct PlanChangeScreen: View {
         goingCount(card) > 0 && (placeChanged || timeMoved(card))
     }
 
-    /// A new public place, or another of the business's locations.
+    /// A new public place, another of the business's locations, or an online plan's new link.
     private var placeChanged: Bool {
-        newPlace != nil || newLocationId != nil
+        newPlace != nil || newLocationId != nil || newLink != nil
     }
 
     private func timeMoved(_ card: PlanCardDTO) -> Bool {
@@ -200,23 +219,12 @@ struct PlanChangeScreen: View {
         return abs(original.timeIntervalSince(start)) > 30 * 60
     }
 
-    /// The push the server sends, word for word (board H11; Android shows the same).
-    private func pushWords(_ card: PlanCardDTO) -> (title: String, body: String) {
-        let calendar = PlanFormat.calendar(for: card.timezone)
-        let host = PlanCardLines.hostName(card)
-        let noun = PlanCardLines.noun(card)
-        let now = "Now \(PlanFormat.dayPhrase(start, calendar: calendar)) at \(PlanFormat.time(start, calendar: calendar))"
-        if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
-        if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
-        return ("\(host) moved the \(noun)", "\(now). Still coming?")
-    }
-
     /// Board H11: one sentence beside a warning glyph (as on Android).
     private func warning(_ card: PlanCardDTO) -> some View {
         let going = goingCount(card)
         let asks = !placeChanged
             ? "Moving the time by more than 30 minutes asks each of them \u{201C}Still coming?\u{201D}"
-            : "Changing the place asks each of them \u{201C}Still coming?\u{201D}"
+            : "Changing the \(newLink == nil ? "place" : "link") asks each of them \u{201C}Still coming?\u{201D}"
         return HStack(alignment: .top, spacing: Spacing.s3) {
             Icon(.alertTriangle, size: 22, color: Theme.Color.warning)
             Text("\(going) \(going == 1 ? "person is" : "people are") in. \(asks)")
@@ -263,6 +271,8 @@ struct PlanChangeScreen: View {
 
     private func footer(_ card: PlanCardDTO) -> some View {
         VStack(spacing: Spacing.s2) {
+            // A refusal shows over Save: under the warning and the push preview it would be below the fold.
+            if let error { PlanChangeErrorLine(text: error) }
             Button(action: save) {
                 PlanButtonLabel(title: asksStillComing(card) ? "Save and ask them" : "Save", kind: .primary, isLoading: isSaving)
             }
@@ -285,8 +295,12 @@ struct PlanChangeScreen: View {
         isSaving = true
         error = nil
         var body = UpdatePlanBody()
-        body.startsAt = PlanTime.string(start)
-        body.endsAt = PlanTime.string(end)
+        // The times go only when they changed: a change to how it repeats alone moves nothing.
+        if start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
+            body.startsAt = PlanTime.string(start)
+            body.endsAt = PlanTime.string(end)
+        }
+        body.repeatChange = repeating?.change
         if let newPlace {
             body.place = PlanPlaceBody(
                 kind: .publicPlace,
@@ -299,6 +313,15 @@ struct PlanChangeScreen: View {
             )
         }
         body.businessLocationId = newLocationId
+        if let newLink {
+            // The server's check first, with its sentence.
+            guard let parsed = PlanOnlineLink.parse(newLink) else {
+                isSaving = false
+                error = PlanOnlineCopy.linkProblem
+                return
+            }
+            body.place = .online(link: parsed.link)
+        }
         Task {
             // Moving a public plan needs the same fresh nearby proof as posting one.
             let location = DeviceLocationProvider.shared
@@ -316,5 +339,33 @@ struct PlanChangeScreen: View {
                 self.error = PlanErrors.sentence(for: error)
             }
         }
+    }
+}
+
+private extension PlanChangeScreen {
+    /// The push the server sends, word for word (board H11; Android shows the same).
+    func pushWords(_ card: PlanCardDTO) -> (title: String, body: String) {
+        let calendar = PlanFormat.calendar(for: card.timezone)
+        let host = PlanCardLines.hostName(card)
+        let noun = PlanCardLines.noun(card)
+        let now = "Now \(PlanFormat.dayPhrase(start, calendar: calendar)) at \(PlanFormat.time(start, calendar: calendar))"
+        if newLink != nil { return PlanChangeOnlineLink.pushWords(host: host, noun: noun, now: now, timeMoved: timeMoved(card)) }
+        if placeChanged, timeMoved(card) { return ("\(host) changed the \(noun)", "\(now), at a new place. Still coming?") }
+        if placeChanged { return ("\(host) changed the place", "It's at a new place now. Still coming?") }
+        return ("\(host) moved the \(noun)", "\(now). Still coming?")
+    }
+}
+
+/// A refusal on the Change screen, in the server's words.
+private struct PlanChangeErrorLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .planFont(.small)
+            .foregroundStyle(Theme.Color.error)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("planChangeError")
     }
 }

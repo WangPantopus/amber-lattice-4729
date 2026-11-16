@@ -38,6 +38,8 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
     public let placeName: String?
     /// The venue's later plans in the window, folded into this pin: "Sat 10:00 · 4 times".
     public let moreTimes: Int
+    /// Private plans (step 1): `invited` for a plan only its host's invitees see. Missing means `nearby`.
+    public let audience: PlanAudience
 
     enum CodingKeys: String, CodingKey {
         case id, kind, latitude, longitude, precision, title, state
@@ -58,6 +60,8 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
         case labelText = "label_text"
         case placeName = "place_name"
         case moreTimes = "more_times"
+        case audience
+        case placeKind = "place_kind"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -68,6 +72,10 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
         }
         id = try container.decode(String.self, forKey: .id)
         kind = try container.decode(PlanKind.self, forKey: .kind)
+        // An online plan has no place to pin (the server sends none); an unknown place kind drops the pin too.
+        if try container.decodeIfPresent(PlanPlaceKind.self, forKey: .placeKind) == .online {
+            throw DecodingError.dataCorruptedError(forKey: .placeKind, in: container, debugDescription: "An online plan has no pin")
+        }
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
         precision = try container.decodeIfPresent(String.self, forKey: .precision)
@@ -89,6 +97,7 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
         labelText = business == nil ? nil : try container.decodeIfPresent(String.self, forKey: .labelText)
         placeName = business == nil ? nil : try container.decodeIfPresent(String.self, forKey: .placeName)
         moreTimes = business == nil ? 0 : (try? container.decodeIfPresent(Int.self, forKey: .moreTimes)) ?? 0
+        audience = (try? container.decodeIfPresent(PlanAudience.self, forKey: .audience)) ?? .nearby
     }
 
     public var startsAtDate: Date? {
@@ -111,6 +120,11 @@ public struct PlanPinDTO: Decodable, Sendable, Hashable, Identifiable {
 
     public var isIn: Bool {
         viewerRequestStatus == .accepted
+    }
+
+    /// A private plan: only its host, the people invited and the people in or waiting see the pin.
+    public var isPrivate: Bool {
+        audience == .invited
     }
 
     /// The pin sits on the plan's exact point (the viewer hosts it or is in).

@@ -231,6 +231,8 @@ struct PlanAskSheet: View {
                 ? "\(hostFirst) sees your first name and how many are coming. Never your address."
                 : "\(hostFirst) sees your first name, how many are coming and your note. Never your address."
         }
+        // Nobody travels to an online plan: the server keeps no distance for it.
+        if card.isOnline { return "\(hostFirst) sees your first name and your verified badge. Never your address." }
         return card.kind == .playdate
             ? "\(hostFirst) sees your first name, your verified badge, about how far away you live and your kids' ages. Never their names."
             : "\(hostFirst) sees your first name, your verified badge and about how far away you live. Never your address."

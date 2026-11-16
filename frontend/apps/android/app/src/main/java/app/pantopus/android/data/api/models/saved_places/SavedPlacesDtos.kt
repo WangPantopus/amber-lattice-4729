@@ -2,6 +2,7 @@
 
 package app.pantopus.android.data.api.models.saved_places
 
+import app.pantopus.android.data.api.models.feed.FeedPost
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
@@ -95,7 +96,8 @@ data class AreaTodayBody(
 
 /**
  * Today's second half, "Around you" (`backend/services/aroundYouService.js`): local headlines for the place Today
- * shows. `available` false: Today shows no switch (the feature is off, or the area has nothing to show).
+ * shows, each also a post by the Pantopus curator account in the feed's shape. `available` false: Today shows no
+ * switch (the feature is off, or the area has nothing to show).
  */
 @JsonClass(generateAdapter = true)
 data class AroundYouDto(
@@ -103,13 +105,21 @@ data class AroundYouDto(
     /** The content region's name ("Clark County, WA"). */
     val area: String? = null,
     val sections: List<AroundYouSectionDto> = emptyList(),
-)
+) {
+    /** The server sent the items as posts (one from before the posts sends only the rows). */
+    val hasPosts: Boolean get() = sections.any { it.posts != null }
+
+    /** Every section's posts, in page order. */
+    val posts: List<FeedPost> get() = sections.flatMap { it.posts.orEmpty() }
+}
 
 @JsonClass(generateAdapter = true)
 data class AroundYouSectionDto(
     val id: String,
     val title: String,
     val items: List<AroundYouItemDto> = emptyList(),
+    /** The same items as posts, in the feed's shape and order; null when the server could not make or read them. */
+    val posts: List<FeedPost>? = null,
 )
 
 /** An outlet's own headline, the outlet's name and where to read it. */
@@ -123,4 +133,6 @@ data class AroundYouItemDto(
     val url: String? = null,
     /** When Pantopus first saw it (ISO 8601). */
     @Json(name = "seen_at") val seenAt: String,
+    /** The item's post; null from a server before the posts. */
+    @Json(name = "post_id") val postId: String? = null,
 )

@@ -4,10 +4,12 @@
 //
 //  A photo or video made ready to post (Moments brief, "Posting"): a photo
 //  becomes an upright JPEG no larger than 2048 px with no metadata; a video
-//  becomes an MP4 at about 720p (H.264, with its sound, no metadata), at most
-//  30 seconds, with a poster frame and two more frames for the server's
-//  picture check. The files sit in the Moment's own outbox folder until the
-//  upload is done.
+//  becomes an MP4 at 720p and a known bit rate (`MomentsVideoEncoder`: H.264,
+//  with its sound, no metadata), sized to the largest file the server takes,
+//  with a poster frame and two more frames for the server's picture check. A
+//  video longer than one Moment's (60 seconds, `MomentsLimits`) is cut into
+//  equal parts, each a Moment of its own. The files sit in each Moment's own
+//  outbox folder until the upload is done.
 //
 
 import AVFoundation
@@ -25,10 +27,28 @@ struct MomentPreparedMedia: Codable, Hashable {
 }
 
 enum MomentsMediaExport {
-    /// The longest a video may be.
-    static let maxVideoSeconds = 30.0
+    /// The longest one Moment's video may be (the camera stops there).
+    static var maxVideoSeconds: Double {
+        MomentsLimits.video.maxSeconds
+    }
+
+    /// The longest video that can be picked: it posts as several Moments.
+    static var longestVideoSeconds: Double {
+        MomentsLimits.longestVideoSeconds
+    }
+
     /// A little over, for a clip the camera stopped at 30 s.
     static let videoSecondsTolerance = 0.6
+    /// The largest video file the server takes.
+    static var maxVideoBytes: Int {
+        MomentsLimits.video.maxBytes
+    }
+
+    /// The system's export is stepped down a size while its file is over this.
+    private static var roomyVideoBytes: Int {
+        min(24 * 1024 * 1024, Int(Double(maxVideoBytes) * 0.92))
+    }
+
     private static let maxPhotoPixels: CGFloat = 2048
 
     // MARK: - Photo
@@ -82,37 +102,85 @@ enum MomentsMediaExport {
         return (latitude, longitude)
     }
 
-    /// An MP4 at about 720p with its sound, its poster and two frames.
-    static func video(at source: URL, into folder: URL) async throws -> MomentPreparedMedia {
-        let asset = AVURLAsset(url: source)
+    /// The stretches of a video `seconds` long that each make one Moment: one for a video a Moment can hold, else
+    /// equal parts (130 seconds is three of 43.3, never two of 60 and a scrap).
+    static func parts(of seconds: Double) -> [CMTimeRange] {
+        let limits = MomentsLimits.video
+        let whole = min(seconds, limits.maxSeconds * Double(limits.maxParts))
+        let count = whole <= limits.maxSeconds + videoSecondsTolerance
+            ? 1
+            : min(limits.maxParts, Int((whole / limits.maxSeconds).rounded(.up)))
+        let each = min(whole, limits.maxSeconds * Double(count)) / Double(count)
+        return (0..<count).map { index in
+            CMTimeRange(
+                start: CMTime(seconds: each * Double(index), preferredTimescale: 600),
+                duration: CMTime(seconds: each, preferredTimescale: 600)
+            )
+        }
+    }
+
+    /// An MP4 at 720p with its sound, its poster and two frames: the whole video, or the `part` of it this Moment is.
+    static func video(at source: URL, into folder: URL, part: CMTimeRange? = nil) async throws -> MomentPreparedMedia {
         let seconds = await duration(of: source)
         guard seconds > 0 else { throw MomentsFailure.mediaRejected }
-        guard seconds <= maxVideoSeconds + videoSecondsTolerance else { throw MomentsFailure.mediaTooLong }
+        guard part != nil || seconds <= maxVideoSeconds + videoSecondsTolerance else { throw MomentsFailure.mediaTooLong }
         let name = "video.mp4"
         let output = folder.appendingPathComponent(name)
+        let range = part ?? CMTimeRange(start: .zero, duration: CMTime(seconds: min(seconds, maxVideoSeconds), preferredTimescale: 600))
+        let kept = range.duration.seconds
         try? FileManager.default.removeItem(at: output)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720) else {
-            throw MomentsFailure.mediaRejected
+        do {
+            var bits = MomentsVideoEncoder.videoBits(seconds: kept, maxBytes: maxVideoBytes)
+            try await MomentsVideoEncoder.encode(source, to: output, range: range, bits: bits)
+            // An encoder that ran over its bit rate (it is asked for an average) gets one more go, at what fits.
+            let made = fileBytes(output)
+            if made > maxVideoBytes {
+                bits = Int(Double(bits) * Double(maxVideoBytes) / Double(made) * 0.9)
+                try? FileManager.default.removeItem(at: output)
+                try await MomentsVideoEncoder.encode(source, to: output, range: range, bits: max(bits, 800_000))
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // A video the encoder can't take still posts, through the system's own export (not one let go meanwhile).
+            try Task.checkCancellation()
+            try await systemExport(source, to: output, range: range)
         }
-        exporter.outputURL = output
-        exporter.outputFileType = .mp4
-        // No location, no camera details.
-        exporter.metadata = []
-        exporter.shouldOptimizeForNetworkUse = true
-        if seconds > maxVideoSeconds {
-            exporter.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: maxVideoSeconds, preferredTimescale: 600))
-        }
-        await exporter.export()
-        guard exporter.status == .completed else { throw MomentsFailure.mediaRejected }
-        let frames = try await stills(of: AVURLAsset(url: output), seconds: min(seconds, maxVideoSeconds), into: folder)
+        // Said here, before the Moment is made, not after its file has gone up and been refused.
+        guard fileBytes(output) <= maxVideoBytes else { throw MomentsFailure.mediaTooLarge }
+        let frames = try await stills(of: AVURLAsset(url: output), seconds: kept, into: folder)
         return MomentPreparedMedia(
             kind: .video,
             file: name,
             mimeType: "video/mp4",
             poster: frames.first,
             frames: Array(frames.dropFirst()),
-            durationMs: min(seconds, maxVideoSeconds) * 1000
+            durationMs: kept * 1000
         )
+    }
+
+    /// The system's export, whose file size nobody promises (26.6 MB for 13 seconds of 4K HDR on an iPhone): the
+    /// largest of its sizes whose file has room, else the smallest.
+    private static func systemExport(_ source: URL, to output: URL, range: CMTimeRange) async throws {
+        for preset in [AVAssetExportPreset1280x720, AVAssetExportPreset960x540, AVAssetExportPreset640x480] {
+            try? FileManager.default.removeItem(at: output)
+            guard let exporter = AVAssetExportSession(asset: AVURLAsset(url: source), presetName: preset) else {
+                throw MomentsFailure.mediaRejected
+            }
+            exporter.outputURL = output
+            exporter.outputFileType = .mp4
+            // No location, no camera details.
+            exporter.metadata = []
+            exporter.shouldOptimizeForNetworkUse = true
+            exporter.timeRange = range
+            await exporter.export()
+            guard exporter.status == .completed else { throw MomentsFailure.mediaRejected }
+            if fileBytes(output) <= roomyVideoBytes { return }
+        }
+    }
+
+    private static func fileBytes(_ url: URL) -> Int {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int) ?? 0
     }
 
     /// The poster (near the start) and frames a third and two thirds in.

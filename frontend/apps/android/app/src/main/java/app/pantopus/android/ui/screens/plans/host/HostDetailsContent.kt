@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -37,6 +39,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanNote
 import app.pantopus.android.ui.screens.plans.components.PlanOptionRow
+import app.pantopus.android.ui.screens.plans.components.PlanRadio
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
 import app.pantopus.android.ui.screens.plans.components.PlanSegmented
 import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
@@ -93,6 +96,11 @@ private fun ColumnScope.NeighborFields(
         PlanKind.PICKUP_GAME -> PickupFields(ui, vm)
         PlanKind.WALK_COFFEE -> WalkFields(ui, vm)
         PlanKind.STUDY_GROUP -> StudyFields(ui, vm)
+        // Plans step 4 (HostMoreFields.kt).
+        PlanKind.FOOD_DRINKS -> FoodFields(ui, vm)
+        PlanKind.GAME_NIGHT -> GameNightFields(ui, vm)
+        PlanKind.OUTDOORS -> OutdoorsFields(ui, vm)
+        PlanKind.SOMETHING_ELSE -> SomethingElseFields(ui, vm)
     }
 }
 
@@ -166,6 +174,7 @@ private fun ColumnScope.WatchFields(
     TitleField(draft.title, vm::setTitle)
     WhenField(ui, vm)
     WhereField(ui, vm, homeLabel = "My place")
+    AudienceField(ui, vm)
     PlanStepperRow(
         title = "Spots",
         caption = "People who can join, besides you",
@@ -177,7 +186,13 @@ private fun ColumnScope.WatchFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = if (draft.atHome) "Park on the street. The side gate is open." else "We'll be at the big table by the window.",
+        placeholder =
+            when {
+                // An online plan's own hint (Plans step 3, as on iPhone).
+                ui.isOnline -> ONLINE_NOTE_HINT
+                draft.atHome -> "Park on the street. The side gate is open."
+                else -> "We'll be at the big table by the window."
+            },
     ) { text ->
         vm.edit { it.copy(note = text) }
     }
@@ -198,7 +213,14 @@ private fun ColumnScope.PlaydateFields(
     vm: HostFlowViewModel,
 ) {
     val draft = ui.draft
-    PlanNote("Playdates happen in public places, parents stay, and only ages are shared. You approve each family.")
+    PlanNote(
+        if (ui.isPrivate) {
+            // The people a host invites get in right away (Plans step 1).
+            "Playdates happen in public places, parents stay, and only ages are shared."
+        } else {
+            "Playdates happen in public places, parents stay, and only ages are shared. You approve each family."
+        },
+    )
     PlanField(label = "Kids' ages") {
         PlanChoiceGroup(
             choices = KidsAgeBand.entries.map { PlanChoice(it.wire, it.label) },
@@ -209,15 +231,24 @@ private fun ColumnScope.PlaydateFields(
     }
     TitleField(draft.title, vm::setTitle)
     PlanField(label = "When") {
-        PlanWhenCard(start = draft.start, end = draft.end, onStart = vm::setStart, onEnd = vm::setEnd)
-        // "Tomorrow morning", as neighbors will see it (and as on iOS).
+        PlanWhenCard(
+            start = draft.start,
+            end = draft.end,
+            onStart = vm::setStart,
+            onEnd = vm::setEnd,
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
+        )
+        // "Tomorrow morning", as others will see it (and as on iOS).
         val shown = draft.start?.let { "“${PlanFormat.dayPartPhrase(it.atZone(ui.zone))}”" } ?: "the part of the day"
-        PlanScopeLine("Neighbors see $shown until you accept them.")
+        // A private playdate is seen only by the families invited (Plans step 1): nobody else to hide it from.
+        if (!ui.isPrivate) PlanScopeLine("Others see $shown until you accept them.")
     }
     PlanField(label = "Where") {
         PlaceRow(ui, onClick = vm::openPlaces)
-        PlanScopeLine("Families you accept see the exact spot. Others see the neighborhood.")
+        if (!ui.isPrivate) PlanScopeLine("Families you accept see the exact spot. Others see the general area.")
     }
+    AudienceField(ui, vm)
     PlanStepperRow(
         title = "Families",
         caption = "Besides yours",
@@ -225,14 +256,23 @@ private fun ColumnScope.PlaydateFields(
         range = 1..MAX_FAMILIES,
         onChange = { value -> vm.edit { it.copy(spots = value) } },
     )
-    PlanField(label = "How families get in") {
-        PlanFormCard {
-            PlanOptionRow(first = true) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "You approve each family", style = semibold, color = PantopusColors.appText)
-                    Text(text = "Always on for playdates", style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+    if (ui.isPrivate) {
+        GuestsCanInviteRow(ui, vm)
+    } else {
+        PlanField(label = "How families get in") {
+            PlanFormCard {
+                PlanOptionRow(first = true) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "You approve each family", style = semibold, color = PantopusColors.appText)
+                        Text(text = "Always on for playdates", style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+                    }
+                    PantopusIconImage(
+                        icon = PantopusIcon.Lock,
+                        contentDescription = null,
+                        size = 18.dp,
+                        tint = PantopusColors.appTextSecondary,
+                    )
                 }
-                PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextSecondary)
             }
         }
     }
@@ -280,12 +320,16 @@ private fun ColumnScope.PickupFields(
             onEnd = vm::setEnd,
             showStart = !draft.pickupNow,
             endLabel = if (draft.pickupNow) "Until" else "Ends",
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
         )
     }
     PlanField(label = "Where") {
         PlaceRow(ui, onClick = vm::openPlaces)
-        PlanScopeLine("Your location only proves you're nearby. The pin shows the place's area.")
+        // A private plan needs no fix to prove the host is nearby (Plans step 1).
+        if (!ui.isPrivate) PlanScopeLine("Your location only proves you're nearby. The pin shows the place's area.")
     }
+    AudienceField(ui, vm)
     PlanStepperRow(
         title = "Players needed",
         caption = "Shown as “need ${draft.spots}”",
@@ -340,6 +384,7 @@ private fun ColumnScope.WalkFields(
     )
     WhenField(ui, vm)
     WhereField(ui, vm, homeLabel = "My porch")
+    AudienceField(ui, vm)
     PlanStepperRow(
         title = "People",
         caption = "Besides you",
@@ -351,7 +396,7 @@ private fun ColumnScope.WalkFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Meet at the trailhead sign. Coffee after.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Meet at the trailhead sign. Coffee after.",
         singleLine = true,
     ) { text ->
         vm.edit { it.copy(note = text) }
@@ -383,10 +428,11 @@ private fun ColumnScope.StudyFields(
     }
     TitleField(draft.title, vm::setTitle, placeholder = "Spanish practice at the library")
     WhenField(ui, vm)
-    // Always a public place, so no "A public place / My place" choice (and, as for a watch party, no line under it).
+    // A public place, so no "My place" choice (and, as for a watch party, no line under it); or online (Plans step 3).
     PlanField(label = "Where") {
-        PlaceRow(ui, onClick = vm::openPlaces)
+        PlaceOrOnline(ui, vm)
     }
+    AudienceField(ui, vm)
     PlanStepperRow(
         title = "Spots",
         caption = "People who can join, besides you",
@@ -398,15 +444,15 @@ private fun ColumnScope.StudyFields(
     NoteField(
         draft.note,
         label = "Note for people who are in",
-        placeholder = "Second floor, the long table by the windows.",
+        placeholder = if (ui.isOnline) ONLINE_NOTE_HINT else "Second floor, the long table by the windows.",
     ) { text ->
         vm.edit { it.copy(note = text) }
     }
 }
 
-private const val MAX_SPOTS = 30
+internal const val MAX_SPOTS = 30
 private const val MAX_FAMILIES = 10
-private const val ABOUT_MAX = 500
+internal const val ABOUT_MAX = 500
 private const val NOTE_MAX = 500
 
 private val semibold = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold)
@@ -431,7 +477,7 @@ private val walkKinds =
     )
 
 @Composable
-private fun TitleField(
+internal fun TitleField(
     title: String,
     onTitle: (String) -> Unit,
     placeholder: String = "Give it a short title",
@@ -442,30 +488,39 @@ private fun TitleField(
 }
 
 @Composable
-private fun WhenField(
+internal fun WhenField(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
     PlanField(label = "When") {
-        PlanWhenCard(start = ui.draft.start, end = ui.draft.end, onStart = vm::setStart, onEnd = vm::setEnd)
+        // The Repeats row (Plans step 2) on a person's own plan; never on a business's.
+        PlanWhenCard(
+            start = ui.draft.start,
+            end = ui.draft.end,
+            onStart = vm::setStart,
+            onEnd = vm::setEnd,
+            repeats = ui.repeatsValue,
+            onRepeats = vm::openRepeats,
+        )
     }
 }
 
-/** "A public place" or "My place" (H2) / "My porch" (H5), with the place or home row and its promise. */
+/**
+ * "A public place" or "My place" (H2) / "My porch" (H5), with the place or home row and its promise; with "Online"
+ * (Plans step 3, board Details: "A place / My place / Online") the link field instead.
+ */
 @Composable
-private fun WhereField(
+internal fun WhereField(
     ui: HostUi,
     vm: HostFlowViewModel,
     homeLabel: String,
 ) {
     val draft = ui.draft
     PlanField(label = "Where") {
-        PlanSegmented(
-            options = listOf("public" to "A public place", "home" to homeLabel),
-            selected = if (draft.atHome) "home" else "public",
-            onSelect = { vm.setAtHome(it == "home") },
-        )
-        if (draft.atHome) {
+        WhereChoice(ui, vm, homeLabel)
+        if (ui.isOnline) {
+            OnlineLinkField(ui, vm)
+        } else if (draft.atHome) {
             PlanFormCard {
                 PlanOptionRow(first = true) {
                     PlanIconTile(
@@ -488,7 +543,13 @@ private fun WhereField(
                     }
                 }
             }
-            PlanScopeLine("Only people you accept see your address. Everyone else sees the area.")
+            PlanScopeLine(
+                if (ui.isPrivate) {
+                    "People you invite see your address once they say they're in."
+                } else {
+                    "Only people you accept see your address. Everyone else sees the area."
+                },
+            )
         } else {
             PlaceRow(ui, onClick = vm::openPlaces)
         }
@@ -497,7 +558,7 @@ private fun WhereField(
 
 /** The chosen public place, or "Choose a place", opening H6. */
 @Composable
-private fun PlaceRow(
+internal fun PlaceRow(
     ui: HostUi,
     onClick: () -> Unit,
 ) {
@@ -530,7 +591,14 @@ private fun PlaceRow(
 
 /** The place row's second line before a place is picked: the places that suit the kind. */
 private fun placeHint(kind: PlanKind): String =
-    if (kind == PlanKind.STUDY_GROUP) "Libraries, cafés, community centers" else "Parks, courts, trails, libraries, cafés"
+    when (kind) {
+        PlanKind.STUDY_GROUP -> "Libraries, cafés, community centers"
+        // Plans step 4, the places the server suggests for each (planPlaces.js).
+        PlanKind.FOOD_DRINKS -> "Restaurants, cafés, bars"
+        PlanKind.GAME_NIGHT -> "Cafés, community centers, libraries"
+        PlanKind.OUTDOORS -> "Trails and parks"
+        else -> "Parks, courts, trails, libraries, cafés"
+    }
 
 /** "Also let in people I've hosted" with its second line under it, as board H2 draws the row (and iOS). */
 @Composable
@@ -591,12 +659,17 @@ private const val METERS_PER_MILE = 1609.344
 
 /** How people get in (H2, H4, H5), by the rules in decisions D6 and D7. */
 @Composable
-private fun HowPeopleGetIn(
+internal fun HowPeopleGetIn(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
     val draft = ui.draft
     val kind = draft.kind ?: return
+    // The people a host invites get in right away (Plans step 1): a private plan asks only whether they may bring a friend.
+    if (ui.isPrivate) {
+        GuestsCanInviteRow(ui, vm)
+        return
+    }
     PlanField(label = "How people get in") {
         PlanFormCard {
             if (draft.atHome) {
@@ -617,7 +690,7 @@ private fun HowPeopleGetIn(
                     if (rule == PlanAutoRule.ANYONE_NEARBY) {
                         "Anyone nearby gets in right away" to "Until the spots fill"
                     } else {
-                        "Verified neighbors get in right away" to "Others ask, and you approve"
+                        "People with a verified address get in right away" to "Others ask, and you approve"
                     }
                 RuleOption(title, caption, selected = !draft.approveEach, first = true) {
                     vm.edit { it.copy(approveEach = false, autoRule = rule) }
@@ -632,6 +705,93 @@ private fun HowPeopleGetIn(
             }
         }
     }
+}
+
+/**
+ * "Who can see this" (board Details, Plans step 1): anyone nearby, or only the people the host invites, with what a
+ * private plan allows under it. Only with `plans_private`, and never on a business's plan.
+ */
+@Composable
+internal fun AudienceField(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+) {
+    if (!ui.showsAudience) return
+    PlanField(label = "Who can see this") {
+        PlanFormCard(modifier = Modifier.selectableGroup()) {
+            AudienceRow(
+                first = true,
+                selected = !ui.draft.isPrivate,
+                title = "Anyone nearby",
+                // An online plan has no pin, ever (Plans step 3).
+                caption =
+                    if (ui.isOnline) {
+                        "On the list for people nearby. People ask to join."
+                    } else {
+                        "On the map and the list. People ask to join."
+                    },
+                lock = false,
+                tag = "plansAudienceNearby",
+                onClick = { vm.setPrivate(false) },
+            )
+            AudienceRow(
+                first = false,
+                selected = ui.draft.isPrivate,
+                title = "Only people I invite",
+                caption = "Private. Not on the map, the list or anywhere else.",
+                lock = true,
+                tag = "plansAudienceInvited",
+                onClick = { vm.setPrivate(true) },
+            )
+        }
+        PlanScopeLine(
+            "The people you invite get in right away. A private plan can be anywhere, up to 60 days ahead.",
+            icon = PantopusIcon.Info,
+        )
+    }
+}
+
+@Composable
+private fun AudienceRow(
+    first: Boolean,
+    selected: Boolean,
+    title: String,
+    caption: String,
+    lock: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    PlanOptionRow(
+        first = first,
+        modifier =
+            Modifier
+                .testTag(tag)
+                .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+    ) {
+        PlanRadio(selected = selected)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = semibold, color = PantopusColors.appText)
+            Text(text = caption, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+        }
+        if (lock) {
+            PantopusIconImage(icon = PantopusIcon.Lock, contentDescription = null, size = 18.dp, tint = PantopusColors.appTextSecondary)
+        }
+    }
+}
+
+/** "Guests can bring a friend" on a private plan (board Details): each person invited may invite one more. */
+@Composable
+private fun GuestsCanInviteRow(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+) {
+    PlanSwitchRow(
+        title = "Guests can bring a friend",
+        caption = "Each person you invite may invite one more",
+        checked = ui.draft.guestsCanInvite,
+        onChecked = vm::setGuestsCanInvite,
+        modifier = Modifier.testTag("plansGuestsCanInvite"),
+    )
 }
 
 @Composable
@@ -664,7 +824,7 @@ private fun RuleOption(
 }
 
 @Composable
-private fun NoteField(
+internal fun NoteField(
     note: String,
     label: String,
     placeholder: String,

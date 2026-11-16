@@ -95,6 +95,8 @@ fun PlanPin(
     live: Boolean = false,
     badge: PlanPinBadge = PlanPinBadge.None,
     reduceMotion: Boolean = false,
+    /** A private plan (Plans step 1): the lock badge on the other shoulder, so where the viewer stands keeps its own. */
+    isPrivate: Boolean = false,
 ) {
     val head by animateDpAsState(
         targetValue = if (selected) PlanPinSize.headSelected else PlanPinSize.head,
@@ -124,6 +126,16 @@ fun PlanPin(
                             .align(Alignment.BottomCenter)
                             .padding(bottom = PlanPinSize.tipLift + head - 10.dp)
                             .graphicsLayer { translationX = (head.toPx() / 2f) - 1.dp.toPx() },
+                )
+            }
+            if (isPrivate) {
+                PlanPrivateBadge(
+                    size = PlanPinSize.badge,
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = PlanPinSize.tipLift + head - 10.dp)
+                            .graphicsLayer { translationX = -(head.toPx() / 2f) + 1.dp.toPx() },
                 )
             }
         }

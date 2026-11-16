@@ -31,6 +31,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanKind
+import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
@@ -46,6 +48,7 @@ import app.pantopus.android.ui.screens.plans.host.PlacePickerState
 import app.pantopus.android.ui.screens.plans.host.PublicPlacePicker
 import app.pantopus.android.ui.screens.plans.host.placeCaption
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatsScreen
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -66,6 +69,12 @@ fun PlanChangeScreen(
     LaunchedEffect(ui.saved) { if (ui.saved) onDone() }
     if (ui.picking) {
         ChangePlacePicker(ui, viewModel)
+        return
+    }
+    // The Repeats screen (Plans step 2) over this one; Back and Done come back here, and Save sends the choice.
+    val repeatSetup = ui.repeatSetup
+    if (ui.repeatsOpen && repeatSetup != null) {
+        PlanRepeatsScreen(setup = repeatSetup, onDone = viewModel::closeRepeats, onUnchanged = viewModel::leaveRepeats)
         return
     }
     val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
@@ -93,27 +102,43 @@ fun PlanChangeScreen(
             }
             return@PlanPlainScaffold
         }
-        PlanField(label = "When") {
-            PlanWhenCard(
-                start = ui.start,
-                end = ui.end,
-                onStart = viewModel::setStart,
-                onEnd = viewModel::setEnd,
-                startHighlighted = ui.start != ui.originalStart,
-            )
-            if (was != null && ui.start != ui.originalStart) {
-                Text(text = "Was $was", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
-            }
-        }
-        if (ui.canChangePlace) WhereField(ui, onClick = viewModel::openPlaces)
+        ChangeWhenField(ui, viewModel, was)
+        if (ui.canChangePlace) WhereField(ui, viewModel)
         // A business's plan: one of its own locations (board B2), never a place picked here.
         ui.business?.takeIf { ui.canChangeLocation }?.let { business ->
             BusinessWhereField(business, ui.newLocationId ?: ui.currentLocationId, onPick = viewModel::pickLocation)
         }
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
         if (ui.asksStillComing) {
-            StillComingWarning(ui.peopleIn, placeChanged = ui.newPlace != null || ui.locationMoved)
+            StillComingWarning(
+                ui.peopleIn,
+                placeChanged = ui.newPlace != null || ui.locationMoved || ui.movesOnline,
+                link = ui.linkChanged,
+            )
             NotificationPreview(ui)
+        }
+    }
+}
+
+/** "When": the start and end ("Was 6:30 PM" under a moved start) and, on a person's plan, the Repeats row (Plans step 2). */
+@Composable
+private fun ChangeWhenField(
+    ui: PlanChangeUi,
+    viewModel: PlanChangeViewModel,
+    was: String?,
+) {
+    PlanField(label = "When") {
+        PlanWhenCard(
+            start = ui.start,
+            end = ui.end,
+            onStart = viewModel::setStart,
+            onEnd = viewModel::setEnd,
+            startHighlighted = ui.start != ui.originalStart,
+            repeats = ui.repeatsValue,
+            onRepeats = viewModel::openRepeats,
+        )
+        if (was != null && ui.start != ui.originalStart) {
+            Text(text = "Was $was", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
         }
     }
 }
@@ -139,6 +164,8 @@ private fun ChangePlacePicker(
                 gathering = ui.placesGathering,
                 placesError = ui.placesError,
                 suggestions = ui.suggestions,
+                // A private plan moves to any place (Plans step 1).
+                anywhere = ui.plan?.isPrivate == true,
             ),
         onClose = viewModel::closePlaces,
         onUse = viewModel::usePlace,
@@ -149,16 +176,36 @@ private fun ChangePlacePicker(
     )
 }
 
-/** "Where": the plan's place, or the new one in the accent color, opening H6 (public plans, as on iOS). */
+/**
+ * "Where": the plan's place, or the new one in the accent color, opening H6 (public plans, as on iOS). An online plan,
+ * or one that can move online (Plans step 3), has "A place / Online" over it, and the link field while Online.
+ */
 @Composable
 private fun WhereField(
     ui: PlanChangeUi,
-    onClick: () -> Unit,
+    viewModel: PlanChangeViewModel,
 ) {
     val plan = ui.plan ?: return
     val kind = plan.planKind ?: PlanKind.WATCH_PARTY
-    val name = ui.newPlace?.name ?: plan.place?.name ?: plan.area?.label ?: "Choose a place"
+    // An online plan moving to a place has none yet.
+    val current = if (plan.isOnline) null else plan.place?.name ?: plan.area?.label
+    val name = ui.newPlace?.name ?: current ?: "Choose a place"
+    val onClick = viewModel::openPlaces
     PlanField(label = "Where") {
+        // "A place" needs somewhere to look from: an online plan with no area and no home or fix keeps its link only.
+        if (ui.canGoOnline && ui.canMoveToPlace) ChangeWhereChoice(ui, onOnline = viewModel::setOnline)
+        if (ui.online.chosen) {
+            ChangeLinkField(ui, onLink = viewModel::setLink)
+            ui.noPlaceReason?.let {
+                Text(
+                    text = it,
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextSecondary,
+                    modifier = Modifier.testTag("planChangeNoPlace"),
+                )
+            }
+            return@PlanField
+        }
         PlanFormCard {
             // One TalkBack stop that keeps the row's click: "Crown Park, Choose another place, Button" (as H2's place row).
             PlanOptionRow(
@@ -174,7 +221,10 @@ private fun WhereField(
                         color = if (ui.newPlace != null) PantopusColors.primary700 else PantopusColors.appText,
                     )
                     Text(
-                        text = ui.newPlace?.let(::placeCaption) ?: "Choose another place",
+                        // An online plan moving to a place has none to replace yet: the row says what can be chosen.
+                        text =
+                            ui.newPlace?.let(::placeCaption)
+                                ?: if (current == null) "Parks, cafés and other public places" else "Choose another place",
                         style = PantopusTextStyle.small,
                         color = PantopusColors.appTextSecondary,
                     )
@@ -194,6 +244,8 @@ private fun WhereField(
 private fun StillComingWarning(
     peopleIn: Int,
     placeChanged: Boolean,
+    /** An online plan's link changed (Plans step 3). */
+    link: Boolean = false,
 ) {
     Row(
         modifier =
@@ -212,6 +264,8 @@ private fun StillComingWarning(
                 "${if (peopleIn == 1) "1 person is" else "$peopleIn people are"} in. " +
                     if (placeChanged) {
                         "Changing the place asks each of them “Still coming?”"
+                    } else if (link) {
+                        "Changing the link asks each of them “Still coming?”"
                     } else {
                         "Moving the time by more than 30 minutes asks each of them “Still coming?”"
                     },
@@ -228,16 +282,11 @@ private fun NotificationPreview(ui: PlanChangeUi) {
     // A business is named in full, as its notices name it.
     val host = PlanFormat.hostName(plan)
     val noun = PlanFormat.noun(plan)
-    val placeMoved = ui.newPlace != null || ui.locationMoved
+    val placeMoved = ui.newPlace != null || ui.locationMoved || ui.movesOnline
     val start = ui.start ?: return
     val now = "Now ${PlanFormat.dayAt(start.atZone(PlanFormat.zone(plan.timezone)))}"
-    // The push the server sends (board H11), word for word.
-    val (title, body) =
-        when {
-            ui.timeMoved && placeMoved -> "$host changed the $noun" to "$now, at a new place. Still coming?"
-            placeMoved -> "$host changed the place" to "It's at a new place now. Still coming?"
-            else -> "$host moved the $noun" to "$now. Still coming?"
-        }
+    // The push the server sends (board H11), word for word, with an online plan's link and move (Plans step 3).
+    val (title, body) = ui.pushWords(host, noun, now, placeMoved)
     PlanField(label = "What they'll get") {
         Column(
             modifier =

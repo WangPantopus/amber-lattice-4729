@@ -60,6 +60,8 @@ data class PostCreateRequest(
     // Where each attachment was taken, read from its own metadata: evidence
     // for the Place check and the post's pin (`createPostSchema.mediaLocations`).
     @Json(name = "mediaLocations") val mediaLocations: List<PostMediaLocation>? = null,
+    // "Repost with your words": the post this one quotes (create only; an edit never sends it).
+    @Json(name = "quotedPostId") val quotedPostId: String? = null,
 )
 
 /** One attachment's capture point and, when its metadata says, its capture time (ISO 8601). */

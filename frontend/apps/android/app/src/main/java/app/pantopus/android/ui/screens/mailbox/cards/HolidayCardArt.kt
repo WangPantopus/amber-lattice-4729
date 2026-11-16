@@ -299,6 +299,12 @@ object HolidayCardTimes {
         zone: ZoneId,
     ): String = parse(value)?.atZone(zone)?.let(::clock).orEmpty()
 
+    /** When a card's email goes, on the sender's clock: "Mon, Nov 16 at 7 a.m." (empty without a time). */
+    fun emailGoesAt(
+        value: String?,
+        zone: ZoneId,
+    ): String = if (parse(value) == null) "" else "${shortDay(value, zone)} at ${clockTime(value, zone)}"
+
     private fun clock(time: ZonedDateTime): String {
         val hour = (time.hour % 12).let { if (it == 0) 12 else it }
         val minutes = if (time.minute == 0) "" else ":${"%02d".format(time.minute)}"

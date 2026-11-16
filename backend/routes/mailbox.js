@@ -42,6 +42,7 @@ const cardEmail = require('../services/cardEmail');
 const cardMedia = require('../services/holidayCardMedia');
 const cardVoice = require('../services/cardVoice');
 const mailStamps = require('../services/mailStamps');
+const { getPublicUrl } = require('../services/s3Service');
 const { personFindableBy } = require('./mailCompose');
 // A letter sent as a business names the business to everyone it reaches, never the person who sent it.
 const { presentMailSender, presentMailSenders, nameMailSender, nameMailSenders, objectForRecipient, payloadForRecipient,
@@ -1804,6 +1805,8 @@ const cardTableOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 
 // "Help me write it" on the write step (POST /api/ai/draft/card-note): its launch key, and a Claude key to call with.
 const cardNoteHelpOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_note_help'])
   && Boolean(process.env.ANTHROPIC_API_KEY);
+// Sharing a card as a video of it arriving (launch key card_share_video): one film per picture, in public storage.
+const cardShareVideoOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_table', 'card_share_video']);
 const sendCardsOff = (res) => res.status(404).json({ error: 'Not found' });
 // A send's answer as { status, body }, so one card's send and each card on a list answer alike; `reply` sends it.
 const reply = (res, answer) => res.status(answer.status).json(answer.body);
@@ -2005,7 +2008,9 @@ async function checkCard(senderId, body, now) {
     return refuseCard(400, 'Sending a card by link isn’t open yet. Send it to a name or an email.', 'CARD_LINK_OFF');
   }
   const from = await checkCardSender(senderId, body, now);
-  return from.refusal ? from : checkCardRecipient(senderId, body, now, from);
+  if (from.refusal) return from;
+  const ownRowId = body.request_id ? holidayCards.requestRowId(senderId, String(body.request_id).toLowerCase()) : null;
+  return checkCardRecipient(senderId, body, now, from, { ownRowId });
 }
 
 // The checks of the card itself and of who sends it: the design, the note, a personal account, the season and one card
@@ -2055,9 +2060,27 @@ async function checkCardSender(senderId, body, now) {
   return { design, message, sender, senderZone, signature: signed.signature, media: media.media, mediaFiles: media.files };
 }
 
+// Whether this sender already has a card on its way to this person for the same morning (the same delivery time). A
+// card taken back doesn't count (it has no recipient any more). `ownRowId` is the row this send's own request ID
+// stores: a second copy of the same send must find that card as its own, not be refused by it. The database decides
+// the same rule again as it stores the card (admit_one_card_per_morning), for sends that arrive at once.
+async function cardForSameMorning(senderId, toUserId, deliveredAt, ownRowId = null) {
+  let query = supabaseAdmin.from('Mail').select('id')
+    .eq('sender_user_id', senderId).eq('recipient_user_id', toUserId)
+    .contains('tags', [holidayCards.CARD_TAG]).eq('delivered_at', deliveredAt).is('deleted_at', null);
+  if (ownRowId) query = query.neq('id', ownRowId);
+  const { data, error } = await query.limit(1);
+  if (error) throw new Error(error.message);
+  return Boolean(data?.length);
+}
+const cardSameMorning = (name, arrival) => refuseCard(429, arrival === 'christmas_morning'
+  ? `You’ve already sent ${name || 'this person'} a card for Christmas morning. Choose another arrival for this one.`
+  : `You’ve already sent ${name || 'this person'} a card for that morning. You can send another after 7 a.m. where they live.`,
+'CARD_SAME_MORNING');
+
 // The checks of who it goes to: the person (or the address), when it can arrive by their clock, and the email limits,
 // counting `earlierAddresses` (those before it on the same list) as sent. `from` is what checkCardSender answered.
-async function checkCardRecipient(senderId, body, now, from, { earlierAddresses = [] } = {}) {
+async function checkCardRecipient(senderId, body, now, from, { earlierAddresses = [], ownRowId = null } = {}) {
   const refuse = refuseCard;
   const { design, message, sender, senderZone, signature, media, mediaFiles } = from;
   const { arrival } = body;
@@ -2078,6 +2101,11 @@ async function checkCardRecipient(senderId, body, now, from, { earlierAddresses 
     if (!open.includes(arrival)) return arrivalClosed();
     const timing = holidayCards.personDelivery({ arrival, timeZone: recipientZone, now, nextRound: mailDelivery.nextRound });
     const people = await loadChatPeople([senderId, toUserId]);
+    // One card from a sender to the same person for one morning, refused here, before anything is stored or a stamp is
+    // spent: with digital stamps, nothing else kept one sender's 50 cards in 24 hours from all going to one mailbox.
+    if (await cardForSameMorning(senderId, toUserId, timing.delivered_at, ownRowId)) {
+      return cardSameMorning(people.get(String(toUserId))?.displayName, arrival);
+    }
     Object.assign(card, { sealed_until: timing.sealed_until, take_back_until: timing.take_back_until,
       arrives_on: mailDelivery.localDate(new Date(timing.delivered_at), recipientZone),
       to_name: people.get(String(toUserId))?.displayName || null });
@@ -2209,7 +2237,7 @@ const cardSharedLimiter = rateLimit({
 const cardSharedSchema = Joi.object({
   design: Joi.string().max(64).required(),
   kind: Joi.string().valid('instagram', 'facebook', 'email', 'link', 'save', 'more').required(),
-  format: Joi.string().valid('story', 'post', 'link').required(),
+  format: Joi.string().valid('story', 'post', 'link', 'video').required(),
   with_note: Joi.boolean().required(),
 });
 
@@ -2224,6 +2252,21 @@ router.post('/cards/shared', verifyToken, cardSharedLimiter, validate(cardShared
   if (!holidayCards.designById(design)) return res.status(400).json({ error: 'Pick one of the Christmas cards.', code: 'CARD_DESIGN_UNKNOWN' });
   await logMailEvent('holiday_card_shared', null, req.user.id, { design, kind, format, withNote });
   return res.status(204).end();
+});
+
+/**
+ * GET /api/mailbox/cards/share-video/:design
+ * The video a card shares as (launch key card_share_video): the picture's card arriving on the table, made once per
+ * picture (frontend/apps/web/scripts/film-card-videos.cjs) and kept in public storage. It never holds a note or a name,
+ * so it is the same for everyone who shares that picture. 404 while the key is off or for a picture that isn't one of
+ * the cards: the apps then show only pictures. A sealed card's sheet doesn't ask.
+ */
+router.get('/cards/share-video/:design', verifyToken, (req, res) => {
+  if (!cardShareVideoOn()) return sendCardsOff(res);
+  const design = holidayCards.designById(String(req.params.design || ''));
+  if (!design) return sendCardsOff(res);
+  res.set('Cache-Control', 'private, max-age=3600');
+  return res.json({ url: getPublicUrl(`card-videos/v1/${design.id}.mp4`), width: 1080, height: 1920 });
 });
 
 // ---- A card's own photo and voice (launch key holiday_card_memories; services/holidayCardMedia) ----
@@ -2497,6 +2540,8 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
       }
       const answered = found ? await repeatAnswer(found, digest, now) : null;
       if (answered) return answered;
+      // Another send to the same person for the same morning was stored first (the database's rule).
+      if (insertError?.message === 'CARD_SAME_MORNING') return cardSameMorning(card.to_name, arrival).refusal;
       logger.error('Card not stored', { senderId, error: insertError?.message || null });
       return cardUnavailable();
     }
@@ -2721,7 +2766,7 @@ async function checkCardList(senderId, body, now) {
         item.answer = repeated;
         return;
       }
-      const checked = await checkCardRecipient(senderId, item.single, now, from, { earlierAddresses });
+      const checked = await checkCardRecipient(senderId, item.single, now, from, { earlierAddresses, ownRowId: item.rowId });
       if (checked.refusal) item.answer = checked.refusal;
       else item.checked = checked;
     } catch (err) {

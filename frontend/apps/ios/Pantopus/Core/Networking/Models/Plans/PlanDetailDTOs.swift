@@ -13,14 +13,24 @@ import Foundation
 
 // MARK: - Plan detail
 
-/// The exact place, for the host and people who are in only.
+/// The exact place, for the host and people who are in only. An online plan
+/// (Plans step 3) has no point and no address: the link and its site instead.
 public struct PlanPlaceDTO: Codable, Sendable, Hashable {
     public let name: String?
     public let address: String?
-    public let latitude: Double
-    public let longitude: Double
+    /// Nil for an online plan.
+    public let latitude: Double?
+    public let longitude: Double?
     /// The host's note for people who are in.
     public let note: String?
+    /// An online plan: the link people join with, and its site without `www.` ("meet.google.com").
+    public let link: String?
+    public let linkHost: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, address, latitude, longitude, note, link
+        case linkHost = "link_host"
+    }
 }
 
 /// Someone going, as the host and other people who are in see them.

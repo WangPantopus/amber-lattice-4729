@@ -94,45 +94,6 @@ public struct PlanFeedbackBody: Encodable, Sendable {
 
 // MARK: - Hosting
 
-/// Where the plan is. `homeId` only for `home`; GPS never becomes the pin.
-/// `placeId` is the place picker's id (`osm:node/123`) for a public place picked
-/// from its list; the server keeps it as the plan's venue key (`place_ref`) and
-/// ignores it for a place typed by hand (planActions.js, Plans with businesses
-/// step 1). Left out when nil.
-public struct PlanPlaceBody: Encodable, Sendable, Hashable {
-    public let kind: PlanPlaceKind
-    public let name: String?
-    public let address: String?
-    public let latitude: Double
-    public let longitude: Double
-    public let homeId: String?
-    public let placeId: String?
-
-    enum CodingKeys: String, CodingKey {
-        case kind, name, address, latitude, longitude
-        case homeId = "home_id"
-        case placeId = "place_id"
-    }
-
-    public init(
-        kind: PlanPlaceKind,
-        name: String?,
-        address: String?,
-        latitude: Double,
-        longitude: Double,
-        homeId: String?,
-        placeId: String? = nil
-    ) {
-        self.kind = kind
-        self.name = name
-        self.address = address
-        self.latitude = latitude
-        self.longitude = longitude
-        self.homeId = homeId
-        self.placeId = placeId
-    }
-}
-
 /// A fresh device fix that proves the host is nearby (decision D2).
 public struct PlanGPSBody: Encodable, Sendable, Hashable {
     public let latitude: Double
@@ -168,9 +129,17 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var hostAs: PlanHostAsBody?
     public var businessLocationId: String?
     public var label: String?
+    /// Private plans (step 1): `invited` posts a private plan; whether each guest may bring a friend, and the
+    /// people invited as it is posted (ids from `GET /api/plans/invites/people`). Left out for a public plan.
+    public var audience: PlanAudience?
+    public var guestsCanInvite: Bool?
+    public var inviteUserIds: [String]?
+    /// Repeating plans (step 2): how it repeats. Left out for a plan that doesn't (never for a business's).
+    public var repeatPattern: PlanRepeatBody?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label
+        case kind, title, about, place, spots, details, gps, label, audience
+        case repeatPattern = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case autoRules = "auto_rules"
@@ -179,6 +148,8 @@ public struct CreatePlanBody: Encodable, Sendable {
         case hostedAgainFrom = "hosted_again_from"
         case hostAs = "host_as"
         case businessLocationId = "business_location_id"
+        case guestsCanInvite = "guests_can_invite"
+        case inviteUserIds = "invite_user_ids"
     }
 
     public init(
@@ -226,9 +197,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     /// A business's plan: what guests see it called, and which of its locations.
     public var label: String?
     public var businessLocationId: String?
+    /// Repeating plans (step 2): a new pattern from this date on, or `.stop` (sent as `null`). Nil leaves it.
+    public var repeatChange: PlanRepeatChange?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label
+        case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case autoRules = "auto_rules"
@@ -239,12 +213,20 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public init() {}
 }
 
-/// `POST /api/plans/:id/cancel`.
+/// `POST /api/plans/:id/cancel`. On a repeating plan, `repeat: "keep"` cancels this date only and posts the
+/// next one now ("Skip Thursday"); without it the series stops too.
 public struct CancelPlanBody: Encodable, Sendable {
     public let note: String?
+    public let afterwards: String?
 
-    public init(note: String?) {
+    enum CodingKeys: String, CodingKey {
+        case note
+        case afterwards = "repeat"
+    }
+
+    public init(note: String?, keepRepeating: Bool = false) {
         self.note = note
+        afterwards = keepRepeating ? "keep" : nil
     }
 }
 

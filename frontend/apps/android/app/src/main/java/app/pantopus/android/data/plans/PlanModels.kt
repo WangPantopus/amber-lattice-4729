@@ -4,8 +4,9 @@ import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPinDto
 
 /**
- * The kinds of plan (decision D3, and study groups from 2026-10-17), in the order the chips and the host grid show
- * them. [wire] is the API value, [label] the name people see.
+ * The kinds of plan (decision D3, study groups from 2026-10-17, and the four of Plans step 4 from 2026-11-14), in the
+ * order the chips and the empty state show them. [wire] is the API value, [label] the name people see. A kind this
+ * app doesn't know reads as null ([from]), and its plan is left out wherever plans are listed.
  */
 enum class PlanKind(
     val wire: String,
@@ -16,13 +17,45 @@ enum class PlanKind(
     PICKUP_GAME("pickup_game", "Pickup game"),
     WALK_COFFEE("walk_coffee", "Walk & coffee"),
     STUDY_GROUP("study_group", "Study group"),
+
+    // Plans step 4, while `plans_kinds` is on for posting new ones; a plan of these kinds already posted always reads.
+    FOOD_DRINKS("food_drinks", "Food & drinks"),
+    GAME_NIGHT("game_night", "Game night"),
+    OUTDOORS("outdoors", "Outdoors"),
+    SOMETHING_ELSE("something_else", "Something else"),
     ;
 
-    /** The noun used in sentences: "Host your own watch party", "How was Sunday's pickup game?". */
-    val noun: String get() = label.lowercase()
+    /**
+     * The noun used in sentences: "Host your own watch party", "How was Sunday's pickup game?". The newer kinds use
+     * the server's word for them when no detail says more ("get-together", "outing", "plan").
+     */
+    val noun: String
+        get() =
+            when (this) {
+                FOOD_DRINKS -> "get-together"
+                OUTDOORS -> "outing"
+                SOMETHING_ELSE -> "plan"
+                else -> label.lowercase()
+            }
+
+    /** One of the four kinds of Plans step 4 (`plans_kinds`); a business never hosts these. */
+    val isNew: Boolean get() = this in NEW
+
+    /** It can meet online (Plans step 3): not a playdate, a pickup game or an outdoor plan, which meet in person. */
+    val canBeOnline: Boolean get() = this != PLAYDATE && this != PICKUP_GAME && this != OUTDOORS
 
     companion object {
         fun from(wire: String?): PlanKind? = entries.firstOrNull { it.wire == wire }
+
+        /** The four newer kinds (Plans step 4). */
+        val NEW: List<PlanKind> = listOf(FOOD_DRINKS, GAME_NIGHT, OUTDOORS, SOMETHING_ELSE)
+
+        /**
+         * The type picker's order with the newer kinds (board Type): the grid, then "Something else" as a wide row.
+         * Without them it keeps the five in [entries] order, as it always was.
+         */
+        val PICKER_ORDER: List<PlanKind> =
+            listOf(WATCH_PARTY, PICKUP_GAME, WALK_COFFEE, STUDY_GROUP, FOOD_DRINKS, GAME_NIGHT, OUTDOORS, PLAYDATE, SOMETHING_ELSE)
     }
 }
 
@@ -72,7 +105,7 @@ enum class PlanWindow(
 }
 
 /**
- * The list's All / Neighbors / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
+ * The list's All / People / Businesses filter (Plans with businesses, board G2). Shown only when the list says a
  * business has a plan in the area. It filters the list and the pins on the phone, as the kind chips do, so the
  * requests stay as they were (as on iOS); [wire] is how the choice is remembered.
  */
@@ -81,7 +114,9 @@ enum class PlanHostFilter(
     val label: String,
 ) {
     ALL("all", "All"),
-    NEIGHBORS("neighbors", "Neighbors"),
+
+    /** "People" since November 14 (no "neighbor" in Plans); the remembered value stays `neighbors`. */
+    NEIGHBORS("neighbors", "People"),
     BUSINESSES("businesses", "Businesses"),
     ;
 
@@ -138,9 +173,29 @@ val PlanDto.standing: PlanViewerStanding
 
 /**
  * True when the private part (place, note, people) came with this copy: the viewer hosts it or is in. A business's
- * plan carries its place for everyone (it is the business's own address), so only the people count there.
+ * plan carries its place for everyone (it is the business's own address), so only the people count there; so does a
+ * private plan's place shown to the person invited before they answer.
  */
-val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null) || people != null
+val PlanDto.hasPrivatePart: Boolean get() = (place != null && business == null && !placeShownToInvitee) || people != null
+
+/** `audience` values (Plans step 1). An older server sends none, which is a plan anyone nearby can see. */
+object PlanAudience {
+    const val NEARBY = "nearby"
+    const val INVITED = "invited"
+}
+
+/** A private plan (Plans step 1): only its host, the people invited and the people in see it. */
+val PlanDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/** A private plan's pin. */
+val PlanPinDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
+
+/**
+ * A private plan's place as the person invited reads it before answering (at a public place the server sends it to
+ * them): not the private part of someone who is in.
+ */
+val PlanDto.placeShownToInvitee: Boolean
+    get() = isPrivate && place != null && standing != PlanViewerStanding.HOSTING && standing != PlanViewerStanding.IN
 
 /** A business hosts this plan (Plans with businesses): the server sends `business` only then. */
 val PlanDto.isBusiness: Boolean get() = business != null

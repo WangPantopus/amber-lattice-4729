@@ -164,10 +164,15 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
     public let pulseTopic: PulseTopic?
     /// How the post ended, or when a Heads-up ends (Pulse S7).
     public let status: PulsePostStatus?
-    /// Connections: "Ben C. and 2 others reposted", the line above the author; nil when no connection reposted it.
+    /// "You and 2 others reposted", the line above the author (PULSEREPOST contract §1); nil when nobody the
+    /// viewer knows reposted it.
     public let repostedBy: String?
     /// What the author's photo and name open; nil when they open nothing.
     public let authorLink: PulseAuthorLink?
+    /// Where the post's story was published ("Read at The Columbian"); nil on most posts.
+    public let source: PostSource?
+    /// The post this one quotes ("Repost with your words", contract §8.3); nil for an ordinary post.
+    public let quoted: PulseQuotedPost?
     public var isCurator: Bool {
         origin == "curator"
     }
@@ -202,7 +207,9 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
         pulseTopic: PulseTopic? = nil,
         status: PulsePostStatus? = nil,
         repostedBy: String? = nil,
-        authorLink: PulseAuthorLink? = nil
+        authorLink: PulseAuthorLink? = nil,
+        source: PostSource? = nil,
+        quoted: PulseQuotedPost? = nil
     ) {
         self.id = id
         self.authorName = authorName
@@ -228,6 +235,8 @@ public struct PulsePostCardContent: Sendable, Hashable, Identifiable {
         self.status = status
         self.repostedBy = repostedBy
         self.authorLink = authorLink
+        self.source = source
+        self.quoted = quoted
     }
 }
 
@@ -256,6 +265,8 @@ public struct PulsePostCard: View {
     @Environment(\.selectedPulsePostId) private var selectedPostId
     /// The emoji picker is open from the reaction pill.
     @State private var showsReactionPicker = false
+    /// The story behind "Read at …", open in the browser sheet.
+    @State private var openedSource: PostSource?
     private let content: PulsePostCardContent
     private let onTap: @MainActor () -> Void
     /// An emoji picked in the reaction picker (picking the viewer's own takes it away).
@@ -266,12 +277,16 @@ public struct PulsePostCard: View {
     private let onOverflow: (@MainActor () -> Void)?
     /// Dismisses a cold-start seeded fact. `nil` hides the affordance.
     private let onDismissSeeded: (@MainActor () -> Void)?
-    /// Bookmark toggle in the engagement strip. `nil` hides the affordance.
+    /// Save toggle in the engagement strip. `nil` hides the affordance.
     private let onToggleSave: (@MainActor () -> Void)?
-    /// Repost toggle in the engagement strip. `nil` hides the affordance.
+    /// ↻ in the engagement strip: opens the Repost chooser (contract §2). `nil` hides the affordance.
     private let onToggleRepost: (@MainActor () -> Void)?
     /// Opens the author's profile or page from their photo and name. `nil` leaves them plain.
     private let onOpenAuthor: (@MainActor () -> Void)?
+    /// Opens the quoted post's page from its card (contract §8.3). `nil` leaves the card plain.
+    private let onOpenQuotedPost: (@MainActor (String) -> Void)?
+    /// The Repost chooser this card's ↻ presents, so it points at the button. `nil`: the screen presents it.
+    private let repostChooser: PulseCardRepostChooser?
 
     public init(
         content: PulsePostCardContent,
@@ -282,8 +297,11 @@ public struct PulsePostCard: View {
         onDismissSeeded: (@MainActor () -> Void)? = nil,
         onToggleSave: (@MainActor () -> Void)? = nil,
         onToggleRepost: (@MainActor () -> Void)? = nil,
-        onOpenAuthor: (@MainActor () -> Void)? = nil
+        onOpenAuthor: (@MainActor () -> Void)? = nil,
+        onOpenQuotedPost: (@MainActor (String) -> Void)? = nil,
+        repostChooser: PulseCardRepostChooser? = nil
     ) {
+        self.repostChooser = repostChooser
         self.content = content
         self.onTap = onTap
         self.onPickReaction = onPickReaction
@@ -293,6 +311,7 @@ public struct PulsePostCard: View {
         self.onToggleSave = onToggleSave
         self.onToggleRepost = onToggleRepost
         self.onOpenAuthor = onOpenAuthor
+        self.onOpenQuotedPost = onOpenQuotedPost
     }
 
     public var body: some View {
@@ -475,7 +494,7 @@ public struct PulsePostCard: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(content.actions.pending.contains(.save) ? 0.5 : 1)
-                .accessibilityLabel(content.actions.isSaved ? "Remove bookmark" : "Save post")
+                .accessibilityLabel(content.actions.isSaved ? "Remove from Saved" : "Save post")
                 .accessibilityValue(content.actions.pending.contains(.save) ? "Saving" : "")
                 .accessibilityIdentifier("pulsePostSave_\(content.id)")
             }
@@ -505,6 +524,7 @@ public struct PulsePostCard: View {
                 .accessibilityLabel(content.actions.isReposted ? "Undo repost" : "Repost")
                 .accessibilityValue(content.actions.pending.contains(.repost) ? "Saving" : "")
                 .accessibilityIdentifier("pulsePostRepost_\(content.id)")
+                .modifier(PulseCardRepostChooserHost(chooser: repostChooser, postId: content.id))
             }
             HStack(spacing: Spacing.s1) {
                 Icon(.messageCircle, size: 12, color: Theme.Color.appTextSecondary)
@@ -535,11 +555,13 @@ public struct PulsePostCard: View {
         if let status = content.status { parts.append(status.text) }
         if let title = content.title, !title.isEmpty { parts.append(title) }
         if !content.body.isEmpty { parts.append(content.body) }
+        if let source = content.source { parts.append(source.label) }
         if let when = content.event?.when { parts.append(when) }
         if let place = content.event?.place { parts.append(place) }
         if !content.media.isEmpty {
             parts.append("\(content.media.count) attached \(content.media.count == 1 ? "photo" : "photos")")
         }
+        if let quoted = content.quoted { parts.append(quoted.spoken) }
         parts += reactionsSpoken
         // A part that already ends a sentence keeps its own mark (as on Android): VoiceOver never hears "7..".
         return parts.reduce("") { label, part in
@@ -686,10 +708,17 @@ private extension PulsePostCard {
             Button(PostReactionKind.emoji.label, action: openReactionPicker)
         }
         if let onToggleSave {
-            Button(content.actions.isSaved ? "Remove bookmark" : "Save post", action: onToggleSave)
+            Button(content.actions.isSaved ? "Remove from Saved" : "Save post", action: onToggleSave)
         }
         if let onToggleRepost {
+            // Opens the Repost chooser, as the ↻ button does.
             Button(content.actions.isReposted ? "Undo repost" : "Repost", action: onToggleRepost)
+        }
+        if let source = content.source {
+            Button(source.label) { openedSource = source }
+        }
+        if let onOpenQuotedPost, let quotedId = content.quoted?.openablePostId {
+            Button("Open quoted post") { onOpenQuotedPost(quotedId) }
         }
         if let onOverflow {
             Button("Post options", action: onOverflow)
@@ -819,6 +848,13 @@ private extension PulsePostCard {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Spacing.s4)
             }
+            if let source = content.source {
+                PostSourceLink(source: source, accessibilityID: "pulsePostSource_\(content.id)") {
+                    openedSource = source
+                }
+                .padding(.horizontal, Spacing.s4)
+                .postSourceBrowser($openedSource)
+            }
             if let event = content.event {
                 eventRows(event)
                     .padding(.horizontal, Spacing.s4)
@@ -829,8 +865,19 @@ private extension PulsePostCard {
                     style: .compact,
                     accessibilityID: "pulsePostMedia_\(content.id)",
                     usesSharpPreviews: true,
-                    edgeToEdge: true
+                    edgeToEdge: true,
+                    // An outlet's own pictures: one that can't load is left out.
+                    dropsFailed: content.source != nil
                 )
+            }
+            // "Repost with your words": the quoted post, under this post's own words and media.
+            if let quoted = content.quoted {
+                PulseQuotedPostView(
+                    quoted: quoted,
+                    accessibilityID: "pulseQuotedPost_\(content.id)",
+                    onOpen: onOpenQuotedPost
+                )
+                .padding(.horizontal, Spacing.s4)
             }
             if let attendees = content.attendees {
                 attendeeStrip(attendees)

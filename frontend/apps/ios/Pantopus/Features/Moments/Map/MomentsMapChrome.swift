@@ -218,7 +218,8 @@ struct MomentsStrip: View {
     let actions: MomentsMapActions
     let onRetry: @MainActor (String) -> Void
     let onDiscard: @MainActor (String) -> Void
-    @State private var failedPosting: MomentPosting?
+    /// The posting whose circle was tapped (its id: the dialog reads how it stands now).
+    @State private var askedPosting: String?
 
     var body: some View {
         let rings = viewModel.stripRings
@@ -247,17 +248,36 @@ struct MomentsStrip: View {
         .accessibilityLabel(viewModel.focus.map { "Moments at \($0.title)" } ?? title)
         .accessibilityIdentifier("moments.strip")
         .confirmationDialog(
-            "Your Moment didn't post",
-            isPresented: Binding(get: { failedPosting != nil }, set: { if !$0 { failedPosting = nil } }),
+            asked.map { Self.didFail($0) ? "Your Moment didn't post" : "Your Moment is posting" } ?? "",
+            isPresented: Binding(get: { asked != nil }, set: { if !$0 { askedPosting = nil } }),
             titleVisibility: .visible,
-            presenting: failedPosting
+            presenting: asked
         ) { posting in
-            Button("Try again") { onRetry(posting.id) }
-            Button("Discard", role: .destructive) { onDiscard(posting.id) }
-            Button("Cancel", role: .cancel) {}
+            // One that is still going up can be let go too: nothing else on the screen stops it.
+            if Self.didFail(posting) {
+                Button("Try again") { onRetry(posting.id) }
+                Button("Discard", role: .destructive) { onDiscard(posting.id) }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("Discard", role: .destructive) { onDiscard(posting.id) }
+                Button("Keep posting", role: .cancel) {}
+            }
         } message: { posting in
-            if case let .failed(message) = posting.phase { Text(message) }
+            if case let .failed(message) = posting.phase {
+                Text(message)
+            } else {
+                Text("It keeps posting while you use Pantopus.")
+            }
         }
+    }
+
+    /// The tapped posting as it is now; none once it's live or gone.
+    private var asked: MomentPosting? {
+        postings.first { $0.id == askedPosting && $0.phase != .live }
+    }
+
+    private static func didFail(_ posting: MomentPosting) -> Bool {
+        if case .failed = posting.phase { true } else { false }
     }
 
     private func header(_ rings: [MomentRingDTO]) -> some View {
@@ -324,13 +344,13 @@ struct MomentsStrip: View {
     }
 
     private func postingCell(_ posting: MomentPosting) -> some View {
-        let failed = if case .failed = posting.phase { true } else { false }
+        let failed = Self.didFail(posting)
         let isLive = posting.phase == .live
         return Button {
-            if failed { failedPosting = posting }
+            askedPosting = posting.id
         } label: {
             VStack(spacing: Spacing.s1) {
-                MomentPostingRing(progress: posting.progress, avatar: me, asPin: false)
+                MomentPostingRing(progress: posting.progress, avatar: me, asPin: false, picture: posting.picture)
                 Text(failed ? "Try again" : (isLive ? "You" : "Posting"))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(failed ? Theme.Color.error : Theme.Color.primaryTint)
@@ -339,8 +359,9 @@ struct MomentsStrip: View {
             .frame(width: 62)
         }
         .buttonStyle(.plain)
-        .disabled(!failed)
-        .accessibilityLabel(failed ? "Your Moment didn't post. Try again" : "Your Moment is posting")
+        .disabled(isLive)
+        .accessibilityLabel(failed ? "Your Moment didn't post. Try again" : (isLive ? "Your Moment is live" : "Your Moment is posting"))
+        .accessibilityHint(failed ? "Try again or discard" : (isLive ? "" : "Discard"))
         .accessibilityIdentifier("moments.strip.posting")
     }
 }

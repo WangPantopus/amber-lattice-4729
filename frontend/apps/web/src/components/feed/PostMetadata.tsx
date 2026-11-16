@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, MapPin, Store, Clock, Search, CheckCircle, Wrench } from 'lucide-react';
+import { Calendar, MapPin, Store, Clock, Search, CheckCircle, Wrench, Newspaper, ExternalLink } from 'lucide-react';
 import type { Post } from '@pantopus/types';
 import { lostFoundContactLabel } from './composer/LostFoundFields';
 
@@ -15,6 +15,24 @@ function eventTime(value: string, plan: boolean): string {
   });
 }
 
+/**
+ * Where a post's story was published: `post_metadata.source_url`, which only the server sets (an Official or curator
+ * notice's source, or an Around you headline's outlet with its name in `source_name`). A web link only.
+ */
+export function postSource(post: Post): { url: string; label: string } | null {
+  const meta = post.post_metadata;
+  const raw = typeof meta?.source_url === 'string' ? meta.source_url : null;
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const name = typeof meta?.source_name === 'string' && meta.source_name.trim() ? meta.source_name.trim() : null;
+    return { url: url.href, label: name ? `Read at ${name}` : `Source: ${url.hostname.replace(/^www\./, '')}` };
+  } catch {
+    return null;
+  }
+}
+
 /** Keep the same saved details visible in cards, reply panels and full post pages. */
 export default function PostMetadata({ post, onClick, spacing = 'mx-4 mb-2' }: {
   post: Post;
@@ -22,7 +40,22 @@ export default function PostMetadata({ post, onClick, spacing = 'mx-4 mb-2' }: {
   spacing?: string;
 }) {
   const plan = post.post_metadata?.plan === true;
+  const source = postSource(post);
   return <>
+      {source && (
+        <a
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          data-testid="postSourceLink"
+          className={`${spacing} flex items-center gap-2 rounded-xl border border-app bg-app-surface-hover px-3 py-2 text-xs font-semibold text-app-link transition hover:shadow-sm`}
+        >
+          <Newspaper className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">{source.label}</span>
+          <ExternalLink className="ml-auto h-3 w-3 flex-shrink-0" aria-hidden />
+        </a>
+      )}
       {(post.post_type === 'event') && (post.event_date || post.event_venue) && (
         <div className={`${spacing} p-3 bg-blue-50 rounded-xl border-l-4 border-blue-400 space-y-1${onClick ? ' cursor-pointer' : ''}`} onClick={onClick}>
           {post.event_date && (

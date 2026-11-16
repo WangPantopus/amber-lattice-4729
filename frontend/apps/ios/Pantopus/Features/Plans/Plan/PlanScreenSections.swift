@@ -24,7 +24,10 @@ struct PlanScreenSections: View {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 switch viewModel.mode {
                 case .browsing:
-                    if let invite = viewModel.openInvite {
+                    if viewModel.openInvite != nil, card.isPrivate {
+                        // Board Invited: only the people the host invites can see a private plan.
+                        PlanInvitedBanner(card: card)
+                    } else if let invite = viewModel.openInvite {
                         let words = PlanInviteCopy.banner(card: card, invite: invite)
                         PlanBanner(tone: .success, icon: .partyPopper, title: words.title, message: words.message)
                             .accessibilityIdentifier("planInviteBanner")
@@ -105,6 +108,7 @@ struct PlanTitleBlock: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 PlanFactRow(icon: .calendar, text: PlanScreenLines.when(card))
+                if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
                 PlanFactRow(icon: .mapPin, text: PlanScreenLines.whereLine(card))
                 if card.kind == .playdate, let ages = PlanRowModel.ages(card.details?.kidsAgeBands) {
                     PlanFactRow(icon: .planPlaydate, text: "Kids \(ages)")
@@ -207,12 +211,14 @@ enum PlanScreenLines {
     /// "Near Prune Hill · about 1 mi · at Sam's place" / "· a public place".
     static func whereLine(_ card: PlanCardDTO) -> String {
         if card.isBusiness { return PlanCardLines.businessWhere(card) }
+        if card.isOnline { return PlanOnlineCopy.whereLine(card) } // "Online · hosted from Camas" (board Online)
+        if let place = card.invitedPlace { return PlanPrivateCopy.whereLine(card, place: place) }
         var parts = [card.area.label]
         if let distance = PlanFormat.distance(card.distanceBand) { parts.append(distance) }
         switch card.placeKind {
         case .home: parts.append("at \(PlanCardLines.hostName(card))'s place")
         case .publicPlace: parts.append("a public place")
-        case nil: break
+        case .online, nil: break
         }
         return parts.joined(separator: " · ")
     }
@@ -230,6 +236,7 @@ enum PlanScreenLines {
             if details.dogsWelcome == true { parts.append("dogs welcome") }
         case .studyGroup:
             parts.append(contentsOf: PlanCardLines.study(details))
+        case .foodDrinks, .gameNight, .outdoors, .somethingElse: parts.append(contentsOf: PlanKindsMore.details(card.kind, details))
         case .watchParty, .playdate:
             break
         }
@@ -265,6 +272,7 @@ struct PlanBrowsingSection: View {
                 if !card.isBusiness { PlanFactRow(icon: .shieldCheck, text: "Free, and for adults") }
             }
         }
+        if card.isRepeating, card.myInvite?.isOpen == true { PlanFactRow(icon: .check, text: PlanRepeatCopy.invitedLine) }
     }
 }
 
@@ -311,6 +319,7 @@ struct PlanRequestedSection: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if let partySize = myRequest?.partySize {
             PlanCardBox {
@@ -376,6 +385,7 @@ struct PlanWaitlistSection: View {
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)
+            if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
             if let details = PlanScreenLines.details(card) {
                 Text(details).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
             }

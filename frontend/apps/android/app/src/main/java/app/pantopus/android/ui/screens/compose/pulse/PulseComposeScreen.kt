@@ -91,6 +91,8 @@ import app.pantopus.android.ui.screens.compose.placepicker.MediaHeightExtractor
 import app.pantopus.android.ui.screens.compose.placepicker.MediaLocationExtractor
 import app.pantopus.android.ui.screens.compose.placepicker.PlacePickerSheet
 import app.pantopus.android.ui.screens.compose.placepicker.PostPlaceTag
+import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedCard
+import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedPostCard
 import app.pantopus.android.ui.screens.shared.form.FormFieldGroup
 import app.pantopus.android.ui.screens.shared.form.FormFieldState
 import app.pantopus.android.ui.screens.shared.form.FormShell
@@ -116,6 +118,7 @@ import java.util.UUID
  * same close-confirm via [FormShell].
  */
 @Composable
+@Suppress("LongParameterList") // The flow's context (target, purpose, business author) and its ways out.
 fun PulseComposeScreen(
     onBack: () -> Unit,
     viewModel: PulseComposeViewModel = hiltViewModel(),
@@ -130,6 +133,8 @@ fun PulseComposeScreen(
     businessAuthorId: String? = null,
     /** "Before you ask": opens an earlier post; the composer keeps the draft underneath. */
     onOpenPost: (String) -> Unit = {},
+    /** "Repost with your words": "Change" beside "Posting to …" goes back to the audience step; null hides it. */
+    onChangeTarget: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val activeIntent by viewModel.activeIntent.collectAsStateWithLifecycle()
@@ -158,6 +163,7 @@ fun PulseComposeScreen(
     val assist by viewModel.assist.collectAsStateWithLifecycle()
     val canUndoSuggestion by viewModel.canUndoSuggestion.collectAsStateWithLifecycle()
     val aiPostConfirmation by viewModel.aiPostConfirmation.collectAsStateWithLifecycle()
+    val quotedPost by viewModel.quotedPost.collectAsStateWithLifecycle()
     var showPlacePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(flowTarget, flowPurpose) {
@@ -276,11 +282,12 @@ fun PulseComposeScreen(
                                 postingTargetLabel = viewModel.flowTargetLabel,
                                 isNetworkTarget = viewModel.isNetworkFlowTarget,
                                 earlierAnswers = earlierAnswers,
-                                assist = assist.takeUnless { viewModel.isEditing },
+                                assist = assist.takeIf { viewModel.showsAssist },
                                 assistHasMaterial = viewModel.assistHasMaterial,
                                 assistPhotoCount = viewModel.assistPhotoCount,
                                 assistCanUndo = canUndoSuggestion,
                                 canTakePhoto = media.canTakePhoto,
+                                quoted = quotedPost,
                             ),
                         actions =
                             PulseComposeActions(
@@ -311,6 +318,7 @@ fun PulseComposeScreen(
                                 onAssistTakePhoto = { media.takePhoto(true) },
                                 onAssistChoosePhotos = { media.pickFiles(arrayOf("image/*"), true) },
                                 onTakePhoto = { media.takePhoto(false) },
+                                onChangeTarget = onChangeTarget,
                             ),
                     )
             }
@@ -623,6 +631,8 @@ internal data class PulseComposeContentState(
     val assistCanUndo: Boolean = false,
     /** The phone has a camera ("Take photo"). */
     val canTakePhoto: Boolean = false,
+    /** "Repost with your words": the quoted post's card under the text box (read-only); null for an ordinary post. */
+    val quoted: PulseQuotedCard? = null,
 )
 
 internal data class PulseComposeSelectionActions(
@@ -664,6 +674,8 @@ internal data class PulseComposeActions(
     val onAssistChoosePhotos: () -> Unit = {},
     /** "Take photo" in the attachments menu. */
     val onTakePhoto: () -> Unit = {},
+    /** A quote's "Change" beside "Posting to Connections" (the composer picks the audience on its first step). */
+    val onChangeTarget: (() -> Unit)? = null,
 )
 
 /**
@@ -694,6 +706,7 @@ private fun PulseComposeBodySections(
             state.composePurpose,
             state.postingTargetLabel,
             state.eligibilityWarning.takeIf { state.selectedPlaceTag == null },
+            onChangeTarget = actions.onChangeTarget,
         )
     } else {
         IntentPicker(
@@ -729,6 +742,15 @@ private fun PulseComposeBodySections(
         onSelectAskCategory = actions.selection.onSelectAskCategory,
         onSelectRecommendRating = actions.selection.onSelectRecommendRating,
     )
+    // The post being quoted, under the text box: the same compact card the post will show, not tappable here.
+    state.quoted?.let { quoted ->
+        PulseQuotedPostCard(
+            card = quoted,
+            testTag = "pulseQuoteComposerCard",
+            onOpen = null,
+            modifier = Modifier.padding(horizontal = Spacing.s4),
+        )
+    }
     BeforeYouAskSection(posts = state.earlierAnswers, onOpenPost = actions.onOpenEarlierPost)
     PhotosSection(
         photos = state.photos,
@@ -770,6 +792,8 @@ private fun FlowContextHeader(
     purpose: PulseComposePurpose?,
     targetLabel: String?,
     eligibilityWarning: String? = null,
+    /** A quote's "Change" beside "Posting to …": back to the first step, where the audience is picked. */
+    onChangeTarget: (() -> Unit)? = null,
 ) {
     purpose?.let { p ->
         Row(
@@ -787,6 +811,17 @@ private fun FlowContextHeader(
         ) {
             PantopusIconImage(icon = PantopusIcon.MapPin, contentDescription = null, size = 14.dp, tint = PantopusColors.appTextSecondary)
             Text(text = "Posting to $label", style = PantopusTextStyle.caption, color = PantopusColors.appTextSecondary)
+            onChangeTarget?.let { change ->
+                Text(
+                    text = "Change",
+                    style = PantopusTextStyle.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.primary600,
+                    modifier =
+                        Modifier
+                            .clickable(onClickLabel = "Change who sees it", role = Role.Button, onClick = change)
+                            .testTag("composePulseChangeTarget"),
+                )
+            }
         }
     }
     eligibilityWarning?.let { warning ->
@@ -1135,8 +1170,7 @@ private fun IntentSpecificSection(
                     AnnounceSection(
                         fields = state.fields,
                         audience = state.announceAudience,
-                        purpose = state.composePurpose,
-                        isNetworkTarget = state.isNetworkTarget,
+                        wording = announceWording(state),
                         showAudience = !state.isFlowMode && !state.isIntentLocked,
                         onUpdateField = onUpdateField,
                         onSelectAudience = onSelectAnnounceAudience,
@@ -1464,20 +1498,21 @@ private fun HeadsUpSection(
 private fun AnnounceSection(
     fields: Map<PulseComposeField, FormFieldState>,
     audience: PulseAnnounceAudience,
-    purpose: PulseComposePurpose?,
-    isNetworkTarget: Boolean,
+    wording: AnnounceWording,
     showAudience: Boolean,
     onUpdateField: (PulseComposeField, String) -> Unit,
     onSelectAudience: (PulseAnnounceAudience) -> Unit,
 ) {
-    FormFieldGroup(if (isNetworkTarget) "Post" else announceSectionTitle(purpose)) {
-        FieldRow(
-            field = PulseComposeField.Title,
-            label = "Headline",
-            placeholder = "What's the news?",
-            fields = fields,
-            onUpdate = onUpdateField,
-        )
+    FormFieldGroup(wording.title) {
+        if (wording.showsHeadline) {
+            FieldRow(
+                field = PulseComposeField.Title,
+                label = "Headline",
+                placeholder = "What's the news?",
+                fields = fields,
+                onUpdate = onUpdateField,
+            )
+        }
         if (showAudience) {
             ChipRow(
                 label = "Audience",
@@ -1488,17 +1523,35 @@ private fun AnnounceSection(
             )
         }
         BodyEditor(
-            label = "Details",
-            placeholder =
-                if (isNetworkTarget) {
-                    "Share with your connections…"
-                } else {
-                    purpose?.placeholder ?: "Share what your neighbors should know…"
-                },
+            label = wording.bodyLabel,
+            placeholder = wording.bodyPlaceholder,
             fields = fields,
             onUpdate = onUpdateField,
         )
     }
+}
+
+/** The plain post form's words: its title, whether it asks for a headline, and the text box's label and hint. */
+private data class AnnounceWording(
+    val title: String,
+    val showsHeadline: Boolean,
+    val bodyLabel: String,
+    val bodyPlaceholder: String,
+)
+
+private fun announceWording(state: PulseComposeContentState): AnnounceWording {
+    val title = if (state.isNetworkTarget) "Post" else announceSectionTitle(state.composePurpose)
+    // "Repost with your words" as a plain post: the words alone, no headline (the view-model's rule).
+    if (state.quoted != null && state.composePurpose == null) {
+        return AnnounceWording(title, showsHeadline = false, "Your words", "Say something about this post…")
+    }
+    val hint =
+        if (state.isNetworkTarget) {
+            "Share with your connections…"
+        } else {
+            state.composePurpose?.placeholder ?: "Share what your neighbors should know…"
+        }
+    return AnnounceWording(title, showsHeadline = true, "Details", hint)
 }
 
 private fun announceSectionTitle(purpose: PulseComposePurpose?): String =

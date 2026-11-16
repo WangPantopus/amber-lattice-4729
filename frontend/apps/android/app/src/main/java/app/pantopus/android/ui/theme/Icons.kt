@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -720,6 +721,10 @@ enum class PantopusIcon(
     Coffee("coffee"),
     BookOpen("book-open"),
 
+    // Plans step 4: game night is a die, Lucide `dice-4` (Material `Casino`, SF `dice`). Food & drinks is [Utensils],
+    // outdoors [Mountain] and something else [Plus].
+    Dice4("dice-4"),
+
     // Pantopus Moments (brief 2026-11-08): the tab is Lucide `circle-dashed` (SF `circle.dashed`); a video's sound
     // toggle is Lucide `volume-2` / `volume-x` (Material `VolumeUp` / `VolumeOff`).
     CircleDashed("circle-dashed"),
@@ -1163,6 +1168,7 @@ internal fun PantopusIcon.source(): IconSource =
         PantopusIcon.Ball -> IconSource.Material(Icons.Filled.SportsBaseball)
         PantopusIcon.Coffee -> IconSource.Material(Icons.Filled.LocalCafe)
         PantopusIcon.BookOpen -> IconSource.Material(Icons.AutoMirrored.Filled.MenuBook)
+        PantopusIcon.Dice4 -> IconSource.Material(Icons.Filled.Casino)
         PantopusIcon.CircleDashed -> IconSource.Drawable(R.drawable.ic_lucide_circle_dashed)
         PantopusIcon.Volume2 -> IconSource.Material(Icons.AutoMirrored.Filled.VolumeUp)
         PantopusIcon.VolumeX -> IconSource.Material(Icons.AutoMirrored.Filled.VolumeOff)

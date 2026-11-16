@@ -275,8 +275,14 @@ class MomentsMapViewModel
                         is MomentPostingOutcome.Held -> _messages.tryEmit("Your Moment is waiting for a quick review before it shows.")
                         is MomentPostingOutcome.Live -> {
                             val hours = outcome.moment.hours
-                            _messages.tryEmit("Your Moment is live. It shows for ${if (hours == 1) "1 hour" else "$hours hours"}.")
-                            _wentLive.tryEmit(Unit)
+                            val shows = "It shows for ${if (hours == 1) "1 hour" else "$hours hours"}."
+                            // A video posted in parts says so once, when its last part is live (contract v3.11).
+                            val series = outcome.moment.series
+                            when {
+                                series == null -> _messages.tryEmit("Your Moment is live. $shows")
+                                series.index == series.count -> _messages.tryEmit("Your video is live. $shows")
+                            }
+                            if (series == null || series.index == series.count) _wentLive.tryEmit(Unit)
                             val moment = outcome.moment
                             if (moment.latitude != null && moment.longitude != null) _liveSpot.value = moment.latitude to moment.longitude
                         }

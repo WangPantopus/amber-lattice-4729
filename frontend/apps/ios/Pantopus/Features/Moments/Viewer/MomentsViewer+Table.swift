@@ -244,7 +244,7 @@ extension MomentsViewer {
                     model.muted.toggle()
                 }
             }
-            if !model.isMine, author != nil {
+            if model.isMine || author != nil {
                 tableRoundButton(.moreHorizontal, size: 44, label: "More", id: "moments.viewer.more") { showsMenu = true }
             }
             tableRoundButton(.x, size: 44, label: "Close", id: "moments.viewer.close") { model.close() }

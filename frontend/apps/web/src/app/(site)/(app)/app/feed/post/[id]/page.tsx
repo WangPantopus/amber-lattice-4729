@@ -15,7 +15,7 @@ import type { LucideIcon } from 'lucide-react';
 import { CommentThread, EditPostDialog } from '@/components/feed';
 import UserAvatarLink from '@/components/user/UserAvatarLink';
 import UserIdentityLink from '@/components/user/UserIdentityLink';
-import { PostMediaPreview, resolvePostMediaSlots } from '@/components/feed/PostMediaGrid';
+import { PostMediaPreview, resolvePostMediaSlots, useShownMedia } from '@/components/feed/PostMediaGrid';
 import PostMediaLightbox from '@/components/feed/PostMediaLightbox';
 import { PostLinkContent } from '@/components/feed/LinkPreviewCard';
 import {
@@ -30,6 +30,13 @@ import ReportModal from '@/components/ui/ReportModal';
 import ErrorState from '@/components/ui/ErrorState';
 import PostMetadata from '@/components/feed/PostMetadata';
 import { canSharePost, sharePostLink } from '@/components/feed/sharePostLink';
+import RepostChooser from '@/components/feed/RepostChooser';
+import QuotedPostCard from '@/components/feed/QuotedPostCard';
+import { mergePostPatch, readQuotedPost, useRepostToggle } from '@/components/feed/repost';
+import {
+  FEED_TOAST_ACTION_MS, FEED_TOAST_ACTION_TEST_ID, SAVED_POSTS_PATH, SAVED_TOAST, UNSAVED_TOAST, type FeedToastAction,
+} from '@/components/feed/feedToasts';
+import { openQuoteComposer } from '@/lib/feedComposerEvents';
 import { patchPostInFeedCaches, removePostFromFeedCaches } from '@/hooks/useFeedData';
 import { canOfferProfilePin, useProfilePin } from '@/hooks/useProfilePin';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -65,7 +72,9 @@ export default function PostDetailPage() {
   const profilePin = useProfilePin();
   const [user, setUser] = useState<User | null>(null);
   const [commentPosting, setCommentPosting] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ message: string; action?: FeedToastAction } | null>(null);
+  const [repostChooserOpen, setRepostChooserOpen] = useState(false);
+  const repostButtonRef = useRef<HTMLButtonElement>(null);
 
   // Matched businesses
   const [matchedBusinesses, setMatchedBusinesses] = useState<MatchedBusiness[]>([]);
@@ -93,6 +102,8 @@ export default function PostDetailPage() {
   // Loaded independently: a failed comments call must not hide a post that
   // loaded, and only a missing or hidden post (404/403) reads "not found".
   const { post, comments, postQuery, commentsQuery, setPost, setComments, loading, unavailable, commentsFailed } = usePostDetail(postId);
+  // An outside source's pictures that couldn't load are left out (`useShownMedia`); everyone else's keep every slot.
+  const media = useShownMedia(post);
   // A failed load that isn't "this post is gone" (network, 5xx): retryable.
   const loadError = !post && postQuery.isError && !unavailable
     ? getErrorMessage(postQuery.error, "We couldn't load this post. Please try again.")
@@ -196,7 +207,9 @@ export default function PostDetailPage() {
     onSuccess: (res, { postId }) => {
       setPost((p: Post | null) => (p ? { ...p, userHasSaved: res.saved } : p));
       patchPostInFeedCaches(queryClient, postId, { userHasSaved: res.saved });
-      showToast(res.saved ? 'Post saved' : 'Removed from saved');
+      // Say where it went: "View" opens My posts on its Saved tab.
+      if (res.saved) showToast(SAVED_TOAST, { label: 'View', onClick: () => router.push(SAVED_POSTS_PATH) });
+      else showToast(UNSAVED_TOAST);
     },
     onError: (_err, _vars, context) => {
       if (!context) return;
@@ -287,20 +300,13 @@ export default function PostDetailPage() {
     }
   };
 
-  const handleRepost = async () => {
-    if (!post) return;
-    try {
-      const res = await api.posts.repostPost(post.id, !post.userHasReposted);
-      setPost((p: Post | null) => (p ? {
-        ...p,
-        userHasReposted: res.reposted,
-        share_count: res.shareCount,
-      } : p));
-      showToast(res.reposted ? 'Post reposted' : 'Repost removed');
-    } catch {
-      showToast('Failed to update repost');
-    }
-  };
+  // Repost or Undo repost from the chooser: shown at once, put back if refused; the feed's cards take the answer.
+  const { toggleRepost, repostingIds } = useRepostToggle({
+    findPost: (id) => (post?.id === id ? post : undefined),
+    applyPatch: (_id, patch) => setPost((p: Post | null) => (p ? mergePostPatch(p, patch) : p)),
+    onConfirmed: (id, patch) => patchPostInFeedCaches(queryClient, id, patch),
+    showToast: (message) => showToast(message),
+  });
 
   const handleDelete = async () => {
     if (!post) return;
@@ -357,15 +363,19 @@ export default function PostDetailPage() {
     });
   };
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
+  // A message with a button ("View") stays longer, so there's time to reach it.
+  const toastShown = useRef(0);
+  const showToast = (msg: string, action?: FeedToastAction) => {
+    const shown = ++toastShown.current;
+    setToast({ message: msg, action });
+    setTimeout(() => { if (shown === toastShown.current) setToast(null); }, action ? FEED_TOAST_ACTION_MS : 3000);
   };
 
   // ─── Derived ───────────────────────────────────────────────
   const config = getPostTypeConfig(post?.post_type || 'general');
   const TypeIcon = getTypeIcon(post?.post_type || 'general');
   const isEvent = postReaction(post?.post_type) === 'going';
+  const quoted = readQuotedPost(post?.quoted_post);
   const isOwn = post?.user_id === user?.id;
   // A plan's own post is changed or cancelled from the plan, which tells everyone (the server refuses it here).
   const isPlanPost = post?.post_metadata?.plan === true;
@@ -704,25 +714,25 @@ export default function PostDetailPage() {
           )}
 
           {/* Media grid with lightbox */}
-          {post.media_urls && post.media_urls.length > 0 && (
+          {media.shown.length > 0 && (
             <div
               className={`px-5 pb-4 grid gap-1.5 ${
-                post.media_urls.length === 1
+                media.shown.length === 1
                   ? 'grid-cols-1'
                   : 'grid-cols-2'
               }`}
             >
-              {post.media_urls.map((url: string, idx: number) => {
-                const slot = resolvePostMediaSlots(post.media_urls!, post.media_types, post.media_live_urls)[idx];
+              {media.shown.map((idx: number, pos: number) => {
+                const slot = resolvePostMediaSlots(post.media_urls, post.media_types, post.media_live_urls)[idx];
                 return (
                   <div
                     key={idx}
                     role={slot.kind === 'live' ? undefined : 'button'}
                     tabIndex={slot.kind === 'live' ? undefined : 0}
-                    aria-label={slot.kind === 'live' ? undefined : `View attachment ${idx + 1} full size`}
+                    aria-label={slot.kind === 'live' ? undefined : `View attachment ${pos + 1} full size`}
                     className={`relative overflow-hidden rounded-xl bg-surface-muted cursor-pointer hover:opacity-90 transition ${
-                      post.media_urls!.length === 1 ? 'aspect-video' : 'aspect-square'
-                    } ${post.media_urls!.length === 3 && idx === 0 ? 'row-span-2 aspect-auto' : ''}`}
+                      media.shown.length === 1 ? 'aspect-video' : media.shown.length === 3 && pos === 0 ? 'row-span-2' : 'aspect-square'
+                    }`}
                     onClick={() => setLightboxIdx(idx)}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget || slot.kind === 'live') return;
@@ -732,10 +742,20 @@ export default function PostDetailPage() {
                       }
                     }}
                   >
-                    <PostMediaPreview url={url} thumbnailUrl={post.media_thumbnails?.[idx]} slot={slot} onPress={() => setLightboxIdx(idx)} />
+                    {/* Three pictures: the first fills both rows beside the other two, whatever its own shape. */}
+                    <PostMediaPreview url={post.media_urls[idx]} thumbnailUrl={post.media_thumbnails?.[idx]} slot={slot}
+                      onPress={() => setLightboxIdx(idx)} onUnavailable={media.onUnavailable}
+                      imageClassName={media.shown.length === 3 && pos === 0 ? 'absolute inset-0 h-full w-full object-cover' : undefined} />
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* The post it quotes: opens the original's own page */}
+          {quoted && (
+            <div className="px-5 pb-4">
+              <QuotedPostCard state={quoted} testId={`pulseQuotedPost_${post.id}`} />
             </div>
           )}
 
@@ -783,16 +803,38 @@ export default function PostDetailPage() {
               <span className="sr-only sm:not-sr-only">{post.userHasSaved ? 'Saved' : 'Save'}</span>
             </button>
 
+            {/* Repost opens the chooser: Repost or Undo repost, Repost with your words */}
             {!isRemovedByModerator && (
-              <button
-                onClick={handleRepost}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  post.userHasReposted ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-app-muted hover-bg-app'
-                }`}
-              >
-                <span className="text-sm" aria-hidden="true">🔁</span>
-                <span className="sr-only sm:not-sr-only">{post.userHasReposted ? 'Reposted' : 'Repost'}</span>
-              </button>
+              <div className="relative">
+                <button
+                  ref={repostButtonRef}
+                  type="button"
+                  onClick={() => setRepostChooserOpen((shown) => !shown)}
+                  disabled={repostingIds.has(post.id)}
+                  aria-busy={repostingIds.has(post.id) || undefined}
+                  aria-haspopup="menu"
+                  aria-expanded={repostChooserOpen}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                    repostingIds.has(post.id) ? 'opacity-60 ' : ''
+                  }${
+                    post.userHasReposted ? 'text-green-700 bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300' : 'text-app-muted hover-bg-app'
+                  }`}
+                >
+                  <span className="text-sm" aria-hidden="true">🔁</span>
+                  <span className="sr-only sm:not-sr-only">{post.userHasReposted ? 'Reposted' : 'Repost'}</span>
+                </button>
+                {repostChooserOpen && (
+                  <RepostChooser
+                    reposted={Boolean(post.userHasReposted)}
+                    onRepost={() => { void toggleRepost(post.id, !post.userHasReposted); }}
+                    onQuote={() => openQuoteComposer(post)}
+                    onClose={() => setRepostChooserOpen(false)}
+                    triggerRef={repostButtonRef}
+                    // Above the button, centred on it (the card clips what leaves it).
+                    positionClassName="left-1/2 -translate-x-1/2 bottom-full mb-1"
+                  />
+                )}
+              </div>
             )}
 
             <div className="flex-1" />
@@ -908,7 +950,7 @@ export default function PostDetailPage() {
       {/* ─── Media Lightbox ───────────────────────────────── */}
       {post.media_urls && (
         <PostMediaLightbox urls={post.media_urls} mediaTypes={post.media_types} liveUrls={post.media_live_urls}
-          index={lightboxIdx} onIndexChange={setLightboxIdx} onClose={() => setLightboxIdx(null)} />
+          index={lightboxIdx} onIndexChange={setLightboxIdx} onClose={() => setLightboxIdx(null)} shown={media.shown} />
       )}
 
       {/* ─── Report Modal ─────────────────────────────────── */}
@@ -943,8 +985,24 @@ export default function PostDetailPage() {
           the phone tab bar: inside <main>'s stacking context, z-index can't. ─── */}
       <div role="status" aria-live="polite">
         {toast && (
-          <div className="fixed bottom-[calc(1.5rem+var(--fab-lift,0px))] left-1/2 -translate-x-1/2 z-[100] bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-2xl">
-            {toast}
+          <div className={`fixed bottom-[calc(1.5rem+var(--fab-lift,0px))] left-1/2 -translate-x-1/2 z-[100] w-max max-w-[calc(100vw-2rem)] bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-2xl${
+            toast.action ? ' flex items-center gap-4' : ''
+          }`}>
+            <span>{toast.message}</span>
+            {toast.action && (
+              <button
+                type="button"
+                data-testid={FEED_TOAST_ACTION_TEST_ID}
+                onClick={() => {
+                  const { action } = toast;
+                  setToast(null);
+                  action?.onClick();
+                }}
+                className="flex-shrink-0 rounded-lg px-2 py-0.5 -my-0.5 text-sm font-semibold text-sky-300 hover:text-sky-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         )}
       </div>

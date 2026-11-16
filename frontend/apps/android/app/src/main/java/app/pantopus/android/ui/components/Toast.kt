@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,11 +33,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -117,9 +121,10 @@ class ToastController {
 fun Toast(
     message: ToastMessage,
     modifier: Modifier = Modifier,
+    action: ToastAction? = null,
 ) {
     val (background, foreground) = toastPalette(message.kind)
-    Toast(text = message.text, appearance = ToastAppearance(background, foreground), modifier = modifier)
+    Toast(text = message.text, appearance = ToastAppearance(background, foreground), modifier = modifier, action = action)
 }
 
 /**
@@ -141,13 +146,24 @@ data class ToastAppearance(
     val textWidth: Dp = Dp.Unspecified,
 )
 
-/** [Toast] with a screen's own [appearance] and an optional [leading] icon. */
+/**
+ * A toast's one button after its words, such as "View" or "Undo": drawn in the toast's own colour, bold, and read by
+ * TalkBack as a button. [testTag] names it for UI tests.
+ */
+data class ToastAction(
+    val label: String,
+    val onClick: () -> Unit,
+    val testTag: String = "toastAction",
+)
+
+/** [Toast] with a screen's own [appearance], an optional [leading] icon and an optional [action] button. */
 @Composable
 fun Toast(
     text: String,
     appearance: ToastAppearance,
     modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
+    action: ToastAction? = null,
 ) {
     var wraps by remember(text) { mutableStateOf(false) }
     // A full style (one with its own line height, such as PantopusTextStyle.small) is drawn as given. A size and
@@ -186,6 +202,20 @@ fun Toast(
             textAlign = TextAlign.Center,
             onTextLayout = { wraps = it.lineCount > 1 },
         )
+        action?.let { button ->
+            Text(
+                text = button.label,
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(Radii.pill))
+                        .clickable(role = Role.Button, onClick = button.onClick)
+                        .padding(horizontal = Spacing.s2, vertical = Spacing.s1)
+                        .testTag(button.testTag),
+                style = textStyle.copy(fontWeight = FontWeight.Bold),
+                color = appearance.foreground,
+                maxLines = 1,
+            )
+        }
     }
 }
 

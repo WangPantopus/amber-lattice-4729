@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.core.identity.ProfileChanges
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.data.api.models.feed.FeedPost
+import app.pantopus.android.data.api.models.feed.FeedRepostedBy
 import app.pantopus.android.data.api.models.posts.PostReactionEmoji
 import app.pantopus.android.data.api.models.posts.PostReactionKind
 import app.pantopus.android.data.api.models.posts.PostReactionSummary
@@ -26,6 +27,10 @@ import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.ui.screens.feed.pulse.PulseCardLiveValues
 import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCopy
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastAction
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastActionFor
+import app.pantopus.android.ui.screens.feed.pulse.afterViewerRepost
 import app.pantopus.android.ui.screens.feed.pulse.pulseCardContent
 import app.pantopus.android.ui.screens.feed.pulseReportReasons
 import app.pantopus.android.ui.screens.shared.feed.FeedAvatarTint
@@ -40,9 +45,14 @@ import kotlinx.coroutines.launch
 /**
  * A person's posts on their profile, drawn with the Pulse card (`PulsePostCard`): photos and
  * videos, event times, tappable links, emoji reactions (Going on an Event), Save, Repost and the post menu (share, report).
- * The rows come from `GET /api/posts/user/:id` (the feed's serializer) and each tap calls the
+ * The rows come from `GET /api/posts/user/:id?include_reposts=true` (the feed's serializer) and each tap calls the
  * endpoint the Pulse feed calls for it (`PulseFeedViewModel`). Owned by [PublicProfileViewModel].
+ *
+ * The list also holds the posts that person reposted, each under its "reposted" line. Such a row is someone else's
+ * post, on your own profile too: every owner action is decided from the post's own author ([pulseCardContent]), never
+ * from whose profile this is.
  */
+@Suppress("TooManyFunctions") // One entry per card control, as on the Pulse feed's view-model.
 class ProfilePostCards internal constructor(
     private val scope: CoroutineScope,
     private val posts: PostsRepository,
@@ -50,6 +60,10 @@ class ProfilePostCards internal constructor(
     private val onToast: (String) -> Unit,
     /** A pin changed: the Pinned row reads again. */
     private val onPinsChanged: () -> Unit = {},
+    /** The author's avatar takes their profile color, as on a profile; off elsewhere (Today's Around you), as in Pulse. */
+    private val profileColors: Boolean = true,
+    /** The button that goes with the next toast ("View" after "Saved."); called just before [onToast]. */
+    private val onToastAction: (PulseToastActionFor) -> Unit = {},
 ) {
     private val _cards = MutableStateFlow<List<PulsePostCardContent>>(emptyList())
 
@@ -60,6 +74,11 @@ class ProfilePostCards internal constructor(
 
     /** The post whose "Post options" menu is open. */
     val optionsPostId: StateFlow<String?> = _optionsPostId.asStateFlow()
+
+    private val _repostChooserPostId = MutableStateFlow<String?>(null)
+
+    /** The post whose Repost chooser is open (contract §2). */
+    val repostChooserPostId: StateFlow<String?> = _repostChooserPostId.asStateFlow()
 
     private val _reportingPostId = MutableStateFlow<String?>(null)
 
@@ -76,6 +95,7 @@ class ProfilePostCards internal constructor(
     private val saving = mutableSetOf<String>()
     private val reposting = mutableSetOf<String>()
     private val sharing = mutableSetOf<String>()
+    private var toastSerial = 0L
 
     /** A tap's value until a later read confirms it. */
     private data class Override(
@@ -85,17 +105,23 @@ class ProfilePostCards internal constructor(
         val isSaved: Boolean? = null,
         val isReposted: Boolean? = null,
         val shareCount: Int? = null,
+        /** The "reposted" line after a repost or undo here; [Line.value] null is no line. */
+        val repostLine: Line? = null,
+    )
+
+    private data class Line(
+        val value: FeedRepostedBy?,
     )
 
     /**
      * Rows from a read. A tap still waiting for the server keeps its value; a settled one gives
-     * way to a read that started after the last tap.
+     * way to a read that started after the last tap. A post listed twice (written, then reposted) shows once.
      */
     fun show(
         newRows: List<FeedPost>,
         readRevision: Int,
     ) {
-        rows = newRows
+        rows = newRows.distinctBy { it.id }
         if (readRevision == actionRevision) {
             overrides = overrides.filterKeys { it in liking || it in saving || it in reposting }
         }
@@ -130,6 +156,28 @@ class ProfilePostCards internal constructor(
 
     fun dismissOptions() {
         _optionsPostId.value = null
+    }
+
+    /** ↻ on a card opens the Repost chooser instead of reposting at once (contract §2). */
+    fun openRepostChooser(postId: String) {
+        _optionsPostId.value = null
+        _repostChooserPostId.value = postId
+    }
+
+    fun dismissRepostChooser() {
+        _repostChooserPostId.value = null
+    }
+
+    /** "Repost with your words": the chooser closes and the card is copied for the composer's quoted card. */
+    fun prepareQuote(postId: String) {
+        _repostChooserPostId.value = null
+        rows.firstOrNull { it.id == postId }?.let(posts::seedDetail)
+    }
+
+    /** A card's quoted post opens its page: its copy goes in the store first, as a tapped feed card's does. */
+    fun seedQuotedPost(postId: String) {
+        rows.firstNotNullOfOrNull { row -> row.quotedPost?.takeIf { it.available }?.post?.takeIf { it.id == postId } }
+            ?.let(posts::seedDetail)
     }
 
     /** The host's own plan post opens its plan on the Plans tab, where Change and Cancel tell everyone. */
@@ -227,11 +275,17 @@ class ProfilePostCards internal constructor(
                 when (val result = posts.toggleSave(postId, saved = !original)) {
                     is NetworkResult.Success -> {
                         put(postId) { it.copy(isSaved = result.data.saved) }
-                        onToast(if (result.data.saved) "Saved to your bookmarks." else "Removed from bookmarks.")
+                        if (result.data.saved) {
+                            // "Saved." with "View", which opens My posts on the Saved tab (contract §5).
+                            onToastAction(PulseToastActionFor(PulsePostCopy.SAVED, PulseToastAction.ViewSaved, ++toastSerial))
+                            onToast(PulsePostCopy.SAVED)
+                        } else {
+                            onToast(PulsePostCopy.UNSAVED)
+                        }
                     }
                     is NetworkResult.Failure -> {
                         put(postId) { it.copy(isSaved = original) }
-                        onToast("Couldn't update your bookmark.")
+                        onToast(PulsePostCopy.SAVE_FAILED)
                     }
                 }
             } finally {
@@ -242,27 +296,42 @@ class ProfilePostCards internal constructor(
         }
     }
 
-    /** `POST /api/posts/:id/share` as a repost, shown at once and rolled back on failure. */
+    /**
+     * "Repost" / "Undo repost" in the chooser: `POST /api/posts/:id/share` as a repost, with the count and the
+     * "reposted" line ("You reposted") shown at once and rolled back on failure (contract §1).
+     */
     fun toggleRepost(postId: String) {
+        _repostChooserPostId.value = null
         val post = rows.firstOrNull { it.id == postId } ?: return
         if (!reposting.add(postId)) return
         actionRevision++
         val original = overrides[postId]?.isReposted ?: post.userHasReposted
         val originalCount = overrides[postId]?.shareCount ?: post.shareCount
+        val originalLine = overrides[postId]?.repostLine.let { line -> if (line != null) line.value else post.repostedBy }
         put(postId) {
-            it.copy(isReposted = !original, shareCount = (originalCount + if (original) -1 else 1).coerceAtLeast(0))
+            it.copy(
+                isReposted = !original,
+                shareCount = (originalCount + if (original) -1 else 1).coerceAtLeast(0),
+                repostLine = Line(originalLine.afterViewerRepost(!original)),
+            )
         }
         scope.launch {
             try {
                 when (val result = posts.share(postId, shareType = "repost", reposted = !original)) {
                     is NetworkResult.Success -> {
                         val reposted = result.data.reposted ?: !original
-                        put(postId) { it.copy(isReposted = reposted, shareCount = result.data.shareCount ?: originalCount) }
-                        onToast(if (reposted) "Reposted to your network." else "Repost removed.")
+                        put(postId) {
+                            it.copy(
+                                isReposted = reposted,
+                                shareCount = result.data.shareCount ?: originalCount,
+                                repostLine = Line(originalLine.afterViewerRepost(reposted)),
+                            )
+                        }
+                        onToast(if (reposted) PulsePostCopy.REPOSTED else PulsePostCopy.REPOST_REMOVED)
                     }
                     is NetworkResult.Failure -> {
-                        put(postId) { it.copy(isReposted = original, shareCount = originalCount) }
-                        onToast("Could not update repost.")
+                        put(postId) { it.copy(isReposted = original, shareCount = originalCount, repostLine = Line(originalLine)) }
+                        onToast(PulsePostCopy.REPOST_FAILED)
                     }
                 }
             } finally {
@@ -355,8 +424,9 @@ class ProfilePostCards internal constructor(
                             shareCount = value?.shareCount ?: base.shareCount,
                             likePending = post.id in liking,
                             savePending = post.id in saving,
+                            repostedBy = value?.repostLine.let { line -> if (line != null) line.value else base.repostedBy },
                         ),
-                ).let { card -> profileCardColors(post, card) }
+                ).let { card -> if (profileColors) profileCardColors(post, card) else card }
             }
     }
 }
@@ -370,7 +440,10 @@ data class ProfilePostCardActions(
     val onChooseReaction: (String, PostReactionEmoji) -> Unit = { _, _ -> },
     val onOptions: (String) -> Unit = {},
     val onToggleSave: (String) -> Unit = {},
+    /** ↻: opens the Repost chooser. */
     val onToggleRepost: (String) -> Unit = {},
+    /** A card's quoted post: opens that post's page (with its id). */
+    val onOpenQuoted: (String) -> Unit = {},
 )
 
 /** The card's "Post options": Share… and Report post, worded as in Pulse; Open plan on your own plan's post. */

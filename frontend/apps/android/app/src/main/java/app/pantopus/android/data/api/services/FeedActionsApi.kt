@@ -13,6 +13,7 @@ import app.pantopus.android.data.api.models.feed.MutedEntitiesResponse
 import app.pantopus.android.data.auth.AuthenticatedDispatchGuard
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.Header
@@ -37,6 +38,15 @@ interface FeedActionsApi {
      */
     @POST("api/posts/hide/{id}")
     suspend fun hidePost(
+        @Path("id") id: String,
+    ): FeedActionAckResponse
+
+    /**
+     * `DELETE /api/posts/hide/:id` — undoes [hidePost] (and the hide "Not helpful here" makes); idempotent. An older
+     * server answers 404. Route `backend/routes/posts.js`, `router.delete('/hide/:id'`.
+     */
+    @DELETE("api/posts/hide/{id}")
+    suspend fun unhidePost(
         @Path("id") id: String,
     ): FeedActionAckResponse
 

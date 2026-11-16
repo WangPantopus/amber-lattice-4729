@@ -44,9 +44,8 @@ const { fit, capitalized, listText } = require('./words');
 const HOUR_MS = 60 * 60 * 1000;
 // NWS HeatRisk "Major" and above (services/external/heatRisk.js).
 const HEAT_RISK_MAJOR = 3;
-// Nothing in a plan says it is outdoors, so the watch covers games and walks; a plan that is
-// only coffee is left out.
-const OUTDOOR_KINDS = ['pickup_game', 'walk_coffee'];
+// Games, walks and outdoor plans; a plan that is only coffee, or online, is left out.
+const OUTDOOR_KINDS = ['pickup_game', 'walk_coffee', 'outdoors'];
 // Asking about to close: within 3 hours, with someone waiting at least 30 minutes (a newer ask
 // just had its own push).
 const ASKING_CLOSES_WITHIN_MS = 3 * HOUR_MS;
@@ -114,7 +113,7 @@ function checkpointFor(msToStart) {
   return '3h';
 }
 
-const isOutdoor = (plan) => OUTDOOR_KINDS.includes(plan.kind) && plan.details?.walk_kind !== 'coffee';
+const isOutdoor = (plan) => OUTDOOR_KINDS.includes(plan.kind) && plan.details?.walk_kind !== 'coffee' && plan.place_kind !== 'online';
 
 /** NWS HeatRisk by day at the place, from the Place tab's own cache (6 hours a geohash-5 cell). */
 async function heatRiskDays(latitude, longitude) {
@@ -443,6 +442,9 @@ async function requestsWaiting(now) {
  * is. Null when the plan rules refuse it (three upcoming plans, say).
  */
 async function sameNextWeekCard(plan) {
+  // The card posts a place, for any app: an online plan (or a newer kind, which the card's checks refuse) is hosted
+  // again from the plan itself.
+  if (rules.needsMore(plan)) return null;
   const tz = rules.timezoneForPlan(plan);
   const start = DateTime.fromISO(plan.post.event_date, { zone: 'utc' }).setZone(tz).plus({ weeks: 1 });
   const end = DateTime.fromISO(plan.post.event_end_date, { zone: 'utc' }).setZone(tz).plus({ weeks: 1 });
@@ -510,8 +512,8 @@ async function sameNextWeekCard(plan) {
       line(playdate ? 'Note for families' : 'Note for guests', checked.guestNote),
     ],
     warnings: [checked.place.kind === 'home'
-      ? 'Neighbors see the title and about. Only people you accept see your address.'
-      : 'Neighbors see the title, about and area; they see the exact place once they get in.'],
+      ? 'Others see the title and about. Only people you accept see your address.'
+      : 'Others see the title, about and area; they see the exact place once they get in.'],
     actions: [action('confirm', 'Post plan', { method: 'POST', path: '/api/plans', body },
       { label: 'Plan posted', link: linkFor('plan', '{{response.id}}') })],
     expiresAt: checked.startsAt,
@@ -524,6 +526,10 @@ const THANKS = {
   watch_party: 'Thanks for coming over to watch, everyone!',
   study_group: 'Thanks for studying with me, everyone!',
   playdate: 'Thanks for coming, everyone! The kids had fun.',
+  food_drinks: 'Thanks for coming, everyone! That was fun.',
+  game_night: 'Good games, everyone! Thanks for coming.',
+  outdoors: 'Thanks for coming out, everyone! That was fun.',
+  something_else: 'Thanks for coming, everyone! That was fun.',
 };
 
 /** The thank-you draft, without "everyone" when one guest was in. */

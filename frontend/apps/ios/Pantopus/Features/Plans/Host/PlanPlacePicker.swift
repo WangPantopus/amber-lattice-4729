@@ -79,7 +79,7 @@ struct PlanPlacePicker: View {
                             .planFont(.caption)
                             .foregroundStyle(Theme.Color.appTextMuted)
                     }
-                    Text("You can host within 3 miles of where you live or where you are now.")
+                    Text(PlanPrivateCopy.pickerFoot(isPrivate: model.isPrivate))
                         .planFont(.caption)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }
@@ -95,7 +95,7 @@ struct PlanPlacePicker: View {
         .task(id: [query, String(searchRetry), center.map { "\($0.latitude),\($0.longitude)" } ?? ""]) {
             await search()
         }
-        .planPlaceMapPick(isPresented: $pickingOnMap, kind: model.kind, center: center, homes: model.homePoints) { place in
+        .planPlaceMapPick(isPresented: $pickingOnMap, model: model, center: center) { place in
             choose(place)
             model.place = place
             model.placeIsHereNow = false

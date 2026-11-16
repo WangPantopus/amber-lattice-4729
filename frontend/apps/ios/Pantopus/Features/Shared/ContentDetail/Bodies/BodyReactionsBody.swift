@@ -174,11 +174,18 @@ public struct BodyReactionsBody: View {
     private let detailLine: String?
     /// An Event's when and where, under the text; nil on other posts.
     private let eventDetails: PulseEventDetails?
+    /// Where the post's story was published ("Read at The Columbian"), under the text; nil on most posts.
+    private let source: PostSource?
+    /// The story behind "Read at …", open in the browser sheet.
+    @State private var openedSource: PostSource?
     /// Optional card rendered between the reaction bar and the comment
     /// composer. Pulse post detail passes the "Nearby Providers" card here;
     /// every other caller leaves it nil. Type-erased so adding the slot
     /// doesn't make this shared body generic.
     private let belowReactions: AnyView?
+    /// Between the post's words and media and its reactions (a quote post's
+    /// quoted card); type-erased like `belowReactions`.
+    private let aboveReactions: AnyView?
     /// Shown in place of the composer when nobody can reply (a post a
     /// moderator removed); nil keeps the composer and the empty-thread prompts.
     private let repliesClosedNote: String?
@@ -193,6 +200,7 @@ public struct BodyReactionsBody: View {
         mediaLocationBadge: String? = nil,
         detailLine: String? = nil,
         eventDetails: PulseEventDetails? = nil,
+        source: PostSource? = nil,
         composerAvatarURL: URL?,
         composerAvatarName: String,
         composerText: Binding<String>,
@@ -209,12 +217,15 @@ public struct BodyReactionsBody: View {
         onCommentReply: (@MainActor (PostCommentRow) -> Void)? = nil,
         onCommentLike: (@MainActor (String) -> Void)? = nil,
         onCommentDelete: (@MainActor (String) -> Void)? = nil,
+        aboveReactions: AnyView? = nil,
         belowReactions: AnyView? = nil,
         repliesClosedNote: String? = nil,
         onCommentAvatarTap: @escaping @MainActor (String) -> Void = { _ in }
     ) {
+        self.aboveReactions = aboveReactions
         self.belowReactions = belowReactions
         self.repliesClosedNote = repliesClosedNote
+        self.source = source
         bodyText = body
         self.media = media
         self.intent = intent
@@ -257,6 +268,14 @@ public struct BodyReactionsBody: View {
                         .accessibilityLabel(bodyText)
                 }
 
+                if let source {
+                    PostSourceLink(source: source, accessibilityID: "pulsePostDetail-source") {
+                        openedSource = source
+                    }
+                    .padding(.horizontal, Spacing.s4)
+                    .postSourceBrowser($openedSource)
+                }
+
                 if let eventDetails {
                     PulseEventDetailRows(
                         details: eventDetails,
@@ -284,8 +303,15 @@ public struct BodyReactionsBody: View {
                         accessibilityID: "pulsePostDetail-media",
                         locationBadge: mediaLocationBadge,
                         usesSharpPreviews: true,
-                        edgeToEdge: true
+                        edgeToEdge: true,
+                        // An outlet's own pictures: one that can't load is left out.
+                        dropsFailed: source != nil
                     )
+                }
+
+                if let aboveReactions {
+                    aboveReactions
+                        .padding(.horizontal, Spacing.s4)
                 }
 
                 ReactionsBar(
@@ -401,15 +427,6 @@ public struct BodyReactionsBody: View {
         }
     }
 
-    private var visibleCommentCount: Int {
-        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
-    }
-
-    /// No comments, as far as anyone on screen knows.
-    private var threadIsEmpty: Bool {
-        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
-    }
-
     /// Opened from a list's copy: placeholders while the comments load, a
     /// short line if that failed.
     @ViewBuilder private var pendingThread: some View {
@@ -456,8 +473,20 @@ public struct BodyReactionsBody: View {
             EmptyView()
         }
     }
+}
 
-    private var composerPlaceholder: String {
+/// Comment counts and the composer's words, kept outside the struct's body for its length limit.
+private extension BodyReactionsBody {
+    var visibleCommentCount: Int {
+        commentsState.pendingCount ?? (comments.count + hiddenReplyCount)
+    }
+
+    /// No comments, as far as anyone on screen knows.
+    var threadIsEmpty: Bool {
+        comments.isEmpty && (commentsState.pendingCount ?? 0) == 0
+    }
+
+    var composerPlaceholder: String {
         if let replyingToName { return "Reply to \(replyingToName)..." }
         return threadIsEmpty ? "Be the first to reply..." : "Add a comment"
     }

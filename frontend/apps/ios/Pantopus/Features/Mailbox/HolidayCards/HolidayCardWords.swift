@@ -20,6 +20,10 @@ enum HolidayCardWords {
     /// "Take your card back?" with digital stamps on.
     static let stampComesBack = "Its stamp comes back to you."
 
+    /// "Take your card back?" for a card by email whose email hasn't gone out: it waits for the time chosen
+    /// (`email_send_at`), or Sent says it didn't go (`email_status`; taking it back stops the tries).
+    static let notEmailedYet = "We haven’t emailed them yet, so nothing will go out."
+
     // MARK: Days and times
 
     /// "Sat, Dec 19".
@@ -35,6 +39,11 @@ enum HolidayCardWords {
     /// "December 10, 2026", as the card's link page says it.
     static func dayWithYear(_ iso: String?, calendar: Calendar = .current) -> String {
         format(iso, "MMMM d, yyyy", calendar: calendar)
+    }
+
+    /// "Mon, Nov 16 at 7 a.m." on this phone's clock: when a card's email goes.
+    static func dayAndTime(_ iso: String?, calendar: Calendar = .current) -> String {
+        "\(shortDay(iso, calendar: calendar)) at \(clockTime(iso, calendar: calendar))"
     }
 
     /// "7 a.m.", or "7:30 a.m." when it isn't on the hour.
@@ -111,6 +120,10 @@ enum HolidayCardWords {
         }
         if card.byEmail {
             if card.status == "claimed" { return "\(who) joined Pantopus and has your card." }
+            if let sendAt = card.emailSendAt {
+                return "We’ll email them \(dayAndTime(sendAt, calendar: calendar)), your time. "
+                    + "Once they join with that address, it waits in their mailbox."
+            }
             return card.arrival == .sealedChristmas
                 ? "We emailed them. Once they join with that address, it waits in their mailbox and opens on Christmas morning."
                 : "We emailed them. It waits for them to join with that address and open it."
@@ -185,6 +198,7 @@ enum HolidayCardWords {
         calendar: Calendar = .current
     ) -> (title: String, detail: String) {
         if case let .list(entries) = recipient { return listArrivalChoice(arrival, cards: cards, entries: entries, calendar: calendar) }
+        if recipient.isEmail, let later = emailLaterChoice(arrival, cards: cards, calendar: calendar) { return later }
         // Their mail comes at 7 a.m. where they live: never turned into this phone's time.
         let day = shortDay(theirDay ?? cards.nextRoundAt, calendar: calendar)
         let name = switch recipient {
@@ -234,6 +248,7 @@ enum HolidayCardWords {
         let people = entries.contains { !$0.isEmail }
         let emails = entries.contains(where: \.isEmail)
         if !people {
+            if let later = emailLaterChoice(arrival, cards: cards, calendar: calendar) { return later }
             return arrival == .sealedChristmas
                 ? (
                     "Sealed until Christmas",
@@ -242,9 +257,7 @@ enum HolidayCardWords {
                 )
                 : ("Right away, by email", "They get an email now and can open it once they join with that address.")
         }
-        let byEmail = !emails ? "" : arrival == .nextMorning
-            ? " People not on Pantopus get the email right away."
-            : " People not on Pantopus get the email now; their card opens on Christmas morning."
+        let byEmail = emails ? listEmailSentence(arrival, cards: cards, calendar: calendar) : ""
         switch arrival {
         case .sealedChristmas:
             return (
@@ -260,6 +273,37 @@ enum HolidayCardWords {
         case .nextMorning, .now:
             return ("With the morning mail", "With each person’s next 7 a.m. mail, where they live. They can open it right away.\(byEmail)")
         }
+    }
+
+    /// A card to an address (or a list of only addresses) set for later: its
+    /// email goes at the sender's next 7 a.m. or at 7 a.m. on Christmas
+    /// morning, said on this phone's clock (their time zone isn't known).
+    /// Nil for the choices worded as before.
+    private static func emailLaterChoice(
+        _ arrival: HolidayCardArrival,
+        cards: HolidayCardsResponse,
+        calendar: Calendar
+    ) -> (title: String, detail: String)? {
+        guard arrival == .nextMorning || arrival == .christmasMorning else { return nil }
+        let morning = arrival == .nextMorning
+        let at = dayAndTime(morning ? cards.nextRoundAt : cards.christmasMorningAt, calendar: calendar)
+        return (
+            morning ? "With the morning mail" : "On Christmas morning",
+            "We email them \(at), your time. They can open it once they join with that address."
+        )
+    }
+
+    /// A list with people and addresses: when the addresses' emails go, after
+    /// the people's words. Without `arrivals.email_all` an address's email
+    /// goes now (its card sealed for both Christmas choices), as before.
+    private static func listEmailSentence(_ arrival: HolidayCardArrival, cards: HolidayCardsResponse, calendar: Calendar) -> String {
+        guard cards.emailAllArrivals != nil, arrival == .nextMorning || arrival == .christmasMorning else {
+            return arrival == .nextMorning
+                ? " People not on Pantopus get the email right away."
+                : " People not on Pantopus get the email now; their card opens on Christmas morning."
+        }
+        let at = dayAndTime(arrival == .nextMorning ? cards.nextRoundAt : cards.christmasMorningAt, calendar: calendar)
+        return " People not on Pantopus get the email \(at), your time."
     }
 
     /// The take-back note under the choices. Before it's sent their clock
@@ -287,6 +331,7 @@ enum HolidayCardWords {
         default: break
         }
         if line.byEmail {
+            if let sendAt = line.emailSendAt { return "Gets an email \(dayAndTime(sendAt, calendar: calendar)), your time." }
             return line.arrival == .sealedChristmas ? "Gets an email now. The card opens on Christmas morning." : "Gets an email now."
         }
         let day = shortDay(line.arrivesOn, calendar: calendar)

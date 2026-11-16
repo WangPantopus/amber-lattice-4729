@@ -130,7 +130,9 @@ private val clockFormat = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
 /**
  * "When" (boards H2 to H5, H11): Starts and Ends rows that open Android's own date and time pickers. Ends is a time
- * on the start's day (or the next morning when it is earlier than the start).
+ * on the start's day (or the next morning when it is earlier than the start). [repeats] adds the Repeats row under them
+ * (board Details, Plans step 2) with its value ("Doesn't repeat", "Every Tue and Thu"); [onRepeats] opens the Repeats
+ * screen.
  */
 @Composable
 fun PlanWhenCard(
@@ -142,6 +144,8 @@ fun PlanWhenCard(
     startHighlighted: Boolean = false,
     showStart: Boolean = true,
     endLabel: String = "Ends",
+    repeats: String? = null,
+    onRepeats: () -> Unit = {},
 ) {
     var pickingStart by remember { mutableStateOf(false) }
     var pickingEnd by remember { mutableStateOf(false) }
@@ -162,6 +166,7 @@ fun PlanWhenCard(
             first = !showStart,
             onClick = { pickingEnd = true },
         )
+        if (repeats != null) RepeatsRow(value = repeats, onClick = onRepeats)
     }
     if (pickingStart) {
         FutureDateTimePickerDialogs(
@@ -222,6 +227,52 @@ private fun WhenRow(
     }
 }
 
+/**
+ * "Repeats" under the end (board Details, Plans step 2): the repeat glyph, the label, the value and a chevron. One
+ * TalkBack stop that keeps the row's click: "Repeats: Every Tue and Thu, Button".
+ */
+@Composable
+private fun RepeatsRow(
+    value: String,
+    onClick: () -> Unit,
+) {
+    val large = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
+    val valueStyle = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        PlanDivider()
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .clickable(role = Role.Button, onClick = onClick)
+                    .testTag("planRepeatsRow")
+                    .clearAndSetSemantics { contentDescription = "Repeats: $value" }
+                    .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+        ) {
+            PantopusIconImage(
+                icon = PantopusIcon.ArrowsRepeat,
+                contentDescription = null,
+                size = 18.dp,
+                tint = PantopusColors.appTextSecondary,
+            )
+            if (large) {
+                // At large text the value goes under its label, as the time rows do.
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Repeats", style = PantopusTextStyle.body, color = PantopusColors.appText)
+                    Text(text = value, style = valueStyle, color = PantopusColors.appText)
+                }
+            } else {
+                Text(text = "Repeats", style = PantopusTextStyle.body, color = PantopusColors.appText, modifier = Modifier.weight(1f))
+                Text(text = value, style = valueStyle, color = PantopusColors.appText)
+            }
+            PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
+        }
+    }
+}
+
 /** Android's time picker in a dialog. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -251,6 +302,8 @@ fun PlanSegmented(
     modifier: Modifier = Modifier,
     /** A test id per option, in order (the list's host filter); none otherwise. */
     optionTags: List<String>? = null,
+    /** A glyph before an option's words, in order (Where's "Online", Plans step 3); none otherwise. */
+    optionIcons: List<PantopusIcon?>? = null,
 ) {
     val large = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
     if (large) {
@@ -285,12 +338,22 @@ fun PlanSegmented(
                         .semantics { this.selected = on },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = label,
-                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
-                    modifier = Modifier.padding(horizontal = Spacing.s1),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+                    optionIcons?.getOrNull(index)?.let { icon ->
+                        PantopusIconImage(
+                            icon = icon,
+                            contentDescription = null,
+                            size = 14.dp,
+                            tint = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
+                        )
+                    }
+                    Text(
+                        text = label,
+                        style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (on) PantopusColors.appText else PantopusColors.appTextSecondary,
+                        modifier = Modifier.padding(horizontal = Spacing.s1),
+                    )
+                }
             }
         }
     }

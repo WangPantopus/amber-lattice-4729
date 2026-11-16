@@ -100,6 +100,10 @@ const PREFERRED = {
   pickup_game: ['court', 'park', 'playground', 'community_center'],
   walk_coffee: ['trail', 'park', 'cafe'],
   study_group: ['library', 'cafe', 'community_center'],
+  food_drinks: ['restaurant', 'cafe', 'bar'],
+  game_night: ['cafe', 'community_center', 'library', 'bar'],
+  outdoors: ['trail', 'park'],
+  something_else: ['cafe', 'community_center', 'park'],
 };
 
 // The facts worth a few words for each kind, in the order they're said.
@@ -109,6 +113,10 @@ const FACTS_FOR = {
   walk_coffee: ['dogs', 'outdoor_seating', 'toilets', 'wheelchair'],
   study_group: ['wifi', 'outdoor_seating', 'wheelchair', 'toilets'],
   playdate: ['toilets', 'covered', 'wheelchair', 'fee'],
+  food_drinks: ['outdoor_seating', 'wheelchair', 'toilets'],
+  game_night: ['wifi', 'indoor', 'wheelchair', 'toilets'],
+  outdoors: ['dogs', 'toilets', 'fee', 'wheelchair'],
+  something_else: ['wheelchair', 'toilets', 'outdoor_seating', 'wifi'],
 };
 const FACTS_ANY = ['wheelchair', 'lit', 'wifi', 'outdoor_seating', 'toilets'];
 const FACT_WORDS = {
@@ -497,8 +505,8 @@ function factsFor(place, kind, window, timezone) {
   const facts = [];
   for (const key of FACTS_FOR[kind] || FACTS_ANY) {
     const words = FACT_WORDS[key](traits[key]);
-    // "No dogs" only matters on a walk.
-    if (words && !(words === 'No dogs' && kind !== 'walk_coffee')) facts.push(words);
+    // "No dogs" only matters on a walk or an outing.
+    if (words && !(words === 'No dogs' && kind !== 'walk_coffee' && kind !== 'outdoors')) facts.push(words);
   }
   let caution = null;
   if (kind === 'pickup_game' && place.category === 'court' && traits.lit === false && window

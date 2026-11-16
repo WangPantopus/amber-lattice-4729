@@ -28,6 +28,10 @@ import PostSkeleton from '@/components/feed/PostSkeleton';
 import TopicChipRow from '@/components/feed/TopicChipRow';
 import SportsEventModule from '@/components/feed/SportsEventModule';
 import ErrorState from '@/components/ui/ErrorState';
+import {
+  FEED_TOAST_ACTION_MS, FEED_TOAST_ACTION_TEST_ID, SAVED_POSTS_PATH, type FeedToastAction,
+} from '@/components/feed/feedToasts';
+import { readQuotedPost } from '@/components/feed/repost';
 import { useAreaPicker } from '@/hooks/useAreaPicker';
 import { useFeedPreferences } from '@/hooks/useFeedPreferences';
 import { markNearbyFeedSeen, useFeedData, type FilterType } from '@/hooks/useFeedData';
@@ -55,6 +59,25 @@ const InquiryChatDrawer = dynamic(() => import('@/components/discover/InquiryCha
 const PostDetailPanel = dynamic(() => import('@/components/feed/PostDetailPanel'), { ssr: false });
 const EditPostDialog = dynamic(() => import('@/components/feed/EditPostDialog'), { ssr: false });
 const ReportModal = dynamic(() => import('@/components/ui/ReportModal'), { ssr: false });
+
+/** Focus that came from the keyboard (the browser shows it), not from a click or from the page moving it. */
+function isKeyboardFocus(target: EventTarget): boolean {
+  try {
+    return target instanceof HTMLElement && target.matches(':focus-visible');
+  } catch {
+    return true;
+  }
+}
+
+/** The post panel's first copy: a listed post, or the original a listed quote post quotes (its card opens it). */
+function listedPostById(posts: Post[], postId: string): Post | null {
+  for (const post of posts) {
+    if (post.id === postId) return post;
+    const quoted = readQuotedPost(post.quoted_post);
+    if (quoted?.kind === 'post' && quoted.post.id === postId) return quoted.post;
+  }
+  return null;
+}
 
 /** Map mode: the reveal capsule's bottom edge (top-2 + h-8), where the map's top pills start while the header is away. */
 const REVEAL_CAPSULE_BOTTOM_PX = 40;
@@ -114,7 +137,7 @@ export default function FeedPage() {
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [showCompose, setShowCompose] = useState(false);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState<{ message: string; action?: FeedToastAction } | null>(null);
   const [detailPostId, setDetailPostId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [chatTarget, setChatTarget] = useState<{ id: string; name: string } | null>(null);
@@ -122,13 +145,29 @@ export default function FeedPage() {
   const handleReport = useCallback((postId: string) => setReportPostId(postId), []);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
 
-  // Each message stays its full 3 seconds: an earlier message's timer doesn't cut a newer one short.
+  // Each message stays its full 3 seconds: an earlier message's timer doesn't cut a newer one short. One with a button
+  // ("View", "Undo") stays longer, and waits while the pointer or the keyboard is on it.
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
+  const toastActionRef = useRef<HTMLButtonElement>(null);
+  const toastHeld = useRef(false);
+  const startToastTimer = useCallback((ms: number) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 3000);
+    toastTimer.current = setTimeout(() => {
+      if (!toastHeld.current) setToast(null);
+    }, ms);
   }, []);
+  const showToast = useCallback((msg: string, action?: FeedToastAction) => {
+    toastHeld.current = false;
+    setToast({ message: msg, action });
+    startToastTimer(action ? FEED_TOAST_ACTION_MS : 3000);
+  }, [startToastTimer]);
+  // A card that went (hidden) took the keyboard's place with it: Undo is where the keyboard continues.
+  useEffect(() => {
+    if (!toast?.action) return;
+    const focused = document.activeElement;
+    if (!focused || focused === document.body || !focused.isConnected) toastActionRef.current?.focus({ preventScroll: true });
+  }, [toast]);
+  const viewSaved = useCallback(() => router.push(SAVED_POSTS_PATH), [router]);
 
   const area = useAreaPicker(showToast);
   const hasViewingArea = area.viewingLat != null && area.viewingLng != null;
@@ -146,6 +185,7 @@ export default function FeedPage() {
     radiusMiles: area.radiusMiles,
     areaReady: area.areaStatus !== 'resolving',
     showToast,
+    onViewSaved: viewSaved,
   });
 
   const inSportsLane = feed.surface === 'place' && feed.topic === 'sports';
@@ -791,10 +831,12 @@ export default function FeedPage() {
                               onDismissSeeded={feed.handleDismissSeeded}
                               onMute={feed.handleMute}
                               onNotHelpful={feed.handleNotHelpful}
+                              onRepost={feed.handleRepost}
                               onSolved={feed.handleSolved}
                               currentUserId={feed.user?.id}
                               isLiking={feed.likingIds.has(post.id)}
                               isSaving={feed.savingIds.has(post.id)}
+                              isReposting={feed.repostingIds.has(post.id)}
                               surface={feed.surface}
                               showToast={showToast}
                             />
@@ -996,7 +1038,7 @@ export default function FeedPage() {
           setDetailPostId(null);
         }}
         currentUserId={feed.user?.id}
-        initialPost={detailPostId ? feed.posts.find((post) => post.id === detailPostId) || null : null}
+        initialPost={detailPostId ? listedPostById(feed.posts, detailPostId) : null}
         onPostChange={feed.patchPost}
       />
 
@@ -1036,9 +1078,34 @@ export default function FeedPage() {
           --fab-lift lifts it above the phone tab bar: inside <main>'s stacking context, z-index can't. */}
       <div role="status" aria-live="polite">
         {toast && (
-          <div className="fixed inset-x-0 bottom-[calc(1.5rem+var(--fab-lift,0px))] z-[100] flex justify-center pointer-events-none">
-            <div className="max-w-[50vw] bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-[slideUp_0.3s_ease-out]">
-              {toast}
+          <div className="fixed inset-x-0 bottom-[calc(1.5rem+var(--fab-lift,0px))] z-[100] flex justify-center pointer-events-none px-4">
+            <div
+              className={`max-w-full sm:max-w-[50vw] bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-[slideUp_0.3s_ease-out]${
+                toast.action ? ' pointer-events-auto flex items-center gap-4' : ''
+              }`}
+              onMouseEnter={() => { toastHeld.current = true; }}
+              onMouseLeave={() => { toastHeld.current = false; startToastTimer(1500); }}
+              // The keyboard on it holds it; the focus Undo is given when a hidden card took the keyboard's place does not.
+              onFocus={(event) => { if (isKeyboardFocus(event.target)) toastHeld.current = true; }}
+              onBlur={() => { toastHeld.current = false; startToastTimer(1500); }}
+            >
+              <span>{toast.message}</span>
+              {toast.action && (
+                <button
+                  ref={toastActionRef}
+                  type="button"
+                  data-testid={FEED_TOAST_ACTION_TEST_ID}
+                  onClick={() => {
+                    const { action } = toast;
+                    toastHeld.current = false;
+                    setToast(null);
+                    action?.onClick();
+                  }}
+                  className="flex-shrink-0 rounded-lg px-2 py-0.5 -my-0.5 text-sm font-semibold text-sky-300 hover:text-sky-200 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 transition"
+                >
+                  {toast.action.label}
+                </button>
+              )}
             </div>
           </div>
         )}

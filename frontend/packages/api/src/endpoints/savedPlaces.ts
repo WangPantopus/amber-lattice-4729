@@ -1,5 +1,5 @@
 import { get, post, del } from '../client';
-import type { PlaceIntelligence } from '@pantopus/types';
+import type { PlaceIntelligence, Post } from '@pantopus/types';
 import type { PlacePreview } from './place';
 
 export interface SavedPlace {
@@ -74,12 +74,19 @@ export interface AroundYouItem {
   url: string | null;
   /** When Pantopus first saw it (ISO). */
   seen_at: string;
+  /** The item's post (each item is a post by the Pantopus curator account); absent from servers before the posts. */
+  post_id?: string;
 }
 
 export interface AroundYouSection {
   id: string;
   title: string;
   items: AroundYouItem[];
+  /**
+   * The same items as posts, in the feed's shape and order, to draw with the Pulse card (reactions, replies, the post
+   * page). Absent when the server could not make or read them, or is from before the posts: draw `items` then.
+   */
+  posts?: Post[];
 }
 
 /** Today's second half. `available` false: show no switch (the feature is off, or the area has nothing to show). */

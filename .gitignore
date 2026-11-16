@@ -10,6 +10,7 @@ node_modules/
 # Build and cache output
 .next/
 .next-dev/
+.next-film/
 next-env.d.ts
 *.tsbuildinfo
 dist/

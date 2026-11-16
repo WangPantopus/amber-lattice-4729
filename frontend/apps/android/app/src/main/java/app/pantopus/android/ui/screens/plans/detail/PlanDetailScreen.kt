@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.plans.detail
 
 import android.Manifest
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -37,8 +38,12 @@ import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isBusiness
+import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.GhostButton
@@ -49,6 +54,7 @@ import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.Spacing
@@ -82,6 +88,8 @@ fun PlanDetailScreen(
     onSeeAllPlans: () -> Unit,
     /** Ask Pantopus about this plan (AI assistant phase 1); null hides the button. */
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
+    /** A repeating plan's next date, opened in place of the date its host just skipped (Plans step 2). */
+    onOpenNextDate: (String) -> Unit = onOpenPlan,
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -100,6 +108,25 @@ fun PlanDetailScreen(
             toast.info(it)
             viewModel.noticeShown()
         }
+    }
+    // A skipped date's next one (Plans step 2) opens in its place.
+    LaunchedEffect(ui.nextPlanId) {
+        val next = ui.nextPlanId ?: return@LaunchedEffect
+        viewModel.nextDateOpened()
+        onOpenNextDate(next)
+    }
+    // "Bring a friend" (Plans step 1): the guest's one link goes out from their own phone, with the words to send.
+    val context = LocalContext.current
+    LaunchedEffect(ui.friendLink) {
+        val link = ui.friendLink ?: return@LaunchedEffect
+        val send =
+            Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, "${link.message} ${link.url}")
+        runCatching {
+            context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        viewModel.friendLinkShared()
     }
     Box(modifier = Modifier.fillMaxSize().testTag("planDetail")) {
         when (val state = ui.state) {
@@ -197,12 +224,14 @@ private fun PlanReady(
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     PlanPageScaffold(
         header = {
-            PlanMiniMap(plan = plan, reveal = ui.reveal, reduceMotion = reduceMotion, onRevealDone = viewModel::revealShown)
+            // The map, or an online plan's tile (Plans step 3).
+            PlanPageHeader(plan = plan, reveal = ui.reveal, reduceMotion = reduceMotion, onRevealDone = viewModel::revealShown)
         },
         onBack = onBack,
         scope = scopeChip(plan),
         scopeIcon = if (plan.isBusiness) PantopusIcon.MapPin else PantopusIcon.Lock,
-        onShare = if (plan.shareUrl != null && !closed) ({ context.sharePlan(plan) }) else null,
+        // A private plan is never shared by link (Plans step 1): its host invites, a guest may bring a friend.
+        onShare = if (plan.shareUrl != null && !closed && !plan.isPrivate) ({ context.sharePlan(plan) }) else null,
         menu = menu,
         footer = footerFor(plan, ui, closed, viewModel, onSeeAllPlans, onVerify, askLocation) { confirmLeave = it },
         onAsk = onAskPantopus?.let { ask -> { ask(AIScreenContext.plan(plan.id, PlanFormat.shortTitle(plan), hosting)) } },
@@ -220,9 +249,16 @@ private fun PlanReady(
                     onChange = onChange,
                     onCancel = viewModel::openCancel,
                     onRemove = { person -> person.requestId?.let(viewModel::removeGuest) },
+                    series =
+                        PlanSeriesActions(
+                            onSkip = viewModel::skipDate,
+                            onChange = onChange,
+                            onStop = viewModel::stopRepeating,
+                            busy = ui.busy || (ui.state as? PlanDetailUiState.Ready)?.fresh != true,
+                        ),
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
-            standing == PlanViewerStanding.IN && plan.hasPrivatePart ->
+            standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
                 PlanInBody(
                     plan = plan,
                     reveal = ui.reveal,
@@ -232,8 +268,15 @@ private fun PlanReady(
                     onStillComing = { coming -> if (coming) viewModel.stillComing(true) else confirmLeave = LeaveKind.Plan },
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
                 )
+                PlanFriendInviteRow(
+                    plan = plan,
+                    friend = PlanFriendInvite(invited = ui.friendInvited, making = ui.makingFriendLink, onBring = viewModel::bringFriend),
+                )
+            }
             standing == PlanViewerStanding.REQUESTED -> PlanRequestedBody(plan)
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
+            // A private plan's invitation goes under its title (board Invited, Plans step 1).
+            plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
                 PlanBeforeInBody(plan)
@@ -267,6 +310,8 @@ private fun PlanReady(
             onNote = viewModel::editCancelNote,
             onCancel = viewModel::cancelPlan,
             onKeep = viewModel::closeCancel,
+            // A repeating plan with dates after this one asks which (Plans step 2): this date, or the rest too.
+            onCancelDate = if (plan.seriesContinues) viewModel::cancelThisDate else null,
         )
     }
     confirmLeave?.let { kind ->
@@ -318,7 +363,10 @@ private fun scopeChip(plan: PlanDto): String? {
     return when {
         // A business's plan meets at its own public address (board G3): the street address over the map.
         plan.isBusiness -> if (closed || !browsing) null else plan.place?.address ?: plan.place?.name
-        plan.hasPrivatePart || !browsing || closed -> null
+        // A private plan shows the person invited its place by name already (Plans step 1).
+        plan.hasPrivatePart || plan.placeShownToInvitee || !browsing || closed -> null
+        // An online plan's link goes only to people who are in (Plans step 3).
+        plan.isOnline -> "The link is shared when you're in"
         plan.isPlaydate -> "Exact place and time shared when you're in"
         else -> "Exact place shared when you're in"
     }
@@ -338,13 +386,15 @@ private fun footerFor(
     val ready = (ui.state as? PlanDetailUiState.Ready)?.fresh == true
     val busy = ui.busy || !ready
     return when {
-        standing == PlanViewerStanding.HOSTING -> null
+        // An online plan's host joins the call from here too (Plans step 3); nothing else for a host, as before.
+        standing == PlanViewerStanding.HOSTING -> if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened)
         closed -> {
             { GhostButton(title = "See other plans", onClick = onSeeAll, modifier = Modifier.height(50.dp)) }
         }
-        standing == PlanViewerStanding.IN -> {
-            { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
-        }
+        // Board Online: "Join" for someone in, with "Can't make it" under it.
+        standing == PlanViewerStanding.IN ->
+            onlineJoinFooter(plan, viewModel::linkUnopened, leave = { confirm(LeaveKind.Plan) }, busy = busy)
+                ?: leaveFooter(busy, confirm)
         standing == PlanViewerStanding.REQUESTED -> {
             {
                 GhostButton(
@@ -370,6 +420,13 @@ private fun footerFor(
         else -> askFooterContent(askFooter(plan), viewModel, onVerify, onLocation, ready)
     }
 }
+
+/** J7's footer: "Can't make it". */
+private fun leaveFooter(
+    busy: Boolean,
+    confirm: (LeaveKind) -> Unit,
+): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit =
+    { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
 
 /** J1 and J2's footer: "Ask to join" (or why not) and its caption. */
 private fun askFooterContent(
@@ -411,7 +468,7 @@ private fun LeaveDialog(
                 Triple(
                     "Can't make it?",
                     "We'll tell ${plan.hostFirst}, and your spot goes to the next person waiting. " +
-                        "You'll lose the exact place, the note and the chat.",
+                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat.",
                     "I can't make it",
                 )
         }
@@ -474,7 +531,7 @@ private fun PlanGone(
                 color = PantopusColors.appText,
             )
             Text(
-                text = "It may have ended, been cancelled, or be just for neighbors closer by.",
+                text = "It may have ended, been cancelled, or be just for people closer by.",
                 style = app.pantopus.android.ui.theme.PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )

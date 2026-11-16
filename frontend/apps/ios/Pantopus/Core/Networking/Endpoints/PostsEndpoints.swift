@@ -143,20 +143,25 @@ public enum PostsEndpoints {
     /// list with `includeArchived` ("My posts"); the backend ignores the
     /// flag for anyone else's list. `previewAs` (`anyone`, `neighbors`,
     /// `connections`) is the owner's Preview as: the list that audience
-    /// sees (route `backend/routes/posts.js:3733`).
+    /// sees (route `backend/routes/posts.js:4223`). `includeReposts` is the
+    /// profile's Posts list: the posts the person reposted join theirs, each
+    /// at the time of the repost, for the owner and their connections
+    /// (PULSEREPOST contract §3); never sent from My posts.
     public static func userPosts(
         userId: String,
         limit: Int = 50,
         cursorCreatedAt: String? = nil,
         cursorId: String? = nil,
         includeArchived: Bool = false,
-        previewAs: String? = nil
+        previewAs: String? = nil,
+        includeReposts: Bool = false
     ) -> Endpoint {
         var query: [String: String] = ["limit": String(limit)]
         if let cursorCreatedAt { query["cursorCreatedAt"] = cursorCreatedAt }
         if let cursorId { query["cursorId"] = cursorId }
         if includeArchived { query["include_archived"] = "true" }
         if let previewAs { query["as"] = previewAs }
+        if includeReposts { query["include_reposts"] = "true" }
         return Endpoint(method: .get, path: "/api/posts/user/\(userId)", query: query)
     }
 
@@ -186,6 +191,15 @@ public enum PostsEndpoints {
     /// open, newest save first; offset paging over saves.
     public static func savedPosts(limit: Int = 50, offset: Int = 0) -> Endpoint {
         Endpoint(method: .get, path: "/api/posts/saved", query: ["limit": String(limit), "offset": String(offset)])
+    }
+
+    /// `GET /api/posts/reposts` — the posts the viewer reposted and can still
+    /// open, newest repost first; offset paging over reposts, the same
+    /// envelope as `savedPosts` (PULSEREPOST contract §4; new route beside
+    /// `GET /api/posts/saved`, `backend/routes/posts.js:2232` on dev). An
+    /// older server answers 404.
+    public static func repostedPosts(limit: Int = 50, offset: Int = 0) -> Endpoint {
+        Endpoint(method: .get, path: "/api/posts/reposts", query: ["limit": String(limit), "offset": String(offset)])
     }
 
     /// `DELETE /api/posts/:id` — author-only delete. Route
@@ -230,8 +244,8 @@ public enum PostsEndpoints {
         Endpoint(method: .post, path: "/api/posts/\(id)/report", body: PostReportRequest(reason: reason, details: details))
     }
 
-    /// `POST /api/posts/:id/save` — toggles the viewer's bookmark;
-    /// returns `{saved}`. Route `backend/routes/posts.js:3276`.
+    /// `POST /api/posts/:id/save` — saves the post for the viewer (or takes
+    /// it out of Saved); returns `{saved}`. Route `backend/routes/posts.js:4354`.
     public static func toggleSave(id: String, saved: Bool? = nil) -> Endpoint {
         Endpoint(method: .post, path: "/api/posts/\(id)/save", body: saved.map { PostSaveStateRequest(saved: $0) })
     }

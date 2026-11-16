@@ -55,6 +55,10 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
     /// The arrivals open now for a person found by name, and by email.
     public let personArrivals: [HolidayCardArrival]
     public let emailArrivals: [HolidayCardArrival]
+    /// Every arrival open now for a card to an email address (and a list of only addresses): the three a person
+    /// has, its email going at the sender's 7 a.m. or on Christmas morning, and right away (`arrivals.email_all`).
+    /// Nil from older servers: `emailArrivals` as before. A card by link keeps `emailArrivals`.
+    public let emailAllArrivals: [HolidayCardArrival]?
     /// The next 7 a.m. round where the sender lives: the carrier's pickup.
     public let nextRoundAt: String?
     /// 7 a.m. on Christmas morning where the sender lives.
@@ -90,6 +94,12 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
     private struct Arrivals: Decodable {
         let person: [String]?
         let email: [String]?
+        let emailAll: [String]?
+
+        private enum CodingKeys: String, CodingKey {
+            case person, email
+            case emailAll = "email_all"
+        }
     }
 
     public init(from decoder: any Decoder) throws {
@@ -106,6 +116,8 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         let arrivals = try? c.decodeIfPresent(Arrivals.self, forKey: .arrivals)
         personArrivals = (arrivals?.person ?? []).compactMap(HolidayCardArrival.init(rawValue:))
         emailArrivals = (arrivals?.email ?? []).compactMap(HolidayCardArrival.init(rawValue:))
+        let emailAll = (arrivals?.emailAll ?? []).compactMap(HolidayCardArrival.init(rawValue:))
+        emailAllArrivals = emailAll.isEmpty ? nil : emailAll
         nextRoundAt = try? c.decodeIfPresent(String.self, forKey: .nextRoundAt)
         christmasMorningAt = try? c.decodeIfPresent(String.self, forKey: .christmasMorningAt)
         timeZone = try? c.decodeIfPresent(String.self, forKey: .timeZone)
@@ -286,6 +298,9 @@ public struct SentHolidayCard: Decodable, Sendable, Hashable, Identifiable {
     /// `waiting`, `delivered`, `claimed`, `expired` or `withdrawn`.
     public let status: String
     public let sentAt: String?
+    /// By email, set to go at the sender's 7 a.m. or on Christmas morning: when (ISO); nil once it went, or when it
+    /// goes as it's sealed.
+    public let emailSendAt: String?
 
     private enum CodingKeys: String, CodingKey {
         case id, design, arrival, status
@@ -298,6 +313,7 @@ public struct SentHolidayCard: Decodable, Sendable, Hashable, Identifiable {
         case takeBackUntil = "take_back_until"
         case canTakeBack = "can_take_back"
         case sentAt = "sent_at"
+        case emailSendAt = "email_send_at"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -315,6 +331,7 @@ public struct SentHolidayCard: Decodable, Sendable, Hashable, Identifiable {
         canTakeBack = (try? c.decodeIfPresent(Bool.self, forKey: .canTakeBack)) ?? false
         status = (try? c.decodeIfPresent(String.self, forKey: .status)) ?? "waiting"
         sentAt = try? c.decodeIfPresent(String.self, forKey: .sentAt)
+        emailSendAt = try? c.decodeIfPresent(String.self, forKey: .emailSendAt)
     }
 }
 
@@ -326,7 +343,7 @@ public struct HolidayCardSharedBody: Encodable, Sendable {
     public let design: String
     /// `instagram`, `facebook`, `email`, `link`, `save` or `more`.
     public let kind: String
-    /// `story`, `post` or `link`.
+    /// `story`, `post`, `link` or `video`.
     public let format: String
     public let withNote: Bool
 
@@ -334,6 +351,13 @@ public struct HolidayCardSharedBody: Encodable, Sendable {
         case design, kind, format
         case withNote = "with_note"
     }
+}
+
+/// `GET /api/mailbox/cards/share-video/:design`: where the picture's share video is (public storage), and its size.
+public struct HolidayCardShareVideo: Decodable, Sendable, Hashable {
+    public let url: String
+    public let width: Int?
+    public let height: Int?
 }
 
 public struct SendHolidayCardBody: Encodable, Sendable {
@@ -418,6 +442,9 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     public let recipients: [Recipient]
     /// One signature for the whole list, as one note (plan 8.2).
     public let signature: CardSignature?
+    /// True when the app words every choice by email (`arrivals.email_all`): each address keeps the list's choice,
+    /// its email going at the sender's 7 a.m. or on Christmas morning. Nil (left out) keeps the older mapping.
+    public let emailsKeepArrival: Bool?
 
     public struct Recipient: Encodable, Sendable {
         public let to: SendHolidayCardBody.Recipient
@@ -432,6 +459,7 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case design, message, arrival, recipients, signature
         case useStamp = "use_stamp"
+        case emailsKeepArrival = "emails_keep_arrival"
     }
 
     public init(
@@ -439,13 +467,15 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
         message: String,
         arrival: HolidayCardArrival,
         recipients: [Recipient],
-        signature: CardSignature? = nil
+        signature: CardSignature? = nil,
+        emailsKeepArrival: Bool? = nil
     ) {
         self.design = design
         self.message = message
         self.arrival = arrival.rawValue
         self.recipients = recipients
         self.signature = signature
+        self.emailsKeepArrival = emailsKeepArrival
     }
 }
 
@@ -460,6 +490,8 @@ public struct HolidayCardListLine: Decodable, Sendable, Hashable {
     public let arrival: HolidayCardArrival?
     /// The day it goes into their mailbox by their clock (`YYYY-MM-DD`).
     public let arrivesOn: String?
+    /// By email, when its email goes (ISO) if not right away.
+    public let emailSendAt: String?
     public let card: SentHolidayCard?
     public let error: String?
     public let code: String?
@@ -470,6 +502,7 @@ public struct HolidayCardListLine: Decodable, Sendable, Hashable {
         case toName = "to_name"
         case byEmail = "by_email"
         case arrivesOn = "arrives_on"
+        case emailSendAt = "email_send_at"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -480,6 +513,7 @@ public struct HolidayCardListLine: Decodable, Sendable, Hashable {
         byEmail = (try? c.decodeIfPresent(Bool.self, forKey: .byEmail)) ?? false
         arrival = (try? c.decodeIfPresent(String.self, forKey: .arrival)).flatMap(HolidayCardArrival.init(rawValue:))
         arrivesOn = try? c.decodeIfPresent(String.self, forKey: .arrivesOn)
+        emailSendAt = try? c.decodeIfPresent(String.self, forKey: .emailSendAt)
         card = try? c.decodeIfPresent(SentHolidayCard.self, forKey: .card)
         error = try? c.decodeIfPresent(String.self, forKey: .error)
         code = try? c.decodeIfPresent(String.self, forKey: .code)
@@ -553,6 +587,11 @@ public struct TakeBackHolidayCardResponse: Decodable, Sendable, Hashable {
     }
 }
 
+/// `POST /api/mailbox/cards/:id/email-again` → 200.
+public struct EmailAgainHolidayCardResponse: Decodable, Sendable, Hashable {
+    public let emailed: Bool
+}
+
 /// `POST /api/mailbox/cards/preview` → 200: what the other person will see,
 /// before anything is stored or sent. The card as their Mailbox will show
 /// it, when it comes and opens by their clock, and for an email address the
@@ -572,6 +611,8 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
     public let takeBackUntil: String?
     /// The email an address gets; nil for a person on Pantopus.
     public let email: Email?
+    /// When that email goes (ISO), set for the sender's 7 a.m. or Christmas morning; nil when it goes right away.
+    public let emailSendAt: String?
     /// The page the email's link opens; nil for a person on Pantopus.
     public let linkPage: LinkPage?
 
@@ -637,6 +678,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
         case sealedDays = "sealed_days"
         case takeBackUntil = "take_back_until"
         case linkPage = "link_page"
+        case emailSendAt = "email_send_at"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -647,6 +689,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
         sealedDays = try? c.decodeIfPresent(Int.self, forKey: .sealedDays)
         takeBackUntil = try? c.decodeIfPresent(String.self, forKey: .takeBackUntil)
         email = try? c.decodeIfPresent(Email.self, forKey: .email)
+        emailSendAt = try? c.decodeIfPresent(String.self, forKey: .emailSendAt)
         linkPage = try? c.decodeIfPresent(LinkPage.self, forKey: .linkPage)
     }
 

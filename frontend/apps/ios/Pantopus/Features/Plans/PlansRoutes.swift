@@ -38,12 +38,16 @@ final class PlansNavigator {
     var pendingHost: PlansHostRequest?
     /// A sentence for the next Plans screen that opens (a push button that didn't go through).
     var notice: String?
+    /// A confirmation for the next plan screen that opens, as its toast (a skipped date's next one, Plans step 2).
+    var toast: String?
 
     private init() {}
 }
 
-/// "Host a plan", optionally at a kind (and a game).
+/// "Host a plan", optionally at a kind (and a game), or a private plan (Plans step 1).
 struct PlansHostRequest: Identifiable, Hashable {
     let id = UUID()
     let start: PlansHostStart?
+    /// Opens on "Only people I invite" (the empty state's "Plan with people you know").
+    var isPrivate = false
 }

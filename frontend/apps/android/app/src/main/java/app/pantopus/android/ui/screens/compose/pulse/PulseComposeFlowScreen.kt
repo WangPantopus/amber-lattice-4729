@@ -29,6 +29,7 @@ private sealed interface PulseComposeFlowStep {
  * Edit mode skips straight to the draft step.
  */
 @Composable
+@Suppress("LongParameterList") // One input per way into the composer (edit, prefills, a shared picture, a quote).
 fun PulseComposeFlowScreen(
     onBack: () -> Unit,
     onPosted: (String?) -> Unit = {},
@@ -40,16 +41,25 @@ fun PulseComposeFlowScreen(
     onOpenPost: (String) -> Unit = {},
     /** Today's sky, shared from under the sun card: the picture, or the clip as a video, in the draft. */
     prefillAttachment: File? = null,
+    /**
+     * "Repost with your words" (contract §8): the post being quoted. The composer opens straight on the draft, to
+     * Connections (what Repost reaches), as a plain Connections post; the composer's view-model reads the same id.
+     */
+    quotedPostId: String? = null,
 ) {
     // Saved, so the draft step is still there when an opened post comes back to it.
     var step by rememberSaveable(stateSaver = FlowStepSaver) {
         mutableStateOf<PulseComposeFlowStep>(
-            if (editingPostId != null) {
+            if (editingPostId != null || quotedPostId != null) {
                 PulseComposeFlowStep.Draft(PulsePostingTarget.Connections, null)
             } else {
                 PulseComposeFlowStep.TargetPicker
             },
         )
+    }
+    // A quote's "Change" opens the target step over its draft: Cancel there goes back to that draft, not out.
+    var changedFrom by rememberSaveable(stateSaver = FlowStepSaver) {
+        mutableStateOf<PulseComposeFlowStep>(PulseComposeFlowStep.TargetPicker)
     }
 
     Box(modifier = Modifier.fillMaxSize().testTag("pulseComposeFlow")) {
@@ -57,7 +67,10 @@ fun PulseComposeFlowScreen(
             PulseComposeFlowStep.TargetPicker ->
                 PulsePostTargetPickerScreen(
                     onSelect = { target -> handleTargetSelected(target, prefillFeedIntent, prefillDraft) { step = it } },
-                    onCancel = onBack,
+                    onCancel = {
+                        val draft = changedFrom as? PulseComposeFlowStep.Draft
+                        if (quotedPostId != null && draft != null) step = draft else onBack()
+                    },
                 )
             is PulseComposeFlowStep.PurposePicker ->
                 PulsePostPurposePickerScreen(
@@ -78,6 +91,14 @@ fun PulseComposeFlowScreen(
                     flowTarget = current.target,
                     flowPurpose = resolvedPurpose,
                     onOpenPost = onOpenPost,
+                    // "Repost with your words" opens on Connections; the audience is picked on the first step.
+                    onChangeTarget =
+                        quotedPostId?.let {
+                            {
+                                changedFrom = current
+                                step = PulseComposeFlowStep.TargetPicker
+                            }
+                        },
                 )
             }
         }

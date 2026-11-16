@@ -1,5 +1,6 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
@@ -7,6 +8,7 @@ import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
 import app.pantopus.android.data.api.models.mailbox.HolidayCardNoteHelpBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardNoteIdeas
 import app.pantopus.android.data.api.models.mailbox.HolidayCardPreview
+import app.pantopus.android.data.api.models.mailbox.HolidayCardShareVideo
 import app.pantopus.android.data.api.models.mailbox.HolidayCardSharedBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardWaitingResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardsResponse
@@ -127,6 +129,16 @@ interface HolidayCardsApi {
         @Part file: MultipartBody.Part,
     ): CardMediaUploaded
 
+    /**
+     * `GET /api/mailbox/cards/share-video/:design` — route `backend/routes/mailbox.js` (next to `POST /cards/shared`).
+     * The video a card shares as (the server's launch key `card_share_video`; 404 while it's off): the picture's card
+     * arriving on the table, the same for everyone, with no note or name in it.
+     */
+    @GET("api/mailbox/cards/share-video/{design}")
+    suspend fun shareVideo(
+        @Path("design") design: String,
+    ): HolidayCardShareVideo
+
     /** `POST /api/mailbox/cards/shared` — counts what was shared (launch key `card_table`). Answers 204. */
     @POST("api/mailbox/cards/shared")
     suspend fun shared(
@@ -152,6 +164,17 @@ interface HolidayCardsApi {
     suspend fun takeBack(
         @Path("id") id: String,
     ): TakeBackHolidayCardResponse
+
+    /**
+     * `POST /api/mailbox/cards/:id/email-again` — the same route file (after take-back): one more try at a card by
+     * email's email that didn't go out (Sent's `email_status`), sender only. 503 `CARD_EMAIL_FAILED` when it still
+     * didn't go, 429 `CARD_EMAIL_BUSY` within a minute of the last try, 409 once it went, was taken back or they have
+     * it, 404 for anyone else; each with the server's sentence.
+     */
+    @POST("api/mailbox/cards/{id}/email-again")
+    suspend fun emailAgain(
+        @Path("id") id: String,
+    ): CardEmailedAgainResponse
 
     /**
      * `GET /api/mailbox/sent?before=&limit=` — route `backend/routes/mailbox.js` (before `GET /:id`; launch key

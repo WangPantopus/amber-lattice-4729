@@ -9,6 +9,9 @@
  * { kind: "playdate", city }. Plans exist publicly only while their host has
  * the `plans` flag (and `plans_playdates` for a playdate), so a share link from
  * a pilot tester works for the friends they invite.
+ *
+ * A private plan (Plan.audience 'invited') answers only { private: true }, unless the
+ * page carries a live invitation to it: then the same card, with `private: true`.
  */
 
 const { isFeatureEnabled } = require('../featureFlagService');
@@ -35,10 +38,23 @@ function anonymousViewer() {
   };
 }
 
-async function publicPlan(postId) {
+/**
+ * @param {string} postId
+ * @param {{ inviteToken?: string }} [opts]  the page's `?invite=`: a private plan shows its card only to someone
+ *   holding a live invitation to it. Anyone else with its link learns one thing, that it is private.
+ */
+async function publicPlan(postId, { inviteToken = null } = {}) {
   if (!planService.isUuid(postId)) return null;
   const plan = await planService.loadPlanRow(postId);
   if (!plan || !plan.post || !canReadPostModeration(plan.post, null)) return null;
+  if (plan.audience === 'invited') {
+    if (plan.status !== 'open' || !(await isFeatureEnabled('plans', plan.host_user_id))) return null;
+    if (!(await require('./planInvites').isLiveToken(postId, inviteToken))) return { private: true };
+    if (plan.kind === 'playdate') return { kind: 'playdate', city: plan.city || null, private: true };
+    const viewer = anonymousViewer();
+    const ctx = await planService.loadCardContext([plan], viewer);
+    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), private: true };
+  }
   if (plan.post.read_scope != null
     && (plan.post.read_scope !== 'public' || plan.post.allow_external_share === false)) return null;
   if (!(await isFeatureEnabled('plans', plan.host_user_id))) return null;
@@ -85,6 +101,8 @@ function publicCard(card) {
     state: card.state,
     asking_closes_at: card.asking_closes_at,
     share_url: card.share_url,
+    // A repeating plan: how often, and its last date ("Every Tue and Thu", "2027-02-04"). Null otherwise.
+    repeat: card.repeat ? { text: card.repeat.text, short: card.repeat.short, last_on: card.repeat.last_on } : null,
   };
 }
 

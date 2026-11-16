@@ -32,6 +32,10 @@ const HOURS = [1, 6, 24, 48];
 const BACKGROUNDS = ['teal', 'sky', 'green', 'amber', 'rose', 'slate'];
 const AUDIENCES = ['nearby', 'connections'];
 const DAILY_LIMIT = 20;
+// A video longer than one Moment's 60 seconds is posted as up to this many Moments, in order: its parts.
+const MAX_PARTS = 5;
+// How long after a video's first part its later parts may still be made.
+const PARTS_WINDOW_MS = 30 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const FIX_MAX_AGE_MS = 5 * 60 * 1000;
 // Any photo or video in the album may be a Moment (founder, 2026-11-11). One taken more than this before it's posted
@@ -306,6 +310,8 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     created_at: row.created_at,
     expires_at: row.story_expires_at,
     hours: m.hours,
+    // A part of a longer video posted as several Moments: which one, of how many (null for any other Moment).
+    series: m.series ? { id: m.series.id, index: m.series.index, count: m.series.count } : null,
     taken_at: m.kind === 'text' ? null : (m.taken_at || null),
     // Feet above sea level, when the author chose "Show height" (null otherwise); `flying`: posted from the air.
     altitude_ft: high ? high.altitude_ft : null,
@@ -685,7 +691,7 @@ async function viewersOf(row) {
 
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
-  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null }) {
+  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null }) {
   const now = createdAt ? new Date(createdAt) : new Date();
   const live = kind === 'text';
   return {
@@ -728,6 +734,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
         ...(labelKind ? { label_kind: labelKind } : {}),
         ...(takenAt && kind !== 'text' ? { taken_at: takenAt } : {}),
         ...(venueId ? { venue_id: venueId } : {}),
+        ...(series && kind === 'video' ? { series: { id: series.id, index: series.index, count: series.count } } : {}),
         ...(altitude ? { altitude_ft: altitude.altitude_ft, ...(altitude.flying ? { flying: true } : {}) } : {}),
         location_source: location.source,
         state: live ? 'live' : 'uploading',
@@ -772,7 +779,7 @@ function shownAltitude(reading, { atHome = false, showArea = false, unplaced = f
  * (an album item pins where it was taken, from any time; a Moment with no location needs a connection), and 20
  * Moments a day. Throws the error the apps handle.
  */
-async function checkPostingRules(user, { kind, location }) {
+async function checkPostingRules(user, { kind, location, series = null }) {
   const now = Date.now();
   if (location.source === 'gps') {
     const fixAt = Date.parse(location.fix_at);
@@ -789,9 +796,24 @@ async function checkPostingRules(user, { kind, location }) {
   const adult = await adultStatus(user.id);
   if (adult.ineligible) throw fail(403, 'AGE_NOT_ELIGIBLE', 'Moments are for people 18 and older.');
   if (!adult.attestedAt) throw fail(403, 'ADULT_CONFIRM_REQUIRED', 'Confirm you are 18 or older to post Moments.');
-  const { count, error } = await supabaseAdmin.from('Post').select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id).eq('is_story', true).gte('created_at', new Date(now - 24 * HOUR_MS).toISOString());
+  // A long video's parts count as the one post they are: the first part is checked against the day's limit, and a
+  // later part needs that first part, made by the same account a little while ago.
+  if (series && series.index > 1) {
+    const { data: parts, error: partsError } = await supabaseAdmin.from('Post').select('id, series:post_metadata->moment->series')
+      .eq('user_id', user.id).eq('is_story', true).eq('post_metadata->moment->series->>id', series.id)
+      .gte('created_at', new Date(now - PARTS_WINDOW_MS).toISOString()).limit(MAX_PARTS * 2);
+    if (partsError) throw new Error(`Failed to read the video's parts: ${partsError.message}`);
+    const made = (parts || []).map((part) => Number(part.series?.index));
+    if (!made.includes(1) || made.includes(series.index) || made.length >= MAX_PARTS) {
+      throw fail(400, 'MOMENT_INVALID', 'This part does not belong to a video being posted.');
+    }
+    return;
+  }
+  const { data: today, error } = await supabaseAdmin.from('Post').select('id, series:post_metadata->moment->series')
+    .eq('user_id', user.id).eq('is_story', true).gte('created_at', new Date(now - 24 * HOUR_MS).toISOString())
+    .limit(DAILY_LIMIT * MAX_PARTS + 1);
   if (error) throw new Error(`Failed to count Moments: ${error.message}`);
+  const count = (today || []).filter((post) => !(Number(post.series?.index) > 1)).length;
   if (count >= DAILY_LIMIT) {
     throw fail(429, 'MOMENTS_DAILY_LIMIT', `You can post up to ${DAILY_LIMIT} Moments a day. Try again later.`);
   }
@@ -922,7 +944,7 @@ async function deleteMoment(row) {
 }
 
 module.exports = {
-  KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, HOUR_MS, MOMENT_SELECT,
+  KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, HEIGHTS_FLAG, FLOAT_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,

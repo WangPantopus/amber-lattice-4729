@@ -10,7 +10,21 @@
 
 const { haversineMeters } = require('../../utils/trustState');
 
+// The five kinds every app knows, and the only ones a business hosts (BUSINESS_KIND_NAMES).
 const KINDS = ['watch_party', 'playdate', 'pickup_game', 'walk_coffee', 'study_group'];
+// Four more (November 2026), for an app that says it can draw them (`more=1`, viewer.more): older apps decode a
+// plan's kind as a closed list, so a plan of one of these never reaches them (needsMore).
+const NEW_KINDS = ['food_drinks', 'game_night', 'outdoors', 'something_else'];
+const ALL_KINDS = [...KINDS, ...NEW_KINDS];
+const KINDS_FLAG = 'plans_kinds';
+const FOOD_KINDS = ['dinner', 'potluck', 'drinks', 'brunch', 'bbq', 'other'];
+const GAME_KINDS = ['board_games', 'cards', 'trivia', 'video_games', 'other'];
+const OUTDOOR_KINDS = ['hike', 'bike_ride', 'run', 'other'];
+// An online plan (Plan.place_kind 'online'): people join with a link (Plan.online_link). Only these kinds can be;
+// playdates, pickup games and outdoor plans meet in person. Like a new kind, it needs `more=1`.
+const ONLINE_KINDS = ['watch_party', 'walk_coffee', 'study_group', 'game_night', 'something_else', 'food_drinks'];
+const ONLINE_FLAG = 'plans_online';
+const ONLINE_LINK_MAX = 300;
 const AUTO_RULES = ['verified', 'hosted_before', 'anyone_nearby'];
 const KIDS_AGE_BANDS = ['under_2', '2_3', '4_5', '6_8', '9_12'];
 const DISTANCE_BANDS = ['under_1_mi', 'about_1_mi', 'about_2_mi', 'about_3_mi', 'about_5_mi'];
@@ -20,6 +34,10 @@ const WALK_KINDS = ['walk', 'dog_walk', 'stroller_walk', 'coffee'];
 const PACES = ['easy', 'brisk'];
 const STUDY_STYLES = ['quiet', 'together'];
 const WINDOWS = ['now', 'today', 'week', 'weekend'];
+// Who a plan is for: people nearby, who ask to join (every plan until November 2026), or only the people its
+// host invites (a private plan: Plan.audience).
+const AUDIENCES = ['nearby', 'invited'];
+const PRIVATE_FLAG = 'plans_private';
 
 const MILE_METERS = 1609.344;
 // Hosting: within the existing 5 km canPostToPlace proximity (about 3 miles) of
@@ -54,6 +72,37 @@ const LIMITS = Object.freeze({
   // A plan may start "now": a small grace for the time it took to post.
   startGraceMinutes: 10,
 });
+
+// A private plan is among people who know each other: it may be anywhere (no 3-mile rule) and further ahead,
+// and it doesn't count against the three public plans a host may have upcoming.
+const PRIVATE_LIMITS = Object.freeze({
+  upcomingPlansPerHost: 10,
+  newPlansPerDay: 10,
+  maxDaysAhead: 60,
+});
+
+/** Is this plan private (only its host, the people invited and the people in or waiting may read it)? */
+function isPrivate(plan) {
+  return plan?.audience === 'invited';
+}
+
+/** Do people join this plan with a link? */
+function isOnline(plan) {
+  return plan?.place_kind === 'online';
+}
+
+/**
+ * An online plan posted with no area (private, by a host with no home or fix): stored at 0, 0, it is in no list or
+ * map box, and its card has no area point.
+ */
+function hasNoArea(plan) {
+  return isOnline(plan) && Number(plan.place_latitude) === 0 && Number(plan.place_longitude) === 0;
+}
+
+/** Can only an app that sent `more=1` read this plan (a new kind, or online)? Everyone else: it doesn't exist. */
+function needsMore(plan) {
+  return NEW_KINDS.includes(plan?.kind) || isOnline(plan);
+}
 
 // ── A business's plans (Plans with businesses, the build contract's sections 4.4 and 4.5) ──
 
@@ -94,6 +143,10 @@ const DEFAULT_TIMEZONE = 'UTC';
 const { timezoneFromCoordinates } = require('../../utils/timezone');
 
 function timezoneForPlan(plan) {
+  // An online plan posted with no area sits at 0, 0, which is nobody's time zone: it keeps the one it was saved with.
+  if (plan?.place_kind === 'online' && Number(plan.place_latitude) === 0 && Number(plan.place_longitude) === 0) {
+    return plan.timezone || DEFAULT_TIMEZONE;
+  }
   return timezoneFromCoordinates(plan?.place_latitude, plan?.place_longitude, plan?.timezone || DEFAULT_TIMEZONE);
 }
 
@@ -215,6 +268,18 @@ function isFreshGps(gps, now = Date.now()) {
 
 module.exports = {
   KINDS,
+  NEW_KINDS,
+  ALL_KINDS,
+  KINDS_FLAG,
+  FOOD_KINDS,
+  GAME_KINDS,
+  OUTDOOR_KINDS,
+  ONLINE_KINDS,
+  ONLINE_FLAG,
+  ONLINE_LINK_MAX,
+  isOnline,
+  hasNoArea,
+  needsMore,
   AUTO_RULES,
   KIDS_AGE_BANDS,
   DISTANCE_BANDS,
@@ -224,6 +289,10 @@ module.exports = {
   PACES,
   STUDY_STYLES,
   WINDOWS,
+  AUDIENCES,
+  PRIVATE_FLAG,
+  PRIVATE_LIMITS,
+  isPrivate,
   LIMITS,
   BUSINESS_LIMITS,
   BUSINESS_KIND_NAMES,

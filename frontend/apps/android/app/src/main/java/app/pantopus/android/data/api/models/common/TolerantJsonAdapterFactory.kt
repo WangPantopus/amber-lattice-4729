@@ -23,9 +23,13 @@ import java.lang.reflect.Type
  * Unknown keys are ignored by Moshi already, and the values that grow (`post_type`, notification `type`, `state`) are
  * strings the screens map with a generic fallback. Register this ahead of the generated adapters in
  * `NetworkModule.provideMoshi`; it then also covers the pages the screens' store saves and reads back.
+ *
+ * A third rule covers the optional parts a post may carry ([optionalTypes], such as a quoted post or the "reposted"
+ * line): a value of one of them that can't be read reads as missing (null), so the post that carries it still shows.
  */
 class TolerantJsonAdapterFactory(
     private val tolerantTypes: Set<Type>,
+    private val optionalTypes: Set<Type> = emptySet(),
 ) : JsonAdapter.Factory {
     override fun create(
         type: Type,
@@ -35,6 +39,7 @@ class TolerantJsonAdapterFactory(
         when {
             annotations.isNotEmpty() -> null
             type in tolerantTypes -> NullAsMissingAdapter(moshi.nextAdapter<Any>(this, type, annotations))
+            type in optionalTypes -> NullOnFailureAdapter(moshi.nextAdapter<Any>(this, type, annotations))
             else -> tolerantElementOf(type)?.let { TolerantListAdapter(moshi.adapter<Any>(it)) }
         }
 
@@ -67,6 +72,28 @@ private class NullAsMissingAdapter<T>(
             is List<*> -> value.map(::withoutNulls)
             else -> value
         }
+}
+
+/** Reads an optional part of a reply; a value that can't be decoded (the wrong shape, a missing id) reads as null. */
+private class NullOnFailureAdapter<T>(
+    private val delegate: JsonAdapter<T>,
+) : JsonAdapter<T>() {
+    override fun fromJson(reader: JsonReader): T? {
+        // A tree first: a failure inside the value leaves the reader past it.
+        val raw = reader.readJsonValue() ?: return null
+        return try {
+            delegate.fromJsonValue(raw)
+        } catch (error: JsonDataException) {
+            // Not the message: Moshi's can quote the value that didn't fit.
+            Timber.tag("HTTP").w("read an optional value that couldn't be read as none (${error.javaClass.simpleName})")
+            null
+        }
+    }
+
+    override fun toJson(
+        writer: JsonWriter,
+        value: T?,
+    ) = delegate.toJson(writer, value)
 }
 
 /** Reads a list one element at a time; an element that can't be decoded is skipped (a null list is empty). */

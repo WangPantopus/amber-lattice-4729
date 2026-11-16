@@ -26,6 +26,7 @@ import app.pantopus.android.data.social.UserSocialRepository
 import app.pantopus.android.data.store.StoreKind
 import app.pantopus.android.ui.components.IdentityPillar
 import app.pantopus.android.ui.components.RefreshNotice
+import app.pantopus.android.ui.screens.feed.pulse.PulseToastActionFor
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileReviewCard
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileStatCell
 import app.pantopus.android.ui.screens.shared.content_detail.bodies.ProfileTab
@@ -325,6 +326,10 @@ class PublicProfileViewModel
         private val _toastMessage = MutableStateFlow<String?>(null)
         val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
+        /** "View" on a post card's "Saved." toast (contract §5), shown while the toast says its words. */
+        private val _toastAction = MutableStateFlow<PulseToastActionFor?>(null)
+        val toastAction: StateFlow<PulseToastActionFor?> = _toastAction.asStateFlow()
+
         private val _connectState =
             MutableStateFlow<PublicProfileActionState>(PublicProfileActionState.Idle)
         val connectState: StateFlow<PublicProfileActionState> = _connectState.asStateFlow()
@@ -409,6 +414,7 @@ class PublicProfileViewModel
                 viewerId = { (authRepository.state.value as? AuthRepository.State.SignedIn)?.user?.id },
                 onToast = { _toastMessage.value = it },
                 onPinsChanged = { pins.load(userId) },
+                onToastAction = { _toastAction.value = it },
             )
 
         /** Drives the "Unfollow …?" confirm, so one tap on Following never unfollows. */
@@ -509,6 +515,7 @@ class PublicProfileViewModel
 
         fun dismissToast() {
             _toastMessage.value = null
+            _toastAction.value = null
         }
 
         /** Surface a transient toast — used by the Report sheet success path. */

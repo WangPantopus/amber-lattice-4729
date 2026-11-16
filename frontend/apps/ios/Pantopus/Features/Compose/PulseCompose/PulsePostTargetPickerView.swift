@@ -24,6 +24,10 @@ public struct PulsePostTargetPickerView: View {
     /// (`gig/[id].tsx:1478`) because a task share is always a place post.
     /// (No business card here: businesses don't post to Pulse.)
     private let hidesNetworkTarget: Bool
+    /// The screen's title: "New post", or "Repost with your words" while a quote picks where it goes.
+    private let title: String
+    /// Back to the draft this step was opened from (a quote's "Change"); nil shows X, which closes the composer.
+    private let onBack: (@MainActor () -> Void)?
 
     /// - Parameter viewModel: The step's homes when the composer keeps them (through a fold or a turn); new ones
     ///   otherwise.
@@ -31,8 +35,12 @@ public struct PulsePostTargetPickerView: View {
         viewModel: PulsePostTargetPickerViewModel? = nil,
         onSelect: @escaping @MainActor (PulsePostingTarget) -> Void,
         onCancel: @escaping @MainActor () -> Void,
-        hidesNetworkTarget: Bool = false
+        hidesNetworkTarget: Bool = false,
+        title: String = "New post",
+        onBack: (@MainActor () -> Void)? = nil
     ) {
+        self.title = title
+        self.onBack = onBack
         _viewModel = State(initialValue: viewModel ?? PulsePostTargetPickerViewModel())
         self.onSelect = onSelect
         self.onCancel = onCancel
@@ -41,12 +49,12 @@ public struct PulsePostTargetPickerView: View {
 
     public var body: some View {
         FormShell(
-            title: "New post",
-            leading: .close,
+            title: title,
+            leading: onBack == nil ? .close : .back,
             rightActionLabel: nil,
             isValid: false,
             isDirty: false,
-            onClose: onCancel,
+            onClose: onBack ?? onCancel,
             onCommit: {},
             content: {
                 switch viewModel.state {

@@ -28,14 +28,16 @@ import {
 import OpenInAppButton from '@/components/public-share/OpenInAppButton';
 import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
-import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
+import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
 // place, the host's note and the people going are only in the app, for people
 // the host lets in. Playdate links show nothing but the kind and the city.
 // A business's plan (board D6) adds what the business calls it, its place by name and street address (the
 // business's own), the business as host and the price; a kids' class among them gets the whole card. Joining and
-// paying happen in the app. Everything it adds is behind `plan.business`, so a neighbor's plan reads as before.
+// paying happen in the app. Everything it adds is behind `plan.business`, so a person's plan reads as before.
+// A private plan shows only that it is private, unless the link carries a live invitation to it.
+// An online plan (board Online) says "Online" where the area would be and draws no map; its link is only in the app.
 export const dynamic = 'force-dynamic';
 
 type Kind = PublicPlan['kind'];
@@ -54,8 +56,9 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
   if (!access) return null;
   try {
     // `biz=1`: this page can draw a business's plan, so the server may answer for one (it answers 404 for one
-    // without it). For a neighbor's plan the answer is the same either way.
-    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1`, {
+    // without it); `more=1`, the same for an online plan and the newer kinds. For other plans the answer is the
+    // same either way.
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1&more=1`, {
       cache: 'no-store',
       // This lookup only personalizes copy. A slow session/API must not hold
       // the public preview open indefinitely, including while reading its body.
@@ -82,6 +85,10 @@ const KIND_LABEL: Record<Kind, string> = {
   pickup_game: 'Pickup game',
   walk_coffee: 'Walk & coffee',
   study_group: 'Study group',
+  food_drinks: 'Food & drinks',
+  game_night: 'Game night',
+  outdoors: 'Outdoors',
+  something_else: 'Something else',
 };
 
 /** As a sentence says it: "Sam invited you to their watch party". */
@@ -91,7 +98,25 @@ const KIND_NOUN: Record<Kind, string> = {
   pickup_game: 'pickup game',
   walk_coffee: 'walk & coffee',
   study_group: 'study group',
+  food_drinks: 'get-together',
+  game_night: 'game night',
+  outdoors: 'outing',
+  something_else: 'plan',
 };
+
+const FOOD_NOUN: Record<string, string> = { dinner: 'dinner', potluck: 'potluck', drinks: 'drinks', brunch: 'brunch', bbq: 'barbecue' };
+const OUTDOOR_NOUN: Record<string, string> = { hike: 'hike', bike_ride: 'bike ride', run: 'run' };
+
+/** The kind as a sentence names it, from its details where the server's notices do: "dinner", "hike". */
+function kindNoun(plan: PublicPlan): string {
+  const detail = (key: string) => (typeof plan.details?.[key] === 'string' ? (plan.details[key] as string) : '');
+  if (plan.kind === 'food_drinks') return FOOD_NOUN[detail('food_kind') || 'dinner'] || KIND_NOUN.food_drinks;
+  if (plan.kind === 'outdoors') return OUTDOOR_NOUN[detail('outdoor_kind') || 'hike'] || KIND_NOUN.outdoors;
+  return KIND_NOUN[plan.kind];
+}
+
+/** People join this plan with a link, which only the app shows, to the people who are in. */
+const isOnline = (plan: PublicPlan) => plan.place_kind === 'online';
 
 type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<{ invite?: string | string[] }> };
 
@@ -179,11 +204,56 @@ function MiniMap({ kind, placeName = null }: { kind: Kind; placeName?: string | 
   );
 }
 
+/**
+ * Where an online plan's mini-map would be (board Online): no map and no area, the kind's glyph on a tile of its
+ * color, in a band of its tint.
+ */
+function OnlineHero({ kind }: { kind: Kind }) {
+  return (
+    <div className="grid h-[150px] place-items-center bg-[var(--plan-cs)]" style={kindColors(kind)} aria-hidden="true">
+      <span className="grid h-[72px] w-[72px] place-items-center rounded-[24px] bg-[var(--plan-c)] text-white dark:text-[#0b1220]">
+        <KindGlyph kind={kind} className="h-9 w-9" />
+      </span>
+    </div>
+  );
+}
+
+/** "Online", beside the kind's tag: people join this plan with a link. */
+function OnlineChip() {
+  return (
+    <span className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-full border border-app-border-strong bg-app-surface-sunken pl-[10px] pr-3 text-[13px] font-semibold leading-[18px] text-app-text-strong">
+      <OnlineGlyph className="h-[14px] w-[14px]" />
+      Online
+    </span>
+  );
+}
+
+/** A repeating plan's line: "Every Tue and Thu until Feb 4". Null when it doesn't repeat or the plan is over. */
+function repeatText(plan: PublicPlan): string | null {
+  if (!plan.repeat?.short || plan.state === 'cancelled' || plan.state === 'ended') return null;
+  const last = /^\d{4}-\d{2}-\d{2}$/.test(plan.repeat.last_on || '') ? new Date(`${plan.repeat.last_on}T12:00:00Z`) : null;
+  const until = last
+    ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' }).format(last)
+    : null;
+  return until ? `${plan.repeat.short} until ${until}` : plan.repeat.short;
+}
+
+/** "Private": only the people the host invites can see this plan. */
+function PrivateChip() {
+  return (
+    <span className="inline-flex h-[30px] items-center gap-[6px] whitespace-nowrap rounded-full border border-app-border-strong bg-app-surface-sunken pl-[10px] pr-3 text-[13px] font-semibold leading-[18px] text-app-text-strong">
+      <LockIcon className="h-[14px] w-[14px]" />
+      Private
+    </span>
+  );
+}
+
 function firstNameOf(displayName: string | undefined): string {
-  return String(displayName || 'A neighbor').split(' ')[0];
+  return String(displayName || 'Someone').split(' ')[0];
 }
 
 function nearPhrase(plan: PublicPlan): string {
+  if (isOnline(plan)) return 'online';
   if (plan.city) return `near ${plan.city}`;
   const label = plan.area?.city || plan.area?.label || '';
   if (!label) return 'nearby';
@@ -193,6 +263,8 @@ function nearPhrase(plan: PublicPlan): string {
 function whereText(plan: PublicPlan): string {
   const label = plan.area?.label || '';
   const city = plan.area?.city || '';
+  // "Online · hosted from Camas", as the apps say it; just "Online" for a plan posted with no area.
+  if (isOnline(plan)) return city ? `Online · hosted from ${city}` : 'Online';
   if (!label) return city;
   if (!city || label === city || label.endsWith(city)) return label;
   return `${label}, ${city}`;
@@ -276,12 +348,12 @@ function priceText(price: PublicPlanPrice | null | undefined): string | null {
 
 /** The line above the card: an invitation, unless the person is the host, is in, or already asked. */
 function introText(plan: PublicPlan, hostName: string, viewer: PlanViewer | null, over: boolean, invite: PublicPlanInvite | null): string {
-  // A business is named in full, at its exact place ("in Camas"); a neighbor by first name, near an area.
+  // A business is named in full, at its exact place ("in Camas"); a person by first name, near an area.
   const business = Boolean(plan.business);
   const near = business ? inPhrase(plan) : nearPhrase(plan);
   const host = business ? hostName : firstNameOf(hostName);
   if (invite?.available && !over && (!viewer || viewer.role === 'none')) {
-    const what = business ? businessPlanNoun(plan, 'their') : `their ${KIND_NOUN[plan.kind]}`;
+    const what = business ? businessPlanNoun(plan, 'their') : `their ${kindNoun(plan)}`;
     return `${invite.host_first_name} invited you to ${what} ${near}.`;
   }
   if (viewer?.role === 'host') {
@@ -377,7 +449,7 @@ function businessPageHref(business: PublicPlanBusiness): string | null {
 }
 
 /**
- * Who hosts a business's plan, in the row where a neighbor's plan shows its host; it opens the business's page.
+ * Who hosts a business's plan, in the row where a person's plan shows its host; it opens the business's page.
  * Board D6 draws the shape and "Verified business" alone, because the line above already names the place, which
  * is the business. So the name shows here only when the place goes by another name (`named`), or when there is
  * no "Verified business" to stand in for it; a screen reader hears it either way.
@@ -494,7 +566,9 @@ const PRIMARY_BUTTON =
 const PLAYDATE_CAPTION = 'Playdate links show no details here. Open them in the app.';
 
 /** Under a business's plan, whose place is shown (board D6). */
-const BUSINESS_CAPTION = "A neighbor's plan still shows only its area here.";
+const BUSINESS_CAPTION = "A person's plan still shows only its area here.";
+/** A private plan's link without a live invitation: nothing about the plan is read, so there is no card. */
+const isPrivateOnly = (plan: PublicPlan) => plan.private === true && !plan.kind;
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { id } = await params;
@@ -503,6 +577,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const base = { robots: { index: false, follow: false } };
   if (!plan) {
     return { ...base, title: 'Plan not available | Pantopus', description: "This plan isn't available." };
+  }
+  if (isPrivateOnly(plan)) {
+    return { ...base, title: 'A private plan | Pantopus', description: 'Only the people invited can see this plan.' };
   }
   // A texted invitation's preview says whose it is. Its page goes to someone who may not have the app yet, so
   // Safari's banner, which drops the invitation through an install, stays off; the page's buttons carry it.
@@ -585,6 +662,43 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
     );
   }
 
+  if (isPrivateOnly(plan)) {
+    // The host and the people invited see it in the app; this page never learns anything about the plan.
+    const mine = Boolean(viewer);
+    return (
+      <main className="min-h-screen bg-app text-app-text">
+        <div className="mx-auto w-full max-w-md pb-10">
+          <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query="" />
+          <div className="flex flex-col gap-4 px-4 pt-[18px]">
+            <div className="flex flex-col gap-3 rounded-[20px] border border-app-border bg-app-surface p-4 shadow-sm">
+              <span className="grid h-12 w-12 place-items-center rounded-[13px] bg-app-surface-sunken text-app-text-strong">
+                <LockIcon className="h-[22px] w-[22px]" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <h1 className="text-[17px] font-semibold leading-[22px]">This plan is private</h1>
+                <p className="text-sm leading-5 text-app-text-secondary">
+                  {mine
+                    ? 'Only the people invited can see it. Open it in the Pantopus app.'
+                    : 'Only the people its host invites can see it. If you were invited, use the link in your own invitation, or open the Pantopus app.'}
+                </p>
+              </div>
+            </div>
+            <OpenInAppButton
+              appUrl={buildPlanAppUrl(id)}
+              linkHref={buildPlanShareUrl(id)}
+              fallbackUrl={fallbackUrl}
+              copyPath={copyPath}
+              className={PRIMARY_BUTTON}
+            >
+              Open in Pantopus
+            </OpenInAppButton>
+            <StoreButtons path={buildPlanPath(id)} copyPath={copyPath} />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (plan.kind === 'playdate' && !plan.business) {
     // The host and families who are in see their own playdate's details in the app, as everyone does.
     const mine = viewer?.role === 'host' || viewer?.role === 'guest';
@@ -640,10 +754,12 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
   const business = plan.business ?? null;
   const hostName = business
     ? business.name || plan.host?.display_name || 'A business'
-    : plan.host?.display_name || 'A neighbor';
+    : plan.host?.display_name || 'Someone';
   const when = whenText(plan);
   const whenRange = business ? whenRangeText(plan) : null;
   const over = plan.state === 'cancelled' || plan.state === 'ended';
+  // An online plan has no map and no area: "Online", and its link only in the app (never a business's plan).
+  const online = isOnline(plan) && !business;
   // Someone who is in, or already asked, opens the plan in the app rather than joining.
   const joined = viewer?.role === 'host' || viewer?.role === 'guest'
     || (!over && (viewer?.requestStatus === 'pending' || viewer?.requestStatus === 'waitlisted'));
@@ -668,9 +784,13 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
             className="overflow-hidden rounded-[20px] border border-app-border bg-app-surface shadow-sm"
             aria-labelledby="plan-title"
           >
-            <MiniMap kind={plan.kind} placeName={business ? plan.place?.name || null : null} />
+            {online ? <OnlineHero kind={plan.kind} /> : <MiniMap kind={plan.kind} placeName={business ? plan.place?.name || null : null} />}
             <div className="flex flex-col gap-2 px-4 pb-4 pt-[14px]">
-              <KindTag kind={plan.kind} label={business ? plan.label_text : null} />
+              <div className="flex flex-wrap items-center gap-2">
+                <KindTag kind={plan.kind} label={business ? plan.label_text : null} />
+                {online ? <OnlineChip /> : null}
+                {plan.private ? <PrivateChip /> : null}
+              </div>
               <h1 id="plan-title" className="text-xl font-semibold leading-[26px] tracking-[-0.012em]">
                 {plan.title || labelOf(plan)}
               </h1>
@@ -687,6 +807,9 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
                   <p className="text-sm leading-5 text-app-text-strong [font-variant-numeric:tabular-nums]">
                     {[when, whereText(plan)].filter(Boolean).join(' · ')}
                   </p>
+                  {repeatText(plan) ? (
+                    <p className="text-sm leading-5 text-app-text-secondary [font-variant-numeric:tabular-nums]">{repeatText(plan)}</p>
+                  ) : null}
                   <div className="flex items-center gap-[10px]">
                     <HostAvatar name={hostName} avatarUrl={plan.host?.avatar_url ?? null} />
                     <span className="flex flex-wrap items-center gap-x-2 text-sm leading-5">
@@ -722,13 +845,21 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
             <div className="flex items-start gap-[10px] text-sm leading-5 text-app-text-secondary">
               <LockIcon className="mt-0.5 h-4 w-4" />
               <span>
-                {viewer?.role === 'host'
-                  ? 'The exact place goes only to people you let in.'
-                  : viewer?.role === 'guest'
-                    ? 'You see the exact place in the app.'
-                    : invited
-                      ? 'You see the exact place in the app once you say you’re in.'
-                      : 'The exact place goes only to people the host lets in.'}
+                {online
+                  ? viewer?.role === 'host'
+                    ? 'The link goes only to people you let in.'
+                    : viewer?.role === 'guest'
+                      ? 'You see the link in the app.'
+                      : invited
+                        ? 'You see the link in the app once you say you’re in.'
+                        : 'The link goes only to people the host lets in.'
+                  : viewer?.role === 'host'
+                    ? 'The exact place goes only to people you let in.'
+                    : viewer?.role === 'guest'
+                      ? 'You see the exact place in the app.'
+                      : invited
+                        ? 'You see the exact place in the app once you say you’re in.'
+                        : 'The exact place goes only to people the host lets in.'}
               </span>
             </div>
           )}
@@ -750,7 +881,11 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
           </OpenInAppButton>
           <StoreButtons path={path} copyPath={copyPath} />
           <JustInstalledHint what="this plan" emailHint={invited ? invite?.email_hint : null} platform={platform} />
-          <p className="text-center text-xs leading-4 text-app-text-secondary">{business ? BUSINESS_CAPTION : PLAYDATE_CAPTION}</p>
+          <p className="text-center text-xs leading-4 text-app-text-secondary">
+            {plan.private
+              ? `Only the people ${firstNameOf(hostName)} invites can see this plan.`
+              : business ? BUSINESS_CAPTION : PLAYDATE_CAPTION}
+          </p>
         </div>
       </div>
     </main>

@@ -332,7 +332,7 @@ private extension PulsePageView {
     @ViewBuilder var cardMenu: some View {
         if let id = menuCardId, let card = viewModel.card(id) {
             if let saved = card.saved {
-                Button(saved ? "Remove bookmark" : "Save post") {
+                Button(saved ? "Remove from Saved" : "Save post") {
                     menuCardId = nil
                     Task { await viewModel.toggleSave(cardId: id) }
                 }

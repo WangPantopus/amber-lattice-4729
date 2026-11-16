@@ -131,7 +131,8 @@ struct PlansMapTopBar: View {
     }
 
     private var kinds: [PlanKind] {
-        PlanKind.displayOrder.filter { $0 != .playdate || showsPlaydates }
+        // The newer kinds' chips with `plans_kinds` on (Plans step 4); their plans show under "All" either way.
+        PlanKind.listed(withNewer: PlansFlags.shared.kinds).filter { $0 != .playdate || showsPlaydates }
     }
 
     private var allChip: some View {
@@ -200,7 +201,7 @@ struct PlansMapTopBar: View {
             .accessibilityIdentifier("plansSelectedBack")
             Spacer(minLength: Spacing.s2)
             if showsAreaChip {
-                PlanScopeChip(text: selectedKind == .playdate ? "Neighborhood only until you're in" : "Area only until you're in")
+                PlanScopeChip(text: selectedKind == .playdate ? "General area only until you're in" : "Area only until you're in")
             }
             menuButton
         }
