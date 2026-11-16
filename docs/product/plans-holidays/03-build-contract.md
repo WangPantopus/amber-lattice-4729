@@ -788,6 +788,24 @@ Pay. It calls the same routes as the apps. No account-less payment.
   this is fixed and these are seen on a rig to the cent, with the payout after
   each: a group price comes back and the guest then leaves; two refunds in
   part; a staff refund after money off a spot.
+
+  Fixed on `dev` the same day (server PR 4252, which the coordinator read line
+  by line). The cause: after a refund in part the plan code re-prices the
+  business's share, which changed the payment's fingerprint that the first
+  refund had been recorded against, so re-checking that first refund before a
+  second one failed. The fix is one filter in the refund service's
+  reconciliation, for plan payments only: a refund already recorded exactly
+  and final is left out of the re-check. Gig, invoice and booking payments
+  are reconciled exactly as before, and no database function or payout code
+  changed. An owed refund is kept on its payment
+  (`metadata.plan_refund_owed`) and asked again on every Plans tick with the
+  same request key, whatever the switches say; the guest's notice goes when
+  it is confirmed. Seen on the server session's setup in test mode, to the
+  cent: $4.00 then $14.00 back with the guest who stayed paid out at 1266;
+  two staff refunds in part on a check, paid out at 2814; the payment
+  company made to fail, the refund kept as owed and sent whole by the next
+  tick, once. Not verified: the payment company's call-back, live mode, and
+  a rerun on each phone.
 - **Two worked examples for a group price** (added November 16; a $18 spot,
   group price $14, the card company's reported fee on the $18 charge $0.82).
   The business bears the card fee in proportion to what the guest paid in the
