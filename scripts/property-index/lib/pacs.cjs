@@ -30,15 +30,18 @@ async function* lines(zip, table) {
 /** Real property and mobile homes, without a protected person's account. Stops at a file that doesn't fit the layout. */
 async function* properties(zip, stats = {}) {
   let full = 0;
+  let seen = 0;
   for await (const line of lines(zip, 'PROP')) {
-    full = full || line.length;
+    seen += 1;
     const type = cut(line, 13, 17);
     if (line.length < 4860 || !/^0?\d{4}$/.test(cut(line, 18, 22)) || !/^(R|P|MH|MN|A)$/.test(type)) {
-      // A line break inside a field cuts a record into pieces (Kaufman's file has three such records). More than a few means the layout moved.
+      // A line break inside a field cuts a record into pieces (Kaufman's file has three such records, Wise's about thirty, each in three
+      // pieces). More than a few, or more than one line in a thousand, means the layout moved. The full length is learned from good lines.
       stats.broken = (stats.broken || 0) + 1;
-      if (line.length < full && stats.broken <= 30) continue;
+      if (line.length < (full || Infinity) && (stats.broken <= 30 || stats.broken <= seen / 1000)) continue;
       throw new Error(`A property line doesn't fit the layout (${line.length} characters)`);
     }
+    full = full || line.length;
     if (type !== 'R' && type !== 'MH') continue;
     if (line[989] === 'T' || line[2568] === 'T' || line[4858] === 'T' || PROTECTED.test(cut(line, 609, 678))) {
       stats.protected = (stats.protected || 0) + 1;
