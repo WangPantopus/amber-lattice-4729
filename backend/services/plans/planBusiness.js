@@ -258,6 +258,10 @@ async function hostAsChoices(viewer) {
   // What the form may offer each business (Plans for the holidays): only added while a business-track switch is on
   // for it, so with them off this answer is today's.
   const deals = await require('./planDeals').switchByHost(allowed.map((host) => host.id));
+  const paid = await require('./planPaid').switchByHost(allowed.map((host) => host.id));
+  // Whether each business with the price switch may charge now (P8: verified, its own payout account enabled).
+  const payoutsReady = new Map(await Promise.all(allowed.filter((host) => paid.get(host.id))
+    .map(async (host) => [host.id, await require('./planPaid').mayCharge(host.id)])));
   const businesses = allowed
     .map((host) => ({
       user_id: host.id,
@@ -267,7 +271,12 @@ async function hostAsChoices(viewer) {
       kinds: kindsFor({ kids: Boolean(viewer.bizKids && host.kids_ok) }),
       locations: locations.filter((row) => String(row.business_user_id) === host.id).map(locationView),
       limits: { spots_max: 30, days_ahead: rules.BUSINESS_LIMITS.maxDaysAhead },
-      ...(deals.get(host.id) ? { can: { deals: true, price: false, pay_here: false } } : {}),
+      // `can`: which rows the form draws; `payouts_ready`: whether a price can be set now, or the row offers the payout
+      // setup instead (contract 9.2).
+      ...(deals.get(host.id) || paid.get(host.id) ? {
+        can: { deals: Boolean(deals.get(host.id)), price: Boolean(paid.get(host.id)), pay_here: false },
+        payouts_ready: Boolean(payoutsReady.get(host.id)),
+      } : {}),
     }))
     // A business with nowhere to meet has nothing to post yet.
     .filter((business) => business.locations.length > 0)

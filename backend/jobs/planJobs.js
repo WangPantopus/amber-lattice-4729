@@ -470,6 +470,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.bring_open_failed', { error: err.message });
   }
+  // Paid spots (B2): holds that ran out are released (or let in, when the payment did arrive) and offered on.
+  let holds = 0;
+  try {
+    holds = await require('../services/plans/planPaid').releaseExpiredHolds();
+  } catch (err) {
+    logger.warn('plans.tick.holds_failed', { error: err.message });
+  }
   // Group deals on businesses' plans (B1): settled at their deadline, and the one "closes soon" notice.
   let deals = null;
   try {
@@ -502,7 +509,7 @@ async function runPlansTick() {
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
-    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}),
+    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
     || (nudges && nudges.sent) || alerts || repeats || series) {
