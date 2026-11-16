@@ -64,6 +64,12 @@ is the area's town and its `label_kind` `town`. The phone's or photo's point is 
 - The day's limit of 20 counts it on the day it was made.
 - The stored upload state is unchanged ('uploading', 'checking', 'live'); "scheduled" is worked out from `share_at`.
 
+## `GET /api/moments/map`
+
+Adds, with the flag on for the caller, `scheduled`: the caller's own Moments waiting to share later (each a Moment
+with `state: "scheduled"` and `share_at`), soonest first, for their own row ("Shares at 6:40 pm", with Delete). Never
+anyone else's, never in `rings` or `unplaced`, and left out with the flag off. (Added 2026-11-16, contract 10.1.)
+
 ## The Moment
 
 Every Moment's JSON adds:
