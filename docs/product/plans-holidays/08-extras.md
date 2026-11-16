@@ -482,6 +482,30 @@ plan's limit), `spots_token text` (kept as given, as the open link's is) and
 - The fee, the payout and a group price work on what was paid in the end, as
   any partly refunded plan payment (contract 10.4).
 
+**Settled while it was being built** (November 16; the designer's answers to
+the server session, told to the founder). The rule behind all of it: before
+`refund_until`, every bought spot that ends up empty is refunded to the buyer;
+after it, none.
+
+- **The buyer leaves before `refund_until` while claimers are in.** The
+  claimers stay in, paid for. The buyer gets back their own spot and the
+  spots nobody took, in one refund, and the link stops. The leave dialog says
+  it in the server's numbers, for 12 spots at $18.00 with 3 taken: "You'll
+  get $162.00 back: your spot and the 8 nobody took. The 3 people you paid
+  for stay in." After `refund_until` the buyer gets nothing back, as any paid
+  guest, and the claimers stay.
+- **A claimer leaves.** While the link is live, the spot goes back to the
+  link. Once the link has stopped (the buyer gave spots back early, or left)
+  and it is still before `refund_until`, that spot's price goes back to the
+  buyer at once, one more refund in part, and the spot is an ordinary open
+  spot; the link does not reopen. After `refund_until` nothing is refunded
+  and the spot is an ordinary open spot.
+- **Notices.** The buyer gets the ordinary "{$144.00} is on its way back to
+  your card" each time money comes back, and nothing else when a claimer
+  leaves.
+- These lean on several refunds in part on one payment, which the build's
+  first check found broken and which is fixed first (contract 10.4).
+
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
 get one link. The first {11} people who open it are in, paid by you. Spots
@@ -524,5 +548,9 @@ Each row: the server and web first, then both apps.
   bucket the card does not show.
 - **The same people again**: the host's screen never shows a guest's email; an
   address that opted out gets nothing.
-- **Paying for a group**: 12 spots bought, 4 claimed, 8 refunded at the
-  time, to the cent; a claimer who leaves returns the spot.
+- **Paying for a group**: 12 spots bought; the buyer and 3 people from the
+  link are in; the 8 nobody took are refunded at the time, to the cent; a
+  claimer who leaves while the link is live returns the spot. And: 12 bought,
+  3 claim, the buyer gives back 8 early, one claimer leaves before the time
+  (one more spot back to the buyer, the payout re-priced) and another after
+  it (nothing back).
