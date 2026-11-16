@@ -99,6 +99,11 @@ reads "Check your email" with "{2 adults, 1 kid}" under it, and the note reads
 invitation the page does not know the whole address; it shows the hint the page
 already has ("d•••@example.com").
 
+When the host moved the plan to a home and this guest now waits (contract
+6.8), the page is this one with a line above the card, "{Host} changed the
+place.", and the card shows the new area. The banner and the note are the
+same: the address comes by email when {Host} says yes.
+
 When the answer was for an address that already had an answer and this browser
 does not hold its key, the banner reads "Check your email" and the note reads
 "There is already an answer for this address. We sent its link there; open it
@@ -150,6 +155,11 @@ All three use the existing invitation email's frame and unsubscribe links.
 | You're in | "You're in: {title}" | "{Host} has you down for {2 adults and 1 kid}." The date. "Open your invitation" (the guest's link). "The address and the bring list are on that page. This link is yours; please don't forward it." |
 | Reminder | "Tomorrow: {title}" (or "Today:") | The time. "Open your invitation." If items are open: "{n} things are still open on the bring list." |
 | Changed or cancelled | "{Host} changed the time of {title}" / "the place of" / "{Host} cancelled {title}" | The new time or place, or the host's cancel note. The guest's link, except when cancelled: a cancellation has no button, and keeps "Don't send me invitations" |
+
+A move to a home, to a guest it makes wait (contract 6.8): the subject
+"{Host} changed the place of {title}"; the body "{title} is now at {Host}'s
+home. {Host} lets each guest in. When {Host} says yes, the address comes to
+this email."; "Open your invitation".
 
 Which of these count against a guest's three a plan, and which always go, is in
 the contract, 6.6. A guest's link sent again (W2, "already an answer for this
@@ -283,7 +293,8 @@ invitation list's rows with sections; the shipped list's actions stay.
 
 Actions: "Let in" is `POST …/invites/:inviteId/ok`; "Not this time" and a
 swipe or long-press "Remove" on any guest row are `DELETE …/invites/:inviteId`
-after "Remove {name}? They'll be told once."; "Remind" is
+after "Remove {name}? Their invitation will stop working." (no email goes to a
+removed guest; contract 6.4); "Remind" is
 `POST …/invites/remind`, then "Reminded {n} people."
 
 Data: `GET /api/plans/:id/invites` with `guests=1`.
@@ -375,6 +386,7 @@ Each opens the screen named. The words are the server's.
 | --- | --- |
 | "Dana Lee is in: 2 adults, 1 kid." | A5 |
 | "Dana Lee wants to come. Let them in?" with the buttons "Let in" and "Not this time" | A5; the buttons act without opening the app, as "I'm in" does on an invitation today |
+| "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." (contract 6.8) | A5. No buttons |
 | "3 things are taken. 2 are still open." | A6 |
 | "2 things are still open for Thanksgiving dinner." | A8 |
 
