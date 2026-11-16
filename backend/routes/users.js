@@ -6041,6 +6041,17 @@ router.delete('/account', verifyToken, requireStepUp('delete_account'), requireS
       if (error) return stopDeletion('restrict', table, error);
     }
 
+    // ── 3b. Plans: the person's photos afterwards ────────────────
+    // Every picture they added to anyone's plan (its files and its entry) and the files of every plan they hosted,
+    // while the Plan rows that name those files still exist (services/plans/planPhotos.js). Storage trouble is logged
+    // and doesn't stop the deletion, as with Moments' files below.
+    try {
+      const count = await require('../services/plans/planPhotos').removeAccountPhotos(userId);
+      if (count) logger.info('Account deletion removed plan photos', { userId, count });
+    } catch (err) {
+      logger.warn('Account deletion left plan photos', { userId, error: err.message });
+    }
+
     // ── 4. Delete User row ───────────────────────────────────────
     // This triggers ON DELETE CASCADE for ~70+ tables (Posts, Gigs,
     // Wallet, Listings, Notifications, Chat participants, etc.)
