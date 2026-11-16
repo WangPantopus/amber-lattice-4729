@@ -298,6 +298,8 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
       going: await goingNames(plan, mine.id),
       // The bring list (H2), while the host has its switch.
       bring: await bringFor(plan, mine),
+      // Chip in (the extras), while the host has its switch: the payment link reaches only people who are in.
+      ...(await chipInFor(plan, mine)),
       // The plan's time or place changed since the guest last answered: 'time', 'place' or 'both'.
       changed: changedReason(mine),
     };
@@ -316,6 +318,12 @@ async function bringFor(plan, row) {
   const planBring = require('./planBring');
   if (!plan.bring_list || !planBring.takesBringList(plan) || !(await planBring.enabledFor(plan.host_user_id))) return null;
   return planBring.view(plan.bring_list, planBring.mineFor({ role: 'guest', inviteId: row.id }));
+}
+
+async function chipInFor(plan, row) {
+  if (!plan.chip_in) return {};
+  const chipIn = await require('./planChipIn').forGuest(plan, row);
+  return chipIn ? { chip_in: chipIn } : {};
 }
 
 function mineView(row) {

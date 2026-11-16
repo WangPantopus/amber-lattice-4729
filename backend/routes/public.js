@@ -143,6 +143,25 @@ router.post('/plans/:id/bring/items', async (req, res) => {
   }
 });
 
+// ── Chip in (the extras): a guest without an account who is in says they paid the host, by their key ──
+// POST | DELETE /api/public/plans/:id/chip-in/paid. Answers { chip_in }.
+router.post('/plans/:id/chip-in/paid', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planChipIn').guestMarkPaid(req.params.id, guestKeyOf(req), true));
+  } catch (err) {
+    return planError(res, err, 'chip_in_paid');
+  }
+});
+router.delete('/plans/:id/chip-in/paid', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planChipIn').guestMarkPaid(req.params.id, guestKeyOf(req), false));
+  } catch (err) {
+    return planError(res, err, 'chip_in_unpaid');
+  }
+});
+
 // ── POST /api/public/plans/invites/unsubscribe ──────────────
 // "Don't send me invitations" from a Plans invitation email: { token } from the
 // web page, or the mail app's one-click POST to …/unsubscribe/:token (RFC 8058).

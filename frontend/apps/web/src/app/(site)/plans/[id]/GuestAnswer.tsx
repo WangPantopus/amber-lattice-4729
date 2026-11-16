@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PublicPlan, PublicPlanBring, PublicPlanGuestState } from '@/lib/publicShare';
+import type { PublicPlan, PublicPlanBring, PublicPlanChipIn, PublicPlanGuestState } from '@/lib/publicShare';
 import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
 
 // Plans for the holidays, H1: the plan's page for a guest without an account (docs/product/plans-holidays/
@@ -94,6 +94,9 @@ const Glyph = {
     <Icon className={c}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5" /></Icon>
   ),
   minus: (c = 'h-4 w-4') => <Icon className={c}><path d="M5 12h14" /></Icon>,
+  dollar: (c = 'h-5 w-5') => (
+    <Icon className={c}><circle cx="12" cy="12" r="9" /><path d="M14.5 9.2c-.4-.9-1.4-1.4-2.5-1.4-1.5 0-2.6.8-2.6 2s1 1.7 2.6 2.1c1.6.4 2.6.9 2.6 2.1s-1.1 2.1-2.6 2.1c-1.2 0-2.2-.6-2.6-1.5M12 6.5v1.3M12 16.2v1.3" /></Icon>
+  ),
   plus: (c = 'h-4 w-4') => <Icon className={c}><path d="M12 5v14M5 12h14" /></Icon>,
 };
 
@@ -373,6 +376,83 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
   );
 }
 
+// ── Chip in (the extras) ─────────────────────────────────────
+
+/**
+ * W3's chip in (08-extras section 3, board 27): the amount, what it's for and how many paid; "Pay {Host} on {Venmo}"
+ * opens the host's own link outside Pantopus; "I've paid" becomes "You chipped in" with "Undo". No money moves here.
+ */
+function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanChipIn }) {
+  const [chip, setChip] = useState<PublicPlanChipIn>(initial);
+  const [busy, setBusy] = useState(false);
+  const [line, setLine] = useState<string | null>(null);
+  const paid = Boolean(chip.mine?.paid);
+
+  async function mark(nextPaid: boolean) {
+    setBusy(true);
+    setLine(null);
+    try {
+      const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/chip-in/paid`, {
+        method: nextPaid ? 'POST' : 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.chip_in) setChip(data.chip_in as PublicPlanChipIn);
+      else setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
+    } catch {
+      setLine('Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={`${CARD} flex flex-col gap-3 px-4 py-4`} aria-labelledby="chip-in-title">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-app-surface-sunken text-app-text-strong" aria-hidden="true">
+          {Glyph.dollar()}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h2 id="chip-in-title" className="text-base font-semibold leading-[22px]">{chip.text}</h2>
+          <p className="text-sm leading-5 text-app-text-secondary">{chip.note}</p>
+        </div>
+        <span className="flex-none pt-0.5 text-sm text-app-text-secondary [font-variant-numeric:tabular-nums]">{chip.paid_text}</span>
+      </div>
+      {paid ? (
+        <div className="flex min-h-[44px] items-center justify-between gap-3 rounded-xl bg-app-success-bg px-3">
+          <span className="flex items-center gap-2 text-[15px] font-semibold text-app-success">{Glyph.check('h-4 w-4')}You chipped in</span>
+          <button type="button" disabled={busy} onClick={() => mark(false)} className="min-h-[44px] px-2 text-sm font-semibold text-app-link disabled:opacity-50">
+            Undo
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-[10px]">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => mark(true)}
+            className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-app-border-strong bg-app-surface text-[15px] font-semibold text-app-text disabled:opacity-50"
+          >
+            {busy ? <Spinner /> : null}I’ve paid
+          </button>
+          <a
+            href={chip.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-[44px] items-center justify-center rounded-xl bg-primary-600 px-2 text-center text-[15px] font-semibold text-white"
+          >
+            {chip.pay_text}
+          </a>
+        </div>
+      )}
+      <p className="text-[13px] leading-[18px] text-app-text-secondary">{chip.straight_text}</p>
+      {line ? <p className="text-sm leading-5 text-app-error" role="status">{line}</p> : null}
+    </section>
+  );
+}
+
 // ── The page ─────────────────────────────────────────────────
 
 export default function GuestAnswer(props: GuestAnswerProps) {
@@ -596,6 +676,7 @@ export default function GuestAnswer(props: GuestAnswerProps) {
             </button>
           </div>
         </section>
+        {forGuest.chip_in ? <ChipInCard key={`${forGuest.chip_in.paid_count}-${forGuest.chip_in.mine?.paid}`} planId={planId} initial={forGuest.chip_in} /> : null}
         {forGuest.guest_note ? (
           <section className={`${CARD} flex flex-col gap-1 px-4 py-3`}>
             <p className="text-[13px] font-semibold leading-[18px] text-app-text-secondary">{`From ${hostFirst}, only for people who are in`}</p>

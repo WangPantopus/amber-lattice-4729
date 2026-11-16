@@ -228,6 +228,22 @@ export type PublicPlanForGuest = {
   /** The bring list (H2), while the host has it on. */
   bring: PublicPlanBring | null;
   changed: 'time' | 'place' | 'both' | null;
+  /** Chip in (the extras, 08-extras section 3), while the host has it on. Every word is the server's. */
+  chip_in?: PublicPlanChipIn | null;
+};
+
+export type PublicPlanChipIn = {
+  text: string;
+  amount_cents: number;
+  note: string;
+  service: string;
+  link: string;
+  paid_count: number;
+  of: number;
+  paid_text: string;
+  pay_text: string;
+  straight_text: string;
+  mine: { paid: boolean } | null;
 };
 
 export type PublicPlanBring = {
