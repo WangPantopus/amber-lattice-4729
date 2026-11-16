@@ -9,7 +9,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Entry point for the Pulse compose flow. The `intent` argument
 /// pre-selects which sub-form renders below the intent picker. Pass a
@@ -18,9 +17,9 @@ import UniformTypeIdentifiers
 /// submit pipeline switches to `PATCH /api/posts/:id`.
 public struct PulseComposeView: View {
     @State private var viewModel: PulseComposeViewModel
-    @State private var showsDocumentPicker = false
     @State private var isLoadingMedia = false
-    @State private var showsPhotosPicker = false
+    /// The Photos and Files pickers, presented with UIKit (`PulseSystemPickers` says why).
+    @State private var systemPickers = PulseSystemPickers()
     @State private var showsPlacePicker = false
     @State private var showsCamera = false
     /// Photos added from the AI assist card: a suggestion follows them.
@@ -104,6 +103,7 @@ public struct PulseComposeView: View {
         )
         .formShakeOnChange(of: viewModel.shakeTrigger)
         .accessibilityIdentifier("composePulseShell")
+        .background(PulseSystemPickersAnchor(pickers: systemPickers))
         // The kindness and safety check before posting (AI phase 2 contract §6.6): advice only.
         .alert(
             "Before you post",
@@ -128,36 +128,6 @@ public struct PulseComposeView: View {
                     openedEarlierPost = nil
                 }
             }
-        }
-        .sheet(isPresented: $showsPhotosPicker, onDismiss: { isLoadingMedia = false }, content: {
-            PulseMediaPicker(limit: pulseComposeMaxPhotos - viewModel.photos.count) { media, error in
-                media.forEach { viewModel.append(photo: $0) }
-                if let error { viewModel.toast = ToastMessage(text: error, kind: .error) }
-                isLoadingMedia = false
-                showsPhotosPicker = false
-                suggestAfterPicking(media.count)
-            }
-            .interactiveDismissDisabled()
-        })
-        .fileImporter(isPresented: $showsDocumentPicker, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
-            defer { isLoadingMedia = false }
-            do {
-                for url in try result.get().prefix(pulseComposeMaxPhotos - viewModel.photos.count) {
-                    let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                    guard size > 0, size <= 25 * 1024 * 1024 else { throw URLError(.dataLengthExceedsMaximum) }
-                    try viewModel.append(photo: PulseComposePhoto(
-                        data: Data(contentsOf: url),
-                        mimeType: "application/pdf",
-                        filename: "document.pdf"
-                    ))
-                }
-            } catch {
-                viewModel.toast = ToastMessage(text: "Couldn't load that PDF. Choose a PDF under 25 MB.", kind: .error)
-            }
-        } onCancellation: {
-            isLoadingMedia = false
         }
         .fullScreenCover(isPresented: $showsCamera, onDismiss: { suggestsAfterPicking = false }, content: {
             SystemCameraPicker(isPresented: $showsCamera) { image in
@@ -243,6 +213,42 @@ public struct PulseComposeView: View {
         return nil
     }
 
+    /// "Photos and videos" (and the assist card's photos): what loads joins the attachments.
+    private func openPhotos() {
+        isLoadingMedia = true
+        systemPickers.openPhotos(limit: pulseComposeMaxPhotos - viewModel.photos.count) { media, error in
+            media.forEach { viewModel.append(photo: $0) }
+            if let error { viewModel.toast = ToastMessage(text: error, kind: .error) }
+            isLoadingMedia = false
+            suggestAfterPicking(media.count)
+        }
+    }
+
+    /// "PDF document": each chosen PDF joins the attachments.
+    private func openDocuments() {
+        isLoadingMedia = true
+        systemPickers.openDocuments(onPicked: appendDocuments) { isLoadingMedia = false }
+    }
+
+    private func appendDocuments(_ urls: [URL]) {
+        defer { isLoadingMedia = false }
+        do {
+            for url in urls.prefix(pulseComposeMaxPhotos - viewModel.photos.count) {
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0, size <= 25 * 1024 * 1024 else { throw URLError(.dataLengthExceedsMaximum) }
+                try viewModel.append(photo: PulseComposePhoto(
+                    data: Data(contentsOf: url),
+                    mimeType: "application/pdf",
+                    filename: "document.pdf"
+                ))
+            }
+        } catch {
+            viewModel.toast = ToastMessage(text: "Couldn't load that PDF. Choose a PDF under 25 MB.", kind: .error)
+        }
+    }
+
     /// After photos from the assist card arrive, the suggestion follows on its own.
     private func suggestAfterPicking(_ added: Int) {
         guard suggestsAfterPicking else { return }
@@ -308,12 +314,8 @@ public struct PulseComposeView: View {
             onSelectDealExpires: { viewModel.dealExpiresAt = $0 },
             onUpdateField: { viewModel.update($0, to: $1) },
             fieldValue: { viewModel.fields[$0]?.value ?? "" },
-            onPickPhotos: { isLoadingMedia = true
-                showsPhotosPicker = true
-            },
-            onPickDocuments: { isLoadingMedia = true
-                showsDocumentPicker = true
-            },
+            onPickPhotos: openPhotos,
+            onPickDocuments: openDocuments,
             onRemovePhoto: { viewModel.remove(photo: $0) },
             onBodyEditingEnded: { Task { await viewModel.bodyEditingEnded() } },
             onKeyboardFieldChange: { viewModel.keyboardField = $0 },
@@ -330,8 +332,7 @@ public struct PulseComposeView: View {
             },
             onAssistChoosePhotos: {
                 suggestsAfterPicking = true
-                isLoadingMedia = true
-                showsPhotosPicker = true
+                openPhotos()
             },
             onTakePhoto: { showsCamera = true },
             onChangeTarget: changeTargetAction
