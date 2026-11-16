@@ -30,6 +30,7 @@ import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
+import PayToJoin from './PayToJoin';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
 // place, the host's note and the people going are only in the app, for people
@@ -48,8 +49,16 @@ import GuestAnswer from './GuestAnswer';
 
 type Kind = PublicPlan['kind'];
 
-/** The signed-in person's part in the plan: host, in (guest), or neither, with their request's status. */
-type PlanViewer = { role: 'host' | 'guest' | 'none'; requestStatus: string | null; requestsWaiting: number };
+/**
+ * The signed-in person's part in the plan: host, in (guest), or neither, with their request's status, and on a paid
+ * business plan what they paid (B3).
+ */
+type PlanViewer = {
+  role: 'host' | 'guest' | 'none';
+  requestStatus: string | null;
+  requestsWaiting: number;
+  paid: { text: string; leave_text?: string | null; receipt_url?: string | null } | null;
+};
 
 /**
  * Who is looking, when they're signed in on the web. A host's "requests waiting" notices open this
@@ -79,6 +88,7 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
       role,
       requestStatus: typeof plan.viewer.request_status === 'string' ? plan.viewer.request_status : null,
       requestsWaiting: Number(plan.requests_count) || 0,
+      paid: plan.paid && typeof plan.paid.text === 'string' ? plan.paid : null,
     };
   } catch {
     return null;
@@ -124,7 +134,10 @@ function kindNoun(plan: PublicPlan): string {
 /** People join this plan with a link, which only the app shows, to the people who are in. */
 const isOnline = (plan: PublicPlan) => plan.place_kind === 'online';
 
-export type PageProps = { params: Promise<{ id: string }>; searchParams: Promise<{ invite?: string | string[]; open?: string | string[] }> };
+export type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ invite?: string | string[]; open?: string | string[]; join?: string | string[] }>;
+};
 
 /** Where the page is served: `/plans/<id>`, or `/plan-link/<id>` (the guest's page, contract 6.9). */
 export type PlanPageAt = 'plans' | 'plan-link';
@@ -858,8 +871,11 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
     || (!over && (viewer?.requestStatus === 'pending' || viewer?.requestStatus === 'waitlisted'));
   // An invitation is the host's yes: in the app, the person just says they're in.
   const invited = Boolean(invite?.available) && !over && !joined;
-  // A business's paid plan is paid for in the app, never on this page.
-  const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined;
+  // A business's paid plan: paid on this page after signing in (B3) when the server sends the price's words, which it
+  // does while the business takes payment here; otherwise in the app.
+  const paysHere = Boolean(business && plan.price?.text) && !over && viewer?.role !== 'host';
+  const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined && !paysHere;
+  const joinNow = [(await searchParams).join].flat()[0] === '1';
 
   return (
     <main className="min-h-screen bg-app text-app-text">
@@ -927,6 +943,22 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           </section>
 
+          {paysHere && plan.price?.text ? (
+            <PayToJoin
+              planId={id}
+              signedIn={Boolean(viewer)}
+              joinNow={joinNow}
+              priceText={plan.price.text}
+              refundText={plan.price.refund_text || null}
+              returnPath={linkPage ? `/plan-link/${id}` : buildPlanPath(id)}
+              title={plan.title || labelOf(plan)}
+              startsAt={plan.starts_at ?? null}
+              endsAt={plan.ends_at ?? null}
+              place={placeText(plan)}
+              paid={viewer?.role === 'guest' ? viewer.paid : null}
+              waiting={viewer?.requestStatus === 'waitlisted'}
+            />
+          ) : null}
           {business ? (
             paysInApp ? (
               <div className="flex items-start gap-[10px] text-sm leading-5 text-app-text-secondary">

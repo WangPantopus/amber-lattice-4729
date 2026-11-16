@@ -245,7 +245,15 @@ export type PublicPlanBusiness = {
   plans_hosted: number;
 };
 
-export type PublicPlanPrice = { cents: number; currency: string; per: 'person' | 'family' };
+export type PublicPlanPrice = {
+  cents: number;
+  currency: string;
+  per: 'person' | 'family';
+  // Sent while the business takes payment for spots (Plans for the holidays B2/B3): the server's own words.
+  text?: string;
+  refund_until?: string;
+  refund_text?: string;
+};
 
 export type PublicPlanInvite = {
   host_first_name: string;
