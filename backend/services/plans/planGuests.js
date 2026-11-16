@@ -562,8 +562,10 @@ async function answer(postId, body = {}, { cookieKey = null, patch = false } = {
   const wasIn = Boolean(before && before.status === 'accepted');
   const wasWaiting = Boolean(before && before.status === 'accepted' && before.needs_host_ok);
   const wasLetIn = wasIn && !wasWaiting;
-  // From the open link with "I say yes first", the host lets each one in; someone already let in stays in.
-  const needsHostOk = status === 'accepted' && via === 'open' && plan.open_invite_ok_first && !wasLetIn;
+  // From the open link with "I say yes first", the host lets each one in. Someone the host let in once (their
+  // "You're in" went) doesn't wait again after a Maybe.
+  const letInBefore = wasLetIn || Boolean(before?.address_sent_at);
+  const needsHostOk = status === 'accepted' && via === 'open' && plan.open_invite_ok_first && !letInBefore;
   const seatsNeeded = status === 'accepted' ? fields.adults + fields.kids : 0;
   const othersTaken = status === 'accepted'
     ? planService.seatsTaken(plan, await actions().activeRequests(plan.post_id), await guestSeats(plan.post_id, { except: row?.id || null }))
