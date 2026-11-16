@@ -84,6 +84,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.mailbox.CardSignature
+import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivals
+import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardCollection
 import app.pantopus.android.data.api.models.mailbox.HolidayCardDesign
 import app.pantopus.android.data.api.models.mailbox.HolidayCardsResponse
@@ -981,7 +983,7 @@ internal fun SealStep(
     onGetStamps: () -> Unit = {},
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
-    val options = arrivalOptions(cards, to, form)
+    val options = arrivalOptions(cards.arrivals, to, form.theirs)
     val needsStamps = form.lookUnavailable && stamps?.available == 0
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s2).rotate(1f)) {
@@ -1059,18 +1061,24 @@ internal fun SealStep(
     }
 }
 
-/** The arrivals open for who it's for: a person's by their clock once read, an address's or a link's by the sender's. */
-private fun arrivalOptions(
-    cards: HolidayCardsResponse,
+/**
+ * The arrivals open for who it's for: a person's by their clock once read ([theirs]), an address's or a link's by the
+ * sender's. By email every choice the server offers ([HolidayCardArrivals.emailAll]); a link keeps its two.
+ */
+internal fun arrivalOptions(
+    arrivals: HolidayCardArrivals,
     to: CardRecipient,
-    form: SendCardForm,
-): List<String> =
-    when (to) {
-        is CardRecipient.Person -> form.theirs?.arrivals ?: cards.arrivals.person
+    theirs: HolidayCardArrivalsFor?,
+): List<String> {
+    val byEmail = arrivals.emailAll ?: arrivals.email
+    return when (to) {
+        is CardRecipient.Person -> theirs?.arrivals ?: arrivals.person
         // A list's one choice, by the sender's clock; each card is checked by its own person's on Look it over.
-        is CardRecipient.Several -> if (to.entries.any { it is CardRecipient.Person }) cards.arrivals.person else cards.arrivals.email
-        else -> cards.arrivals.email
+        is CardRecipient.Several -> if (to.entries.any { it is CardRecipient.Person }) arrivals.person else byEmail
+        is CardRecipient.Email -> byEmail
+        else -> arrivals.email
     }
+}
 
 /** Until when it can be taken back. Before it's sent there's no knowing their clock; the sent card says the time. */
 private fun sealNote(to: CardRecipient): String =
@@ -1131,6 +1139,7 @@ private fun arrivalChoice(
     val day = HolidayCardTimes.shortDay(theirDay ?: cards.nextRoundAt, zone)
     val name = (to as? CardRecipient.Person)?.firstName ?: "they"
     if (to is CardRecipient.Link) return linkChoice(arrival)
+    if (to is CardRecipient.Email) emailLaterChoice(arrival, cards, zone)?.let { return it }
     return when (arrival) {
         "next_morning" -> "With the morning mail" to "$day, about 7 a.m. where $name lives. They can open it right away."
         "sealed_christmas" ->
@@ -1149,8 +1158,46 @@ private fun arrivalChoice(
 }
 
 /**
- * A list's one choice, as each card reads it: every person's by their own clock (the days differ, so none is named), and
- * an address's card waits for them to open the email, sealed until Christmas for both Christmas choices.
+ * By email, the two choices whose email goes later: at the sender's next 7 a.m. or at 7 a.m. on Christmas morning, both on
+ * the sender's clock (the other person's isn't known). Null for the others, which keep their words.
+ */
+private fun emailLaterChoice(
+    arrival: String,
+    cards: HolidayCardsResponse,
+    zone: ZoneId,
+): Pair<String, String>? {
+    val (title, at) =
+        when (arrival) {
+            "next_morning" -> "With the morning mail" to cards.nextRoundAt
+            "christmas_morning" -> "On Christmas morning" to cards.christmasMorningAt
+            else -> return null
+        }
+    val detail = "We email them ${HolidayCardTimes.emailGoesAt(at, zone)}, your time. They can open it once they join with that address."
+    return title to detail
+}
+
+/**
+ * The sentence a list with people adds for its addresses. Where the server offers every email choice
+ * ([HolidayCardArrivals.emailAll]) an address keeps the list's choice, its email at the sender's 7 a.m. or on Christmas
+ * morning; otherwise its email goes now, sealed until Christmas for both Christmas choices.
+ */
+private fun listEmailSentence(
+    arrival: String,
+    cards: HolidayCardsResponse,
+    zone: ZoneId,
+): String {
+    val later = if (arrival == "christmas_morning") cards.christmasMorningAt else cards.nextRoundAt
+    return when {
+        arrival == "sealed_christmas" -> " People not on Pantopus get the email now; their card opens on Christmas morning."
+        cards.arrivals.emailAll != null -> " People not on Pantopus get the email ${HolidayCardTimes.emailGoesAt(later, zone)}, your time."
+        arrival == "next_morning" -> " People not on Pantopus get the email right away."
+        else -> " People not on Pantopus get the email now; their card opens on Christmas morning."
+    }
+}
+
+/**
+ * A list's one choice, as each card reads it: every person's by their own clock (the days differ, so none is named). A
+ * list of only addresses reads as one card by email; with people, [listEmailSentence] says how its addresses get theirs.
  */
 private fun listChoice(
     arrival: String,
@@ -1160,6 +1207,7 @@ private fun listChoice(
 ): Pair<String, String> {
     val people = entries.any { it is CardRecipient.Person }
     val emails = entries.any { it is CardRecipient.Email }
+    if (!people && cards.arrivals.emailAll != null) emailLaterChoice(arrival, cards, zone)?.let { return it }
     if (!people) {
         return if (arrival == "sealed_christmas") {
             "Sealed until Christmas" to
@@ -1169,12 +1217,7 @@ private fun listChoice(
             "Right away, by email" to "They get an email now and can open it once they join with that address."
         }
     }
-    val byEmail =
-        when {
-            !emails -> ""
-            arrival == "next_morning" -> " People not on Pantopus get the email right away."
-            else -> " People not on Pantopus get the email now; their card opens on Christmas morning."
-        }
+    val byEmail = if (emails) listEmailSentence(arrival, cards, zone) else ""
     return when (arrival) {
         "sealed_christmas" ->
             "Sealed until Christmas" to

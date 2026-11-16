@@ -239,6 +239,8 @@ private fun listLineWords(
     return when {
         line.status == "refused" -> "${line.error ?: "It can’t go."} Won’t be sent."
         line.status == "already_sent" -> "Already sent."
+        // Set for the sender's 7 a.m. or Christmas morning: nothing is emailed before then.
+        line.byEmail && line.emailSendAt != null -> "Gets an email ${HolidayCardTimes.emailGoesAt(line.emailSendAt, zone)}, your time."
         line.byEmail && line.arrival == "sealed_christmas" -> "Gets an email now. The card opens on Christmas morning."
         line.byEmail -> "Gets an email now."
         line.arrival == "christmas_morning" -> "On Christmas morning, with their 7 a.m. mail."
