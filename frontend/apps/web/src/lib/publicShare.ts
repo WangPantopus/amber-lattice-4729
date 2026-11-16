@@ -186,6 +186,35 @@ export type PublicPlan = {
   repeat?: { text: string; short: string; last_on: string } | null;
   /** A private plan. Without a live invitation in the link this is the only key, and there is no card to show. */
   private?: boolean;
+  /**
+   * Plans for the holidays (H1), while the host has the switch: with a way in (an invitation's token, the open link)
+   * or the guest's own key, the form and the guest's own answer. Absent otherwise: the page is today's.
+   */
+  answer?: PublicPlanAnswer | null;
+  /** With the guest's own key, while they are in: the place, the note for people in and who is going. */
+  for_guest?: PublicPlanForGuest | null;
+  /** The guest's key is a guest's the host removed: the invitation is no longer open, and nothing else. */
+  removed?: boolean;
+};
+
+export type PublicPlanGuestState = 'in' | 'waiting_ok' | 'maybe' | 'cant';
+
+export type PublicPlanAnswer = {
+  can: boolean;
+  via: 'open' | 'email' | 'link';
+  needs_email: boolean;
+  kids_welcome: boolean;
+  room_left: number;
+  host_says_yes_first: boolean;
+  mine: { state: PublicPlanGuestState; name: string; adults: number; kids: number; email_hint: string | null } | null;
+};
+
+export type PublicPlanForGuest = {
+  place: { name: string; address: string | null; latitude: number | null; longitude: number | null; link?: string | null };
+  guest_note: string | null;
+  going: string[];
+  bring: unknown;
+  changed: 'time' | 'place' | 'both' | null;
 };
 
 export type PublicPlanBusiness = {
@@ -210,8 +239,24 @@ export function planInviteToken(value: unknown): string | null {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value) ? value : null;
 }
 
-export const fetchPublicPlan = cache(async (id: string, invite: string | null = null): Promise<PublicFetchResult<PublicPlan>> => {
-  const query = invite ? `?invite=${encodeURIComponent(invite)}` : '';
+/** A guest's key or the open link's token: 43 base64url characters, as an invitation's token. */
+export const planSecret = planInviteToken;
+
+/**
+ * The plan's public answer. `invite` and `open` are the page's ways in; `guest` is the guest's own key, which the page
+ * reads from its HttpOnly cookie and sends from the server only (never in a link the page shows).
+ */
+export const fetchPublicPlan = cache(async (
+  id: string,
+  invite: string | null = null,
+  open: string | null = null,
+  guest: string | null = null,
+): Promise<PublicFetchResult<PublicPlan>> => {
+  const params = new URLSearchParams();
+  if (invite) params.set('invite', invite);
+  if (open) params.set('open', open);
+  if (guest) params.set('guest', guest);
+  const query = params.toString() ? `?${params.toString()}` : '';
   const result = await fetchPublicJson<PublicPlan>(
     `/api/public/plans/${encodeURIComponent(id)}${query}`,
     { noStore: true },
