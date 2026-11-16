@@ -155,6 +155,18 @@ router.put('/plans/:id/dates/mine', async (req, res) => {
   }
 });
 
+// ── One person pays for the group (the extras): the buyer's link's page, before signing in ──
+// GET /api/public/plans/:id/spot?token=. Answers { spot: { from, text, left, open, button, closed_text } }; joining
+// takes an account (POST /api/plans/:id/requests/claim-spot).
+router.get('/plans/:id/spot', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planGroupPay').readLink(req.params.id, req.query.token));
+  } catch (err) {
+    return planError(res, err, 'group_pay_link');
+  }
+});
+
 // ── Photos afterwards (the extras): a guest without an account who was in looks, by their key ──
 // GET /api/public/plans/:id/photos. Answers the grid (links signed for minutes) with "Add yours in the app."
 router.get('/plans/:id/photos', async (req, res) => {

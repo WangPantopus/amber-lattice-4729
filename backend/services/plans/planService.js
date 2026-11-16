@@ -77,6 +77,8 @@ const REQUEST_COLUMNS = [
   'stays_with_kids', 'decided_by', 'reconfirm_requested_at', 'reconfirmed', 'reconfirm_reason', 'on_my_way_at',
   'ask_count', 'distance_band', 'queued_at', 'reminded_at', 'feedback', 'feedback_note', 'feedback_at',
   'created_at', 'decided_at', 'updated_at',
+  // One person pays for the group (the extras, planGroupPay.js): the buyer's spots and link, a claimer's buyer.
+  'spots_bought', 'spots_token', 'paid_by_request_id',
 ].join(', ');
 const USER_COLUMNS = 'id, name, first_name, last_name, profile_picture_url, created_at';
 
@@ -351,10 +353,15 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     const onIds = pricedPlans.filter((p) => ctx.paidByHost.get(String(p.host_user_id))).map((p) => p.post_id);
     if (onIds.length > 0) {
       const { data: money, error: moneyError } = await supabaseAdmin.from('PlanRequest')
-        .select('id, payment_id, unit_price_cents, paid_cents, refunded_cents, refund_until, hold_expires_at, fee_basis, payment:Payment(metadata)')
+        .select('id, payment_id, unit_price_cents, paid_cents, refunded_cents, refund_until, hold_expires_at, fee_basis, deal_used_at, payment:Payment(metadata)')
         .in('post_id', onIds).not('unit_price_cents', 'is', null);
       if (moneyError) throw new Error(`Failed to load plan details: ${moneyError.message}`);
       for (const row of money || []) ctx.moneyByRequest.set(row.id, row);
+    }
+    // One person pays for the group (the extras), with `extras=1`: read only when a buyer or a claimer looks.
+    if (viewer.extras) {
+      const groupPlans = pricedPlans.filter((p) => ctx.paidByHost.get(String(p.host_user_id)) && require('./planGroupPay').takes(p));
+      if (groupPlans.length > 0) ctx.groupPayByHost = await require('./planGroupPay').switchByHost(groupPlans.map((p) => p.host_user_id));
     }
   }
   // A tip after a paid plan (B6): read only for priced plans with tips on, from businesses with the switch.
@@ -540,9 +547,23 @@ async function mutualConnectionCounts(viewerId, otherIds) {
  * counted from the moment they answer, also while they wait for the host's yes (K5).
  */
 function seatsTaken(plan, requests, guestSeats = 0) {
-  return (requests || [])
-    .filter((r) => r.status === 'accepted' || r.status === 'paying')
-    .reduce((sum, r) => sum + rules.seatsFor(plan, r.party_size, r.kids_count), 0) + (Number(guestSeats) || 0);
+  const live = (requests || []).filter((r) => r.status === 'accepted' || r.status === 'paying');
+  return live.reduce((sum, r) => sum + rules.seatsFor(plan, r.party_size, r.kids_count) + heldForLink(plan, r, live), 0)
+    + (Number(guestSeats) || 0);
+}
+
+/**
+ * One person pays for the group (the extras, planGroupPay.js): the spots a buyer paid for that nobody has taken yet are
+ * held while they pay and while the link takes people (spots_token set); claimers count as themselves. Zero on every
+ * other request.
+ */
+function heldForLink(plan, request, live) {
+  if (!request.spots_bought) return 0;
+  const own = rules.seatsFor(plan, request.party_size, request.kids_count);
+  if (request.status === 'paying') return Math.max(0, request.spots_bought - own);
+  if (!request.spots_token) return 0;
+  const claimed = live.filter((r) => r.status === 'accepted' && r.paid_by_request_id === request.id).length;
+  return Math.max(0, request.spots_bought - own - claimed);
 }
 
 function waitlistOrder(requests) {
@@ -904,9 +925,22 @@ function addBusinessFields(card, plan, viewer, ctx) {
     const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
     const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;
     if (money && myRequest.status === 'paying' && card.my_request) card.my_request.hold_expires_at = iso(money.hold_expires_at);
+    // One person pays for the group (the extras, `extras=1`): the buyer's spots and link, or "{Chris} got you a spot".
+    const groupOn = Boolean(viewer?.extras && ctx.groupPayByHost?.get(String(plan.host_user_id)));
+    const planRequests = groupOn ? ctx.requestsByPlan.get(plan.post_id) || [] : [];
+    const groupPay = groupOn ? require('./planGroupPay') : null;
+    const buyer = groupOn && money && myRequest.spots_bought ? { ...myRequest, ...money, status: myRequest.status } : null;
     const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
-      reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null) : null;
+      reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null,
+    { keep: buyer ? groupPay.keptCents(plan, buyer, planRequests) : 0 }) : null;
     if (paid && myRequest.status === 'accepted') card.paid = paid;
+    if (buyer) {
+      const spots = groupPay.buyerView(plan, buyer, planRequests);
+      if (spots) card.group_pay = spots;
+    } else if (groupOn && myRequest?.status === 'accepted' && myRequest.paid_by_request_id) {
+      const from = planRequests.find((r) => r.id === myRequest.paid_by_request_id);
+      card.group_pay = groupPay.claimerView(from && ctx.users.get(String(from.user_id)) ? firstName(ctx.users.get(String(from.user_id))) : null);
+    }
     // "Leave a tip for {business}?" (C4, B6): once, for 7 days after the plan ends.
     if (paid && myRequest.status === 'accepted' && ctx.tipsByHost?.get(String(plan.host_user_id))) {
       const tipLater = require('./planChecks').tipLaterView(plan, paid.cents - (paid.refunded_cents || 0), ctx.tippedRequests.has(myRequest.id));
