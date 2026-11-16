@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
@@ -108,6 +109,10 @@ data class PlanDetailUi(
     val reminding: Boolean = false,
     /** Today's reminder went (one a plan a day). */
     val remindedToday: Boolean = false,
+    /** Plans for the holidays (A8): a claim, a give back or an added item is on its way. */
+    val bringBusy: Boolean = false,
+    /** The line under the bring list ("Sam got to that one first."). */
+    val bringNotice: String? = null,
 )
 
 /**
@@ -306,6 +311,38 @@ class PlanDetailViewModel
                             }
                     }
                 }
+            }
+        }
+
+        /** "I'll bring it" (Plans for the holidays, A8); someone first: the row shows them and the line says so. */
+        fun claimBring(itemId: String) = bringAction { repository.claimBring(planId, itemId) }
+
+        /** "Give back". */
+        fun giveBackBring(itemId: String) = bringAction { repository.giveBackBring(planId, itemId) }
+
+        /** "Bring something else": added and claimed by this person. */
+        fun addBring(label: String) = bringAction { repository.addBring(planId, label) }
+
+        private fun bringAction(call: suspend () -> NetworkResult<PlanBringResponse>) {
+            if (_ui.value.bringBusy) return
+            _ui.update { it.copy(bringBusy = true, bringNotice = null) }
+            viewModelScope.launch {
+                val result = call()
+                _ui.update { current ->
+                    val ready = current.state as? PlanDetailUiState.Ready
+                    when (result) {
+                        is NetworkResult.Success -> {
+                            val plan = ready?.plan?.copy(bring = result.data.bring)
+                            current.copy(
+                                bringBusy = false,
+                                state = if (plan != null && ready != null) ready.copy(plan = plan) else current.state,
+                            )
+                        }
+                        // "Sam got to that one first." (409 taken) or another refusal, under the list.
+                        is NetworkResult.Failure -> current.copy(bringBusy = false, bringNotice = result.error.planMessage)
+                    }
+                }
+                if (result is NetworkResult.Failure) read()
             }
         }
 

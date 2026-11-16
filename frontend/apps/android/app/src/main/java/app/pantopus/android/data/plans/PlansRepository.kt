@@ -633,6 +633,32 @@ class PlansRepository
             }
         }
 
+        // ---- Plans for the holidays, H2: the bring list (contract 7) ----
+
+        /** The host's whole list (A9's Done). */
+        suspend fun putBring(
+            id: String,
+            body: PlanBringInput,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.putBring(id, body) }
+
+        /** "I'll bring it". */
+        suspend fun claimBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.claimBring(id, itemId) }
+
+        /** "Give back". */
+        suspend fun giveBackBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.giveBackBring(id, itemId) }
+
+        /** "Bring something else". */
+        suspend fun addBring(
+            id: String,
+            label: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.addBring(id, PlanBringAddBody(label = label)) }
+
         /** Right after signing in: the newest invitation not opened yet (an email invite finds its verified address). */
         suspend fun nextInvite(): NetworkResult<PlanNextInviteResponse> = safeApiCall { api.nextInvite() }
 

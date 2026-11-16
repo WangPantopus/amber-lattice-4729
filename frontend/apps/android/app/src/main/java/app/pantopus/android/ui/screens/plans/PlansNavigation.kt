@@ -14,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
+import app.pantopus.android.ui.screens.plans.bring.PlanBringScreen
 import app.pantopus.android.ui.screens.plans.change.PlanChangeScreen
 import app.pantopus.android.ui.screens.plans.detail.PlanDetailScreen
 import app.pantopus.android.ui.screens.plans.guests.PlanGuestsScreen
@@ -51,6 +52,9 @@ object PlansRoutes {
     /** Who's coming (Plans for the holidays, A5): the host's answers. */
     const val GUESTS = "plans/{$PLAN_ID_KEY}/guests"
 
+    /** The bring list for the host (Plans for the holidays, A9). */
+    const val BRING = "plans/{$PLAN_ID_KEY}/bring"
+
     /**
      * Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan, and
      * `private` starts "Who can see this" on "Only people I invite" (the empty state's "Plan with people you know").
@@ -73,6 +77,8 @@ object PlansRoutes {
     fun change(id: String): String = "plans/${Uri.encode(id)}/change"
 
     fun guests(id: String): String = "plans/${Uri.encode(id)}/guests"
+
+    fun bring(id: String): String = "plans/${Uri.encode(id)}/bring"
 
     fun host(
         kind: String? = null,
@@ -178,6 +184,7 @@ fun NavGraphBuilder.plansRoutes(
                 onOpenPlan = { id -> nav.navigate(PlansRoutes.plan(id)) },
                 onOpenRequests = { id -> nav.navigate(PlansRoutes.requests(id)) },
                 onOpenGuests = { id -> nav.navigate(PlansRoutes.guests(id)) },
+                onOpenBring = { id -> nav.navigate(PlansRoutes.bring(id)) },
                 onChange = { id -> nav.navigate(PlansRoutes.change(id)) },
                 onHost = { kind, again -> nav.navigate(PlansRoutes.host(kind = kind, again = again)) },
                 onOpenChat = external.openChat,
@@ -204,6 +211,12 @@ fun NavGraphBuilder.plansRoutes(
         PlansLocals(external) {
             PlanGuestsScreen(onBack = { if (!nav.popBackStack()) external.openNearby() })
         }
+    }
+    composable(
+        route = PlansRoutes.BRING,
+        arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
+    ) {
+        PlanBringScreen(onDone = { if (!nav.popBackStack()) external.openNearby() })
     }
     composable(
         route = PlansRoutes.CHANGE,

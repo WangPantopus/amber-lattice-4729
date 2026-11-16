@@ -755,15 +755,40 @@ internal fun AddToThisPlan(
     if (!ui.showsAddToPlan) return
     PlanField(label = "Add to this plan", modifier = Modifier.testTag("planAddToPlan")) {
         PlanFormCard {
-            AddToPlanRow(
-                first = true,
-                icon = PantopusIcon.AdultChild,
-                title = "Kids welcome",
-                caption = "Guests say how many adults and kids",
-                checked = ui.draft.kidsWelcome,
-                tag = "planKidsWelcome",
-                onChecked = vm::setKidsWelcome,
-            )
+            if (ui.showsBringRow) {
+                val bring = ui.draft.bring
+                val count = bring?.items?.size ?: 0
+                val colors = ui.draft.kind?.colors
+                AddToPlanRow(
+                    first = true,
+                    icon = PantopusIcon.List,
+                    title = "Bring list",
+                    caption =
+                        when (count) {
+                            0 -> "Guests pick what they'll bring"
+                            1 -> "1 thing · guests pick what they'll bring"
+                            else -> "$count things · guests pick what they'll bring"
+                        },
+                    checked = bring != null,
+                    tag = "planBringList",
+                    onChecked = vm::setBringList,
+                    // The plan's kind color, as board 3 draws it.
+                    tileBackground = colors?.tint ?: PantopusColors.appSurfaceSunken,
+                    tileTint = colors?.accent ?: PantopusColors.appTextStrong,
+                    onOpen = vm::openBringList,
+                )
+            }
+            if (ui.showsKidsWelcome) {
+                AddToPlanRow(
+                    first = !ui.showsBringRow,
+                    icon = PantopusIcon.AdultChild,
+                    title = "Kids welcome",
+                    caption = "Guests say how many adults and kids",
+                    checked = ui.draft.kidsWelcome,
+                    tag = "planKidsWelcome",
+                    onChecked = vm::setKidsWelcome,
+                )
+            }
         }
         PlanScopeLine("Only what you switch on shows on the plan. Everything else stays out of the way.", icon = PantopusIcon.Info)
     }
