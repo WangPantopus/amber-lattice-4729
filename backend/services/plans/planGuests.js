@@ -50,7 +50,7 @@ const LIMITS = Object.freeze({
 const GUEST_COLUMNS = [
   'id', 'post_id', 'host_user_id', 'channel', 'invitee_user_id', 'email', 'token_hash', 'status', 'needs_host_ok',
   'email_status', 'email_opted_out_at', 'guest_name', 'guest_adults', 'guest_kids', 'guest_key_hashes',
-  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'opened_at', 'answered_at',
+  'address_sent_at', 'reminded_at', 'changed_at', 'changed_reason', 'guest_emails', 'email_sent_times', 'opened_at', 'answered_at',
   'created_at', 'updated_at',
 ].join(', ');
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -397,27 +397,24 @@ async function resolveAnswerRow(plan, body, { cookieKey = null, patch = false } 
   return null;
 }
 
-/** Why a guest email to this address can't go now: 'opted_out', 'too_many' (a day's or a plan's), else null. */
-async function guestEmailHeld(row) {
+/**
+ * Why a guest email to this address can't go now: 'opted_out', or 'too_many' (five an address a day from every host
+ * together, every email counted by its own time; and, for an email that is one of the plan's three, three a guest a
+ * plan), else null. The plan's three are "You're in", the one reminder and the first change of time or place; a
+ * cancellation and "its link again" are outside them.
+ */
+async function guestEmailHeld(row, { inThree = true } = {}) {
   if (!row?.email) return 'no_address';
-  if ((Number(row.guest_emails) || 0) >= LIMITS.emailsPerGuestPerPlan) return 'too_many';
-  const dayAgo = new Date(Date.now() - DAY_MS).toISOString();
-  const [optedOut, invited, answered, reminded] = await Promise.all([
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).not('email_opted_out_at', 'is', null),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).eq('email_status', 'sent').gt('created_at', dayAgo),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).gt('address_sent_at', dayAgo),
-    supabaseAdmin.from('PlanInvite').select('id', { count: 'exact', head: true })
-      .eq('email', row.email).gt('reminded_at', dayAgo),
-  ]);
-  for (const r of [optedOut, invited, answered, reminded]) {
-    if (r.error) throw new Error(`Failed to check the address: ${r.error.message}`);
-  }
-  if (optedOut.count) return 'opted_out';
-  const today = (invited.count || 0) + (answered.count || 0) + (reminded.count || 0);
-  return today >= invites().LIMITS.emailsPerAddressPerDay ? 'too_many' : null;
+  if (inThree && (Number(row.guest_emails) || 0) >= LIMITS.emailsPerGuestPerPlan) return 'too_many';
+  return invites().emailHeld(row.email);
+}
+
+/** Did any email go to this guest for this plan in the last day (their invitation included)? */
+function emailedWithinDay(row) {
+  const dayAgo = Date.now() - DAY_MS;
+  const after = (t) => Boolean(t) && new Date(t).getTime() > dayAgo;
+  return (row.email_sent_times || []).some(after) || after(row.address_sent_at) || after(row.reminded_at)
+    || (row.channel === 'email' && row.email_status === 'sent' && after(row.created_at));
 }
 
 /** The words every guest email shares. */
@@ -432,11 +429,15 @@ async function guestEmailWords(plan, row) {
   };
 }
 
-/** After an email went: its key joins the row's keys, and the email is counted (and its moment stamped). */
-async function saveEmailed(row, key, stamp) {
+/**
+ * After an email went: its key joins the row's keys, its time is kept (the address's day count), it counts among the
+ * plan's three when it is one of them, and its moment is stamped.
+ */
+async function saveEmailed(row, key, stamp, { inThree = true } = {}) {
   const patch = {
     guest_key_hashes: withKey(row, key),
-    guest_emails: (Number(row.guest_emails) || 0) + 1,
+    ...(inThree ? { guest_emails: (Number(row.guest_emails) || 0) + 1 } : {}),
+    email_sent_times: invites().withEmailSent(row),
     updated_at: nowIso(),
     ...(stamp ? { [stamp]: nowIso() } : {}),
   };
@@ -450,8 +451,8 @@ async function saveEmailed(row, key, stamp) {
  * link carries a key of its own, which joins the guest's keys once the email went; none replaces another (K3).
  * Answers whether it went. `stamp`: the row's column to stamp ('address_sent_at' or 'reminded_at').
  */
-async function sendGuestEmail(plan, row, kind, { words = {}, stamp = null } = {}) {
-  const held = await guestEmailHeld(row);
+async function sendGuestEmail(plan, row, kind, { words = {}, stamp = null, inThree = kind !== 'cancelled' } = {}) {
+  const held = await guestEmailHeld(row, { inThree });
   if (held) {
     logger.info('plans.guests.email_held', { inviteId: row.id, kind, reason: held });
     return false;
@@ -476,19 +477,25 @@ async function sendGuestEmail(plan, row, kind, { words = {}, stamp = null } = {}
     logger.warn('plans.guests.email_failed', { inviteId: row.id, kind });
     return false;
   }
-  await saveEmailed(row, key, stamp);
+  await saveEmailed(row, key, stamp, { inThree });
   return true;
 }
 
 /**
- * An answer came for an address that already has a row, without a key of that row (6.3): that address gets its link.
+ * An answer came for an address that already has a row, without a key of that row (6.3): that address gets its link,
+ * outside the plan's three, and only if no email went to that guest for this plan in the last day (otherwise nothing
+ * goes, and the answer reads the same, so nothing can be told from outside). It counts against the address's day.
  * Someone in gets "You're in" again; anyone else (waiting, maybe, can't make it, or an invitation the host typed and
  * nobody answered yet) gets the invitation email's own words with their link, which opens their answer to see or
  * change.
  */
 async function sendLinkAgain(plan, row) {
-  if (isGuestIn(row)) return sendGuestEmail(plan, row, 'in', { stamp: 'address_sent_at' });
-  const held = await guestEmailHeld(row);
+  if (emailedWithinDay(row)) {
+    logger.info('plans.guests.email_held', { inviteId: row.id, kind: 'link_again', reason: 'within_day' });
+    return false;
+  }
+  if (isGuestIn(row)) return sendGuestEmail(plan, row, 'in', { inThree: false });
+  const held = await guestEmailHeld(row, { inThree: false });
   if (held) {
     logger.info('plans.guests.email_held', { inviteId: row.id, kind: 'link_again', reason: held });
     return false;
@@ -508,7 +515,7 @@ async function sendLinkAgain(plan, row) {
     logger.warn('plans.guests.email_failed', { inviteId: row.id, kind: 'link_again', error: err.message });
     return false;
   }
-  await saveEmailed(row, key, null);
+  await saveEmailed(row, key, null, { inThree: false });
   return true;
 }
 
@@ -934,10 +941,15 @@ async function planChanged(plan, { timeMoved, placeChanged }) {
   }
 }
 
-/** The plan was cancelled: guests who are in get the one email about it, with the host's note. */
+/**
+ * The plan was cancelled: guests who are in get the one email about it, with the host's note, outside the plan's
+ * three (a guest who already had all three still hears it). Not a guest still waiting for the host's yes; never an
+ * address that opted out, and it counts against the address's day.
+ */
 async function planCancelled(plan, note) {
   if (!takesAnswers(plan)) return;
   for (const row of await guestsIn(plan.post_id)) {
+    if (row.needs_host_ok) continue;
     try {
       await sendGuestEmail(plan, row, 'cancelled', { words: { cancelNote: note || null } });
     } catch (err) {
