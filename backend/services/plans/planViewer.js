@@ -12,7 +12,7 @@ const parsePostGISPoint = require('../../utils/parsePostGISPoint');
 const { isFeatureEnabled } = require('../featureFlagService');
 const { getMuteAndHideFilters } = require('../feedService');
 const { isVerifiedResident } = require('../../utils/homePermissions');
-const { isFreshGps, PRIVATE_FLAG, ONLINE_FLAG, KINDS_FLAG } = require('./planRules');
+const { isFreshGps, PRIVATE_FLAG, ONLINE_FLAG, KINDS_FLAG, GUEST_ANSWERS_FLAG } = require('./planRules');
 const { postScopeAccess } = require('../pulse/readAccess');
 
 const VERIFIED_SELECT = 'home_id, verification_status, verification_source, verified_at, is_active';
@@ -108,6 +108,8 @@ function parseGps(raw) {
  *   job and nudge, a business's plan does not exist for this viewer, and nothing about businesses is read.
  *   `plansMore`: the app can draw an online plan and the four newer kinds (`more=1`); without it those plans don't
  *   exist for this viewer either (planRules.needsMore).
+ *   `plansGuests`: the app can draw guests without an account, Maybe, adults and kids, and room over 30
+ *   (`guests=1`, Plans for the holidays H1); without it the server answers as it did before (K10).
  * @param {{ gps?: object, point?: { latitude: number, longitude: number } }} [opts]
  *   gps: a fix the app sent with this request (counts as a location for 5 minutes);
  *   point: where the app is looking from (the map or list center), used for distances
@@ -117,10 +119,11 @@ async function loadViewer(user, opts = {}) {
   const userId = String(user.id);
   const bizMarker = user.plansBiz === true;
   const more = user.plansMore === true;
+  const guests = user.plansGuests === true;
   const planBusiness = require('./planBusiness');
   const [
     playdatesFlag, filters, homes, savedPlaces, scopeAccess, sportsFlag, invitesFlag, bizFlag, bizKidsFlag, privateFlag, repeatFlag,
-    onlineFlag, kindsFlag,
+    onlineFlag, kindsFlag, guestAnswersFlag,
   ] = await Promise.all([
     isFeatureEnabled('plans_playdates', user),
     getMuteAndHideFilters(userId),
@@ -135,6 +138,7 @@ async function loadViewer(user, opts = {}) {
     isFeatureEnabled('plans_repeat', user),
     more ? isFeatureEnabled(ONLINE_FLAG, user) : false,
     more ? isFeatureEnabled(KINDS_FLAG, user) : false,
+    isFeatureEnabled(GUEST_ANSWERS_FLAG, user),
   ]);
   // Plans with businesses: on only for a person who has the switch, in an app that can draw a business's plan.
   const biz = Boolean(bizMarker && bizFlag);
@@ -185,6 +189,10 @@ async function loadViewer(user, opts = {}) {
     more,
     onlineFlag: Boolean(more && onlineFlag),
     kindsFlag: Boolean(more && kindsFlag),
+    // The app can draw H1's guests, Maybe and room over 30 (`guests=1`); and whether this person, as a host, has
+    // the switch (with private plans and invitations, which it needs). Read for the host wherever a plan is read.
+    guests,
+    guestAnswersFlag: Boolean(guestAnswersFlag && privateFlag && invitesFlag),
     // Plans with businesses (planBusiness.js): whether a business's plan exists for this viewer, whether one
     // for kids does, and the businesses whose plans they post or run.
     biz,

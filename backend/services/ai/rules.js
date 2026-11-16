@@ -262,7 +262,7 @@ async function runsOf(rules) {
       : { data: [] },
     planService.loadPlanRows(planIds),
     planIds.length
-      ? supabaseAdmin.from('PlanRequest').select('post_id, party_size').in('post_id', planIds).eq('status', 'accepted')
+      ? supabaseAdmin.from('PlanRequest').select('post_id, party_size, kids_count').in('post_id', planIds).eq('status', 'accepted')
       : { data: [] },
   ]);
   if (steps.error) throw new Error(`Rule run steps read failed: ${steps.error.message}`);
@@ -272,7 +272,7 @@ async function runsOf(rules) {
   const seats = new Map();
   for (const request of going.data || []) {
     const plan = planById.get(request.post_id);
-    seats.set(request.post_id, (seats.get(request.post_id) || 0) + planRules.seatsFor(plan?.kind, request.party_size));
+    seats.set(request.post_id, (seats.get(request.post_id) || 0) + planRules.seatsFor(plan || '', request.party_size, request.kids_count));
   }
   for (const [ruleId, list] of byRule) {
     byRule.set(ruleId, list.map((run) => {

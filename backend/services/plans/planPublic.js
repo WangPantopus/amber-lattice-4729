@@ -12,6 +12,11 @@
  *
  * A private plan (Plan.audience 'invited') answers only { private: true }, unless the
  * page carries a live invitation to it: then the same card, with `private: true`.
+ *
+ * Plans for the holidays (H1, planGuests.js), while the plan's host has plans_guest_answers: the open link (`open`)
+ * and a guest's own key (`guest`) are ways in too, and the answer adds `answer` (the form, and the guest's own
+ * answer) and `for_guest` (the place, the note for people in and who is going: only with the key, while the guest
+ * is in). A removed guest's key answers `removed: true` and nothing about the plan.
  */
 
 const { isFeatureEnabled } = require('../featureFlagService');
@@ -43,10 +48,24 @@ function anonymousViewer() {
  * @param {{ inviteToken?: string }} [opts]  the page's `?invite=`: a private plan shows its card only to someone
  *   holding a live invitation to it. Anyone else with its link learns one thing, that it is private.
  */
-async function publicPlan(postId, { inviteToken = null } = {}) {
+async function publicPlan(postId, { inviteToken = null, openToken = null, guestKey = null } = {}) {
   if (!planService.isUuid(postId)) return null;
   const plan = await planService.loadPlanRow(postId);
   if (!plan || !plan.post || !canReadPostModeration(plan.post, null)) return null;
+  const planGuests = require('./planGuests');
+  // H1: only with a secret on the page, and only while the host has the switch; otherwise today's answer.
+  const guests = (inviteToken || openToken || guestKey) && planGuests.takesAnswers(plan)
+    && (await isFeatureEnabled('plans', plan.host_user_id)) && (await planGuests.switchFor(plan.host_user_id))
+    ? await planGuests.forPage(plan, { inviteToken, openToken, guestKey })
+    : null;
+  // A removed guest's key: on a private plan nothing about it; a public plan's card is everyone's anyway.
+  if (guests?.removed && plan.audience === 'invited') return { private: true, removed: true };
+  if (plan.audience === 'invited' && guests?.live) {
+    // The card even once the plan is over or cancelled, so the page can say so.
+    const viewer = anonymousViewer();
+    const ctx = await planService.loadCardContext([plan], viewer);
+    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), private: true, answer: guests.answer, for_guest: guests.for_guest };
+  }
   if (plan.audience === 'invited') {
     if (plan.status !== 'open' || !(await isFeatureEnabled('plans', plan.host_user_id))) return null;
     if (!(await require('./planInvites').isLiveToken(postId, inviteToken))) return { private: true };
@@ -68,7 +87,10 @@ async function publicPlan(postId, { inviteToken = null } = {}) {
 
   const viewer = anonymousViewer();
   const ctx = await planService.loadCardContext([plan], viewer);
-  return publicCard(planService.buildCard(plan, viewer, ctx));
+  const card = publicCard(planService.buildCard(plan, viewer, ctx));
+  // An email or text invitation to a public plan, answered in a browser (H1).
+  if (guests?.removed) return { ...card, removed: true };
+  return guests?.live ? { ...card, answer: guests.answer, for_guest: guests.for_guest } : card;
 }
 
 /** What anyone, signed out, may read of a plan's card: the area, never a point, the place or the people. */

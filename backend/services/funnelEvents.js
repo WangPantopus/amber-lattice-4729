@@ -49,6 +49,12 @@ const FUNNEL_EVENT_TYPES = Object.freeze([
   // Plans invitations (meta: plan_id, kind, channel account | email | link).
   'plan_invited',
   'plan_invite_joined',
+  // Plans for the holidays (meta: plan_id, kind; plan_guest_answered adds via open | email | link and answer).
+  'plan_open_link_made',
+  'plan_guest_answered',
+  'plan_guest_let_in',
+  'plan_bring_claimed',
+  'plan_occasion_started',
   // Recorded atomically by pulse_record_helpful_mark, not by a client event.
   'pulse_helpful_marked',
   'pulse_follow',

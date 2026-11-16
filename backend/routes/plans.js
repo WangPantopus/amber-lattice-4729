@@ -19,6 +19,7 @@ const { loadViewer } = require('../services/plans/planViewer');
 const planService = require('../services/plans/planService');
 const planActions = require('../services/plans/planActions');
 const planInvites = require('../services/plans/planInvites');
+const planGuests = require('../services/plans/planGuests');
 const planGames = require('../services/plans/planGames');
 const planPlaces = require('../services/plans/planPlaces');
 const { suggestPlaces } = require('../services/ai/planPlaceSuggest');
@@ -29,12 +30,14 @@ router.use(verifyToken, requireFeatureFlag('plans'));
 // `biz=1` on a request: this app can draw a business's plan (Plans with businesses). Without it, on every
 // route here, a business's plan does not exist, which is what keeps one from reaching an older app that would
 // draw it as a neighbor's. `more=1`: this app can draw an online plan and the four newer kinds; without it those
-// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. Read by
-// services/plans/planViewer.js.
+// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. `guests=1`: this app can
+// draw guests without an account, Maybe, adults and kids, and room over 30 (Plans for the holidays, H1); without it
+// the server answers as it did before. Read by services/plans/planViewer.js.
 router.use((req, _res, next) => {
   if (req.user) {
     req.user.plansBiz = req.query.biz === '1';
     req.user.plansMore = req.query.more === '1';
+    req.user.plansGuests = req.query.guests === '1';
   }
   next();
 });
@@ -406,6 +409,54 @@ router.post('/:id/invites/link', requireFeatureFlag('plans_invites'), async (req
     return res.status(201).json(await planInvites.createLinkInvite(req.user, req.params.id, body(req)));
   } catch (err) {
     return serverError(res, err, 'invite_link', req);
+  }
+});
+
+// ── Plans for the holidays, H1 (services/plans/planGuests.js): 404 while plans_guest_answers is off for the host ──
+
+// POST /api/plans/:id/invites/open-link { host_says_yes_first?, rotate?, confirm_shares_address? }: the plan's one
+// link for everyone. Answers { url, message, host_says_yes_first }.
+router.post('/:id/invites/open-link', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.makeOpenLink(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link', req);
+  }
+});
+
+// DELETE /api/plans/:id/invites/open-link: turns the link off. Answers already given stay.
+router.delete('/:id/invites/open-link', async (req, res) => {
+  try {
+    return res.json(await planGuests.closeOpenLink(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link_off', req);
+  }
+});
+
+// POST /api/plans/:id/invites/remind: everyone who hasn't answered, the way each was invited; once a plan a day.
+router.post('/:id/invites/remind', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.remind(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_remind', req);
+  }
+});
+
+// POST /api/plans/:id/invites/maybe: an invited person says Maybe.
+router.post('/:id/invites/maybe', async (req, res) => {
+  try {
+    return res.json(await planGuests.sayMaybe(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'invite_maybe', req);
+  }
+});
+
+// POST /api/plans/:id/invites/:inviteId/ok: the host lets in a guest waiting from the open link; their email goes.
+router.post('/:id/invites/:inviteId/ok', async (req, res) => {
+  try {
+    return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId));
+  } catch (err) {
+    return serverError(res, err, 'invite_ok', req);
   }
 });
 

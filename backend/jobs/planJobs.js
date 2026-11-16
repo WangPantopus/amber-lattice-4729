@@ -11,7 +11,8 @@
  *  4. "Still coming?" asked once more of a guest who hasn't answered: 6 hours
  *     after it was asked, or 2 hours before the start if that is sooner.
  *  5. Reminders for people who are in: 2 hours before, or 7 PM the evening
- *     before a plan that starts before 10 AM.
+ *     before a plan that starts before 10 AM. Guests without an account who
+ *     are in get their one reminder email then (planGuests.sendReminders).
  *  6. The host's summary at 8 AM on the day, with how many requests are waiting.
  *  7. The assistant's nudges for hosts (services/ai/nudges/plans.js): weather
  *     and air, requests waiting as asking closes, and after the plan.
@@ -30,13 +31,16 @@ const planChat = require('../services/plans/planChat');
 const planNotify = require('../services/plans/planNotifications');
 const planBusiness = require('../services/plans/planBusiness');
 const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
-const { activeRequests, waitingRequests, userNames, firstOf, cancelForGoneBusiness } = require('../services/plans/planActions');
+const { activeRequests, waitingRequests, userNames, firstOf, cancelForGoneBusiness, seatsNow } = require('../services/plans/planActions');
+const planGuests = require('../services/plans/planGuests');
 
 const PLAN_NOTICE_TYPES = [
   'plan_request', 'plan_accepted', 'plan_declined', 'plan_reminder', 'plan_changed',
   'plan_cancelled', 'plan_spot_opened', 'plan_host_summary',
   'plan_guest_left', 'plan_guest_auto_joined', 'plan_still_coming_reminder',
   'plan_invite', 'plan_invite_declined', 'plan_series',
+  // Guests without an account (Plans for the holidays, H1).
+  'plan_guest_answered', 'plan_guest_waiting',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -84,6 +88,9 @@ function isStale(row, plan, request, invite = null) {
     case 'plan_invite': return !invite || invite.status !== 'pending'
       || !rules.isAskingOpen(plan, plan.post.event_date, plan.post.event_end_date);
     case 'plan_invite_declined': return ended;
+    // A guest without an account: removed since, or (waiting) let in or answered otherwise since.
+    case 'plan_guest_answered': return !invite || invite.status !== 'accepted' || ended;
+    case 'plan_guest_waiting': return !invite || invite.status !== 'accepted' || !invite.needs_host_ok || ended;
     // About the series, not this date: it is still news after the date has ended.
     case 'plan_series': return false;
     case 'plan_request': return !request || request.status !== 'pending' || ended;
@@ -128,7 +135,7 @@ async function releaseHeldPushes() {
   const inviteIds = rows.map((r) => r.metadata?.invite_id).filter(planService.isUuid);
   const invites = new Map();
   if (inviteIds.length) {
-    const { data } = await supabaseAdmin.from('PlanInvite').select('id, status').in('id', inviteIds);
+    const { data } = await supabaseAdmin.from('PlanInvite').select('id, status, needs_host_ok').in('id', inviteIds);
     for (const i of data || []) invites.set(i.id, i);
   }
 
@@ -137,10 +144,10 @@ async function releaseHeldPushes() {
   for (const row of rows) {
     const plan = plans.get(row.metadata?.plan_id);
     const request = requests.get(row.metadata?.request_id);
-    if (row.type === 'plan_request' && row.metadata?.bundled) {
-      const key = `${row.user_id}:${row.metadata.plan_id}`;
-      if (!bundles.has(key)) bundles.set(key, { plan, rows: [] });
-      bundles.get(key).rows.push({ row, request });
+    if ((row.type === 'plan_request' || row.type === 'plan_guest_answered') && row.metadata?.bundled) {
+      const key = `${row.type}:${row.user_id}:${row.metadata.plan_id}`;
+      if (!bundles.has(key)) bundles.set(key, { plan, type: row.type, rows: [] });
+      bundles.get(key).rows.push({ row, request, invite: invites.get(row.metadata?.invite_id) });
       continue;
     }
     const stale = isStale(row, plan, request, invites.get(row.metadata?.invite_id));
@@ -158,9 +165,10 @@ async function releaseHeldPushes() {
     }
   }
 
-  // One push for each closed ask bundle, without buttons: it opens the requests.
-  for (const { plan, rows: members } of bundles.values()) {
-    const live = members.filter(({ row, request }) => !isStale(row, plan, request));
+  // One push for each closed ask bundle, without buttons: it opens the requests. Guests who said they're in within an
+  // hour (H1) go as one push too, which opens the plan's "Who's coming".
+  for (const { plan, type, rows: members } of bundles.values()) {
+    const live = members.filter(({ row, request, invite }) => !isStale(row, plan, request, invite));
     const claimed = [];
     for (const { row } of members) {
       if (await claimNotice(row, { push_sent_at: now, ...(live.some((m) => m.row.id === row.id) ? {} : { push_skipped: true }) })) {
@@ -170,6 +178,19 @@ async function releaseHeldPushes() {
     const toSend = claimed.filter((row) => live.some((m) => m.row.id === row.id));
     if (!plan || toSend.length === 0) continue;
     const first = toSend[0];
+    if (type === 'plan_guest_answered') {
+      await planNotify.sendPush({
+        id: first.id,
+        user_id: first.user_id,
+        type,
+        title: toSend.length === 1 ? first.title : `${first.metadata?.guest_name || 'Someone'} and ${toSend.length - 1} more are in`,
+        body: first.body,
+        link: `/plans/${plan.post_id}`,
+        metadata: { plan_id: plan.post_id, kind: plan.kind, recipient_user_id: first.user_id, bundled: true, count: toSend.length, opens: 'whos_coming' },
+      });
+      sent += 1;
+      continue;
+    }
     // The asker's first name as the notice stored it ("A neighbor" stays whole), else the title's first word.
     const firstName = first.metadata?.requester_name || String(first.title).split(' ')[0];
     const title = toSend.length === 1
@@ -305,7 +326,7 @@ async function sendReminders() {
     if (remindAt.getTime() > now) continue;
     const requests = await activeRequests(plan.post_id);
     const accepted = requests.filter((r) => r.status === 'accepted' && !r.reminded_at);
-    const going = planService.seatsTaken(plan, requests);
+    const going = await seatsNow(plan, requests);
     for (const request of accepted) {
       // Someone let in after the reminder time just heard "You're in"; no second notice.
       const recent = request.decided_at && new Date(request.decided_at).getTime() > remindAt.getTime();
@@ -316,6 +337,10 @@ async function sendReminders() {
       sent += 1;
     }
   }
+  sent += await planGuests.sendReminders(upcoming || []).catch((err) => {
+    logger.warn('plans.jobs.guest_reminders_failed', { error: err.message });
+    return 0;
+  });
   return sent;
 }
 
@@ -348,7 +373,7 @@ async function sendHostSummaries() {
       .update({ host_summary_sent_at: iso(now) }).eq('post_id', plan.post_id).is('host_summary_sent_at', null).select('post_id');
     if (!claimed || claimed.length === 0) continue;
     const requests = await activeRequests(plan.post_id);
-    const going = planService.seatsTaken(plan, requests);
+    const going = await seatsNow(plan, requests);
     const summary = {
       plan,
       comingCount: going,

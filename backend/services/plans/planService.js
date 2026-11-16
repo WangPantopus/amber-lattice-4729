@@ -17,6 +17,9 @@
  *  - An online plan, or one of the newer kinds, exists only for an app that said it can draw one (viewer.more):
  *    isVisibleTo refuses it to everyone else, its host included, and the nearby queries leave it out. An online
  *    plan's link reaches only the host and people who are in.
+ *  - Guests without an account (Plans for the holidays, H1) are invitation rows (planGuests.js). Their seats count in
+ *    every card. Their names, numbers, Maybe and room over 30 reach only an app that sent `guests=1`
+ *    (viewer.guests), while the plan's host has the switch; an older app reads the plan as it did.
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -28,8 +31,9 @@ const rules = require('./planRules');
 const planBusiness = require('./planBusiness');
 const { canReadPostModeration, postScopeAccess } = require('../pulse/readAccess');
 
-// planInvites requires this module; it is read when called.
+// planInvites and planGuests require this module; they are read when called.
 const invites = () => require('./planInvites');
+const guests = () => require('./planGuests');
 
 const POST_COLUMNS = 'id, user_id, title, content, event_date, event_end_date, latitude, longitude, location_precision, archived_at, archive_reason, moderation_state, created_at, read_scope, area_id, pulse_post_town_id, allow_external_share';
 const PLAN_COLUMNS = [
@@ -45,6 +49,8 @@ const PLAN_COLUMNS = [
   'repeat', 'series_id', 'series_index', 'series_next_at',
   // An online plan's link (place_kind 'online'): only the host and people in read it (buildDetail).
   'online_link',
+  // Plans for the holidays, H1: kids welcome, and the open link (its token reaches the host alone, in open_link).
+  'kids_welcome', 'open_invite_token', 'open_invite_ok_first',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -229,12 +235,15 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     moreTimesByPlan: new Map(),
     // Private plans where the viewer, a guest, has already made their one "Bring a friend" link.
     friendLinkPlans: new Set(),
+    // Guests without an account who are in or said maybe (planGuests.js), and whether each plan's host has the switch.
+    guestRowsByPlan: new Map(),
+    guestAnswersByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
   const hostedIds = plans.filter((p) => planBusiness.runsPlan(p, viewer)).map((p) => p.post_id);
   const friendPlanIds = plans.filter((p) => rules.isPrivate(p) && p.guests_can_invite && !hostedIds.includes(p.post_id)).map((p) => p.post_id);
-  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks] = await Promise.all([
+  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).in('status', ACTIVE_REQUEST_STATUSES),
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).eq('user_id', viewer.id),
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true }).eq('user_id', viewer.id).in('status', OPEN_REQUEST_STATUSES),
@@ -248,6 +257,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     invites().viewerInvites(viewer.id, planIds.filter((id) => !hostedIds.includes(id))),
     invites().hostInviteCounts(hostedIds),
     invites().friendLinkPlanIds(viewer.id, friendPlanIds),
+    guests().guestRows(planIds),
+    guests().switchByHost(hostIds),
   ]);
   for (const result of [activeRequests, myRequests, openCount, hostedRows, myHistory]) {
     if (result.error) throw new Error(`Failed to load plan details: ${result.error.message}`);
@@ -255,6 +266,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.myInviteByPlan = myInvites;
   ctx.inviteCountsByPlan = inviteCounts;
   ctx.friendLinkPlans = friendLinks;
+  ctx.guestRowsByPlan = guestRows;
+  ctx.guestAnswersByHost = guestFlags;
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -409,10 +422,15 @@ async function mutualConnectionCounts(viewerId, otherIds) {
 
 // ── Shaping ──────────────────────────────────────────────────
 
-function seatsTaken(plan, requests) {
+/**
+ * Seats taken: accepted requests (their party, and their kids where kids are welcome; one a family at a playdate),
+ * plus `guestSeats`, the adults and kids of guests without an account who said they're in (planGuests.seatsOf),
+ * counted from the moment they answer, also while they wait for the host's yes (K5).
+ */
+function seatsTaken(plan, requests, guestSeats = 0) {
   return (requests || [])
     .filter((r) => r.status === 'accepted')
-    .reduce((sum, r) => sum + rules.seatsFor(plan.kind, r.party_size), 0);
+    .reduce((sum, r) => sum + rules.seatsFor(plan, r.party_size, r.kids_count), 0) + (Number(guestSeats) || 0);
 }
 
 function waitlistOrder(requests) {
@@ -487,7 +505,7 @@ function askEligibility(plan, viewer, ctx, { myRequest, spotsLeft, state }) {
   return { can_ask: true, cannot_ask_reason: null };
 }
 
-function myRequestView(plan, request, { waitlistPosition = null } = {}) {
+function myRequestView(plan, request, { waitlistPosition = null, guestOn = false } = {}) {
   if (!request) return null;
   const reconfirmNeeded = Boolean(request.reconfirm_requested_at) && request.reconfirmed == null && request.status === 'accepted';
   return {
@@ -495,7 +513,8 @@ function myRequestView(plan, request, { waitlistPosition = null } = {}) {
     status: request.status,
     party_size: request.party_size,
     note: request.note || null,
-    kids_count: plan.kind === 'playdate' ? request.kids_count ?? null : null,
+    // A playdate's kids, or with kids welcome (H1, `guests=1`) how many kids come with this party.
+    kids_count: plan.kind === 'playdate' || (guestOn && plan.kids_welcome) ? request.kids_count ?? null : null,
     kids_age_bands: plan.kind === 'playdate' ? request.kids_age_bands || [] : null,
     reconfirm_needed: reconfirmNeeded,
     // What the host's change asked about ('time', 'place' or 'both'), so the card says what the push said.
@@ -541,8 +560,13 @@ function buildCard(plan, viewer, ctx) {
   const myRequest = ctx.myRequestByPlan.get(plan.post_id) || null;
   const role = viewerRole(plan, viewer, myRequest);
   const isIn = role === 'host' || role === 'guest';
-  const going = seatsTaken(plan, requests);
-  const spotsLeft = Math.max(0, plan.spots - going);
+  const guestRows = ctx.guestRowsByPlan?.get(plan.post_id) || [];
+  const going = seatsTaken(plan, requests, guests().seatsOf(guestRows));
+  // H1's parts reach an app that sent `guests=1`, while the plan's host has the switch. An older app reads room over
+  // 30 as 30 (K10).
+  const guestOn = Boolean(viewer.guests) && Boolean(ctx.guestAnswersByHost?.get(hostId));
+  const spotsShown = viewer.guests ? plan.spots : Math.min(plan.spots, rules.SPOTS_MAX);
+  const spotsLeft = Math.max(0, spotsShown - going);
   const waitlist = waitlistOrder(requests);
   const state = rules.planState(plan, startsAt(plan), endsAt(plan), now);
   // A neighbor's playdate keeps its time until the family is in. A business's session for kids is a public class.
@@ -596,7 +620,7 @@ function buildCard(plan, viewer, ctx) {
       mutual_connections: hostId === viewer.id ? 0 : ctx.mutualByHost.get(hostId) || 0,
       typical_answer_minutes: ctx.answerMinutesByHost.get(hostId) ?? null,
     },
-    spots: plan.spots,
+    spots: spotsShown,
     going_count: going,
     spots_left: spotsLeft,
     is_full: spotsLeft <= 0,
@@ -615,9 +639,9 @@ function buildCard(plan, viewer, ctx) {
       auto_rule: autoRule,
       feedback_given: Boolean(myRequest?.feedback),
     },
-    my_request: myRequestView(plan, myRequest, { waitlistPosition }),
+    my_request: myRequestView(plan, myRequest, { waitlistPosition, guestOn }),
     // The viewer's invitation (planInvites.js), or null: the app says "Sam invited you" and offers I'm in.
-    my_invite: invites().myInviteView(myInvite),
+    my_invite: invites().myInviteView(myInvite, { maybe: Boolean(viewer.guests) }),
     share_url: shareUrl(plan.post_id),
   };
 
@@ -637,6 +661,7 @@ function buildCard(plan, viewer, ctx) {
   }
   if (plan.business_user_id) addBusinessFields(card, plan, viewer, ctx);
   if (rules.isPrivate(plan)) addPrivateFields(card, plan, viewer, ctx, { role, myInvite });
+  if (guestOn) guests().addCardFields(card, plan, { role, requests, guestRows, counts: ctx.inviteCountsByPlan?.get(plan.post_id) });
   return card;
 }
 
@@ -796,10 +821,12 @@ function buildDetail(plan, viewer, ctx) {
       is_host: false,
       on_my_way: Boolean(request.on_my_way_at),
     };
+    // With kids welcome (H1, `guests=1`): how many kids come with each party, for the people line.
+    if (card.kids_welcome !== undefined && plan.kids_welcome) entry.kids_count = request.kids_count ?? 0;
     if (viewerIsHost) {
       entry.request_id = request.id;
       entry.distance_band = request.distance_band || null;
-      entry.kids_count = plan.kind === 'playdate' ? request.kids_count ?? null : undefined;
+      entry.kids_count = plan.kind === 'playdate' ? request.kids_count ?? null : entry.kids_count;
       entry.kids_age_bands = plan.kind === 'playdate' ? request.kids_age_bands || [] : undefined;
       entry.reconfirm_needed = Boolean(request.reconfirm_requested_at) && request.reconfirmed == null;
       const stats = ctx.peopleStats.get(userId) || { plans_joined: 0, hosted_before: false };
@@ -819,6 +846,8 @@ function buildDetail(plan, viewer, ctx) {
     }
     people.push(entry);
   }
+  // Guests without an account who are in (H1, `guests=1` only): a name and their numbers, no account.
+  if (card.kids_welcome !== undefined) people.push(...guests().peopleEntries(plan, ctx.guestRowsByPlan?.get(plan.post_id) || [], { viewerIsHost }));
   card.people = people;
   // A business's team is not in its plan's chat yet (planChat.ensureRoom): the room is the guests'.
   const hasChat = Boolean(plan.chat_room_id) && !(plan.business_user_id && viewerIsHost);
@@ -926,7 +955,7 @@ async function queryOpenPlansInBox(box, { kinds, scopeAccess, biz = false, more 
 async function ownPrivatePlans(viewer, { kinds, online = true } = {}) {
   const [requests, invited] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select('post_id').eq('user_id', viewer.id).in('status', ACTIVE_REQUEST_STATUSES).limit(200),
-    supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted']).limit(200),
+    supabaseAdmin.from('PlanInvite').select('post_id').eq('invitee_user_id', viewer.id).in('status', ['pending', 'accepted', 'maybe']).limit(200),
   ]);
   if (requests.error || invited.error) throw new Error(`Failed to load your plans: ${(requests.error || invited.error).message}`);
   const ids = [...new Set([...(requests.data || []), ...(invited.data || [])].map((row) => row.post_id))];
@@ -1124,7 +1153,7 @@ async function listMine(viewer) {
     else if (status === 'accepted') out.going.push(card);
     else if (status === 'pending') out.asked.push(card);
     else if (status === 'waitlisted') out.waitlisted.push(card);
-    else if (card.my_invite?.status === 'pending' && rules.isAskingOpen(plan, startsAt(plan), endsAt(plan))) out.invited.push(card);
+    else if (['pending', 'maybe'].includes(card.my_invite?.status) && rules.isAskingOpen(plan, startsAt(plan), endsAt(plan))) out.invited.push(card);
   }
   return out;
 }
@@ -1156,7 +1185,7 @@ async function isPartOfPrivatePlan(plan, viewer) {
   if (String(plan.host_user_id) === String(viewer.id)) return true;
   const [invite, request] = await Promise.all([
     supabaseAdmin.from('PlanInvite').select('id').eq('post_id', plan.post_id).eq('invitee_user_id', viewer.id)
-      .in('status', ['pending', 'accepted', 'declined']).limit(1),
+      .in('status', ['pending', 'accepted', 'declined', 'maybe']).limit(1),
     supabaseAdmin.from('PlanRequest').select('id').eq('post_id', plan.post_id).eq('user_id', viewer.id)
       .in('status', ACTIVE_REQUEST_STATUSES).limit(1),
   ]);
