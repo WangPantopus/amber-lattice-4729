@@ -135,6 +135,11 @@ final class MomentsMapViewModel {
     /// Part D: pins with an elevation float by day, and the sun they're drawn for (`MomentsFloat.swift`).
     var floatOn = false
     var sun: MomentSunDTO?
+    /// Only the Moments posted in the last 30 minutes, hour or day (`MomentsTimeFilter.swift`); kept while the app runs.
+    var timeFilter: MomentsTimeFilter = .all {
+        didSet { if timeFilter != oldValue { memo.reset() } }
+    }
+
     /// The clock the end times are read against; moved on each read and each minute.
     private(set) var now = Date() {
         didSet { memo.reset() }
@@ -305,11 +310,13 @@ final class MomentsMapViewModel {
 
     // MARK: - What shows
 
-    /// Every ring read, with what was watched or hidden since, and only Moments still running.
+    /// Every ring read, with what was watched or hidden since, and only Moments still running and inside the time filter.
     var currentRings: [MomentRingDTO] {
         // Read even when remembered, so a screen that shows them is redrawn when they change.
-        _ = (rings, now)
-        return memo.current { MomentsMapMemo.running(rings, now: now, watched: watched, hidden: hiddenAuthors) }
+        _ = (rings, now, timeFilter)
+        return memo.current {
+            MomentsMapMemo.running(rings, now: now, watched: watched, hidden: hiddenAuthors, since: timeFilter.since(now))
+        }
     }
 
     /// The rings inside the visible map, and the Moments with no location (they show wherever the map is).

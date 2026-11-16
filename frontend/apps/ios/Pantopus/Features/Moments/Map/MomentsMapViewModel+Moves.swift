@@ -57,7 +57,9 @@ extension MomentsMapViewModel {
                 zoom: 14 - step * 2
             )
             guard let reply: MomentsMapResponse = try? await MomentsAPI.send(box.endpoint, api: api) else { return }
-            let placed = reply.rings.filter { !$0.noLocation }
+            // Only what the time filter shows is worth a move.
+            let since = timeFilter.since(Date())
+            let placed = reply.rings.filter { !$0.noLocation }.compactMap { $0.posted(since: since) }
             let fresh = placed.filter { ring in !ring.mine && ring.moments.contains { !$0.seen } }
             // With something in view only what's new is worth a move; with nothing, anything is.
             var wanted = fresh.isEmpty && nothingInView ? placed : fresh

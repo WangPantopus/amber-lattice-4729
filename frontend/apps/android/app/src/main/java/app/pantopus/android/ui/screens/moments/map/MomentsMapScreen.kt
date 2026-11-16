@@ -155,6 +155,7 @@ fun MomentsMapScreen(
     val rings by viewModel.rings.collectAsStateWithLifecycle()
     val posts by viewModel.posts.collectAsStateWithLifecycle()
     val liveSpot by viewModel.liveSpot.collectAsStateWithLifecycle()
+    val timeFilter by viewModel.timeFilter.collectAsStateWithLifecycle()
     val toast = remember { ToastController() }
     LaunchedEffect(Unit) { viewModel.messages.collect { toast.info(it) } }
     // A note from outside the map ("This Moment has ended." after a push) is taken only by the map on screen: a map
@@ -183,6 +184,7 @@ fun MomentsMapScreen(
     LaunchedEffect(Unit) {
         while (true) {
             delay(REFRESH_MS)
+            viewModel.tick()
             viewModel.refresh()
         }
     }
@@ -315,6 +317,8 @@ fun MomentsMapScreen(
         )
         MomentsTopChrome(
             state = state,
+            timeFilter = timeFilter,
+            onTimeFilter = viewModel::chooseTimeFilter,
             heights = heights,
             onOpenMenu = actions.onOpenMenu,
             onBackFromSpot = {
@@ -374,6 +378,7 @@ fun MomentsMapScreen(
                 Spacer(Modifier.height(14.dp))
                 MomentsEmptyCard(
                     place = state.emptyPlace ?: state.areaLabel,
+                    filteredLine = timeFilter.emptyLine,
                     locationMissing = state.locationMissing,
                     onAdd = actions.onAdd,
                     onUseLocation = ::askLocation,
@@ -660,6 +665,8 @@ private fun MomentsMap(
 @Composable
 private fun MomentsTopChrome(
     state: MomentsMapUiState,
+    timeFilter: MomentsTimeFilter,
+    onTimeFilter: (MomentsTimeFilter) -> Unit,
     heights: MomentsHeightsActions,
     onOpenMenu: (() -> Unit)?,
     onBackFromSpot: () -> Unit,
@@ -670,13 +677,16 @@ private fun MomentsTopChrome(
 ) {
     Column(modifier = modifier) {
         MomentsTopRow(state, onOpenMenu, onBackFromSpot, onUseLocation, onUseHome, Modifier.onSizeChanged { onRowHeight(it.height) })
-        // Under the row while heights are on for you: the "Elevation" chip and its key (`MomentsHeights.kt`).
+        // Under the row: the time filter's chip, and while heights are on for you the "Elevation" chip and its key
+        // (`MomentsHeights.kt`).
         MomentsHeightsBar(
             state = state,
+            timeFilter = timeFilter,
+            onTimeFilter = onTimeFilter,
             onToggle = heights.onToggle,
             onKey = heights.onKey,
             onCloseKey = heights.onCloseKey,
-            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4),
+            modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4, end = Spacing.s4),
         )
     }
 }
@@ -952,6 +962,8 @@ private fun MomentsStrip(
 @Composable
 private fun MomentsEmptyCard(
     place: String?,
+    /** With the time filter on, what it covers: older Moments may still be there. */
+    filteredLine: String?,
     locationMissing: Boolean,
     onAdd: () -> Unit,
     onUseLocation: () -> Unit,
@@ -990,6 +1002,7 @@ private fun MomentsEmptyCard(
                     text =
                         when {
                             locationMissing -> "Turn on location to see Moments around you."
+                            filteredLine != null -> filteredLine
                             place != null -> "Share what's happening at $place."
                             else -> "Share what's happening around you."
                         },
