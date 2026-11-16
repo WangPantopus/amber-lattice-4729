@@ -1366,6 +1366,13 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     if (held?.payment_id) await require('../../stripe/stripeService').cancelAuthorization(held.payment_id).catch(() => null);
     mine = lapsed?.[0] || { ...mine, status: 'expired' };
   }
+  // A payment hold that ran out (B2) is not another ask: starting again keeps the count, so a guest whose payment
+  // took too long can always try again while there is room.
+  let holdLapsed = false;
+  if (mine && mine.status === 'expired' && plan.price_cents) {
+    const { data: was } = await supabaseAdmin.from('PlanRequest').select('unit_price_cents, paid_cents').eq('id', mine.id).maybeSingle();
+    holdLapsed = Boolean(was?.unit_price_cents && !was.paid_cents);
+  }
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
   const isIn = Boolean(mine && mine.status === 'accepted');
   // A second ask while waiting, or from someone already in, changes only what it sends; the rest stays as asked.
@@ -1439,7 +1446,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     // Asking again after withdrawing, leaving or expiring; invited again after a no or a removal.
     const again = invite ? ['withdrawn', 'left', 'expired', 'declined', 'removed'] : ['withdrawn', 'left', 'expired'];
     const { data, error } = await supabaseAdmin.from('PlanRequest')
-      .update({ ...row, ask_count: Math.min(rules.LIMITS.asksPerPlan, (mine.ask_count || 1) + 1) })
+      .update({ ...row, ask_count: holdLapsed ? (mine.ask_count || 1) : Math.min(rules.LIMITS.asksPerPlan, (mine.ask_count || 1) + 1) })
       .eq('id', mine.id).in('status', again).select(planService.REQUEST_COLUMNS);
     if (error) throw new Error(`Failed to send your request: ${error.message}`);
     if (!data || data.length === 0) return { status: 200, body: await requestResult(postId, viewer, mine.id) };
