@@ -588,7 +588,7 @@ A plan among friends only. A business's plan has no bring list.
 ```json
 { "scope": "group", "kind": "free_item", "item": "appetizer for the table",
   "group_size": 12, "group_by": "2026-11-20T01:00:00Z",
-  "if_short": "none", "state": "open", "settled_at": null }
+  "if_short": null, "state": "open", "settled_at": null }
 ```
 
 | Field | Values |
@@ -600,7 +600,7 @@ A plan among friends only. A business's plan has no bring list.
 | `applies_to` | For the money kinds: `spot`, `food`, `no_alcohol` |
 | `group_size` | 2 to the plan's spots |
 | `group_by` | Between now and the plan's start |
-| `if_short` | `none`, or a smaller deal of the same shape with `scope: "everyone"` |
+| `if_short` | `null`, or a smaller deal of the same shape with `scope: "everyone"`. Always an object or null, never a word |
 | `state` | `on` (a deal for everyone), `open`, `unlocked`, `short` |
 
 `PlanRequest` gains `deal_used_at timestamptz` and `deal_cents integer`.
@@ -622,6 +622,30 @@ A plan among friends only. A business's plan has no bring list.
 
   `text` is written by the server from the fixed kinds. `mine` is there for a
   guest who is in; `ready` once the deal is on or unlocked.
+- **Every word of a deal is the server's** (settled November 16 with the
+  Android session: an app never composes "20% off"). The card's `deal` also
+  carries:
+
+  | Field | Example | Where it shows |
+  | --- | --- | --- |
+  | `tag` | "Deal", "20% off" | The one tag on a list row |
+  | `short` | "A free appetizer", "20% off food" | "Your deal" |
+  | `condition_text` | "if 12 people are in by Friday at 5:00 PM" | Under the sentence, for a group deal |
+  | `group.left_text` | "2 days left", "3 hours left", "Closes at 5:00 PM" | The time left |
+  | `if_short_text` | "If it doesn't get to 12, the night still happens, without the deal." | Under the count, while open |
+  | `state_text` | "Unlocked: 14 are in", "It didn't get to 12. The night still happens." | The banner or the card, once settled |
+  | `join_text` | "Free to join. Show your deal there." | Under the join button |
+  | `mine.text` | "Show this to your server." | "Your deal" |
+  | `mine.name` | "Dana" | "Your deal" for something free, so staff can match the person (K8) |
+  | `known_going` | first names of people the viewer knows who are in | The faces line; as the Plans with businesses contract, 5.4 |
+
+- `POST /api/plans/deal-preview` takes `{ "business_user_id", "deal", "spots",
+  "starts_at" }` and answers `{ "text", "condition_text", "if_short_text",
+  "claim_text", "errors": { "<field>": "<words>" } }`.
+- The answer that lists who a person may host as carries, for each business,
+  `"can": { "deals": true, "price": false, "pay_here": false }` and
+  `"payouts_ready": false`, so the form knows which rows to draw and when to
+  offer the payout setup.
 - Posting and changing a business's plan take `deal`. A deal cannot change once
   anyone is in, except to be removed, which tells everyone.
 - `POST /api/plans/deal-preview` (staff with `plans.manage` for the business)
@@ -685,8 +709,28 @@ captured at once with `payment_type = 'plan_payment'`, the request made
 - Refunds follow [02-payments.md](02-payments.md), section 8, through
   `paymentRefundService`. `PlanRequest.refund_until` is the plan's start less 24
   hours.
-- A card adds `"price": { "cents": 1800, "text": "$18" }` and, for a guest who
-  paid, `"paid": { "cents": 1800, "refund_until": "…", "receipt_url": "…" }`.
+- A card adds `"price": { "cents": 1800, "text": "$18", "line": "$18 a person",
+  "join_text": "$18 a person. Full refund until Friday at 10:00 AM." }` and,
+  for a guest who paid, `"paid": { "cents": 1800, "text": "Paid $18.00",
+  "refund_until": "…", "leave_back_cents": 1800, "leave_text": "You'll get
+  $18.00 back.", "receipt": { "link": "…" } }`. `leave_text` is what the
+  person gets back if they leave now, worked out by the server (it differs
+  from `refund_until` after a group price fell short or a part was refunded).
+  `receipt.link` is a link the apps already open, to the receipt in Mail.
+- **A quote before joining.** `POST /api/plans/:id/requests/quote` with
+  `{ "party_size", "kids_count" }` answers what the sheet shows, with no side
+  effect: `{ "spots", "each_text", "total_cents", "total_text", "group":
+  { "in", "size", "text": "If 10 are in by Thursday at 6:00 PM, everyone pays
+  $14 and $4.00 comes back to your card." } | null, "refund_text" }`. An app
+  never multiplies a price.
+- **A charge that succeeds after the 10-minute hold ended.** If the plan still
+  has room for the party, the person is in. If it filled meanwhile, the whole
+  payment is refunded at once and `confirm` answers `409 full`, "This filled
+  while you were paying. Your {$18.00} is on its way back."
+- **What may change after posting.** `pay_here` and `tips_on` at any time. A
+  price only while nobody is in or paying.
+- One error code for a business that may not charge: `409
+  payout_account_needed`.
 
 ### 10.3 Paying from the web page (B3)
 
@@ -719,6 +763,21 @@ Pay. It calls the same routes as the apps. No account-less payment.
   possible; the functions that pay gigs and invoices are replaced only if it is
   not, and then with every existing branch as it is, shown by comparing the
   same payments before and after. Every other payment kind keeps today's rule.
+- **Two worked examples for a group price** (added November 16; a $18 spot,
+  group price $14, the card company's reported fee on the $18 charge $0.82).
+  The business bears the card fee in proportion to what the guest paid in the
+  end; Pantopus absorbs the rest. (02-payments' "about 12 cents" was an
+  estimate; this is the rule.)
+
+  | | A guest Pantopus brought | The business's own guest |
+  | --- | --- | --- |
+  | Charged, then returned | $18.00, $4.00 back | $18.00, $4.00 back |
+  | Paid in the end | $14.00 | $14.00 |
+  | Pantopus's cut | 15% of $14.00 = $2.10 | 5% of $14.00 = $0.70 |
+  | Card fee borne by the business | none | round($0.82 × 14 ÷ 18) = $0.64 |
+  | The business gets | $11.90 | $12.66 |
+  | Pantopus, after the card fee it pays | $2.10 − $0.82 = $1.28 | $0.70 − $0.18 = $0.52 |
+
 - A card's `deal` adds `"price_cents": 1400` and, for a guest,
   `"mine": { "back_cents": 400, "back_at": "…" }`.
 
@@ -765,8 +824,25 @@ guest's Receipts as a paid invoice is today.
 - The payment: `sold_type = 'plan_bill'`, `amountCents` to `priceSale` is the
   subtotal less the discount, `tip_cents` beside it, `payout_after` as a paid
   spot's.
-- A payment that succeeds reaches the staff's list over the socket the plan's
-  guests already use, and the guest's app shows board 13.
+- A payment that succeeds reaches the staff's list within a few seconds (the
+  socket the plan's guests use, or the list asked again every 5 seconds while
+  it is open), and the guest's app shows board 13.
+- **Totals are the server's** (settled November 16). `GET …/checks/mine`
+  carries the lines as text and cents and, when tips are on, `"tip_choices":
+  [{ "label": "18%", "tip_cents", "tip_text": "$8.64", "total_cents",
+  "total_text": "$47.04" }, …]` and `"no_tip": { "total_cents", "total_text" }`.
+  For another amount, `POST …/checks/:checkId/quote` with `{ "tip_cents" }`
+  answers the lines and the total, with no side effect.
+- **Learning that it is paid.** `POST …/checks/:checkId/confirm`, as a paid
+  spot has: it answers the paid check, `{ "state": "paid", "paid_text": "Fri,
+  Nov 20 · 8:52 PM", "payer": "Dana L.", "method_text": "Apple Pay", the
+  lines, "total_text", "receipt": { "link" } }`, and is safe to call twice.
+  `GET …/checks/mine` answers the same after a relaunch.
+- **A check is never an ordinary invoice to the guest.** It does not list in
+  Wallet's received invoices or in Mail as a bill, and the invoice pay route
+  refuses it; it is paid only through its own route, with its deal and tip.
+- The check's notice links to the plan with `metadata.opens: "check"`.
+- A second check to a guest who used their deal carries no discount.
 
 ### 11.3 The tip's share of the card fee
 
@@ -784,7 +860,11 @@ plan's chat.
 
 - `POST /api/plans/:id/tip` with `{ "amount_cents" }`: a guest who paid for a
   spot, on a plan with `tips_on`, once, until 7 days after the plan ends. A
-  separate charge with `sold_type = 'plan_tip'`.
+  separate charge with `sold_type = 'plan_tip'`. The card carries, while it may
+  be given, `"tip_later": { "until": "…", "choices": [{ "label": "18%",
+  "tip_cents", "tip_text" }, …] }`; the route answers the payment sheet's
+  values, and its `confirm` answers `{ "state": "paid", "text": "You tipped
+  $5.00" }`.
 - The statement is the shared one (`GET /api/businesses/:businessId/statement`,
   the business graph's shared contract 5.4). It is not built yet: this step
   builds the route, behind `business_statement` (off), for staff with

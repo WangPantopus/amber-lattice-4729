@@ -71,7 +71,8 @@ page of a business's plan, with one card added under the business's name.
      gets {10% off food}."
 3. "Share: every friend who joins counts": the system share sheet with the
    plan's link. Shown for an open group deal.
-4. "I'm in": the shipped join. On a paid plan it opens P1.
+4. The shipped join button with its shipped word ("Join"). On a paid plan it
+   opens P1.
 5. One line under it, by what the plan asks:
    - a free plan with a deal on the bill: "Free to join. Pay your bill there in
      Pantopus and the deal comes off."
@@ -88,22 +89,30 @@ over or cancelled is the shipped state; the deal card stays as it was last.
 Picture `08-unlocked.png` (board `Unlocked.dc.html`). The shipped page of
 a plan the person is in, with:
 
-1. For a group deal that unlocked, a banner in the ok color: "Unlocked: {14}
-   are in" / "Everyone who joined by {5:00 PM} gets the deal". Before the
-   unlock it is D1's card.
+1. For a group deal that unlocked, the page's one banner (the place of
+   "You're in"; no second banner) reads `state_text`, "Unlocked: {14} are in",
+   and under it "Everyone who's in gets the deal". People who join after the
+   unlock get it too, so the words never name a time. Before the unlock it is
+   D1's card.
 2. "Your deal", a card from `deal.mine`:
    - "Ready" in the ok color, the deal's short text, the business and the time.
    - For a deal on the bill: "It comes off by itself when you pay your bill
      here in Pantopus. Nothing to show, nothing to type." and, once
      `plans_pay_here` is on for the plan, the button "Pay at {business}" (C1).
-   - For something free (B1): "Show this to your server." and no button. When
-     staff mark it used: "Used {8:40 PM}" in the secondary color in place of
-     "Ready". There is no code and no QR (K8).
+   - For something free (B1): the guest's first name with the item ("{Dana}:
+     a free appetizer for the table"), "Show this to your server." and no
+     button. When staff mark it used: "Used {8:40 PM}" in the secondary color
+     in place of "Ready". There is no code and no QR (K8).
+   - After the guest paid a check: "Used {8:52 PM}", and in place of the pay
+     button a row "Paid {$47.04}" with "Receipt", which opens C2 for that
+     check. If staff send another check, "Pay at {business}" shows again; a
+     deal is used once.
    - `mine.state` is `waiting` before a group deal settles ("Not unlocked
      yet"), `ready`, `used`, or `none` after a deal fell short with nothing in
      its place.
 3. As shipped: Directions, Calendar, Group chat, who is in.
-4. A quiet card when the business has this plan in a series: "{Trivia} is
+4. Drawn, not in this build (a business's plans do not repeat yet): a quiet
+   card when the business has this plan in a series: "{Trivia} is
    every {Friday} here" / "Follow {business} to hear about the next one first"
    with "Follow" (the shipped follow of a business).
 5. "Can't make it" with, where the deal is ready, "Leaving gives up your
@@ -170,9 +179,11 @@ changes.
 
 ### Mark used (staff, B1)
 
-On the business's shipped roster, a guest who is in and holds a "something
-free" deal that is ready has "Mark used" on their row; after "Mark {Dana}'s
-{free appetizer} used? This can't be undone." it reads "Used {8:40 PM}".
+On the business's shipped host page, in its Going list (the separate roster
+with check-in of the earlier design is not built): a guest who is in and holds
+a "something free" deal that is ready has "Mark used" as their row's action
+(Remove stays reachable as it is today); after "Mark {Dana}'s {free appetizer}
+used? This can't be undone." the row reads "Used {8:40 PM}".
 `POST /api/plans/:id/requests/:requestId/deal-used`.
 
 ---
@@ -194,8 +205,12 @@ plan, opened by "I'm in" on a plan with a price.
    amount above is the group price. Short: no card.
 5. "Full refund until {Friday at 10:00 AM}" (`refund_until`), or "No refund
    now; the plan starts in less than a day" after it.
-6. The payment buttons of the shipped sheet: "Pay with Apple Pay" (or Google
-   Pay), "Use a card".
+6. The platform's shipped way into paying: on iPhone "Pay with Apple Pay" and
+   "Use a card" as its sheet has them; on Android one "Pay {$18.00}" button
+   into the shipped sheet, which holds Google Pay and the card.
+
+Every amount on this sheet is the server's, from the quote (contract 10.2):
+the app asks again when the number of spots changes and never multiplies.
 
 After paying: the plan as D2 shows it, with "Paid {$18.00}" and "Receipt"
 under the title; the receipt is the shipped paid-invoice receipt in Mail, under
@@ -260,7 +275,10 @@ Picture `13-paid.png` (board `Paid.dc.html`). Shown when the payment succeeds.
 4. "The receipt is in Mail, under Receipts. {business} sees the payment on its
    guest list now."
 5. "Done", and "Something's wrong with this payment", which opens the shipped
-   payment-problem flow for that payment.
+   conversation with the business, its first line naming the payment ("About
+   my payment of {$47.04} on {Fri, Nov 20}: "). The business can refund from
+   its list. (Neither app has a payment-problem screen; this was the
+   designer's choice on November 16.)
 
 ### C3. The business's guest list
 
@@ -271,8 +289,8 @@ shipped roster with money added, for staff with `plans.manage`.
 2. A filter: "All", "Not paid", "Paid".
 3. A row a guest: first name and last initial; "Pantopus" or "Yours" (who
    brought them, 02-payments section 4); then by state:
-   - not paid: "Here since {7:05 PM}" once they are marked here, and "Send a
-     check";
+   - not paid: "Send a check" ("Here since …" on the picture belongs to
+     check-in, which is not built);
    - a check sent: "Check sent · {$52.00}" and "Waiting";
    - paid: "{$38.40} · tip {$8.64}" and "Paid".
 4. A note: "'Pantopus' marks a guest Pantopus brought; 'Yours' is your own.
@@ -286,9 +304,14 @@ shipped roster with money added, for staff with `plans.manage`.
 on the bill, "Part the deal doesn't cover (alcohol)" with an amount, 0 at the
 start (`no_deal_cents`); "Send". The guest gets the check's notice at once.
 
-On the business's form: "Guests can pay their bill here" (`pay_here`) and,
-under it when on, "Take tips" (`tips_on`), both off at the start, both needing
-payouts set up as a price does.
+This list is the host page's Going list with money added: the three totals
+take its top, and a row keeps its place. The picture's last line ("8 more
+guests below…") is left out.
+
+On the business's form: "Guests can pay their bill here" (`pay_here`), off at
+the start and needing payouts set up as a price does. Turned on, "Take tips"
+(`tips_on`) appears under it, starting on for a Food & drinks plan and off for
+every other kind (02-payments, section 6).
 
 ### C4. A tip after a paid plan, and the statement (B6)
 
@@ -301,6 +324,20 @@ plan lines (contract 11.5); the business's statement screens belong to the
 business graph's own work and are drawn there.
 
 ---
+
+## Settled with the build sessions (November 16)
+
+- One tag a row, in this order: the deal's tag, then the price, then "Free";
+  never in place of "You're in", "Requested" or "Invited".
+- The step count reads "of 4" only with deals on and a business chosen.
+- With a price, the shipped line "Free, and for adults" reads the server's
+  `price.line` in place of "Free".
+- B4 offers "Percent off" and "Dollars off" on "The spot"; "Two for one" comes
+  with the bill.
+- The price row and the two pay rows are on the host form. The Change screen
+  shows what the server lets change (contract 10.2).
+- Android is light only; "light and dark" in rule 7 is iPhone and the web.
+- The faces line shows only when the server sends `known_going`.
 
 ## Notices the apps must handle (business track)
 
