@@ -186,6 +186,8 @@ export type PublicPlan = {
   repeat?: { text: string; short: string; last_on: string } | null;
   /** A private plan. Without a live invitation in the link this is the only key, and there is no card to show. */
   private?: boolean;
+  /** The occasion that started it (H3): its name stands where the kind's would. */
+  occasion?: { key: string; text: string } | null;
   /**
    * Plans for the holidays (H1), while the host has the switch: with a way in (an invitation's token, the open link)
    * or the guest's own key, the form and the guest's own answer. Absent otherwise: the page is today's.

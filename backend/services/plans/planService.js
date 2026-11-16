@@ -53,6 +53,8 @@ const PLAN_COLUMNS = [
   'kids_welcome', 'open_invite_token', 'open_invite_ok_first',
   // H2: the bring list (planBring.js), read by the host and the people in only.
   'bring_list',
+  // H3: the occasion that started it (planOccasions.js).
+  'occasion',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -240,14 +242,15 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Guests without an account who are in or said maybe (planGuests.js), and whether each plan's host has the switch.
     guestRowsByPlan: new Map(),
     guestAnswersByHost: new Map(),
-    // Whether each plan's host has the bring list (H2).
+    // Whether each plan's host has the bring list (H2), and occasions (H3).
     bringByHost: new Map(),
+    occasionByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
   const hostedIds = plans.filter((p) => planBusiness.runsPlan(p, viewer)).map((p) => p.post_id);
   const friendPlanIds = plans.filter((p) => rules.isPrivate(p) && p.guests_can_invite && !hostedIds.includes(p.post_id)).map((p) => p.post_id);
-  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags, bringFlags] = await Promise.all([
+  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags, bringFlags, occasionFlags] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).in('status', ACTIVE_REQUEST_STATUSES),
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).eq('user_id', viewer.id),
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true }).eq('user_id', viewer.id).in('status', OPEN_REQUEST_STATUSES),
@@ -264,6 +267,7 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     guests().guestRows(planIds),
     guests().switchByHost(hostIds),
     require('./planBring').switchByHost(plans.filter((p) => p.bring_list).map((p) => p.host_user_id)),
+    require('./planOccasions').switchByHost(plans.filter((p) => p.occasion).map((p) => p.host_user_id)),
   ]);
   for (const result of [activeRequests, myRequests, openCount, hostedRows, myHistory]) {
     if (result.error) throw new Error(`Failed to load plan details: ${result.error.message}`);
@@ -274,6 +278,7 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.guestRowsByPlan = guestRows;
   ctx.guestAnswersByHost = guestFlags;
   ctx.bringByHost = bringFlags;
+  ctx.occasionByHost = occasionFlags;
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -668,6 +673,12 @@ function buildCard(plan, viewer, ctx) {
   if (plan.business_user_id) addBusinessFields(card, plan, viewer, ctx);
   if (rules.isPrivate(plan)) addPrivateFields(card, plan, viewer, ctx, { role, myInvite });
   if (guestOn) guests().addCardFields(card, plan, { role, requests, guestRows, counts: ctx.inviteCountsByPlan?.get(plan.post_id) });
+  // The occasion that started the plan (H3), while its host has the switch: the tag reads its name in place of the
+  // kind's. An added field older apps ignore; the kind, its color and its pin don't change.
+  if (plan.occasion && ctx.occasionByHost?.get(hostId)) {
+    const occasion = require('./planOccasions').view(plan.occasion);
+    if (occasion) card.occasion = occasion;
+  }
   // The bring list (H2), for the host and the people in, while the host has the switch. An added field older apps
   // ignore, so it needs no marker.
   if (isIn && plan.bring_list && ctx.bringByHost?.get(hostId)) {

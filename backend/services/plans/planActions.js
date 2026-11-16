@@ -600,6 +600,12 @@ async function createPlan(user, input, internal = {}) {
     if (again) return planBodyFor(again, viewer);
   }
 
+  // The occasion that started it (H3), while the host has its switch: a person's plan only.
+  let occasion = null;
+  if (!hostAs && input.occasion != null && (await require('./planOccasions').enabledFor(viewer.id))) {
+    occasion = require('./planOccasions').checkedKey(input.occasion);
+    if (!occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+  }
   // The host form's bring list (H2, A3), while the host has its switch: a person's plan only.
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
@@ -686,6 +692,7 @@ async function createPlan(user, input, internal = {}) {
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
     ...(kidsWelcome ? { kids_welcome: true } : {}),
     ...(bringList ? { bring_list: bringList } : {}),
+    ...(occasion ? { occasion } : {}),
     timezone,
     status: 'open',
   });
@@ -698,7 +705,9 @@ async function createPlan(user, input, internal = {}) {
     plan_id: post.id, kind, ...(hostAs ? { business: true } : {}), ...(audience === 'invited' ? { private: true } : {}),
     ...(place.kind === 'online' ? { online: true } : {}),
     ...(repeat ? { repeats: repeat.freq, series_index: internal.series ? internal.series.index : 1 } : {}),
+    ...(occasion ? { occasion } : {}),
   } });
+  if (occasion && !internal.series) recordFunnelEvent('plan_occasion_started', { userId: viewer.id, meta: { plan_id: post.id, kind, occasion } });
   if (hostAs) {
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
     return planBodyFor(post.id, viewer);
@@ -889,6 +898,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       });
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
+  }
+  // The occasion (H3): another from the list, or null for none, with the switch on.
+  if (patch.occasion !== undefined && !plan.business_user_id && (await require('./planOccasions').enabledFor(viewer.id))) {
+    const occasion = patch.occasion === null ? null : require('./planOccasions').checkedKey(patch.occasion);
+    if (patch.occasion !== null && !occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+    planUpdate.occasion = occasion;
   }
   // Kids welcome (H1): with the switch on, on a person's plan that isn't a playdate.
   if (patch.kids_welcome !== undefined && viewer.guestAnswersFlag && !plan.business_user_id && plan.kind !== 'playdate') {

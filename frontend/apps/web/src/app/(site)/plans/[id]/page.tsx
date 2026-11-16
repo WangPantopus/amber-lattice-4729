@@ -859,7 +859,7 @@ export default async function PublicPlanPage({ params, searchParams }: PageProps
             {online ? <OnlineHero kind={plan.kind} /> : <MiniMap kind={plan.kind} placeName={business ? plan.place?.name || null : null} />}
             <div className="flex flex-col gap-2 px-4 pb-4 pt-[14px]">
               <div className="flex flex-wrap items-center gap-2">
-                <KindTag kind={plan.kind} label={business ? plan.label_text : null} />
+                <KindTag kind={plan.kind} label={business ? plan.label_text : plan.occasion?.text || null} />
                 {online ? <OnlineChip /> : null}
                 {plan.private ? <PrivateChip /> : null}
               </div>
