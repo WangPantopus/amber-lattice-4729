@@ -23,6 +23,7 @@ const momentChat = require('../services/moments/momentChat');
 const { adultStatus, confirmAdult } = require('../services/adultAttestation');
 const momentUpload = require('../services/moments/momentUpload');
 const momentNotify = require('../services/moments/momentNotify');
+const momentSchedule = require('../services/moments/momentSchedule');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { areaPoint } = require('../utils/areaCells');
@@ -100,7 +101,8 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * (`can_show_height`), the 18+ state, and whether the author has a connection (`has_connections`: a Moment with no
  * location needs one). With no point (location off) it answers only the last two (and `can_show_height: false`).
  * With the Sky on for the caller (`sky_places`) it adds `sky: true`, the area the point floats over (`area`: its town,
- * point and disc), the public place that may take a pin there (`place`) and whether one may be pinned (`can_pin`).
+ * point and disc), the public place that may take a pin there (`place`), whether one may be pinned (`can_pin`) and
+ * the "Share later" times on offer now (`share_later`).
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
@@ -130,7 +132,7 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       adult_confirmed: Boolean(adult.attestedAt) && !adult.ineligible,
       pick_within_m: momentPlace.PICK_PLACE_M,
       ...(connections ? { has_connections: connections.length > 0 } : {}),
-      ...(sky ? await skyPreview(at, atHome) : {}),
+      ...(sky ? await skyPreview(req.user.id, at, atHome) : {}),
     });
   } catch (error) {
     sendError(res, error, 'place_preview');
@@ -140,10 +142,12 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
 /**
  * The Sky's part of the preview: the area a point floats over (its town, read at the area's own point so the words
  * depend on the area only; its point; its disc), the place "Pin it at a place" starts with, and whether a pin is
- * possible (never at home).
+ * possible (never at home), and the "Share later" choices on offer now in the author's time zone (`tonight` only
+ * before 7 pm), each with the time it would share.
  */
-async function skyPreview(at, atHome) {
-  if (at.latitude == null) return { sky: true, area: null, place: null, can_pin: false };
+async function skyPreview(userId, at, atHome) {
+  const shareLater = momentSchedule.choices(Date.now(), await momentSchedule.zoneFor(userId, at.latitude, at.longitude));
+  if (at.latitude == null) return { sky: true, area: null, place: null, can_pin: false, share_later: shareLater };
   const area = await areaPoint(at.latitude, at.longitude);
   const [label, place] = await Promise.all([
     momentPlace.townAt(area.latitude, area.longitude),
@@ -154,6 +158,7 @@ async function skyPreview(at, atHome) {
     area: { label, latitude: area.latitude, longitude: area.longitude, radius_m: area.radius_m },
     place: place ? { key: place.key, label: place.label } : null,
     can_pin: !atHome,
+    share_later: shareLater,
   };
 }
 
@@ -235,6 +240,9 @@ const createSchema = Joi.object({
   // The Sky (optional; used while `sky_places` is on for the author): pin the Moment at a public place: the one named
   // by `venue_id` or a venue's `place_key`, else the one naming the spot (place-preview's `place`).
   pin: Joi.string().valid('place').allow(null),
+  // The Sky (optional; while `sky_places` is on for the author): hold the Moment until then; only its author sees it
+  // before (momentSchedule.js).
+  share_later: Joi.string().valid(...momentSchedule.KEYS).allow(null),
   // "Show height" (optional; behind the `moment_heights` flag): how high above sea level the phone, or the album
   // photo, says the Moment was made, in metres, with how far off that may be and how fast the phone was moving when
   // it knows. Sent only when the author turned the switch on; everyone reads feet rounded to 10 (store.shownAltitude).
@@ -283,7 +291,13 @@ router.post('/', createLimiter, async (req, res) => {
     await store.checkPostingRules(req.user, body);
     // With the Sky on for the author, section 3 of the phase A contract decides where the Moment goes; off, today's
     // rules do.
-    const sky = !unplaced && await store.skyOn(req.user);
+    const skyFor = await store.skyOn(req.user);
+    const sky = !unplaced && skyFor;
+    // "Share later" (with the Sky on, a Moment with no place too): the time it shares, worked out now.
+    const shareAt = skyFor && body.share_later
+      ? momentSchedule.shareAtFor(body.share_later, Date.now(),
+        await momentSchedule.zoneFor(req.user.id, body.location.latitude, body.location.longitude))
+      : null;
     const placed = sky ? await skyPlacement(req.user.id, body) : null;
     // A venue picked in the place picker moves the pin to it and names it; found again here by its id near the pin.
     const venue = sky ? placed.venue : body.venue_id && !body.show_area
@@ -338,12 +352,14 @@ router.post('/', createLimiter, async (req, res) => {
       altitude,
       series: body.series || null,
       area,
+      shareAt,
     }), id);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
-      ...(sky ? { floating: Boolean(area) } : {}) });
+      ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
-    // A text card is live now: its author's connections hear of it (a photo or video when its check finishes). After
-    // the answer, and on its own: it never slows or fails the post.
+    // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
+    // later at its time, from jobs/momentsShareLater.js). After the answer, and on its own: it never slows or fails the
+    // post.
     if (created && body.kind === 'text') momentNotify.notifyConnections(row);
   } catch (error) {
     sendError(res, error, 'create');

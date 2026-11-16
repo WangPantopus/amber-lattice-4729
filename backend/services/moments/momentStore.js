@@ -14,6 +14,10 @@
 // always floats. A floating Moment stores only its area's point (latitude, longitude and the effective pair),
 // location_precision 'approx_area', show_area true (so apps from before draw it as an area), and
 // post_metadata.area = { v: 1, step, radius_m }. Where the phone was is never written.
+// "Share later" (same flag; services/moments/momentSchedule.js): post_metadata.moment.share_at holds a Moment until
+// then. Its stored state follows the upload as usual, and every read works out from share_at that it is 'scheduled'
+// (only its author sees it) until the time comes; its hours count from then, and everyone reads that time as when it
+// was posted (`created_at`) with `earlier: true`.
 // A Moment with no location (location_source 'none', founder 2026-11-11) has no point and no place: it goes to the
 // author's connections only, never on the map; they find it in the map's row of faces (GET /map `unplaced`).
 // Its place label is location_name (what everyone reads), its audience Post.audience ('nearby' | 'connections').
@@ -112,12 +116,30 @@ function hasEnded(row, now = Date.now()) {
     || !row.story_expires_at || Date.parse(row.story_expires_at) <= now;
 }
 
-/** What the author reads as the Moment's state (CONTRACT "Shapes"); others only ever see 'live' ones. */
+/**
+ * What the author reads as the Moment's state (CONTRACT "Shapes"); others only ever see 'live' ones. A Moment shared
+ * later is 'scheduled' once its file is in and checked, until its time.
+ */
 function momentState(row, now = Date.now()) {
   if (hasEnded(row, now)) return 'ended';
   if (row.moderation_state === 'held') return 'held';
   const { state } = meta(row);
-  return ['uploading', 'checking', 'live'].includes(state) ? state : 'live';
+  const stage = ['uploading', 'checking', 'live'].includes(state) ? state : 'live';
+  return stage === 'live' && isScheduled(row, now) ? 'scheduled' : stage;
+}
+
+/** Held by "Share later" until a time still to come. */
+function isScheduled(row, now = Date.now()) {
+  const at = Date.parse(meta(row).share_at || '');
+  return Number.isFinite(at) && at > now;
+}
+
+/**
+ * When everyone reads that the Moment was posted: when it went live for one shared later (so apps say "Earlier today"
+ * from `earlier`, and older apps the time it went live), else when it was made.
+ */
+function shownAt(row) {
+  return meta(row).share_at ? new Date(wentLiveAt(row)).toISOString() : row.created_at;
 }
 
 // The point everyone sees, the author included: the exact pin, the stored area point of a floating Moment (it holds
@@ -296,7 +318,7 @@ async function flagOnFor(name, viewer) {
 }
 
 function briefOf(row, seen) {
-  return { id: row.id, kind: meta(row).kind, created_at: row.created_at, expires_at: row.story_expires_at, seen };
+  return { id: row.id, kind: meta(row).kind, created_at: shownAt(row), expires_at: row.story_expires_at, seen };
 }
 
 /**
@@ -335,8 +357,11 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     area: isFloating(row) && Number.isFinite(row.post_metadata.area.radius_m)
       ? { radius_m: row.post_metadata.area.radius_m } : null,
     audience: row.audience === 'connections' ? 'connections' : 'nearby',
-    created_at: row.created_at,
+    created_at: shownAt(row),
     expires_at: row.story_expires_at,
+    // Shared later (the Sky): apps say "Earlier today"; its author also reads when it shares.
+    earlier: Boolean(m.share_at),
+    share_at: own ? (m.share_at || null) : null,
     hours: m.hours,
     // A part of a longer video posted as several Moments: which one, of how many (null for any other Moment).
     series: m.series ? { id: m.series.id, index: m.series.index, count: m.series.count } : null,
@@ -516,7 +541,7 @@ async function shownUnplaced(viewerId) {
   if (!rows.length) return [];
   const [ctx, reported] = await Promise.all([viewerContext(viewerId, rows.map((r) => r.user_id)), reportedIds(viewerId)]);
   return rows.filter((row) => canSee(row, ctx) && !reported.has(row.id))
-    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    .sort((a, b) => Date.parse(shownAt(b)) - Date.parse(shownAt(a)))
     .map((row) => ({ row, point: { latitude: null, longitude: null } }));
 }
 
@@ -581,9 +606,9 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
   }
   // The newest MAX_RINGS rings; only theirs are named and marked.
   const kept = [...groups.entries()].map(([key, members]) => {
-    members.sort((a, b) => Date.parse(a.row.created_at) - Date.parse(b.row.created_at));
+    members.sort((a, b) => Date.parse(shownAt(a.row)) - Date.parse(shownAt(b.row)));
     return { key, members, newest: members[members.length - 1] };
-  }).sort((a, b) => Date.parse(b.newest.row.created_at) - Date.parse(a.newest.row.created_at)).slice(0, MAX_RINGS);
+  }).sort((a, b) => Date.parse(shownAt(b.newest.row)) - Date.parse(shownAt(a.newest.row))).slice(0, MAX_RINGS);
   const [authors, marks, thumbs, heights] = await Promise.all([
     loadAuthors(kept.map(({ newest }) => newest.row.user_id)),
     viewerMarks(viewerId, kept.flatMap(({ members }) => members.map(({ row }) => row.id))),
@@ -608,7 +633,7 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
       flying: Boolean(high?.flying),
       moments,
       unseen_count: moments.filter((m) => !m.seen).length,
-      newest_at: newest.row.created_at,
+      newest_at: shownAt(newest.row),
       mine,
     };
   });
@@ -720,8 +745,10 @@ async function viewersOf(row) {
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
   location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
-  area = null }) {
+  area = null, shareAt = null }) {
   const now = createdAt ? new Date(createdAt) : new Date();
+  // A Moment shared later counts its hours from its time.
+  const starts = shareAt ? new Date(shareAt) : now;
   const live = kind === 'text';
   // A floating Moment (the Sky) keeps its area's point and nothing finer.
   if (area) {
@@ -749,7 +776,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
     distribution_targets: [],
     is_story: true,
     created_at: now.toISOString(),
-    story_expires_at: new Date(now.getTime() + hours * HOUR_MS).toISOString(),
+    story_expires_at: new Date(starts.getTime() + hours * HOUR_MS).toISOString(),
     show_on_profile: false,
     profile_visibility_scope: 'hidden',
     state: 'open',
@@ -771,6 +798,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
         ...(venueId ? { venue_id: venueId } : {}),
         ...(series && kind === 'video' ? { series: { id: series.id, index: series.index, count: series.count } } : {}),
         ...(altitude ? { altitude_ft: altitude.altitude_ft, ...(altitude.flying ? { flying: true } : {}) } : {}),
+        ...(shareAt ? { share_at: new Date(shareAt).toISOString() } : {}),
         location_source: location.source,
         state: live ? 'live' : 'uploading',
         media: null,
@@ -883,11 +911,15 @@ async function updateMoment(row, { moment, ...columns }, expect = {}) {
   return data || null;
 }
 
-/** The Moment goes live: its time starts now (CONTRACT: expires_at counts from going live). */
+/**
+ * The Moment goes live: its time starts now (CONTRACT: expires_at counts from going live), or at its time for one
+ * shared later whose time hasn't come.
+ */
 function goLive(row, check) {
   const hours = HOURS.includes(meta(row).hours) ? meta(row).hours : 24;
+  const starts = Math.max(Date.now(), Date.parse(meta(row).share_at || '') || 0);
   return updateMoment(row, {
-    story_expires_at: new Date(Date.now() + hours * HOUR_MS).toISOString(),
+    story_expires_at: new Date(starts + hours * HOUR_MS).toISOString(),
     moment: { state: 'live', check },
   }, { archived_at: null });
 }
@@ -982,7 +1014,7 @@ async function deleteMoment(row) {
 
 module.exports = {
   KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
-  fail, meta, hasEnded, momentState, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
+  fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
   newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
