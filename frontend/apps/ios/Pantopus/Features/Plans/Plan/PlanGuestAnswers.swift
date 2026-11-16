@@ -47,11 +47,6 @@ extension PlanScreenViewModel {
             if wasIn, actionError == PlanErrors.fullSentence { return "There's no room for more people. Your answer stays as it was." }
             return actionError ?? "We couldn't send that. Please try again."
         }
-        // Someone already in who changed their numbers: say so when the server kept the old ones.
-        if wasIn, let mine = plan?.myRequest,
-           (mine.partySize ?? 1) != body.partySize || (mine.kidsCount ?? 0) != (body.kidsCount ?? 0) {
-            return "Couldn't change your numbers here yet. Tell \(card.map(PlanCardLines.hostName) ?? "the host") in the group chat."
-        }
         return nil
     }
 
