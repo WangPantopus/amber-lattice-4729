@@ -110,6 +110,39 @@ router.patch('/plans/:id/answers/mine', async (req, res) => {
   }
 });
 
+// ── The bring list for a guest without an account (H2): their key as `guest`, else the cookie ──
+function guestKeyOf(req) {
+  return planGuests.isKey(req.body?.guest) ? req.body.guest : guestCookie(req);
+}
+
+// POST | DELETE /api/public/plans/:id/bring/:itemId/claim: claim an item, or give it back. Answers { bring }.
+router.post('/plans/:id/bring/:itemId/claim', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestClaim(req.params.id, guestKeyOf(req), req.params.itemId));
+  } catch (err) {
+    return planError(res, err, 'bring_claim');
+  }
+});
+router.delete('/plans/:id/bring/:itemId/claim', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestGiveBack(req.params.id, guestKeyOf(req), req.params.itemId));
+  } catch (err) {
+    return planError(res, err, 'bring_give_back');
+  }
+});
+
+// POST /api/public/plans/:id/bring/items { label, note? }: add one thing they'll bring (when guests may add).
+router.post('/plans/:id/bring/items', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planBring').guestAdd(req.params.id, guestKeyOf(req), req.body || {}));
+  } catch (err) {
+    return planError(res, err, 'bring_add');
+  }
+});
+
 // ── POST /api/public/plans/invites/unsubscribe ──────────────
 // "Don't send me invitations" from a Plans invitation email: { token } from the
 // web page, or the mail app's one-click POST to …/unsubscribe/:token (RFC 8058).

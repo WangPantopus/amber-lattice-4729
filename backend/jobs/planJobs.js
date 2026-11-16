@@ -13,6 +13,8 @@
  *  5. Reminders for people who are in: 2 hours before, or 7 PM the evening
  *     before a plan that starts before 10 AM. Guests without an account who
  *     are in get their one reminder email then (planGuests.sendReminders).
+ *     Two days before, people in who claimed nothing on the bring list hear
+ *     what is still open (planBring.sendStillOpen).
  *  6. The host's summary at 8 AM on the day, with how many requests are waiting.
  *  7. The assistant's nudges for hosts (services/ai/nudges/plans.js): weather
  *     and air, requests waiting as asking closes, and after the plan.
@@ -39,8 +41,8 @@ const PLAN_NOTICE_TYPES = [
   'plan_cancelled', 'plan_spot_opened', 'plan_host_summary',
   'plan_guest_left', 'plan_guest_auto_joined', 'plan_still_coming_reminder',
   'plan_invite', 'plan_invite_declined', 'plan_series',
-  // Guests without an account (Plans for the holidays, H1).
-  'plan_guest_answered', 'plan_guest_waiting',
+  // Guests without an account (Plans for the holidays, H1), and the bring list (H2).
+  'plan_guest_answered', 'plan_guest_waiting', 'plan_bring_claimed', 'plan_bring_open',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -344,6 +346,21 @@ async function sendReminders() {
   return sent;
 }
 
+/** The bring list (H2): two days before, people in who claimed nothing hear once what is still open. */
+async function sendBringStillOpen() {
+  const now = Date.now();
+  const { data, error } = await supabaseAdmin
+    .from('Plan')
+    .select(planService.PLAN_SELECT)
+    .eq('status', 'open')
+    .not('bring_list', 'is', null)
+    .gt('post.event_date', new Date(now).toISOString())
+    .lte('post.event_date', new Date(now + 2 * 24 * HOUR_MS).toISOString())
+    .limit(300);
+  if (error) throw new Error(`Failed to read plans with a bring list: ${error.message}`);
+  return require('../services/plans/planBring').sendStillOpen(data || []);
+}
+
 // ── 6. The host's morning summary ────────────────────────────
 
 async function sendHostSummaries() {
@@ -442,6 +459,12 @@ async function runPlansTick() {
   // Before reminders: asked again at a plan's reminder time, the reminder isn't sent as well.
   const askedAgain = await sendStillComingReminders();
   const reminders = await sendReminders();
+  let bringOpen = 0;
+  try {
+    bringOpen = await sendBringStillOpen();
+  } catch (err) {
+    logger.warn('plans.tick.bring_open_failed', { error: err.message });
+  }
   const summaries = await sendHostSummaries();
   // The assistant's nudges come last, and a failure there never stops the notices above.
   let nudges = null;
@@ -466,7 +489,7 @@ async function runPlansTick() {
   }
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
-    ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}),
+    ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
     || (nudges && nudges.sent) || alerts || repeats || series) {

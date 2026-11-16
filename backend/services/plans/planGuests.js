@@ -282,8 +282,8 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
       place: await placeFor(plan, hostFirst),
       guest_note: plan.guest_note || null,
       going: await goingNames(plan, mine.id),
-      // The bring list (H2).
-      bring: null,
+      // The bring list (H2), while the host has its switch.
+      bring: await bringFor(plan, mine),
       // The plan's time or place changed since the guest last answered: 'time', 'place' or 'both'.
       changed: changedSince ? mine.changed_reason || null : null,
     };
@@ -292,6 +292,12 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
 }
 
 /** The guest's own answer, read with their key. `email_hint` ("da•••@example.com") is for their page's own words. */
+async function bringFor(plan, row) {
+  const planBring = require('./planBring');
+  if (!plan.bring_list || !planBring.takesBringList(plan) || !(await planBring.enabledFor(plan.host_user_id))) return null;
+  return planBring.view(plan.bring_list, planBring.mineFor({ role: 'guest', inviteId: row.id }));
+}
+
 function mineView(row) {
   return {
     state: stateOf(row), name: row.guest_name, adults: row.guest_adults, kids: row.guest_kids,
@@ -637,8 +643,9 @@ async function answer(postId, body = {}, { cookieKey = null, patch = false } = {
     await planNotify.guestWaiting({ plan, invite: row })
       .catch((err) => logger.warn('plans.guests.notice_failed', { planId: plan.post_id, error: err.message }));
   }
-  // Seats given back go to someone waiting.
+  // Seats given back go to someone waiting, and what they were bringing goes back on the list.
   if (wasIn && status !== 'accepted') {
+    await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
     const fresh = await planService.loadPlanRow(plan.post_id);
     if (fresh) await actions().offerOpenSpots(fresh).catch((err) => logger.warn('plans.guests.offer_failed', { error: err.message }));
   }
@@ -743,6 +750,7 @@ async function removeGuest(plan, row) {
     .update({ status: 'cancelled', needs_host_ok: false, updated_at: nowIso() })
     .eq('id', row.id).neq('status', 'cancelled').select('id');
   if (error) throw new Error(`Failed to remove them: ${error.message}`);
+  if (data && data.length) await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
   if (data && data.length && row.status === 'accepted') {
     const fresh = await planService.loadPlanRow(plan.post_id);
     if (fresh) await actions().offerOpenSpots(fresh).catch((err) => logger.warn('plans.guests.offer_failed', { error: err.message }));
@@ -965,7 +973,7 @@ async function sendReminders(plans) {
       // Someone who just got "You're in" after the reminder time needs no second email.
       if (row.address_sent_at && new Date(row.address_sent_at).getTime() > remindAt.getTime()) continue;
       // Things still open on the bring list (H2).
-      const openCount = 0;
+      const openCount = await require('./planBring').openCount(plan);
       if (await sendGuestEmail(plan, row, 'reminder', { words: { day: startDay === today ? 'Today' : 'Tomorrow', openCount } })) sent += 1;
     }
   }

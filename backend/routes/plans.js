@@ -460,6 +460,42 @@ router.post('/:id/invites/:inviteId/ok', async (req, res) => {
   }
 });
 
+// ── The bring list, H2 (services/plans/planBring.js): 404 while plans_bring_list is off for the host ──
+
+// PUT /api/plans/:id/bring { items: [{ id?, label, note?, mine? }], guests_can_add? } (the host). Answers { bring }.
+router.put('/:id/bring', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').replace(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_replace', req);
+  }
+});
+
+// POST /api/plans/:id/bring/items { label, note? }: someone in adds one thing they'll bring (when guests may add).
+router.post('/:id/bring/items', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').add(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_add', req);
+  }
+});
+
+// POST | DELETE /api/plans/:id/bring/:itemId/claim: someone in (or the host) claims an item, or gives it back.
+router.post('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').claim(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_claim', req);
+  }
+});
+router.delete('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').giveBack(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_give_back', req);
+  }
+});
+
 // POST /api/plans/:id/invites/claim { token }: the person opened an email or text invitation.
 router.post('/:id/invites/claim', async (req, res) => {
   try {
