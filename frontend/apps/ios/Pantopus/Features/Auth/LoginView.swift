@@ -486,7 +486,7 @@ extension LoginView {
         guard let path, let url = URL(string: path) else { return nil }
         let thing: String
         switch DeepLinkRouter.shared.resolve(url: url) {
-        case .plan, .planRequests: thing = "open the plan you were sent"
+        case .plan, .planRequests, .planGuests: thing = "open the plan you were sent"
         case .post: thing = "open the post you were sent"
         case .supportTrain, .supportTrainManage: thing = "open the Support Train you were sent"
         case .invite: thing = "answer your invitation"

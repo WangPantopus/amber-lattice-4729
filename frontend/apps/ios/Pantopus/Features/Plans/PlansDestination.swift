@@ -21,6 +21,13 @@ struct PlansDestination: View {
                 PlanScreen(planId: id, intent: intent, path: $path, onHost: onHost)
             case let .requests(planId):
                 PlanRequestsScreen(planId: planId, onOpenProfile: { path.append(.profile(userId: $0)) }, onBack: { pop() })
+            case let .whosComing(planId):
+                PlanWhosComingScreen(
+                    planId: planId,
+                    onOpenProfile: { path.append(.profile(userId: $0)) },
+                    onOpenRequests: { path.append(.requests(planId: planId)) },
+                    onBack: { pop() }
+                )
             case let .change(planId):
                 PlanChangeScreen(planId: planId) { pop() }
             case let .profile(userId):

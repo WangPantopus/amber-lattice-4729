@@ -266,6 +266,8 @@ final class DeepLinkRouter {
         case plan(id: String, invite: String?)
         /// `/plans/:id/requests` — the host's requests (H10).
         case planRequests(id: String)
+        /// `/plans/:id/guests` — the host's "Who's coming" (Plans for the holidays; the two H1 notices open it).
+        case planGuests(id: String)
         /// `/plans/new` — the host composer (H1).
         case planNew
         case unknown(URL)
@@ -626,6 +628,10 @@ final class DeepLinkRouter {
             guard let id = segments.dropFirst().first, !id.isEmpty else { return .plans }
             if id == "new" { return .planNew }
             if segments.dropFirst(2).first == "requests" { return .planRequests(id: id) }
+            if segments.dropFirst(2).first == "guests" { return .planGuests(id: id) }
+            // The plan's one link for everyone (`?open=`) is answered in a browser, app or not (Plans for the
+            // holidays): the app can't take it, so it goes back to the browser (WebLinkFallback).
+            if queryValue("open", in: comps).map({ !$0.isEmpty }) == true { return .unknown(url) }
             return .plan(id: id, invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 })
         case "notifications":
             return .notifications
@@ -834,6 +840,11 @@ final class DeepLinkRouter {
     /// deliberately discarded); rewrite just those types to the native short
     /// profile form `/u/<username>`.
     nonisolated static func notificationPath(type: String?, link: String?) -> String? {
+        // Plans for the holidays: a guest who answered, or one waiting for the host's yes, opens "Who's coming".
+        if type == "plan_guest_answered" || type == "plan_guest_waiting", let link, link.hasPrefix("/plans/"),
+           !link.contains("?"), link.split(separator: "/").count == 2 {
+            return link + "/guests"
+        }
         guard type == "new_follower" || type == "connection_accepted", let link else { return link }
         let trimmed = link.hasPrefix("/") ? String(link.dropFirst()) : link
         let segments = trimmed.split(separator: "/", omittingEmptySubsequences: true)

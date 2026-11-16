@@ -486,6 +486,7 @@ public struct RootTabView: View {
             openPlans(.plan(id: id, intent: invite.map { .invite(token: $0) } ?? .view))
         case let .planRequests(id):
             openPlans(.requests(planId: id))
+        case let .planGuests(id): openPlans(.whosComing(planId: id))
         case .planNew:
             openPlans(nil)
         // The Moments tab, and one Moment in the viewer over it (the "added a
