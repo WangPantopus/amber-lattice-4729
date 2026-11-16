@@ -2406,6 +2406,18 @@ router.get('/reposts', verifyToken, async (req, res) => {
  * resident, business, gps or photo. With homeId the answer is for a post as that Home (canHomePostToPlace), so a fix
  * or a photo that would count for the person doesn't change it.
  */
+// The Sky (phase A, `sky_places` on for the caller): the area a composer's point floats over, for its "Floating over
+// Camas, WA" line: { sky: true, area: { label, latitude, longitude, radius_m } }. The label is the town at the area's
+// own point. Empty with the switch off, so the answer is today's.
+async function skyAreaFor(user, latitude, longitude) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !(await skyPlaces.skyOn(user))) return {};
+  const floating = await skyPlaces.floatingFields(latitude, longitude);
+  if (!floating) return {};
+  const { area } = floating;
+  const label = await require('../services/moments/momentPlace').townAt(area.latitude, area.longitude);
+  return { sky: true, area: { label, latitude: area.latitude, longitude: area.longitude, radius_m: area.radius_m } };
+}
+
 router.get('/place-eligibility', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2428,13 +2440,17 @@ router.get('/place-eligibility', verifyToken, async (req, res) => {
           eligible: false, readOnly: true, reason: 'You do not have access to post from this home', basis: null, trustLevel: 'remote_viewer',
         });
       }
-      const homeCheck = await homePlaceCheck(homeId, parseFloat(latitude), parseFloat(longitude));
+      const [homeCheck, sky] = await Promise.all([
+        homePlaceCheck(homeId, parseFloat(latitude), parseFloat(longitude)),
+        skyAreaFor(req.user, parseFloat(latitude), parseFloat(longitude)),
+      ]);
       return res.json({
         eligible: homeCheck.eligible,
         readOnly: homeCheck.readOnly,
         reason: homeCheck.reason || null,
         basis: homeCheck.basis || null,
         trustLevel: homeCheck.eligible ? 'verified_resident' : 'remote_viewer',
+        ...sky,
       });
     }
 
@@ -2458,6 +2474,7 @@ router.get('/place-eligibility', verifyToken, async (req, res) => {
       reason: eligibility.reason || null,
       basis: eligibility.basis || null,
       trustLevel: trustState.level,
+      ...(await skyAreaFor(req.user, parseFloat(latitude), parseFloat(longitude))),
     });
   } catch (err) {
     logger.error('Place eligibility check error', { error: err.message, userId: req.user.id });

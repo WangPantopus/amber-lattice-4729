@@ -156,7 +156,10 @@ town's name or the home's city, never a street line, else the area's town; at
 home always the town. A post asked for with `neighborhood_only` or `none` keeps
 that. The GPS fix and the photos' points are read as evidence and never stored.
 Readers get the stored area point unmoved (`applyPostLocationPrivacy`,
-`distanceText.displayedPoint`), the author too.
+`distanceText.displayedPoint`), the author too. The composers' place check
+(`GET /api/posts/place-eligibility`) adds `sky: true` and `area: { label,
+latitude, longitude, radius_m }` for a caller with the flag on, for their
+"Floating over …" line; the label is the town at the area's own point.
 
 **Posts made before (the Sky on for everyone).** Old rows keep their exact
 points (the founder decides any clean-up). Once `sky_places` is on for everyone,
