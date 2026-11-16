@@ -38,6 +38,14 @@ const WINDOWS = ['now', 'today', 'week', 'weekend'];
 // host invites (a private plan: Plan.audience).
 const AUDIENCES = ['nearby', 'invited'];
 const PRIVATE_FLAG = 'plans_private';
+// Plans for the holidays, H1 (docs/product/plans-holidays/03-build-contract.md): guests answer in a browser with no
+// account, a private plan has room for up to 100, and an answer counts adults and kids. Read for the plan's host.
+const GUEST_ANSWERS_FLAG = 'plans_guest_answers';
+const SPOTS_MAX = 30;
+const PRIVATE_SPOTS_MAX = 100;
+// One answer brings up to this many adults, and as many kids, on a private plan; a public plan keeps 4 seats.
+const PARTY_MAX = 4;
+const PRIVATE_PARTY_MAX = 10;
 
 const MILE_METERS = 1609.344;
 // Hosting: within the existing 5 km canPostToPlace proximity (about 3 miles) of
@@ -248,11 +256,25 @@ function isAskingOpen(plan, startsAt, endsAt, now = Date.now()) {
   return now < askingClosesAt(plan.kind, startsAt, endsAt).getTime();
 }
 
-/** Seats taken by accepted requests: party sizes, or one per family at a playdate. */
-function seatsFor(kind, partySize) {
+/**
+ * Seats one answer takes: one per family at a playdate; else the party, and on a plan with kids welcome the kids too.
+ * A public plan holds at most 4 for one answer, a private plan 10 adults and 10 kids.
+ * @param {object|string} plan  the plan (or, from older callers, its kind)
+ */
+function seatsFor(plan, partySize, kidsCount = null) {
+  const kind = typeof plan === 'string' ? plan : plan?.kind;
   if (kind === 'playdate') return 1;
-  const size = Number(partySize) || 1;
-  return Math.min(Math.max(size, 1), 4);
+  const isPrivatePlan = typeof plan === 'object' && isPrivate(plan);
+  const size = Math.min(Math.max(Number(partySize) || 1, 1), isPrivatePlan ? PRIVATE_PARTY_MAX : PARTY_MAX);
+  // Kids are saved on an ask only where they are welcome (or at a playdate, counted above), and keep their seats if
+  // the host later turns kids welcome off.
+  const kids = Math.min(Math.max(Number(kidsCount) || 0, 0), PRIVATE_PARTY_MAX);
+  return size + kids;
+}
+
+/** Room a plan may have: up to 100 for a private plan a person hosts (with the switch on), else 30. */
+function maxSpots({ isPrivate: privatePlan = false, business = false, guestAnswers = false } = {}) {
+  return privatePlan && !business && guestAnswers ? PRIVATE_SPOTS_MAX : SPOTS_MAX;
 }
 
 function isFreshGps(gps, now = Date.now()) {
@@ -291,6 +313,12 @@ module.exports = {
   WINDOWS,
   AUDIENCES,
   PRIVATE_FLAG,
+  GUEST_ANSWERS_FLAG,
+  SPOTS_MAX,
+  PRIVATE_SPOTS_MAX,
+  PARTY_MAX,
+  PRIVATE_PARTY_MAX,
+  maxSpots,
   PRIVATE_LIMITS,
   isPrivate,
   LIMITS,

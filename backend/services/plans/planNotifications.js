@@ -33,6 +33,8 @@ const rules = require('./planRules');
 const DEFAULT_QUIET = { start: 21 * 60, end: 8 * 60 };
 const NEAR_PLAN_MS = 2 * 60 * 60 * 1000;
 const BUNDLE_WINDOW_MS = 10 * 60 * 1000;
+// Guests without an account who say they're in: several in an hour become one push.
+const GUEST_BUNDLE_WINDOW_MS = 60 * 60 * 1000;
 
 const CATEGORY_BY_TYPE = {
   plan_request: 'PLAN_REQUEST',
@@ -42,6 +44,8 @@ const CATEGORY_BY_TYPE = {
   plan_still_coming_reminder: 'PLAN_CHANGED',
   // I'm in / Can't make it. Not for a playdate: saying you're in needs the kids' ages.
   plan_invite: 'PLAN_INVITE',
+  // A guest without an account waits for the host's yes: Let in / Not this time (Plans for the holidays, H1).
+  plan_guest_waiting: 'PLAN_GUEST_OK',
 };
 
 const ICON_BY_KIND = {
@@ -654,7 +658,7 @@ function invitedTitle(plan, hostFirst) {
  * The host invited someone on Pantopus: the push has I'm in / Can't make it (not for a playdate, which asks the
  * kids' ages first). Like every notice, the area only; a playdate's title stays in the app.
  */
-async function invited({ plan, invite, userId, hostFirst, series = false }) {
+async function invited({ plan, invite, userId, hostFirst, series = false, reminder = false }) {
   const tz = rules.timezoneForPlan(plan);
   const playdate = plan.kind === 'playdate';
   const when = whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
@@ -667,8 +671,12 @@ async function invited({ plan, invite, userId, hostFirst, series = false }) {
     body: [playdate ? null : plan.post.title, playdate ? capitalized(when) : when, placePhrase(plan, hostFirst)].filter(Boolean).join(' · '),
     link: `/plans/${plan.post_id}`,
     plan,
-    metadata: { invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(plan.kind === 'playdate' ? { category: null } : {}) },
-    idempotencyKey: `plan_invite:${invite.id}`,
+    metadata: {
+      invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(reminder ? { reminder: true } : {}),
+      ...(plan.kind === 'playdate' ? { category: null } : {}),
+    },
+    // The host's "Remind" (H1) sends the same notice once more, once.
+    idempotencyKey: reminder ? `plan_invite_reminder:${invite.id}` : `plan_invite:${invite.id}`,
   });
 }
 
@@ -711,6 +719,71 @@ async function inviteDeclined({ plan, userId, guestName, goingCount }) {
     plan,
     recipientIsIn: true,
     metadata: { invitee_user_id: String(userId) },
+  });
+}
+
+// ── Guests without an account (planGuests.js, Plans for the holidays H1) ──
+
+/** "2 adults, 1 kid" (with `and`: "2 adults and 1 kid"); "3 adults" with no kids; "1 adult". */
+function peopleText(adults, kids, { and = false } = {}) {
+  const a = Math.max(1, Number(adults) || 1);
+  const k = Math.max(0, Number(kids) || 0);
+  const parts = [`${a} ${a === 1 ? 'adult' : 'adults'}`];
+  if (k > 0) parts.push(`${k} ${k === 1 ? 'kid' : 'kids'}`);
+  return parts.join(and ? ' and ' : ', ');
+}
+
+/**
+ * A guest without an account said they're in (or the host let them in from the open link's wait). To the host:
+ * "Dana Lee is in: 2 adults, 1 kid." The first in an hour pushes at once; later ones in that hour wait for the
+ * hour to close and go as one push (jobs/planJobs.js). Opens the plan's "Who's coming" (metadata.opens).
+ */
+async function guestAnswered({ plan, invite }) {
+  const hostId = plan.host_user_id;
+  const hourAgo = new Date(Date.now() - GUEST_BUNDLE_WINDOW_MS).toISOString();
+  const { data: recent } = await supabaseAdmin
+    .from('Notification')
+    .select('id, created_at, metadata')
+    .eq('user_id', hostId)
+    .eq('type', 'plan_guest_answered')
+    .gte('created_at', hourAgo)
+    .contains('metadata', { plan_id: plan.post_id })
+    .order('created_at', { ascending: true })
+    .limit(20);
+  const head = (recent || []).find((n) => !n.metadata?.bundled);
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  return notify({
+    userId: hostId,
+    type: 'plan_guest_answered',
+    title: `${invite.guest_name} is in: ${peopleText(invite.guest_adults, invite.guest_kids)}.`,
+    body: [plan.post.title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: {
+      invite_id: invite.id, guest_name: invite.guest_name, opens: 'whos_coming',
+      ...(head ? { bundled: true, bundle_head_id: head.id } : {}),
+    },
+    holdUntil: head ? new Date(new Date(head.created_at).getTime() + GUEST_BUNDLE_WINDOW_MS) : null,
+  });
+}
+
+/**
+ * Someone answered "I'm in" from the open link and waits for the host's yes. To the host, with Let in and Not this
+ * time (category PLAN_GUEST_OK, which act on invite_id without opening the app): "Dana Lee wants to come. Let them in?"
+ */
+async function guestWaiting({ plan, invite }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_guest_waiting',
+    title: `${invite.guest_name} wants to come. Let them in?`,
+    body: [peopleText(invite.guest_adults, invite.guest_kids), plan.post.title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: { invite_id: invite.id, guest_name: invite.guest_name, opens: 'whos_coming' },
+    idempotencyKey: `plan_guest_waiting:${invite.id}:${new Date(invite.answered_at || Date.now()).toISOString()}`,
   });
 }
 
@@ -772,4 +845,8 @@ module.exports = {
   stillComingReminder,
   invited,
   inviteDeclined,
+  peopleText,
+  guestAnswered,
+  guestWaiting,
+  GUEST_BUNDLE_WINDOW_MS,
 };

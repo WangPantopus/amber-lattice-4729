@@ -26,6 +26,7 @@ const planInvites = require('./planInvites');
 const planBusiness = require('./planBusiness');
 const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
+const planGuests = require('./planGuests');
 const { findGame } = require('./planGames');
 const { validTimezone } = require('../../utils/timezone');
 
@@ -89,6 +90,11 @@ function auditBusinessPlan(plan, viewer, action, metadata = {}) {
   });
 }
 
+/** Seats taken now: accepted requests and guests without an account who said they're in (planGuests.js). */
+async function seatsNow(plan, requests) {
+  return planService.seatsTaken(plan, requests, await planGuests.guestSeats(plan.post_id));
+}
+
 async function activeRequests(postId) {
   const { data, error } = await supabaseAdmin
     .from('PlanRequest')
@@ -146,7 +152,7 @@ function partyLabel(name, partySize) {
 
 /** The response body after a write: PlanDetail or PlanCard for the person who wrote. */
 async function planBodyFor(postId, viewer) {
-  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more }, { gps: viewer.gps, point: viewer.origin });
+  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests }, { gps: viewer.gps, point: viewer.origin });
   const { body } = await planService.getForViewer(postId, fresh);
   return body;
 }
@@ -486,8 +492,12 @@ async function checkedPlanInput(viewer, input, internal = {}) {
   validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead }
     : series ? { maxDaysAhead: planSeries.LIMITS.maxDaysAhead }
       : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
+  // Room for up to 100 on a private plan a person hosts, with the switch on (H1); else 30.
+  const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(hostAs), guestAnswers: viewer.guestAnswersFlag });
   const spots = Number(input.spots);
-  if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+  if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
+  // Kids welcome (H1): guests say how many adults and kids. A person's plan, with the switch on; a playdate has its own.
+  const kidsWelcome = !hostAs && kind !== 'playdate' && viewer.guestAnswersFlag && bool(input.kids_welcome, 'Kids welcome') === true;
   // A business's plan is at one of its own locations: no home guard and no 3-mile rule.
   const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place, {
     isPrivate, details: input.details, seriesPoint: series ? series.point || null : null,
@@ -521,7 +531,7 @@ async function checkedPlanInput(viewer, input, internal = {}) {
   else await assertHostLimits(viewer.id, { isPrivate, seriesDate: Boolean(series) });
   const timezone = hostAs ? planPlace.timezoneFor(place.latitude, place.longitude)
     : placeTimezone(viewer, place, { keepTimezone: series ? series.timezone || null : null });
-  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone };
+  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone, kidsWelcome };
 }
 
 /**
@@ -580,6 +590,7 @@ async function createPlan(user, input, internal = {}) {
   if (secondTap) return planBodyFor(secondTap, viewer);
   const {
     kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone,
+    kidsWelcome,
   } = await checkedPlanInput(viewer, input, internal);
   // The host: the person, or the business they post for. The business's own account is the plan's host and its
   // post's author, so nothing a guest reads names the staff member (who is kept in posted_by_user_id).
@@ -669,6 +680,7 @@ async function createPlan(user, input, internal = {}) {
     place_ref: placeRef,
     // Only an online plan has a link (the table's plan_online_has_link).
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
+    ...(kidsWelcome ? { kids_welcome: true } : {}),
     timezone,
     status: 'open',
   });
@@ -831,11 +843,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   }
 
   const requests = await activeRequests(postId);
-  const going = planService.seatsTaken(plan, requests);
+  const going = await seatsNow(plan, requests);
   let spotsGrew = false;
   if (patch.spots !== undefined) {
+    const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(plan.business_user_id), guestAnswers: viewer.guestAnswersFlag });
     const spots = Number(patch.spots);
-    if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+    if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
     if (spots < going) fail(422, 'validation', `${going} ${going === 1 ? 'person is' : 'people are'} in, so spots can’t go below that.`);
     spotsGrew = spots > plan.spots;
     planUpdate.spots = spots;
@@ -869,6 +882,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       });
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
+  }
+  // Kids welcome (H1): with the switch on, on a person's plan that isn't a playdate.
+  if (patch.kids_welcome !== undefined && viewer.guestAnswersFlag && !plan.business_user_id && plan.kind !== 'playdate') {
+    planUpdate.kids_welcome = bool(patch.kids_welcome, 'Kids welcome') === true;
   }
   if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id && !isPrivate) {
     planUpdate.join_requirement = oneOf(patch.join_requirement, ['located', 'verified'], 'who can ask');
@@ -930,6 +947,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
             : timeMoved ? `${hostFirst} moved the plan to ${when}` : `${hostFirst} changed the ${linkChanged ? 'link' : 'place'}`);
       }
     }
+  }
+  // Guests without an account who are in (H1): their page says what changed, and one email goes.
+  if (timeMoved || placeChanged) {
+    await planGuests.planChanged(updated, { timeMoved, placeChanged }).catch((err) => logger.warn('plans.edit.guests_failed', { planId: postId, error: err.message }));
   }
   if (spotsGrew) await offerOpenSpots(updated, { io });
   await auditBusinessPlan(plan, viewer, 'plans.edit', { fields: [...Object.keys(postUpdate), ...Object.keys(planUpdate)] });
@@ -997,6 +1018,9 @@ async function cancelOpenPlan(plan, { hostFirst, cancelNote }) {
     await planNotify.cancelled({ plan: updated, request, hostFirst, note: cancelNote, wasIn: request.status === 'accepted' });
   }
   await planInvites.notifyCancelled(updated, hostFirst, cancelNote);
+  // Guests without an account who are in (H1): the one email about it.
+  await planGuests.planCancelled(updated, cancelNote)
+    .catch((err) => logger.warn('plans.cancel.guests_failed', { postId, error: err.message }));
   return true;
 }
 
@@ -1028,10 +1052,11 @@ async function enforceCapacity(plan) {
   const accepted = requests
     .filter((r) => r.status === 'accepted')
     .sort((a, b) => (new Date(a.decided_at || a.created_at) - new Date(b.decided_at || b.created_at)) || String(a.id).localeCompare(String(b.id)));
-  let seats = 0;
+  // Guests without an account hold their seats first: they have no waitlist to go back to.
+  let seats = await planGuests.guestSeats(plan.post_id);
   const overflow = [];
   for (const request of accepted) {
-    seats += rules.seatsFor(plan.kind, request.party_size);
+    seats += rules.seatsFor(plan, request.party_size, request.kids_count);
     if (seats > plan.spots) overflow.push(request.id);
   }
   if (overflow.length > 0) {
@@ -1080,7 +1105,7 @@ async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false
   const roomId = await planChat.ensureRoom(plan, { io });
   await planChat.addMember(roomId, request.user_id, { io });
   const names = await userNames([request.user_id]);
-  const who = partyLabel(names.get(String(request.user_id)), plan.kind === 'playdate' ? 1 : request.party_size);
+  const who = partyLabel(names.get(String(request.user_id)), rules.seatsFor(plan, request.party_size, request.kids_count));
   await planChat.systemLine(roomId, byRule ? request.user_id : plan.host_user_id,
     byRule ? `${who} ${who.includes(' + ') ? 'are' : 'is'} in` : `${hostFirst} let in ${who}`);
   if (viaWaitlist) {
@@ -1090,8 +1115,8 @@ async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false
   }
   if (byRule) {
     await activeRequests(plan.post_id)
-      .then((requests) => planNotify.guestAutoJoined({
-        plan, request, guestName: who, rule, goingCount: planService.seatsTaken(plan, requests), viaWaitlist,
+      .then(async (requests) => planNotify.guestAutoJoined({
+        plan, request, guestName: who, rule, goingCount: await seatsNow(plan, requests), viaWaitlist,
       }))
       .catch((err) => logger.warn('plans.notify.auto_joined_failed', { planId: plan.post_id, error: err.message }));
   }
@@ -1107,9 +1132,9 @@ async function offerOpenSpots(plan, { io = null } = {}) {
   const hostFirst = await hostFirstOf(plan);
   for (let round = 0; round < 30; round += 1) {
     const requests = await activeRequests(plan.post_id);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
     if (spotsLeft <= 0) return;
-    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan.kind, r.party_size) <= spotsLeft);
+    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan, r.party_size, r.kids_count) <= spotsLeft);
     if (!next) return;
     const rule = await ruleFor(plan, next.user_id);
     const stamp = nowIso();
@@ -1136,7 +1161,11 @@ async function offerOpenSpots(plan, { io = null } = {}) {
 
 // ── Asking ───────────────────────────────────────────────────
 
-function cleanAsk(plan, body) {
+/**
+ * @param {{ guestAnswers?: boolean }} [opts]  the host has the switch (H1): a private plan takes up to 10 people in one
+ *   answer, and a plan with kids welcome takes adults (party_size) and kids (kids_count).
+ */
+function cleanAsk(plan, body, { guestAnswers = false } = {}) {
   const out = {};
   if (plan.kind === 'playdate') {
     out.party_size = 1;
@@ -1149,9 +1178,17 @@ function cleanAsk(plan, body) {
     out.kids_age_bands = rules.KIDS_AGE_BANDS.filter((b) => bands.includes(b));
     out.stays_with_kids = true;
   } else {
+    const max = guestAnswers && rules.isPrivate(plan) ? rules.PRIVATE_PARTY_MAX : rules.PARTY_MAX;
     const party = body.party_size === undefined ? 1 : Number(body.party_size);
-    if (!Number.isInteger(party) || party < 1 || party > 4) fail(422, 'validation', 'You can bring up to 3 people.');
+    if (!Number.isInteger(party) || party < 1 || party > max) fail(422, 'validation', `You can bring up to ${max - 1} people.`);
     out.party_size = party;
+    if (guestAnswers && plan.kids_welcome) {
+      const kids = body.kids_count === undefined || body.kids_count === null ? 0 : Number(body.kids_count);
+      if (!Number.isInteger(kids) || kids < 0 || kids > rules.PRIVATE_PARTY_MAX) fail(422, 'validation', 'Kids can be 0 to 10.');
+      // A public plan keeps one answer to 4 seats, kids included.
+      if (!rules.isPrivate(plan) && party + kids > rules.PARTY_MAX) fail(422, 'validation', 'You can bring up to 3 people.');
+      out.kids_count = kids > 0 ? kids : null;
+    }
   }
   out.note = cleanText(body.note, 280, 'Your hello');
   return out;
@@ -1194,9 +1231,10 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
   // A second ask while waiting changes only what it sends; the rest stays as asked.
   const keep = (key) => (body[key] !== undefined ? body[key] : mine[key]);
+  const guestAnswers = await planGuests.switchFor(plan.host_user_id);
   const ask = cleanAsk(plan, waiting
     ? { party_size: keep('party_size'), note: keep('note'), kids_count: keep('kids_count'), kids_age_bands: keep('kids_age_bands'), stays_with_kids: keep('stays_with_kids') }
-    : body);
+    : body, { guestAnswers });
   const stamp = nowIso();
 
   // Already in line: a second ask changes who's coming and the hello. It doesn't use an ask.
@@ -1208,7 +1246,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   if (mine && mine.status === 'accepted') return { status: 200, body: await requestResult(postId, viewer, mine.id) };
 
   const requests = ctx.requestsByPlan.get(postId) || [];
-  const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+  const spotsLeft = plan.spots - (await seatsNow(plan, requests));
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   const eligibility = planService.askEligibility(plan, viewer, ctx, { myRequest: mine, spotsLeft, state });
   if (!eligibility.can_ask && eligibility.cannot_ask_reason !== 'full_use_waitlist') {
@@ -1219,7 +1257,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // The host's invitation is their yes: in at once (the waitlist when it's full), or, for an email invite opened by
   // an account the address isn't verified for, an ordinary ask the host answers.
   const invite = ctx.myInviteByPlan.get(postId) || null;
-  const seats = rules.seatsFor(plan.kind, ask.party_size);
+  const seats = rules.seatsFor(plan, ask.party_size, ask.kids_count);
   let status = 'waitlisted';
   let decidedBy = null;
   let rule = null;
@@ -1315,13 +1353,13 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   if (updateError) throw new Error(`Failed to update your request: ${updateError.message}`);
   if (changed && changed.length > 0 && leaving) {
     const names = await userNames([viewer.id]);
-    const who = partyLabel(names.get(viewer.id), mine.party_size);
+    const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
       await planChat.systemLine(plan.chat_room_id, viewer.id, `${who} can't make it`);
     }
     // The host hears it before a spot goes to someone waiting (who then has their own notice).
     await activeRequests(postId)
-      .then((requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: planService.seatsTaken(plan, requests) }))
+      .then(async (requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: await seatsNow(plan, requests) }))
       .catch((err) => logger.warn('plans.notify.guest_left_failed', { planId: postId, error: err.message }));
     await offerOpenSpots(plan, { io });
   }
@@ -1379,7 +1417,8 @@ async function listRequests(user, postId) {
       },
       party_size: r.party_size,
       note: r.note || null,
-      kids_count: plan.kind === 'playdate' ? r.kids_count ?? null : null,
+      // A playdate's kids, or with kids welcome (H1, `guests=1`) how many kids come with them.
+      kids_count: plan.kind === 'playdate' || (viewer.guests && plan.kids_welcome) ? r.kids_count ?? null : null,
       kids_age_bands: plan.kind === 'playdate' ? r.kids_age_bands || [] : null,
       created_at: planService.iso(r.queued_at || r.created_at),
       invited: inviteByUser.has(id),
@@ -1411,8 +1450,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (!count) fail(409, 'confirm_shares_address', 'Accepting shares your address with them.');
     }
     const requests = await activeRequests(postId);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
-    if (rules.seatsFor(plan.kind, request.party_size) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
+    if (rules.seatsFor(plan, request.party_size, request.kids_count) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
     const { data: moved, error } = await supabaseAdmin.from('PlanRequest')
       .update({ status: 'accepted', decided_by: 'host', decided_at: stamp, updated_at: stamp })
       .eq('id', request.id).in('status', ['pending', 'waitlisted']).select(planService.REQUEST_COLUMNS);
@@ -1533,6 +1572,7 @@ async function reportPlan(user, postId, { reason, details }) {
 }
 
 module.exports = {
+  seatsNow,
   PlanError,
   hostFirstOf,
   cancelForGoneBusiness,
