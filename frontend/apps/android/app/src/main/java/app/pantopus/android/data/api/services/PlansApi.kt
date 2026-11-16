@@ -27,6 +27,7 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
@@ -348,6 +349,10 @@ interface PlansApi {
     suspend fun maybeInvite(
         @Path("id") id: String,
     ): PlanInvitePlanResponse
+
+    /** `GET /api/plans/occasions` (Plans for the holidays, H3): the occasions in season, for the kind picker's strip. */
+    @GET("api/plans/occasions")
+    suspend fun occasions(): PlanOccasionsResponse
 
     // ---- Plans for the holidays, H2: the bring list (contract 7; backend/services/plans/planBring.js) ----
 

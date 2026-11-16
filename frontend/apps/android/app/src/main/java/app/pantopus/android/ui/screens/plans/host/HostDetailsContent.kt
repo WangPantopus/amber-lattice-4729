@@ -78,7 +78,11 @@ internal fun HostDetailsStep(
     val business = ui.business
     HostStepScaffold(
         // A business's kinds read for a business ("Sports", board B2).
-        title = business?.kinds?.firstOrNull { it.kind == kind.wire }?.name?.takeIf(String::isNotBlank) ?: kind.label,
+        // An occasion's name ("Thanksgiving dinner", Plans for the holidays A2) titles its form.
+        title =
+            business?.kinds?.firstOrNull { it.kind == kind.wire }?.name?.takeIf(String::isNotBlank)
+                ?: ui.draft.occasionText.takeIf { business == null }
+                ?: kind.label,
         step = "2 of 3",
         leadingClose = false,
         onLeading = onBack,

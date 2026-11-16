@@ -233,6 +233,13 @@ object PlanInviteStatus {
     const val MAYBE = "maybe"
 }
 
+/**
+ * What a plan's tag reads in place of its kind's name: the occasion it was started from (Plans for the holidays, H3,
+ * "Thanksgiving dinner"), or what a business calls its plan ("Clinic"); null reads the kind's name.
+ */
+val PlanDto.tagLabel: String?
+    get() = occasion?.text?.takeIf(String::isNotBlank) ?: labelText.takeIf { isBusiness }
+
 val PlanDto.isPlaydate: Boolean get() = planKind == PlanKind.PLAYDATE
 val PlanDto.isAtHome: Boolean get() = placeKind == "home"
 val PlanDto.hostApproves: Boolean get() = howPeopleGetIn != "automatic"

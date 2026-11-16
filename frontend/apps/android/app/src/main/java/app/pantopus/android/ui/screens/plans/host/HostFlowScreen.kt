@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.data.api.models.plans.PlanOccasionDto
 import app.pantopus.android.data.plans.PlanKind
 import app.pantopus.android.data.plans.PlanPostedInvite
 import app.pantopus.android.ui.components.PrimaryButton
@@ -82,7 +83,14 @@ fun HostFlowScreen(
     LaunchedEffect(ui.postedId) { ui.postedId?.let { onDoneToMap() } }
     Box(modifier = Modifier.fillMaxSize().testTag("plansHost")) {
         when (ui.step) {
-            HostStep.Type -> HostTypeStep(ui, onClose = onClose, onChoose = choose, onHostAs = viewModel::chooseHostAs)
+            HostStep.Type ->
+                HostTypeStep(
+                    ui,
+                    onClose = onClose,
+                    onChoose = choose,
+                    onHostAs = viewModel::chooseHostAs,
+                    onOccasion = viewModel::chooseOccasion,
+                )
             // The Repeats screen (Plans step 2) is pushed over the details; its Back and Done come back to them.
             HostStep.Details ->
                 if (ui.repeatsOpen) {
@@ -210,6 +218,7 @@ private fun HostTypeStep(
     onClose: () -> Unit,
     onChoose: (PlanKind) -> Unit,
     onHostAs: (String?) -> Unit,
+    onOccasion: (PlanOccasionDto) -> Unit = {},
 ) {
     val business = ui.chosenBusiness
     // A business posts the kinds the server lists for it (a kids' class only with its own switch), never the newer four.
@@ -234,6 +243,11 @@ private fun HostTypeStep(
                 style = PantopusTextStyle.body,
                 color = PantopusColors.appTextSecondary,
             )
+        }
+        // "Coming up" (Plans for the holidays, board 2, A2): the occasions in season, then the shipped kinds.
+        if (business == null && ui.occasions.isNotEmpty()) {
+            PlanOccasionStrip(ui.occasions, large = large, onOccasion = onOccasion)
+            PlanOverline("Or any kind of plan")
         }
         // "Something else" is a wide row under the grid (board Type, Plans step 4).
         val grid = kinds.filter { it != PlanKind.SOMETHING_ELSE }

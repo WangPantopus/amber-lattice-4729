@@ -25,6 +25,7 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
@@ -635,6 +636,9 @@ class PlansRepository
                 (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
             }
         }
+
+        /** The occasions in season for the kind picker (Plans for the holidays, H3). */
+        suspend fun occasions(): NetworkResult<PlanOccasionsResponse> = safeApiCall { api.occasions() }
 
         // ---- Plans for the holidays, H2: the bring list (contract 7) ----
 

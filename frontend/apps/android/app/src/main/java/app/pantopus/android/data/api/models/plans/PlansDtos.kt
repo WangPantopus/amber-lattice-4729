@@ -295,6 +295,57 @@ data class PlanDto(
     @Json(name = "answers") val answers: PlanAnswersDto? = null,
     /** Plans for the holidays, H2 (contract 7): the bring list, for the host and people in; none without items. */
     @Json(name = "bring") val bring: PlanBringDto? = null,
+    /** Plans for the holidays, H3 (contract 8): the occasion it was started from; its tag reads the occasion's name. */
+    @Json(name = "occasion") val occasion: PlanOccasionRefDto? = null,
+)
+
+/** `occasion` on a card (Plans for the holidays, H3). */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionRefDto(
+    @Json(name = "key") val key: String = "",
+    @Json(name = "text") val text: String = "",
+)
+
+/** `GET /api/plans/occasions` (H3): the occasions in season for the host's date, in the strip's order. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionsResponse(
+    @Json(name = "occasions") val occasions: List<PlanOccasionDto> = emptyList(),
+)
+
+/** One occasion: a start for a plan of an existing [kind], with what it fills in. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionDto(
+    @Json(name = "key") val key: String,
+    @Json(name = "text") val text: String = "",
+    @Json(name = "kind") val kind: String = "",
+    @Json(name = "details") val details: PlanDetailsDto? = null,
+    @Json(name = "fills") val fills: PlanOccasionFillsDto? = null,
+)
+
+/** What an occasion fills in on the host form (contract 8); every part stays editable. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionFillsDto(
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "audience") val audience: String? = null,
+    @Json(name = "place_kind") val placeKind: String? = null,
+    @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    @Json(name = "bring") val bring: PlanOccasionBringDto? = null,
+    @Json(name = "starts_at") val startsAt: String? = null,
+    @Json(name = "ends_at") val endsAt: String? = null,
+    @Json(name = "timezone") val timezone: String? = null,
+)
+
+/** An occasion's starter bring list. */
+@JsonClass(generateAdapter = true)
+data class PlanOccasionBringDto(
+    @Json(name = "guests_can_add") val guestsCanAdd: Boolean = true,
+    @Json(name = "items") val items: List<PlanOccasionBringItemDto> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanOccasionBringItemDto(
+    @Json(name = "label") val label: String = "",
+    @Json(name = "note") val note: String? = null,
 )
 
 /** The bring list on a card (Plans for the holidays, H2): what is needed and who is bringing it. */
@@ -584,6 +635,8 @@ data class CreatePlanBody(
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
     /** Plans for the holidays, H2: the bring list made on the form (A3, A9); none leaves it out. */
     @Json(name = "bring") val bring: PlanBringInput? = null,
+    /** Plans for the holidays, H3: the occasion the plan was started from (a key); none for an ordinary plan. */
+    @Json(name = "occasion") val occasion: String? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
