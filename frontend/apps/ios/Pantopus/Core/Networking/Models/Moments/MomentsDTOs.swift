@@ -322,9 +322,11 @@ public struct MomentsMapResponse: Decodable, Sendable {
     /// from a server before it.
     public let floatOn: Bool
     public let sun: MomentSunDTO?
+    /// The Sky: your own Moments waiting to share later, for your row only; empty while the Sky is off for you.
+    public let scheduled: [MomentDTO]
 
     private enum CodingKeys: String, CodingKey {
-        case rings, unplaced, sun
+        case rings, unplaced, sun, scheduled
         case heightsOn = "heights_on"
         case floatOn = "float_on"
     }
@@ -336,6 +338,7 @@ public struct MomentsMapResponse: Decodable, Sendable {
         heightsOn = (try? c.decodeIfPresent(Bool.self, forKey: .heightsOn)) ?? false
         floatOn = (try? c.decodeIfPresent(Bool.self, forKey: .floatOn)) ?? false
         sun = try? c.decodeIfPresent(MomentSunDTO.self, forKey: .sun)
+        scheduled = ((try? c.decodeIfPresent([MomentDTO].self, forKey: .scheduled)) ?? []).filter { $0.state == .scheduled }
     }
 }
 

@@ -70,6 +70,15 @@ object SkyWords {
     /** An address or a bare photo: the post floats. */
     const val PHOTO_FLOATS = "Your photo was taken here. The post floats over the area."
 
+    // Your row on the Moments map
+
+    /** The row's title when it holds only your Moments waiting to share. */
+    const val SCHEDULED_ROW_TITLE = "Sharing later"
+    const val DELETE_SCHEDULED_TITLE = "Delete this Moment?"
+    const val DELETE_SCHEDULED_BODY = "It hasn't shared yet, so nobody has seen it."
+    const val DELETE = "Delete"
+    const val COULD_NOT_DELETE = "Couldn't delete that Moment. Try again."
+
     // A Moment shared later
 
     const val EARLIER_TODAY = "Earlier today"

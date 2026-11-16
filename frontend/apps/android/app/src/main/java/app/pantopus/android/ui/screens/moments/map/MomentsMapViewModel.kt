@@ -216,6 +216,17 @@ class MomentsMapViewModel
         /** Your photo, for your posting ring. */
         val avatarUrl: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.avatarUrl
 
+        /** The Sky: your own Moments waiting to share later, for your row (`MomentsScheduledCell.kt`). */
+        val scheduled = repository.scheduled
+
+        /** Deletes one before its time; [onDone] hears whether it went. */
+        fun deleteScheduled(
+            id: String,
+            onDone: (Boolean) -> Unit,
+        ) {
+            viewModelScope.launch { onDone(repository.delete(id) is NetworkResult.Success) }
+        }
+
         private val viewCenter = MutableStateFlow<Pair<Double, Double>?>(null)
 
         private val _timeFilter = MutableStateFlow(MomentsTimeFilter.ALL)

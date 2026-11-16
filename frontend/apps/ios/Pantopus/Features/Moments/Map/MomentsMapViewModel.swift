@@ -294,6 +294,7 @@ final class MomentsMapViewModel {
             rings = all
             heightsAnswered(reply.heightsOn)
             floatAnswered(reply.floatOn, sun: reply.sun)
+            MomentsScheduled.shared.moments = reply.scheduled
             loaded = true
             loadFailed = false
             lookAroundIfOpening()
