@@ -48,7 +48,7 @@ const PLAN_NOTICE_TYPES = [
   // The business track: deals (B1), money back on a paid spot or a group price (B2, B4), a check at the place (B5).
   'plan_deal_close', 'plan_deal_unlocked', 'plan_deal_short', 'plan_deal_removed', 'plan_refunded', 'plan_check',
   // The extras: find a date's pick, the gift exchange's draw.
-  'plan_date_picked', 'plan_gift_drawn', 'plan_gift_short', 'plan_gift_left',
+  'plan_date_picked', 'plan_gift_drawn', 'plan_gift_short', 'plan_gift_left', 'plan_photos',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -509,6 +509,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.gift_failed', { error: err.message });
   }
+  // Photos afterwards (the extras): the day after, once.
+  let photos = 0;
+  try {
+    photos = await require('../services/plans/planPhotos').sendDayAfter();
+  } catch (err) {
+    logger.warn('plans.tick.photos_failed', { error: err.message });
+  }
   const summaries = await sendHostSummaries();
   // The assistant's nudges come last, and a failure there never stops the notices above.
   let nudges = null;
@@ -534,7 +541,7 @@ async function runPlansTick() {
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
-    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(gifts ? { gifts } : {}),
+    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
     || (nudges && nudges.sent) || alerts || repeats || series) {

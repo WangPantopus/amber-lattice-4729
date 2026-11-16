@@ -68,6 +68,8 @@ const PLAN_COLUMNS = [
   'date_options',
   // The gift exchange (planGift.js). Its pairs (gift_pairs) are never read here: only plan_gift_mine touches them.
   'gift',
+  // Photos afterwards (planPhotos.js): the pictures' private keys; the apps get links signed for minutes.
+  'photos',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -281,6 +283,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // The gift exchange: whether each plan's host has the switch, and the viewer's own receiver (theirs only).
     giftByHost: new Map(),
     giftGivingByPlan: new Map(),
+    // Photos afterwards: whether each ended plan's host has the switch (and a private bucket is set).
+    photosByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -319,6 +323,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   if (viewer.extras) {
     const chipInPlans = plans.filter((p) => p.chip_in);
     if (chipInPlans.length) ctx.chipInByHost = await require('./planChipIn').switchByHost(chipInPlans.map((p) => p.host_user_id));
+    const overPlans = plans.filter((p) => require('./planExtras').takesExtras(p) && require('./planPhotos').isOver(p));
+    if (overPlans.length) ctx.photosByHost = await require('./planPhotos').switchByHost(overPlans.map((p) => p.host_user_id));
     const giftPlans = plans.filter((p) => p.gift);
     if (giftPlans.length) {
       const planGift = require('./planGift');
@@ -817,6 +823,12 @@ function buildCard(plan, viewer, ctx) {
       isIn, giving: ctx.giftGivingByPlan?.get(plan.post_id) || null,
     });
     if (gift) card.gift = gift;
+  }
+  // Photos afterwards (the extras, 08-extras section 5), with `extras=1`, on a plan that is over, for the host and the
+  // people who were in at the end. The pictures come from GET …/photos as links that last minutes.
+  if (isIn && viewer.extras && ctx.photosByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const photos = require('./planPhotos').cardView(plan, { mineKey: require('./planExtras').personKey(viewer.id), comeCount: going + 1 });
+    if (photos) card.photos = photos;
   }
   // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has
   // the switch. The payment link reaches nobody else.

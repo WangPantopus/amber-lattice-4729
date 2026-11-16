@@ -457,6 +457,59 @@ function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanCh
   );
 }
 
+// ── Photos afterwards (the extras) ───────────────────────────
+
+type PlanPhoto = { id: string; url: string | null; thumb_url: string | null; by_name: string };
+
+/**
+ * W3 on a plan that is over, for a guest who was in (08-extras section 5, board 29): "Photos", "{23} from {5} people",
+ * a grid of four across, the note, and "Add yours in the app." The links last minutes; a picture opens full size.
+ */
+function PhotosCard({ planId, intro, storeHref }: { planId: string; intro: { count: number; add_text: string; note: string }; storeHref: string | null }) {
+  const [grid, setGrid] = useState<{ photos: PlanPhoto[]; text: string } | null>(null);
+  const [open, setOpen] = useState<PlanPhoto | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/public/plans/${encodeURIComponent(planId)}/photos`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (live && data) setGrid({ photos: data.photos || [], text: data.text }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [planId]);
+  return (
+    <section className={`${CARD} flex flex-col gap-3 px-4 py-4`} aria-labelledby="photos-title">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="photos-title" className="text-base font-semibold leading-[22px]">Photos</h2>
+        {grid ? <span className="text-sm text-app-text-secondary">{grid.text}</span> : null}
+      </div>
+      {grid && grid.photos.length ? (
+        <ul className="grid grid-cols-4 gap-1">
+          {grid.photos.map((p) => (
+            <li key={p.id}>
+              <button type="button" onClick={() => setOpen(p)} className="block aspect-square w-full overflow-hidden rounded-lg bg-app-surface-sunken" aria-label={`A photo from ${p.by_name}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {p.thumb_url ? <img src={p.thumb_url} alt="" className="h-full w-full object-cover" /> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-[13px] leading-[18px] text-app-text-secondary">{intro.note}</p>
+      {storeHref ? (
+        <a href={storeHref} className="flex h-11 w-full items-center justify-center rounded-xl border border-app-border-strong bg-app-surface text-[15px] font-semibold text-app-text">
+          {intro.add_text}
+        </a>
+      ) : <p className="text-sm font-semibold text-app-text">{intro.add_text}</p>}
+      {open && open.url ? (
+        <div role="dialog" aria-label={`A photo from ${open.by_name}`} className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setOpen(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={open.url} alt="" className="max-h-full max-w-full rounded-lg" />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ── The gift exchange (the extras) ───────────────────────────
 
 /**
@@ -885,6 +938,7 @@ function GuestAnswerPage(props: GuestAnswerProps) {
         <p className="text-sm font-semibold leading-5 text-app-text-strong">
           {plan.state === 'cancelled' ? `${hostFirst} cancelled this plan.` : 'This plan is over.'}
         </p>
+        {plan.state !== 'cancelled' && answer.photos ? <PhotosCard planId={planId} intro={answer.photos} storeHref={storeHref} /> : null}
       </div>
     );
   }

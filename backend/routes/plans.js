@@ -592,6 +592,42 @@ router.post('/:id/dates/pick', async (req, res) => {
   }
 });
 
+// ── Photos afterwards (the extras, 08-extras section 5; services/plans/planPhotos.js): 404 while plans_photos is off
+// or no private bucket is set. Each answers the grid: { photos: [{ id, url, thumb_url, w, h, by_name, mine,
+// can_remove }], count, text, can_add, note, expires_in } with links signed for minutes.
+const photoUpload = require('multer')({
+  storage: require('multer').memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, parts: 6, fieldSize: 1024, fieldNameSize: 100 },
+}).single('file');
+function receivePhoto(req, res, next) {
+  photoUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return fail(res, 413, 'too_large', 'This photo is too large to add.');
+    return fail(res, 400, 'validation', 'Send one picture as "file".');
+  });
+}
+router.get('/:id/photos', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').list(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'photos', req);
+  }
+});
+router.post('/:id/photos', contentCreationLimiter, receivePhoto, async (req, res) => {
+  try {
+    return res.status(201).json(await require('../services/plans/planPhotos').add(req.user, req.params.id, req.file || null));
+  } catch (err) {
+    return serverError(res, err, 'photos_add', req);
+  }
+});
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').remove(req.user, req.params.id, req.params.photoId));
+  } catch (err) {
+    return serverError(res, err, 'photos_remove', req);
+  }
+});
+
 // ── The gift exchange (the extras, 08-extras section 4; services/plans/planGift.js): 404 while plans_gift_exchange is
 // off. Each answers { gift }; whom someone drew is in their own answer only.
 const giftRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
