@@ -701,6 +701,11 @@ data class UpdatePlanBody(
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
     /** Business track B1: a changed deal (`409 deal_locked` once someone is in); taking it off is `removeDeal`. */
     @Json(name = "deal") val deal: PlanDealInput? = null,
+    /** Business track B2: a new price (`409 price_locked` once someone is in or paying); taking it off is a raw PATCH. */
+    @Json(name = "price_cents") val priceCents: Int? = null,
+    /** Business track B5: the bill here and tips, at any time. */
+    @Json(name = "pay_here") val payHere: Boolean? = null,
+    @Json(name = "tips_on") val tipsOn: Boolean? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */

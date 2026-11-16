@@ -4,6 +4,7 @@ import app.pantopus.android.data.api.models.plans.PlanAmountBody
 import app.pantopus.android.data.api.models.plans.PlanCheckPayResponse
 import app.pantopus.android.data.api.models.plans.PlanCheckResponse
 import app.pantopus.android.data.api.models.plans.PlanChecksDto
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanMyCheckResponse
 import app.pantopus.android.data.api.models.plans.PlanSendCheckBody
 import app.pantopus.android.data.api.models.plans.PlanTipBody
@@ -86,8 +87,15 @@ class PlanChecksRepository
         /** B6: "You tipped $5.00" once it went through. */
         suspend fun confirmTip(id: String): NetworkResult<PlanTipConfirmDto> = safeApiCall { api.confirmTip(id) }
 
+        /** B2 on the change page: takes a business's price off (`PATCH` with `"price_cents": null`, which UpdatePlanBody can't say). */
+        suspend fun removePrice(id: String): NetworkResult<PlanDto> {
+            val raw = JSONObject().put(PRICE_FIELD, JSONObject.NULL).toString()
+            return safeApiCall { api.updateRaw(id, raw.toRequestBody(JSON_MEDIA_TYPE.toMediaType())) }
+        }
+
         private companion object {
             const val AMOUNT_FIELD = "amount_cents"
+            const val PRICE_FIELD = "price_cents"
             const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }

@@ -49,6 +49,9 @@ val PlanChangeUi.dealLocked: Boolean get() = plan?.deal?.let { !it.canChange } ?
 /** Save sends a changed deal (or takes it off). */
 val PlanChangeUi.dealChanged: Boolean get() = deal.chosen != null && deal.chosen != deal.original
 
+/** Save sends a PATCH body with something in it (anything but taking the deal or the price off, which are raw PATCHes). */
+val PlanChangeUi.patchesFields: Boolean get() = changedBesidesRepeat || repeatChanged || money.sendsFields
+
 /** Save takes the deal off ("No deal" chosen for a plan that has one). */
 val PlanChangeUi.removesDeal: Boolean get() = dealChanged && deal.chosen?.scope == DealScope.NONE && plan?.deal != null
 
