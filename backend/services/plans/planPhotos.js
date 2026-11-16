@@ -2,13 +2,16 @@
 
 /**
  * Plans for the holidays, the extras: photos afterwards (docs/product/plans-holidays/08-extras.md, section 5; the
- * founder's go on November 15 and 16, 2026). Behind `plans_photos`, read for the plan's host, **and** a private bucket:
- * with none set (or a public one), the feature is off for that environment whatever the switch says, so a photo is
- * never stored at a public address.
+ * founder's go on November 15 and 16, 2026). Behind `plans_photos`, read for the plan's host, **and** a private bucket
+ * **and** the picture check: with no private bucket set (or a public one), or no picture check set up, the feature is
+ * off for that environment whatever the switch says, so a photo is never stored at a public address or unchecked.
  *
  *  - Storage: the private bucket Moments use (momentMedia: MOMENTS_BUCKET or HOME_DOCUMENTS_BUCKET, checked to be
  *    private), under plan-photos/<plan>/<person>/; read through links signed for minutes. Every picture is cleaned of
- *    its metadata and passes the check Moments' pictures pass (a picture the check holds is not added).
+ *    its metadata and passes the check Moments' pictures pass (a picture the check holds is not added, and one it
+ *    could not look at is refused and not stored).
+ *  - Deleting an account (routes/users.js) removes every picture the person added to anyone's plan and the files of
+ *    every plan they hosted, before the account's rows go (removeAccountPhotos).
  *  - Plan.photos: { rev, items: [{ id, by, key, thumb_key, w, h, at }], notice_sent_at }, at most 200 a plan and 30 a
  *    person.
  *  - From the plan's end, for 60 days, a person with an account who was in at the end, and the host, may add. They and
@@ -40,12 +43,14 @@ const fail = (status, code, message, extra) => {
 };
 const nowIso = () => new Date().toISOString();
 
-/** The switch, read for the host, and a private bucket in this environment. */
+/** The switch, read for the host, and a private bucket and the picture check in this environment. */
 async function enabledFor(hostId) {
   if (!(await extras.enabledFor(FLAG, hostId))) return false;
   return storageReady();
 }
+/** A private bucket, and the picture check Moments use set up (momentCheck's client): without either, photos are off. */
 async function storageReady() {
+  if (!require('../../config/anthropic').getAnthropicClient()) return false;
   try {
     await media().privateBucket();
     return true;
@@ -185,11 +190,15 @@ async function add(user, postId, file) {
   }
   const facts = await m.photoFacts(file.buffer);
   const ext = EXT[file.mimetype] || 'jpg';
-  // The check Moments' pictures pass: a picture it holds is not added.
+  // The check Moments' pictures pass: a picture it holds is not added, and one it could not look at is not kept.
   const check = await require('../moments/momentCheck').checkPictures([await m.checkImage(file.buffer)]);
   if (check.status === 'flagged') {
     recordFunnelEvent('plan_photo_held', { meta: { plan_id: plan.post_id, reasons: check.reasons } });
     fail(422, 'held', 'This picture can’t be added to the plan.');
+  }
+  if (check.status !== 'passed') {
+    recordFunnelEvent('plan_photo_unchecked', { meta: { plan_id: plan.post_id, error: check.error || null } });
+    fail(503, 'check_unavailable', 'This picture couldn’t be checked right now. Try again in a little while.');
   }
   const bucket = await m.privateBucket();
   const digest = m.sha256(file.buffer);
@@ -200,7 +209,7 @@ async function add(user, postId, file) {
   const thumbKey = thumb ? `${folder}/thumb-${digest}.jpg` : null;
   if (thumb) await m.put(bucket, thumbKey, thumb, 'image/jpeg');
   const item = { id: crypto.randomBytes(6).toString('hex'), by: key, key: photoKey, thumb_key: thumbKey, w: facts.width, h: facts.height,
-    at: nowIso(), ...(check.status === 'unchecked' ? { unchecked: true } : {}) };
+    at: nowIso() };
   await extras.swap(plan.post_id, COLUMN, (current) => {
     const now = itemsOf(current);
     if (now.some((i) => i.key === photoKey)) return undefined;
@@ -284,6 +293,64 @@ async function sendDayAfter() {
   return sent;
 }
 
+// ── Deleting an account ──────────────────────────────────────
+
+/** Every stored key under a folder of the private bucket (one level of person folders below a plan's). */
+async function listed(bucket, folder, depth) {
+  const db = supabaseAdmin.storage.from(bucket);
+  const { data, error } = await db.list(folder, { limit: 1000 });
+  if (error) throw new Error(`Plan photos could not be listed: ${error.message}`);
+  const out = [];
+  for (const entry of data || []) {
+    if (!entry?.name) continue;
+    if (entry.id) out.push(`${folder}/${entry.name}`);
+    else if (depth > 0) out.push(...(await listed(bucket, `${folder}/${entry.name}`, depth - 1)));
+  }
+  return out;
+}
+
+/**
+ * DELETE /api/users/account, before the account's rows go: every picture the person added to anyone's plan (its files
+ * and its entry in that plan's photos) and the files of every plan they hosted (the Plan rows go with the account).
+ * Runs whatever the switch says, so nothing is left after the switch was on once. Answers how many files went.
+ */
+async function removeAccountPhotos(userId) {
+  if (!planService.isUuid(userId)) return 0;
+  const id = String(userId).toLowerCase();
+  const key = extras.personKey(id);
+  const [{ data: hosted, error: hostedError }, { data: added, error: addedError }] = await Promise.all([
+    supabaseAdmin.from('Plan').select('post_id, photos').eq('host_user_id', id).not('photos', 'is', null),
+    supabaseAdmin.from('Plan').select('post_id, photos').neq('host_user_id', id)
+      .filter('photos->items', 'cs', JSON.stringify([{ by: key }])),
+  ]);
+  if (hostedError || addedError) throw new Error(`Failed to read plan photos: ${(hostedError || addedError).message}`);
+  if (!(hosted || []).length && !(added || []).length) return 0;
+  const m = media();
+  const bucket = await m.privateBucket();
+  const keys = new Set();
+  const keysOf = (items) => items.flatMap((i) => [i.key, i.thumb_key]).filter(Boolean);
+  for (const plan of hosted || []) {
+    for (const k of keysOf(itemsOf(plan.photos))) keys.add(k);
+    for (const k of await listed(bucket, `plan-photos/${plan.post_id}`, 1)) keys.add(k);
+  }
+  for (const plan of added || []) {
+    let mine = [];
+    await extras.swap(plan.post_id, COLUMN, (current) => {
+      const now = itemsOf(current);
+      mine = now.filter((i) => i.by === key);
+      if (!mine.length) return undefined;
+      return { ...current, items: now.filter((i) => i.by !== key) };
+    });
+    for (const k of keysOf(mine)) keys.add(k);
+    for (const k of await listed(bucket, `plan-photos/${plan.post_id}/${id}`, 0)) keys.add(k);
+  }
+  const all = [...keys];
+  for (let at = 0; at < all.length; at += 500) {
+    if (!(await m.removeKeys(bucket, all.slice(at, at + 500)))) throw new Error('Plan photos could not be removed.');
+  }
+  return all.length;
+}
+
 module.exports = {
   FLAG,
   LIMITS,
@@ -297,4 +364,5 @@ module.exports = {
   add,
   remove,
   sendDayAfter,
+  removeAccountPhotos,
 };
