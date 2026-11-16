@@ -12,12 +12,12 @@ const { log } = require('./log.cjs');
 // Some counties answer a plain script with an error page.
 const USER_AGENT = 'Mozilla/5.0 (compatible; PantopusPropertyIndex/1.0; +https://pantopus.com)';
 
-function download(url, file) {
+function download(url, file, headers = {}) {
   if (fs.existsSync(file)) return;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const partial = `${file}.part`;
   // Some county servers crawl: long deadline, and a dropped download picks up where it stopped.
-  execFileSync('curl', ['-fsSL', '-A', USER_AGENT, '--retry', '8', '--retry-delay', '20', '--retry-all-errors', '-C', '-',
+  execFileSync('curl', ['-fsSL', '-A', USER_AGENT, ...Object.entries(headers).flatMap(([name, value]) => ['-H', `${name}: ${value}`]), '--retry', '8', '--retry-delay', '20', '--retry-all-errors', '-C', '-',
     '--speed-limit', '1024', '--speed-time', '120', '--max-time', '7200', '-o', partial, url], { stdio: ['ignore', 'inherit', 'inherit'] });
   fs.renameSync(partial, file);
 }

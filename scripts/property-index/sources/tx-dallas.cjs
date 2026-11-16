@@ -147,7 +147,11 @@ async function build({ work, today = new Date() }) {
   for (const [id, kinds] of garages) records.get(id).facts.garage = [...kinds].sort().join(', ');
   for (const [id, kinds] of structures) records.get(id).facts.other_structures = [...kinds].sort().join(', ');
 
-  for await (const row of zipTable(zip, 'LAND.CSV', ['ACCOUNT_NUM', 'SPTD_DESC', 'ZONING', 'AREA_SIZE', 'AREA_UOM_DESC'])) {
+  // A flat-priced land row often leaves its unit "UNASSIGNED" while AREA_SIZE holds a number. The field documents don't say what that
+  // number measures, so it counts as square feet only where it agrees within 10% with the same row's FRONT_DIM x DEPTH_DIM, the
+  // district's own cross-check, and only for an account with no land row whose unit is stated. Front x depth alone never counts.
+  const checked = new Map();
+  for await (const row of zipTable(zip, 'LAND.CSV', ['ACCOUNT_NUM', 'SPTD_DESC', 'ZONING', 'AREA_SIZE', 'AREA_UOM_DESC', 'FRONT_DIM', 'DEPTH_DIM'])) {
     const record = usable(row.ACCOUNT_NUM);
     if (!record) continue;
     const { facts } = record;
@@ -157,7 +161,16 @@ async function build({ work, today = new Date() }) {
     const unit = String(row.AREA_UOM_DESC).trim();
     if (area && unit === 'SQUARE FEET') facts.lot_sqft = (facts.lot_sqft || 0) + area;
     if (area && unit === 'ACRE') facts.lot_acres = (facts.lot_acres || 0) + area;
+    const sides = (positive(row.FRONT_DIM) || 0) * (positive(row.DEPTH_DIM) || 0);
+    if (area && unit === 'UNASSIGNED' && sides && Math.abs(area / sides - 1) <= 0.1) checked.set(record, (checked.get(record) || 0) + area);
   }
+  let checkedLots = 0;
+  for (const [{ facts }, area] of checked) {
+    if (facts.lot_sqft || facts.lot_acres) continue;
+    facts.lot_sqft = area;
+    checkedLots += 1;
+  }
+  log(`${checkedLots} lots from flat-priced land rows that agree with their front and depth`);
 
   for await (const row of zipTable(zip, 'ACCT_EXEMPT_VALUE.CSV', ['ACCOUNT_NUM', 'EXEMPTION'])) {
     const record = usable(row.ACCOUNT_NUM);
