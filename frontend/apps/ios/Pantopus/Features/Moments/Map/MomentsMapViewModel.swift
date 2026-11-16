@@ -473,22 +473,12 @@ final class MomentsMapViewModel {
         nameTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
-            let name = wide ? await MomentsGlobe.countryName(at: point) : await Self.areaName(at: point)
+            let name = wide ? await Self.countryName(at: point) : await Self.areaName(at: point)
             guard !Task.isCancelled, let self else { return }
             namedAt = point
             namedWide = wide
             if let name { areaName = name }
         }
-    }
-
-    /// "Downtown Vancouver": the neighborhood and the town, or the town alone.
-    private static func areaName(at point: CLLocation) async -> String? {
-        guard let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first else { return nil }
-        let town = placemark.locality ?? placemark.subAdministrativeArea
-        // A long neighborhood name from the geocoder reads badly in the pill: the town alone then.
-        guard let neighborhood = placemark.subLocality, neighborhood.count <= 20 else { return town }
-        if let town, !neighborhood.contains(town) { return "\(neighborhood) \(town)" }
-        return neighborhood
     }
 
     static func homeCoordinate(store: ScreenStore) async -> UserCoordinate? {

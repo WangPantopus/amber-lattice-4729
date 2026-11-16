@@ -41,12 +41,6 @@ enum MomentsGlobe {
     static func widest(_ span: MKCoordinateSpan) -> Double {
         max(span.latitudeDelta, span.longitudeDelta)
     }
-
-    /// The area pill zoomed out to a globe: the country under the middle of the map, or "The world" over the sea.
-    static func countryName(at point: CLLocation) async -> String {
-        let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first
-        return placemark?.country ?? "The world"
-    }
 }
 
 /// Zoomed out past where Moments show: not "nothing here", since the server only reads a view about 300 miles across
@@ -69,6 +63,22 @@ struct MomentsZoomInCard: View {
 }
 
 extension MomentsMapViewModel {
+    /// The area pill close in. "Downtown Vancouver": the neighborhood and the town, or the town alone.
+    static func areaName(at point: CLLocation) async -> String? {
+        guard let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first else { return nil }
+        let town = placemark.locality ?? placemark.subAdministrativeArea
+        // A long neighborhood name from the geocoder reads badly in the pill: the town alone then.
+        guard let neighborhood = placemark.subLocality, neighborhood.count <= 20 else { return town }
+        if let town, !neighborhood.contains(town) { return "\(neighborhood) \(town)" }
+        return neighborhood
+    }
+
+    /// The area pill zoomed out to a globe: the country under the middle of the map, or "The world" over the sea.
+    static func countryName(at point: CLLocation) async -> String {
+        let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first
+        return placemark?.country ?? "The world"
+    }
+
     /// Wider than the server shows Moments for.
     static func isTooWide(_ span: MKCoordinateSpan) -> Bool {
         MomentsGlobe.widest(span) > MomentsGlobe.widestSpan
