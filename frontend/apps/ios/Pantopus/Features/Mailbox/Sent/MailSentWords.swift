@@ -33,6 +33,7 @@ enum MailSentWords {
         case .delivered:
             return piece.sealed ? "In their mailbox, sealed until Christmas" : "In their mailbox since \(day)"
         case .emailWaiting:
+            if let sendAt = piece.emailSendAt { return "Email goes \(HolidayCardWords.dayAndTime(sendAt, calendar: calendar))" }
             return piece.isLetter ? "Waiting for them to claim it" : "Waiting for them to open the email"
         case .claimed:
             return piece.isLetter ? "They claimed your letter" : "They joined Pantopus and have it"
@@ -119,9 +120,17 @@ enum MailSentWords {
         }
     }
 
+    /// A step with words of its own: a card withdrawn, or "Emailed" while the
+    /// email waits for the time chosen; nil for the usual words.
+    private static func ownTrailTitle(_ step: MailSentPiece.TrailStep, piece: MailSentPiece) -> String? {
+        if step.step == "not_delivered" { return "Couldn’t be delivered" }
+        guard step.step == "emailed", !step.done, let sendAt = piece.emailSendAt else { return nil }
+        return "Email goes \(HolidayCardWords.dayAndTime(sendAt))"
+    }
+
     /// A step's words: "Sealed by you", "Delivered with Maya’s 7 a.m. mail" …
     static func trailTitle(_ step: MailSentPiece.TrailStep, piece: MailSentPiece) -> String {
-        if step.step == "not_delivered" { return "Couldn’t be delivered" }
+        if let words = ownTrailTitle(step, piece: piece) { return words }
         if piece.byLink, let words = linkTrailTitle(step, piece: piece) { return step.done ? words : "\(words) · not yet" }
         let first = HolidayCardWords.possessive(recipientFirst(piece))
         let title = switch step.step {
