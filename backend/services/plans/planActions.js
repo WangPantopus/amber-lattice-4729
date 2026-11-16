@@ -600,6 +600,10 @@ async function createPlan(user, input, internal = {}) {
     if (again) return planBodyFor(again, viewer);
   }
 
+  // The host form's bring list (H2, A3), while the host has its switch: a person's plan only.
+  const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
+    ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
+    : null;
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -681,6 +685,7 @@ async function createPlan(user, input, internal = {}) {
     // Only an online plan has a link (the table's plan_online_has_link).
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
     ...(kidsWelcome ? { kids_welcome: true } : {}),
+    ...(bringList ? { bring_list: bringList } : {}),
     timezone,
     status: 'open',
   });
@@ -748,6 +753,8 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const reviewedGame = await checkedSportsRevision(viewer, plan, patch.sports_revision);
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over, so it can’t change.');
+  // The bring list's items are checked before anything is saved (H2).
+  if (patch.bring != null) require('./planBring').checkedItems(patch.bring);
 
   const postUpdate = {};
   const planUpdate = {};
@@ -920,6 +927,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (error) throw new Error(`Failed to save the change: ${error.message}`);
   }
   if (postUpdate.title && postUpdate.title !== plan.post.title) await planChat.renameRoom(plan, postUpdate.title);
+  // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
+  if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
+    await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {
@@ -1352,6 +1363,8 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
     .update(patch).eq('id', mine.id).eq('status', mine.status).select('id');
   if (updateError) throw new Error(`Failed to update your request: ${updateError.message}`);
   if (changed && changed.length > 0 && leaving) {
+    // What they were bringing goes back on the list (H2).
+    await require('./planBring').clearClaims(postId, 'user', mine.id);
     const names = await userNames([viewer.id]);
     const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
@@ -1482,6 +1495,7 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (error) throw new Error(`Failed to remove: ${error.message}`);
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
+        await require('./planBring').clearClaims(postId, 'user', request.id);
         await planNotify.declined({ plan, request, hostFirst });
         await offerOpenSpots(plan, { io });
       }

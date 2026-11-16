@@ -213,8 +213,16 @@ export type PublicPlanForGuest = {
   place: { name: string; address: string | null; latitude: number | null; longitude: number | null; link?: string | null };
   guest_note: string | null;
   going: string[];
-  bring: unknown;
+  /** The bring list (H2), while the host has it on. */
+  bring: PublicPlanBring | null;
   changed: 'time' | 'place' | 'both' | null;
+};
+
+export type PublicPlanBring = {
+  rev: number;
+  guests_can_add: boolean;
+  open_count: number;
+  items: { id: string; label: string; note: string | null; claim: { name: string; mine: boolean } | null }[];
 };
 
 export type PublicPlanBusiness = {

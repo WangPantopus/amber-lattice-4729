@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PublicPlan, PublicPlanGuestState } from '@/lib/publicShare';
+import type { PublicPlan, PublicPlanBring, PublicPlanGuestState } from '@/lib/publicShare';
 import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
 
 // Plans for the holidays, H1: the plan's page for a guest without an account (docs/product/plans-holidays/
@@ -247,6 +247,132 @@ function downloadCalendar(planId: string, plan: PublicPlan, location: string, pa
   window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// ── The bring list (H2) ──────────────────────────────────────
+
+/**
+ * W3's bring list: who is bringing what, "I'll bring it", "You're bringing it" with "Give back", and "Bring something
+ * else" when the host lets guests add. Each change answers the whole list; someone who got there first is named.
+ */
+function BringList({ planId, initial }: { planId: string; initial: PublicPlanBring }) {
+  const [bring, setBring] = useState<PublicPlanBring>(initial);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [line, setLine] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [label, setLabel] = useState('');
+
+  async function call(path: string, method: 'POST' | 'DELETE', body?: Record<string, unknown>, key = path) {
+    setBusy(key);
+    setLine(null);
+    try {
+      const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/bring${path}`, {
+        method,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.bring) setBring(data.bring as PublicPlanBring);
+      if (res.ok) return true;
+      if (res.status === 409 && data.error === 'taken') setLine(data.message);
+      else setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
+      return false;
+    } catch {
+      setLine('Something went wrong. Please try again.');
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function add() {
+    const text = label.trim();
+    if (!text) return;
+    if (await call('/items', 'POST', { label: text }, 'add')) {
+      setLabel('');
+      setAdding(false);
+    }
+  }
+
+  return (
+    <section className={`${CARD} flex flex-col px-4 pb-2 pt-4`} aria-labelledby="bring-title">
+      <div className="flex items-baseline justify-between gap-3 pb-1">
+        <h2 id="bring-title" className="text-base font-semibold leading-[22px]">What will you bring?</h2>
+        <span className="text-sm text-app-text-secondary">{`${bring.open_count} still open`}</span>
+      </div>
+      <ul className="divide-y divide-app-border">
+        {bring.items.map((item) => (
+          <li key={item.id} className="flex min-h-[56px] items-center justify-between gap-3 py-2">
+            <div className="flex min-w-0 flex-col">
+              <span className="text-base font-semibold leading-[22px]">{item.label}</span>
+              {item.claim?.mine ? (
+                <span className="text-[13px] leading-[18px] text-app-success">You’re bringing it</span>
+              ) : item.note ? (
+                <span className="text-[13px] leading-[18px] text-app-text-secondary">{item.note}</span>
+              ) : null}
+            </div>
+            {item.claim?.mine ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => call(`/${item.id}/claim`, 'DELETE')}
+                className="min-h-[44px] flex-none px-2 text-sm font-semibold text-app-link disabled:opacity-50"
+              >
+                Give back
+              </button>
+            ) : item.claim ? (
+              <span className="flex flex-none items-center gap-2 text-sm font-semibold text-app-text-strong">
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-[#e0e7ff] text-xs font-bold text-[#3730a3] dark:bg-[#23264a] dark:text-[#c7d2fe]" aria-hidden="true">
+                  {item.claim.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span><span className="sr-only">Brought by </span>{item.claim.name}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => call(`/${item.id}/claim`, 'POST')}
+                aria-label={`I’ll bring ${item.label}`}
+                className="flex min-h-[44px] flex-none items-center gap-2 rounded-xl border border-app-link px-4 text-sm font-semibold text-app-link disabled:opacity-50"
+              >
+                {busy === `/${item.id}/claim` ? <Spinner /> : null}I’ll bring it
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {bring.guests_can_add ? (
+        adding ? (
+          <form
+            className="flex items-center gap-2 py-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              add();
+            }}
+          >
+            <input
+              type="text"
+              value={label}
+              maxLength={60}
+              autoFocus
+              aria-label="What you’ll bring"
+              onChange={(e) => setLabel(e.target.value)}
+              className="h-11 min-w-0 flex-1 rounded-xl border border-app-border-strong bg-app-surface px-3 text-base text-app-text outline-none focus:border-primary-600"
+            />
+            <button type="submit" disabled={busy !== null || !label.trim()} className="h-11 flex-none rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white disabled:opacity-50">
+              {busy === 'add' ? <Spinner /> : 'Add'}
+            </button>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setAdding(true)} className="flex min-h-[48px] items-center gap-2 text-base font-semibold text-app-link">
+            {Glyph.plus('h-5 w-5')}Bring something else
+          </button>
+        )
+      ) : null}
+      {line ? <p className="pb-3 text-sm leading-5 text-app-text-strong" role="status">{line}</p> : null}
+    </section>
+  );
+}
+
 // ── The page ─────────────────────────────────────────────────
 
 export default function GuestAnswer(props: GuestAnswerProps) {
@@ -468,6 +594,7 @@ export default function GuestAnswer(props: GuestAnswerProps) {
             <p className="whitespace-pre-line text-base leading-6 text-app-text">{forGuest.guest_note}</p>
           </section>
         ) : null}
+        {forGuest.bring ? <BringList key={forGuest.bring.rev} planId={planId} initial={forGuest.bring} /> : null}
         <section className="flex flex-col gap-2 rounded-2xl bg-app-surface-sunken px-4 py-4">
           <p className="text-base font-semibold leading-[22px]">The group chat is in the app</p>
           <p className="text-sm leading-5 text-app-text-secondary">{`So are day-of updates, the photos afterwards and ${hostFirst}'s next plan.`}</p>

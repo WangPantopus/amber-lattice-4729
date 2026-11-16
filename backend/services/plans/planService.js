@@ -51,6 +51,8 @@ const PLAN_COLUMNS = [
   'online_link',
   // Plans for the holidays, H1: kids welcome, and the open link (its token reaches the host alone, in open_link).
   'kids_welcome', 'open_invite_token', 'open_invite_ok_first',
+  // H2: the bring list (planBring.js), read by the host and the people in only.
+  'bring_list',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -238,12 +240,14 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Guests without an account who are in or said maybe (planGuests.js), and whether each plan's host has the switch.
     guestRowsByPlan: new Map(),
     guestAnswersByHost: new Map(),
+    // Whether each plan's host has the bring list (H2).
+    bringByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
   const hostedIds = plans.filter((p) => planBusiness.runsPlan(p, viewer)).map((p) => p.post_id);
   const friendPlanIds = plans.filter((p) => rules.isPrivate(p) && p.guests_can_invite && !hostedIds.includes(p.post_id)).map((p) => p.post_id);
-  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags] = await Promise.all([
+  const [activeRequests, myRequests, openCount, hostedRows, myHistory, myInvites, inviteCounts, friendLinks, guestRows, guestFlags, bringFlags] = await Promise.all([
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).in('status', ACTIVE_REQUEST_STATUSES),
     supabaseAdmin.from('PlanRequest').select(REQUEST_COLUMNS).in('post_id', planIds).eq('user_id', viewer.id),
     supabaseAdmin.from('PlanRequest').select('id', { count: 'exact', head: true }).eq('user_id', viewer.id).in('status', OPEN_REQUEST_STATUSES),
@@ -259,6 +263,7 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     invites().friendLinkPlanIds(viewer.id, friendPlanIds),
     guests().guestRows(planIds),
     guests().switchByHost(hostIds),
+    require('./planBring').switchByHost(plans.filter((p) => p.bring_list).map((p) => p.host_user_id)),
   ]);
   for (const result of [activeRequests, myRequests, openCount, hostedRows, myHistory]) {
     if (result.error) throw new Error(`Failed to load plan details: ${result.error.message}`);
@@ -268,6 +273,7 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.friendLinkPlans = friendLinks;
   ctx.guestRowsByPlan = guestRows;
   ctx.guestAnswersByHost = guestFlags;
+  ctx.bringByHost = bringFlags;
 
   for (const request of activeRequests.data || []) {
     if (!ctx.requestsByPlan.has(request.post_id)) ctx.requestsByPlan.set(request.post_id, []);
@@ -662,6 +668,13 @@ function buildCard(plan, viewer, ctx) {
   if (plan.business_user_id) addBusinessFields(card, plan, viewer, ctx);
   if (rules.isPrivate(plan)) addPrivateFields(card, plan, viewer, ctx, { role, myInvite });
   if (guestOn) guests().addCardFields(card, plan, { role, requests, guestRows, counts: ctx.inviteCountsByPlan?.get(plan.post_id) });
+  // The bring list (H2), for the host and the people in, while the host has the switch. An added field older apps
+  // ignore, so it needs no marker.
+  if (isIn && plan.bring_list && ctx.bringByHost?.get(hostId)) {
+    const planBring = require('./planBring');
+    const bring = planBring.view(plan.bring_list, planBring.mineFor({ role, requestId: myRequest?.status === 'accepted' ? myRequest.id : null }));
+    if (bring) card.bring = bring;
+  }
   return card;
 }
 
