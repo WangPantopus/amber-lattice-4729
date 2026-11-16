@@ -20,7 +20,8 @@ enum HolidayCardWords {
     /// "Take your card back?" with digital stamps on.
     static let stampComesBack = "Its stamp comes back to you."
 
-    /// "Take your card back?" for a card by email whose email waits for the time chosen (`email_send_at`).
+    /// "Take your card back?" for a card by email whose email hasn't gone out: it waits for the time chosen
+    /// (`email_send_at`), or Sent says it didn't go (`email_status`; taking it back stops the tries).
     static let notEmailedYet = "We haven’t emailed them yet, so nothing will go out."
 
     // MARK: Days and times

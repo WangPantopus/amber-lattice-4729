@@ -83,10 +83,10 @@ enum MailSentWords {
         return "It waits for the carrier until \(when) (your clock)."
     }
 
-    /// The confirm's words: the card's own (by email, before its email has
-    /// gone, nothing goes out), then its stamp coming back with digital
-    /// stamps on (`postage`), else the day freed again only for a card sent
-    /// today.
+    /// The confirm's words: the card's own (by email, while its email waits
+    /// for its time or didn't go out, nothing goes out: taking it back stops
+    /// the tries), then its stamp coming back with digital stamps on
+    /// (`postage`), else the day freed again only for a card sent today.
     static func takeBackConfirm(
         _ piece: MailSentPiece,
         postage: Bool = false,
@@ -95,7 +95,7 @@ enum MailSentWords {
     ) -> String {
         let first = piece.byLink
             ? "Your link will say you took it back."
-            : piece.emailSendAt != nil
+            : piece.emailSendAt != nil || piece.emailStatus != nil
             ? HolidayCardWords.notEmailedYet
             : piece.byEmail
             ? "The link in their email will say you took it back."
