@@ -934,6 +934,9 @@ function addBusinessFields(card, plan, viewer, ctx) {
       reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null,
     { keep: buyer ? groupPay.keptCents(plan, buyer, planRequests) : 0 }) : null;
     if (paid && myRequest.status === 'accepted') card.paid = paid;
+    // The buyer's leave line names the spots coming back and the people staying in (08-extras section 7).
+    const groupLeave = buyer && paid ? groupPay.leaveText(plan, buyer, planRequests, paid.leave_back_cents) : null;
+    if (groupLeave && card.paid) card.paid = { ...card.paid, leave_text: groupLeave };
     if (buyer) {
       const spots = groupPay.buyerView(plan, buyer, planRequests);
       if (spots) card.group_pay = spots;

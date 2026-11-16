@@ -349,6 +349,44 @@ function buyerLeaveCents(plan, buyer, requests) {
   return Math.max(0, left - claimersOf(buyer, requests).length * perSpot(plan, buyer));
 }
 
+/**
+ * The buyer's leave line while claimers are in (08-extras section 7, settled November 16), in the request's own numbers:
+ * "You'll get $162.00 back: your spot and the 8 nobody took. The 3 people you paid for stay in.", or with every spot
+ * taken "You'll get $18.00 back for your spot. The 11 people you paid for stay in." Null without claimers (the paid
+ * plan's own "You'll get $216.00 back.").
+ */
+function leaveText(plan, buyer, requests, backCents) {
+  const claimed = claimersOf(buyer, requests).length;
+  if (!claimed || !(backCents > 0)) return null;
+  const per = perSpot(plan, buyer);
+  const nobody = Math.max(0, Math.round(backCents / per) - 1);
+  const money = planPaid().moneyText(backCents);
+  const stay = `The ${claimed} ${claimed === 1 ? 'person' : 'people'} you paid for ${claimed === 1 ? 'stays' : 'stay'} in.`;
+  return nobody > 0 ? `You'll get ${money} back: your spot and the ${nobody} nobody took. ${stay}` : `You'll get ${money} back for your spot. ${stay}`;
+}
+
+/**
+ * A claimer left or was removed (08-extras section 7, settled November 16: before refund_until every bought spot that
+ * ends up empty goes back to the buyer; after it, none). While the link takes people the spot goes back to the link
+ * (nothing to do here). Once it has stopped and refund_until hasn't come, that spot's price goes back to the buyer at
+ * once, one more refund in part; the spot is an ordinary open spot. Answers the cents returned.
+ */
+async function onClaimerGone(plan, claimerId, now = Date.now()) {
+  if (!takes(plan)) return 0;
+  const { data: claimer, error } = await supabaseAdmin.from('PlanRequest').select('id, paid_by_request_id').eq('id', claimerId).maybeSingle();
+  if (error) throw new Error(`Failed to read the spot: ${error.message}`);
+  if (!claimer?.paid_by_request_id) return 0;
+  const { data: buyer, error: buyerError } = await supabaseAdmin.from('PlanRequest')
+    .select(`${planService().REQUEST_COLUMNS}, refund_until, unit_price_cents, payment_id, paid_cents, refunded_cents, deal_used_at`)
+    .eq('id', claimer.paid_by_request_id).maybeSingle();
+  if (buyerError) throw new Error(`Failed to read the buyer's spots: ${buyerError.message}`);
+  if (!buyer?.payment_id || buyer.spots_token) return 0;
+  if (!buyer.refund_until || new Date(buyer.refund_until).getTime() <= now) return 0;
+  const back = await planPaid().refund(plan, buyer, { reason: `claimer_gone:${claimer.id}`, actorMode: 'policy', amount: perSpot(plan, buyer) });
+  logger.info('plans.group_pay.claimer_spot_returned', { planId: plan.post_id, buyerRequestId: buyer.id, claimerRequestId: claimer.id, back });
+  return back;
+}
+
 /** What the claimers' spots keep of a buyer's payment (for the card's leave line). */
 function keptCents(plan, buyer, requests) {
   return claimersOf(buyer, requests).length * perSpot(plan, buyer);
@@ -376,5 +414,7 @@ module.exports = {
   runDue,
   buyerLeaveCents,
   keptCents,
+  leaveText,
+  onClaimerGone,
   claimersOf,
 };

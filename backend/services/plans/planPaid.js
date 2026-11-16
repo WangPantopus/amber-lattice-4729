@@ -542,7 +542,7 @@ async function markOwed(paymentId, owed) {
   const { error } = await supabaseAdmin.from('Payment').update({ metadata: { ...(now?.metadata || {}),
     plan_refund_owed: { ...owed, since: new Date().toISOString() } } }).eq('id', paymentId);
   if (error) throw new Error(`Failed to keep the owed refund: ${error.message}`);
-  logger.warn('plans.paid.refund_owed', { paymentId, requestId: owed.request_id, reason: owed.reason });
+  logger.error('plans.paid.refund_owed', { paymentId, requestId: owed.request_id, reason: owed.reason, amount: owed.amount ?? null });
 }
 
 async function clearOwed(paymentId, key) {
@@ -573,11 +573,22 @@ async function retryOwedRefunds() {
       await refund(plan, request, { reason: owed.reason, actorMode: owed.actor_mode, actorId: owed.actor_id || null });
       const { data: after } = await supabaseAdmin.from('Payment').select('metadata').eq('id', payment.id).maybeSingle();
       if (after?.metadata?.plan_refund_owed?.key !== owed.key) done += 1;
+      else stuck(payment.id, owed);
     } catch (err) {
       logger.warn('plans.paid.owed_retry_failed', { paymentId: payment.id, error: err.message });
+      stuck(payment.id, owed);
     }
   }
   return done;
+}
+
+/** Money owed that hasn't moved for an hour is loud: an error line on every tick it stays so (the alarms watch them). */
+function stuck(paymentId, owed) {
+  const since = owed?.since ? new Date(owed.since).getTime() : NaN;
+  const minutes = Math.round((Date.now() - since) / 60000);
+  if (Number.isFinite(minutes) && minutes >= 60) {
+    logger.error('plans.paid.refund_owed_stuck', { paymentId, requestId: owed.request_id, reason: owed.reason, minutes });
+  }
 }
 
 /**
@@ -699,7 +710,8 @@ async function moneyRows(requestIds) {
 async function onLeave(plan, requestId, { reason, wasStatus }) {
   if (!plan.price_cents || !(await enabledFor(plan.host_user_id))) return 0;
   const [request] = await moneyRows([requestId]);
-  if (!request) return 0;
+  // A spot someone else paid for (one person pays for the group): it may go back to the buyer.
+  if (!request) return require('./planGroupPay').onClaimerGone(plan, requestId);
   request.status = wasStatus || request.status;
   if (request.status === 'paying') return refund(plan, request, { reason: 'abandoned', actorMode: 'payer' });
   // A group buyer (one person pays for the group): the link stops; the spots claimers hold stay paid and they stay in.
@@ -720,7 +732,14 @@ async function onLeave(plan, requestId, { reason, wasStatus }) {
 async function onBusinessEnds(plan, requestIds, reason) {
   if (!plan.price_cents) return 0;
   let total = 0;
-  for (const request of await moneyRows(requestIds)) total += await refund(plan, request, { reason, actorMode: 'policy' });
+  const rows = await moneyRows(requestIds);
+  for (const request of rows) total += await refund(plan, request, { reason, actorMode: 'policy' });
+  // A removed claimer's spot (one person pays for the group) may go back to the buyer. A cancelled plan returns
+  // everything to whoever paid, above.
+  if (reason === 'removed') {
+    const paidIds = new Set(rows.map((r) => r.id));
+    for (const id of (requestIds || []).filter((x) => x && !paidIds.has(x))) total += await require('./planGroupPay').onClaimerGone(plan, id);
+  }
   return total;
 }
 
