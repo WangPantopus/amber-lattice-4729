@@ -294,6 +294,15 @@ function body(req) {
   return req.body && typeof req.body === 'object' ? req.body : {};
 }
 
+// POST /api/plans/deal-preview (B1): what a guest will read about a deal the business is choosing; nothing is saved.
+router.post('/deal-preview', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').previewFor(req.user, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'deal_preview', req);
+  }
+});
+
 // POST /api/plans: host a plan. Returns PlanDetail (201).
 router.post('/', contentCreationLimiter, async (req, res) => {
   try {
@@ -347,6 +356,15 @@ router.delete('/:id/requests/mine', async (req, res) => {
     return res.json(await planActions.withdrawMine(req.user, req.params.id, { io: req.app.get('io') }));
   } catch (err) {
     return serverError(res, err, 'withdraw', req);
+  }
+});
+
+// POST /api/plans/:id/requests/:requestId/deal-used (B1): staff with plans.manage mark a guest's free thing used.
+router.post('/:id/requests/:requestId/deal-used', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').markUsedFor(req.user, req.params.id, req.params.requestId));
+  } catch (err) {
+    return serverError(res, err, 'deal_used', req);
   }
 });
 

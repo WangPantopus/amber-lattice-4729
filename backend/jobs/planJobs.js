@@ -470,6 +470,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.bring_open_failed', { error: err.message });
   }
+  // Group deals on businesses' plans (B1): settled at their deadline, and the one "closes soon" notice.
+  let deals = null;
+  try {
+    deals = await require('../services/plans/planDeals').runDealTick();
+  } catch (err) {
+    logger.warn('plans.tick.deals_failed', { error: err.message });
+  }
   const summaries = await sendHostSummaries();
   // The assistant's nudges come last, and a failure there never stops the notices above.
   let nudges = null;
@@ -495,6 +502,7 @@ async function runPlansTick() {
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
+    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
     || (nudges && nudges.sent) || alerts || repeats || series) {

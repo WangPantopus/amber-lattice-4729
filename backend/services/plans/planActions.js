@@ -610,6 +610,8 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  // A business's plan's deal (B1), while the business has the switch: checked against its room and start.
+  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at });
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -693,6 +695,7 @@ async function createPlan(user, input, internal = {}) {
     ...(kidsWelcome ? { kids_welcome: true } : {}),
     ...(bringList ? { bring_list: bringList } : {}),
     ...(occasion ? { occasion } : {}),
+    ...(deal ? { deal } : {}),
     timezone,
     status: 'open',
   });
@@ -709,6 +712,7 @@ async function createPlan(user, input, internal = {}) {
   } });
   if (occasion && !internal.series) recordFunnelEvent('plan_occasion_started', { userId: viewer.id, meta: { plan_id: post.id, kind, occasion } });
   if (hostAs) {
+    if (deal) recordFunnelEvent('plan_deal_set', { userId: viewer.id, meta: { plan_id: post.id, kind, scope: deal.scope, deal_kind: deal.kind } });
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
     return planBodyFor(post.id, viewer);
   }
@@ -899,6 +903,11 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
   }
+  // A business's plan's deal (B1): set or changed while nobody is in, removed at any time (everyone in is told).
+  const dealChange = await require('./planDeals').dealChange(plan, patch, {
+    going, spots: planUpdate.spots ?? plan.spots, startsAt: postUpdate.event_date || plan.post.event_date,
+  });
+  if (dealChange) planUpdate.deal = dealChange.update;
   // The occasion (H3): another from the list, or null for none, with the switch on.
   if (patch.occasion !== undefined && !plan.business_user_id && (await require('./planOccasions').enabledFor(viewer.id))) {
     const occasion = patch.occasion === null ? null : require('./planOccasions').checkedKey(patch.occasion);
@@ -1010,6 +1019,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     await planGuests.planChanged(updated, { timeMoved, placeChanged }).catch((err) => logger.warn('plans.edit.guests_failed', { planId: postId, error: err.message }));
   }
   if (spotsGrew) await offerOpenSpots(updated, { io });
+  if (dealChange?.removed) {
+    await require('./planDeals').notifyRemoved(updated, requests.filter((r) => r.status === 'accepted'), await hostFirstOf(updated))
+      .catch((err) => logger.warn('plans.edit.deal_removed_notice_failed', { planId: postId, error: err.message }));
+  } else if (dealChange?.update) {
+    recordFunnelEvent('plan_deal_set', { userId: viewer.id, meta: { plan_id: postId, kind: plan.kind, scope: dealChange.update.scope, deal_kind: dealChange.update.kind } });
+  }
   await auditBusinessPlan(plan, viewer, 'plans.edit', { fields: [...Object.keys(postUpdate), ...Object.keys(planUpdate)] });
   return planBodyFor(postId, viewer);
 }
