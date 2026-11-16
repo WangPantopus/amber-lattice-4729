@@ -53,7 +53,7 @@ Pantopus, with tips.
 | Payment decisions P1 to P16 | Accepted by the founder November 15, all as recommended ([02-payments.md](02-payments.md), section 12) |
 | Calls these documents make | H1 to H11 and K1 to K10, accepted by the founder November 15, all as recommended ([01-design.md](01-design.md), section 7, and [03-build-contract.md](03-build-contract.md), section 2) |
 | Build | The founder said "yes, let's start" on November 15 for the people track; the build sessions run on Opus 5.5 at Extra High |
-| On `dev`, every switch off | H1, H2 and H3 on the server and the web (PRs 4183 to 4186, November 15). The iPhone and Android halves are being built |
+| On `dev` and staging, every switch off | H1, H2 and H3 on the server and the web, and the guest email rules (PRs 4183 to 4187, November 15). Production has none of it. The iPhone and Android halves are being built |
 | Made precise during the build | Several keys a guest, and the key only by email at a home (contract 6.1, 6.3). Which emails count against a guest's three, and that a cancellation always goes (contract 6.6). Both were the designer's calls after the server session asked, reported to the founder, not separately approved |
 
 ## Not checked
