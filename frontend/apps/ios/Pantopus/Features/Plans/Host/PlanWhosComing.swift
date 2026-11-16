@@ -66,7 +66,7 @@ struct PlanWhosComingScreen: View {
             Button("Remove", role: .destructive) { Task { await model.remove(row) } }
             Button("Not now", role: .cancel) {}
         } message: { _ in
-            Text("They'll be told once.")
+            Text("Their invitation will stop working.")
         }
         .overlay(alignment: .bottom) { toastView }
         .accessibilityElement(children: .contain)

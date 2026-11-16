@@ -839,10 +839,11 @@ final class DeepLinkRouter {
     /// `/<username>`, which has no native route (unknown paths are
     /// deliberately discarded); rewrite just those types to the native short
     /// profile form `/u/<username>`.
-    nonisolated static func notificationPath(type: String?, link: String?) -> String? {
-        // Plans for the holidays: a guest who answered, or one waiting for the host's yes, opens "Who's coming".
-        if type == "plan_guest_answered" || type == "plan_guest_waiting", let link, link.hasPrefix("/plans/"),
-           !link.contains("?"), link.split(separator: "/").count == 2 {
+    nonisolated static func notificationPath(type: String?, link: String?, opens: String? = nil) -> String? {
+        // Plans for the holidays: a notice about the host's guests (`opens: whos_coming`: a guest answered, one waits
+        // for the host's yes, guests wait after a move to a home) opens "Who's coming" over its plan.
+        let aboutGuests = opens == "whos_coming" || type == "plan_guest_answered" || type == "plan_guest_waiting"
+        if aboutGuests, let link, link.hasPrefix("/plans/"), !link.contains("?"), link.split(separator: "/").count == 2 {
             return link + "/guests"
         }
         guard type == "new_follower" || type == "connection_accepted", let link else { return link }
