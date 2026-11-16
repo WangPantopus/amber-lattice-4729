@@ -511,6 +511,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.owed_refunds_failed', { error: err.message });
   }
+  // One person pays for the group (the extras): at refund_until the spots nobody took go back and the link stops.
+  let spotsSettled = 0;
+  try {
+    spotsSettled = await require('../services/plans/planGroupPay').runDue();
+  } catch (err) {
+    logger.warn('plans.tick.group_pay_failed', { error: err.message });
+  }
   // Group deals on businesses' plans (B1): settled at their deadline, and the one "closes soon" notice.
   let deals = null;
   try {
@@ -557,7 +564,7 @@ async function runPlansTick() {
   const result = {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
-    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(owedRefunds ? { owedRefunds } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
+    ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(owedRefunds ? { owedRefunds } : {}), ...(spotsSettled ? { spotsSettled } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
     ...(dateTimes && (dateTimes.moved || dateTimes.reminded || dateTimes.lapsed) ? { dateTimes } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount

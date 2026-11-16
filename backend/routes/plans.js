@@ -400,6 +400,35 @@ router.post('/:id/requests/mine/confirm', async (req, res) => {
   }
 });
 
+// ── One person pays for the group (the extras, 08-extras section 7; services/plans/planGroupPay.js): 404 while
+// plans_group_pay is off for the plan's business. Buying is POST …/requests with { for: "link", spots }.
+// POST /api/plans/:id/requests/claim-spot { token }: in, free, while the buyer's link has spots left. Answers the plan.
+router.post('/:id/requests/claim-spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').claim(req.user, req.params.id, req.body || {}, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_claim', req);
+  }
+});
+
+// POST /api/plans/:id/requests/mine/give-back-spots: the buyer gives back the spots nobody took now. Answers the plan.
+router.post('/:id/requests/mine/give-back-spots', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').giveBack(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_give_back', req);
+  }
+});
+
+// GET /api/plans/:id/spot?token=: what the link shows ("{Chris} got you a spot", spots left), signed in.
+router.get('/:id/spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').readLink(req.params.id, req.query.token));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_link', req);
+  }
+});
+
 // The bill at the place (B5, contract 11.2), behind plans_pay_here. Every amount is the server's.
 const planChecks = () => require('../services/plans/planChecks');
 const checkRoute = (method, path, label, handler) => router[method](path, async (req, res) => {

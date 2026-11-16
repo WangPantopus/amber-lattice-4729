@@ -173,8 +173,9 @@ function shortGroupPrice(plan, now = Date.now()) {
  * What leaving now gives back (P10): all that is left of the payment before refund_until, or while the business has
  * moved the plan and asked whether the guest still comes; otherwise nothing. The card's leave line and onLeave agree.
  */
-function leaveBackCents(request, { reason = null, plan = null, now = Date.now() } = {}) {
-  const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0));
+function leaveBackCents(request, { reason = null, plan = null, now = Date.now(), keep = 0 } = {}) {
+  // `keep`: what claimers' spots hold of a group buyer's payment (one person pays for the group); they stay in.
+  const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0) - (keep || 0));
   if (left === 0) return 0;
   const inWindow = request.refund_until && new Date(request.refund_until).getTime() > now;
   const moved = Boolean(request.reconfirm_requested_at) && (request.reconfirmed == null || reason === 'not_coming');
@@ -187,9 +188,9 @@ function receiptView(mailId) {
 }
 
 /** What a guest who paid reads on the plan: "Paid $18.00", the receipt, and what leaving gives back. */
-function paidView(plan, request, receiptMailId = null) {
+function paidView(plan, request, receiptMailId = null, { keep = 0 } = {}) {
   if (!request || !request.payment_id || !request.paid_cents) return null;
-  const back = leaveBackCents(request, { plan });
+  const back = leaveBackCents(request, { plan, keep });
   return {
     cents: request.paid_cents,
     text: `Paid ${moneyText(request.paid_cents)}`,
@@ -272,7 +273,8 @@ function uuidFrom(key) {
  */
 async function paymentFor(plan, request, payerId) {
   const svc = stripeService();
-  const seats = rules.seatsFor(plan, request.party_size, request.kids_count);
+  // One person pays for the group: every spot bought, in one payment.
+  const seats = request.spots_bought || rules.seatsFor(plan, request.party_size, request.kids_count);
   const amount = request.unit_price_cents * seats;
   let paymentId = request.payment_id;
   let clientSecret = null;
@@ -346,7 +348,9 @@ async function finalize(postId, requestId, { io = null } = {}) {
     // The hold ran out before the payment arrived: in only if the spot is still free.
     const requests = (await actions._activeRequests(postId)).filter((r) => r.id !== request.id);
     const free = plan.spots - (await actions._seatsNow(plan, requests));
-    if (plan.status !== 'open' || free < rules.seatsFor(plan, request.party_size, request.kids_count)) {
+    // The spots bought for a group are held with the buyer's own (planService.seatsTaken).
+    const need = (request.spots_bought || rules.seatsFor(plan, request.party_size, request.kids_count));
+    if (plan.status !== 'open' || free < need) {
       await refund(plan, request, { reason: 'hold_ran_out', actorMode: 'policy' });
       return plan.status !== 'open' ? 'ended' : 'full';
     }
@@ -396,7 +400,7 @@ async function fileReceipt(plan, request, payment) {
     const seller = (business?.name || business?.username || 'the business').trim().slice(0, 120);
     const zone = (await mailDelivery.personTimeZone(userId)) || mailDelivery.FALLBACK_TIME_ZONE;
     const day = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: zone });
-    const spots = rules.seatsFor(plan, request.party_size, request.kids_count);
+    const spots = request.spots_bought || rules.seatsFor(plan, request.party_size, request.kids_count);
     const amount = moneyText(payment.amount_total);
     const spotsText = `${spots} ${spots === 1 ? 'spot' : 'spots'}`;
     const title = String(plan.post?.title || 'the plan').slice(0, 120);
@@ -478,7 +482,7 @@ async function onPaymentAuthorized(payment) {
  * dropped") is kept on the payment as owed (`metadata.plan_refund_owed`) and tried again by the Plans tick
  * (retryOwedRefunds) with the same request key until the payment company confirms it. Answers the cents returned now.
  */
-async function refund(plan, request, { reason, actorMode = 'policy', actorId = null }) {
+async function refund(plan, request, { reason, actorMode = 'policy', actorId = null, amount: part = null }) {
   if (!request?.payment_id) return 0;
   const { data: payment } = await supabaseAdmin.from('Payment').select('id, payment_status, amount_total, refunded_amount, payer_id, metadata')
     .eq('id', request.payment_id).maybeSingle();
@@ -487,14 +491,20 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
   const owed = payment.metadata?.plan_refund_owed?.key === key;
   if (['refunded_full', 'canceled'].includes(payment.payment_status) && !owed) return 0;
   const left = payment.amount_total - (payment.refunded_amount || 0);
+  // A part (one person pays for the group: the spots nobody took, or the buyer's leave while claimers stay) is asked
+  // for as such; all that is left otherwise. The owed mark keeps the part for the retry.
+  const owedPart = owed ? payment.metadata.plan_refund_owed.amount ?? null : null;
+  const wanted = part ?? owedPart;
+  const amount = wanted !== null && wanted !== undefined && wanted < left ? wanted : null;
+  if (wanted !== null && wanted !== undefined && wanted <= 0) return 0;
   const actor = actorMode === 'payer' ? payment.payer_id : actorId;
   try {
     const result = await require('../paymentRefundService').create({
-      paymentId: payment.id, amount: null, reason: 'requested_by_customer', description: `Plans: ${reason}`,
+      paymentId: payment.id, amount, reason: 'requested_by_customer', description: `Plans: ${reason}`,
       actorId: actor, actorMode, requestId: key,
     });
     if (!result?.success) {
-      await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId });
+      await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId, amount });
       return 0;
     }
     const operation = result.refundRequest?.operation;
@@ -504,6 +514,10 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
       const refundedNow = Number(result.payment?.refunded_amount) || ((request.refunded_cents || 0) + back);
       await supabaseAdmin.from('PlanRequest').update({ refunded_cents: refundedNow, updated_at: new Date().toISOString() })
         .eq('id', request.id);
+      // Part of the payment came back: the business's share is re-priced on what was paid in the end (contract 10.4).
+      if (result.payment?.payment_status === 'refunded_partial') {
+        await repriceAfterPartialRefund(payment.id).catch((err) => logger.warn('plans.paid.reprice_failed', { paymentId: payment.id, error: err.message }));
+      }
       await require('../businessCustomers').recountBusinessCustomer(plan.business_user_id, request.user_id);
       await require('./planNotifications').notify({
         userId: request.user_id, type: 'plan_refunded', plan, title: `${moneyText(back)} is on its way back to your card`,
@@ -515,7 +529,7 @@ async function refund(plan, request, { reason, actorMode = 'policy', actorId = n
     return back;
   } catch (err) {
     logger.warn('plans.paid.refund_failed', { planId: plan.post_id, requestId: request.id, reason, error: err.message, code: err.code });
-    await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId })
+    await markOwed(payment.id, { key, request_id: request.id, post_id: plan.post_id, reason, actor_mode: actorMode, actor_id: actorId, amount })
       .catch((markErr) => logger.error('plans.paid.refund_owed_unsaved', { paymentId: payment.id, requestId: request.id, error: markErr.message }));
     return 0;
   }
@@ -575,8 +589,9 @@ async function retryOwedRefunds() {
 async function groupRefund(plan, request, { notify = true } = {}) {
   if (!request?.payment_id || !request.unit_price_cents || request.deal_used_at) return 0;
   const now = require('./planDeals').spotPriceNow(plan);
-  const seats = rules.seatsFor(plan, request.party_size, request.kids_count);
   const left = Math.max(0, (request.paid_cents || 0) - (request.refunded_cents || 0));
+  // A group buyer's spots still paid for (some may have come back already): what is left at the price paid a spot.
+  const seats = request.spots_bought ? Math.round(left / request.unit_price_cents) : rules.seatsFor(plan, request.party_size, request.kids_count);
   const back = Math.min(left, Math.max(0, (request.unit_price_cents - now) * seats));
   if (back <= 0) return 0;
   try {
@@ -668,7 +683,7 @@ function repricedShare(payment) {
   return { paidEndCents: paidEnd, platformFeeCents, businessCardFeeCents, toPayeeCents };
 }
 
-const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at, reconfirmed, party_size, kids_count, unit_price_cents, deal_used_at';
+const MONEY_COLUMNS = 'id, post_id, user_id, status, payment_id, paid_cents, refunded_cents, refund_until, reconfirm_requested_at, reconfirmed, party_size, kids_count, unit_price_cents, deal_used_at, spots_bought, spots_token, paid_by_request_id';
 async function moneyRows(requestIds) {
   const ids = (requestIds || []).filter(Boolean);
   if (ids.length === 0) return [];
@@ -687,10 +702,18 @@ async function onLeave(plan, requestId, { reason, wasStatus }) {
   if (!request) return 0;
   request.status = wasStatus || request.status;
   if (request.status === 'paying') return refund(plan, request, { reason: 'abandoned', actorMode: 'payer' });
-  if (leaveBackCents(request, { reason, plan }) === 0) return 0;
+  // A group buyer (one person pays for the group): the link stops; the spots claimers hold stay paid and they stay in.
+  let keep = 0;
+  if (request.spots_bought) {
+    const groupPay = require('./planGroupPay');
+    keep = groupPay.keptCents(plan, request, await require('./planActions')._activeRequests(plan.post_id));
+    await supabaseAdmin.from('PlanRequest').update({ spots_token: null }).eq('id', request.id).not('spots_token', 'is', null);
+  }
+  const back = leaveBackCents(request, { reason, plan, keep });
+  if (back === 0) return 0;
   const inWindow = request.refund_until && new Date(request.refund_until).getTime() > Date.now();
   const reasonNow = inWindow ? 'left_in_time' : shortGroupPrice(plan) ? 'group_short' : 'moved';
-  return refund(plan, request, { reason: reasonNow, actorMode: 'payer' });
+  return refund(plan, request, { reason: reasonNow, actorMode: 'payer', amount: keep > 0 ? back : null });
 }
 
 /** The business cancelled the plan or removed the guest: everything back. */
@@ -731,7 +754,7 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 }
 
 module.exports = {
-  FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundUntilOf, mayCharge, assertMayCharge,
+  FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundText, refundUntilOf, mayCharge, assertMayCharge,
   checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, groupQuote, unitPriceNow, shortGroupPrice,
   groupRefund, groupRefunds, retryOwedRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
   finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED, captureNow,

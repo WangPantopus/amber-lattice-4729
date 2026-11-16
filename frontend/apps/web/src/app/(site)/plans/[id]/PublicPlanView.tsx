@@ -31,6 +31,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
 import PayToJoin from './PayToJoin';
+import ClaimSpot, { type SpotView } from './ClaimSpot';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
 // place, the host's note and the people going are only in the app, for people
@@ -136,7 +137,7 @@ const isOnline = (plan: PublicPlan) => plan.place_kind === 'online';
 
 export type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ invite?: string | string[]; open?: string | string[]; join?: string | string[] }>;
+  searchParams: Promise<{ invite?: string | string[]; open?: string | string[]; join?: string | string[]; spot?: string | string[] }>;
 };
 
 /** Where the page is served: `/plans/<id>`, or `/plan-link/<id>` (the guest's page, contract 6.9). */
@@ -160,6 +161,28 @@ async function inviteFrom(searchParams: PageProps['searchParams']): Promise<stri
 async function openFrom(searchParams: PageProps['searchParams']): Promise<string | null> {
   const value = (await searchParams)?.open;
   return planInviteToken(Array.isArray(value) ? value[0] : value);
+}
+
+/** A buyer's link on a business's paid plan (?spot=; one person pays for the group, the extras). */
+async function spotFrom(searchParams: PageProps['searchParams']): Promise<string | null> {
+  const value = [(await searchParams)?.spot].flat()[0];
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{20,200}$/.test(value) ? value : null;
+}
+
+/** What the buyer's link shows ("{Chris} got you a spot"); null while the business doesn't take it (404) or on failure. */
+async function fetchSpot(id: string, token: string): Promise<SpotView | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/public/plans/${encodeURIComponent(id)}/spot?token=${encodeURIComponent(token)}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(1500),
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body?.spot && typeof body.spot.button === 'string' ? (body.spot as SpotView) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The guest's own key, from this plan's HttpOnly cookie (set by an answer, or by the link in their email). */
@@ -673,7 +696,9 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   const token = await inviteFrom(searchParams);
   const open = await openFrom(searchParams);
   const guestKey = await guestKeyFor(id);
-  const [result, viewer] = await Promise.all([fetchPublicPlan(id, token, open, guestKey), fetchPlanViewer(id)]);
+  const spotToken = at === 'plan-link' ? await spotFrom(searchParams) : null;
+  const [result, viewer, spot] = await Promise.all([fetchPublicPlan(id, token, open, guestKey), fetchPlanViewer(id),
+    spotToken ? fetchSpot(id, spotToken) : Promise.resolve(null)]);
   const plan = result.data;
   const userAgent = (await headers()).get('user-agent') || '';
   const invite = plan?.invite ?? null;
@@ -873,8 +898,10 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   const invited = Boolean(invite?.available) && !over && !joined;
   // A business's paid plan: paid on this page after signing in (B3) when the server sends the price's words, which it
   // does while the business takes payment here; otherwise in the app.
-  const paysHere = Boolean(business && plan.price?.text) && !over && viewer?.role !== 'host';
-  const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined && !paysHere;
+  // Opened with a buyer's link (one person pays for the group): the spot is taken here, free, instead of paying.
+  const claimsSpot = Boolean(business && spot && spotToken) && !over && viewer?.role !== 'host';
+  const paysHere = Boolean(business && plan.price?.text) && !over && viewer?.role !== 'host' && !claimsSpot;
+  const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined && !paysHere && !claimsSpot;
   const joinNow = [(await searchParams).join].flat()[0] === '1';
 
   return (
@@ -943,6 +970,17 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           </section>
 
+          {claimsSpot && spot && spotToken ? (
+            <ClaimSpot
+              planId={id}
+              token={spotToken}
+              spot={spot}
+              signedIn={Boolean(viewer)}
+              joinNow={joinNow}
+              alreadyIn={viewer?.role === 'guest'}
+              place={placeText(plan)}
+            />
+          ) : null}
           {paysHere && plan.price?.text ? (
             <PayToJoin
               planId={id}

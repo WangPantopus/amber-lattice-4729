@@ -1409,7 +1409,16 @@ async function quoteToJoin(user, postId, body = {}) {
   const dealsOn = Boolean(plan.deal) && (await require('./planDeals').enabledFor(plan.host_user_id));
   const going = dealsOn && plan.deal?.scope === 'group'
     ? planService.seatsTaken(plan, (await activeRequests(postId)).filter((r) => r.status === 'accepted')) : 0;
-  return planPaid().quoteFor(plan, ask, { unitCents: await planPaid().unitPriceNow(plan), dealsOn, going });
+  const unitCents = await planPaid().unitPriceNow(plan);
+  // One person pays for the group (the extras, `extras=1`, while the business has the switch): "I'll send a link"
+  // quotes every spot bought; any quote carries the sheet's "Who are they for?" choices.
+  const groupPay = require('./planGroupPay');
+  if (viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id))) {
+    const free = plan.spots - (await seatsNow(plan, await activeRequests(postId)));
+    if (body.for === 'link') return groupPay.quoteView(plan, groupPay.checkedSpots(body.spots, free), unitCents, free);
+    return { ...planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going }), group_pay: groupPay.choicesView(free) };
+  }
+  return planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going });
 }
 
 async function askToJoin(user, postId, body, { io = null } = {}) {
@@ -1472,7 +1481,13 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // The host's invitation is their yes: in at once (the waitlist when it's full), or, for an email invite opened by
   // an account the address isn't verified for, an ordinary ask the host answers.
   const invite = ctx.myInviteByPlan.get(postId) || null;
-  const seats = rules.seatsFor(plan, ask.party_size, ask.kids_count);
+  // One person pays for the group (the extras): "I'll send a link" buys `spots` (the buyer's own among them) in one
+  // payment. Only where the plan lets people in at once; never onto the waitlist.
+  const groupPay = require('./planGroupPay');
+  const linkBuy = body.for === 'link' && viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id));
+  const spotsBought = linkBuy ? groupPay.checkedSpots(body.spots, spotsLeft) : null;
+  if (linkBuy) Object.assign(ask, { party_size: 1, kids_count: null });
+  const seats = linkBuy ? spotsBought : rules.seatsFor(plan, ask.party_size, ask.kids_count);
   let status = 'waitlisted';
   let decidedBy = null;
   let rule = null;
@@ -1491,6 +1506,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     status = 'paying';
     decidedBy = null;
   }
+  if (linkBuy && status !== 'paying') fail(409, 'group_pay_not_now', 'Buying spots for a group works when the plan lets people in right away.');
   const row = {
     ...ask,
     status,
@@ -1509,6 +1525,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     updated_at: stamp,
   };
   if (status === 'paying') Object.assign(row, await planPaid().payingFields(plan, viewer.id, row.way_in || null), { payment_id: null });
+  if (linkBuy) Object.assign(row, { spots_bought: spotsBought, spots_token: require('crypto').randomBytes(32).toString('base64url'), paid_by_request_id: null });
+  else if (mine && (mine.spots_bought || mine.paid_by_request_id)) Object.assign(row, { spots_bought: null, spots_token: null, paid_by_request_id: null });
 
   let request;
   if (mine) {
@@ -1540,7 +1558,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   } });
   if (request.status === 'paying') {
     const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis,
-      hold_expires_at: row.hold_expires_at, payment_id: null }, viewer.id);
+      hold_expires_at: row.hold_expires_at, payment_id: null, spots_bought: row.spots_bought || null }, viewer.id);
     return { status: mine ? 200 : 201, body: { ...(await requestResult(postId, viewer, request.id)), payment } };
   }
   if (invite) await planInvites.markAccepted(plan, viewer.id, request);
