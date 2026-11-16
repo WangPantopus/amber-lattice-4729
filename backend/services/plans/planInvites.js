@@ -373,6 +373,14 @@ async function addGuestParts(out, plan, rows, requestRows) {
   out.counts.maybe = out.invites.filter((i) => i.state === 'maybe').length;
   out.counts.waiting_ok = out.invites.filter((i) => i.state === 'waiting_ok').length;
   out.counts.no_answer = out.counts.invited;
+  // Find a date: whoever saved their times has answered (none of these included).
+  if (require('./planDates').isPicking(plan)) {
+    const extras = require('./planExtras');
+    const answered = new Set(Object.keys(plan.date_options.answered || {}));
+    const tickedRows = rows.filter((r) => r.status === 'pending'
+      && answered.has(r.invitee_user_id ? extras.personKey(r.invitee_user_id) : extras.guestKey(r.id))).length;
+    out.counts.no_answer = Math.max(0, out.counts.no_answer - tickedRows);
+  }
   const requests = await actions().activeRequests(plan.post_id);
   const guestRowsIn = rows.filter((r) => planGuests.isGuest(r) && ['accepted', 'maybe'].includes(r.status));
   let adults = 0;
@@ -391,7 +399,11 @@ async function addGuestParts(out, plan, rows, requestRows) {
   out.open_link = planGuests.openLinkView(plan);
   const asked = new Set(requestRows.filter((r) => ['pending', 'waitlisted', 'accepted'].includes(r.status)).map((r) => String(r.user_id)));
   const dayAgo = Date.now() - DAY_MS;
+  // Find a date: whoever ticked times has answered.
+  const extras = require('./planExtras');
+  const ticked = require('./planDates').isPicking(plan) ? new Set(Object.keys(plan.date_options.answered || {})) : null;
   const remindable = rows.filter((r) => r.status === 'pending' && !r.reminded_at
+    && !(ticked && ticked.has(r.invitee_user_id ? extras.personKey(r.invitee_user_id) : extras.guestKey(r.id)))
     && (r.channel === 'email' || (r.invitee_user_id && !asked.has(String(r.invitee_user_id)))));
   const remindedToday = rows.some((r) => r.reminded_at && new Date(r.reminded_at).getTime() > dayAgo
     && (r.status === 'pending' || (r.answered_at && new Date(r.answered_at) > new Date(r.reminded_at))));

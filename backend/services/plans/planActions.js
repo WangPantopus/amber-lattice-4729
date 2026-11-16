@@ -586,6 +586,15 @@ async function previewPlan(user, input) {
  */
 async function createPlan(user, input, internal = {}) {
   const viewer = await loadViewer(user, { gps: input.gps });
+  // Find a date (the extras, 08-extras section 2), while the host has its switch: 2 to 5 times instead of one. The
+  // plan's time is the earliest until the host picks. Never with a repeat.
+  let dateOptions = null;
+  if (input.date_options != null && input.host_as == null && !internal.series && (await require('./planDates').enabledFor(viewer.id))) {
+    if (input.repeat) fail(422, 'validation', 'A plan that repeats can’t let guests pick the date.', { field: 'date_options' });
+    const times = require('./planDates').checkedTimes(input.date_options);
+    input = { ...input, starts_at: times[0].starts_at, ends_at: times[0].ends_at };
+    dateOptions = require('./planDates').initialValue(times);
+  }
   // A second tap on the same "Post plan": a neighbor's is caught before the checks, as before; a business's
   // after them, once the person is known to post for that business.
   const secondTap = input.host_as == null && !internal.series ? await recentSamePlan(viewer.id, input, { more: viewer.more }) : null;
@@ -612,6 +621,9 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  if (dateOptions && (audience !== 'invited' || kind === 'playdate')) {
+    fail(422, 'validation', 'Only a private plan can let guests pick the date.', { field: 'date_options' });
+  }
   // Chip in (the extras, 08-extras section 3), while the host has its switch: a private plan of a person's, not a
   // playdate. Checked before anything is saved.
   const chipIn = !hostAs && input.chip_in != null && audience === 'invited' && kind !== 'playdate'
@@ -709,6 +721,7 @@ async function createPlan(user, input, internal = {}) {
     ...(kidsWelcome ? { kids_welcome: true } : {}),
     ...(bringList ? { bring_list: bringList } : {}),
     ...(chipIn ? { chip_in: chipIn } : {}),
+    ...(dateOptions ? { date_options: dateOptions } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
@@ -789,6 +802,14 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
     && (await require('./planChipIn').enabledFor(plan.host_user_id));
   if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
+  // Find a date: while the date is being picked the times offered change, not the plan's time.
+  const planDates = require('./planDates');
+  if (planDates.isPicking(plan)) {
+    if (patch.starts_at !== undefined || patch.ends_at !== undefined) {
+      fail(422, 'picking', 'Pick a date first, or change the times you offered.');
+    }
+    if (patch.date_options !== undefined) planDates.checkedTimes(patch.date_options);
+  }
 
   const postUpdate = {};
   const planUpdate = {};
@@ -1017,6 +1038,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
   if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
     await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
+  // Find a date: the times offered (a removed time's ticks go, and nobody is told).
+  if (patch.date_options !== undefined && planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
+    await planDates.replaceFromForm(plan, patch.date_options);
   }
   // Chip in (the extras): replaced, keeping who paid, or taken away with null.
   if (chipInChange) await require('./planChipIn').replaceFromForm(plan, patch.chip_in);
@@ -1379,6 +1404,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   const viewer = await loadViewer(user, { gps: body.gps });
   const plan = await loadVisiblePlan(postId, viewer);
   if (planBusiness.runsPlan(plan, viewer)) fail(409, 'host', "You're hosting this plan.");
+  // Find a date: while the date is being picked, the invited tick times (PUT …/dates/mine) instead.
+  if (require('./planDates').isPicking(plan)) fail(409, 'picking', 'Tick the times that work for you.');
   // A business that may no longer host takes nobody new, and nobody waiting moves up by asking again.
   if (plan.business_user_id && !planBusiness.hostsNow(plan)) fail(409, 'ended', REASON_ERRORS.ended[1]);
   const ctx = await planService.loadCardContext([plan], viewer);
@@ -1810,6 +1837,9 @@ async function reportPlan(user, postId, { reason, details }) {
 
 module.exports = {
   quoteToJoin,
+  // For the extras (planDates): the time checks and the answer after a write.
+  _validateTimes: validateTimes,
+  _planBodyFor: planBodyFor,
   // For planPaid (paid spots): the same steps a join takes.
   _activeRequests: activeRequests,
   _seatsNow: seatsNow,

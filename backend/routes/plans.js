@@ -570,6 +570,28 @@ router.post('/:id/invites/:inviteId/ok', async (req, res) => {
   }
 });
 
+// ── Find a date (the extras, 08-extras section 2; services/plans/planDates.js): 404 while plans_find_date is off ──
+
+// PUT /api/plans/:id/dates/mine { options: ["a","b"], party_size, kids_count }: an invited person's ticks ([] is "none
+// of these"). Answers the plan.
+router.put('/:id/dates/mine', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDates').tickMine(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'dates_mine', req);
+  }
+});
+
+// POST /api/plans/:id/dates/pick { option_id } (the host): sets the time and settles everyone, once. Answers the plan
+// with `settled: { in, waiting, waitlisted, asked }`.
+router.post('/:id/dates/pick', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDates').pick(req.user, req.params.id, body(req), { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'dates_pick', req);
+  }
+});
+
 // ── Chip in (the extras, 08-extras section 3; services/plans/planChipIn.js): 404 while plans_chip_in is off ──
 
 // POST | DELETE /api/plans/:id/chip-in/paid [{ who }]: someone in says they paid the host (or takes it back); the host
