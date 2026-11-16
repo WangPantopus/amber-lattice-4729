@@ -1203,7 +1203,7 @@ Decided November 14 (section 0). Every Moment and Pulse post gets a place that i
 - [x] The ten screens, approved on November 14. They sit on real screenshots of today's apps where a screen exists.
 - [x] The build contract for phase A (approximate places, built fully): [02-phase-a-contract.md](docs/product/sky/02-phase-a-contract.md). Written from the code on `dev`; nothing is built.
 - [x] Your yes to the contract's nine calls (its section 2), given November 14 ("Yes, all nine"). The ones that change a sentence of the design: a floating post stores only its area point; the area's point is the centre of its cell with no secret offset, so the disc is honest and small; home counts come from the 2020 Census for the whole US.
-- [ ] Your go for phase A. It is ten small pull requests into `dev` behind one switch, `sky_places`, which you turn on for your own account first.
+- [x] Your go for phase A, given November 16. It is ten small pull requests into `dev` behind one switch, `sky_places`, which you turn on for your own account first.
 - [ ] The homes-per-cell file is built and published beside the property index; that bucket belongs to the property-data lane.
 - [ ] Details and drawings for the two later additions: the higher starting level (which followers count, the steps) and the terrain (same map or its own screen).
 - [x] Screens 1, 2, 6 and 7 redrawn on November 16 for "close in, height is real": posts from an area sit on the map at its centre, only a post really in the air is lifted, and reach shows as size and the level's name. You approved screen 1 first, with the disc shown only for the post you tap.
