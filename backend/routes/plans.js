@@ -466,10 +466,11 @@ router.post('/:id/invites/maybe', async (req, res) => {
   }
 });
 
-// POST /api/plans/:id/invites/:inviteId/ok: the host lets in a guest waiting from the open link; their email goes.
+// POST /api/plans/:id/invites/:inviteId/ok { confirm_shares_address? }: the host lets in a guest waiting from the open
+// link; their email goes. (A guest who took that answer into the app: the ordinary accept of their ask.)
 router.post('/:id/invites/:inviteId/ok', async (req, res) => {
   try {
-    return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId));
+    return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId, body(req), { io: req.app.get('io') }));
   } catch (err) {
     return serverError(res, err, 'invite_ok', req);
   }
@@ -511,10 +512,11 @@ router.delete('/:id/bring/:itemId/claim', async (req, res) => {
   }
 });
 
-// POST /api/plans/:id/invites/claim { token }: the person opened an email or text invitation.
+// POST /api/plans/:id/invites/claim { token } | { open }: the person opened an email or text invitation, or (Plans for
+// the holidays, contract 6.9) the plan's open link.
 router.post('/:id/invites/claim', async (req, res) => {
   try {
-    return res.json(await planInvites.claimInvite(req.user, req.params.id, body(req).token));
+    return res.json(await planInvites.claimInvite(req.user, req.params.id, body(req).token, { open: body(req).open }));
   } catch (err) {
     return serverError(res, err, 'invite_claim', req);
   }

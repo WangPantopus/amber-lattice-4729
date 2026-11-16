@@ -936,11 +936,15 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   // had the host's own yes wait for it again. They are held before the plan row moves, so no key of theirs reads the
   // home in between: a failure here leaves the plan where it was, and if saving the move fails after it, they stay
   // waiting (the safe side) and the host can let them in.
+  // People with an account who came by the open link and whom the host never let in by hand wait too (6.9 item 7):
+  // out of the chat, their ask pending again, before the plan row moves.
   const movingHome = placeChanged && planGuests.movesToHome(plan, placeKind);
   let heldForHome = [];
+  let heldAsks = [];
   if (movingHome) {
     planUpdate.open_invite_ok_first = true;
     heldForHome = await planGuests.holdForHome(postId);
+    heldAsks = await planGuests.holdAccountsForHome(plan, { io });
   }
 
   const stamp = nowIso();
@@ -957,6 +961,9 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     const later = await planGuests.holdForHome(postId)
       .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
     heldForHome = [...heldForHome, ...later.filter((r) => !heldForHome.some((h) => h.id === r.id))];
+    const laterAsks = await planGuests.holdAccountsForHome(plan, { io, strict: false })
+      .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
+    heldAsks = [...heldAsks, ...laterAsks.filter((r) => !heldAsks.some((h) => h.id === r.id))];
   }
   if (postUpdate.title && postUpdate.title !== plan.post.title) await planChat.renameRoom(plan, postUpdate.title);
   // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
@@ -966,7 +973,8 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {
-    const accepted = requests.filter((r) => r.status === 'accepted');
+    // Not someone the move to a home made wait (6.9 item 7): they get their own notice.
+    const accepted = requests.filter((r) => r.status === 'accepted' && !heldAsks.some((h) => h.id === r.id));
     if (accepted.length > 0) {
       const { error } = await supabaseAdmin.from('PlanRequest')
         .update({
@@ -991,9 +999,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       }
     }
   }
-  // Guests the move to a home made wait (6.8): one email each, and one notice to the host.
-  if (heldForHome.length > 0) {
-    await planGuests.movedToHome(updated, heldForHome).catch((err) => logger.warn('plans.edit.move_home_failed', { planId: postId, error: err.message }));
+  // Guests the move to a home made wait (6.8): one email each; people with an account (6.9): one notice each; and one
+  // notice to the host.
+  if (heldForHome.length > 0 || heldAsks.length > 0) {
+    await planGuests.movedToHome(updated, heldForHome, heldAsks).catch((err) => logger.warn('plans.edit.move_home_failed', { planId: postId, error: err.message }));
   }
   // Guests without an account who are in (H1): their page says what changed, and one email goes (not to a guest who
   // waits, so a guest the move made wait gets only its own email).
@@ -1375,7 +1384,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   } else if (request.status === 'pending') {
     await planNotify.requestReceived({
       plan, request, hostFirst, requesterFirst: firstOf(names.get(viewer.id)),
-      invitedEmail: invite?.needs_host_ok ? invite.email : null,
+      // The address an email invitation went to (never a guest's own, from the open link: 6.9).
+      invitedEmail: invite?.needs_host_ok && invite.channel === 'email' ? invite.email : null,
     });
   }
   return { status: mine ? 200 : 201, body: await requestResult(postId, viewer, request.id) };
@@ -1472,7 +1482,7 @@ async function listRequests(user, postId) {
       kids_age_bands: plan.kind === 'playdate' ? r.kids_age_bands || [] : null,
       created_at: planService.iso(r.queued_at || r.created_at),
       invited: inviteByUser.has(id),
-      opened_invite_to: inviteByUser.get(id)?.needs_host_ok ? inviteByUser.get(id).email : null,
+      opened_invite_to: inviteByUser.get(id)?.needs_host_ok && inviteByUser.get(id).channel === 'email' ? inviteByUser.get(id).email : null,
     };
   };
   const byQueue = (a, b) => new Date(a.queued_at) - new Date(b.queued_at);
@@ -1510,6 +1520,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
     const overflow = await enforceCapacity(plan);
     if (overflow.has(request.id)) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
     await admit(plan, moved[0], { byRule: false, hostFirst, io });
+    // Someone from the open link (6.9): the host's own yes, kept as a guest's is.
+    await planInvites.recordHostYes(postId, request.user_id);
   } else if (action === 'decline') {
     if (request.status !== 'declined') {
       if (!['pending', 'waitlisted'].includes(request.status)) fail(409, 'not_waiting', 'This person is no longer waiting.');

@@ -652,7 +652,7 @@ function buildCard(plan, viewer, ctx) {
     },
     my_request: myRequestView(plan, myRequest, { waitlistPosition, guestOn }),
     // The viewer's invitation (planInvites.js), or null: the app says "Sam invited you" and offers I'm in.
-    my_invite: invites().myInviteView(myInvite, { maybe: Boolean(viewer.guests) }),
+    my_invite: invites().myInviteView(myInvite, { maybe: Boolean(viewer.guests), via: guestOn }),
     share_url: shareUrl(plan.post_id),
   };
 

@@ -208,6 +208,8 @@ export type PublicPlanAnswer = {
   kids_welcome: boolean;
   room_left: number;
   host_says_yes_first: boolean;
+  /** The page was opened with the plan's live open link (contract 6.9): "Open app" carries it into the app. */
+  open_live?: boolean;
   mine: {
     state: PublicPlanGuestState;
     name: string;

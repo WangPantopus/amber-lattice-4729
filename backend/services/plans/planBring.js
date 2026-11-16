@@ -340,6 +340,25 @@ async function clearClaims(postId, kind, id) {
   }
 }
 
+/**
+ * Claims change hands, keeping their items and names: a guest who took their browser answer into the app (contract
+ * 6.9 item 8) claims as that account's ask from now on.
+ */
+async function moveClaims(postId, from, to) {
+  const isFrom = (claim) => claim && claim.kind === from.kind && claim.id === from.id;
+  try {
+    const current = await readList(postId);
+    if (!itemsOf(current).some((item) => isFrom(item.claim))) return;
+    await swap(postId, (list) => {
+      const items = itemsOf(list);
+      if (!items.some((item) => isFrom(item.claim))) return null;
+      return { ...list, items: items.map((item) => (isFrom(item.claim) ? { ...item, claim: { ...item.claim, kind: to.kind, id: to.id } } : item)) };
+    });
+  } catch (err) {
+    logger.warn('plans.bring.move_failed', { postId, error: err.message });
+  }
+}
+
 // ── Notices ──────────────────────────────────────────────────
 
 const thingsText = (n) => `${n} ${n === 1 ? 'thing' : 'things'}`;
@@ -422,5 +441,6 @@ module.exports = {
   guestGiveBack,
   guestAdd,
   clearClaims,
+  moveClaims,
   sendStillOpen,
 };
