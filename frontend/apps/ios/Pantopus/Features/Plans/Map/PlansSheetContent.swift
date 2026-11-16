@@ -171,6 +171,10 @@ struct PlansSheetContent: View {
         .plansSheetDragArea()
         .accessibilityElement()
         .accessibilityLabel("Loading plans")
+        // Gone at once when the plans arrive. Removed inside an animation, the shimmers' endless sweep kept the
+        // placeholder alive: unseen over the top of the map, still animating, and its drag area swallowing taps on
+        // the side menu, the area pill and the kind chips.
+        .transition(.identity)
     }
 
     private func errorState(_ message: String) -> some View {

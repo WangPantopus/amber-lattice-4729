@@ -282,7 +282,7 @@ final class PlanComposerModel {
             gps: gps
         )
         body.hostedAgainFrom = hostedAgainFrom
-        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers) }
+        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers, bringList: offersBringList) }
         applyRepeat(to: &body)
         return body
     }

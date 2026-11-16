@@ -186,7 +186,8 @@ struct PlanScreen: View {
                         askIsChange = true
                         showsAsk = true
                     },
-                    onOpenGuests: { path.append(.whosComing(planId: viewModel.planId)) }
+                    onOpenGuests: { path.append(.whosComing(planId: viewModel.planId)) },
+                    onOpenBring: { path.append(.bringList(planId: viewModel.planId)) }
                 )
                 .padding(.horizontal, Spacing.s4)
                 .padding(.top, 18)

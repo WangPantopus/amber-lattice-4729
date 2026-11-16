@@ -16,7 +16,8 @@
 //  four newer kinds and "Online" for posting; a plan already posted reads
 //  either way. `plans_guest_answers` (Plans for the holidays, H1) shows the
 //  host's controls for room up to 100, "Kids welcome" and the open link; a
-//  guest reads what the plan itself says either way. The app reads them at launch and on
+//  guest reads what the plan itself says either way. `plans_bring_list` (H2)
+//  shows the bring list on the host form; a plan's own list shows either way. The app reads them at launch and on
 //  foreground through `GET /api/feature-flags/:flagName`, which honors
 //  `enabled_for_internal_team` and `beta_user_ids`, so pilot testers can have
 //  Plans before everyone else.
@@ -51,6 +52,8 @@ final class PlansFlags {
     private(set) var online = false
     /// Plans for the holidays H1: room up to 100, kids welcome, one link for everyone (never without `plans`).
     private(set) var guestAnswers = false
+    /// Plans for the holidays H2: the bring list on the host form (never without `plans`).
+    private(set) var bringList = false
 
     /// Checks closer together than this reuse the last answer.
     static let recheckAfter: TimeInterval = 30
@@ -80,7 +83,8 @@ final class PlansFlags {
                 repeating: false,
                 kinds: false,
                 online: false,
-                guestAnswers: false
+                guestAnswers: false,
+                bringList: false
             ))
             return
         }
@@ -129,6 +133,7 @@ final class PlansFlags {
         async let kindsAnswer = Self.read("plans_kinds", api: api)
         async let onlineAnswer = Self.read("plans_online", api: api)
         async let guestAnswersAnswer = Self.read("plans_guest_answers", api: api)
+        async let bringListAnswer = Self.read("plans_bring_list", api: api)
         let answers = await (
             plans: plansAnswer,
             playdates: playdatesAnswer,
@@ -137,7 +142,8 @@ final class PlansFlags {
             repeating: repeatAnswer,
             kinds: kindsAnswer,
             online: onlineAnswer,
-            guestAnswers: guestAnswersAnswer
+            guestAnswers: guestAnswersAnswer,
+            bringList: bringListAnswer
         )
         // An account switch while the check ran: its answers aren't this account's.
         guard account == checked else { return }
@@ -151,10 +157,14 @@ final class PlansFlags {
             repeating: plansOn && (answers.repeating ?? repeating),
             kinds: plansOn && (answers.kinds ?? kinds),
             online: plansOn && (answers.online ?? online),
-            guestAnswers: plansOn && (answers.guestAnswers ?? guestAnswers)
+            guestAnswers: plansOn && (answers.guestAnswers ?? guestAnswers),
+            bringList: plansOn && (answers.bringList ?? bringList)
         ))
         // One list per account; a shorter one saved by an older build restores the missing switches as off.
-        defaults.set([plans, playdates, business, privatePlans, repeating, kinds, online, guestAnswers], forKey: Self.key(checked))
+        defaults.set(
+            [plans, playdates, business, privatePlans, repeating, kinds, online, guestAnswers, bringList],
+            forKey: Self.key(checked)
+        )
     }
 
     private func restore(for account: String) {
@@ -168,7 +178,8 @@ final class PlansFlags {
             repeating: plansOn && saved.dropFirst(4).first == true,
             kinds: plansOn && saved.dropFirst(5).first == true,
             online: plansOn && saved.dropFirst(6).first == true,
-            guestAnswers: plansOn && saved.dropFirst(7).first == true
+            guestAnswers: plansOn && saved.dropFirst(7).first == true,
+            bringList: plansOn && saved.dropFirst(8).first == true
         ))
     }
 
@@ -182,6 +193,7 @@ final class PlansFlags {
         let kinds: Bool
         let online: Bool
         let guestAnswers: Bool
+        let bringList: Bool
     }
 
     private func apply(_ answers: Answers) {
@@ -193,6 +205,7 @@ final class PlansFlags {
         if kinds != answers.kinds { kinds = answers.kinds }
         if online != answers.online { online = answers.online }
         if guestAnswers != answers.guestAnswers { guestAnswers = answers.guestAnswers }
+        if bringList != answers.bringList { bringList = answers.bringList }
     }
 
     /// The flag's answer, or nil when it couldn't be read (offline, 5xx).

@@ -16,6 +16,18 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .get, path: "/api/mailbox/cards")
     }
 
+    /// `PUT /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`). Keeps this
+    /// signature on the account for the next cards, replacing any saved one; answers `{ signature }` as kept.
+    public static func saveSignature(_ signature: CardSignature) -> Endpoint {
+        Endpoint(method: .put, path: "/api/mailbox/cards/signature", body: CardSignatureBody(signature: signature))
+    }
+
+    /// `DELETE /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`). Forgets the
+    /// saved signature (cards already sent keep theirs); answers 204.
+    public static func forgetSignature() -> Endpoint {
+        Endpoint(method: .delete, path: "/api/mailbox/cards/signature")
+    }
+
     /// `GET /api/mailbox/cards/arrivals?to=` — route
     /// `backend/routes/mailbox.js:1809`. When a card to this person can come,
     /// by their clock; the same checks as sending them one.

@@ -6,6 +6,9 @@
 // list and takes back only a key from it, so nobody writes a place's name themselves. The Post sheet's place picker
 // (the Pulse composer's, around the Moment's pin) may also name a venue a little farther off, the coffee shop or the
 // stadium the photo was taken in: the app sends only the venue's id, and venueNear finds it again near the pin.
+// With the Sky's places on for the author (`sky_places`), a Moment is pinned only at a public place picked by name
+// (namingPlace, venueForKey, venueNear; never a school or a preschool) and otherwise floats over its area, named by the
+// town at the area's own point (townAt).
 
 const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -79,10 +82,27 @@ function venuesAt(latitude, longitude) {
       .sort((a, b) => (a.contains ? 0 : a.distance_m) - (b.contains ? 0 : b.distance_m));
     return [best, ...others].filter(Boolean).map((place) => ({
       // Opaque, and the same every time this venue is listed.
-      key: `v_${crypto.createHash('sha256').update(String(place.place_id ?? place.name)).digest('hex').slice(0, 16)}`,
+      key: venueKey(place),
       label: String(place.name).slice(0, 80),
+      // Kept on the server (labelsAt hands out only key and label): where a pin at this place stands, and whether it
+      // may take one (the Sky: never a school or a preschool).
+      latitude: Number(place.center?.lat),
+      longitude: Number(place.center?.lng),
+      pinnable: isPinnable(place),
     }));
   });
+}
+
+function venueKey(place) {
+  return `v_${crypto.createHash('sha256').update(String(place.place_id ?? place.name)).digest('hex').slice(0, 16)}`;
+}
+
+// The Sky (phase A, call C9): a post may be pinned exactly at any place the picker lists except schools and preschools
+// (colleges and universities may). The venues index labels them (services/geo/venues.js).
+const NOT_PINNABLE = new Set(['School', 'Preschool']);
+function isPinnable(place) {
+  return !NOT_PINNABLE.has(place?.category) && Number.isFinite(Number(place?.center?.lat))
+    && Number.isFinite(Number(place?.center?.lng));
 }
 
 async function settle(promise, what) {
@@ -108,8 +128,8 @@ async function labelsAt(latitude, longitude) {
   const town = ts?.town || null;
   const fixed = [ts?.street && { key: 'street', label: ts.street }, town && { key: 'town', label: town }].filter(Boolean);
   const places = [];
-  for (const place of [...(venueList || []).slice(0, MAX_PLACES - fixed.length), ...fixed]) {
-    if (!places.some((listed) => listed.label.toLowerCase() === place.label.toLowerCase())) places.push(place);
+  for (const { key, label } of [...(venueList || []).slice(0, MAX_PLACES - fixed.length), ...fixed]) {
+    if (!places.some((listed) => listed.label.toLowerCase() === label.toLowerCase())) places.push({ key, label });
   }
   if (!places.length) places.push({ key: 'auto', label: FALLBACK_LABEL });
   return { place_label: places[0].label, area_label: town || FALLBACK_LABEL, places };
@@ -129,7 +149,34 @@ async function venueNear(venueId, latitude, longitude) {
   const venue = await settle(venues.venueNear({ placeId: venueId, latitude, longitude, maxDistance: PICK_PLACE_M }),
     'venue');
   if (!venue?.name || !Number.isFinite(venue.center?.lat) || !Number.isFinite(venue.center?.lng)) return null;
-  return { latitude: venue.center.lat, longitude: venue.center.lng, label: String(venue.name).slice(0, 80) };
+  return {
+    latitude: venue.center.lat, longitude: venue.center.lng, label: String(venue.name).slice(0, 80), pinnable: isPinnable(venue),
+  };
+}
+
+// ─── The Sky (phase A): a pin only at a public place picked by name ─────────
+
+/**
+ * The public place that names the spot and may take a pin, { key, label, latitude, longitude } at the place's own
+ * point, or null: the first pinnable one of the venues labelsAt lists there (the one naming the spot, else the
+ * nearest within PICK_VENUE_M). What "Pin it at a place" starts with. Never throws.
+ */
+async function namingPlace(latitude, longitude) {
+  const list = await settle(venuesAt(latitude, longitude), 'venues');
+  const found = (list || []).find((place) => place.pinnable);
+  return found ? { key: found.key, label: found.label, latitude: found.latitude, longitude: found.longitude } : null;
+}
+
+/** The venue a Post sheet's `place_key` names among the venues at this point, when it may take a pin; else null. */
+async function venueForKey(latitude, longitude, key) {
+  if (typeof key !== 'string' || !key.startsWith('v_')) return null;
+  const found = ((await settle(venuesAt(latitude, longitude), 'venues')) || []).find((place) => place.key === key);
+  return found?.pinnable ? { label: found.label, latitude: found.latitude, longitude: found.longitude } : null;
+}
+
+/** The town a floating post's area says ("Vancouver, WA"), read at the area's own point; FALLBACK_LABEL when unknown. */
+async function townAt(latitude, longitude) {
+  return (await settle(townAndStreet(latitude, longitude), 'reverse'))?.town || FALLBACK_LABEL;
 }
 
 /** Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds; fails closed to false). */
@@ -160,4 +207,7 @@ function labelKind(labels, label) {
   return label === labels?.area_label ? 'town' : 'place';
 }
 
-module.exports = { labelsAt, pickedLabel, labelKind, isAtHome, venueNear, FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M };
+module.exports = {
+  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt,
+  FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
+};

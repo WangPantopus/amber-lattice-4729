@@ -34,6 +34,8 @@ function displayedPoint(post) {
     ? { latitude: post.latitude, longitude: post.longitude }
     : { latitude: post.effective_latitude, longitude: post.effective_longitude };
   if (!validPoint(point)) return null;
+  // A floating post (the Sky) stores only its area's point: it is already what everyone sees.
+  if (post.post_metadata?.area) return point;
   applyLocationPrecision(point, leastPrecise(post.location_precision || 'approx_area', 'approx_area'));
   return validPoint(point) ? point : null;
 }

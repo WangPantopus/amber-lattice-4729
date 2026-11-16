@@ -1600,7 +1600,9 @@ router.get('/preferences', verifyToken, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch preferences' });
     }
 
-    res.json({ preferences: prefs });
+    // The saved card signature belongs to the card screens only (GET /cards).
+    const { card_signature: _cardSignature, ...preferences } = prefs;
+    res.json({ preferences });
 
   } catch (err) {
     logger.error('Preferences fetch error', { error: err.message, userId: req.user.id });
@@ -1643,9 +1645,10 @@ router.patch('/preferences', verifyToken, validate(updatePreferencesSchema), asy
 
     logger.info('Preferences updated', { userId });
 
+    const { card_signature: _cardSignature, ...preferences } = prefs || {};
     res.json({
       message: 'Preferences updated successfully',
-      preferences: prefs
+      preferences
     });
 
   } catch (err) {
@@ -2173,6 +2176,8 @@ router.get('/cards', verifyToken, async (req, res) => {
     // The stamps left, for the Mailbox row's line; the cards still load when the balance can't be read.
     const stamps = postage ? await mailStamps.balance(senderId).catch(() => null) : null;
     const controls = cardMedia.controls();
+    // Their saved signature (founder, November 16), only while signing is on; the cards still load without it.
+    const saved = cardTableOn() ? await savedCardSignature(senderId).catch(() => null) : null;
     return res.json({
       open: holidayCards.seasonOpen(timeZone, now),
       holiday: holidayCards.SEASON.holiday,
@@ -2180,9 +2185,10 @@ router.get('/cards', verifyToken, async (req, res) => {
       closes_on: holidayCards.SEASON.closes_on,
       message_limit: holidayCards.MESSAGE_LIMIT,
       // Signing beside FROM (launch key card_table): the strokes' box and their most bytes as stored. Absent: the
-      // server doesn't keep one, so the apps set the typed name.
+      // server doesn't keep one, so the apps set the typed name. `saves`: the account can keep a signature for the
+      // next cards (PUT/DELETE /cards/signature); `saved` is the one it keeps, or null. Only ever the reader's own.
       ...(cardTableOn() ? { signature: { w: holidayCards.SIGNATURE_BOX.w, h: holidayCards.SIGNATURE_BOX.h,
-        max_bytes: holidayCards.SIGNATURE_MAX_BYTES } } : {}),
+        max_bytes: holidayCards.SIGNATURE_MAX_BYTES, saves: true, saved } } : {}),
       // Which of a card's own photo and voice can be added now (launch key holiday_card_memories), their limits, and,
       // while they can, the bought stamp they need (founder, 2026-11-11).
       media: controls.photo.usable
@@ -2205,6 +2211,70 @@ router.get('/cards', verifyToken, async (req, res) => {
   } catch (err) {
     logger.error('Cards read error', { error: err.message, userId: req.user.id });
     return res.status(503).json({ error: 'Couldn’t load the Christmas cards. Try again in a moment.', code: 'CARDS_UNAVAILABLE' });
+  }
+});
+
+// A sender's saved card signature (founder, November 16): kept on their own MailPreferences row (one a person; its
+// row security lets only them read it) when they tick "Keep this signature for my next cards", so the next card on any
+// app starts signed. Same shape and checks as a card's signature; never logged.
+async function savedCardSignature(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('MailPreferences').select('card_signature').eq('user_id', userId).maybeSingle();
+  if (error) throw error;
+  return holidayCards.cleanSignature(data?.card_signature ?? null).signature || null;
+}
+
+const cardSignatureLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `card-signature-${req.user?.id}`,
+  message: { error: 'Too many at once. Try again later.', code: 'CARD_SIGNATURE_LIMIT' },
+});
+const saveCardSignatureSchema = Joi.object({ signature: CARD_SIGNATURE_FIELD.required().invalid(null) });
+
+/**
+ * PUT /api/mailbox/cards/signature  { signature: { w: 400, h: 100, strokes } }
+ * Keep this signature for the sender's next cards (launch key card_table), replacing any saved one. Answers
+ * { signature } as kept; 400 CARD_SIGNATURE_INVALID or CARD_SIGNATURE_TOO_LONG when it can't be kept.
+ */
+router.put('/cards/signature', verifyToken, cardSignatureLimiter, validate(saveCardSignatureSchema), async (req, res) => {
+  if (!cardTableOn()) return sendCardsOff(res);
+  const signed = holidayCards.cleanSignature(req.body.signature);
+  if (signed.refusal === 'CARD_SIGNATURE_TOO_LONG') {
+    return res.status(400).json({ error: 'Sign a little more simply to keep it.', code: signed.refusal });
+  }
+  if (signed.refusal || !signed.signature) {
+    return res.status(400).json({ error: 'Your signature didn’t come through. Sign again.', code: 'CARD_SIGNATURE_INVALID' });
+  }
+  try {
+    const { error } = await supabaseAdmin.from('MailPreferences').upsert(
+      { user_id: req.user.id, card_signature: signed.signature, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    if (error) throw error;
+    return res.json({ signature: signed.signature });
+  } catch (err) {
+    logger.error('Card signature save error', { error: err.message, userId: req.user.id });
+    return res.status(503).json({ error: 'Couldn’t keep your signature just now. Try again in a moment.', code: 'CARD_SIGNATURE_UNAVAILABLE' });
+  }
+});
+
+/**
+ * DELETE /api/mailbox/cards/signature
+ * Forget the sender's saved signature (launch key card_table). Cards already sent keep theirs. Answers 204.
+ */
+router.delete('/cards/signature', verifyToken, cardSignatureLimiter, async (req, res) => {
+  if (!cardTableOn()) return sendCardsOff(res);
+  try {
+    const { error } = await supabaseAdmin.from('MailPreferences')
+      .update({ card_signature: null, updated_at: new Date().toISOString() }).eq('user_id', req.user.id);
+    if (error) throw error;
+    return res.status(204).end();
+  } catch (err) {
+    logger.error('Card signature forget error', { error: err.message, userId: req.user.id });
+    return res.status(503).json({ error: 'Couldn’t forget your signature just now. Try again in a moment.', code: 'CARD_SIGNATURE_UNAVAILABLE' });
   }
 });
 

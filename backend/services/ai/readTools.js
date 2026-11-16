@@ -404,6 +404,7 @@ async function getPost(args, ctx) {
     .eq('post_id', post.id).eq('is_deleted', false), ctx.userId)
     .order('created_at', { ascending: true })
     .limit(40);
+  await feedService.refreshSkyEverywhere();
   feedService.applyPostLocationPrivacy(post, ctx.userId);
   const names = await localDisplayNames([post.user_id, ...(comments || []).map((c) => c.user_id)]).catch(() => new Map());
   const nameOf = (id) => firstNameOf({ display_name: names.get(String(id)) });

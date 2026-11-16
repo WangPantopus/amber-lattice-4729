@@ -100,9 +100,18 @@ export function fitSignature(strokes: Point[][]): CardSignature | null | 'too_lo
   return 'too_long';
 }
 
+/** Two signatures are the same strokes (the saved one put back unchanged needs no new save). */
+export function sameSignature(a: CardSignature | null | undefined, b: CardSignature | null | undefined): boolean {
+  return Boolean(a && b) && JSON.stringify(a!.strokes) === JSON.stringify(b!.strokes);
+}
+
 /**
  * Sign your name: a strip of the card's paper, four times as wide as it is tall, to sign with a finger, a mouse or a
  * pen. Done keeps it; Use my typed name puts the typed first name back.
+ *
+ * `keeping` (the server keeps one signature on the account, founder 2026-11-16): "Keep this signature for my next
+ * cards", ticked, under the paper, so Done also saves it for the next card on any app; and, while one is saved,
+ * "Forget my saved signature".
  */
 export function SignaturePad({
   initial,
@@ -110,13 +119,18 @@ export function SignaturePad({
   onTyped,
   onClose,
   wax,
+  keeping,
 }: {
   initial: CardSignature | null;
-  onDone: (signature: CardSignature) => void;
+  /** `keep`: the box was ticked (always false without `keeping`). */
+  onDone: (signature: CardSignature, keep: boolean) => void;
   onTyped: () => void;
   onClose: () => void;
   wax: string;
+  keeping?: { saved: CardSignature | null; onForget: () => Promise<void> };
 }) {
+  const [keep, setKeep] = useState(true);
+  const [forget, setForget] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle');
   const [strokes, setStrokes] = useState<Point[][]>(() => (initial?.strokes ?? []).map((stroke) => {
     const points: Point[] = [];
     for (let i = 0; i + 1 < stroke.length; i += 2) points.push({ x: stroke[i], y: stroke[i + 1] });
@@ -165,7 +179,7 @@ export function SignaturePad({
   const done = () => {
     const fitted = fitSignature(strokes);
     if (fitted === 'too_long') { setTooLong(true); return; }
-    if (fitted) onDone(fitted);
+    if (fitted) onDone(fitted, Boolean(keeping) && keep);
   };
 
   const live = { strokes: strokes.map((stroke) => stroke.flatMap((p) => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10])) };
@@ -205,6 +219,38 @@ export function SignaturePad({
           </svg>
         </div>
         {tooLong ? <p role="alert" className="mt-2 text-[13px] font-medium text-[#a81a1a]">Sign a little more simply, or leave your name typed.</p> : null}
+        {keeping ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-[14px] text-[#2a1a12]">
+              <input
+                type="checkbox"
+                data-testid="cardSignKeep"
+                checked={keep}
+                onChange={(event) => setKeep(event.target.checked)}
+                className="h-[18px] w-[18px] cursor-pointer"
+                style={{ accentColor: wax }}
+              />
+              Keep this signature for my next cards
+            </label>
+            {forget === 'done' ? (
+              <span role="status" className="text-[13px] text-[#6b5f50]">Saved signature forgotten.</span>
+            ) : keeping.saved ? (
+              <button
+                type="button"
+                data-testid="cardSignForget"
+                disabled={forget === 'busy'}
+                onClick={() => {
+                  setForget('busy');
+                  keeping.onForget().then(() => { setForget('done'); setKeep(false); }, () => setForget('failed'));
+                }}
+                className="min-h-[44px] text-[13px] font-medium text-[#6b5f50] underline underline-offset-4 disabled:opacity-50"
+              >
+                Forget my saved signature
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {forget === 'failed' ? <p role="alert" className="mt-1 text-[13px] font-medium text-[#a81a1a]">Couldn’t forget it just now. Try again in a moment.</p> : null}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex gap-1">
             <button type="button" data-testid="cardSignClear" disabled={!hasInk} onClick={() => { setStrokes([]); setTooLong(false); }} className={`${button} border border-[#d6cbb6] bg-[#fffdf8] text-[#374151] disabled:opacity-50`}>Clear</button>

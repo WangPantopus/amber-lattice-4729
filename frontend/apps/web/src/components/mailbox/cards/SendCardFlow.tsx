@@ -20,7 +20,7 @@ import type { CardMediaRef, CardSignature, HolidayCardArrival, HolidayCardCollec
 import { ChevronLeft, Check, Link2, Loader2, Mail, Search, Send, X } from 'lucide-react';
 import type { MailItemV2 } from '@/types/mailbox';
 import type { MailboxApiError } from '@/lib/mailbox-api';
-import { useCardArrivals, useCardRecipients, useHolidayCards, usePreviewHolidayCard, usePreviewHolidayCardList, useSendHolidayCard, useSendHolidayCardList, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
+import { useCardArrivals, useCardRecipients, useForgetCardSignature, useHolidayCards, usePreviewHolidayCard, usePreviewHolidayCardList, useSaveCardSignature, useSendHolidayCard, useSendHolidayCardList, useTakeBackHolidayCard } from '@/lib/mailbox-queries';
 import { useMe, useOwnLocalProfile } from '@/lib/me';
 import ErrorState from '@/components/ui/ErrorState';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -28,7 +28,7 @@ import MailPiece from '../MailPiece';
 import { mailLoadMessage } from '../mailLoadMessage';
 import CardFront from './CardFront';
 import CardBack, { BACK_TEXT, RULED } from './CardBack';
-import { SignaturePad } from './cardSignature';
+import { SignaturePad, sameSignature } from './cardSignature';
 import CardPrint from './CardPrint';
 import { canRecordGreeting, GreetingObject, greetingLength, recordingClock, useGreetingPlayer, useGreetingRecorder } from './CardGreeting';
 import { ON_CLOTH_BUTTON, ON_CLOTH_MUTED, Slip, StepsAtTable } from './AtTheTable';
@@ -758,6 +758,7 @@ function WriteStep({
   signature,
   onSignature,
   canSign,
+  signatureKeeping = null,
   photo = null,
   photoAlt = '',
   onPhotoAlt,
@@ -789,6 +790,11 @@ function WriteStep({
   onSignature: (signature: CardSignature | null) => void;
   /** The server keeps signatures (GET /cards `signature`, launch key card_table). */
   canSign: boolean;
+  /**
+   * The account keeps one signature for the next cards (GET /cards `signature.saves`): the saved one (or null), and
+   * saving and forgetting it. Null: no "Keep this signature" box.
+   */
+  signatureKeeping?: { saved: CardSignature | null; onKeep: (signature: CardSignature) => Promise<void>; onForget: () => Promise<void> } | null;
   /** The card's own photo (memories plan step 4, launch key holiday_card_memories): uploading, ready or failed. */
   photo?: PhotoDraft | null;
   photoAlt?: string;
@@ -823,6 +829,9 @@ function WriteStep({
   const quiet = onCloth ? ON_CLOTH_MUTED : muted;
   const [showBack, setShowBack] = useState(true);
   const [signing, setSigning] = useState(false);
+  // Done with "Keep this signature" ticked, but the account didn't keep it: this card is still signed.
+  const [keepFailed, setKeepFailed] = useState(false);
+  const signedWithSaved = Boolean(signatureKeeping && sameSignature(signature, signatureKeeping.saved));
   // A note picked from "Help me write it" lands on the back, face up.
   const help = useCardNoteHelp({
     designId: design.id,
@@ -905,16 +914,29 @@ function WriteStep({
           >
             {signature ? 'Sign again' : 'Sign your name'}
           </button>
-          <span className={`text-[13px] ${quiet}`}>{signature ? 'Signed beside FROM.' : `Or leave ${firstName(fromName)} typed.`}</span>
+          <span className={`text-[13px] ${quiet}`} data-testid="sendCardSignState">
+            {signedWithSaved ? 'Your saved signature is beside FROM.' : signature ? 'Signed beside FROM.' : `Or leave ${firstName(fromName)} typed.`}
+          </span>
         </div>
+      ) : null}
+      {canSign && keepFailed ? (
+        <p role="alert" className={`mx-auto mt-1 max-w-[420px] text-[13px] ${quiet}`}>This card is signed, but your signature couldn’t be kept for next time. Sign again to try once more.</p>
       ) : null}
       {signing ? (
         <SignaturePad
           initial={signature}
           wax={WAX}
-          onDone={(signed) => { onSignature(signed); setSigning(false); }}
+          onDone={(signed, keep) => {
+            onSignature(signed);
+            setSigning(false);
+            setKeepFailed(false);
+            if (keep && signatureKeeping && !sameSignature(signed, signatureKeeping.saved)) {
+              signatureKeeping.onKeep(signed).catch(() => setKeepFailed(true));
+            }
+          }}
           onTyped={() => { onSignature(null); setSigning(false); }}
           onClose={() => setSigning(false)}
+          keeping={signatureKeeping ? { saved: signatureKeeping.saved, onForget: signatureKeeping.onForget } : undefined}
         />
       ) : null}
       {showPhoto || showVoice ? (
@@ -1558,6 +1580,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const preview = usePreviewHolidayCard();
   const send = useSendHolidayCard();
   const takeBack = useTakeBackHolidayCard();
+  const saveSignature = useSaveCardSignature();
+  const forgetSignature = useForgetCardSignature();
 
   const [step, setStep] = useState<Step>('to');
   // What they will get, from the server's look (step 5).
@@ -1616,6 +1640,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   sealingOpen.current = Boolean(sealing);
 
   const data = cards.data;
+  // Their saved signature (founder, 2026-11-16): the next card starts signed with it.
+  const savedSignature = launchFeatures.cardTable ? data?.signature?.saved ?? null : null;
   const max = data?.max_recipients ?? 1;
   const stamps = useStamps(Boolean(data?.postage_enabled), `${sent?.id ?? ''}:${listSent?.length ?? 0}:${listTakenBack.size}:${tookBack}:${step}`);
   const mediaStamp = mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null);
@@ -1665,6 +1691,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   useEffect(() => {
     if (draftRead.current || !data || !me?.id) return;
     draftRead.current = true;
+    // A new card starts with their saved signature beside FROM (founder, 2026-11-16); a draft brought back keeps its own.
+    const saved = launchFeatures.cardTable ? data.signature?.saved ?? null : null;
+    if (saved) setSignature(saved);
     if (chosenPerson || (launchFeatures.cardTable && chosenDesign)) return;
     const draft = readCardDraft(me.id);
     if (!draft || !data.open) return;
@@ -1805,7 +1834,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
     listIds.current = new Map();
     setSent(null);
     setSentLink(null);
-    setTo(null); setDesignId(null); setMessage(''); setSignature(null); removePhoto(); removeVoice(); setArrival(null); setLook(null); setLookUnavailable(false);
+    setTo(null); setDesignId(null); setMessage(''); setSignature(savedSignature); removePhoto(); removeVoice(); setArrival(null); setLook(null); setLookUnavailable(false);
     setListed([]); setListLook(null); setListSent(null); setListError(null); setListTakenBack(new Set()); setListTakeBackError(null);
     setStep('to');
   };
@@ -2185,6 +2214,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
           signature={signature}
           onSignature={setSignature}
           canSign={launchFeatures.cardTable && Boolean(data.signature)}
+          signatureKeeping={launchFeatures.cardTable && data.signature?.saves ? {
+            saved: data.signature.saved ?? null,
+            onKeep: async (signed) => { await saveSignature.mutateAsync(signed); },
+            onForget: async () => { await forgetSignature.mutateAsync(); },
+          } : null}
           // A card's own photo (memories plan step 4): one card to one person; a list goes without.
           canAddPhoto={launchFeatures.holidayCardMemories && Boolean(data.media?.photo.usable) && to?.kind !== 'list' && mediaStamp !== 'unavailable'}
           photo={photo}

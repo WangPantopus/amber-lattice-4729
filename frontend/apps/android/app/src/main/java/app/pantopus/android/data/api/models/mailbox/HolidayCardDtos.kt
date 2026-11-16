@@ -146,12 +146,24 @@ data class CardMediaFile(
     @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
-/** Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. */
+/**
+ * Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. [saves]: the
+ * account can keep one signature for the next cards (founder, 2026-11-16; `PUT`/`DELETE /api/mailbox/cards/signature`),
+ * and [saved] is the one it keeps (null: none, or an older server).
+ */
 @JsonClass(generateAdapter = true)
 data class CardSignatureBox(
     val w: Int = CardSignature.WIDTH,
     val h: Int = CardSignature.HEIGHT,
     @Json(name = "max_bytes") val maxBytes: Int = CardSignature.MAX_BYTES,
+    val saves: Boolean = false,
+    val saved: CardSignature? = null,
+)
+
+/** `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept. */
+@JsonClass(generateAdapter = true)
+data class CardSignatureBody(
+    val signature: CardSignature,
 )
 
 /**

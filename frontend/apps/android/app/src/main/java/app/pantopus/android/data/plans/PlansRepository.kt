@@ -596,7 +596,21 @@ class PlansRepository
             token: String,
         ): NetworkResult<PlanInvitePlanResponse> {
             val session = cacheSession()
-            return write(id) { api.claimInvite(id, PlanInviteClaimBody(token)) }.also { result ->
+            return write(id) { api.claimInvite(id, PlanInviteClaimBody(token = token)) }.also { result ->
+                (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
+            }
+        }
+
+        /**
+         * The person opened the plan's one link for everyone (Plans for the holidays, contract 6.9): they answer it as
+         * themselves. Every refusal is `404 invite_unavailable`.
+         */
+        suspend fun claimOpenLink(
+            id: String,
+            open: String,
+        ): NetworkResult<PlanInvitePlanResponse> {
+            val session = cacheSession()
+            return write(id) { api.claimInvite(id, PlanInviteClaimBody(open = open)) }.also { result ->
                 (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
             }
         }

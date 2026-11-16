@@ -5,6 +5,7 @@ import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
 import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
 import app.pantopus.android.data.api.models.mailbox.CardSignature
+import app.pantopus.android.data.api.models.mailbox.CardSignatureBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
 import app.pantopus.android.data.api.models.mailbox.HolidayCardNoteHelpBody
@@ -154,6 +155,38 @@ class HolidayCardsRepository
                 is NetworkResult.Success -> NetworkResult.Success(result.data.notes)
                 is NetworkResult.Failure -> result
             }
+
+        /**
+         * `PUT /api/mailbox/cards/signature`: the account keeps this signature for the next cards (founder, 2026-11-16).
+         * The cards as read take it too, so the next card on this phone starts signed with it.
+         */
+        suspend fun saveSignature(signature: CardSignature): NetworkResult<CardSignature> =
+            when (val result = safeApiCall { api.saveSignature(CardSignatureBody(signature)) }) {
+                is NetworkResult.Success -> {
+                    setSavedSignature(result.data.signature)
+                    NetworkResult.Success(result.data.signature)
+                }
+                is NetworkResult.Failure -> result
+            }
+
+        /** `DELETE /api/mailbox/cards/signature`: the account forgets its saved signature; cards already sent keep theirs. */
+        suspend fun forgetSignature(): NetworkResult<Unit> =
+            when (val result = safeApiCall { api.forgetSignature() }) {
+                is NetworkResult.Success ->
+                    if (result.data.isSuccessful) {
+                        setSavedSignature(null)
+                        NetworkResult.Success(Unit)
+                    } else {
+                        NetworkResult.Failure(NetworkError.Server(result.data.code(), null))
+                    }
+                is NetworkResult.Failure -> result
+            }
+
+        private fun setSavedSignature(saved: CardSignature?) {
+            latestFlow.update { cards ->
+                cards?.signature?.let { box -> cards.copy(signature = box.copy(saved = saved)) } ?: cards
+            }
+        }
 
         /** `GET /api/mailbox/cards/arrivals?to=`: when a card to this person can come, by their clock. */
         suspend fun arrivalsFor(userId: String): NetworkResult<HolidayCardArrivalsFor> = safeApiCall { api.arrivals(userId) }

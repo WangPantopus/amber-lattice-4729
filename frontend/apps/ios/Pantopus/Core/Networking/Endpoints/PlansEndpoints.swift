@@ -407,4 +407,29 @@ public enum PlansEndpoints {
     public static func letIn(planId: String, inviteId: String) -> Endpoint {
         Endpoint(method: .post, path: "\(base)/\(planId)/invites/\(inviteId)/ok", query: biz())
     }
+
+    // MARK: - Plans for the holidays, H2 (404 while `plans_bring_list` is off for the host)
+
+    /// `PUT /api/plans/:id/bring` (host) — the whole list, `{ bring }`. Kept ids keep their claims; `mine` claims or
+    /// gives back for the host. 409 `bring_changed` after three tries. Route `backend/routes/plans.js:481`.
+    public static func putBring(planId: String, _ body: PlanBringBody) -> Endpoint {
+        Endpoint(method: .put, path: "\(base)/\(planId)/bring", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/bring/items` — someone in adds one thing, claimed by them, `{ bring }`; 403
+    /// `not_allowed` when guests can't add. Route `backend/routes/plans.js:490`.
+    public static func addBringItem(planId: String, _ body: PlanBringAddBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/bring/items", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/bring/:itemId/claim` — "I'll bring it", `{ bring }`; 409 `taken` with the name of whoever
+    /// got there first. Route `backend/routes/plans.js:499`.
+    public static func claimBring(planId: String, itemId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/bring/\(itemId)/claim", query: biz())
+    }
+
+    /// `DELETE /api/plans/:id/bring/:itemId/claim` — "Give back", `{ bring }`. Route `backend/routes/plans.js:506`.
+    public static func giveBackBring(planId: String, itemId: String) -> Endpoint {
+        Endpoint(method: .delete, path: "\(base)/\(planId)/bring/\(itemId)/claim", query: biz())
+    }
 }
