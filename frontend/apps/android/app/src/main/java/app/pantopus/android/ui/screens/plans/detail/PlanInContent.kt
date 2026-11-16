@@ -98,6 +98,8 @@ internal fun ColumnScope.PlanInBody(
         InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         InPlaceTitle(plan)
     }
+    // Business track B2: "Paid $18.00" and "Receipt" under the title, once the guest paid for the spot.
+    PlanPaidRow(plan)
     // Business track B1 (D2): before a group deal settles (or after it fell short) D1's card; then "Your deal".
     plan.deal?.let { deal ->
         if (deal.isGroup && !deal.isUnlocked) PlanDealCard(plan, deal, onShare = rememberDealShare(plan))

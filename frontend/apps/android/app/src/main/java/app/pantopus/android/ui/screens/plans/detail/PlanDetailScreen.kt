@@ -56,6 +56,7 @@ import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.guests.PlanGuestsUi
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.map.askWord
 import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -190,8 +191,10 @@ private fun PlanReady(
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
 ) {
     val standing = plan.standing
-    // Invited again after a no or a removal: the invitation, not "Didn't work out".
-    if ((standing == PlanViewerStanding.DECLINED || standing == PlanViewerStanding.REMOVED) && plan.openInvite == null) {
+    // Invited again after a no or a removal: the invitation, not "Didn't work out". A paid spot's hold that ran out
+    // (business track B2) may join again: the plan, not "Didn't work out".
+    val notThisTime = standing == PlanViewerStanding.DECLINED || standing == PlanViewerStanding.REMOVED
+    if (notThisTime && plan.openInvite == null && !plan.holdRanOut) {
         PlanNotThisTime(
             plan = plan,
             others = ui.others,
@@ -311,7 +314,10 @@ private fun PlanReady(
             }
         }
     }
-    if (ui.askOpen) {
+    if (ui.askOpen && plan.paysToJoin) {
+        // Business track B2 (P1): a priced plan's "Join" pays for the spot through the shipped payment sheet.
+        PlanPayHost(plan = plan, onClose = viewModel::closeAsk, onDone = viewModel::paidDone)
+    } else if (ui.askOpen) {
         PlanAskSheet(
             plan = plan,
             draft = ui.ask,
@@ -431,6 +437,17 @@ private fun footerFor(
         standing == PlanViewerStanding.IN ->
             onlineJoinFooter(plan, viewModel::linkUnopened, leave = { confirm(LeaveKind.Plan) }, busy = busy)
                 ?: leaveFooter(busy, confirm, dealReady = plan.dealReady)
+        // Business track B2: a held spot being paid for: "Join" opens P1 again, with the same payment.
+        standing == PlanViewerStanding.PAYING -> {
+            {
+                PrimaryButton(
+                    title = askWord(plan),
+                    onClick = viewModel::openAsk,
+                    isEnabled = !busy,
+                    modifier = Modifier.height(50.dp).testTag("planPayAgain"),
+                )
+            }
+        }
         standing == PlanViewerStanding.REQUESTED -> {
             {
                 GhostButton(
@@ -539,7 +556,9 @@ private fun LeaveDialog(
                 Triple(
                     "Can't make it?",
                     "We'll tell ${plan.hostFirst}, and your spot goes to the next person waiting. " +
-                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat.",
+                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat." +
+                        // Business track B2: what leaving now gives back, in the server's words.
+                        plan.paid?.leaveText?.let { " $it" }.orEmpty(),
                     "I can't make it",
                 )
         }

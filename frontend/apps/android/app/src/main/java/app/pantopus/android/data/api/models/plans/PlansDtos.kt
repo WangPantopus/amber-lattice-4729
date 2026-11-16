@@ -149,6 +149,8 @@ data class PlanPersonDto(
     @Json(name = "guest") val isGuest: Boolean = false,
     /** Business track B1, staff only: this guest's free thing (`ready` or `used`), for "Mark used". */
     @Json(name = "deal") val deal: PlanPersonDealDto? = null,
+    /** Business track B2, staff only: what this guest paid and who brought them. */
+    @Json(name = "paid") val paid: PlanPersonPaidDto? = null,
 )
 
 /** `my_request`: the viewer's own request, once they have one. */
@@ -169,6 +171,8 @@ data class PlanMyRequestDto(
     @Json(name = "decided_by") val decidedBy: String? = null,
     @Json(name = "decided_at") val decidedAt: String? = null,
     @Json(name = "asks_left") val asksLeft: Int? = null,
+    /** Business track B2: a `paying` request's spot is held until then. */
+    @Json(name = "hold_expires_at") val holdExpiresAt: String? = null,
 )
 
 /**
@@ -191,6 +195,17 @@ data class PlanPriceDto(
     @Json(name = "cents") val cents: Int? = null,
     @Json(name = "currency") val currency: String? = null,
     @Json(name = "per") val per: String? = null,
+    /** Business track B2: "$18" (the list's chip). */
+    @Json(name = "text") val text: String? = null,
+    /** "$18 a person": replaces "Free" in "Free, and for adults". */
+    @Json(name = "line") val line: String? = null,
+    /** D1's line under Join: "$18 a person. Full refund until Friday at 10:00 AM." */
+    @Json(name = "join_text") val joinText: String? = null,
+    @Json(name = "refund_until") val refundUntil: String? = null,
+    @Json(name = "refund_text") val refundText: String? = null,
+    /** B4: the price struck through beside a deal price. */
+    @Json(name = "was_cents") val wasCents: Int? = null,
+    @Json(name = "was_text") val wasText: String? = null,
 )
 
 /** One of a venue's later plans folded under its soonest (`more_times.items`): a short line in the list. */
@@ -301,6 +316,8 @@ data class PlanDto(
     @Json(name = "occasion") val occasion: PlanOccasionRefDto? = null,
     /** Business track B1 (contract 9): a business's deal, with every word from the server; none without one. */
     @Json(name = "deal") val deal: PlanDealDto? = null,
+    /** Business track B2: what the guest paid, the receipt and what leaving gives back; only for a guest who paid. */
+    @Json(name = "paid") val paid: PlanPaidDto? = null,
 )
 
 /** `occasion` on a card (Plans for the holidays, H3). */
@@ -643,6 +660,8 @@ data class CreatePlanBody(
     @Json(name = "occasion") val occasion: String? = null,
     /** Business track B1: a business's deal (D3); none leaves it out. */
     @Json(name = "deal") val deal: PlanDealInput? = null,
+    /** Business track B2: a spot's price in cents ($1 to $500); none is free. */
+    @Json(name = "price_cents") val priceCents: Int? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
@@ -712,6 +731,8 @@ data class PlanRequestRefDto(
     @Json(name = "id") val id: String? = null,
     @Json(name = "status") val status: String? = null,
     @Json(name = "waitlist_position") val waitlistPosition: Int? = null,
+    /** Business track B2: a `paying` request's spot is held until then (10 minutes). */
+    @Json(name = "hold_expires_at") val holdExpiresAt: String? = null,
 )
 
 /** `POST /api/plans/:id/requests` reply: the request and the plan as the asker now sees it. */
@@ -719,6 +740,8 @@ data class PlanRequestRefDto(
 data class AskToJoinResponse(
     @Json(name = "request") val request: PlanRequestRefDto? = null,
     @Json(name = "plan") val plan: PlanDto? = null,
+    /** Business track B2: on a priced plan with room, the payment for the shipped payment sheet. */
+    @Json(name = "payment") val payment: PlanPaymentDto? = null,
 )
 
 /** `RequestView.user`: what a host sees about someone who asked. Never an address. */

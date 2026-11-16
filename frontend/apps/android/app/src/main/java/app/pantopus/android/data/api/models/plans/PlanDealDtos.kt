@@ -41,6 +41,8 @@ data class PlanDealDto(
     @Json(name = "form") val form: PlanDealFormDto? = null,
     /** Staff: the deal can still change (nobody is in yet). */
     @Json(name = "can_change") val canChange: Boolean = false,
+    /** B4: what one spot costs with the deal (the group price), or null once it fell short with nothing smaller. */
+    @Json(name = "price_cents") val priceCents: Int? = null,
 )
 
 /** A group deal's progress: how many are in of how many, by when, and the server's words for the time left. */
@@ -66,6 +68,9 @@ data class PlanDealMineDto(
     /** For something free: the guest's first name (no code, K8). */
     @Json(name = "name") val name: String? = null,
     @Json(name = "used_at") val usedAt: String? = null,
+    /** B4: what comes back to the guest's card when a group price unlocks, and when it went back. */
+    @Json(name = "back_cents") val backCents: Int? = null,
+    @Json(name = "back_at") val backAt: String? = null,
 )
 
 /** The deal as staff edit it (D3); the same shape the create and change calls take. */
@@ -82,11 +87,16 @@ data class PlanDealFormDto(
     @Json(name = "if_short") val ifShort: PlanDealIfShortDto? = null,
 )
 
-/** A smaller deal when a group deal falls short: `{ "kind": "free_item", "item": "cookie" }`. */
+/**
+ * A smaller deal when a group deal falls short: `{ "kind": "free_item", "item": "cookie" }`, or (B4) money after money
+ * `{ "kind": "percent", "value": 10 }`.
+ */
 @JsonClass(generateAdapter = true)
 data class PlanDealIfShortDto(
     @Json(name = "kind") val kind: String = "free_item",
-    @Json(name = "item") val item: String = "",
+    @Json(name = "item") val item: String? = null,
+    @Json(name = "value") val value: Int? = null,
+    @Json(name = "applies_to") val appliesTo: String? = null,
 )
 
 /**
@@ -99,6 +109,10 @@ data class PlanDealInput(
     @Json(name = "scope") val scope: String,
     @Json(name = "kind") val kind: String = "free_item",
     @Json(name = "item") val item: String? = null,
+    /** B4: percent (5 to 50) or cents off. */
+    @Json(name = "value") val value: Int? = null,
+    /** B4: `spot` (money off the spot). */
+    @Json(name = "applies_to") val appliesTo: String? = null,
     @Json(name = "group_size") val groupSize: Int? = null,
     @Json(name = "group_by") val groupBy: String? = null,
     @Json(name = "if_short") val ifShort: PlanDealIfShortDto? = null,

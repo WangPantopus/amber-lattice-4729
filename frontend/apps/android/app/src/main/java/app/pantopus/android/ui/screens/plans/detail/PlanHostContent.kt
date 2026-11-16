@@ -584,6 +584,8 @@ private fun guestSubtitle(
         if (person.reconfirmNeeded == true) "asked “Still coming?”" else null,
         // Business track B1: "Used 8:40 PM" once staff marked the guest's free thing used.
         deal?.usedLine(person),
+        // Business track B2: what the guest paid ("Paid $18.00").
+        person.paid?.text?.let { "Paid $it" },
     ).joinToString(" · ").replaceFirstChar { it.titlecase() }.ifBlank { "Going" }
 
 /** H12: cancel the plan, with an optional note to everyone. */

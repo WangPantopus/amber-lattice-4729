@@ -163,6 +163,9 @@ data class HostDraft(
     val deal: DealDraft = DealDraft(),
     /** The deal's starting values were set (the first time the deal step opened). */
     val dealStarted: Boolean = false,
+    /** Business track B2: "Price a spot" is on, and the amount as typed in dollars ($1 to $500). */
+    val priceOn: Boolean = false,
+    val priceDollars: String = "",
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -249,6 +252,13 @@ data class HostUi(
 ) {
     /** A business that takes deals gets the deal step (business track B1, D3); a person's own plan never does. */
     val showsDealStep: Boolean get() = business?.takesDeals == true
+
+    /** "Price a spot" shows on a business's form while its switch is on (host-as `can.price`, business track B2). */
+    val showsPrice: Boolean get() = business?.can?.price == true
+
+    /** The spot's price in cents the plan is posted with: the row is on, the business can charge, the amount reads. */
+    val priceCents: Int?
+        get() = if (showsPrice && business?.payoutsReady == true && draft.priceOn) centsOf(draft.priceDollars) else null
 
     /** How many steps the bar counts: "of 4" with deals on and a business chosen, else "of 3" (07-screens, settled). */
     val stepTotal: Int get() = if ((business ?: chosenBusiness)?.takesDeals == true) DEAL_STEPS else PLAIN_STEPS
@@ -1052,6 +1062,7 @@ class HostFlowViewModel
                 val body =
                     if (business != null) {
                         businessCreateBody(kind, draft, ui.zone, business, deal = draft.deal.toInput(ui.zone).takeIf { ui.showsDealStep })
+                            .copy(priceCents = ui.priceCents)
                     } else {
                         // A private plan can be anywhere: no fix is needed to prove the host is nearby.
                         val fix = if (ui.isPrivate) null else locations.gpsFix()
@@ -1126,7 +1137,8 @@ class HostFlowViewModel
         private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
             val ui = _ui.value
             val business = ui.business ?: return null
-            val body = dealPreviewBody(business, ui.draft.deal, ui.draft.spots, ui.draft.start, ui.zone) ?: return null
+            val facts = DealPlanFacts(spots = ui.draft.spots, start = ui.draft.start, priceCents = ui.priceCents)
+            val body = dealPreviewBody(business, ui.draft.deal, facts, ui.zone) ?: return null
             _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = true, failed = null)) }
             return when (val result = repository.dealPreview(body)) {
                 is NetworkResult.Success -> {

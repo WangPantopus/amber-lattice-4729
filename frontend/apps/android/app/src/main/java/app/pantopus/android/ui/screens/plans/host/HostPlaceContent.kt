@@ -841,6 +841,7 @@ private fun BusinessPreview(
             whenText = PlanFormat.whenLine(start.atZone(ui.zone), draft.end?.atZone(ui.zone), long = true),
             spots = draft.spots,
             place = listOfNotNull(locationTitle(business, ui.location), ui.location?.address).joinToString(" · "),
+            price = previewPriceText(ui.priceCents),
         )
         PlanLockLine(
             if (draft.approveEach) "You approve each person who asks." else "Anyone gets in right away, until the spots fill.",
