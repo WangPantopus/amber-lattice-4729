@@ -276,12 +276,13 @@ struct PlanDealUnlockedBanner: View {
     }
 }
 
-/// D2 on the page of someone who is in: before a group deal unlocks, D1's card; and "Your deal" from their own deal.
+/// D2 on the page of someone who is in: before a group deal unlocks (or after it fell short, with what happens now),
+/// D1's card; and "Your deal" from their own deal.
 struct PlanGoingDealCards: View {
     let card: PlanCardDTO
 
     var body: some View {
-        if let deal = card.deal, deal.isOpenGroup { PlanDealCard(card: card, deal: deal) }
+        if let deal = card.deal, deal.isGroup, deal.state == .open || deal.state == .short { PlanDealCard(card: card, deal: deal) }
         if let deal = card.deal, let mine = card.myDeal { PlanYourDealCard(card: card, deal: deal, mine: mine) }
     }
 }
