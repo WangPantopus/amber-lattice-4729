@@ -282,6 +282,7 @@ struct PlanGoingDealCards: View {
     let card: PlanCardDTO
 
     var body: some View {
+        if let paid = card.paid { PlanPaidLine(paid: paid) }
         if let deal = card.deal, deal.isGroup, deal.state == .open || deal.state == .short { PlanDealCard(card: card, deal: deal) }
         if let deal = card.deal, let mine = card.myDeal { PlanYourDealCard(card: card, deal: deal, mine: mine) }
     }

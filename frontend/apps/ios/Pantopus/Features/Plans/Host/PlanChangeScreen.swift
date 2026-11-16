@@ -42,6 +42,7 @@ struct PlanChangeScreen: View {
                         when(card)
                         if card.isBusiness {
                             businessPlace(card)
+                            PlanChangePriceRow(card: card, business: business)
                             PlanChangeDealRow(card: card, business: business)
                         } else if card.isOnline {
                             PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)

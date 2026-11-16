@@ -52,10 +52,13 @@ public struct PlanAskResultDTO: Decodable, Sendable, Hashable {
     public let id: String
     public let status: PlanRequestStatus
     public let waitlistPosition: Int?
+    /// B2: while `paying`, when the held spot is let go.
+    public let holdExpiresAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status
         case waitlistPosition = "waitlist_position"
+        case holdExpiresAt = "hold_expires_at"
     }
 }
 
@@ -64,6 +67,8 @@ public struct PlanAskResultDTO: Decodable, Sendable, Hashable {
 public struct PlanAskResponse: Decodable, Sendable {
     public let request: PlanAskResultDTO
     public let plan: PlanDetailDTO
+    /// B2: on a priced plan, the shipped payment sheet's values for the held spot.
+    public let payment: PlanPaymentDTO?
 }
 
 /// `POST /api/plans/:id/still-coming`. False leaves the plan.
@@ -145,9 +150,12 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var occasion: String?
     /// Plans for the holidays B1: a business's deal. Left out for "No deal".
     public var deal: PlanDealInput?
+    /// B2: a business's price a spot, in cents (100 to 50000). Left out for a free plan.
+    public var priceCents: Int?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
+        case priceCents = "price_cents"
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
@@ -211,9 +219,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var repeatChange: PlanRepeatChange?
     /// Plans for the holidays B1: a business's new deal, or `.remove` (sent as `null`). Nil leaves it.
     public var deal: PlanDealChange?
+    /// B2: a new price a spot, or `.remove` (sent as `null`); only while nobody is in or paying.
+    public var priceCents: PlanPriceChange?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
+        case priceCents = "price_cents"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"

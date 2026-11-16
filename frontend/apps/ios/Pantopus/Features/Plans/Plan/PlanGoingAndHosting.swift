@@ -425,7 +425,7 @@ struct PlanHostingSection: View {
                                 .planFont(.rowTitle)
                                 .foregroundStyle(Theme.Color.appText)
                                 .lineLimit(1)
-                            Text(guestFacts(person))
+                            Text(PlanPersonMoney.facts(person, guestFacts(person)))
                                 .planFont(.footnote)
                                 .foregroundStyle(Theme.Color.appTextSecondary)
                                 .lineLimit(1)

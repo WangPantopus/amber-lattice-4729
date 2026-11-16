@@ -70,7 +70,7 @@ struct PlanFooter: View {
             })
         case .going:
             AnyView(VStack(spacing: Spacing.s2) {
-                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card))) }
+                Button("Can't make it") { onConfirm(.cantMakeIt(host: PlanCardLines.hostName(card), money: card.paid?.leaveText)) }
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
                 // D2 item 5: leaving gives up a deal that's ready.
@@ -182,7 +182,7 @@ struct PlanFooter: View {
     /// how people get in above the footer.
     private func askCaption(_ card: PlanCardDTO) -> String? {
         // Plans for the holidays B1 (D1 item 5): the deal's line under the join button, in the server's words.
-        if card.isBusiness, let line = card.deal?.joinText { return line }
+        if card.isBusiness, let line = card.price?.joinText ?? card.deal?.joinText { return line }
         // A business's plan (board G3): in right away, or the business approves each person.
         if card.isBusiness {
             return Self.joinsRightAway(card)
@@ -268,7 +268,7 @@ enum PlanConfirmation: Identifiable, Equatable {
     case withdraw(host: String)
     case leaveWaitlist
     /// `online`: an online plan, whose guests lose its link (Plans step 3).
-    case cantMakeIt(host: String, online: Bool = false)
+    case cantMakeIt(host: String, online: Bool = false, money: String? = nil)
     /// "Can't make it" to the host's "Still coming?" (H11): answers it and leaves.
     case notComing(host: String, online: Bool = false)
     case blockHost(name: String)
@@ -312,7 +312,10 @@ enum PlanConfirmation: Identifiable, Equatable {
             "\(host) won't see it anymore."
         case .leaveWaitlist:
             "You'll lose your place in line."
-        case let .cantMakeIt(host, online), let .notComing(host, online):
+        case let .cantMakeIt(_, _, money?):
+            // B2: a paid spot says what leaving now gives back, in the server's words.
+            money
+        case let .cantMakeIt(host, online, _), let .notComing(host, online):
             "We'll tell \(host), and your spot goes to the next person waiting. "
                 + "You'll lose \(online ? "the link" : "the exact place"), the note and the chat."
         case .blockHost:
@@ -351,7 +354,7 @@ enum PlanConfirmation: Identifiable, Equatable {
             await viewModel.withdraw() ? "Request withdrawn" : nil
         case .leaveWaitlist:
             await viewModel.withdraw() ? "You left the waitlist" : nil
-        case let .cantMakeIt(host, _):
+        case let .cantMakeIt(host, _, _):
             await viewModel.withdraw() ? "We told \(host)" : nil
         case let .notComing(host, _):
             await viewModel.stillComing(false) ? "We told \(host)" : nil

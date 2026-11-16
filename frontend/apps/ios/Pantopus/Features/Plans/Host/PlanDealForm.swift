@@ -371,7 +371,7 @@ struct PlanDealWhatFields: View {
                         .padding(.vertical, Spacing.s2)
                     }
                 case "amount":
-                    PlanDealDollarsField(text: $dollars, identifier: "\(identifier)Dollars")
+                    PlanDollarsField(text: $dollars, placeholder: "4", label: "Dollars off", identifier: "\(identifier)Dollars")
                 default:
                     PlanTextInput(
                         placeholder: "appetizer for the table",
@@ -418,28 +418,6 @@ struct PlanDealFieldErrors {
     var kind: String?
     var amount: String?
     var target: String?
-}
-
-/// "$" and an amount for "Dollars off".
-struct PlanDealDollarsField: View {
-    @Binding var text: String
-    let identifier: String
-
-    var body: some View {
-        HStack(spacing: Spacing.s2) {
-            Text("$").planFont(.body).foregroundStyle(Theme.Color.appTextSecondary).allowsHitTesting(false)
-            TextField("4", text: $text)
-                .keyboardType(.decimalPad)
-                .planFont(.body)
-                .accessibilityLabel("Dollars off")
-                .accessibilityIdentifier(identifier)
-        }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 50)
-        .typesInFieldOnTap()
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurface))
-        .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
-    }
 }
 
 /// The server's words under a field.
