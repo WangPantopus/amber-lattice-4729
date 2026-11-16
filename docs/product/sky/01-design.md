@@ -419,7 +419,7 @@ The founder's own note covers all of them: they depend on having users, and Pant
 
 - **The idea:** zoom out until the map is a globe, turn it by hand and see posts on it. Real elevation and terrain should matter to what is drawn.
 - **Read from the code on November 15. The apps were not run.**
-  - iPhone: the Pulse map has been 3D with real terrain since October 22. As far as the session knows, that mode of Apple's map becomes a globe when zoomed out. The Moments map is flat. Giving Moments the same mode is small.
+  - iPhone: the Pulse map has been 3D with real terrain since October 22, and the Moments map is flat. **Corrected November 16 after a test in the simulator:** neither becomes a globe. Apple draws a globe for other companies' apps only in its satellite styles; its drawn street map stays flat at every zoom. The globe the founder remembers is most likely the web's Pulse map. Being built for the iPhone Moments map: the drawn map close in, and satellite with labels once the view is wider than about 300 miles, where it becomes a globe to turn.
   - Web: the map engine can draw a globe, terrain and its own 3D shapes. Moments is not on the web.
   - Android: Google's map has no globe and no terrain. A globe needs another map engine for that screen, which may cost money and is the founder's decision. Prices were not checked.
   - Apple's map puts a marker only on the ground, so lift is drawn on the screen, as the built floating view does. Many lifted posts on a tilted map dropped half the frames when measured.
