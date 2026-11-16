@@ -94,7 +94,7 @@ fun PlanRepeatsScreen(
             onLeading = done,
             footer = { Box(modifier = Modifier.testTag("planRepeatDone")) { HostFooterButton(title = "Done", onClick = done) } },
         ) {
-            FrequencyCard(selected = editor.freq, onSelect = { pick(editor.choose(it)) })
+            FrequencyCard(selected = editor.freq, onSelect = { pick(editor.choose(it, setup)) })
             when (editor.freq) {
                 PlanRepeatFreq.WEEKLY, PlanRepeatFreq.BIWEEKLY -> DaysField(editor, setup) { pick(editor.toggleDay(it, setup)) }
                 PlanRepeatFreq.MONTHLY ->
@@ -109,8 +109,8 @@ fun PlanRepeatsScreen(
             if (editor.freq != null) {
                 EndsField(
                     editor = editor,
-                    onDateRow = { if (editor.endsOnDate) picker = RepeatPicker.Until else pick(editor.endOnDate(true)) },
-                    onCountRow = { if (editor.endsOnDate) pick(editor.endOnDate(false)) else picker = RepeatPicker.Count },
+                    onDateRow = { if (editor.endsOnDate) picker = RepeatPicker.Until else pick(editor.endOnDate(true, setup)) },
+                    onCountRow = { if (editor.endsOnDate) pick(editor.endOnDate(false, setup)) else picker = RepeatPicker.Count },
                 )
                 editor.pattern(setup)?.let { SummaryWell(it, setup) }
                 HowItWorks()
@@ -146,6 +146,7 @@ private fun RepeatPickerDialog(
         RepeatPicker.Until ->
             PlanRepeatUntilDialog(
                 setup = setup,
+                first = editor.firstEnd(setup),
                 current = editor.until,
                 onPick = { onPick(editor.withUntil(it, setup)) },
                 onDismiss = onDismiss,
