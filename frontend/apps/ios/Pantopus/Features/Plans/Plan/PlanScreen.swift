@@ -432,6 +432,8 @@ extension PlanScreen {
                 onMaybe: { await viewModel.sayMaybe() ? nil : viewModel.actionError ?? Self.tryAgain },
                 onCantMakeIt: { await viewModel.declineInvite() ? nil : viewModel.actionError ?? Self.tryAgain }
             )
+        } else if let card = viewModel.card ?? sheetCard, card.paysToJoin, !askIsChange {
+            PlanPaySpotSheet(card: card, viewModel: viewModel) // B2: paying for a spot (board 11)
         } else if let card = viewModel.card ?? sheetCard {
             PlanAskSheet(
                 card: card,

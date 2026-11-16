@@ -173,9 +173,9 @@ extension PlanCardDTO {
         PlanDealOffer.on(priced: dealPriceCents != nil, payHere: dealOnBill)
     }
 
-    /// The price a spot (B2), for money off the spot; nil while the plan is free.
+    /// The price a spot (B2), for money off the spot (the full price, before any deal); nil while the plan is free.
     var dealPriceCents: Int? {
-        nil
+        price.map { $0.wasCents ?? $0.cents }
     }
 
     /// Guests pay their bill here (B5), for a deal on the bill.

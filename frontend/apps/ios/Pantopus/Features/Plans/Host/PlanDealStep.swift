@@ -112,7 +112,7 @@ extension PlanComposerModel {
 
     /// The price a spot (B2), for money off the spot; nil while the plan is free.
     var dealPriceCents: Int? {
-        nil
+        offersPrice && money.priceOn ? PlanDealDraft.cents(money.priceDollars) : nil
     }
 
     /// Guests pay their bill here (B5), for a deal on the bill.
