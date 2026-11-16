@@ -283,6 +283,45 @@ you drew. Bring it on {Saturday}.", and "Your wish" with "Change". The host
 sees the count and "Draw names now"; never a name. Notices: "Names are drawn
 for {title}. See who you're giving to.", once.
 
+**Settled while it was built** (server PR 4239, November 16; the designer's
+yes to both choices, told to the founder; the coordinator read the merged
+change line by line for who can read a pair):
+
+- **The host may join** as anyone who is in does, and then reads their own
+  "giving to" and nobody else's. A host who has not joined sees the count and
+  "Draw names now" only.
+- **A guest's emails about the draw are outside the plan's three** ("Names
+  are drawn for {title}", "Names were drawn again for {title}"); the day's
+  five an address and "don't send me invitations" hold. Neither carries a
+  name.
+- **How the pairs are kept.** `gift_pairs` is written only by the draw, in
+  the same write as `gift` (`plan_gift_draw`). It is in no list of columns the
+  server selects, and it is not one of the values `plan_extra_swap` may
+  write. One function, `plan_gift_mine(post, key)`, answers a single key's
+  receiver, and the server calls it only with the reader's own key for the
+  reader's own card or web page. All three functions run for the service role
+  only, and `Plan` gives nothing to a signed-in or anonymous database role.
+  No log line or funnel event carries a pair.
+- **The draw is one circle through everyone**, in a random order, so nobody
+  draws themselves and nobody is left out. Two things follow that no rule can
+  remove: with exactly three people each can work out the other two pairs,
+  and in any draw a person knows the one they give to is not giving to them.
+- **The card** also carries `joined_text` ("8 joined"), `can_join`, and, in
+  the reader's own card after the draw, `wish_text` ("Sam's wish") and
+  `secret_text` ("Only you can see who you drew. Bring it on Saturday.").
+  `draw_text` reads "Names are drawn Friday at noon" (with the date when it
+  is six days or more away) and "Names are drawn" afterwards.
+- **Refusals**: `409 drawn` (joining or leaving after the draw; a wish can
+  still change), `409 too_few` with the host's sentence when "Draw names now"
+  finds fewer than three, `409 not_joined`, `403 not_in`, `409 ended` on a
+  plan that is over or cancelled. After the draw the Change screen can change
+  "Spend up to" only; turning the exchange off forgets the pairs.
+- **Someone who leaves** before the draw leaves the exchange. After it, the
+  host's notice "{Name} left after the names were drawn." opens the plan,
+  where "Draw again" draws for everyone still in and tells each "Names were
+  drawn again." The host may also draw again at any time until the plan is
+  over.
+
 ## 5. Photos afterwards
 
 Board 29 (`Photos`).
