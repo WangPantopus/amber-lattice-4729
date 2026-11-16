@@ -4958,6 +4958,8 @@ router.get('/invoices/received', verifyToken, async (req, res) => {
       .select('*, business:business_user_id(id, name, username, profile_picture_url)', { count: 'exact' })
       .eq('recipient_user_id', userId)
       .in('status', ['sent', 'viewed', 'overdue', 'paid'])
+      // A check at a plan (Plans for the holidays B5) is paid on the plan, never listed as an invoice.
+      .is('plan_post_id', null)
       .order('created_at', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -5057,6 +5059,11 @@ router.post('/invoices/:invoiceId/pay', verifyToken, async (req, res) => {
 
     if (fetchErr || !invoice) {
       return res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' });
+    }
+
+    // A check at a plan (Plans for the holidays B5) is paid only on the plan, with its deal and tip.
+    if (invoice.plan_post_id) {
+      return res.status(409).json({ error: 'Pay this check from its plan.', code: 'PLAN_CHECK' });
     }
 
     // Only the recipient can pay
@@ -5312,6 +5319,11 @@ router.post('/invoices/:invoiceId/confirm', verifyToken, async (req, res) => {
 
     if (fetchErr || !invoice) {
       return res.status(404).json({ error: 'Invoice not found', code: 'NOT_FOUND' });
+    }
+
+    // A check at a plan (Plans for the holidays B5) is paid only on the plan, with its deal and tip.
+    if (invoice.plan_post_id) {
+      return res.status(409).json({ error: 'Pay this check from its plan.', code: 'PLAN_CHECK' });
     }
     if (invoice.recipient_user_id !== userId) {
       return res.status(403).json({ error: 'Not authorized', code: 'NOT_RECIPIENT' });
@@ -5663,6 +5675,8 @@ router.get('/:businessId/invoices', verifyToken, async (req, res) => {
       .from('BusinessInvoice')
       .select('*, recipient:recipient_user_id(id, name, username, profile_picture_url)', { count: 'exact' })
       .eq('business_user_id', businessId)
+      // Checks at a plan (B5) are on the plan's guest list, not here.
+      .is('plan_post_id', null)
       .order('created_at', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 

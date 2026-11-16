@@ -1301,7 +1301,8 @@ router.get('/insights/team', withOwner('view'), asyncHandler(async (req, res) =>
 router.get('/invoices', withOwner('view'), asyncHandler(async (req, res) => {
   if (req.scheduling.ownerType !== 'business') return res.json({ invoices: [] });
   const { data } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('business_user_id', req.scheduling.ownerId).order('created_at', { ascending: false }).limit(200);
-  res.json({ invoices: data || [] });
+  // A check at a plan (Plans for the holidays B5) is on the plan's guest list, never an invoice here.
+  res.json({ invoices: (data || []).filter((invoice) => !invoice.plan_post_id) });
 }));
 router.get('/invoices/:id', withOwner('view'), asyncHandler(async (req, res) => {
   const { data } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('id', req.params.id).maybeSingle();
@@ -1315,7 +1316,8 @@ const invoiceSendSchema = Joi.object({
 });
 router.post('/invoices/:id/send', validate(invoiceSendSchema), withOwner('edit'), asyncHandler(async (req, res) => {
   const { data: inv } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('id', req.params.id).maybeSingle();
-  if (!inv || inv.business_user_id !== req.scheduling.ownerId) return res.status(404).json({ error: 'NOT_FOUND' });
+  // A check at a plan (B5) is never sent as an invoice (it would deliver a bill to Mail).
+  if (!inv || inv.business_user_id !== req.scheduling.ownerId || inv.plan_post_id) return res.status(404).json({ error: 'NOT_FOUND' });
   // Same rule as creating the invoice: someone who has blocked the business
   // (or whom it has blocked) can't be sent it, and a failed check refuses.
   if (inv.recipient_user_id) {

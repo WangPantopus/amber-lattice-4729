@@ -29,6 +29,9 @@ const PERCENT_MIN = 5;
 const PERCENT_MAX = 50;
 // A deal never takes a spot under $1 (a price's own floor).
 const SPOT_FLOOR = 100;
+// Money off the bill at the place (B5): what it is off, and the most dollars off a deal may take.
+const BILL_TARGETS = ['food', 'no_alcohol'];
+const BILL_AMOUNT_MAX = 10000;
 const ITEM_MAX = 40;
 // Drinks a "something free" may not be. Word-bounded, so "ginger ale" is refused but "gingerbread" is not.
 const ALCOHOL = /\b(beers?|wines?|cocktails?|shots?|pints?|ales?|lagers?|ipas?|stouts?|hard cider|meads?|margaritas?|mimosas?|sangrias?|champagne|prosecco|whiske?y|bourbon|scotch|vodka|gin|rum|tequila|mezcal|sake|soju|liquor|booze|spirits|alcohol|alcoholic|hard seltzers?|bloody marys?|mojitos?|martinis?|bellinis?)\b/i;
@@ -72,24 +75,55 @@ function moneyShort(cents) {
   return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
 }
 
-/** A money kind's value and what it is off. Errors go under `${prefix}value` / `${prefix}applies_to` (or prefix itself). */
-function checkedMoney(input, priceCents, errors, prefix) {
+/**
+ * A money kind's value and what it is off: the spot (on a priced plan, B4) or the bill at the place (`food`, or
+ * `no_alcohol`: everything but alcohol, on a plan whose guests pay here, B5). Errors go under `value` / `applies_to`
+ * (or under `prefix` itself for the smaller deal).
+ */
+function checkedMoney(input, priceCents, errors, prefix, payHere = false) {
   const at = (field) => (prefix ? prefix : field);
+  const targets = [...(priceCents ? ['spot'] : []), ...(payHere ? BILL_TARGETS : [])];
+  const appliesTo = input.applies_to === undefined || input.applies_to === null ? (priceCents ? 'spot' : 'food') : input.applies_to;
+  if (!targets.includes(appliesTo)) { errors[at('applies_to')] = 'Choose what it is off.'; return null; }
   const value = Number(input.value);
   if (input.kind === 'percent') {
     if (!Number.isInteger(value) || value < PERCENT_MIN || value > PERCENT_MAX) { errors[at('value')] = `Choose ${PERCENT_MIN}% to ${PERCENT_MAX}%.`; return null; }
-  } else {
+  } else if (appliesTo === 'spot') {
     const most = (priceCents || 0) - SPOT_FLOOR;
     if (!Number.isInteger(value) || value < 100 || value > most) {
       errors[at('value')] = most >= 100 ? `Choose $1 to ${moneyShort(most)} off.` : 'The spot is too low for dollars off.';
       return null;
     }
+  } else if (!Number.isInteger(value) || value < 100 || value > BILL_AMOUNT_MAX) {
+    errors[at('value')] = `Choose $1 to ${moneyShort(BILL_AMOUNT_MAX)} off.`;
+    return null;
   }
-  const appliesTo = input.applies_to === undefined || input.applies_to === null ? 'spot' : input.applies_to;
-  if (appliesTo !== 'spot') { errors[at('applies_to')] = 'Choose what it is off.'; return null; }
-  const deal = { kind: input.kind, value, applies_to: 'spot' };
-  if (priceCents - offCents(deal, priceCents) < SPOT_FLOOR) { errors[at('value')] = 'A deal can\'t take a spot under $1.'; return null; }
-  return { value, applies_to: 'spot' };
+  const deal = { kind: input.kind, value, applies_to: appliesTo };
+  if (appliesTo === 'spot' && priceCents - offCents(deal, priceCents) < SPOT_FLOOR) { errors[at('value')] = 'A deal can\'t take a spot under $1.'; return null; }
+  return { value, applies_to: appliesTo };
+}
+
+/** Whether a smaller deal takes less than the deal it follows (null when they can't be compared: a different target). */
+function smallerThan(smaller, deal, priceCents) {
+  if (smaller.applies_to !== deal.applies_to) return false;
+  if (deal.applies_to === 'spot') return offCents(smaller, priceCents) < offCents(deal, priceCents);
+  if (smaller.kind !== deal.kind) return null;
+  return smaller.value < deal.value;
+}
+
+/** Whether a deal (or its smaller one) comes off the bill at the place (B5). */
+function isBillDeal(deal) {
+  return Boolean(deal && MONEY_KINDS.includes(deal.kind) && BILL_TARGETS.includes(deal.applies_to));
+}
+
+/**
+ * What a bill deal takes off a check (B5, contract 11.2): on the amount less the part it does not cover, a percent
+ * rounded to the cent or dollars off up to that amount. Zero for anything else.
+ */
+function billOffCents(deal, amountCents, noDealCents = 0) {
+  if (!isBillDeal(deal)) return 0;
+  const covered = Math.max(0, amountCents - Math.max(0, noDealCents));
+  return deal.kind === 'percent' ? Math.round((covered * deal.value) / 100) : Math.min(deal.value, covered);
 }
 
 /** What a money deal takes off one spot, in cents (a percent rounds to the nearest cent). Zero for anything else. */
@@ -123,20 +157,21 @@ function groupPriceOf(deal, priceCents) {
  * Checks a deal against the plan it sits on. Answers { deal, errors }: `deal` is the value to save (null when any
  * field is wrong), `errors` each wrong field's own sentence, as the form shows it under that field.
  * @param {object} input  what the business's form sent
- * @param {{ spots: number, startsAt: string|Date, priceCents?: number|null, now?: Date }} plan  priceCents: the spot's
- *   price when the plan has one and the business takes payment (the money kinds are offered only then)
+ * @param {{ spots: number, startsAt: string|Date, priceCents?: number|null, payHere?: boolean, now?: Date }} plan
+ *   priceCents: the spot's price when the plan has one and the business takes payment; payHere: guests pay their bill
+ *   here (B5). The money kinds are offered only with one of them.
  */
-function checkDeal(input, { spots, startsAt, priceCents = null, now = new Date() }) {
+function checkDeal(input, { spots, startsAt, priceCents = null, payHere = false, now = new Date() }) {
   const errors = {};
   if (!input || typeof input !== 'object') return { deal: null, errors: { deal: 'Choose a deal.' } };
   const scope = ['everyone', 'group'].includes(input.scope) ? input.scope : null;
   if (!scope) errors.scope = 'Choose who gets it.';
   // A money kind exists only on a priced spot (D3: "The spot" is a choice only then).
-  const offered = priceCents ? KINDS : ['free_item'];
+  const offered = priceCents || payHere ? KINDS : ['free_item'];
   const kind = offered.includes(input.kind) ? input.kind : null;
   if (!kind) errors.kind = 'Choose what they get.';
   const item = kind === 'free_item' ? checkedItem(input.item, errors, 'item') : null;
-  const money = MONEY_KINDS.includes(kind) ? checkedMoney(input, priceCents, errors, '') : null;
+  const money = MONEY_KINDS.includes(kind) ? checkedMoney(input, priceCents, errors, '', payHere) : null;
 
   const deal = { scope, kind, item, state: scope === 'group' ? 'open' : 'on', settled_at: null };
   if (money) Object.assign(deal, money);
@@ -162,10 +197,10 @@ function checkDeal(input, { spots, startsAt, priceCents = null, now = new Date()
       const smallerItem = smallerKind === 'free_item' ? checkedItem(input.if_short.item, errors, 'if_short') : null;
       deal.if_short = { scope: 'everyone', kind: smallerKind, item: smallerItem };
       if (MONEY_KINDS.includes(smallerKind)) {
-        const smaller = checkedMoney(input.if_short, priceCents, errors, 'if_short');
+        const smaller = checkedMoney({ ...input.if_short, applies_to: input.if_short.applies_to ?? deal.applies_to }, priceCents, errors, 'if_short', payHere);
         if (smaller) {
           Object.assign(deal.if_short, smaller);
-          if (money && offCents(deal.if_short, priceCents) >= offCents(deal, priceCents)) errors.if_short = 'Choose a smaller deal than the group deal.';
+          if (money && smallerThan(deal.if_short, deal, priceCents) === false) errors.if_short = 'Choose a smaller deal than the group deal.';
         }
       }
     } else {
@@ -193,6 +228,8 @@ function textOf(deal) {
   if (deal.kind === 'free_item') return `A free ${deal.item}`;
   // "20% off the spot", "$4 off the spot".
   if (isSpotDeal(deal)) return `${offText(deal)} the spot`;
+  // "20% off food", "$5 off everything but alcohol" (B5).
+  if (isBillDeal(deal)) return `${offText(deal)} ${deal.applies_to === 'food' ? 'food' : 'everything but alcohol'}`;
   return null;
 }
 /** "20% off", "$4 off". */
@@ -244,6 +281,7 @@ function leftText(deal, plan, now = Date.now()) {
 /** How a guest claims it, for the business's form (D3 item 8). */
 function claimLineOf(deal, priceCents = null) {
   if (deal?.kind === 'free_item') return 'Your staff mark it used on the guest list. Once a guest.';
+  if (isBillDeal(deal)) return 'It comes off by itself when a guest pays their bill through Pantopus that night. Once a guest.';
   if (isSpotDeal(deal) && priceCents) {
     if (deal.scope !== 'group') return 'Guests pay the deal price when they join.';
     const back = offCents(deal, priceCents);
@@ -316,7 +354,9 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
     // The banner or the card once a group deal settled.
     state_text: deal.state === 'unlocked' ? `Unlocked: ${going} are in` : deal.state === 'short' ? shortText(deal, paid ? plan : null) : null,
     // The line under "I'm in" (D1 item 5); on a priced plan (B2) the price's join_text says what joining costs.
-    join_text: deal.kind === 'free_item' ? (paid ? 'Show your deal there.' : 'Free to join. Show your deal there.') : null,
+    join_text: deal.kind === 'free_item' ? (paid ? 'Show your deal there.' : 'Free to join. Show your deal there.')
+      : isBillDeal(deal) ? (paid ? 'Pay your bill there in Pantopus and the deal comes off.' : 'Free to join. Pay your bill there in Pantopus and the deal comes off.')
+        : null,
   };
   // Money off a priced spot (B4): what one spot costs with the deal (the group price, or the deal price), or null once
   // a group price fell short with nothing smaller.
@@ -337,6 +377,16 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
       used_at: null,
       back_cents: back > 0 ? back : null,
       back_at: back > 0 ? request.deal_used_at || null : null,
+    };
+  } else if (role === 'guest' && request?.status === 'accepted' && isBillDeal(deal)) {
+    // A deal on the bill (B5): it comes off when the guest pays a check here; used once that check is paid.
+    const given = givenNow(deal);
+    out.mine = {
+      state: request.deal_used_at ? 'used' : deal.state === 'open' ? 'waiting' : given ? 'ready' : 'none',
+      short: given ? shortOf(given) : null,
+      text: given ? 'It comes off by itself when you pay your bill here in Pantopus. Nothing to show, nothing to type.' : null,
+      name: null,
+      used_at: request.deal_used_at || null,
     };
   } else if (role === 'guest' && request?.status === 'accepted') {
     const given = givenNow(deal);
@@ -366,17 +416,17 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
 // ── Saving with a plan ───────────────────────────────────────
 
 /** A deal posted with a business's plan (createPlan). Null when none was sent or the switch is off. */
-async function dealForNewPlan(hostAs, input, { spots, startsAt, priceCents = null }) {
+async function dealForNewPlan(hostAs, input, { spots, startsAt, priceCents = null, payHere = false }) {
   if (!hostAs || input.deal == null) return null;
   if (!(await enabledFor(hostAs.business.id))) return null;
-  return checkedDeal(input.deal, { spots, startsAt, priceCents });
+  return checkedDeal(input.deal, { spots, startsAt, priceCents, payHere });
 }
 
 /**
  * A change to a business's plan's deal (editPlan). Answers { update, removed } or null when nothing changes.
  * Once anyone is in, the deal can only be removed (and everyone in is told, by the caller).
  */
-async function dealChange(plan, patch, { going, spots, startsAt, priceCents = null, priceChanged = false }) {
+async function dealChange(plan, patch, { going, spots, startsAt, priceCents = null, priceChanged = false, payHere = false }) {
   if (!plan.business_user_id || !(await enabledFor(plan.host_user_id))) return null;
   // The price moved under money off the spot (nobody is in yet, or the price couldn't move): it must still fit.
   if (patch.deal === undefined && priceChanged && isSpotDeal(plan.deal)) {
@@ -397,7 +447,7 @@ async function dealChange(plan, patch, { going, spots, startsAt, priceCents = nu
   }
   if (patch.deal === null) return plan.deal ? { update: null, removed: true } : null;
   if (going > 0) fail(409, 'deal_locked', "The deal can't change once someone is in. You can remove it.", 'deal');
-  return { update: checkedDeal(patch.deal, { spots, startsAt, priceCents }), removed: false };
+  return { update: checkedDeal(patch.deal, { spots, startsAt, priceCents, payHere }), removed: false };
 }
 
 // ── Marking a free thing used (staff) ────────────────────────
@@ -587,7 +637,9 @@ async function previewFor(user, body = {}) {
   // Money off the spot (B4) is offered on a priced plan while the business takes payment.
   const price = Number(body.price_cents);
   const priceCents = Number.isInteger(price) && price > 0 && (await require('./planPaid').enabledFor(businessUserId)) ? price : null;
-  return preview(body.deal, { spots: body.spots, startsAt: body.starts_at, priceCents });
+  // Money off the bill (B5) is offered when guests will pay here: the form says so with pay_here.
+  const payHere = body.pay_here === true && (await require('./planChecks').enabledFor(businessUserId));
+  return preview(body.deal, { spots: body.spots, startsAt: body.starts_at, priceCents, payHere });
 }
 
 /**
@@ -608,7 +660,7 @@ async function markUsedFor(user, postId, requestId) {
 
 module.exports = {
   previewFor, markUsedFor,
-  MONEY_KINDS, offCents, isSpotDeal, spotPriceNow, groupPriceOf, moneyShort, offText,
+  MONEY_KINDS, BILL_TARGETS, offCents, isSpotDeal, isBillDeal, billOffCents, spotPriceNow, groupPriceOf, moneyShort, offText,
   FLAG, KINDS, ALCOHOL, enabledFor, switchByHost, checkDeal, checkedDeal, textOf, tagOf, shortOf, conditionText, leftText, claimLineOf, ifShortText,
   preview, cardView, givenNow, dealForNewPlan, dealChange, markUsed, runDealTick, notifyRemoved, acceptedOf,
 };

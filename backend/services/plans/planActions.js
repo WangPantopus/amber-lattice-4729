@@ -614,9 +614,12 @@ async function createPlan(user, input, internal = {}) {
     : null;
   // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
   const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
-  // A business's plan's deal (B1), while the business has the switch: checked against its room, start and (B4, money
-  // off the spot) its price.
-  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at, priceCents });
+  // Guests pay their bill here, and tips (B5), while the business has the switch: needs payouts set up as a price does.
+  const payHere = await require('./planChecks').payHereForNewPlan(hostAs, input, kind);
+  // A business's plan's deal (B1), while the business has the switch: checked against its room, start, (B4, money
+  // off the spot) its price and (B5, money off the bill) whether guests pay here.
+  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at, priceCents,
+    payHere: Boolean(payHere?.pay_here) });
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -703,6 +706,7 @@ async function createPlan(user, input, internal = {}) {
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
+    ...(payHere ? payHere : {}),
     timezone,
     status: 'open',
   });
@@ -915,10 +919,15 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   // A business's plan's deal (B1): set or changed while nobody is in, removed at any time (everyone in is told). Money
   // off the spot (B4) is checked against the price the plan will have.
   const priceAfter = priceChange ? priceChange.price_cents : (plan.price_cents ?? null);
+  // Guests pay their bill here, and tips (B5): either may change at any time.
+  const payHereChange = await require('./planChecks').payHereChange(plan, patch);
+  if (payHereChange) Object.assign(planUpdate, payHereChange);
+  const payHereAfter = payHereChange ? payHereChange.pay_here : Boolean(plan.pay_here);
   const dealChange = await require('./planDeals').dealChange(plan, patch, {
     going, spots: planUpdate.spots ?? plan.spots, startsAt: postUpdate.event_date || plan.post.event_date,
     priceCents: priceAfter && (await require('./planPaid').enabledFor(plan.host_user_id)) ? priceAfter : null,
     priceChanged: Boolean(priceChange),
+    payHere: payHereAfter && (await require('./planChecks').enabledFor(plan.host_user_id)),
   });
   if (dealChange) planUpdate.deal = dealChange.update;
   if (priceChange) {

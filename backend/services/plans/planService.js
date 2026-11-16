@@ -59,6 +59,8 @@ const PLAN_COLUMNS = [
   'deal',
   // B2: the price of a spot (planPaid.js); null is free.
   'price_cents', 'currency',
+  // B5: guests pay their bill here, and the check asks for a tip (planChecks.js).
+  'pay_here', 'tips_on',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -256,6 +258,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // Paid spots (B2): whether each business with a priced plan has the switch, and each request's money.
     paidByHost: new Map(),
     moneyByRequest: new Map(),
+    // The bill at the place (B5): whether each business with pay_here on has the switch.
+    payHereByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -303,6 +307,9 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
       for (const row of money || []) ctx.moneyByRequest.set(row.id, row);
     }
   }
+  // The bill at the place (B5): read only for plans with pay_here on.
+  const payHerePlans = plans.filter((p) => p.pay_here && p.business_user_id);
+  if (payHerePlans.length > 0) ctx.payHereByHost = await require('./planChecks').switchByHost(payHerePlans.map((p) => p.host_user_id));
   // Deals (B1): read only for plans that carry one, from businesses that have the switch.
   const dealPlans = plans.filter((p) => p.deal && p.business_user_id);
   if (dealPlans.length > 0) {
@@ -791,6 +798,12 @@ function addBusinessFields(card, plan, viewer, ctx) {
     const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
       reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null) : null;
     if (paid && myRequest.status === 'accepted') card.paid = paid;
+  }
+  // "Pay at {business}" (D2, B5) for the business's staff and the guests who are in, while it has the switch.
+  if (plan.pay_here && ctx.payHereByHost?.get(String(plan.host_user_id))) {
+    const role = card.viewer?.role;
+    const isIn = card.viewer?.request_status === 'accepted';
+    if (role === 'host' || isIn) card.pay_here = require('./planChecks').cardView(plan, card.business?.name);
   }
   card.guests_can_invite = Boolean(plan.guests_can_invite);
   card.more_times = moreTimesView(ctx.moreTimesByPlan?.get(plan.post_id));
