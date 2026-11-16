@@ -133,6 +133,7 @@ Checks:
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
 | `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
+| `host_ok_at` | `timestamptz` | When the host let this guest in by hand (6.8). Null: the host has not. To be added with 6.8 |
 | `guest_emails` | `integer`, default 0 | How many of the plan's three emails the guest has had (6.6). Added by the server session |
 | `changed_at`, `changed_reason` | `timestamptz`, `text` (`time`, `place`, `both`) | The plan's time or place changed since the guest answered: their page says so, and the one change email goes once. Added by the server session |
 
@@ -327,8 +328,8 @@ Every one carries the unsubscribe link invitation emails already carry.
    (`rules.reminderAt`).
 3. The first change of time or place.
 
-**Two that are outside the three** (made precise on November 15, after the
-server session's build showed a cancellation could be held back):
+**Outside the three** (made precise on November 15, after the server session's
+build showed a cancellation could be held back):
 
 - **The cancellation.** One a plan, to each guest who is in. A guest still
   waiting for the host's yes gets none, as with a change. It is never held by
@@ -339,6 +340,11 @@ server session's build showed a cancellation could be held back):
   nobody holding the open link can use up another guest's emails. It goes only
   if no email went to that guest for that plan in the last 24 hours; otherwise
   nothing is sent and the answer is the same `check_email`.
+
+- **A move to a home** (6.8): the one email to a guest it makes wait.
+- **"You're in" after the host's own yes.** It counts as one of the three when
+  it is the guest's first, and it is never held by them: a guest the host lets
+  in after a move gets it even with three emails behind them.
 
 **The limits that exist hold for all of them**, the cancellation included: 5
 emails an address a day from every host together, each counted by its own time
@@ -353,6 +359,41 @@ none.
 | Rows made by a plan's open link | The room plus 20 |
 | Invitations a plan (exists: 60) | 160 for a private plan with room over 30 |
 | A guest's name | 1 to 100 characters, cleaned as plan text is |
+
+### 6.8 A plan that moves to a home
+
+Decided by the founder on November 15 ("Yes, they wait"). Away from a home, a
+guest from the open link is in without the host's yes. When an edit changes
+the place of a plan that takes answers from anywhere else to a home:
+
+1. `open_invite_ok_first` turns on. The host can turn it off again.
+2. Each guest without an account who came by the open link (`channel =
+   'open'`), is in, and never had the host's own yes goes back to waiting:
+   `needs_host_ok = true`. Their seats stay held (K5) and their bring-list
+   claims stay. While they wait, none of their keys reads the place, the note,
+   who is going or the bring list, as for any waiting guest.
+3. The host's own yes is recorded when the host lets a guest in
+   (`host_ok_at`). A guest the host already let in by hand is not asked again.
+   "Let in before" means this and nothing else: a guest made to wait by the
+   move does not get back in by changing to Maybe and back, by answering
+   again, or because a "You're in" email once went to them.
+4. Guests the host invited by email or by a text invitation stay in. So does
+   everyone with an account; they are asked "Still coming?" as today.
+5. Each guest made to wait gets one email, outside the plan's three (6.6), so
+   nobody goes to the old place: "{Host} changed the place of {title}", and in
+   the body "{title} is now at {Host}'s home. {Host} lets each guest in. When
+   {Host} says yes, the address comes to this email.", with their link, which
+   opens the waiting page. Guests who stay in get the ordinary change email.
+6. The host gets one notice: "You moved {title} to your home. {n} guests from
+   your link are waiting for your yes." It opens Who's coming, where each has
+   "Let in" and "Not this time".
+7. "Let in" sends "You're in" with the guest's link (6.6). "Not this time"
+   removes the guest; no email goes (6.4).
+8. `answer.mine` carries `changed` (`time`, `place`, `both`) for a waiting
+   guest too, so their page can say the place changed.
+
+A move between two places away from a home, between two homes, or from a home
+to somewhere else makes nobody wait.
 
 ## 7. The bring list (H2)
 
@@ -620,6 +661,7 @@ Sent through `planNotifications.js`, held for quiet hours as Plans notices are.
 | --- | --- | --- |
 | A guest without an account answers | The host | "Dana Lee is in: 2 adults, 1 kid." Several in an hour become one |
 | An answer waits for the host's yes | The host | "Dana Lee wants to come. Let them in?" with Let in and Not this time |
+| The host moved a plan to a home and guests from the link now wait (6.8) | The host | "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." Once a move |
 | Bring-list items are claimed | The host | At most one in 30 minutes: "3 things are taken. 2 are still open." |
 | Items are still open two days before | People in who claimed nothing | "2 things are still open for Thanksgiving dinner." Once |
 | A group deal is close | People in, and people who opened the plan and did not join | "2 more and trivia is 20% off. It closes at 5:00 PM." Once, in the last day |
@@ -697,6 +739,20 @@ Each step is checked in the real apps against a local stack and backend, as
 - A second answer for the same address inside a day, without its key, sends
   nothing and answers the same. A guest's reminder still goes after their link
   was sent again.
+- An address that asked not to be emailed is refused at the form with its own
+  words, and nothing is saved.
+- A plan at a cafe with three guests from the open link, one of them let in by
+  hand while "I say yes first" was on, and one guest invited by email, moves
+  to a home: the two never let in wait and every link of theirs shows no
+  address; the other two stay in; "I say yes first" is on; the host gets the
+  one notice.
+- A guest made to wait by the move changes to Maybe and back to I'm in, and
+  answers again from the open link: still waiting.
+- Each guest made to wait got the one email, a guest with three emails behind
+  them included. After "Let in", "You're in" arrives and that link and their
+  older links show the address.
+- A move from one cafe to another, and from a home to a cafe, makes nobody
+  wait.
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
 
@@ -729,13 +785,15 @@ payout is not sent before `payout_after`.
    guest who clears cookies and has no email on file (a text invitation).
 5. The date the Gift exchange, Find a date and Chip in extras are drawn; each
    needs its own boards before a contract.
-6. **A plan that moves to a home after guests answered** (the founder's call;
-   as built, nothing changes for them). Away from a home, a guest from the open
-   link is in without the host's yes and their browser holds a key. If the host
-   then changes the place to a home, those guests see the address with no yes
-   from the host and no email. The host can see every name before moving. The
-   designer's recommendation: when a plan moves to a home, guests without an
-   account who came by the open link wait for the host's yes, their seats held,
-   and "I say yes first" turns on. Not built, not drawn.
+6. Decided November 15: a plan that moves to a home makes guests from the open
+   link wait for the host's yes (6.8).
 7. A guest held by the day's five gets "Check your email" and no email until
    they answer again a day later. Nothing tells them. Left as it is.
+8. **A person who has the app and taps the open link.** The open link is
+   answered in a browser, by a guest without an account. The iPhone app claims
+   `/plans/` links and the Android app every link, so someone with the app may
+   land in the app on a private plan they were not invited to by name. Not
+   checked on a phone; not designed. It needs its own answer before the open
+   link is turned on for people (most likely: the app lets a signed-in person
+   answer the open link as an invited person, with the host's yes where the
+   link asks for it).
