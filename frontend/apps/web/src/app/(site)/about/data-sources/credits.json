@@ -98,6 +98,22 @@
           "statement": "The Cleveland County Assessor is both the origin and the publisher of these records."
         },
         {
+          "id": "va-richmond",
+          "publisher": "City of Richmond Assessor of Real Estate, Virginia",
+          "url": "https://www.rva.gov/assessor-real-estate/data-request",
+          "license": "Public Data Set offered free by the Assessor's Office; no license or limit on use stated",
+          "dataset": "Public Data Set (Property Information), refreshed about the 15th of each month",
+          "statement": "The City of Richmond assumes no liability for any errors, omissions, or inaccuracies in the information provided."
+        },
+        {
+          "id": "va-powhatan",
+          "publisher": "Powhatan County, Virginia",
+          "url": "https://services5.arcgis.com/nip9boeHfv9Av5yj/arcgis/rest/services/Vision_Powhatan/FeatureServer",
+          "license": "Published by the county; no license or limit on use stated",
+          "dataset": "Assessment tables (residential construction, year built, parcels and assessments)",
+          "statement": "Powhatan County provides its maps and data as a public information service; parcels the county keeps off the internet carry no facts here."
+        },
+        {
           "id": "va-charlottesville",
           "publisher": "City of Charlottesville, Virginia",
           "url": "https://opendata.charlottesville.org",
