@@ -36,6 +36,8 @@ const marketplaceService = require('../services/marketplace/marketplaceService')
 const { generateNeighborhoodFacts } = require('../services/ai/neighborhoodFactService');
 const { encodeGeohash6: _encodeGeohash6 } = require('../utils/geohash');
 const { resolveLocation } = require('../services/context/locationResolver');
+const { taggedPlaceKind } = require('../utils/postPlaceTag');
+const skyPlaces = require('../services/skyPlaces');
 
 // ── Cold-start seeding helpers ──────────────────────────────────────────
 
@@ -169,21 +171,6 @@ const HOME_PLACE_TYPES = [
 const POST_FORMATS = ['standard', 'quick_pulse', 'deep_dive', 'shout_out', 'show_and_tell'];
 
 const LOCATION_PRECISIONS = ['exact_place', 'approx_area', 'neighborhood_only', 'none'];
-
-// What a place tag from the picker names, from its kind (geocodeAccuracy: Mapbox's "poi", "place", "address"…, or
-// an OpenStreetMap category such as "restaurant") or, failing that, its id's prefix ("poi.123"). A town or an area
-// is a big shape whose point is its middle, an address may be someone's home, and anything else is a venue.
-const AREA_PLACE_KINDS = new Set(['place', 'locality', 'neighborhood', 'district', 'region', 'postcode', 'country',
-  'city', 'town', 'village', 'hamlet', 'suburb', 'county', 'state']);
-const ADDRESS_PLACE_KINDS = new Set(['address', 'street', 'house']);
-function taggedPlaceKind(placeId, kind) {
-  if (!placeId) return null;
-  for (const name of [String(kind || '').toLowerCase(), String(placeId).split('.')[0].toLowerCase()]) {
-    if (ADDRESS_PLACE_KINDS.has(name)) return 'address';
-    if (AREA_PLACE_KINDS.has(name)) return 'area';
-  }
-  return 'venue';
-}
 
 const VISIBILITY_SCOPES = ['neighborhood', 'city', 'radius', 'global'];
 
@@ -730,7 +717,10 @@ function serializeLikeForViewer(like) {
 async function serializePostForViewer(post, viewerUserId, authorRows = null) {
   if (!post) return null;
   const [serialized] = await attachIdentityAuthors([post], viewerUserId, authorRows);
-  return serialized || post;
+  const shown = serialized || post;
+  // The Sky: a floating post's disc (its point is the area's).
+  if (shown.post_metadata?.area && shown.area === undefined) shown.area = feedService.areaOf(shown);
+  return shown;
 }
 
 // A reader who isn't signed in (the web's public post page and its link preview,
@@ -752,7 +742,7 @@ const READER_POST_FIELDS = [
   'event_date', 'event_end_date', 'event_venue', 'safety_alert_kind', 'deal_business_name', 'deal_expires_at',
   'lost_found_type', 'lost_found_contact_pref', 'service_category', 'ref_task_id', 'ref_listing_id',
   'like_count', 'comment_count', 'share_count', 'userHasLiked', 'userHasSaved', 'userHasReposted', 'comments',
-  'reactions', 'userReaction', 'quoted_post', 'post_metadata',
+  'reactions', 'userReaction', 'quoted_post', 'post_metadata', 'area',
 ];
 
 // The part of post_metadata every reader gets: where the post's story was published (an Around you headline's outlet
@@ -765,7 +755,8 @@ function sourceMetadata(post) {
 
 // "Photo taken here": the author's own photo or video placed the post (set at posting, in post_metadata).
 function photoBasisFields(post) {
-  const photo = post?.post_metadata?.location_basis === 'photo';
+  // Hidden by the privacy read (feedService.applyPostLocationPrivacy) for a post that doesn't show its exact spot.
+  const photo = post?.post_metadata?.location_basis === 'photo' && post.location_basis !== null;
   return { location_basis: photo ? 'photo' : null, photo_taken_at: photo ? (post.post_metadata.photo_taken_at || null) : null };
 }
 
@@ -1443,6 +1434,22 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       }
     }
 
+    // ── The Sky: approximate places (phase A, behind `sky_places` for the author; services/skyPlaces.js) ──
+    // A personal or Home place post keeps an exact pin only at a tagged venue where its own photo or video was taken;
+    // anything else (an address or a town tag, a bare photo, no photo, a Home post) floats over its area and stores
+    // only the area's point (applied below, once the post's point is known). A post asked for with precision
+    // neighborhood_only or none keeps that. "Were you there" evidence (the GPS fix, the photo's point) was read above
+    // and isn't stored.
+    const tagKind = taggedPlaceKind(geocodePlaceId, geocodeAccuracy);
+    const sky = isPlacePost && !isCurator && !pulse && (postAs === 'personal' || postAs === 'home')
+      && !['neighborhood_only', 'none'].includes(locationPrecision) && await skyPlaces.skyOn(req.user);
+    const skyVenue = sky && postAs === 'personal' && tagKind === 'venue' ? await skyPlaces.venueCheck({
+      userId, placeId: geocodePlaceId, latitude: Number(effectiveLatitude), longitude: Number(effectiveLongitude),
+    }) : null;
+    const skyPin = Boolean(photoPlace?.exact && skyVenue?.pinnable && !skyVenue.atHome);
+    // A floating post says nothing about where its photo was taken.
+    if (sky && !skyPin) photoPlace = null;
+
     // v1.1: Force approx_area precision for Home Place posts. Only a photo-placed post may be exact for others
     // (feedService.applyPostLocationPrivacy), so any other request for exact_place stays as it was, and a photo-placed
     // post that may not be exact is never stored as exact.
@@ -1681,6 +1688,23 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
           geocode_source_flow: null,
           geocode_created_at: null,
         });
+      }
+    }
+
+    // The Sky: a floating post keeps its area's point and nothing finer, and the label others read (a venue's or a town's
+    // name, the home's city; never a street line, else the area's town). An address tag's id would name the address.
+    if (sky && !skyPin) {
+      const base = postData.effective_latitude != null && postData.effective_longitude != null
+        ? [postData.effective_latitude, postData.effective_longitude] : [postData.latitude, postData.longitude];
+      const floating = base[0] != null && base[1] != null ? await skyPlaces.floatingFields(base[0], base[1]) : null;
+      if (floating) {
+        Object.assign(postData, floating.fields);
+        postData.post_metadata = { ...postData.post_metadata, ...floating.metadata };
+        // At home a venue's name would point at the home: the town only.
+        postData.location_name = (!skyVenue?.atHome
+          && feedService.placeLabelForOthers({ ...postData, home: homeContext?.home || null }))
+          || await require('../services/moments/momentPlace').townAt(floating.area.latitude, floating.area.longitude);
+        if (tagKind === 'address') postData.geocode_place_id = null;
       }
     }
 
@@ -2103,6 +2127,7 @@ router.get('/map', verifyToken, async (req, res) => {
       location_name: post.location_name,
       location_basis: post.location_basis || null,
       photo_taken_at: post.photo_taken_at || null,
+      area: post.area || null,
       home_address: post.home?.address || null,
       like_count: post.like_count || 0,
       comment_count: post.comment_count || 0,
@@ -3040,6 +3065,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
     if (!hasAccess) return res.status(403).json({ error: 'You do not have access to this post' });
 
     if (!userId) {
+      await feedService.refreshSkyEverywhere();
       applyPostLocationPrivacy(post, null);
       return res.json({
         post: signedOutPostView(await serializePostForViewer({
@@ -3086,6 +3112,7 @@ router.get('/:id', optionalAuth, async (req, res) => {
         .catch(err => logger.warn('post.view_count.error', { error: err.message, postId: id, userId }));
     }
 
+    await feedService.refreshSkyEverywhere();
     applyPostLocationPrivacy(post, userId);
     const responsePost = await serializePostForViewer({
       ...post,
@@ -3238,6 +3265,24 @@ router.patch('/:id', verifyToken, validate(updatePostSchema), async (req, res) =
       updates.post_metadata = metadata;
       if ((updates.location_precision ?? existing.location_precision) === 'exact_place') {
         updates.location_precision = 'approx_area';
+      }
+    }
+    // The Sky (phase A, `sky_places` on for the author): a moved personal or Home place post follows the new-post rules
+    // at its new place. An edit carries no photo places, so it can't keep an exact pin: it floats over the new point's
+    // area and keeps only that area's point.
+    const keptPrecision = updates.location_precision ?? existing.location_precision;
+    if (movedTo && isPlaceFeedPost && req.user.accountType !== 'curator'
+      && ['personal', 'home'].includes(existing.post_as || 'personal')
+      && !['neighborhood_only', 'none'].includes(keptPrecision) && await skyPlaces.skyOn(req.user)) {
+      const floating = await skyPlaces.floatingFields(Number(movedTo.latitude), Number(movedTo.longitude));
+      if (floating) {
+        Object.assign(updates, floating.fields);
+        updates.post_metadata = { ...(updates.post_metadata || existing.post_metadata || {}), ...floating.metadata };
+        if (updates.location_name !== undefined) {
+          const label = feedService.placeLabelForOthers({ post_as: existing.post_as, location_name: updates.location_name });
+          updates.location_name = label
+            || await require('../services/moments/momentPlace').townAt(floating.area.latitude, floating.area.longitude);
+        }
       }
     }
     // A Pulse post keeps its type, place, audience and window; new text is checked again.
@@ -3522,6 +3567,7 @@ router.get('/:id/matched-businesses', verifyToken, async (req, res) => {
     const useCached = req.query.cached === 'true';
     if (useCached && post.matched_businesses_cache && post.matched_businesses_cache.length > 0) {
       // Only the author keeps the snapshot's distances (measured from the stored point).
+      await feedService.refreshSkyEverywhere();
       applyPostLocationPrivacy(post, req.user.id);
       return res.json({ businesses: post.matched_businesses_cache, cached: true });
     }

@@ -112,6 +112,7 @@ and `locationUnlocked: true`. Authors can list grants (`GET`) and revoke them
 | Author              | exact (always)                              | `true`             |
 | Other viewers, photo-placed post stored `exact_place` | exact | `true` |
 | Other viewers, any other post | **Minimum `approx_area`** (permanent blur)  | `false`   |
+| Everyone, the author included, a floating post (the Sky, below) | its stored area point, unmoved, with `area: { radius_m }` | `false` |
 
 Default `location_precision`: **`approx_area`**
 Home-place posts forced to: **`approx_area`** (enforced at creation time)
@@ -137,6 +138,33 @@ when the author asked for less.
 Only `POST /api/posts` sets the basis (it drops a client's copy of either key);
 an edit that moves the post or leaves it no photo or video clears the basis and
 any exact pin, and an edit can't raise a post to `exact_place`.
+
+**The Sky's places (phase A; `sky_places` flag, off everywhere until the founder
+turns it on; accepted 2026-11-14).** With the flag on for the author, a personal
+place post keeps an exact pin only at a **tagged venue where its own photo or
+video was taken**, and not when that venue is a school or a preschool (looked
+up again by its picker id) or is within ~60 m of a home the author lives at.
+Everything else floats over its area ([Areas of at least 100 homes](#areas-of-at-least-100-homes)):
+an address or town tag, a bare photo, no photo, a venue with no photo, and every
+Home post (`POST /api/posts`, the Pulse-mode composer in `services/pulse/compose.js`,
+and an edit that moves a post, `PATCH /api/posts/:id`). A floating post stores
+**only the area's point** (`latitude`, `longitude`, the effective pair, and so
+the PostGIS `location`), `approx_area`, no `location_address`, no
+`location_basis`, an address tag's id removed, and `post_metadata.area =
+{ v: 1, step, radius_m }`. Its `location_name` is what others read: a venue's or
+town's name or the home's city, never a street line, else the area's town; at
+home always the town. A post asked for with `neighborhood_only` or `none` keeps
+that. The GPS fix and the photos' points are read as evidence and never stored.
+Readers get the stored area point unmoved (`applyPostLocationPrivacy`,
+`distanceText.displayedPoint`), the author too.
+
+**Posts made before (the Sky on for everyone).** Old rows keep their exact
+points (the founder decides any clean-up). Once `sky_places` is on for everyone,
+`postPrecisionForOthers` shows an old photo-placed `exact_place` post exactly
+only when its tag is a venue (`utils/postPlaceTag.js`: `geocode_place_id`,
+`geocode_accuracy`, now in the feed's select but never in an answer); an address
+tag or a photo with a town tag or none shows as an approximate-area point, without
+"Photo taken here". The author still sees their own exact point.
 
 A post made with the composer's "current location" target stores the device's
 GPS fix, which differs by a few metres from post to post. Non-authors see the
