@@ -47,7 +47,7 @@ extension MomentsPostSheet {
         .accessibilityIdentifier("moments.post.pin")
     }
 
-    /// At home: "You're at home, so this floats over the area".
+    /// At home: "You're at home, so this shows only the area".
     var skyHomeNote: some View {
         HStack(alignment: .top, spacing: 10) {
             Icon(.info, size: 20, strokeWidth: 2.2, color: Theme.Color.info)

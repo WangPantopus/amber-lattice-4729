@@ -773,6 +773,21 @@ Pay. It calls the same routes as the apps. No account-less payment.
   possible; the functions that pay gigs and invoices are replaced only if it is
   not, and then with every existing branch as it is, shown by comparing the
   same payments before and after. Every other payment kind keeps today's rule.
+- **A second refund on the same payment must work, and an owed refund is never
+  dropped** (added November 16, after the Android session's check found it
+  broken on its own setup in test mode: a guest whose group price had come
+  back, $4.00 of $18.00, then left inside the refund window; they were out of
+  the plan and the remaining $14.00 was not sent, because the refund records
+  refused a second refund on a payment already refunded in part). The rule: a
+  plan payment can be refunded in part more than once, and then in full, each
+  refund re-pricing the business's share on what the guest paid in the end. A
+  refund that is owed (a leave in time, a cancellation, spots nobody took) and
+  cannot complete at that moment is kept as owed and tried again on the Plans
+  tick until the payment company confirms it; a guest is never left out of a
+  plan with their money unsent. No paid switch is turned on anywhere before
+  this is fixed and these are seen on a rig to the cent, with the payout after
+  each: a group price comes back and the guest then leaves; two refunds in
+  part; a staff refund after money off a spot.
 - **Two worked examples for a group price** (added November 16; a $18 spot,
   group price $14, the card company's reported fee on the $18 charge $0.82).
   The business bears the card fee in proportion to what the guest paid in the

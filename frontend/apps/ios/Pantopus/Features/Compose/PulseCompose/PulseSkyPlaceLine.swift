@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  The Pulse composer's place line under the Sky (phase A, contract section
-//  10.2, board 9), in place of "Posting to …": "Floating over Camas, WA" with a
+//  10.2, board 9), in place of "Posting to …": "Around Camas, WA" with a
 //  small "Pin it at a place" button that opens the place picker, or "At Esther
 //  Short Park" when a venue is tagged and a photo taken there pins the post.
 //

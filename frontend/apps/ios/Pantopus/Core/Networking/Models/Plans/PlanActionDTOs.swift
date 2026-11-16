@@ -211,9 +211,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var repeatChange: PlanRepeatChange?
     /// Plans for the holidays B1: a business's new deal, or `.remove` (sent as `null`). Nil leaves it.
     public var deal: PlanDealChange?
+    /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
+    public var kidsWelcome: Bool?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
+        case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
