@@ -248,6 +248,7 @@ struct CardTableSendPage: View {
     /// As the Sent page says it.
     private var takeBackMessage: String {
         let after = viewModel.cards?.postageEnabled == true ? HolidayCardWords.stampComesBack : "You can send a card again today."
+        if viewModel.sent?.emailSendAt != nil { return "\(HolidayCardWords.notEmailedYet) \(after)" }
         if viewModel.sent?.byEmail == true { return "The link in their email will say you took it back. \(after)" }
         return "It won’t go out with the morning mail. \(after)"
     }

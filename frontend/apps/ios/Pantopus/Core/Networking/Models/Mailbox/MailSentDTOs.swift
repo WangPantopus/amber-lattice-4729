@@ -74,6 +74,9 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
     public let arrivesAt: String?
     /// The day it goes (or went) into their mailbox by their clock (`YYYY-MM-DD`).
     public let arrivesOn: String?
+    /// By email, while it waits: when its email goes (ISO), set for the sender's 7 a.m. or Christmas morning. Nil
+    /// once it went, and for one that went as it was sealed.
+    public let emailSendAt: String?
     /// The day a sealed card opens (`YYYY-MM-DD`).
     public let opensOn: String?
     public let sealed: Bool
@@ -188,6 +191,7 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         case byLink = "by_link"
         case arrivesAt = "arrives_at"
         case arrivesOn = "arrives_on"
+        case emailSendAt = "email_send_at"
         case opensOn = "opens_on"
         case canTakeBack = "can_take_back"
         case takeBackUntil = "take_back_until"
@@ -210,6 +214,7 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         self.status = status ?? .delivered
         arrivesAt = try? c.decodeIfPresent(String.self, forKey: .arrivesAt)
         arrivesOn = try? c.decodeIfPresent(String.self, forKey: .arrivesOn)
+        emailSendAt = try? c.decodeIfPresent(String.self, forKey: .emailSendAt)
         opensOn = try? c.decodeIfPresent(String.self, forKey: .opensOn)
         sealed = (try? c.decodeIfPresent(Bool.self, forKey: .sealed)) ?? false
         canTakeBack = (try? c.decodeIfPresent(Bool.self, forKey: .canTakeBack)) ?? false

@@ -290,6 +290,8 @@ struct HolidayCardSentView: View {
         } message: {
             Text(card.byLink
                 ? "Your link will say you took it back. \(afterTakeBack)"
+                : card.emailSendAt != nil
+                ? "\(HolidayCardWords.notEmailedYet) \(afterTakeBack)"
                 : card.byEmail
                 ? "The link in their email will say you took it back. \(afterTakeBack)"
                 : "It won’t go out with the morning mail. \(afterTakeBack)")

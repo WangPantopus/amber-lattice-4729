@@ -289,10 +289,12 @@ final class HolidayCardFlowViewModel {
     }
 
     /// The arrivals open for who it's for: a person's by their clock once
-    /// read, an email's by the sender's.
+    /// read, an email's by the sender's (all four for an address or a list
+    /// of only addresses when the server words them; a link keeps its two).
     var arrivals: [HolidayCardArrival] {
         guard let cards, let recipient else { return [] }
-        if recipient.isEmail { return cards.emailArrivals }
+        if recipient.isLink { return cards.emailArrivals }
+        if recipient.isEmail { return cards.emailAllArrivals ?? cards.emailArrivals }
         return theirs?.arrivals ?? cards.personArrivals
     }
 
@@ -746,7 +748,9 @@ extension HolidayCardFlowViewModel {
             message: message.trimmingCharacters(in: .whitespacesAndNewlines),
             arrival: arrival,
             recipients: recipients,
-            signature: cards?.signature == nil ? nil : signature
+            signature: cards?.signature == nil ? nil : signature,
+            // Each address keeps the list's choice, worded with all four (else the older mapping).
+            emailsKeepArrival: cards?.emailAllArrivals == nil ? nil : true
         )
     }
 
