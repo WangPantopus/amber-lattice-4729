@@ -80,9 +80,12 @@ public struct PlanMyInviteDTO: Codable, Sendable, Hashable {
     /// The host says yes first (an email opened by an account it wasn't sent to).
     public let needsHostOk: Bool
     public let invitedAt: String?
+    /// Plans for the holidays (contract 6.9, `guests=1`): how it came, `account`, `email`, `link` or `open` (the
+    /// plan's one link for everyone, claimed in the app).
+    public let via: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, status, channel
+        case id, status, channel, via
         case needsHostOk = "needs_host_ok"
         case invitedAt = "invited_at"
     }
@@ -94,6 +97,12 @@ public struct PlanMyInviteDTO: Codable, Sendable, Hashable {
         channel = try container.decodeIfPresent(PlanInviteChannel.self, forKey: .channel) ?? .account
         needsHostOk = try container.decodeIfPresent(Bool.self, forKey: .needsHostOk) ?? false
         invitedAt = try container.decodeIfPresent(String.self, forKey: .invitedAt)
+        via = try? container.decodeIfPresent(String.self, forKey: .via)
+    }
+
+    /// Claimed from the plan's one link for everyone (contract 6.9).
+    var cameByOpenLink: Bool {
+        via == "open"
     }
 
     /// Not answered, "Can't make it" or "Maybe" (the person can still change their mind).
@@ -157,9 +166,11 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
     public let guest: PlanInviteGuestDTO?
     /// H1: a guest from the open link waiting for the host's yes (`POST …/invites/:id/ok`).
     public let canOk: Bool
+    /// Contract 6.9: an account's numbers on a row with an ask (pending, waitlisted or in).
+    public let party: PlanInvitePartyDTO?
 
     enum CodingKeys: String, CodingKey {
-        case id, channel, state, person, email, guest
+        case id, channel, state, person, email, guest, party
         case emailFailed = "email_failed"
         case requestId = "request_id"
         case canCancel = "can_cancel"
@@ -180,6 +191,12 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
         invitedAt = try container.decodeIfPresent(String.self, forKey: .invitedAt)
         guest = try? container.decodeIfPresent(PlanInviteGuestDTO.self, forKey: .guest)
         canOk = (try? container.decodeIfPresent(Bool.self, forKey: .canOk)) ?? false
+        party = try? container.decodeIfPresent(PlanInvitePartyDTO.self, forKey: .party)
+    }
+
+    /// A person with an account who came by the plan's one link (contract 6.9, `via: open`).
+    var isAccountFromOpenLink: Bool {
+        channel == .openLink && person != nil
     }
 
     /// The name, the address, or "Text invite".
@@ -358,6 +375,31 @@ public struct PlanInviteClaimBody: Encodable, Sendable {
 
     public init(token: String) {
         self.token = token
+    }
+}
+
+/// `party` on a host's row: an account's adults and kids (kids only with kids welcome).
+public struct PlanInvitePartyDTO: Decodable, Sendable, Hashable {
+    public let adults: Int
+    public let kids: Int
+
+    enum CodingKeys: String, CodingKey {
+        case adults, kids
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        adults = (try? container.decodeIfPresent(Int.self, forKey: .adults)) ?? 1
+        kids = (try? container.decodeIfPresent(Int.self, forKey: .kids)) ?? 0
+    }
+}
+
+/// `POST /api/plans/:id/invites/claim` with the plan's one link for everyone (contract 6.9).
+public struct PlanOpenLinkClaimBody: Encodable, Sendable {
+    public let open: String
+
+    public init(open: String) {
+        self.open = open
     }
 }
 

@@ -33,6 +33,9 @@ struct PlanWhoRow: Identifiable, Hashable {
     let canRemove: Bool
     /// An email invitation someone else opened: the shipped Requests screen answers it.
     let opensRequests: Bool
+    /// A person with an account from the plan's one link waiting for the yes (contract 6.9): "Let in" accepts their
+    /// ask and "Not this time" declines it, as the shipped Requests screen does.
+    var answersAsk = false
 }
 
 struct PlanWhoSection: Identifiable, Hashable {
@@ -86,6 +89,32 @@ final class PlanWhosComingModel {
     }
 
     // MARK: - Actions
+
+    /// The plan is at the host's home: the first yes there shares the address, so it asks once (as Requests does).
+    var isAtHome: Bool {
+        card?.placeKind == .home
+    }
+
+    /// "Let in" for a person with an account from the link: the shipped accept of their ask.
+    func acceptAsk(_ row: PlanWhoRow) async {
+        guard let requestId = row.requestId else { return }
+        await act(row.id) {
+            _ = try await api.request(
+                PlansEndpoints.accept(planId: planId, requestId: requestId, confirmSharesAddress: isAtHome ? true : nil),
+                as: EmptyResponse.self
+            )
+        }
+        if error == nil { toast = "\(PlanCardLines.firstName(row.name)) is in." }
+    }
+
+    /// "Not this time" for a person with an account from the link: the shipped decline of their ask.
+    func declineAsk(_ row: PlanWhoRow) async {
+        guard let requestId = row.requestId else { return }
+        await act(row.id) {
+            _ = try await api.request(PlansEndpoints.decline(planId: planId, requestId: requestId), as: EmptyResponse.self)
+        }
+        if error == nil { toast = "Declined. They won't see who said no." }
+    }
 
     func letIn(_ row: PlanWhoRow) async {
         guard let inviteId = row.inviteId else { return }
@@ -188,16 +217,19 @@ final class PlanWhosComingModel {
         } else {
             invite.channel == .email ? .email : .text
         }
+        // A person with an account from the plan's one link, waiting for the yes (contract 6.9): their ask is answered here.
+        let linkAsk = invite.isAccountFromOpenLink && invite.state == .asked && invite.requestId != nil
         return PlanWhoRow(
             id: invite.id,
             name: name,
             line: line(invite, person: person),
             leading: leading,
             inviteId: invite.id,
-            requestId: invite.state == .isIn || invite.state == .waitlisted ? person?.requestId : nil,
-            canLetIn: invite.canOk,
+            requestId: linkAsk ? invite.requestId : invite.state == .isIn || invite.state == .waitlisted ? person?.requestId : nil,
+            canLetIn: invite.canOk || linkAsk,
             canRemove: invite.canCancel || (invite.state == .isIn && person?.requestId != nil),
-            opensRequests: invite.state == .asked
+            opensRequests: invite.state == .asked && !linkAsk,
+            answersAsk: linkAsk
         )
     }
 
@@ -218,10 +250,12 @@ final class PlanWhosComingModel {
     }
 
     private func accountLine(_ invite: PlanInviteRowDTO, person: PlanPersonDTO?) -> String {
+        if invite.isAccountFromOpenLink, let line = openLinkLine(invite) { return line }
         switch invite.state {
         case .isIn:
-            let adults = person?.partySize ?? 1
-            return PlanHeadcountCopy.people(adults: adults, kids: kidsWelcome ? person?.kidsCount ?? 0 : 0, kidsWelcome: kidsWelcome)
+            let adults = invite.party?.adults ?? person?.partySize ?? 1
+            let kids = invite.party?.kids ?? person?.kidsCount ?? 0
+            return PlanHeadcountCopy.people(adults: adults, kids: kidsWelcome ? kids : 0, kidsWelcome: kidsWelcome)
         case .maybe:
             return PlanHeadcountCopy.people(adults: 1, kids: 0, kidsWelcome: kidsWelcome)
         case .waitlisted: return "On the waitlist"
@@ -233,6 +267,20 @@ final class PlanWhosComingModel {
         case .cantMakeIt: return "Can't make it"
         case .left: return "Said yes, then left"
         case .waitingOk: return "Waiting for your yes"
+        }
+    }
+
+    /// A person with an account from the plan's one link (A5's added paragraph): waiting, "{2 adults} · on Pantopus ·
+    /// from your link"; not answered, "Opened your link". In, the ordinary row.
+    private func openLinkLine(_ invite: PlanInviteRowDTO) -> String? {
+        switch invite.state {
+        case .asked:
+            let party = invite.party
+            let kids = kidsWelcome ? party?.kids ?? 0 : 0
+            let numbers = PlanHeadcountCopy.people(adults: party?.adults ?? 1, kids: kids, kidsWelcome: kidsWelcome)
+            return "\(numbers) · on Pantopus · from your link"
+        case .opened, .invited: return "Opened your link"
+        default: return nil
         }
     }
 

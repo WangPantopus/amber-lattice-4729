@@ -17,6 +17,9 @@ struct PlanWhosComingScreen: View {
     let onOpenProfile: (String) -> Void
     let onOpenRequests: () -> Void
     @State private var showsInvite = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// A person from the link to let in at the host's home: the address goes with the yes, so it asks once.
+    @State private var pendingAccept: PlanWhoRow?
 
     init(
         planId: String,
@@ -67,6 +70,21 @@ struct PlanWhosComingScreen: View {
             Button("Not now", role: .cancel) {}
         } message: { _ in
             Text("Their invitation will stop working.")
+        }
+        .alert(
+            // The shipped Requests screen's words.
+            "Accepting shares your address with them",
+            isPresented: Binding(get: { pendingAccept != nil }, set: { if !$0 { pendingAccept = nil } }),
+            presenting: pendingAccept
+        ) { row in
+            Button("Accept and share") {
+                PlanHomeSharing.markConfirmed(model.planId)
+                Task { await model.acceptAsk(row) }
+            }
+            Button("Not now", role: .cancel) {}
+        } message: { row in
+            let first = PlanCardLines.firstName(row.name)
+            Text("\(first) will see your address, your note and who's going. You'll be asked once for this plan.")
         }
         .overlay(alignment: .bottom) { toastView }
         .accessibilityElement(children: .contain)
@@ -164,12 +182,15 @@ struct PlanWhosComingScreen: View {
                         .planButton(.secondary, size: .small)
                         .accessibilityIdentifier("planWhoSeeRequest")
                 } else if row.canLetIn {
-                    HStack(spacing: 10) {
-                        Button("Not this time") { model.confirmRemove = row }
-                            .planButton(.secondary, size: .small)
-                            .accessibilityLabel("Not this time for \(row.name)")
-                            .accessibilityIdentifier("planWhoNotThisTime")
-                        Button { Task { await model.letIn(row) } } label: {
+                    // Side by side; one under the other at the largest text sizes, so "Not this time" isn't cut.
+                    actionsLayout {
+                        Button("Not this time") {
+                            if row.answersAsk { Task { await model.declineAsk(row) } } else { model.confirmRemove = row }
+                        }
+                        .planButton(.secondary, size: .small)
+                        .accessibilityLabel("Not this time for \(row.name)")
+                        .accessibilityIdentifier("planWhoNotThisTime")
+                        Button { letIn(row) } label: {
                             PlanButtonLabel(title: "Let in", kind: .primary, isLoading: model.working.contains(row.id))
                         }
                         .planButton(.primary, size: .small)
@@ -181,6 +202,22 @@ struct PlanWhosComingScreen: View {
             }
         }
         .contextMenu { removeButton(row) }
+    }
+
+    private var actionsLayout: AnyLayout {
+        typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+    }
+
+    /// A guest from the link is let in by their invitation; a person with an account by accepting their ask, which
+    /// asks once first at the host's home (the address goes with the yes), as the shipped Requests screen does.
+    private func letIn(_ row: PlanWhoRow) {
+        if !row.answersAsk {
+            Task { await model.letIn(row) }
+        } else if model.isAtHome, !PlanHomeSharing.isConfirmed(model.planId) {
+            pendingAccept = row
+        } else {
+            Task { await model.acceptAsk(row) }
+        }
     }
 
     /// An account's row opens its profile; a guest's, an address's or a text invite's is plain.
