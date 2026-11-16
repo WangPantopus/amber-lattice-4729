@@ -1926,7 +1926,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
 
   // One card on a sent list taken back: its stamp comes back.
   const doTakeBackFromList = async (card: SentHolidayCard) => {
-    const yes = await askTakeBack({ byEmail: card.by_email, sentToday: false, postage: true, emailLater: Boolean(card.email_send_at) });
+    const yes = await askTakeBack({ byEmail: card.by_email, sentToday: false, postage: true, notEmailed: Boolean(card.email_send_at) });
     if (!yes) return;
     setListTakeBackError(null);
     setListTakingBack(card.id);
@@ -2072,7 +2072,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const doTakeBack = async () => {
     if (!today) return;
     // Today's card: taking it back frees the day.
-    const yes = await askTakeBack({ byEmail: today.by_email, byLink: today.by_link, sentToday: true, postage: Boolean(data?.postage_enabled), emailLater: Boolean(today.email_send_at) });
+    const yes = await askTakeBack({ byEmail: today.by_email, byLink: today.by_link, sentToday: true, postage: Boolean(data?.postage_enabled), notEmailed: Boolean(today.email_send_at) });
     if (!yes) return;
     setTakeBackError(null);
     takeBack.mutate(today.id, {
