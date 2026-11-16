@@ -103,7 +103,7 @@ fun PlanGuestsScreen(
         AlertDialog(
             onDismissRequest = viewModel::keep,
             title = { Text("Remove $first?") },
-            text = { Text("They'll be told once.") },
+            text = { Text("Their invitation will stop working.") },
             confirmButton = { TextButton(onClick = viewModel::remove) { Text("Remove", color = PantopusColors.error) } },
             dismissButton = { TextButton(onClick = viewModel::keep) { Text("Not now") } },
         )
