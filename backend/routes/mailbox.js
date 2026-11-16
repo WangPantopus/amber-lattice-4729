@@ -489,14 +489,17 @@ const checkEscrowRateLimits = async (senderId, contact, earlier = [], { stamps =
       reason: 'You can only send to the same non-Pantopus contact once every 30 days.' };
   }
 
-  // Check: max 3 unique non-user contacts per week (with stamps, 3 plus the addresses whose cards are still out)
-  const { data: recentEscrows, error: recentError } = await supabaseAdmin
+  // Check: max 3 unique non-user contacts per week (with stamps, 3 plus the addresses whose cards are still out). A
+  // Christmas card taken back before its email went (set for a later 7 a.m., or its email failed) emailed nobody, so it
+  // isn't counted at all.
+  const { data: escrowRows, error: recentError } = await supabaseAdmin
     .from('Mail')
-    .select('escrow_recipient_contact, escrow_status')
+    .select('escrow_recipient_contact, escrow_status, mail_extracted')
     .eq('sender_user_id', senderId)
     .not('escrow_recipient_contact', 'is', null)
     .gte('created_at', oneWeekAgo);
   if (recentError) throw new Error(recentError.message);
+  const recentEscrows = (escrowRows || []).filter((row) => row.escrow_status !== 'withdrawn' || holidayCards.emailWent(row));
 
   const uniqueContacts = new Set([...(recentEscrows || []).map(r => r.escrow_recipient_contact), ...earlier]);
   const stillOut = stamps
