@@ -364,6 +364,8 @@ public extension PulseComposeViewModel {
             dealExpiresAt: dealExpiresAt,
             eligibilityWarning: eligibilityWarning,
             isPhotoPlaced: eligibilityBasis == "photo",
+            skyArea: skyArea,
+            skyPinnedAt: skyPinnedAt,
             precheckNudge: precheckNudge,
             precheckCooldown: precheckCooldown,
             isVisitorPost: isVisitorPost,

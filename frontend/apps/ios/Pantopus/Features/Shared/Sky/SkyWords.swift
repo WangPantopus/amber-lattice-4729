@@ -72,6 +72,13 @@ enum SkyWords {
 
     static let shareTimePassed = "It's past 7 pm, so Tonight at 8 isn't on offer. Pick another time."
 
+    // MARK: - The Pulse composer
+
+    /// A venue tagged and a photo taken there: the post pins exactly (as before the Sky).
+    static let photoPins = "Your photo was taken here, so you can post to this place. Your post will say \u{201C}Photo taken here.\u{201D}"
+    /// An address or a bare photo: the post floats.
+    static let photoFloats = "Your photo was taken here. The post floats over the area."
+
     // MARK: - A Moment shared later
 
     static let earlierToday = "Earlier today"

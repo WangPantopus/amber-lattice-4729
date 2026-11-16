@@ -30,6 +30,10 @@ public struct PulseComposeContentState: Equatable {
     /// The draft may post to its tagged place because an attachment was
     /// taken there (the Place check's `photo` basis).
     public var isPhotoPlaced: Bool
+    /// The Sky (phase A): the town the post floats over ("Floating over Camas, WA"); nil draws "Posting to …".
+    public var skyArea: String?
+    /// The Sky: the venue the post pins at ("At Esther Short Park"); nil while it floats.
+    public var skyPinnedAt: String?
     /// Soft nudge from `POST /api/posts/precheck` — dismissible.
     public var precheckNudge: String?
     /// Cooldown copy when the viewer is rate-limited / restricted.
@@ -77,6 +81,8 @@ public struct PulseComposeContentState: Equatable {
         dealExpiresAt: Date? = Date().addingTimeInterval(7 * 86400),
         eligibilityWarning: String? = nil,
         isPhotoPlaced: Bool = false,
+        skyArea: String? = nil,
+        skyPinnedAt: String? = nil,
         precheckNudge: String? = nil,
         precheckCooldown: String? = nil,
         isVisitorPost: Bool = false,
@@ -108,6 +114,8 @@ public struct PulseComposeContentState: Equatable {
         self.dealExpiresAt = dealExpiresAt
         self.eligibilityWarning = eligibilityWarning
         self.isPhotoPlaced = isPhotoPlaced
+        self.skyArea = skyArea
+        self.skyPinnedAt = skyPinnedAt
         self.precheckNudge = precheckNudge
         self.precheckCooldown = precheckCooldown
         self.isVisitorPost = isVisitorPost
@@ -358,7 +366,10 @@ public struct PulseComposeContent: View {
             .padding(.horizontal, Spacing.s4)
             .accessibilityIdentifier("composePulsePurposeBadge")
         }
-        if let label = state.postingTargetLabel {
+        if let area = state.skyArea {
+            // The Sky: "Floating over Camas, WA" and "Pin it at a place" in place of "Posting to …".
+            PulseSkyPlaceLine(area: area, pinnedAt: state.skyPinnedAt, onPin: actions.onAddLocation, onChangeTarget: actions.onChangeTarget)
+        } else if let label = state.postingTargetLabel {
             HStack(spacing: Spacing.s2) {
                 Icon(.mapPin, size: 14, strokeWidth: 2, color: Theme.Color.appTextSecondary)
                 Text("Posting to \(label)")
@@ -1226,7 +1237,8 @@ public struct PulseComposeContent: View {
     private var photoPlacedNote: some View {
         HStack(alignment: .top, spacing: Spacing.s2) {
             Icon(.camera, size: 16, strokeWidth: 2, color: Theme.Color.success)
-            Text("Your photo was taken here, so you can post to this place. Your post will say \u{201C}Photo taken here.\u{201D}")
+            // The Sky: only a venue keeps the exact pin; an address or a bare photo floats.
+            Text(state.skyArea == nil || state.skyPinnedAt != nil ? SkyWords.photoPins : SkyWords.photoFloats)
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.success)
                 .fixedSize(horizontal: false, vertical: true)
