@@ -306,6 +306,13 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
   person (K6). Answers `{ "reminded": 3, "skipped": 1 }`.
 - `POST /api/plans/:id/invites/maybe`: an invited account says Maybe. The
   ordinary ask or decline replaces it later.
+- A person who is in can change their numbers with the ordinary ask: the new
+  `party_size` and `kids_count` are saved when the plan has room for the
+  difference, with no new approval; with no room for a larger party it is
+  refused `409 full` and the old numbers stay. (Added November 15: the first
+  build kept the first numbers.)
+- The "wants to come" notice carries its two buttons on iPhone as well: its
+  category, `PLAN_GUEST_OK`, is one the push sender passes on.
 - Creating and changing a plan take `kids_welcome` and, for a private plan,
   `spots` up to 100. The ask takes `party_size` up to 10 on a private plan and
   `kids_count` where kids are welcome.
