@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -86,7 +87,7 @@ fun PlanGuestsScreen(
             trailing = {
                 PlanRoundButton(icon = PantopusIcon.Plus, label = "Invite people", onClick = viewModel::openInvite, glass = false)
             },
-            footer = if ((ui.remindable > 0 || ui.remindedTodayNow) && ui.list != null) ({ RemindFooter(ui, viewModel::remind) }) else null,
+            footer = if (ui.showsRemind) ({ RemindFooter(ui, viewModel::remind) }) else null,
         ) {
             when {
                 ui.loading -> PlanRowsSkeleton(rows = 4)
@@ -142,20 +143,29 @@ internal fun PlanGuestCountsRow(
     counts: PlanGuestCounts,
     modifier: Modifier = Modifier,
 ) {
+    val coming = listOfNotNull("coming", counts.adultsKids).joinToString(" · ")
+    if (LocalDensity.current.fontScale >= STACK_FONT_SCALE) {
+        // At the largest text sizes the tiles stack, full width, so "haven't answered" stays whole.
+        Column(modifier = modifier.fillMaxWidth().testTag("planGuestCounts"), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            CountTile(number = counts.coming, words = coming, modifier = Modifier.fillMaxWidth())
+            CountTile(number = counts.maybe, words = "maybe", modifier = Modifier.fillMaxWidth())
+            CountTile(number = counts.noAnswer, words = "haven't answered", modifier = Modifier.fillMaxWidth())
+        }
+        return
+    }
     // The three tiles share one height (board 17), however many lines the first one needs.
     Row(
         modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("planGuestCounts"),
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        CountTile(
-            number = counts.coming,
-            words = listOfNotNull("coming", counts.adultsKids).joinToString(" · "),
-            modifier = Modifier.weight(1f),
-        )
+        CountTile(number = counts.coming, words = coming, modifier = Modifier.weight(1f))
         CountTile(number = counts.maybe, words = "maybe", modifier = Modifier.weight(1f))
         CountTile(number = counts.noAnswer, words = "haven't answered", modifier = Modifier.weight(1f))
     }
 }
+
+/** At or above this font scale the counts stack (as paired buttons do). */
+private const val STACK_FONT_SCALE = 1.5f
 
 @Composable
 private fun CountTile(

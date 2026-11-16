@@ -452,9 +452,10 @@ private fun remindFooter(
 ): (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? {
     val list = ui.guests ?: return null
     val plan = (ui.state as? PlanDetailUiState.Ready)?.plan ?: return null
-    val n = PlanGuestsUi(plan = plan, list = list).remindable
-    val reminded = ui.remindedToday || list.remind?.remindedToday == true
-    if (n <= 0 && !reminded) return null
+    val guests = PlanGuestsUi(plan = plan, list = list, remindedToday = ui.remindedToday)
+    val n = guests.remindable
+    val reminded = guests.remindedTodayNow
+    if (!guests.showsRemind) return null
     return {
         PrimaryButton(
             title =

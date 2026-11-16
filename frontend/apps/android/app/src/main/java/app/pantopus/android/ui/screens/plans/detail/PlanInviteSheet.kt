@@ -545,7 +545,12 @@ private fun SentRow(
             PlanAvatar(name = person.displayName, seed = person.userId, avatarUrl = person.avatarUrl)
         } else {
             PlanIconTile(
-                if (row.channel == "email") PantopusIcon.Mail else PantopusIcon.MessageCircle,
+                when (row.channel) {
+                    "email" -> PantopusIcon.Mail
+                    // A guest from the one link for everyone (Plans for the holidays).
+                    "open" -> PantopusIcon.Link
+                    else -> PantopusIcon.MessageCircle
+                },
                 PantopusColors.primary100,
                 PantopusColors.primary700,
                 size = 40.dp,
@@ -564,7 +569,7 @@ private fun SentRow(
             Text(
                 text = PlanInviteLines.state(row),
                 style = PantopusTextStyle.small,
-                color = if (row.emailFailed || row.state == "asked") PantopusColors.warning else PantopusColors.appTextSecondary,
+                color = if (row.emailFailed || row.state in WAITS_ON_HOST) PantopusColors.warning else PantopusColors.appTextSecondary,
             )
         }
         if (row.canCancel) {
@@ -661,10 +666,14 @@ internal object PlanInviteLines {
             when (row.channel) {
                 "email" -> "By email"
                 "link" -> "By text"
+                "open" -> "From your link"
                 else -> "On Pantopus"
             }
         return when (row.state) {
             "opened" -> "Opened your text invite · Hasn't answered yet"
+            // Plans for the holidays (guests=1): a guest from the open link waits for the host's yes, and Maybe.
+            "waiting_ok" -> "$how · Waiting for your yes"
+            "maybe" -> "Said maybe"
             "in" -> "Said yes · In"
             "waitlisted" -> "Said yes · On the waitlist"
             "asked" -> "Opened your email invitation from another address · Waiting for your yes in Requests"
@@ -681,8 +690,12 @@ internal object PlanInviteLines {
             listOfNotNull(
                 counts.invited.takeIf { it > 0 }?.let { "$it waiting" },
                 counts.isIn.takeIf { it > 0 }?.let { "$it in" },
+                counts.maybe.takeIf { it > 0 }?.let { "$it maybe" },
                 counts.cantMakeIt.takeIf { it > 0 }?.let { "$it can't make it" },
             )
         return if (parts.isEmpty()) "Invited" else "Invited · " + parts.joinToString(" · ")
     }
 }
+
+/** States that wait on the host's yes: an email opened from another address, a guest from the one link (Plans for the holidays). */
+private val WAITS_ON_HOST = setOf("asked", "waiting_ok")

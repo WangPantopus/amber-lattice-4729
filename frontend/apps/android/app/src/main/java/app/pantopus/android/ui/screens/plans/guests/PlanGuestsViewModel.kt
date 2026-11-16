@@ -186,6 +186,13 @@ data class PlanGuestsUi(
             list?.remind?.count
                 ?: rows.count { it.state in REMINDABLE_STATES && (it.person != null || it.email != null) && !it.emailFailed }
 
+    /**
+     * The reminder footer shows while someone can be reminded, and after today's reminder while people still haven't
+     * answered ("Reminded today"); hidden when nobody can be reminded.
+     */
+    val showsRemind: Boolean
+        get() = list != null && (remindable > 0 || (remindedTodayNow && (counts?.noAnswer ?: 0) > 0))
+
     /** Today's reminder went: the server says so, or it went from this screen. */
     val remindedTodayNow: Boolean get() = remindedToday || list?.remind?.remindedToday == true
 
