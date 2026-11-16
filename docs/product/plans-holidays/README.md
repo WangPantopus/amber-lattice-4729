@@ -20,6 +20,7 @@ Pantopus, with tips.
 | [04-build-plan.md](04-build-plan.md) | The steps, what gates each one, who builds what, how each is checked |
 | [05-session-briefs.md](05-session-briefs.md) | The briefs for the build sessions |
 | [06-screens.md](06-screens.md) | Every screen of the people track, element by element, with its words, states and routes |
+| [07-screens-business.md](07-screens-business.md) | The business track's screens, element by element: deals, paying to join, the bill and tips |
 | [screens/](screens/) | The twenty-three boards as pictures (light) |
 
 ## Where the design lives outside the repository

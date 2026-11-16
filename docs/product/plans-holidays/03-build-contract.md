@@ -624,6 +624,10 @@ A plan among friends only. A business's plan has no bring list.
   guest who is in; `ready` once the deal is on or unlocked.
 - Posting and changing a business's plan take `deal`. A deal cannot change once
   anyone is in, except to be removed, which tells everyone.
+- `POST /api/plans/deal-preview` (staff with `plans.manage` for the business)
+  takes a `deal` and the plan's spots and start, and answers the sentence a
+  guest will read, the line on how it is claimed, and any field's error. The
+  form shows it; nothing is saved.
 - `POST /api/plans/:id/requests/:requestId/deal-used` (staff with
   `plans.manage`) marks a "something free" pass used. It cannot be undone by
   staff.
@@ -919,13 +923,41 @@ started from one posts, and an app build from before H3 opens it as its kind.
 
 **B1**: a group deal with a deadline five minutes ahead unlocks on the tick with
 enough people in and falls short without; each notice arrives once; "Mark used"
-shows on the guest's phone.
+shows on the guest's phone. Also:
+
+- A person's own plan, and a business without `plans.manage`, cannot carry a
+  deal. A deal cannot be changed once anyone is in; removing it tells them.
+- Someone who joins after an unlock has the deal; someone who was in when it
+  fell short keeps their place.
+- A row in the list carries one tag; the filter shows only once the list holds
+  a business's plan.
+- With `plans_deals` off, every Plans answer and screen is today's, with and
+  without `biz=1`.
 
 **B2 to B6**: in the payment company's test mode, with a business whose test
 payout account is enabled: the four worked examples of
 [02-payments.md](02-payments.md) come out to the cent in `Payment`, in the
 refund, and in the statement; a refund before the plan returns everything; the
-payout is not sent before `payout_after`.
+payout is not sent before `payout_after`. Also:
+
+- B0: a $160 invoice paid in test mode pays the crew exactly what it does
+  today, on the web, iPhone and Android; every existing payment kind prices as
+  it did (compare before and after on the same payments).
+- B2: a business without verification or without its own enabled payout
+  account cannot set a price; an online plan cannot have one; a place is held
+  for 10 minutes while paying and freed after; leaving before `refund_until`
+  returns everything and after it nothing.
+- B3: a person with no account joins and pays from the web page after signing
+  in, with Apple Pay or Google Pay in test mode.
+- B4: a group price that unlocks returns the difference once to each guest who
+  paid more; one that falls short lets every guest leave with a full refund
+  until the plan starts.
+- B5: with a deal on the bill only staff start a check; the part marked as not
+  covered gets no discount; the guest's app never sends a discount or a total;
+  the staff's list shows the payment within a few seconds; a refund by staff
+  works until 48 hours after the plan ends and not after.
+- B6: one tip after a paid plan, within 7 days, once.
+- Every paid step with its switch off: every answer and screen is today's.
 
 ## 17. Open questions
 
