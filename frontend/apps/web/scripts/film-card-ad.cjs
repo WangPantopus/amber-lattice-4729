@@ -1,0 +1,939 @@
+#!/usr/bin/env node
+// ============================================================
+// Films the Christmas cards ad (version 2) from the real card table: the web
+// app's CardTable and CardRack on /dev/card-film, filmed frame by frame in
+// headless Chrome on the clock it shares with the share videos
+// (card-film-clock.cjs). The story, its takes and its words are the shot list,
+// card-ad-shots.cjs.
+//
+//   node scripts/film-card-ad.cjs --stills             one still per shot (checkpoint 1)
+//   node scripts/film-card-ad.cjs --takes send,open    film whole takes as frames
+//   node scripts/film-card-ad.cjs --cut 30             lay the filmed takes into a cut (needs its takes)
+//   --shape tall|wide   tall: 1080 × 1920, the table at phone size; wide: 1920 × 1080, a wide window
+//   --work <folder>     frames, sounds and overlays (default <repo>/test-results/card-ad)
+//   --out <folder>      the stills and films (default <work>/out)
+//   --art <folder>      envelope and seal art to film with in place of the app's (art drawn larger; never shipped)
+//   --url, --port       as film-card-videos.cjs
+//
+// Everything on screen is the app's own table: its envelope, wax, cloth, light,
+// pen and sounds. The film adds only the words, a fingertip mark, moving in
+// (by filming the page larger), speed changes, the dip to black, the end card
+// and a fine grain. A finger moves the table through real touch input (Chrome's
+// own touch events), so the card and the flap follow it as they do in the app.
+// Sounds are written down by the frame they fired on and laid in by ffmpeg.
+// ============================================================
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { WEB, REPO, chromium, CHROME, argument, designs, devServer, clockShim } = require('./card-film-clock.cjs');
+
+const sharp = require(require.resolve('sharp', { paths: [path.dirname(require.resolve(path.join(WEB, 'node_modules/next/package.json')))] }));
+
+const SHOTS = require(path.resolve(argument('shots', path.join(__dirname, 'card-ad-shots.cjs'))));
+const FPS = SHOTS.fps;
+/** The serif the table prints in (CardTable.module.css --serif): the ad's words are set in it. */
+const SERIF = "ui-serif, 'New York', Georgia, 'Times New Roman', serif";
+const CREAM = '#f6ecd9';
+
+/**
+ * The shapes. tall: a 360 × 640 phone at 3× (1080 × 1920); the table makes room above and below itself for the
+ * platforms' own buttons. wide: a 1920 × 1080 window, where the card stands at its 640 cap.
+ */
+const SHAPES = {
+  tall: { width: 360, height: 640, scale: 3, mobile: true, top: 150, bottom: 150 },
+  wide: { width: 1920, height: 1080, scale: 1, mobile: false, top: 40, bottom: 60 },
+};
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+/** "4a" → "04a", for file names that sort in shot order. */
+const label = (shot) => String(shot).replace(/^\d+/, (n) => n.padStart(2, '0'));
+const smooth = (x) => { const t = clamp(x); return t * t * (3 - 2 * t); };
+const ease = (x) => { const t = clamp(x); return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2; };
+
+// ---- Time: the take's seconds on screen, and the table's milliseconds ----
+
+/** The table's time (ms) at each of the take's seconds on screen, from its speed curve ([[second, rate], ...]). */
+function clockOf(take) {
+  const points = take.speed?.length ? take.speed : [[0, 1]];
+  const rate = (s) => {
+    if (s <= points[0][0]) return points[0][1];
+    for (let i = 1; i < points.length; i += 1) {
+      if (s <= points[i][0]) {
+        const [a, ra] = points[i - 1];
+        const [b, rb] = points[i];
+        return ra + (rb - ra) * smooth((s - a) / (b - a));
+      }
+    }
+    return points[points.length - 1][1];
+  };
+  const step = 1 / 4800;
+  const table = [0];
+  const end = take.length + 1;
+  for (let s = step; s <= end + step; s += step) table.push(table[table.length - 1] + rate(s - step / 2) * step * 1000);
+  return (s) => {
+    const i = clamp(s, 0, end) / step;
+    const k = Math.floor(i);
+    return table[k] + (table[Math.min(k + 1, table.length - 1)] - table[k]) * (i - k);
+  };
+}
+
+/** A gesture's path: the finger's place at `t` ms after it touched, through its key points ([ms, x, y], ...). */
+function pathAt(points, t) {
+  if (t <= points[0][0]) return { x: points[0][1], y: points[0][2] };
+  const last = points[points.length - 1];
+  if (t >= last[0]) return { x: last[1], y: last[2] };
+  let i = 1;
+  while (points[i][0] < t) i += 1;
+  const [t0, x0, y0] = points[i - 1];
+  const [t1, x1, y1] = points[i];
+  const h = t1 - t0;
+  // Hermite: at rest where it touched, at the last segment's speed where it lets go, the average between.
+  const slope = (j, axis) => {
+    if (j === 0) return 0;
+    const a = points[j - 1];
+    const b = points[j];
+    const out = (b[axis] - a[axis]) / (b[0] - a[0]);
+    if (j === points.length - 1) return out;
+    const c = points[j + 1];
+    const next = (c[axis] - b[axis]) / (c[0] - b[0]);
+    return out * next <= 0 ? 0 : (out + next) / 2;
+  };
+  const u = (t - t0) / h;
+  const h00 = 2 * u ** 3 - 3 * u ** 2 + 1;
+  const h10 = u ** 3 - 2 * u ** 2 + u;
+  const h01 = -2 * u ** 3 + 3 * u ** 2;
+  const h11 = u ** 3 - u ** 2;
+  return {
+    x: h00 * x0 + h10 * h * slope(i - 1, 1) + h01 * x1 + h11 * h * slope(i, 1),
+    y: h00 * y0 + h10 * h * slope(i - 1, 2) + h01 * y1 + h11 * h * slope(i, 2),
+  };
+}
+
+/** "Sam" as points along its strokes, evenly spaced, with each point's share of the whole length. */
+function signaturePoints(strokes) {
+  const out = [];
+  let total = 0;
+  for (const curve of strokes) {
+    const points = [];
+    for (let i = 0; i + 3 < curve.length; i += 3) {
+      const [p0, p1, p2, p3] = [curve[i], curve[i + 1], curve[i + 2], curve[i + 3]];
+      for (let k = i === 0 ? 0 : 1; k <= 24; k += 1) {
+        const u = k / 24;
+        const m = 1 - u;
+        points.push([
+          m ** 3 * p0[0] + 3 * m * m * u * p1[0] + 3 * m * u * u * p2[0] + u ** 3 * p3[0],
+          m ** 3 * p0[1] + 3 * m * m * u * p1[1] + 3 * m * u * u * p2[1] + u ** 3 * p3[1],
+        ]);
+      }
+    }
+    const lengths = [0];
+    for (let i = 1; i < points.length; i += 1) lengths.push(lengths[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+    out.push({ points, lengths, start: total, length: lengths[lengths.length - 1] });
+    total += lengths[lengths.length - 1];
+  }
+  return { strokes: out, total };
+}
+
+/**
+ * The signature drawn by `progress` (0 to 1) of the signing, the pen lifted between strokes for `lift` of the time a
+ * whole signature takes. Returns the strokes for the card (box units, to tenths) and the pen's point, or null while
+ * it's lifted or done.
+ */
+function signatureAt(sig, progress, lift) {
+  const n = sig.strokes.length;
+  let left = clamp(progress) * (1 + lift * (n - 1));
+  const strokes = [];
+  const flat = (stroke, upTo) => {
+    const out = [];
+    for (let i = 0; i < stroke.points.length && stroke.lengths[i] <= upTo; i += 1) out.push(Math.round(stroke.points[i][0] * 10) / 10, Math.round(stroke.points[i][1] * 10) / 10);
+    return out;
+  };
+  for (let s = 0; s < n; s += 1) {
+    const stroke = sig.strokes[s];
+    const share = stroke.length / sig.total;
+    if (left < share) {
+      // The pen is on this stroke.
+      const drawn = (left / share) * stroke.length;
+      const points = flat(stroke, drawn);
+      const k = stroke.lengths.findIndex((l) => l > drawn);
+      const f = (drawn - stroke.lengths[k - 1]) / (stroke.lengths[k] - stroke.lengths[k - 1]);
+      const x = stroke.points[k - 1][0] + (stroke.points[k][0] - stroke.points[k - 1][0]) * f;
+      const y = stroke.points[k - 1][1] + (stroke.points[k][1] - stroke.points[k - 1][1]) * f;
+      points.push(Math.round(x * 10) / 10, Math.round(y * 10) / 10);
+      if (points.length >= 2) strokes.push(points);
+      return { signature: { w: 400, h: 100, strokes }, pen: { x, y } };
+    }
+    strokes.push(flat(stroke, stroke.length));
+    left -= share;
+    if (s === n - 1) return { signature: { w: 400, h: 100, strokes }, pen: null };
+    if (left < lift) {
+      // Lifted, on its way to where the next stroke starts.
+      const end = stroke.points[stroke.points.length - 1];
+      const next = sig.strokes[s + 1].points[0];
+      const f = smooth(left / lift);
+      return { signature: { w: 400, h: 100, strokes }, pen: null, air: { x: end[0] + (next[0] - end[0]) * f, y: end[1] + (next[1] - end[1]) * f } };
+    }
+    left -= lift;
+  }
+  return { signature: strokes.length ? { w: 400, h: 100, strokes } : null, pen: null };
+}
+
+// ---- In the page ----
+
+/** Runs in the page once the table is ready: hides the app's buttons and words, adds the fingertip, starts the clock. */
+function startAdFilm({ clock, start, finger }) {
+  const film = window.__film;
+  const table = window.__cardTable;
+  const css = document.createElement('style');
+  css.textContent = `
+    nextjs-portal { display: none !important; }
+    [data-ui], [data-el="words"], [data-el="act"], [role="status"] { visibility: hidden !important; }
+    [data-testid="cardRack"] > div:has(> [data-testid="cardRackClose"]) { visibility: hidden !important; }
+    [data-testid="cardRack"] > div:has(> [data-testid="cardRackWrite"]) > p { visibility: hidden !important; }
+    #adFinger { position: fixed; z-index: 2147483000; left: 0; top: 0; width: ${finger}px; height: ${finger}px; border-radius: 50%;
+      pointer-events: none; opacity: 0; will-change: transform, opacity;
+      background: radial-gradient(circle at 50% 50%, rgba(255, 253, 248, 0.62) 0%, rgba(255, 253, 248, 0.5) 52%, rgba(255, 253, 248, 0.34) 70%);
+      box-shadow: inset 0 0 0 ${(finger * 0.035).toFixed(2)}px rgba(60, 45, 35, 0.26), 0 0 0 ${(finger * 0.02).toFixed(2)}px rgba(255, 253, 248, 0.35),
+        0 ${(finger * 0.04).toFixed(2)}px ${(finger * 0.28).toFixed(2)}px rgba(0, 0, 0, 0.3); }
+  `;
+  document.head.append(css);
+  const mark = document.createElement('div');
+  mark.id = 'adFinger';
+  document.body.append(mark);
+  // Every pointer event the page gets, so the film knows a touch has landed before it moves the clock on.
+  const input = { n: 0 };
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+    window.addEventListener(type, (e) => { if (e.pointerType === 'touch') input.n += 1; if (type === 'pointercancel') input.cancelled = (input.cancelled || 0) + 1; }, true);
+  }
+  window.__adInput = input;
+  film.base = clock;
+  film.t = 0;
+  // What's already moving goes on the film's clock now: an animation that has finished (the table or the rack
+  // fading in) stays finished; one still going (the snow, the candle) starts from the same place in every run.
+  for (const animation of document.getAnimations()) {
+    animation.pause();
+    const end = animation.effect?.getComputedTiming?.().endTime;
+    const now = Number(animation.currentTime) || 0;
+    film.seen.set(animation, { t: 0, at: Number.isFinite(end) && now >= end ? end : 0 });
+  }
+  film.on = true;
+  if (table) {
+    // The light starts where its drift is at this moment of the day, as in the share videos.
+    table.v.tx.x = Math.sin(film.base / 2900) * 0.62; table.v.tx.t = table.v.tx.x; table.v.tx.v = 0;
+    table.v.ty.x = Math.sin(film.base / 4100 + 1) * 0.5; table.v.ty.t = table.v.ty.x; table.v.ty.v = 0;
+    if (start.go) table.go(start.go, { tx: table.v.tx.x, ty: table.v.ty.x });
+    if (start.arrive) table.restart(true);
+    if (start.send) table.startSending({ sealedMark: true });
+    // From here the light drifts by itself, and stops for a while after a touch, as it does in the app.
+    table.lastTouch = -1e12;
+  }
+}
+
+/** Runs in the page: where things are, for a finger to find them. */
+function anchors() {
+  const box = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+  };
+  const table = window.__cardTable;
+  return {
+    g: table?.g ?? null,
+    seal: box('[data-el="seal"]'),
+    press: box('[data-el="press"]'),
+    card: box('[data-el="card"]'),
+    flapIn: box('[data-el="flapIn"]'),
+    flapOut: box('[data-el="flapOut"]'),
+    front: box('[data-el="lFront"]'),
+    pocket: box('[data-el="lPocket"]'),
+    sign: box('[data-testid="cardSignature"] svg'),
+    from: box('[data-el="card"] b'),
+    rackCard: box('[data-testid="cardRackCard"]'),
+    rackWrite: box('[data-testid="cardRackWrite"]'),
+  };
+}
+
+/** Runs in the page: one step of the film's clock to `t`, after the touches for it have landed. */
+async function stepTo({ t, note, signature, finger }) {
+  const film = window.__film;
+  film.t = t;
+  if (note !== undefined && window.__cardFilm) window.__cardFilm.setNote(note);
+  if (signature !== undefined && window.__cardFilm) window.__cardFilm.setSignature(signature);
+  film.runTimers();
+  film.runFrames();
+  // React's own updates (a state the engine reported, the note, the signature) land before the picture is taken.
+  for (let i = 0; i < 3; i += 1) await new Promise((done) => { film.real.set(done, 0); });
+  film.stepAnimations(true);
+  const mark = document.getElementById('adFinger');
+  if (mark) {
+    mark.style.opacity = finger ? finger.o.toFixed(3) : '0';
+    if (finger) mark.style.transform = `translate(${(finger.x - mark.offsetWidth / 2).toFixed(2)}px, ${(finger.y - mark.offsetHeight / 2).toFixed(2)}px) scale(${finger.s.toFixed(3)})`;
+  }
+  return film.sounds.length;
+}
+
+// ---- A take: one page, one scene, filmed through ----
+
+class Take {
+  constructor({ server, shape, shapeName, name, story, art, work }) {
+    this.server = server;
+    this.shape = shape;
+    this.shapeName = shapeName;
+    this.name = name;
+    this.def = SHOTS.takes[name];
+    this.story = story;
+    this.art = art;
+    this.work = work;
+    this.filmAt = clockOf(this.def);
+    // A take that moves in is drawn at its closest view's scale from the start (a 1.6× close-up of a 3× phone: 4.8×),
+    // and every frame is taken at or below it: nothing is ever enlarged, and a layer mid-animation keeps its detail.
+    this.dpr = shape.scale * Math.max(1, ...(this.def.view || []).map((key) => key.z || 1));
+    this.sounds = [];
+    this.expected = 0;
+    this.gestures = (this.def.gestures || []).map((g) => ({ ...g, t0: this.filmAt(g.at), state: 'waiting' }));
+    this.sig = signaturePoints(story.signature);
+    this.focus = new Map();
+  }
+
+  url() {
+    const { story, shape } = this;
+    const card = story.cards.get(story.card);
+    const query = new URLSearchParams({
+      scene: this.def.scene, design: card.id, number: String(card.number), caption: card.caption, paper: card.paper, table: card.table,
+      year: String(story.year), from: story.from, to: story.to, note: this.def.write ? '' : story.note, mailed: story.mailed, until: story.until,
+      top: String(this.def.insets?.[this.shapeName]?.top ?? shape.top), bottom: String(this.def.insets?.[this.shapeName]?.bottom ?? shape.bottom),
+    });
+    if (this.def.scene === 'rack') {
+      const rack = story.rack.map((n) => story.cards.get(n)).map(({ id, number, caption, paper, table }) => ({ id, number, caption, paper, table }));
+      query.set('rack', JSON.stringify(rack));
+      query.set('start', rack[0].id);
+    }
+    return `${this.server}/dev/card-film?${query}`;
+  }
+
+  async open() {
+    const { shape } = this;
+    // Its own Chrome at the take's real device scale. Chrome's emulated scale draws a layer turned in 3D (the flap
+    // lifting) from a lower-resolution copy; a real one keeps every layer at full detail. Only the size is emulated.
+    this.browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [`--force-device-scale-factor=${this.dpr}`] });
+    this.context = await this.browser.newContext({ viewport: null, hasTouch: true, colorScheme: 'dark', reducedMotion: 'no-preference' });
+    const page = await this.context.newPage();
+    this.page = page;
+    this.cdp = await this.context.newCDPSession(page);
+    await this.cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: shape.width, height: shape.height, deviceScaleFactor: 0, mobile: shape.mobile, screenWidth: shape.width, screenHeight: shape.height,
+    });
+    await this.cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    this.trouble = [];
+    page.on('pageerror', (error) => this.trouble.push(error.message));
+    await page.addInitScript(clockShim);
+    if (this.art) {
+      // Art drawn larger, for filming only: the same files by name, from the folder given.
+      await page.route(/\/holiday-cards\/table\/[^/?]+\.webp/, (route) => {
+        const file = path.join(this.art, path.basename(new URL(route.request().url()).pathname));
+        if (fs.existsSync(file)) route.fulfill({ path: file, contentType: 'image/webp' });
+        else route.continue();
+      });
+    }
+    await page.goto(this.url(), { waitUntil: 'networkidle', timeout: 180000 });
+    if (this.def.scene === 'rack') {
+      await page.waitForSelector('[data-testid="cardRackCard"] img', { timeout: 60000 });
+    } else {
+      // The table shows its envelope only once its art, the picture and the pen are ready.
+      await page.waitForFunction(() => {
+        const front = document.querySelector('[data-el="lFront"]');
+        return Boolean(window.__cardTable && front && front.style.visibility !== 'hidden');
+      }, null, { timeout: 60000 });
+    }
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all([...document.images].map((image) => image.decode().catch(() => {})));
+    });
+    await page.waitForTimeout(1800);
+    await page.evaluate(() => window.__cardTable?.setPaused(true));
+    await page.waitForTimeout(150);
+    const finger = Math.round(this.shape.mobile ? 38 : 64);
+    await page.evaluate(startAdFilm, { clock: this.def.clock, start: this.def.start || {}, finger });
+    await page.evaluate(() => window.__cardTable?.setPaused(false));
+    if (this.def.signed) {
+      // It arrives signed: Sam's whole signature, as the server keeps it with the note.
+      const { signature } = signatureAt(this.sig, 1, 0);
+      await page.evaluate(async (sig) => {
+        window.__cardFilm.setSignature(sig);
+        for (let i = 0; i < 3; i += 1) await new Promise((done) => { window.__film.real.set(done, 0); });
+      }, signature);
+    }
+    // The rack's pictures load as each card comes: have them all ready before the clock starts.
+    if (this.def.scene === 'rack') {
+      await page.evaluate(async (ids) => {
+        await Promise.all(ids.map((id) => { const image = new Image(); image.src = `/holiday-cards/card/${id}.jpg`; return image.decode().catch(() => {}); }));
+      }, this.story.rack.map((n) => this.story.cards.get(n).id));
+    }
+    this.t = 0;
+  }
+
+  async close() {
+    await this.context?.close();
+    await this.browser?.close();
+    if (this.trouble.length) throw new Error(`${this.name}: the page reported ${this.trouble.join('; ')}`);
+  }
+
+  /** Touch input through Chrome: a touch starts, moves or ends, and the film waits for the page to have it. */
+  async touch(type, point) {
+    const touchPoints = type === 'touchEnd' ? [] : [{ x: point.x, y: point.y, radiusX: 11, radiusY: 11, force: 1, id: 1 }];
+    await this.cdp.send('Input.dispatchTouchEvent', { type, touchPoints, modifiers: 0 });
+    this.expected += 1;
+    const landed = await this.page.evaluate(async (n) => {
+      for (let i = 0; i < 200 && window.__adInput.n < n; i += 1) await new Promise((done) => { window.__film.real.set(done, 2); });
+      return { n: window.__adInput.n, cancelled: window.__adInput.cancelled || 0 };
+    }, this.expected);
+    if (landed.n < this.expected) {
+      // A move to where the finger already was isn't an event: count what landed.
+      this.expected = landed.n;
+    }
+    if (landed.cancelled) throw new Error(`${this.name}: the page cancelled a touch`);
+  }
+
+  /** Where the finger is and what it's doing at the table's time `t`; touches go to the page as they happen. */
+  async fingers(t) {
+    let shown = null;
+    for (const g of this.gestures) {
+      if (g.state === 'waiting' && t >= g.t0) {
+        const a = await this.page.evaluate(anchors);
+        if (process.env.AD_DEBUG) console.log(`\n${this.name} touch at ${g.at}s`, JSON.stringify(Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v && v.x !== undefined ? [Math.round(v.x), Math.round(v.y), Math.round(v.w), Math.round(v.h)] : v && k === 'g' ? 'g' : v]))));
+        const points = g.path(a, a.g || {});
+        g.points = points;
+        g.end = g.kind === 'press' ? g.hold : points[points.length - 1][0];
+        g.last = pathAt(points, 0);
+        await this.touch('touchStart', g.last);
+        g.state = 'down';
+      }
+      if (g.state === 'down') {
+        const at = t - g.t0;
+        const p = pathAt(g.points, Math.min(at, g.end));
+        if (Math.hypot(p.x - g.last.x, p.y - g.last.y) > 0.01) {
+          await this.touch('touchMove', p);
+          g.last = p;
+        }
+        if (at >= g.end) {
+          await this.touch('touchEnd', p);
+          g.state = 'up';
+          g.upAt = t;
+        }
+      }
+      // The mark: in as the finger lands, a touch smaller while it presses, out as it lifts.
+      if (g.state === 'down') {
+        const at = t - g.t0;
+        shown = { x: g.last.x, y: g.last.y, o: smooth(at / 70), s: 1 - 0.06 * smooth(at / 90) };
+      } else if (g.state === 'up' && t - g.upAt < 170) {
+        const k = 1 - (t - g.upAt) / 170;
+        shown = { x: g.last.x, y: g.last.y, o: smooth(k), s: 0.94 + 0.08 * (1 - k) };
+      }
+    }
+    return shown;
+  }
+
+  /** The note written so far, and the signature: the pen's own progress at the table's time `t`. */
+  async writing(t) {
+    const out = {};
+    const { write, sign } = this.def;
+    if (write) {
+      const k = clamp((t - write.from * 1000) / ((write.to - write.from) * 1000));
+      const n = Math.round(k * this.story.note.length);
+      if (n !== this.noteShown) { out.note = this.story.note.slice(0, n); this.noteShown = n; }
+    }
+    if (sign) {
+      const k = (t - sign.from * 1000) / ((sign.to - sign.from) * 1000);
+      if (k >= 0) {
+        const { signature, pen, air } = signatureAt(this.sig, k, sign.lift);
+        const key = JSON.stringify(signature);
+        if (key !== this.signShown) { out.signature = signature; this.signShown = key; }
+        out.signing = k <= 1.3;
+        // The fingertip on the pen's point, mapped from the signature's box on the card; dimmer while it's lifted.
+        const box = this.signBox;
+        const at = (p) => ({ x: box.left + (p.x / 400) * box.w, y: box.top + (p.y / 100) * box.h });
+        if (box && (pen || air)) {
+          if (this.penDown === undefined || this.penDown === null) this.penDown = t;
+          const p = at(pen || air);
+          this.penLast = { ...p, t };
+          out.finger = { ...p, o: smooth((t - this.penDown) / 60) * (pen ? 1 : 0.55), s: pen ? 0.94 : 1 };
+        } else if (box && this.penLast && t - this.penLast.t < 170) {
+          const fade = 1 - (t - this.penLast.t) / 170;
+          out.finger = { x: this.penLast.x, y: this.penLast.y, o: smooth(fade), s: 0.94 + 0.08 * (1 - fade) };
+        }
+      }
+    }
+    return out;
+  }
+
+  /** The view at the take's second `s`: the part of the page filmed, in CSS px. */
+  async view(s) {
+    const keys = this.def.view?.length ? this.def.view : [{ at: 0, z: 1 }];
+    let a = keys[0];
+    let b = keys[0];
+    for (let i = 0; i < keys.length; i += 1) {
+      if (keys[i].at <= s) { a = keys[i]; b = keys[Math.min(i + 1, keys.length - 1)]; }
+    }
+    const k = b === a ? 0 : ease((s - a.at) / (b.at - a.at));
+    const { width, height } = this.shape;
+    // A key's centre: what it looks at (found on the page the first time it's needed, then kept), or the middle at 1×.
+    const centre = async (key) => {
+      if (!key.focus) return { x: width / 2, y: height / 2 };
+      if (!this.focus.has(key.focus)) {
+        const found = (await this.page.evaluate(anchors))[key.focus];
+        if (found) this.focus.set(key.focus, found);
+      }
+      const f = this.focus.get(key.focus) || { x: width / 2, y: height / 2 };
+      // An offset may differ by shape ({ tall, wide }): in the wide shape the view sits off the seal, clear of the words.
+      const off = (value) => (value && typeof value === 'object' ? value[this.shapeName] ?? 0 : value || 0);
+      return { x: f.x + off(key.dx) * width, y: f.y + off(key.dy) * height };
+    };
+    const ca = await centre(a);
+    const cb = b === a ? ca : await centre(b);
+    const z = a.z + (b.z - a.z) * k;
+    const w = width / z;
+    const h = height / z;
+    const x = ca.x + (cb.x - ca.x) * k;
+    const y = ca.y + (cb.y - ca.y) * k;
+    return { x: clamp(x - w / 2, 0, width - w), y: clamp(y - h / 2, 0, height - h), width: w, height: h, z };
+  }
+
+  /** One step of the table's clock to the take's second `s`, then (if `capture`) its picture as raw RGB. */
+  async step(s, capture) {
+    const t = this.filmAt(s);
+    const fingerFromTouch = await this.fingers(t);
+    const write = await this.writing(t);
+    const finger = write.finger || fingerFromTouch;
+    const count = await this.page.evaluate(stepTo, { t, note: write.note, signature: write.signature, finger });
+    if (write.signing) this.signBox = (await this.page.evaluate(anchors)).sign || this.signBox;
+    if (count > this.sounds.length) {
+      const fresh = await this.page.evaluate((from) => window.__film.sounds.slice(from), this.sounds.length);
+      for (const sound of fresh) this.sounds.push({ name: path.basename(new URL(sound.src).pathname, '.mp3'), table: sound.at, second: s });
+    }
+    this.t = t;
+    if (process.env.AD_DEBUG && Math.abs(s * 10 - Math.round(s * 10)) < 1e-6) {
+      const state = await this.page.evaluate(() => { const e = window.__cardTable; return e ? { step: e.step, send: e.send, pull: +e.v.pull.x.toFixed(3), lay: +e.v.lay.x.toFixed(3), env: +e.v.envDeg.x.toFixed(1), deg: +e.v.deg.x.toFixed(1), drag: e.dragging?.mode ?? null } : null; });
+      console.log(`${this.name} ${s.toFixed(1)}s t=${t.toFixed(0)} ${JSON.stringify(state)}`);
+    }
+    if (!capture) return null;
+    const v = await this.view(s);
+    const [ow, oh] = [this.shape.width * this.shape.scale, this.shape.height * this.shape.scale];
+    // The view's part of the page at the film's size: moving in films the page larger.
+    const shot = await this.cdp.send('Page.captureScreenshot', {
+      format: 'png', optimizeForSpeed: true, captureBeyondViewport: false,
+      clip: { x: v.x, y: v.y, width: v.width, height: v.height, scale: ow / (v.width * this.dpr) },
+    });
+    const image = sharp(Buffer.from(shot.data, 'base64')).removeAlpha();
+    const meta = await image.metadata();
+    const raw = meta.width === ow && meta.height === oh ? image : image.resize(ow, oh, { fit: 'fill', kernel: 'lanczos3' });
+    return raw.raw().toBuffer();
+  }
+
+  /** Is the take's second `s` one of its fast moments, filmed in four steps and blended? */
+  blurred(s) {
+    return (this.def.blur || []).some(([a, b]) => s >= a && s < b);
+  }
+
+  /**
+   * Films the take: every frame steps the clock (four steps where it's blurred), and the frames in `wanted` (indexes,
+   * or all) are written as PNG. Returns the sounds, each with the second it fired on.
+   */
+  async film(dir, wanted = null) {
+    fs.mkdirSync(dir, { recursive: true });
+    const count = Math.round(this.def.length * FPS);
+    const [ow, oh] = [this.shape.width * this.shape.scale, this.shape.height * this.shape.scale];
+    for (let i = 0; i < count; i += 1) {
+      const capture = !wanted || wanted.has(i);
+      const s = i / FPS;
+      let frame;
+      if (this.blurred(s)) {
+        const sum = new Float32Array(ow * oh * 3);
+        for (let k = 0; k < 4; k += 1) {
+          const raw = await this.step(s + (k - 1.5) / (4 * FPS), capture);
+          if (raw) for (let p = 0; p < sum.length; p += 1) sum[p] += raw[p];
+        }
+        if (capture) {
+          frame = Buffer.alloc(sum.length);
+          for (let p = 0; p < sum.length; p += 1) frame[p] = Math.round(sum[p] / 4);
+        }
+      } else {
+        frame = await this.step(s, capture);
+      }
+      if (capture) {
+        await sharp(frame, { raw: { width: ow, height: oh, channels: 3 } }).png({ compressionLevel: 3 }).toFile(path.join(dir, `f_${String(i).padStart(5, '0')}.png`));
+      }
+      if (i % 60 === 0) process.stdout.write(`  ${this.name} ${s.toFixed(1)}s\r`);
+    }
+    fs.writeFileSync(path.join(dir, 'sounds.json'), JSON.stringify(this.sounds, null, 1));
+    return this.sounds;
+  }
+}
+
+// ---- Words, the end card and the platforms' bars, drawn once by Chrome as transparent pictures ----
+
+function wordsHtml(shape, lines) {
+  const tall = shape.mobile;
+  const box = tall
+    ? 'left: 20px; right: 20px; top: 96px; height: 51px; justify-content: center; align-items: center; text-align: center; font-size: 23px;'
+    : 'left: 96px; width: 500px; top: 330px; height: 170px; justify-content: center; align-items: flex-start; text-align: left; font-size: 58px;';
+  return `<!doctype html><html><head><style>
+    html, body { margin: 0; background: transparent; }
+    .w { position: absolute; display: flex; flex-direction: column; ${box} font-family: ${SERIF}; font-style: italic; line-height: 1.1;
+      color: ${CREAM}; text-shadow: 0 ${tall ? 1 : 2}px ${tall ? 9 : 18}px rgba(0, 0, 0, 0.42), 0 0 ${tall ? 2 : 4}px rgba(0, 0, 0, 0.25); letter-spacing: 0.005em; }
+    .w span { white-space: nowrap; }
+  </style></head><body><div class="w">${lines.map((line) => `<span>${line}</span>`).join('')}</div></body></html>`;
+}
+
+function markSvg(fill) {
+  const holes = [[23.5, 4], [40.5, 4], [23.5, 60], [40.5, 60], [4, 23.5], [4, 40.5], [60, 23.5], [60, 40.5]]
+    .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.5" fill="#000"/>`).join('');
+  // The perforation mark (components/brand/PantopusMark.tsx), its reverse colours for a dark ground.
+  return `<svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><defs><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+    <rect width="64" height="64" fill="#000"/><rect x="4" y="4" width="56" height="56" rx="13" fill="#fff"/>${holes}<rect x="20" y="20" width="24" height="24" rx="4" fill="#000"/></mask></defs>
+    <rect width="64" height="64" fill="${fill}" mask="url(#m)"/>
+    <path d="M26 32.4 L30.2 36.6 L38.2 26.8" fill="none" stroke="${fill}" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+/** The end card, in parts that come in one after another: mark, name, line, badges, address. */
+function endHtml(shape, server, end, parts) {
+  const tall = shape.mobile;
+  const u = tall ? 1 : 2.5;
+  const show = (part) => (parts.includes(part) ? 1 : 0);
+  return `<!doctype html><html><head><style>
+    html, body { margin: 0; background: transparent; }
+    .end { position: absolute; left: 0; right: 0; top: ${tall ? 132 : 186}px; display: flex; flex-direction: column; align-items: center; color: ${CREAM};
+      text-shadow: 0 ${u}px ${10 * u}px rgba(0, 0, 0, 0.45); }
+    .mark { width: ${50 * u}px; height: ${50 * u}px; filter: drop-shadow(0 ${2 * u}px ${8 * u}px rgba(0,0,0,.45)); opacity: ${show('mark')}; }
+    .name { margin-top: ${10 * u}px; font: 600 ${38 * u}px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; letter-spacing: -0.01em; opacity: ${show('name')}; }
+    .line { margin-top: ${24 * u}px; font: italic ${23 * u}px/1.18 ${SERIF}; text-align: center; opacity: ${show('line')}; }
+    .badges { margin-top: ${26 * u}px; display: flex; gap: ${10 * u}px; opacity: ${show('badges')}; }
+    .badges img { height: ${40 * u}px; width: auto; display: block; }
+    .address { margin-top: ${22 * u}px; font: 600 ${17 * u}px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif; letter-spacing: 0.04em; color: #fbf3e4; opacity: ${show('address')}; }
+  </style></head><body><div class="end">
+    <div class="mark">${markSvg('#ffffff')}</div>
+    <div class="name">Pantopus</div>
+    <div class="line">${end.lines.join('<br>')}</div>
+    <div class="badges"><img src="${server}/landing/badge-appstore.svg" alt=""><img src="${server}/landing/badge-playstore.svg" alt=""></div>
+    <div class="address">${end.address}</div>
+  </div></body></html>`;
+}
+
+/**
+ * The platforms' own buttons over a tall frame, drawn roughly where they sit (no platform's art): its top bar, the
+ * column of buttons on the right, and the name, caption and call to action at the bottom. The dashed box is the area
+ * that platform's guidance keeps clear for words and anything that matters.
+ */
+function barsHtml(platform) {
+  const icon = (x, y, r = 13) => `<div style="position:absolute;left:${x - r}px;top:${y - r}px;width:${2 * r}px;height:${2 * r}px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
+  const bar = (x, y, w, h, o = 0.85, r = 4) => `<div style="position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;border-radius:${r}px;background:rgba(255,255,255,${o});box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>`;
+  const label = (text) => `<div style="position:absolute;left:6px;top:6px;font:600 9px/1.2 -apple-system,sans-serif;color:#fff;background:rgba(200,30,60,.85);padding:2px 5px;border-radius:3px">${text}</div>`;
+  const shade = '<div style="position:absolute;left:0;right:0;bottom:0;height:200px;background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,0))"></div>';
+  const box = (top, bottom, left, right) => `<div style="position:absolute;left:${left}px;right:${right}px;top:${top}px;bottom:${bottom}px;border:1.2px dashed rgba(255,70,90,.95)"></div>`;
+  let parts = '';
+  if (platform === 'meta') {
+    // Meta's ads guide (Instagram Reels): keep 14% top, 35% bottom and 6% each side clear.
+    parts = shade + bar(14, 22, 44, 12) + icon(334, 28, 10)
+      + [380, 428, 476, 524].map((y) => icon(334, y, 12)).join('') + bar(322, 566, 24, 24, 0.85, 5)
+      + icon(28, 520, 12) + bar(46, 513, 120, 9) + bar(46, 526, 60, 7, 0.6) + bar(16, 544, 240, 8, 0.7) + bar(16, 557, 170, 8, 0.7)
+      + bar(16, 578, 300, 30, 0.92, 8) + box(90, 224, 22, 22) + label('Instagram / Facebook Reels (approx.)');
+  } else if (platform === 'tiktok') {
+    // TikTok publishes its in-feed safe zone as template files only; this follows the usual layout.
+    parts = shade + bar(110, 20, 140, 13) + icon(336, 26, 9)
+      + icon(333, 322, 17) + [384, 436, 488, 540].map((y) => icon(333, y, 13)).join('') + icon(333, 594, 14)
+      + bar(14, 500, 110, 11) + bar(14, 518, 250, 8, 0.7) + bar(14, 531, 200, 8, 0.7) + bar(14, 548, 70, 12, 0.6)
+      + bar(14, 572, 290, 28, 0.92, 4) + bar(0, 612, 360, 28, 0.5, 0) + box(70, 160, 20, 66) + label('TikTok in-feed (approx.)');
+  } else {
+    // YouTube Shorts: no published numbers; the usual buttons.
+    parts = shade + icon(300, 26, 10) + icon(336, 26, 10)
+      + [364, 414, 464, 514, 566].map((y) => icon(333, y, 14)).join('')
+      + icon(28, 532, 13) + bar(48, 525, 110, 10) + bar(16, 552, 230, 8, 0.7)
+      + bar(16, 574, 290, 30, 0.92, 15) + box(64, 150, 16, 64) + label('YouTube Shorts (approx.)');
+  }
+  return `<!doctype html><html><head><style>html,body{margin:0;background:transparent}</style></head><body>${parts}</body></html>`;
+}
+
+/** Chrome draws an overlay page as a transparent picture at the shape's size; returns raw RGBA. */
+async function drawOverlay(context, shape, html) {
+  const page = await context.newPage();
+  await page.setContent(html, { waitUntil: 'networkidle' });
+  await page.evaluate(async () => { await document.fonts.ready; await Promise.all([...document.images].map((i) => i.decode().catch(() => {}))); });
+  const shot = await page.screenshot({ type: 'png', omitBackground: true });
+  await page.close();
+  const image = sharp(shot).ensureAlpha();
+  const meta = await image.metadata();
+  const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+  return (meta.width === w && meta.height === h ? image : image.resize(w, h, { fit: 'fill' })).raw().toBuffer();
+}
+
+// ---- Laying a cut together ----
+
+/** A cut's pieces, its words, dips and end card, as what's on screen at each of its seconds. */
+function cutPlan(cut) {
+  let at = 0;
+  const pieces = cut.pieces.map(([take, from, to]) => { const piece = { take, from, to, at }; at += to - from; return piece; });
+  return { pieces, length: at };
+}
+
+function wordsAlpha(cut, s) {
+  const out = [];
+  for (const [a, b, lines] of cut.words) {
+    if (s < a - 0.001 || s > b + 0.001) continue;
+    const k = Math.min(smooth((s - a) / 0.22), smooth((b - s) / 0.22));
+    if (k > 0.001) out.push({ lines, k });
+  }
+  return out;
+}
+
+function dipAt(cut, s) {
+  let k = 1;
+  for (const [a, b, c, d, floor] of cut.dips || []) {
+    if (s >= a && s < b) k = Math.min(k, 1 - (1 - floor) * smooth((s - a) / (b - a)));
+    else if (s >= b && s < c) k = Math.min(k, floor);
+    else if (s >= c && s < d) k = Math.min(k, floor + (1 - floor) * smooth((s - c) / (d - c)));
+  }
+  return k;
+}
+
+/** Composes one frame of a cut: the take's frame, the dip, the end card, the words and the grain. Raw RGB in and out. */
+async function compose({ raw, shape, s, cut, overlays, frameNo, bars }) {
+  const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+  let rgb = Buffer.from(raw);
+  const end = cut.end;
+  if (end && s >= end.at) {
+    // The table dims and softens under the end card.
+    const k = smooth((s - end.at) / 0.5);
+    const soft = await sharp(rgb, { raw: { width: w, height: h, channels: 3 } }).blur(Math.max(0.3, 9 * k * shape.scale / 3)).raw().toBuffer();
+    const dim = 1 - 0.56 * k;
+    for (let p = 0; p < rgb.length; p += 1) rgb[p] = Math.round(soft[p] * dim);
+  }
+  const dip = dipAt(cut, s);
+  if (dip < 0.999) for (let p = 0; p < rgb.length; p += 1) rgb[p] = Math.round(rgb[p] * dip);
+  const layers = [];
+  for (const { lines, k } of wordsAlpha(cut, s)) layers.push({ image: await overlays.words(lines), k });
+  if (end && s >= end.at) {
+    const parts = ['mark', 'name', 'line', 'badges', 'address'];
+    const span = end.full - end.at - 0.25;
+    parts.forEach((part, i) => {
+      const a = end.at + 0.18 + (i * span) / parts.length;
+      const k = smooth((s - a) / 0.4);
+      if (k > 0.001) layers.push({ part, k });
+    });
+  }
+  for (const layer of layers) {
+    const image = layer.part ? await overlays.end(layer.part) : layer.image;
+    for (let p = 0, q = 0; p < rgb.length; p += 3, q += 4) {
+      const a = (image[q + 3] / 255) * layer.k;
+      if (a <= 0) continue;
+      rgb[p] = Math.round(rgb[p] * (1 - a) + image[q] * a);
+      rgb[p + 1] = Math.round(rgb[p + 1] * (1 - a) + image[q + 1] * a);
+      rgb[p + 2] = Math.round(rgb[p + 2] * (1 - a) + image[q + 2] * a);
+    }
+  }
+  // A fine grain over everything (about 3.5%), different every frame, so the dark cloth doesn't band.
+  let seed = (frameNo * 2654435761) >>> 0;
+  for (let p = 0; p < rgb.length; p += 3) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const n = ((seed >>> 8) / 16777216 - 0.5) * 18;
+    rgb[p] = clamp(Math.round(rgb[p] + n), 0, 255);
+    rgb[p + 1] = clamp(Math.round(rgb[p + 1] + n), 0, 255);
+    rgb[p + 2] = clamp(Math.round(rgb[p + 2] + n), 0, 255);
+  }
+  if (bars) {
+    for (let p = 0, q = 0; p < rgb.length; p += 3, q += 4) {
+      const a = bars[q + 3] / 255;
+      if (a <= 0) continue;
+      rgb[p] = Math.round(rgb[p] * (1 - a) + bars[q] * a);
+      rgb[p + 1] = Math.round(rgb[p + 1] * (1 - a) + bars[q + 1] * a);
+      rgb[p + 2] = Math.round(rgb[p + 2] * (1 - a) + bars[q + 2] * a);
+    }
+  }
+  return rgb;
+}
+
+/** The overlays a cut needs, drawn once each and kept. */
+function overlayCache(context, shape, server) {
+  const words = new Map();
+  const ends = new Map();
+  return {
+    words: async (lines) => {
+      const key = lines.join('\n');
+      if (!words.has(key)) words.set(key, await drawOverlay(context, shape, wordsHtml(shape, lines)));
+      return words.get(key);
+    },
+    end: async (part) => {
+      if (!ends.has(part)) {
+        const order = ['mark', 'name', 'line', 'badges', 'address'];
+        const end = SHOTS.end;
+        ends.set(part, await drawOverlay(context, shape, endHtml(shape, server, end, [order[order.indexOf(part)]])));
+      }
+      return ends.get(part);
+    },
+  };
+}
+
+// ---- Runs ----
+
+function story() {
+  const { year, list } = designs();
+  const cards = new Map(list.map((design) => [design.number, design]));
+  // Another star, or another rack, for a version to compare: --card 44 --rack 40,45,8,44
+  const card = argument('card') ? Number(argument('card')) : SHOTS.story.card;
+  const rack = argument('rack') ? argument('rack').split(',').map(Number) : SHOTS.story.rack;
+  for (const n of [card, ...rack]) if (!cards.has(n)) throw new Error(`No card ${n} in the server's list.`);
+  return { ...SHOTS.story, card, rack, year, cards, total: list.length };
+}
+
+async function stills({ browser, server, shapeName, work, out, art }) {
+  const shape = { ...SHAPES[shapeName] };
+  const cut = SHOTS.cuts[30];
+  const plan = cutPlan(cut);
+  const s0 = story();
+  // Which frame of which take each still needs.
+  const wanted = new Map();
+  const where = {};
+  const only = argument('only') ? new Set(argument('only').split(',')) : null;
+  for (const [shot, s] of Object.entries(SHOTS.stills)) {
+    if (only && !only.has(String(shot))) continue;
+    const piece = [...plan.pieces].reverse().find((p) => s >= p.at - 1e-9);
+    const second = piece.from + (s - piece.at);
+    const frame = Math.round(second * FPS);
+    if (!wanted.has(piece.take)) wanted.set(piece.take, new Set());
+    wanted.get(piece.take).add(frame);
+    where[shot] = { take: piece.take, frame, s };
+  }
+  const takeNames = argument('takes') ? argument('takes').split(',') : [...wanted.keys()];
+  for (const name of takeNames) {
+    if (!wanted.has(name)) continue;
+    const take = new Take({ browser, server, shape, shapeName, name, story: s0, art, work });
+    const began = Date.now();
+    await take.open();
+    await take.film(path.join(work, shapeName, name), wanted.get(name));
+    await take.close();
+    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}`);
+  }
+  // Compose each still with its words (and the platforms' bars over the tall ones).
+  const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
+  const overlays = overlayCache(context, shape, server);
+  const bars = {};
+  if (shape.mobile) for (const p of ['meta', 'tiktok', 'youtube']) bars[p] = await drawOverlay(context, shape, barsHtml(p));
+  fs.mkdirSync(out, { recursive: true });
+  const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+  const made = [];
+  for (const [shot, { take, frame, s }] of Object.entries(where)) {
+    const file = path.join(work, shapeName, take, `f_${String(frame).padStart(5, '0')}.png`);
+    if (!fs.existsSync(file)) continue;
+    const raw = await sharp(file).removeAlpha().raw().toBuffer();
+    const frameNo = Math.round(s * FPS);
+    const clean = await compose({ raw, shape, s, cut, overlays, frameNo });
+    const name = `shot-${label(shot)}-${shapeName}.png`;
+    await sharp(clean, { raw: { width: w, height: h, channels: 3 } }).png().toFile(path.join(out, name));
+    made.push({ shot, file: path.join(out, name), s });
+    for (const [p, overlay] of Object.entries(bars)) {
+      const withBars = await compose({ raw, shape, s, cut, overlays, frameNo, bars: overlay });
+      fs.mkdirSync(path.join(out, 'bars'), { recursive: true });
+      await sharp(withBars, { raw: { width: w, height: h, channels: 3 } }).png().toFile(path.join(out, 'bars', `shot-${label(shot)}-${p}.png`));
+    }
+  }
+  await context.close();
+  return made;
+}
+
+async function filmTakes({ browser, server, shapeName, work, art }) {
+  const shape = { ...SHAPES[shapeName] };
+  const s0 = story();
+  const names = (argument('takes') || Object.keys(SHOTS.takes).join(',')).split(',');
+  for (const name of names) {
+    const take = new Take({ browser, server, shape, shapeName, name, story: s0, art, work });
+    const began = Date.now();
+    await take.open();
+    await take.film(path.join(work, shapeName, name));
+    await take.close();
+    console.log(`${name}: ${((Date.now() - began) / 1000).toFixed(0)} s, sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ') || 'none'}`);
+  }
+}
+
+/** A cut from filmed takes: composed frames into ffmpeg (a ProRes master and an H.264 film), with the table's sounds. */
+async function filmCut({ browser, server, shapeName, work, out, length }) {
+  const shape = { ...SHAPES[shapeName] };
+  const cut = SHOTS.cuts[length];
+  const plan = cutPlan(cut);
+  const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+  const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
+  const overlays = overlayCache(context, shape, server);
+  fs.mkdirSync(out, { recursive: true });
+  const base = path.join(out, `cards-ad-${length}s-${shapeName}`);
+  const master = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${w}x${h}`, '-r', String(FPS), '-i', '-',
+    '-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le', '-vf', 'scale=in_range=full:out_range=tv:out_color_matrix=bt709',
+    '-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', `${base}-master-silent.mov`], { stdio: ['pipe', 'inherit', 'inherit'] });
+  const frames = Math.round(plan.length * FPS);
+  const sounds = [];
+  for (const piece of plan.pieces) {
+    const file = path.join(work, shapeName, piece.take, 'sounds.json');
+    const list = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
+    for (const sound of list) if (sound.second >= piece.from && sound.second < piece.to) sounds.push({ name: sound.name, at: piece.at + (sound.second - piece.from) });
+  }
+  for (let j = 0; j < frames; j += 1) {
+    const s = j / FPS;
+    const piece = [...plan.pieces].reverse().find((p) => s >= p.at - 1e-9);
+    const frame = Math.min(Math.round((piece.from + (s - piece.at)) * FPS), Math.round(piece.to * FPS) - 1);
+    const file = path.join(work, shapeName, piece.take, `f_${String(frame).padStart(5, '0')}.png`);
+    const raw = await sharp(file).removeAlpha().raw().toBuffer();
+    const rgb = await compose({ raw, shape, s, cut, overlays, frameNo: j });
+    if (!master.stdin.write(rgb)) await new Promise((done) => { master.stdin.once('drain', done); });
+    if (j % 60 === 0) process.stdout.write(`  cut ${length}s ${s.toFixed(1)}s\r`);
+  }
+  master.stdin.end();
+  await new Promise((done) => { master.on('close', done); });
+  await context.close();
+  fs.writeFileSync(`${base}-sounds.json`, JSON.stringify(sounds, null, 1));
+  return { master: `${base}-master-silent.mov`, sounds };
+}
+
+(async () => {
+  const shapeName = argument('shape', 'tall');
+  if (!SHAPES[shapeName]) throw new Error(`No shape ${shapeName}: tall or wide.`);
+  const work = path.resolve(argument('work', path.join(REPO, 'test-results/card-ad')));
+  const out = path.resolve(argument('out', path.join(work, 'out')));
+  const art = argument('art') ? path.resolve(argument('art')) : null;
+  if (argument('top')) SHAPES[shapeName].top = Number(argument('top'));
+  if (argument('bottom')) SHAPES[shapeName].bottom = Number(argument('bottom'));
+  const server = await devServer();
+  const browser = await chromium.launch({ executablePath: CHROME, headless: true });
+  try {
+    if (argument('strip')) {
+      // A row of one take's frames, to look its timing over: --strip open:2.6:3.9:0.1
+      const [name, from, to, every] = argument('strip').split(':');
+      const shape = { ...SHAPES[shapeName] };
+      const wanted = new Set();
+      for (let s = Number(from); s <= Number(to) + 1e-9; s += Number(every)) wanted.add(Math.round(s * FPS));
+      const take = new Take({ browser, server: server.url, shape, shapeName, name, story: story(), art, work });
+      await take.open();
+      const dir = path.join(work, 'strips', shapeName, name);
+      fs.rmSync(dir, { recursive: true, force: true });
+      await take.film(dir, wanted);
+      await take.close();
+      const files = [...wanted].sort((a, b) => a - b).map((i) => path.join(dir, `f_${String(i).padStart(5, '0')}.png`)).filter((f) => fs.existsSync(f));
+      const tw = shape.mobile ? 216 : 480;
+      const th = Math.round((tw * shape.height) / shape.width);
+      const tiles = await Promise.all(files.map((f) => sharp(f).resize(tw, th).toBuffer()));
+      const sheet = path.join(work, 'strips', `${shapeName}-${name}-${from}-${to}.jpg`);
+      const cols = Math.min(tiles.length, shape.mobile ? 10 : 5);
+      await sharp({ create: { width: cols * (tw + 4), height: Math.ceil(tiles.length / cols) * (th + 4), channels: 3, background: '#111' } })
+        .composite(tiles.map((input, i) => ({ input, left: (i % cols) * (tw + 4), top: Math.floor(i / cols) * (th + 4) }))).jpeg({ quality: 85 }).toFile(sheet);
+      console.log(`${sheet}  sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ')}`);
+    } else if (process.argv.includes('--stills')) {
+      const made = await stills({ browser, server: server.url, shapeName, work, out, art });
+      console.log(`${made.length} stills in ${out}`);
+    } else if (argument('cut')) {
+      const made = await filmCut({ browser, server: server.url, shapeName, work, out, length: Number(argument('cut')) });
+      console.log(`master ${made.master}, ${made.sounds.length} sounds`);
+    } else {
+      await filmTakes({ browser, server: server.url, shapeName, work, art });
+    }
+  } finally {
+    await browser.close();
+    server.stop();
+  }
+})().catch((error) => { console.error(error); process.exit(1); });
