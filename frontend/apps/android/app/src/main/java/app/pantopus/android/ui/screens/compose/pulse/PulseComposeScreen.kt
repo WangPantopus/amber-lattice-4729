@@ -96,6 +96,7 @@ import app.pantopus.android.ui.screens.feed.pulse.PulseQuotedPostCard
 import app.pantopus.android.ui.screens.shared.form.FormFieldGroup
 import app.pantopus.android.ui.screens.shared.form.FormFieldState
 import app.pantopus.android.ui.screens.shared.form.FormShell
+import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -144,6 +145,7 @@ fun PulseComposeScreen(
     val lostFoundContactPref by viewModel.lostFoundContactPref.collectAsStateWithLifecycle()
     val dealExpiresAt by viewModel.dealExpiresAt.collectAsStateWithLifecycle()
     val eligibilityWarning by viewModel.eligibilityWarning.collectAsStateWithLifecycle()
+    val skyArea by viewModel.skyArea.collectAsStateWithLifecycle()
     val eligibilityBasis by viewModel.eligibilityBasis.collectAsStateWithLifecycle()
     val precheckNudge by viewModel.precheckNudge.collectAsStateWithLifecycle()
     val precheckCooldown by viewModel.precheckCooldown.collectAsStateWithLifecycle()
@@ -266,6 +268,8 @@ fun PulseComposeScreen(
                                 dealExpiresAt = dealExpiresAt,
                                 eligibilityWarning = eligibilityWarning,
                                 isPhotoPlaced = eligibilityBasis == "photo",
+                                skyArea = skyArea,
+                                skyPinnedAt = viewModel.skyPinnedAt(),
                                 precheckNudge = precheckNudge,
                                 precheckCooldown = precheckCooldown,
                                 isVisitorPost = isVisitorPost,
@@ -598,6 +602,10 @@ internal data class PulseComposeContentState(
     val eligibilityWarning: String? = null,
     /** The draft may post to its tagged place because an attachment was taken there (the check's `photo` basis). */
     val isPhotoPlaced: Boolean = false,
+    /** The Sky (phase A): the town the post floats over ("Floating over Camas, WA"); null draws "Posting to …". */
+    val skyArea: String? = null,
+    /** The Sky: the venue the post pins at ("At Esther Short Park"); null while it floats. */
+    val skyPinnedAt: String? = null,
     /** Soft nudge from `POST /api/posts/precheck` — dismissible. */
     val precheckNudge: String? = null,
     /** Cooldown copy when the viewer is rate-limited / restricted. */
@@ -707,6 +715,7 @@ private fun PulseComposeBodySections(
             state.postingTargetLabel,
             state.eligibilityWarning.takeIf { state.selectedPlaceTag == null },
             onChangeTarget = actions.onChangeTarget,
+            sky = state.skyArea?.let { PulseSkyLine(area = it, pinnedAt = state.skyPinnedAt, onPin = actions.onAddLocation) },
         )
     } else {
         IntentPicker(
@@ -770,6 +779,8 @@ private fun PulseComposeBodySections(
                 PlaceCheckNote(
                     warning = state.eligibilityWarning,
                     isPhotoPlaced = state.isPhotoPlaced,
+                    // The Sky: only a venue keeps the exact pin; an address or a bare photo floats.
+                    skyFloats = state.skyArea != null && state.skyPinnedAt == null,
                     onShareWithConnections =
                         actions.onShareWithConnections.takeIf {
                             state.isFlowMode && state.visibility != PulseComposeVisibility.Connections
@@ -794,6 +805,8 @@ private fun FlowContextHeader(
     eligibilityWarning: String? = null,
     /** A quote's "Change" beside "Posting to …": back to the first step, where the audience is picked. */
     onChangeTarget: (() -> Unit)? = null,
+    /** The Sky: "Floating over Camas, WA" and "Pin it at a place" in place of "Posting to …". */
+    sky: PulseSkyLine? = null,
 ) {
     purpose?.let { p ->
         Row(
@@ -804,7 +817,8 @@ private fun FlowContextHeader(
             Text(text = p.label, style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold), color = PantopusColors.appText)
         }
     }
-    targetLabel?.let { label ->
+    if (sky != null) PulseSkyPlaceLine(sky, onChangeTarget)
+    targetLabel?.takeIf { sky == null }?.let { label ->
         Row(
             modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
@@ -1889,6 +1903,8 @@ private const val PHOTO_PLACED_NOTE =
 private data class PlaceCheckNote(
     val warning: String? = null,
     val isPhotoPlaced: Boolean = false,
+    /** The Sky: the photo doesn't pin the post ("The post floats over the area"). */
+    val skyFloats: Boolean = false,
     val onShareWithConnections: (() -> Unit)? = null,
 )
 
@@ -1916,7 +1932,7 @@ private fun PlaceCheckNoteRow(note: PlaceCheckNote) {
                 tint = if (warning != null) PantopusColors.warning else PantopusColors.success,
             )
             Text(
-                text = warning ?: PHOTO_PLACED_NOTE,
+                text = warning ?: if (note.skyFloats) SkyWords.PHOTO_FLOATS else PHOTO_PLACED_NOTE,
                 style = PantopusTextStyle.caption,
                 color = if (warning != null) PantopusColors.appText else PantopusColors.success,
             )

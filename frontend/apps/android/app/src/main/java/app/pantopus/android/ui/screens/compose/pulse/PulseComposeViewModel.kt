@@ -52,6 +52,7 @@ import app.pantopus.android.ui.screens.shared.form.all
 import app.pantopus.android.ui.screens.shared.form.isoDateOrEmpty
 import app.pantopus.android.ui.screens.shared.form.maxLength
 import app.pantopus.android.ui.screens.shared.form.required
+import app.pantopus.android.ui.sky.SkyPlaceKind
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -336,6 +337,10 @@ class PulseComposeViewModel
         /** Which way in the check counted (`resident`, `business`, `gps` or `photo`) when the draft may post to its place. */
         private val _eligibilityBasis = MutableStateFlow<String?>(null)
         val eligibilityBasis: StateFlow<String?> = _eligibilityBasis.asStateFlow()
+
+        /** The Sky (phase A): the town the post would float over, while the place check answers `sky: true`. */
+        private val _skyArea = MutableStateFlow<String?>(null)
+        val skyArea: StateFlow<String?> = _skyArea.asStateFlow()
         private var eligibilityJob: Job? = null
 
         // Pre-post safety precheck (`POST /api/posts/precheck`).
@@ -637,6 +642,7 @@ class PulseComposeViewModel
             if (point == null) {
                 _eligibilityWarning.value = null
                 _eligibilityBasis.value = null
+                _skyArea.value = null
                 return
             }
             val (lat, lon) = point
@@ -659,10 +665,12 @@ class PulseComposeViewModel
                         is NetworkResult.Success -> {
                             _eligibilityWarning.value = if (result.data.eligible) null else result.data.reason
                             _eligibilityBasis.value = if (result.data.eligible) result.data.basis else null
+                            _skyArea.value = if (result.data.sky == true) result.data.area?.label else null
                         }
                         is NetworkResult.Failure -> {
                             _eligibilityWarning.value = null
                             _eligibilityBasis.value = null
+                            _skyArea.value = null
                         }
                     }
                 }
@@ -674,6 +682,20 @@ class PulseComposeViewModel
             _visibility.value = PulseComposeVisibility.Connections
             _eligibilityWarning.value = null
             _eligibilityBasis.value = null
+        }
+
+        /**
+         * The Sky: the venue's name while the post would pin exactly there: a venue is tagged and one of the draft's
+         * photos or videos was taken within 5 km of it (the server's rule). Null while it floats.
+         */
+        fun skyPinnedAt(): String? {
+            val tag = _selectedPlaceTag.value?.takeIf { _skyArea.value != null } ?: return null
+            if (SkyPlaceKind.of(tag.placeId, tag.kind) != SkyPlaceKind.VENUE) return null
+            val takenThere =
+                draftMediaLocations().any {
+                    SkyPlaceKind.meters(it.latitude, it.longitude, tag.latitude, tag.longitude) <= SkyPlaceKind.TAKEN_THERE_M
+                }
+            return tag.name.takeIf { takenThere }
         }
 
         /** True iff this view-model is wired to edit an existing post. */
