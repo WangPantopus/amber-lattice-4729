@@ -5,8 +5,22 @@ the same Mac. Everything a new session needs is in this file or at a path it nam
 
 ## 0. Since this hand-off was written (November 16)
 
-A new session picked the Sky up on November 15, read everything here and reviewed the fourteen boards. Nothing was
-redrawn and nothing is built. Read this section first; sections 1 to 10 are as the design session left them.
+A new session picked the Sky up on November 15, read everything here and reviewed the fourteen boards. Read this
+section first; sections 1 to 10 are as the design session left them, and this section wins where they differ.
+
+**Started on November 16, on the founder's word, each in its own session** ("keep working until everything is
+done. no need to ask me for anything"):
+
+- **Phase A is being built.** The four server pull requests are #4202, #4207 and #4208 (merged into `dev`) and
+  #4213. The five app pull requests and the documents follow. Everything is behind the switch `sky_places`, off on
+  every hosted database. The builder's notes are in `~/.pantopus-review/handoffs/sky-phase-a.md`, with the
+  decisions it made in the founder's place and the steps only the founder can take (publishing the homes-per-area
+  file, turning the switch on). The app screens use the contract's accepted words ("Floating over ...").
+- **Screens 1, 2, 6 and 7 are redrawn** and on the canvas (section 6 is done). The founder approved screen 1 first,
+  with the disc shown only for the post that is tapped. The report and the rebuilt drawing tool are in
+  `~/.pantopus-review/handoffs/sky-redraw.md` and `~/.pantopus-review/handoffs/sky-redraw-tools/`.
+- **The Moments map** is getting a time filter on both phones (pull request #4206) and, on iPhone, a globe when
+  zoomed out past about 300 miles (the drawn map close in, satellite with labels beyond).
 
 **Decided by the founder on November 16.**
 
@@ -21,11 +35,12 @@ redrawn and nothing is built. Read this section first; sections 1 to 10 are as t
 with Moments, a globe to turn, browsing from the top down, top posts by place, county, state and country, and busy
 places. The founder's own note: all of them depend on having users, and there are almost none yet.
 
-**Not answered: which comes first, the redraw or phase A.** The session's advice was phase A, because it is the
-safety piece and should be in place before Moments is promoted, and to keep the rest as design until there are
-users.
+**Not started:** levels, posts on the globe, busy places, Plans with Moments. The session's advice was to keep
+them as design until there are users.
 
-**Four questions the review raised. The founder has not answered them.**
+**Four questions the review raised.** The redraw settled the second (the founder accepted the disc only for the
+tapped post) and follows the third and fourth. The first is set aside: phase A is built with the accepted words,
+kept in one place per app so they are easy to change.
 
 1. **"Floating" now means two things.** Since the reversal an area post sits on the ground on its disc, and only a
    post truly in the air is lifted. The Post sheet, the composer and the viewer still say "Floating over

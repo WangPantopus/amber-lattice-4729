@@ -37,7 +37,7 @@ The founder accepted one rule for what lift means at each zoom. It adds to the N
 - **Zoomed out, from a state to the globe, lift is reach.** Real height is too small to see from there, so the two can't be confused. The posts with the widest reach sit highest over the globe. Coming down through country, state and town to the ground goes from the most seen to the most local.
 - **One meaning on any one view.** No screen mixes the two, and each view names which one it shows.
 - **A view of busy places is separate,** behind its own switch. Its height or colour means "busy" and is never drawn together with either meaning above.
-- **Screen 3 (country and world) is right as drawn** under this rule. Screens 1, 2, 6 and 7 are still to be redrawn.
+- **Screen 3 (country and world) is right as drawn** under this rule. Screens 1, 2, 6 and 7 were redrawn for it on November 16.
 - **Open, proposed by the design session and not confirmed:** where the change-over sits and how it is drawn. The proposal: the city view carries no lift for reach (brightness, size and the level's name carry it there), and posts settle to the ground as the map zooms in from a state to a city.
 
 ## Principles

@@ -1206,7 +1206,8 @@ Decided November 14 (section 0). Every Moment and Pulse post gets a place that i
 - [ ] Your go for phase A. It is ten small pull requests into `dev` behind one switch, `sky_places`, which you turn on for your own account first.
 - [ ] The homes-per-cell file is built and published beside the property index; that bucket belongs to the property-data lane.
 - [ ] Details and drawings for the two later additions: the higher starting level (which followers count, the steps) and the terrain (same map or its own screen).
-- [ ] Screens 1, 2, 6 and 7 redrawn for "height is physical, reach is brightness", before phase B.
+- [x] Screens 1, 2, 6 and 7 redrawn on November 16 for "close in, height is real": posts from an area sit on the map at its centre, only a post really in the air is lifted, and reach shows as size and the level's name. You approved screen 1 first, with the disc shown only for the post you tap.
+- [ ] Phase A is being built since November 16, on your word. The server part is pull requests #4202, #4207, #4208 and #4213; the app screens follow. The switch is off everywhere.
 - [x] Your ideas of November 15 and 16 are recorded in the design as directions for later: a Moment that does not expire, filters, Plans with Moments, a globe to turn, browsing from the top down, top posts by place, county, state and country, and busy places. None is approved to build. Your note: all of them depend on having users.
 - [ ] Your answers to four questions from the November 15 review of the screens ([hand-off](docs/product/sky/HANDOFF.md), section 0): the word "Floating" now that area posts sit on the ground, the close-in map drawn on its true grid, real height giving away a home in a tower, and brightness as a signal by day. The first touches phase A's words on the app screens, not its server work.
 - [ ] Phases B to E (the floating look, levels, the living sky, the world) each need their own contract and your OK.
