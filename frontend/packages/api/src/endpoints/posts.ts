@@ -111,6 +111,10 @@ export interface PlaceEligibility {
   /** Which way in counted: `resident`, `business`, `gps` or `photo`. */
   basis?: string | null;
   trustLevel?: string;
+  /** The Sky (phase A): there only while the server's `sky_places` switch is on for you. */
+  sky?: boolean;
+  /** The Sky: the area a post here floats over, its town, point and disc radius in metres. */
+  area?: { label: string | null; latitude: number; longitude: number; radius_m: number } | null;
 }
 
 export async function checkPlaceEligibility(params: {

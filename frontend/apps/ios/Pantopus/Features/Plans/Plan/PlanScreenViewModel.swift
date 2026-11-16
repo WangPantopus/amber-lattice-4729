@@ -51,6 +51,8 @@ final class PlanScreenViewModel {
     var actionError: String?
     /// A toast for an action a section ran ("Plan cancelled. Everyone has been told."), as on Android.
     var notice: String?
+    /// The plan's one link for everyone was refused (contract 6.9): an unreadable plan says the invitation is gone.
+    private(set) var openLinkRefused = false
     /// A repeating plan's date skipped (Plans step 2): the date posted in its place, for the screen to open.
     var nextPlanId: String?
     /// The plan became "in" while this screen was open: play the reveal.
@@ -294,31 +296,6 @@ final class PlanScreenViewModel {
         return invite
     }
 
-    /// Opened from an email or text invitation (`?invite=`): it becomes this account's. Someone else already used
-    /// it, or the host took it back: the plan opens as any shared plan does, with a sentence saying so.
-    func claimInvite(token: String) async {
-        do {
-            let reply: PlanInvitePlanResponse = try await api.request(PlansEndpoints.claimInvite(planId: planId, token: token))
-            plan = reply.plan
-            phase = .loaded
-            PlansStoreReads.changed(planId: planId, store: store)
-        } catch let error as APIError {
-            switch error {
-            case .notFound:
-                notice = "This invitation isn't available anymore. You can still ask to join."
-            case let .clientError(_, body) where PlanErrors.code(in: body) == "needs_verified_address":
-                // A playdate they can't see yet: the invitation is theirs, and the screen says to verify (J9).
-                break
-            case .clientError:
-                notice = error.errorDescription
-            default:
-                break
-            }
-        } catch {
-            return
-        }
-    }
-
     /// "Can't make it" to an invitation (someone already in or waiting is taken out first).
     func declineInvite() async -> Bool {
         await perform {
@@ -410,6 +387,48 @@ final class PlanScreenViewModel {
     }
 }
 
+// MARK: - Claiming an invitation
+
+extension PlanScreenViewModel {
+    /// Opened from an email or text invitation (`?invite=`): it becomes this account's. Someone else already used
+    /// it, or the host took it back: the plan opens as any shared plan does, with a sentence saying so.
+    func claimInvite(token: String) async {
+        await claim(PlansEndpoints.claimInvite(planId: planId, token: token), openLink: false)
+    }
+
+    /// The plan's one link for everyone, opened in the app (contract 6.9): an invitation for this account, then the
+    /// plan as it now reads. Every refusal is `404 invite_unavailable`; the screen then says the invitation is gone.
+    func claimOpenLink(token: String) async {
+        await claim(PlansEndpoints.claimOpenLink(planId: planId, open: token), openLink: true)
+    }
+
+    private func claim(_ endpoint: Endpoint, openLink: Bool) async {
+        do {
+            let reply: PlanInvitePlanResponse = try await api.request(endpoint)
+            plan = reply.plan
+            phase = .loaded
+            PlansStoreReads.changed(planId: planId, store: store)
+        } catch let error as APIError {
+            switch error {
+            case .notFound where openLink:
+                openLinkRefused = true
+                notice = "This invitation isn't available anymore."
+            case .notFound:
+                notice = "This invitation isn't available anymore. You can still ask to join."
+            case let .clientError(_, body) where PlanErrors.code(in: body) == "needs_verified_address":
+                // A playdate they can't see yet: the invitation is theirs, and the screen says to verify (J9).
+                break
+            case .clientError:
+                notice = error.errorDescription
+            default:
+                break
+            }
+        } catch {
+            return
+        }
+    }
+}
+
 /// A plan's 404: `{ error, message, plan? }`; for a playdate the viewer
 /// can't see yet, `plan` holds only its kind and city.
 struct PlanNotFoundDTO: Decodable {
@@ -457,35 +476,6 @@ enum PlanReveal {
 
     private static var key: String {
         "pantopus.plans.revealed.\(ScreenStore.accountKey)"
-    }
-}
-
-/// Error sentences for Plans actions. The server's own sentence wins
-/// (`{ error, message }`); a few codes get the boards' words.
-enum PlanErrors {
-    /// A `409 full` on an ask, in the boards' words.
-    static let fullSentence = "That plan just filled up."
-
-    static func sentence(for error: any Error) -> String {
-        guard let apiError = error as? APIError else { return "Something went wrong. Please try again." }
-        switch apiError {
-        case let .clientError(status, body):
-            if status == 409, code(in: body) == "full" { return fullSentence }
-            // What to do about it, as the J1 footer says it (and Android).
-            if code(in: body) == "too_many_requests" { return "You have 10 open requests. Withdraw one to ask here." }
-            return apiError.errorDescription ?? "Something went wrong. Please try again."
-        case .transport:
-            return "Can't reach Pantopus. Check your connection and try again."
-        default:
-            return apiError.errorDescription ?? "Something went wrong. Please try again."
-        }
-    }
-
-    /// The Plans API's machine code (`error`) from a raw body.
-    static func code(in body: String?) -> String? {
-        guard let body, let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return (json["error"] as? String) ?? (json["code"] as? String)
     }
 }
 

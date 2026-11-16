@@ -263,7 +263,8 @@ final class DeepLinkRouter {
         /// `/plans/:id` — a Nearby Plan (share links, plan pushes). Opens in
         /// the Plans tab's stack; dropped while the `plans` flag is off.
         /// `?invite=` carries an email or text invitation for the plan to open.
-        case plan(id: String, invite: String?)
+        /// `?invite=`: an email or text invitation; `?open=`: the plan's one link for everyone (contract 6.9).
+        case plan(id: String, invite: String?, open: String? = nil)
         /// `/plans/:id/requests` — the host's requests (H10).
         case planRequests(id: String)
         /// `/plans/:id/guests` — the host's "Who's coming" (Plans for the holidays; the two H1 notices open it).
@@ -629,10 +630,14 @@ final class DeepLinkRouter {
             if id == "new" { return .planNew }
             if segments.dropFirst(2).first == "requests" { return .planRequests(id: id) }
             if segments.dropFirst(2).first == "guests" { return .planGuests(id: id) }
-            // The plan's one link for everyone (`?open=`) is answered in a browser, app or not (Plans for the
-            // holidays): the app can't take it, so it goes back to the browser (WebLinkFallback).
-            if queryValue("open", in: comps).map({ !$0.isEmpty }) == true { return .unknown(url) }
-            return .plan(id: id, invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 })
+            // `?open=`: the plan's one link for everyone (Plans for the holidays, contract 6.9), from the browser
+            // page's "Open app" (`pantopus:///plans/<id>?open=`) or `https://…/plans/<id>?open=`: claimed for this
+            // account. Signed out it waits through sign-in like any plan link.
+            return .plan(
+                id: id,
+                invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 },
+                open: queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            )
         case "notifications":
             return .notifications
         case "support-trains", "support_train":

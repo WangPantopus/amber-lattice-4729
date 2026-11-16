@@ -241,6 +241,8 @@ enum PlanInviteCopy {
         let host = PlanCardLines.hostName(card)
         if invite.status == .declined { return "You said you can't make it. If that changes, tap I'm in." }
         if card.isFull { return PlanCannotAskCopy.waitlist }
+        // The plan's one link for everyone with "I say yes first" (contract 6.9, A10 item 5).
+        if invite.needsHostOk, invite.cameByOpenLink { return "\(host) says yes to each person who uses this link" }
         if invite.needsHostOk { return "This invitation went to another address, so \(host) says yes first." }
         return "\(host) invited you, so you're in as soon as you say so."
     }
