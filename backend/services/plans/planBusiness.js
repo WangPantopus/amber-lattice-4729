@@ -255,6 +255,9 @@ async function hostAsChoices(viewer) {
   const hosts = await loadBusinessHosts([...viewer.businessPost]);
   const allowed = [...hosts.values()].filter((host) => host.ok);
   const locations = await meetingLocations(allowed.map((host) => host.id));
+  // What the form may offer each business (Plans for the holidays): only added while a business-track switch is on
+  // for it, so with them off this answer is today's.
+  const deals = await require('./planDeals').switchByHost(allowed.map((host) => host.id));
   const businesses = allowed
     .map((host) => ({
       user_id: host.id,
@@ -264,6 +267,7 @@ async function hostAsChoices(viewer) {
       kinds: kindsFor({ kids: Boolean(viewer.bizKids && host.kids_ok) }),
       locations: locations.filter((row) => String(row.business_user_id) === host.id).map(locationView),
       limits: { spots_max: 30, days_ahead: rules.BUSINESS_LIMITS.maxDaysAhead },
+      ...(deals.get(host.id) ? { can: { deals: true, price: false, pay_here: false } } : {}),
     }))
     // A business with nowhere to meet has nothing to post yet.
     .filter((business) => business.locations.length > 0)

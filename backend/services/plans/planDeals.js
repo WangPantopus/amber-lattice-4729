@@ -84,14 +84,14 @@ function checkDeal(input, { spots, startsAt, now = new Date() }) {
     else if (by > start) errors.group_by = 'Choose a time before the plan starts.';
     deal.group_size = size;
     deal.group_by = by && !Number.isNaN(by.getTime()) ? by.toISOString() : null;
-    // If it doesn't unlock: nothing, or a smaller deal of the same shape that everyone gets.
+    // If it doesn't unlock: nothing (null), or a smaller deal of the same shape that everyone gets.
     if (input.if_short && typeof input.if_short === 'object') {
       const smallerKind = KINDS.includes(input.if_short.kind) ? input.if_short.kind : null;
       if (!smallerKind) errors.if_short = 'Choose the smaller deal.';
       const smallerItem = smallerKind === 'free_item' ? checkedItem(input.if_short.item, errors, 'if_short') : null;
       deal.if_short = { scope: 'everyone', kind: smallerKind, item: smallerItem };
     } else {
-      deal.if_short = 'none';
+      deal.if_short = null;
     }
   }
   return Object.keys(errors).length ? { deal: null, errors } : { deal, errors: {} };
@@ -123,6 +123,40 @@ function tagOf(deal) {
   return 'Deal';
 }
 
+/** The deal in a few words, for "Your deal": "A free appetizer for the table", "20% off food" (later steps). */
+function shortOf(deal) {
+  return textOf(deal);
+}
+
+function zoneOf(plan) {
+  return plan ? require('./planRules').timezoneForPlan(plan) : 'America/Los_Angeles';
+}
+
+/** "if 12 people are in by Friday at 5:00 PM", under the sentence of a group deal. */
+function conditionText(deal, plan) {
+  if (deal?.scope !== 'group' || !deal.group_by) return null;
+  const when = require('./planNotifications').whenText(deal.group_by, zoneOf(plan), { long: true, at: true });
+  return `if ${deal.group_size} people are in by ${when}`;
+}
+
+/** The time left on an open group deal: "2 days left", "1 day left", "Closes at 5:00 PM" (its last day), "3 hours left". */
+function leftText(deal, plan, now = Date.now()) {
+  if (deal?.scope !== 'group' || deal.state !== 'open' || !deal.group_by) return null;
+  const by = new Date(deal.group_by).getTime();
+  const ms = by - now;
+  if (ms <= 0) return null;
+  const DAY = 24 * 60 * 60 * 1000;
+  if (ms >= 2 * DAY) return `${Math.floor(ms / DAY)} days left`;
+  if (ms >= DAY) return '1 day left';
+  const rules = require('./planRules');
+  const tz = zoneOf(plan);
+  if (rules.localParts(new Date(by), tz).date === rules.localParts(new Date(now), tz).date) {
+    return `Closes at ${require('./planNotifications').timeText(new Date(by), tz)}`;
+  }
+  const hours = Math.max(1, Math.floor(ms / (60 * 60 * 1000)));
+  return `${hours} ${hours === 1 ? 'hour' : 'hours'} left`;
+}
+
 /** How a guest claims it, for the business's form (D3 item 8). */
 function claimLineOf(deal) {
   if (deal?.kind === 'free_item') return 'Your staff mark it used on the guest list. Once a guest.';
@@ -132,23 +166,26 @@ function claimLineOf(deal) {
 /** What a group deal does if it falls short, in one line. */
 function ifShortText(deal) {
   if (deal?.scope !== 'group') return null;
-  const smaller = deal.if_short && deal.if_short !== 'none' ? textOf(deal.if_short) : null;
+  const smaller = deal.if_short && typeof deal.if_short === 'object' ? textOf(deal.if_short) : null;
   return smaller
     ? `If it doesn't get to ${deal.group_size}, everyone still gets ${lowerFirst(smaller)}.`
-    : `If it doesn't get to ${deal.group_size}, the plan still happens, without the deal.`;
+    : `If it doesn't get to ${deal.group_size}, the night still happens, without the deal.`;
 }
 
 function shortText(deal) {
-  const smaller = deal.if_short && deal.if_short !== 'none' ? textOf(deal.if_short) : null;
+  const smaller = deal.if_short && typeof deal.if_short === 'object' ? textOf(deal.if_short) : null;
   return smaller ? `It didn't get to ${deal.group_size}. Everyone still gets ${lowerFirst(smaller)}.`
-    : `It didn't get to ${deal.group_size}. The plan still happens.`;
+    : `It didn't get to ${deal.group_size}. The night still happens.`;
 }
 
 /** What the business's form shows for a deal it is choosing (POST /api/plans/deal-preview). */
 function preview(input, plan) {
   const { deal, errors } = checkDeal(input, plan);
-  if (!deal) return { ok: false, text: null, tag: null, claim: null, if_short_text: null, errors };
-  return { ok: true, text: textOf(deal), tag: tagOf(deal), claim: claimLineOf(deal), if_short_text: ifShortText(deal), errors: {} };
+  if (!deal) return { ok: false, text: null, tag: null, condition_text: null, if_short_text: null, claim_text: null, errors };
+  // The plan isn't saved yet: its times are read in the business's own zone (the location's, as posting does).
+  const zonePlan = plan.timezone ? { timezone: plan.timezone } : null;
+  return { ok: true, text: textOf(deal), tag: tagOf(deal), condition_text: conditionText(deal, zonePlan),
+    if_short_text: ifShortText(deal), claim_text: claimLineOf(deal), errors: {} };
 }
 
 // ── The card ─────────────────────────────────────────────────
@@ -156,7 +193,7 @@ function preview(input, plan) {
 /** What a deal gives the guest now: the deal, the smaller one after it fell short, or nothing. */
 function givenNow(deal) {
   if (deal.state === 'on' || deal.state === 'unlocked') return deal;
-  if (deal.state === 'short' && deal.if_short && deal.if_short !== 'none') return deal.if_short;
+  if (deal.state === 'short' && deal.if_short && typeof deal.if_short === 'object') return deal.if_short;
   return null;
 }
 
@@ -164,20 +201,24 @@ function givenNow(deal) {
  * The card's `deal` (contract 9.2), for an app that sent `biz=1`, while the plan's host has the switch.
  * @param {{ role: string, request: object|null, going: number, isPaid?: boolean }} opts
  */
-function cardView(deal, { role, request = null, going = 0 }) {
+function cardView(deal, { role, request = null, going = 0, plan = null, firstName = null }) {
   if (!deal || !deal.kind) return null;
   const out = {
     scope: deal.scope,
     kind: deal.kind,
     text: textOf(deal),
     tag: tagOf(deal),
+    short: shortOf(deal),
     state: deal.state,
+    condition_text: conditionText(deal, plan),
     group: deal.scope === 'group' ? {
       size: deal.group_size, in: going, left: Math.max(0, deal.group_size - going), by: deal.group_by,
+      left_text: leftText(deal, plan),
     } : null,
-    if_short_text: ifShortText(deal),
-    unlocked_text: deal.state === 'unlocked' ? `Unlocked: ${going} are in` : null,
-    short_text: deal.state === 'short' ? shortText(deal) : null,
+    // Under the count while a group deal is open.
+    if_short_text: deal.scope === 'group' && deal.state === 'open' ? ifShortText(deal) : null,
+    // The banner or the card once a group deal settled.
+    state_text: deal.state === 'unlocked' ? `Unlocked: ${going} are in` : deal.state === 'short' ? shortText(deal) : null,
     // The line under "I'm in" on a free plan (D1 item 5).
     join_text: deal.kind === 'free_item' ? 'Free to join. Show your deal there.' : null,
   };
@@ -185,9 +226,12 @@ function cardView(deal, { role, request = null, going = 0 }) {
     const given = givenNow(deal);
     out.mine = {
       state: request.deal_used_at ? 'used' : deal.state === 'open' ? 'waiting' : given ? 'ready' : 'none',
-      text: given ? textOf(given) : null,
+      // What they get now (the smaller deal after one fell short), and how it's claimed.
+      short: given ? shortOf(given) : null,
+      text: given?.kind === 'free_item' ? 'Show this to your server.' : null,
+      // For something free, staff match the guest by first name (K8: no code).
+      name: given?.kind === 'free_item' ? firstName : null,
       used_at: request.deal_used_at || null,
-      how_text: given?.kind === 'free_item' ? 'Show this to your server.' : null,
     };
   }
   if (role === 'host') {
@@ -315,7 +359,7 @@ async function runDealTick({ now = new Date() } = {}) {
               idempotencyKey: `plan-deal-unlocked:${plan.post_id}:${request.user_id}`,
             });
           } else {
-            const smaller = deal.if_short && deal.if_short !== 'none' ? textOf(deal.if_short) : null;
+            const smaller = deal.if_short && typeof deal.if_short === 'object' ? textOf(deal.if_short) : null;
             await planNotify.notify({
               userId: request.user_id, type: 'plan_deal_short', plan: settledPlan, recipientIsIn: true,
               title: `${plan.post.title} didn't get to ${deal.group_size}`,
@@ -404,6 +448,6 @@ async function markUsedFor(user, postId, requestId) {
 
 module.exports = {
   previewFor, markUsedFor,
-  FLAG, KINDS, ALCOHOL, enabledFor, switchByHost, checkDeal, checkedDeal, textOf, tagOf, claimLineOf, ifShortText,
+  FLAG, KINDS, ALCOHOL, enabledFor, switchByHost, checkDeal, checkedDeal, textOf, tagOf, shortOf, conditionText, leftText, claimLineOf, ifShortText,
   preview, cardView, givenNow, dealForNewPlan, dealChange, markUsed, runDealTick, notifyRemoved, acceptedOf,
 };
