@@ -240,10 +240,10 @@ class MailSentViewModel
             if (loaded.removeAll { it.id == id }) publish()
         }
 
-        /** The list shows [card] in another state than its page just read (the pickup or an arrival came since). */
+        /** The list shows [card] in another state than its page just read (the pickup, an arrival or its email came since). */
         private fun movedOn(card: SentCard): Boolean {
             val shown = loaded.firstOrNull { it.id == card.id } ?: return false
-            return shown.status != card.status || shown.canTakeBack != card.canTakeBack
+            return shown.status != card.status || shown.canTakeBack != card.canTakeBack || shown.emailStatus != card.emailStatus
         }
 
         private fun publish() {
@@ -280,6 +280,9 @@ class MailSentViewModel
             val STALE_AFTER: Duration = Duration.ofMinutes(5)
         }
     }
+
+/** A card by email's email that hasn't gone out: the server keeps trying for about an hour, then gives up. */
+enum class SentEmailTrouble { Retrying, Failed }
 
 /** How Sent says where a card is (the list and the card's own page say it the same way). */
 object MailSentWords {
@@ -329,7 +332,7 @@ object MailSentWords {
                 }
             "picked_up" -> "Arrives on Christmas morning"
             "delivered" -> if (card.sealed) "In their mailbox, sealed until Christmas" else "In their mailbox since $day"
-            "email_waiting" -> if (card.kind == "letter") "Waiting for them to claim it" else "Waiting for them to open the email"
+            "email_waiting" -> emailWaitingLine(card)
             "claimed" -> if (card.kind == "letter") "They claimed your letter" else "They joined Pantopus and have it"
             "expired" -> if (card.kind == "letter") "The claim link expired" else "They didn’t open the email in 90 days"
             // A block withdrew it before it came (memories contract section 8): never why or when.
@@ -337,6 +340,27 @@ object MailSentWords {
             else -> ""
         }
     }
+
+    /**
+     * A card by email whose email hasn't gone out while it waits (the server's `email_status`): still being tried, or
+     * given up. Null once it went, for a link, and for a word this app doesn't know.
+     */
+    fun emailTrouble(card: SentCard): SentEmailTrouble? {
+        if (card.status != "email_waiting" || card.byLink) return null
+        return when (card.emailStatus) {
+            "retrying" -> SentEmailTrouble.Retrying
+            "failed" -> SentEmailTrouble.Failed
+            else -> null
+        }
+    }
+
+    /** By email, still waiting: that its email hasn't gone out, else that it waits for them to open or claim it. */
+    private fun emailWaitingLine(card: SentCard): String =
+        when (emailTrouble(card)) {
+            SentEmailTrouble.Retrying -> "The email didn’t go out yet. Trying again"
+            SentEmailTrouble.Failed -> "The email didn’t go out"
+            null -> if (card.kind == "letter") "Waiting for them to claim it" else "Waiting for them to open the email"
+        }
 
     /** A card by link, in a line; null for a state the words below already say. */
     private fun linkLine(card: SentCard): String? =

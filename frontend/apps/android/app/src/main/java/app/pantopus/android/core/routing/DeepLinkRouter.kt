@@ -287,8 +287,8 @@ object DeepLinkRouter {
 
         /**
          * `/app/mailbox/sent/:id` — a card the person sent, on its page over
-         * Sent (the holiday_card_claimed / holiday_card_expired notices).
-         * Mirrors iOS `mailSentCard`.
+         * Sent (the holiday_card_claimed / holiday_card_expired notices, and
+         * holiday_card_email_failed for one card). Mirrors iOS `mailSentCard`.
          */
         data class MailSentCard(val id: String) : Destination
 
@@ -297,7 +297,11 @@ object DeepLinkRouter {
          */
         data class SendCard(val design: String?) : Destination
 
-        /** `/mailbox` — the Mail tab (the Mail Day summary notification). */
+        /**
+         * `/mailbox` — the Mail tab (the Mail Day summary notification); also
+         * `/app/mailbox/sent` (holiday_card_email_failed for several cards),
+         * since Sent is a drawer of the Mailbox. Mirrors iOS `mailbox`.
+         */
         data object Mailbox : Destination
 
         /** `/app/place/neighbor-message/:id` — a received neighbor message. */
@@ -665,9 +669,11 @@ object DeepLinkRouter {
             "mail_escrow_expired" to setOf(LaunchFeature.MAIL_EXTRAS),
             "mail_escrow_claimed" to setOf(LaunchFeature.MAIL_EXTRAS),
             "mail_claimed" to setOf(LaunchFeature.MAIL_EXTRAS),
-            // Someone not on Pantopus joined and has the sender's Christmas card, or its 90 days ended.
+            // Someone not on Pantopus joined and has the sender's Christmas card, its 90 days ended, or its email didn't
+            // go out after every try (one card's page, or the Mailbox for several).
             "holiday_card_claimed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
             "holiday_card_expired" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
+            "holiday_card_email_failed" to setOf(LaunchFeature.MAILBOX, LaunchFeature.HOLIDAY_CARDS),
         )
 
     /**
