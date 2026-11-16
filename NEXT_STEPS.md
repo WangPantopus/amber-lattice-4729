@@ -348,6 +348,15 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] A list still sends one note to everyone, so for three or more people the helper writes a note that names no one. A different note per person is not built.
 - [ ] Not this season: AI-made card pictures. "Draw our photo in this card's style" would need a picture vendor and your decision on sending family photos to it.
 
+**Made by the founder on November 15 (Plans for the holidays, and paying businesses).** You asked whether Plans is strong enough for Thanksgiving, Christmas, New Year's, birthdays and team outings, and where businesses fit. Design only for now; the documents are [docs/product/plans-holidays](docs/product/plans-holidays/README.md). Progress is in "Plans for the holidays" below.
+
+- [x] The additions, agreed: answer from a link without the app, bigger groups with adults and kids, the bring list, occasions (Thanksgiving dinner, Friendsgiving, Holiday party, Gift exchange, New Year's Eve, Birthday), then find a date, chip in, gift exchange, photos afterwards and groups.
+- [x] Businesses post the plans they host and give deals, including a group deal that unlocks for everyone when enough people join by a time.
+- [x] The Plans screen stays clean: one thing on the right of a row, no banners, extras behind switches inside a plan, one deal a plan from fixed kinds. Retention matters most.
+- [x] Guests pay a business through Pantopus, with tips. The sixteen payment decisions P1 to P16, all as recommended ([the list](docs/product/plans-holidays/02-payments.md#12-the-decisions-accepted-november-15)): a price to join, then the bill at the place; 15% card fee included on a spot for a guest Pantopus brought and 5% plus the card fee for the business's own; 5% and 1% plus the card fee on a bill; no cut of a tip; a group price charges first and returns the difference; paid plans in person only; payout 48 hours after the plan ends.
+- [x] This round is design: no code in the designing session. When the design is confirmed, the build is done by separate sessions on Opus 5.5 at Extra High.
+- [x] The calls the documents make (H1 to H11 in the design, K1 to K10 in the contract): all as recommended. "Yes, let's start" for the people track, built by new sessions on Opus 5.5 at Extra High, each given the instructions, the design and the screens for exactly what it builds.
+
 **Made by the founder on November 15 (one card to many people by email).** You asked whether a Christmas card can go to several people who aren't on Pantopus by email, to make sure it does and works, and what happens when it fails.
 
 - [x] A list (digital stamps on) can go to as many new email addresses as there are stamps for. Before, only 3 new addresses a week went and the rest showed "Won't be sent". Cards taken back still count as new addresses for that week, so the 3 free stamps can't be sent, taken back and sent again to email stranger after stranger. With stamps off the old rule stays (3 new addresses a week). The same address still gets one card in 30 days, unless the earlier card was taken back before its email went out.
@@ -1122,3 +1131,15 @@ Decided November 14 (section 0). Built November 14 and 15 and checked in a brows
 - "Posts 5" on your own web profile counts your reposts, while "See all 4 posts" under it counts the posts you wrote (it opens My posts).
 - [ ] Not checked anywhere: the hosted staging and production sites, real phones, the iPhone Duo layout, a screen reader speaking aloud, tablets.
 - [ ] Yours: staging has the server and the web now; the phones show it once a staging build carries it. It reaches production when you promote `dev` to `master`.
+
+## Plans for the holidays (added November 15)
+
+Decided November 15 (section 0). Design, contract and build plan: [docs/product/plans-holidays](docs/product/plans-holidays/README.md). Nothing is built.
+
+- [x] The research, the fourteen boards and the payments design (November 15). The boards were checked by rendering them in light and dark, not in the canvas page.
+- [x] The documents' calls confirmed and the people track started (November 15): three sessions (server and web, iPhone, Android) from [the briefs](docs/product/plans-holidays/05-session-briefs.md).
+- [ ] H1, answers without an account: the open link, adults and kids, Maybe, room for 100. Server and web first; the shipped apps' email and text invitations can then be answered in a browser.
+- [ ] H2, the bring list.
+- [ ] H3, occasions.
+- [ ] Business track, each behind its gate ([build plan, section 3](docs/product/plans-holidays/04-build-plan.md#3-the-business-track-and-its-gates)): the shared pieces; deals without money; paying to join after the by-hand trial, the lawyer's read and a re-read of the stores' rules; the bill at the place and tips after the accountant's answer on Washington sales tax.
+- [ ] Not drawn yet: find a date, chip in, gift exchange, photos afterwards, groups, one person paying for a group.
