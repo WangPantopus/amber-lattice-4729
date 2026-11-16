@@ -608,3 +608,29 @@ private fun Modifier.holdToRepeat(
             )
         }
 }
+
+/** At or above this font scale two buttons side by side stack instead, so neither label is cut. */
+private const val STACK_FONT_SCALE = 1.5f
+
+/**
+ * Two buttons side by side, each half the width ("Maybe" / "Can't make it", "Not this time" / "Let in", "Copy link" /
+ * "Share"); at the largest text sizes they stack, full width, so their words stay whole. Each slot gets the modifier to
+ * put on its button.
+ */
+@Composable
+fun PlanButtonPair(
+    first: @Composable (Modifier) -> Unit,
+    second: @Composable (Modifier) -> Unit,
+) {
+    if (LocalDensity.current.fontScale >= STACK_FONT_SCALE) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            first(Modifier.fillMaxWidth())
+            second(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            first(Modifier.weight(1f))
+            second(Modifier.weight(1f))
+        }
+    }
+}

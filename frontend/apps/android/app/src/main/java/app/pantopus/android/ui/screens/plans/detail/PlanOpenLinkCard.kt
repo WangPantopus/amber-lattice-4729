@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
+import app.pantopus.android.ui.screens.plans.components.PlanButtonPair
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
@@ -68,20 +69,24 @@ internal fun PlanOpenLinkCard(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GhostButton(
-                title = "Copy link",
-                onClick = { vm.useOpenLink(copy = true) },
-                isEnabled = !ui.openLinkBusy,
-                modifier = Modifier.weight(1f).testTag("planOpenLinkCopy"),
-            )
-            PrimaryButton(
-                title = "Share",
-                onClick = { vm.useOpenLink(copy = false) },
-                isEnabled = !ui.openLinkBusy,
-                modifier = Modifier.weight(1f).testTag("planOpenLinkShare"),
-            )
-        }
+        PlanButtonPair(
+            first = { slot ->
+                GhostButton(
+                    title = "Copy link",
+                    onClick = { vm.useOpenLink(copy = true) },
+                    isEnabled = !ui.openLinkBusy,
+                    modifier = slot.testTag("planOpenLinkCopy"),
+                )
+            },
+            second = { slot ->
+                PrimaryButton(
+                    title = "Share",
+                    onClick = { vm.useOpenLink(copy = false) },
+                    isEnabled = !ui.openLinkBusy,
+                    modifier = slot.testTag("planOpenLinkShare"),
+                )
+            },
+        )
         PlanDivider()
         Row(
             modifier =

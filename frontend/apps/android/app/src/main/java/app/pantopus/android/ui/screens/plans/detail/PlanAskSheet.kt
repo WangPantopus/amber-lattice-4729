@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,7 @@ import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusCheckbox
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.components.sheetKeyboardRules
+import app.pantopus.android.ui.screens.plans.components.PlanButtonPair
 import app.pantopus.android.ui.screens.plans.components.PlanChoice
 import app.pantopus.android.ui.screens.plans.components.PlanChoiceGroup
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
@@ -401,20 +403,24 @@ private fun PlanAnswerContent(
             isEnabled = !draft.sending,
             modifier = Modifier.height(50.dp).testTag("planAnswerIn"),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GhostButton(
-                title = "Maybe",
-                onClick = onMaybe,
-                isEnabled = !draft.sending,
-                modifier = Modifier.weight(1f).height(50.dp).testTag("planAnswerMaybe"),
-            )
-            GhostButton(
-                title = "Can't make it",
-                onClick = onDecline,
-                isEnabled = !draft.sending,
-                modifier = Modifier.weight(1f).height(50.dp).testTag("planAnswerCant"),
-            )
-        }
+        PlanButtonPair(
+            first = { slot ->
+                GhostButton(
+                    title = "Maybe",
+                    onClick = onMaybe,
+                    isEnabled = !draft.sending,
+                    modifier = slot.heightIn(min = 50.dp).testTag("planAnswerMaybe"),
+                )
+            },
+            second = { slot ->
+                GhostButton(
+                    title = "Can't make it",
+                    onClick = onDecline,
+                    isEnabled = !draft.sending,
+                    modifier = slot.heightIn(min = 50.dp).testTag("planAnswerCant"),
+                )
+            },
+        )
         Text(
             text = "$host sees your answer",
             style = PantopusTextStyle.caption,

@@ -46,6 +46,7 @@ import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
+import app.pantopus.android.ui.screens.plans.components.PlanButtonPair
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
@@ -203,21 +204,25 @@ private fun WaitingCard(
                 Text(text = ui.waitingLine(row), style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GhostButton(
-                title = "Not this time",
-                onClick = { vm.askNotThisTime(row) },
-                isEnabled = !working,
-                modifier = Modifier.weight(1f).testTag("planGuestNotThisTime"),
-            )
-            PrimaryButton(
-                title = "Let in",
-                onClick = { vm.letIn(row) },
-                isLoading = working,
-                isEnabled = !working,
-                modifier = Modifier.weight(1f).testTag("planGuestLetIn"),
-            )
-        }
+        PlanButtonPair(
+            first = { slot ->
+                GhostButton(
+                    title = "Not this time",
+                    onClick = { vm.askNotThisTime(row) },
+                    isEnabled = !working,
+                    modifier = slot.testTag("planGuestNotThisTime"),
+                )
+            },
+            second = { slot ->
+                PrimaryButton(
+                    title = "Let in",
+                    onClick = { vm.letIn(row) },
+                    isLoading = working,
+                    isEnabled = !working,
+                    modifier = slot.testTag("planGuestLetIn"),
+                )
+            },
+        )
     }
 }
 
