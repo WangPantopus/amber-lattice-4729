@@ -78,6 +78,35 @@ list's reminder, repeats). A plan that repeats cannot use it.
   These emails are outside a guest's three (contract 6.6).
 - The host may change the time afterwards as any plan's time changes today.
 
+**Settled while it was built** (November 16; the designer's calls after the
+server session asked, told to the founder):
+
+- **While the host is picking, ticking is answering.** A guest's ticks are
+  kept on their invitation row as answered and not in. The host's lists do not
+  show them as Maybe and do not count them under "no answer", and "Remind the
+  {5} who haven't answered" skips everyone who saved their times, "none of
+  these" included. In a browser the times card takes the place of W1's three
+  buttons, with the name, the numbers and the email as W1 asks for them.
+- **At a home, a browser guest's saved times answer `check_email`**, as an
+  "I'm in" does (contract 6.3), so the guest can come back to their ticks only
+  through their own link. That email: subject "Your times for {title}",
+  heading "Your times are saved", the line "{Host} is picking a date. You'll
+  hear when {Host} chooses one.", the button "Open your invitation", and "This
+  link is yours; please don't forward it." It shows no address. It is outside
+  the plan's three and goes at most once in 24 hours, as "their link again"
+  does (contract 6.6); the day's five and "don't send me invitations" hold.
+- **Past the room at the pick.** A person with an account who ticked the
+  picked time and does not fit is on the waitlist, told "{title} is {Sunday,
+  Nov 22 at 4:00 PM}. You're on the waitlist." A guest without an account has
+  no waitlist: their answer becomes Maybe, so the host sees them under Maybe
+  and is not asked to remind them, and they get one email in place of "Can
+  you make it?": subject "{title} is {Sunday, Nov 22 at 4:00 PM}", heading
+  "{title} is full right now", the line "It's {Sunday, Nov 22 at 4:00 PM}, a
+  time you ticked, but it filled up with people who answered first. You're
+  down as Maybe, so {Host} sees you'd still like to come. You can change that
+  from your invitation.", and the button "Open your invitation". If room
+  opens later, "I'm in" from their link works as on any plan.
+
 **The card** (with `extras=1`): `"dates": { "state": "picking", "options":
 [{ "id", "text": "Sat, Nov 21 · 6:00 PM", "can": 4, "mine": true }],
 "answered": 9, "invited": 14 }`. The host also gets, for each option, `"who":
