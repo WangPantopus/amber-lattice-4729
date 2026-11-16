@@ -74,9 +74,14 @@ public struct MomentCreateBody: Encodable, Sendable, Hashable {
     public var altitude: MomentAltitudeBody?
     /// A part of a video longer than one Moment (contract v3.11); left out for any other Moment.
     public var series: MomentSeriesDTO?
+    /// The Sky (v4.0): `"place"` pins the Moment at a public place (the `venue_id`, else the one that names the spot).
+    public var pin: String?
+    /// The Sky (v4.0): hold the Moment until then, `1h`, `3h` or `tonight`; left out to post now.
+    public var shareLater: String?
 
     private enum CodingKeys: String, CodingKey {
-        case kind, hours, audience, caption, text, background, location, altitude, series
+        case kind, hours, audience, caption, text, background, location, altitude, series, pin
+        case shareLater = "share_later"
         case showArea = "show_area"
         case clientRequestId = "client_request_id"
         case placeKey = "place_key"

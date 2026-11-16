@@ -160,6 +160,13 @@ Readers get the stored area point unmoved (`applyPostLocationPrivacy`,
 (`GET /api/posts/place-eligibility`) adds `sky: true` and `area: { label,
 latitude, longitude, radius_m }` for a caller with the flag on, for their
 "Floating over …" line; the label is the town at the area's own point.
+In the apps (web, iPhone, Android; 2026-11-16) the composer's "Posting to …"
+line becomes "Floating over Camas, WA" with a "Pin it at a place" button that
+opens the place picker, and "At Esther Short Park" only when a venue is tagged
+and one of the draft's photos was taken within 5 km of it (the server's rule);
+the photo note says "The post floats over the area" otherwise. The web asks the
+route once per place picked, a device spot included, for that line. With no
+`sky` in the answer the composers are as before.
 
 **Posts made before (the Sky on for everyone).** Old rows keep their exact
 points (the founder decides any clean-up). Once `sky_places` is on for everyone,
@@ -249,6 +256,15 @@ Sky design's phase A, accepted 2026-11-14), the server decides instead, whatever
 - **Height:** a floating Moment away from home keeps feet rounded to 100 (a pin keeps 10; at home, none).
 - **The preview** (`POST /api/moments/place-preview`) adds `sky`, `area` (the town, the area point and `radius_m`),
   `place` (the public place a pin would use) and `can_pin` (false at home) for a caller with the flag on.
+- **Share later** (`share_later: "1h" | "3h" | "tonight"`): the Moment is made at once but until its time only its
+  author can read it (`state: "scheduled"`, `share_at`); it is on no map, in no ring and in no push. At its time its
+  `created_at` becomes the time it went live, so nobody reads when its author was there; new apps say "Earlier today"
+  (or "Yesterday") for it (`earlier: true`).
+- **In the apps** (iPhone and Android, 2026-11-16): the Post sheet draws the Sky only when the preview answers `sky:
+  true`: "Floating over Washougal, WA" with the area's disc by default; "Pin it at a place" (the place naming the spot,
+  else the place picker, which leaves out schools and preschools) sends `pin: "place"` and shows "At Esther Short
+  Park"; at home a note says the Moment floats, with the pin and the elevation greyed out; "Share later" sends
+  `share_later`. An unpinned Moment also sends `show_area: true`, so it floats even if the flag went off meanwhile.
 - Area Moments made before the flag keep the grid read below until they end (48 hours at most).
 
 - **No live location, no trail:** only the posted point is stored; nothing joins one Moment to the next.

@@ -63,6 +63,7 @@ struct PlanScreen: View {
         .task {
             // An email or text invitation becomes this account's before the plan is read.
             if case let .invite(token) = intent, !askedOnOpen { await viewModel.claimInvite(token: token) }
+            if case let .openLink(token) = intent, !askedOnOpen { await viewModel.claimOpenLink(token: token) }
             await viewModel.resume()
             if let notice = PlansNavigator.shared.notice {
                 PlansNavigator.shared.notice = nil
@@ -304,9 +305,11 @@ struct PlanScreen: View {
     }
 
     private var unavailable: some View {
+        // The plan's one link for everyone refused (contract 6.9): the words for an invitation that's gone.
         PlanMessageScreen(
-            title: "This plan isn't available",
-            message: "It may have ended, been cancelled, or be just for people closer by.",
+            title: viewModel.openLinkRefused ? "This invitation isn't available anymore" : "This plan isn't available",
+            message: viewModel.openLinkRefused ? "Ask the person who shared the link to send it again."
+                : "It may have ended, been cancelled, or be just for people closer by.",
             onBack: close
         ) {
             // A way on, as on Android (J8's "See all plans" goes back the same way).
@@ -440,7 +443,10 @@ extension PlanScreen {
         }
     }
 
+    /// Board 18 also for the plan's one link with the host's yes (contract 6.9, A10 item 4): their ask carries adults
+    /// and kids, and waits.
     private func answersHere(_ card: PlanCardDTO) -> Bool {
-        card.answersWithNumbers && (viewModel.mode == .going || viewModel.openInvite.map { !$0.needsHostOk } == true)
+        card.answersWithNumbers
+            && (viewModel.mode == .going || viewModel.openInvite.map { !$0.needsHostOk || $0.cameByOpenLink } == true)
     }
 }

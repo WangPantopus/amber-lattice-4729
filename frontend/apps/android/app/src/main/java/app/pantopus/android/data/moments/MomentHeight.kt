@@ -2,6 +2,7 @@ package app.pantopus.android.data.moments
 
 import app.pantopus.android.data.api.models.moments.MomentDto
 import app.pantopus.android.data.api.models.moments.MomentRingDto
+import app.pantopus.android.ui.sky.SkyWords
 import java.text.NumberFormat
 import kotlin.math.abs
 import kotlin.math.floor
@@ -28,6 +29,8 @@ object MomentHeight {
         meters: Double,
         accuracyM: Double?,
         speedMps: Double?,
+        // The Sky: a floating Moment's height is rounded to 100 ft ("About 4,400 ft").
+        step: Int = STEP_FEET,
     ): Int? {
         // A reading that isn't a number is in no range.
         if (meters !in MIN_METERS..MAX_METERS) return null
@@ -35,7 +38,7 @@ object MomentHeight {
         val roughest = if (flying) MAX_ERROR_FLYING_METERS else MAX_ERROR_METERS
         if (accuracyM != null && accuracyM !in 0.0..roughest) return null
         // Half a step rounds up, as JavaScript's Math.round does.
-        return floor(meters * FEET_PER_METER / STEP_FEET + HALF).toInt() * STEP_FEET
+        return floor(meters * FEET_PER_METER / step + HALF).toInt() * step
     }
 
     /** The row's second line: "4,390 ft above sea level". */
@@ -56,22 +59,26 @@ data class MomentShownHeight(
     val feet: Int,
     /** Posted in flight (60 m/s or more). */
     val flying: Boolean,
+    /** The Sky: a floating Moment's height, rounded to 100 ft, reads "About 4,400 ft". */
+    val about: Boolean = false,
 ) {
     /** The color that goes with the number (never color alone). */
     val band: MomentHeightBand get() = if (flying) MomentHeightBand.FLYING else MomentHeightBand.of(feet)
 
     /** The tag: "4,390 ft". */
-    val text: String get() = "${NumberFormat.getIntegerInstance().format(feet)} ft"
+    val text: String get() = if (about) SkyWords.aboutFeet(feet) else "${NumberFormat.getIntegerInstance().format(feet)} ft"
 
     /** What TalkBack adds to a ring: "4,390 feet above sea level", or "posted in flight at 34,000 feet". */
     val spoken: String
         get() {
             val number = NumberFormat.getIntegerInstance()
-            return when {
-                flying -> "posted in flight at ${number.format(feet)} feet"
-                feet < 0 -> "${number.format(-feet)} feet below sea level"
-                else -> "${number.format(feet)} feet above sea level"
-            }
+            val line =
+                when {
+                    flying -> return "posted in flight at ${number.format(feet)} feet"
+                    feet < 0 -> "${number.format(-feet)} feet below sea level"
+                    else -> "${number.format(feet)} feet above sea level"
+                }
+            return if (about) "about $line" else line
         }
 
     companion object {
@@ -121,4 +128,5 @@ enum class MomentHeightBand(
 /** Its newest Moment's height; null when it shows none. */
 val MomentRingDto.shownHeight: MomentShownHeight? get() = MomentShownHeight.of(altitudeFt, flying)
 
-val MomentDto.shownHeight: MomentShownHeight? get() = MomentShownHeight.of(altitudeFt, flying)
+val MomentDto.shownHeight: MomentShownHeight?
+    get() = MomentShownHeight.of(altitudeFt, flying)?.let { it.copy(about = floating && !flying) }

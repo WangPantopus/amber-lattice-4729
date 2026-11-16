@@ -21,12 +21,21 @@ extension MomentsComposerModel {
 
     /// The feet the row shows and everyone will read; nil with no reading, or one the server would leave out.
     var heightFeet: Int? {
-        heightReading.flatMap { MomentHeight.feet(meters: $0.meters, accuracyM: $0.accuracyMeters, speedMps: $0.speedMps) }
+        // The Sky: a floating Moment's height is rounded to 100 ft ("About 4,400 ft").
+        let step = sky != nil && floats ? 100 : 10
+        return heightReading.flatMap {
+            MomentHeight.feet(meters: $0.meters, accuracyM: $0.accuracyMeters, speedMps: $0.speedMps, step: step)
+        }
     }
 
-    /// The "Show elevation" row is on the sheet: never at home, for an area or with no location.
+    /// The "Show elevation" row is on the sheet: never at home or with no location; before the Sky, not for an area.
     var offersHeight: Bool {
-        place?.canShowHeight == true && !showArea && !noLocationOn && heightFeet != nil
+        place?.canShowHeight == true && (sky != nil || !showArea) && !noLocationOn && heightFeet != nil
+    }
+
+    /// The Sky at home: the row stays, greyed out, "Not shown at home".
+    var greysHeight: Bool {
+        skyAtHome && heightFeet != nil
     }
 
     /// What goes with the post: the reading, only while the row is on the sheet and switched on.

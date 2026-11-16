@@ -98,7 +98,7 @@ data class MomentDto(
     val id: String,
     val author: MomentAuthorDto,
     val kind: String,
-    /** `uploading`, `checking`, `live`, `held` or `ended` (others only ever get `live`). */
+    /** `uploading`, `checking`, `live`, `held`, `ended` or (the Sky, author only) `scheduled` (others only ever get `live`). */
     val state: String = "live",
     val caption: String? = null,
     val text: String? = null,
@@ -137,6 +137,12 @@ data class MomentDto(
     val flying: Boolean = false,
     /** A part of a longer video posted as several Moments (contract v3.11); null for any other Moment. */
     val series: MomentSeriesDto? = null,
+    /** The Sky (v4.0): it floats over an area (its point is the area's). */
+    val floating: Boolean = false,
+    /** The Sky: it was shared later, so the viewer says "Earlier today" (or "Yesterday") in place of "12m ago". */
+    val earlier: Boolean = false,
+    /** The Sky, for its author only: when it shares (or shared). */
+    @Json(name = "share_at") val shareAt: String? = null,
 )
 
 /**
@@ -242,6 +248,33 @@ data class MomentPlacePreviewDto(
     @Json(name = "has_connections") val hasConnections: Boolean? = null,
     /** The sheet may offer "Show elevation" here (contract v3.8): heights are on for you and it isn't your home. */
     @Json(name = "can_show_height") val canShowHeight: Boolean = false,
+    /** The Sky (Moments API v4.0): true while `sky_places` is on for you; the Post sheet then draws the Sky's rows. */
+    val sky: Boolean = false,
+    /** The Sky: the area the point floats over (its town, the area's own point, the disc's radius); null with no point. */
+    val area: MomentSkyAreaDto? = null,
+    /** The Sky: the public place that names the spot, what "Pin it at a place" starts with; null where there is none. */
+    @Json(name = "place") val skyPlace: MomentPlaceChoiceDto? = null,
+    /** The Sky: a pin is possible here (false at home). */
+    @Json(name = "can_pin") val canPin: Boolean = false,
+    /** The Sky: the "Share later" times on offer now ("In 1 hour", "In 3 hours", "Tonight at 8" before 7 pm). */
+    @Json(name = "share_later") val shareLater: List<MomentShareLaterDto>? = null,
+)
+
+/** The Sky: the area a point floats over (Moments API v4.0). */
+@JsonClass(generateAdapter = true)
+data class MomentSkyAreaDto(
+    val label: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @Json(name = "radius_m") val radiusM: Double? = null,
+)
+
+/** The Sky: one "Share later" choice, `1h`, `3h` or `tonight`, its words and when it would share (ISO). */
+@JsonClass(generateAdapter = true)
+data class MomentShareLaterDto(
+    val key: String,
+    val label: String,
+    val at: String? = null,
 )
 
 /** One name the Post sheet offers for the pin: [key] goes back as `place_key`, never the words. */
@@ -291,6 +324,10 @@ data class CreateMomentBody(
     val altitude: MomentAltitudeBody? = null,
     /** One part of a video posted as several Moments (contract v3.11); left out for a video posted as one. */
     val series: MomentSeriesDto? = null,
+    /** The Sky (v4.0): `place` pins the Moment at a public place (the `venue_id`, else the one naming the spot). */
+    val pin: String? = null,
+    /** The Sky (v4.0): hold the Moment until then, `1h`, `3h` or `tonight`; left out to post now. */
+    @Json(name = "share_later") val shareLater: String? = null,
 )
 
 /**
