@@ -71,8 +71,12 @@ public enum PlansEndpoints {
     /// Plans steps 3 and 4 (CONTRACT-step3-4.md section 0): the same requests say
     /// with `more=1` that this build can draw an online plan and the four newer
     /// kinds; without it those plans don't exist. Always sent, flags or not.
+    ///
+    /// Plans for the holidays (contract section 4, K10): `guests=1` says this
+    /// build draws guests without an account, Maybe, adults and kids, and room
+    /// over 30. Without it the server answers as before H1.
     static func biz(_ query: [String: String] = [:]) -> [String: String] {
-        query.merging(["biz": "1", "more": "1"]) { _, marker in marker }
+        query.merging(["biz": "1", "more": "1", "guests": "1"]) { _, marker in marker }
     }
 
     // MARK: - Flags

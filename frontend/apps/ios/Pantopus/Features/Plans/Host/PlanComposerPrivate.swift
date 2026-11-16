@@ -27,6 +27,8 @@ final class PlanPrivateDraft {
     var audience: PlanAudience = .nearby
     /// "Guests can bring a friend": each person invited may invite one more.
     var guestsCanInvite = false
+    /// Plans for the holidays H1 ("Add to this plan"): guests say how many adults and kids.
+    var kidsWelcome = false
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
@@ -85,11 +87,19 @@ final class PlanPrivateDraft {
         inviteProblem = missed == 0 ? nil : "Couldn't invite \(people). You can invite people from the plan."
     }
 
-    /// The three private keys of `POST /api/plans`.
-    func apply(to body: inout CreatePlanBody) {
+    /// The private keys of `POST /api/plans`; `kids_welcome` only where the host has `plans_guest_answers`.
+    func apply(to body: inout CreatePlanBody, guestAnswers: Bool) {
         body.audience = .invited
         body.guestsCanInvite = guestsCanInvite
         body.inviteUserIds = chosen.isEmpty ? nil : chosen
+        if guestAnswers { body.kidsWelcome = kidsWelcome }
+    }
+
+    /// "Host again": who the plan was for, "Bring a friend" and "Kids welcome", as the plan had them.
+    func restore(from card: PlanCardDTO) {
+        audience = card.isPrivate && PlansFlags.shared.privatePlans ? .invited : .nearby
+        guestsCanInvite = card.guestsCanInvite
+        kidsWelcome = card.kidsWelcome
     }
 }
 
@@ -102,6 +112,18 @@ extension PlanComposerModel {
     /// A private plan is being drafted.
     var isPrivate: Bool {
         privacy.isPrivate && !isBusiness
+    }
+
+    /// Plans for the holidays H1 (board 3): a private plan, with `plans_guest_answers` on for the host, has
+    /// "Room for" up to 100 and the "Add to this plan" card. A playdate (one seat a family) and a pickup game
+    /// (players needed) keep their own rows.
+    var offersGuestAnswers: Bool {
+        PlansFlags.shared.guestAnswers && isPrivate && kind != .playdate && kind != .pickupGame
+    }
+
+    /// The most the spots stepper goes to: 100 for a private plan with guest answers, otherwise 30.
+    var spotsLimit: Int {
+        offersGuestAnswers ? 100 : 30
     }
 
     /// How far ahead the plan may start: a business by its limits, a private plan 60 days, otherwise 14.

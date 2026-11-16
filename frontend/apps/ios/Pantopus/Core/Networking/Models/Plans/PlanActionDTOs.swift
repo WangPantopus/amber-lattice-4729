@@ -136,9 +136,13 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var inviteUserIds: [String]?
     /// Repeating plans (step 2): how it repeats. Left out for a plan that doesn't (never for a business's).
     public var repeatPattern: PlanRepeatBody?
+    /// Plans for the holidays H1: guests say how many adults and kids. Left out unless the host's
+    /// `plans_guest_answers` is on.
+    public var kidsWelcome: Bool?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience
+        case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
         case endsAt = "ends_at"

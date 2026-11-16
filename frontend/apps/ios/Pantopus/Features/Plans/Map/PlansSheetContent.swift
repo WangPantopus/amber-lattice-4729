@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  What the Plans sheet holds: the first plans at its lowest stop (F1), the
-//  whole list pulled up (F2: Your plans, then each day, then More nearby
+//  whole list pulled up (F2: Yours, then each day, then More nearby
 //  with Pulse and Connections while the Pulse redesign is on), a tapped
 //  pin's card (F3), "Nothing planned yet" (F4) and "See plans near you" (F5).
 //  In the column beside the map (the open iPhone Duo) it is the whole list,
@@ -225,7 +225,7 @@ struct PlansListSheet: View {
             PlansSheetScroll {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if !viewModel.visibleYourPlans.isEmpty {
-                        section("Your plans", cards: viewModel.visibleYourPlans, mine: true)
+                        section(PlansFlags.shared.guestAnswers ? "Yours" : "Your plans", cards: viewModel.visibleYourPlans, mine: true)
                     }
                     ForEach(days, id: \.title) { day in
                         section(day.title, cards: day.cards, mine: false)

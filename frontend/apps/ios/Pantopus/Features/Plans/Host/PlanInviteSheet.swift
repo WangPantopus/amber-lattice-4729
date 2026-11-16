@@ -447,13 +447,19 @@ enum PlanInviteLines {
         }
     }
 
-    /// Where one invitation stands.
-    static func state(_ row: PlanInviteRowDTO) -> String {
-        let how = switch row.channel {
+    /// How the host sent it.
+    static func how(_ channel: PlanInviteChannel) -> String {
+        switch channel {
         case .email: "By email"
         case .link: "By text"
         case .account: "On Pantopus"
+        case .openLink: "From your link"
         }
+    }
+
+    /// Where one invitation stands.
+    static func state(_ row: PlanInviteRowDTO) -> String {
+        let how = how(row.channel)
         switch row.state {
         case .invited:
             return row.emailFailed ? "Couldn't email this address" : "\(how) · Hasn't answered yet"
@@ -463,6 +469,8 @@ enum PlanInviteLines {
         case .asked: return "Opened your email invitation from another address · Waiting for your yes in Requests"
         case .cantMakeIt: return "Can't make it"
         case .left: return "Said yes, then left"
+        case .maybe: return "\(how) · Maybe"
+        case .waitingOk: return "\(how) · Waiting for your yes"
         }
     }
 

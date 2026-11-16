@@ -34,6 +34,8 @@ struct PlanDetailsForm: View {
                     if model.isBusiness { PlanBusinessWhereField(model: model) } else { whereSection }
                     if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow
+                    // Plans for the holidays (board 3): the extras, each behind its own switch, under "Room for".
+                    if model.offersGuestAnswers { PlanAddToPlanCard(model: model) }
                     // A private plan's people get in right away: "Guests can bring a friend" instead (board Details).
                     if model.isBusiness { PlanWhoGetsInField(model: model) } else if model.isPrivate {
                         PlanGuestsCanInviteRow(model: model)
@@ -207,15 +209,24 @@ struct PlanDetailsForm: View {
         HStack {
             VStack(alignment: .leading, spacing: 0) {
                 Text(spotsTitle).planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
-                Text(spotsSubtitle).planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
+                Text(spotsSubtitle)
+                    .planFont(.small)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            PlanStepper(value: $model.spots, range: 1...30, label: spotsTitle)
+            // Board 3: holding the plus steps by 5 where a private plan has room for up to 100.
+            PlanStepper(value: $model.spots, range: 1...model.spotsLimit, label: spotsTitle, holdStep: model.offersGuestAnswers ? 5 : nil)
+                .accessibilityIdentifier(model.offersGuestAnswers ? "planRoomFor" : "planSpotsStepper")
+        }
+        .onChange(of: model.spotsLimit) { _, limit in
+            if model.spots > limit { model.spots = limit }
         }
     }
 
     private var spotsTitle: String {
         if model.isBusiness { return "Spots" }
+        if model.offersGuestAnswers { return "Room for" }
         return switch model.kind {
         case .watchParty, .studyGroup, .foodDrinks, .gameNight, .outdoors, .somethingElse: "Spots"
         case .playdate: "Families"
@@ -226,6 +237,7 @@ struct PlanDetailsForm: View {
 
     private var spotsSubtitle: String {
         if model.isBusiness { return "Guests see how many are left" }
+        if model.offersGuestAnswers { return "Adults and kids, besides your household" }
         return switch model.kind {
         case .watchParty, .studyGroup, .foodDrinks, .gameNight, .outdoors, .somethingElse: "People who can join, besides you"
         case .playdate: "Besides yours"

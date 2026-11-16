@@ -17,9 +17,9 @@ import Foundation
 
 // MARK: - Values
 
-/// Where the viewer's invitation stands.
+/// Where the viewer's invitation stands. `maybe` (Plans for the holidays H1) comes only with `guests=1`.
 public enum PlanInviteStatus: String, Sendable, Hashable {
-    case pending, accepted, declined, cancelled
+    case pending, accepted, declined, cancelled, maybe
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -29,9 +29,11 @@ public enum PlanInviteStatus: String, Sendable, Hashable {
 
 extension PlanInviteStatus: Codable {}
 
-/// How the host sent it.
+/// How the host sent it. `open` (H1, with `guests=1`): a guest answered the plan's one link for everyone.
 public enum PlanInviteChannel: String, Sendable, Hashable {
     case account, email, link
+    /// Sent as `open`.
+    case openLink = "open"
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -55,6 +57,10 @@ public enum PlanInviteState: String, Sendable, Hashable {
     case cantMakeIt = "cant_make_it"
     /// They said yes, then left.
     case left
+    /// H1, with `guests=1`: they said maybe.
+    case maybe
+    /// H1, with `guests=1`: a guest who answered "I'm in" from the open link, waiting for the host's yes.
+    case waitingOk = "waiting_ok"
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -90,9 +96,9 @@ public struct PlanMyInviteDTO: Codable, Sendable, Hashable {
         invitedAt = try container.decodeIfPresent(String.self, forKey: .invitedAt)
     }
 
-    /// Not answered, or "Can't make it" (the person can still change their mind).
+    /// Not answered, "Can't make it" or "Maybe" (the person can still change their mind).
     var isOpen: Bool {
-        status == .pending || status == .declined
+        status == .pending || status == .declined || status == .maybe
     }
 }
 

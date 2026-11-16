@@ -91,8 +91,46 @@ struct PlanRowModel: Identifiable, Equatable {
         )
     }
 
-    /// A row in "Your plans": hosting, asked, waitlisted or in.
+    /// A row in "Yours" (Plans for the holidays, board 1): the plans this person hosts, is in, is waiting on, or
+    /// is invited to. The second line is when, then the person's part ("You're hosting", "You're in", "You said
+    /// maybe", "Invited"); on the right one count: "{n} coming" where the plan has a headcount, else the shipped
+    /// count (a host's waiting requests first, as before).
+    @MainActor
     static func mine(_ card: PlanCardDTO, requestsCount: Int?, now: Date = Date()) -> PlanRowModel {
+        PlansFlags.shared.guestAnswers
+            ? yours(card, requestsCount: requestsCount, now: now)
+            : shippedMine(card, requestsCount: requestsCount, now: now)
+    }
+
+    private static func yours(_ card: PlanCardDTO, requestsCount: Int?, now: Date) -> PlanRowModel {
+        let row = listed(card, now: now)
+        let part = yourPart(card)
+        let requests = requestsCount ?? 0
+        let trailing: PlanRowTrailing = if card.viewer?.isHost == true, requests > 0 {
+            .status("\(requests) request\(requests == 1 ? "" : "s")", .bell)
+        } else if let headcount = card.headcount, headcount.total > 0 {
+            .text("\(headcount.total) coming")
+        } else if card.viewer?.isHost == true {
+            .text("\(card.goingCount) going")
+        } else {
+            row.trailing
+        }
+        return PlanRowModel(
+            id: row.id,
+            kind: row.kind,
+            title: row.title,
+            subtitle: [yourWhen(card, now: now), part].joined(separator: " · "),
+            trailing: trailing,
+            accessibilityLabel: (part == "Invited" ? "\(PlanCardLines.hostName(card)) invited you" : part) + ". " + row.accessibilityLabel,
+            isBusiness: row.isBusiness,
+            isPrivate: row.isPrivate,
+            repeatLine: row.repeatLine
+        )
+    }
+
+    /// A row in "Your plans" as before Plans for the holidays (`plans_guest_answers` off): hosting, asked,
+    /// waitlisted or in, with the status on the right.
+    private static func shippedMine(_ card: PlanCardDTO, requestsCount: Int?, now: Date = Date()) -> PlanRowModel {
         let viewer = card.viewer
         if viewer?.isHost == true {
             let calendar = PlanFormat.calendar(for: card.timezone)
@@ -135,6 +173,29 @@ struct PlanRowModel: Identifiable, Equatable {
         default: .status("Requested", .clock)
         }
         return listed(card, trailing: status, now: now)
+    }
+
+    /// The person's part in one of their own plans, as the end of its row's second line.
+    static func yourPart(_ card: PlanCardDTO) -> String {
+        let viewer = card.viewer
+        if viewer?.isHost == true { return "You're hosting" }
+        switch viewer?.requestStatus {
+        case .accepted: return "You're in"
+        case .waitlisted: return waitlistLabel(viewer?.waitlistPosition)
+        case .pending: return "Requested"
+        default: break
+        }
+        if card.myInvite?.status == .maybe { return "You said maybe" }
+        return card.myInvite == nil ? "Requested" : "Invited"
+    }
+
+    /// When, as a list row says it; a playdate before you're in says the part of the day.
+    private static func yourWhen(_ card: PlanCardDTO, now: Date) -> String {
+        let calendar = PlanFormat.calendar(for: card.timezone)
+        if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
+            return when
+        }
+        return PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, now: now, calendar: calendar)
     }
 
     /// "On the waitlist · 1st".
