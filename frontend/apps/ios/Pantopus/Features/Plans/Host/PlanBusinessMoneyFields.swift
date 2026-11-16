@@ -48,13 +48,14 @@ struct PlanBusinessPriceField: View {
     @State private var showsPayouts = false
 
     var body: some View {
+        @Bindable var money = model.money
         VStack(alignment: .leading, spacing: Spacing.s2) {
             if model.hostAs?.payoutsReady == true {
-                PlanSwitchRow(title: "Price a spot", subtitle: "Off: the plan is free", isOn: $model.money.priceOn)
+                PlanSwitchRow(title: "Price a spot", subtitle: "Off: the plan is free", isOn: $money.priceOn)
                     .accessibilityIdentifier("planPriceSpot")
-                if model.money.priceOn {
+                if money.priceOn {
                     PlanDollarsField(
-                        text: $model.money.priceDollars,
+                        text: $money.priceDollars,
                         placeholder: "18",
                         label: "Price a spot",
                         identifier: "planPriceAmount"
