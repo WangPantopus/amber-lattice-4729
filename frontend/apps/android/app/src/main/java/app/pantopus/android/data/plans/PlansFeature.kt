@@ -39,6 +39,10 @@ data class PlansFlags(
      * for everyone, Who's coming, Maybe, and the list's "Yours". Read for the host, as the server reads it.
      */
     val guestAnswers: Boolean = false,
+    /** `plans_bring_list` (Plans for the holidays, H2): the host form's "Bring list" row and the A9 editor. */
+    val bringList: Boolean = false,
+    /** `plans_occasions` (Plans for the holidays, H3): the kind picker's "Coming up" strip. */
+    val occasions: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
@@ -62,6 +66,12 @@ data class PlansFlags(
      * for everyone", Who's coming and the list's "Yours". It needs private plans (the server's own rule).
      */
     val guestAnswersOn: Boolean get() = privateOn && guestAnswers
+
+    /** Plans for the holidays, H2: a private plan's form offers a bring list. A list already made reads either way. */
+    val bringOn: Boolean get() = privateOn && bringList
+
+    /** Plans for the holidays, H3: the kind picker shows "Coming up" (it needs the newer kinds, as the server does). */
+    val occasionsOn: Boolean get() = kindsOn && occasions
 }
 
 /**
@@ -188,6 +198,8 @@ class PlansFeature
                     val onlinePlans = async { read(FLAG_ONLINE) }
                     val newKinds = async { read(FLAG_KINDS) }
                     val guestAnswers = async { read(FLAG_GUEST_ANSWERS) }
+                    val bringList = async { read(FLAG_BRING_LIST) }
+                    val occasions = async { read(FLAG_OCCASIONS) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
@@ -196,6 +208,8 @@ class PlansFeature
                     val onlineOn = onlinePlans.await()
                     val kindsOn = newKinds.await()
                     val guestAnswersOn = guestAnswers.await()
+                    val bringOn = bringList.await()
+                    val occasionsOn = occasions.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -207,6 +221,8 @@ class PlansFeature
                             onlinePlans = onlineOn ?: current.onlinePlans,
                             newKinds = kindsOn ?: current.newKinds,
                             guestAnswers = guestAnswersOn ?: current.guestAnswers,
+                            bringList = bringOn ?: current.bringList,
+                            occasions = occasionsOn ?: current.occasions,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -232,8 +248,8 @@ class PlansFeature
 
         /**
          * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`), kinds
-         * (`plans_kinds`) and guest answers (`plans_guest_answers`). A shorter string from before a flag existed reads
-         * that flag off ("11" reads the rest off).
+         * (`plans_kinds`), guest answers (`plans_guest_answers`), the bring list (`plans_bring_list`) and occasions
+         * (`plans_occasions`). A shorter string from before a flag existed reads that flag off ("11" reads the rest off).
          */
         @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
@@ -246,6 +262,8 @@ class PlansFeature
                 onlinePlans = raw.getOrNull(INDEX_ONLINE) == '1',
                 newKinds = raw.getOrNull(INDEX_KINDS) == '1',
                 guestAnswers = raw.getOrNull(INDEX_GUEST_ANSWERS) == '1',
+                bringList = raw.getOrNull(INDEX_BRING_LIST) == '1',
+                occasions = raw.getOrNull(INDEX_OCCASIONS) == '1',
             )
         }
 
@@ -262,6 +280,8 @@ class PlansFeature
                     flags.onlinePlans,
                     flags.newKinds,
                     flags.guestAnswers,
+                    flags.bringList,
+                    flags.occasions,
                 ).joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
@@ -280,5 +300,9 @@ class PlansFeature
             const val INDEX_KINDS = 5
             const val FLAG_GUEST_ANSWERS = "plans_guest_answers"
             const val INDEX_GUEST_ANSWERS = 6
+            const val FLAG_BRING_LIST = "plans_bring_list"
+            const val INDEX_BRING_LIST = 7
+            const val FLAG_OCCASIONS = "plans_occasions"
+            const val INDEX_OCCASIONS = 8
         }
     }

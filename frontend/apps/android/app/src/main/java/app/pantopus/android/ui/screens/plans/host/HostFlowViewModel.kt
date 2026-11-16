@@ -15,6 +15,9 @@ import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionBringDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionFillsDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlansSportsDto
@@ -42,6 +45,8 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.bring.BringDraft
+import app.pantopus.android.ui.screens.plans.bring.BringDraftItem
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -144,6 +149,11 @@ data class HostDraft(
     val outdoorKind: String = "hike",
     /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1): guests say how many adults and kids. */
     val kidsWelcome: Boolean = false,
+    /** "Bring list" in "Add to this plan" (Plans for the holidays, H2): the list made on A9; null while it's off. */
+    val bring: BringDraft? = null,
+    /** The occasion the plan was started from (Plans for the holidays, H3): its key, and its name for the title. */
+    val occasion: String? = null,
+    val occasionText: String? = null,
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -215,6 +225,14 @@ data class HostUi(
     val kindsOn: Boolean = false,
     /** `plans_guest_answers` is on for this person (Plans for the holidays, H1): "Room for" and "Add to this plan". */
     val guestAnswersOn: Boolean = false,
+    /** `plans_bring_list` is on for this person (Plans for the holidays, H2): the "Bring list" row. */
+    val bringOn: Boolean = false,
+    /** The bring list (A9) is open over the details. */
+    val bringOpen: Boolean = false,
+    /** `plans_occasions` is on for this person (Plans for the holidays, H3). */
+    val occasionsOn: Boolean = false,
+    /** The occasions in season (`GET /api/plans/occasions`); empty draws no strip. */
+    val occasions: List<PlanOccasionDto> = emptyList(),
 ) {
     /**
      * A private plan's room reads "Room for", to 100 (Plans for the holidays, board 3), for the kinds whose row says how
@@ -225,8 +243,14 @@ data class HostUi(
     /** The most the room stepper allows: 100 for "Room for", 30 otherwise. */
     val spotsMax: Int get() = if (showsRoomFor) ROOM_FOR_MAX else MAX_SPOTS
 
-    /** The "Add to this plan" card shows (Plans for the holidays, board 3): on a private plan with "Room for". */
-    val showsAddToPlan: Boolean get() = showsRoomFor
+    /** "Kids welcome" shows in the card (H1). */
+    val showsKidsWelcome: Boolean get() = showsRoomFor
+
+    /** "Bring list" shows in the card (H2): a private plan of a person's, for the kinds that count people. */
+    val showsBringRow: Boolean get() = bringOn && isPrivate && draft.kind?.countsPeople == true
+
+    /** The "Add to this plan" card shows (Plans for the holidays, board 3) while any of its rows does. */
+    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow
 
     /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
     val showsRepeats: Boolean get() = repeatOn && business == null
@@ -322,6 +346,8 @@ class HostFlowViewModel
                     onlineOn = feature.flags.value.onlineOn,
                     kindsOn = feature.flags.value.kindsOn,
                     guestAnswersOn = feature.flags.value.guestAnswersOn,
+                    bringOn = feature.flags.value.bringOn,
+                    occasionsOn = feature.flags.value.occasionsOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -333,6 +359,13 @@ class HostFlowViewModel
             viewModelScope.launch {
                 loadContext(gameId)
                 if (again != null) copyFrom(again)
+            }
+            // The kind picker's "Coming up" (Plans for the holidays, H3): nothing is drawn until, or unless, it answers.
+            if (_ui.value.occasionsOn && again == null) {
+                viewModelScope.launch {
+                    val occasions = (repository.occasions() as? NetworkResult.Success)?.data?.occasions.orEmpty()
+                    _ui.update { it.copy(occasions = occasions.filter { o -> PlanKind.from(o.kind) != null }) }
+                }
             }
             // A newer kind only while its switch is on (Plans step 4); otherwise the type step shows, saying why.
             val switchedOff = kind?.isNew == true && !_ui.value.kindsOn
@@ -606,6 +639,44 @@ class HostFlowViewModel
 
         /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1). */
         fun setKidsWelcome(on: Boolean) = edit { it.copy(kidsWelcome = on) }
+
+        /**
+         * An occasion on the kind picker (Plans for the holidays, A2): its kind's form, with what it fills in (title,
+         * private, at home, kids welcome, a starter bring list, the time) and its name as the screen's title.
+         * Everything stays editable; a part whose switch is off for the host is left out.
+         */
+        fun chooseOccasion(occasion: PlanOccasionDto) {
+            val kind = PlanKind.from(occasion.kind) ?: return
+            choose(kind)
+            if (_ui.value.step != HostStep.Details) return
+            _ui.update { ui ->
+                ui.copy(draft = filledFrom(ui, occasion), privateChoice = ui.privateChoice || occasionIsPrivate(ui, occasion))
+            }
+        }
+
+        /** "Bring list" switched on opens the list (A9); off takes it away (Plans for the holidays, H2). */
+        fun setBringList(on: Boolean) {
+            _ui.update {
+                if (on) {
+                    it.copy(draft = it.draft.copy(bring = it.draft.bring ?: BringDraft()), bringOpen = true, error = null)
+                } else {
+                    it.copy(draft = it.draft.copy(bring = null), bringOpen = false, error = null)
+                }
+            }
+        }
+
+        /** Tapping the "Bring list" row while it's on opens the list. */
+        fun openBringList() {
+            if (_ui.value.draft.bring != null) _ui.update { it.copy(bringOpen = true) }
+        }
+
+        /** The list as the host edits it. */
+        fun editBringList(bring: BringDraft) = edit { it.copy(bring = bring) }
+
+        /** Done or Back on the list: back to the details, the list kept. */
+        fun closeBringList() {
+            _ui.update { it.copy(bringOpen = false) }
+        }
 
         /** "Guests can bring a friend" on a private plan. */
         fun setGuestsCanInvite(on: Boolean) = edit { it.copy(guestsCanInvite = on) }
@@ -922,6 +993,10 @@ class HostFlowViewModel
         }
 
         fun back(): Boolean {
+            if (_ui.value.bringOpen) {
+                closeBringList()
+                return true
+            }
             val step = _ui.value.step
             val previous =
                 when (step) {
@@ -1060,7 +1135,11 @@ class HostFlowViewModel
                 guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },
                 inviteUserIds = draft.inviteIds.take(MAX_INVITES_AT_POST).takeIf { invitedOnly && it.isNotEmpty() },
                 // Plans for the holidays, H1: sent only while the card shows, so the body is as before without it.
-                kidsWelcome = draft.kidsWelcome.takeIf { ui.showsAddToPlan },
+                kidsWelcome = draft.kidsWelcome.takeIf { ui.showsKidsWelcome },
+                // H2: the bring list made on A9, when it has something on it.
+                bring = draft.bring?.takeIf { ui.showsBringRow && it.items.isNotEmpty() }?.toInput(),
+                // H3: the occasion it was started from.
+                occasion = draft.occasion,
             )
         }
 
@@ -1249,5 +1328,76 @@ private fun copiedDraft(
         gameKind = d?.gameKind ?: "board_games",
         outdoorKind = d?.outdoorKind ?: "hike",
         kidsWelcome = keepPrivate && plan.kidsWelcome == true,
+        bring = copiedBring(plan, keepPrivate),
     )
+}
+
+/** The occasion asks for a private plan, and the host can post one. */
+private fun occasionIsPrivate(
+    ui: HostUi,
+    occasion: PlanOccasionDto,
+): Boolean = occasion.fills?.audience == PlanAudience.INVITED && ui.showsAudience
+
+/** The draft [choose] made, with what [occasion] fills in (Plans for the holidays, H3). */
+private fun filledFrom(
+    ui: HostUi,
+    occasion: PlanOccasionDto,
+): HostDraft {
+    val draft = ui.draft
+    val fills = occasion.fills
+    val (start, end) = occasionTimes(draft, fills, ui.zone)
+    val title = fills?.title?.takeIf(String::isNotBlank)
+    return draft.copy(
+        title = title ?: draft.title,
+        titleEdited = title != null || draft.titleEdited,
+        isPrivate = occasionIsPrivate(ui, occasion) || draft.isPrivate,
+        atHome = (fills?.placeKind == "home" && ui.home != null) || draft.atHome,
+        start = start,
+        end = end,
+        kidsWelcome = fills?.kidsWelcome == true && ui.guestAnswersOn,
+        bring = occasionBring(ui, fills?.bring),
+        foodKind = occasion.details?.foodKind ?: draft.foodKind,
+        gameKind = occasion.details?.gameKind ?: draft.gameKind,
+        outdoorKind = occasion.details?.outdoorKind ?: draft.outdoorKind,
+        occasion = occasion.key,
+        occasionText = occasion.text.takeIf(String::isNotBlank),
+    )
+}
+
+/** An occasion's start and end on the host's clock; without an end, a new start keeps the draft's length. */
+private fun occasionTimes(
+    draft: HostDraft,
+    fills: PlanOccasionFillsDto?,
+    zone: ZoneId,
+): Pair<LocalDateTime?, LocalDateTime?> {
+    val start = fills?.startsAt?.let { localTime(it, zone) }
+    val end = fills?.endsAt?.let { localTime(it, zone) }
+    val length = if (draft.start != null && draft.end != null) Duration.between(draft.start, draft.end) else null
+    return (start ?: draft.start) to (end ?: start?.let { s -> length?.let { s.plus(it) } } ?: draft.end)
+}
+
+/** An occasion's starter bring list, while the host's form offers one (Plans for the holidays, H2). */
+private fun occasionBring(
+    ui: HostUi,
+    list: PlanOccasionBringDto?,
+): BringDraft? {
+    if (list == null || !ui.bringOn || list.items.isEmpty()) return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
+}
+
+/** An occasion's ISO time on the host's clock. */
+private fun localTime(
+    iso: String,
+    zone: ZoneId,
+): LocalDateTime? = runCatching { java.time.Instant.parse(iso).atZone(zone).toLocalDateTime() }.getOrNull()
+
+/** Host again keeps what was on the bring list, with nobody bringing anything yet (Plans for the holidays, H2). */
+private fun copiedBring(
+    plan: PlanDto,
+    keepPrivate: Boolean,
+): BringDraft? {
+    val list = plan.bring?.takeIf { keepPrivate && it.items.isNotEmpty() } ?: return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
 }

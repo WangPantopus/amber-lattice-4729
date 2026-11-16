@@ -11,6 +11,9 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import app.pantopus.android.data.api.models.plans.HostAsResponse
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanBringAddBody
+import app.pantopus.android.data.api.models.plans.PlanBringInput
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanCancelReply
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
@@ -24,6 +27,7 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
@@ -45,6 +49,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -344,6 +349,40 @@ interface PlansApi {
     suspend fun maybeInvite(
         @Path("id") id: String,
     ): PlanInvitePlanResponse
+
+    /** `GET /api/plans/occasions` (Plans for the holidays, H3): the occasions in season, for the kind picker's strip. */
+    @GET("api/plans/occasions")
+    suspend fun occasions(): PlanOccasionsResponse
+
+    // ---- Plans for the holidays, H2: the bring list (contract 7; backend/services/plans/planBring.js) ----
+
+    /** `PUT /api/plans/:id/bring` (host): every item (kept ones by id) and whether guests can add; `409 bring_changed`. */
+    @PUT("api/plans/{id}/bring")
+    suspend fun putBring(
+        @Path("id") id: String,
+        @Body body: PlanBringInput,
+    ): PlanBringResponse
+
+    /** `POST /api/plans/:id/bring/:itemId/claim`: "I'll bring it"; `409 taken` when someone got to it first. */
+    @POST("api/plans/{id}/bring/{itemId}/claim")
+    suspend fun claimBring(
+        @Path("id") id: String,
+        @Path("itemId") itemId: String,
+    ): PlanBringResponse
+
+    /** `DELETE /api/plans/:id/bring/:itemId/claim`: "Give back". */
+    @DELETE("api/plans/{id}/bring/{itemId}/claim")
+    suspend fun giveBackBring(
+        @Path("id") id: String,
+        @Path("itemId") itemId: String,
+    ): PlanBringResponse
+
+    /** `POST /api/plans/:id/bring/items`: "Bring something else", claimed by the person adding it. */
+    @POST("api/plans/{id}/bring/items")
+    suspend fun addBring(
+        @Path("id") id: String,
+        @Body body: PlanBringAddBody,
+    ): PlanBringResponse
 
     /** `GET /api/plans/invites/next`: right after signing in, the newest invitation not opened yet. */
     @GET("api/plans/invites/next")

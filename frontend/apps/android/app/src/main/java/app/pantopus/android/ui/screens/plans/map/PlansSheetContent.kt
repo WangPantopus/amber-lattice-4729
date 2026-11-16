@@ -77,6 +77,7 @@ import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.data.plans.tagLabel
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.components.Shimmer
@@ -777,7 +778,7 @@ internal fun PlanCardContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                PlanTypeTag(kind, label = plan.labelText.takeIf { plan.isBusiness })
+                PlanTypeTag(kind, label = plan.tagLabel)
                 if (plan.isPrivate) PlanPrivateChip()
                 if (plan.isOnline) PlanOnlineChip()
                 Spacer(modifier = Modifier.weight(1f))

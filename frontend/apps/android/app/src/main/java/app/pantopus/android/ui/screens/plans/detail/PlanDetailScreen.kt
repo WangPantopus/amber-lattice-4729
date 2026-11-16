@@ -94,6 +94,8 @@ fun PlanDetailScreen(
     onOpenNextDate: (String) -> Unit = onOpenPlan,
     /** Who's coming (Plans for the holidays, A5), from the host's counts and people line. */
     onOpenGuests: (String) -> Unit = {},
+    /** The bring list for the host (Plans for the holidays, A9). */
+    onOpenBring: (String) -> Unit = {},
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -157,6 +159,7 @@ fun PlanDetailScreen(
                     onOpenPlan = onOpenPlan,
                     onOpenRequests = { onOpenRequests(state.plan.id) },
                     onOpenGuests = { onOpenGuests(state.plan.id) },
+                    onOpenBring = { onOpenBring(state.plan.id) },
                     onChange = { onChange(state.plan.id) },
                     onHost = onHost,
                     onOpenChat = { room -> onOpenChat(room, PlanFormat.shortTitle(state.plan), state.plan.id) },
@@ -178,6 +181,7 @@ private fun PlanReady(
     onOpenPlan: (String) -> Unit,
     onOpenRequests: () -> Unit,
     onOpenGuests: () -> Unit,
+    onOpenBring: () -> Unit,
     onChange: () -> Unit,
     onHost: (String?, String?) -> Unit,
     onOpenChat: (String) -> Unit,
@@ -264,6 +268,7 @@ private fun PlanReady(
                         ),
                     guests = ui.guests,
                     onOpenGuests = onOpenGuests,
+                    onOpenBring = onOpenBring,
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -277,6 +282,14 @@ private fun PlanReady(
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
                     // Plans for the holidays (A8): "Change" opens the answer sheet with the guest's numbers.
                     onChangeAnswer = viewModel::openAsk,
+                    bring =
+                        PlanBringActions(
+                            busy = ui.bringBusy,
+                            notice = ui.bringNotice,
+                            onClaim = viewModel::claimBring,
+                            onGiveBack = viewModel::giveBackBring,
+                            onAdd = viewModel::addBring,
+                        ),
                 )
                 PlanFriendInviteRow(
                     plan = plan,

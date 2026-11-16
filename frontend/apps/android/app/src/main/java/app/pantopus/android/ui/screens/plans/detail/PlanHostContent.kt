@@ -54,6 +54,7 @@ import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
+import app.pantopus.android.ui.screens.plans.bring.PlanBringHostCard
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
@@ -101,6 +102,8 @@ internal fun ColumnScope.PlanHostBody(
     guests: PlanInviteListDto? = null,
     /** Opens Who's coming (A5). */
     onOpenGuests: () -> Unit = {},
+    /** Opens the bring list (A9). */
+    onOpenBring: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
@@ -125,6 +128,8 @@ internal fun ColumnScope.PlanHostBody(
     HostPeople(plan, guests, onOpenGuests) {
         GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
     }
+    // Plans for the holidays (A6 item 3): the bring list, while the plan has one and is still on.
+    plan.bring?.takeIf { !closed }?.let { PlanBringHostCard(it, onOpen = onOpenBring) }
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)

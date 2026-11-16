@@ -9,6 +9,9 @@ import app.pantopus.android.data.api.models.plans.CancelPlanBody
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanBringAddBody
+import app.pantopus.android.data.api.models.plans.PlanBringInput
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -22,6 +25,7 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
 import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
@@ -632,6 +636,35 @@ class PlansRepository
                 (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
             }
         }
+
+        /** The occasions in season for the kind picker (Plans for the holidays, H3). */
+        suspend fun occasions(): NetworkResult<PlanOccasionsResponse> = safeApiCall { api.occasions() }
+
+        // ---- Plans for the holidays, H2: the bring list (contract 7) ----
+
+        /** The host's whole list (A9's Done). */
+        suspend fun putBring(
+            id: String,
+            body: PlanBringInput,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.putBring(id, body) }
+
+        /** "I'll bring it". */
+        suspend fun claimBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.claimBring(id, itemId) }
+
+        /** "Give back". */
+        suspend fun giveBackBring(
+            id: String,
+            itemId: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.giveBackBring(id, itemId) }
+
+        /** "Bring something else". */
+        suspend fun addBring(
+            id: String,
+            label: String,
+        ): NetworkResult<PlanBringResponse> = write(id) { api.addBring(id, PlanBringAddBody(label = label)) }
 
         /** Right after signing in: the newest invitation not opened yet (an email invite finds its verified address). */
         suspend fun nextInvite(): NetworkResult<PlanNextInviteResponse> = safeApiCall { api.nextInvite() }

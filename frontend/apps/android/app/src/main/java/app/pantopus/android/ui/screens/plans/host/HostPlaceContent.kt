@@ -993,7 +993,8 @@ private fun NeighborsCard(
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                PlanTypeTag(kind)
+                // An occasion's name, as the posted card's tag reads it (Plans for the holidays, A6 item 1).
+                PlanTypeTag(kind, label = draft.occasionText)
                 if (ui.isOnline) PlanOnlineChip()
             }
             Text(text = draft.title.ifBlank { kind.label }, style = planH3, color = PantopusColors.appText)
