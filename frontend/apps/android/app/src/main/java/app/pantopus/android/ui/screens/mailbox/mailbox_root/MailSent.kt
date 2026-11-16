@@ -240,10 +240,10 @@ class MailSentViewModel
             if (loaded.removeAll { it.id == id }) publish()
         }
 
-        /** The list shows [card] in another state than its page just read (the pickup or an arrival came since). */
+        /** The list shows [card] in another state than its page just read (the pickup, an arrival or its email came since). */
         private fun movedOn(card: SentCard): Boolean {
             val shown = loaded.firstOrNull { it.id == card.id } ?: return false
-            return shown.status != card.status || shown.canTakeBack != card.canTakeBack
+            return shown.status != card.status || shown.canTakeBack != card.canTakeBack || shown.emailSendAt != card.emailSendAt
         }
 
         private fun publish() {
@@ -329,7 +329,7 @@ object MailSentWords {
                 }
             "picked_up" -> "Arrives on Christmas morning"
             "delivered" -> if (card.sealed) "In their mailbox, sealed until Christmas" else "In their mailbox since $day"
-            "email_waiting" -> if (card.kind == "letter") "Waiting for them to claim it" else "Waiting for them to open the email"
+            "email_waiting" -> emailWaitingLine(card, zone)
             "claimed" -> if (card.kind == "letter") "They claimed your letter" else "They joined Pantopus and have it"
             "expired" -> if (card.kind == "letter") "The claim link expired" else "They didn’t open the email in 90 days"
             // A block withdrew it before it came (memories contract section 8): never why or when.
@@ -337,6 +337,20 @@ object MailSentWords {
             else -> ""
         }
     }
+
+    /**
+     * By email, still waiting: when its email goes while it's set for the sender's 7 a.m. or Christmas morning (nothing
+     * is emailed before then), else that it waits for them to open or claim it.
+     */
+    private fun emailWaitingLine(
+        card: SentCard,
+        zone: ZoneId,
+    ): String =
+        when {
+            card.emailSendAt != null -> "Email goes ${HolidayCardTimes.emailGoesAt(card.emailSendAt, zone)}"
+            card.kind == "letter" -> "Waiting for them to claim it"
+            else -> "Waiting for them to open the email"
+        }
 
     /** A card by link, in a line; null for a state the words below already say. */
     private fun linkLine(card: SentCard): String? =
@@ -504,7 +518,8 @@ private fun SentRow(
     onTakeBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spoken = "${row.title.replace(" · ", ", ")}. ${row.line}."
+    // A line can end on "a.m." ("Email goes Mon, Nov 16 at 7 a.m."): one period, not two.
+    val spoken = "${row.title.replace(" · ", ", ")}. ${row.line.removeSuffix(".")}."
     Column(modifier = modifier.fillMaxWidth().testTag("mailSentRow.${row.card.id}")) {
         Column(
             modifier =

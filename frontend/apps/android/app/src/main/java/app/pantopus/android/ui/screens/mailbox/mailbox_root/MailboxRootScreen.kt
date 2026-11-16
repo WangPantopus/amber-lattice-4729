@@ -250,6 +250,7 @@ fun MailboxRootScreen(
             onKeep = { confirmTakeBack = null },
             freesToday = MailSentWords.sentToday(card, zone),
             postage = cards?.postageEnabled == true,
+            emailSetForLater = card.emailSendAt != null,
         )
     }
     verifyHome?.let { home ->

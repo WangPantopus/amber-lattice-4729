@@ -141,6 +141,7 @@ fun MailSentCardScreen(
             onKeep = { confirmTakeBack = false },
             freesToday = MailSentWords.sentToday(card, zone),
             postage = cards?.postageEnabled == true,
+            emailSetForLater = card.emailSendAt != null,
         )
     }
 }
@@ -537,17 +538,28 @@ private fun trailStep(
     first: String,
     zone: ZoneId,
 ): MailTrailStep {
-    val title = sentTrailTitle(step, card, first)
+    val later = emailStepLater(step, card, zone)
+    val title = later ?: sentTrailTitle(step, card, first)
     val detail =
         step.at?.let { at -> HolidayCardTimes.parse(at)?.atZone(zone)?.format(trailTime) }
             ?: step.on?.let { on -> runCatching { LocalDate.parse(on.take(10)) }.getOrNull()?.format(trailDay) }
     return MailTrailStep(
         id = step.step,
-        title = if (step.done) title else "$title · not yet",
+        title = if (step.done || later != null) title else "$title · not yet",
         detail = detail?.uppercase(Locale.US)?.takeIf { step.done },
         done = step.done,
         readers = false,
     )
+}
+
+/** The emailed step while its email is set for the sender's 7 a.m. or Christmas morning: when it goes, not "· not yet". */
+private fun emailStepLater(
+    step: SentCardStep,
+    card: SentCard,
+    zone: ZoneId,
+): String? {
+    if (step.step != "emailed" || step.done) return null
+    return card.emailSendAt?.let { "Email goes ${HolidayCardTimes.emailGoesAt(it, zone)}" }
 }
 
 /** The card as its page draws it, with the sender's own note; null when the server sent no picture. */

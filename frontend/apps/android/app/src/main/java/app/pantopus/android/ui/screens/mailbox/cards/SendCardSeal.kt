@@ -160,7 +160,12 @@ private fun goneWords(
     val lines = listOfNotNull(arrivalLine(sent, zone), takeBackLine(sent, zone)).joinToString("\n")
     return when (val to = form.to) {
         CardRecipient.Link -> SealAnswer.Took("Your card is ready.", lines)
-        is CardRecipient.Email -> SealAnswer.Took("On its way to ${to.email}.", listOf("We emailed them.", lines).joinToString("\n"))
+        // Set for later, nothing is emailed yet: the line under it says when.
+        is CardRecipient.Email ->
+            SealAnswer.Took(
+                "On its way to ${to.email}.",
+                listOfNotNull("We emailed them.".takeIf { sent.emailSendAt == null }, lines).joinToString("\n"),
+            )
         is CardRecipient.Person -> SealAnswer.Took("On its way to ${to.firstName}.", lines)
         else -> SealAnswer.Took("On its way.", lines)
     }
