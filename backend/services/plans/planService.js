@@ -61,6 +61,8 @@ const PLAN_COLUMNS = [
   'price_cents', 'currency',
   // B5: guests pay their bill here, and the check asks for a tip (planChecks.js).
   'pay_here', 'tips_on',
+  // The extras (08-extras.md): chip in (planChipIn.js), read by the host and the people in only, with `extras=1`.
+  'chip_in',
 ].join(', ');
 const PLAN_SELECT = `${PLAN_COLUMNS}, post:Post!inner(${POST_COLUMNS})`;
 const REQUEST_COLUMNS = [
@@ -263,6 +265,8 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
     // A tip after a paid plan (B6): the paid requests that already tipped, and each tips_on business's switch.
     tippedRequests: new Set(),
     tipsByHost: new Map(),
+    // The extras (`extras=1`): whether each plan's host has chip in.
+    chipInByHost: new Map(),
   };
   if (planIds.length === 0) return ctx;
 
@@ -297,6 +301,11 @@ async function loadCardContext(plans, viewer, { withPeople = false } = {}) {
   ctx.guestAnswersByHost = guestFlags;
   ctx.bringByHost = bringFlags;
   ctx.occasionByHost = occasionFlags;
+  // The extras, for an app that sent `extras=1`: read only for plans that carry one.
+  if (viewer.extras) {
+    const chipInPlans = plans.filter((p) => p.chip_in);
+    if (chipInPlans.length) ctx.chipInByHost = await require('./planChipIn').switchByHost(chipInPlans.map((p) => p.host_user_id));
+  }
   // Paid spots (B2): read only for priced plans, from businesses that have the switch.
   const pricedPlans = plans.filter((p) => p.price_cents && p.business_user_id);
   if (pricedPlans.length > 0) {
@@ -751,7 +760,26 @@ function buildCard(plan, viewer, ctx) {
     const bring = planBring.view(plan.bring_list, planBring.mineFor({ role, requestId: myRequest?.status === 'accepted' ? myRequest.id : null }));
     if (bring) card.bring = bring;
   }
+  // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has
+  // the switch. The payment link reaches nobody else.
+  if (isIn && viewer.extras && plan.chip_in && ctx.chipInByHost?.get(hostId) && require('./planExtras').takesExtras(plan)) {
+    const chipIn = require('./planChipIn').view(plan.chip_in, {
+      keys: extrasKeysIn(plan, requests, guestRows),
+      mineKey: role === 'guest' ? require('./planExtras').personKey(viewer.id) : null,
+      hostFirst: firstName(host),
+    });
+    if (chipIn) card.chip_in = chipIn;
+  }
   return card;
+}
+
+/** The people in, as the extras count them (planExtras.keysIn), from what the card already read. */
+function extrasKeysIn(plan, requests, guestRows) {
+  const extras = require('./planExtras');
+  const accounts = requests.filter((r) => r.status === 'accepted' && String(r.user_id) !== String(plan.host_user_id))
+    .map((r) => extras.personKey(r.user_id));
+  const rows = (guestRows || []).filter((r) => r.status === 'accepted' && !r.needs_host_ok).map((r) => extras.guestKey(r.id));
+  return [...accounts, ...rows];
 }
 
 /**
@@ -971,6 +999,16 @@ function buildDetail(plan, viewer, ctx) {
   }
   // Guests without an account who are in (H1, `guests=1` only): a name and their numbers, no account.
   if (card.kids_welcome !== undefined) people.push(...guests().peopleEntries(plan, ctx.guestRowsByPlan?.get(plan.post_id) || [], { viewerIsHost }));
+  // Chip in: who said they paid, on each row the host sees ("paid", and "Mark paid" with POST …/chip-in/paid).
+  if (viewerIsHost && card.chip_in) {
+    const extras = require('./planExtras');
+    const paid = require('./planChipIn').paidSet(plan.chip_in);
+    for (const entry of people) {
+      if (entry.is_host) continue;
+      const key = entry.user_id ? extras.personKey(entry.user_id) : entry.guest_id ? extras.guestKey(entry.guest_id) : null;
+      if (key) entry.chip_in = { paid: paid.has(key), who: key };
+    }
+  }
   card.people = people;
   // A business's team is not in its plan's chat yet (planChat.ensureRoom): the room is the guests'.
   const hasChat = Boolean(plan.chat_room_id) && !(plan.business_user_id && viewerIsHost);

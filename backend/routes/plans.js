@@ -38,6 +38,9 @@ router.use((req, _res, next) => {
     req.user.plansBiz = req.query.biz === '1';
     req.user.plansMore = req.query.more === '1';
     req.user.plansGuests = req.query.guests === '1';
+    // `extras=1`: this app can draw the extras of Plans for the holidays (08-extras.md); without it a plan reads
+    // without their fields, and a plan still picking its date doesn't exist.
+    req.user.plansExtras = req.query.extras === '1';
   }
   next();
 });
@@ -564,6 +567,26 @@ router.post('/:id/invites/:inviteId/ok', async (req, res) => {
     return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId, body(req), { io: req.app.get('io') }));
   } catch (err) {
     return serverError(res, err, 'invite_ok', req);
+  }
+});
+
+// ── Chip in (the extras, 08-extras section 3; services/plans/planChipIn.js): 404 while plans_chip_in is off ──
+
+// POST | DELETE /api/plans/:id/chip-in/paid [{ who }]: someone in says they paid the host (or takes it back); the host
+// marks someone who paid another way ({ who: "p:<user id>" | "g:<guest id>" }, or ?who= on DELETE). Answers { chip_in }.
+router.post('/:id/chip-in/paid', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planChipIn').markPaid(req.user, req.params.id, { who: body(req).who || null }, true));
+  } catch (err) {
+    return serverError(res, err, 'chip_in_paid', req);
+  }
+});
+router.delete('/:id/chip-in/paid', async (req, res) => {
+  try {
+    const who = body(req).who || (typeof req.query.who === 'string' ? req.query.who : null);
+    return res.json(await require('../services/plans/planChipIn').markPaid(req.user, req.params.id, { who }, false));
+  } catch (err) {
+    return serverError(res, err, 'chip_in_unpaid', req);
   }
 });
 

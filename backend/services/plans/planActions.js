@@ -154,7 +154,7 @@ function partyLabel(name, partySize) {
 
 /** The response body after a write: PlanDetail or PlanCard for the person who wrote. */
 async function planBodyFor(postId, viewer) {
-  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests }, { gps: viewer.gps, point: viewer.origin });
+  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests, plansExtras: viewer.extras }, { gps: viewer.gps, point: viewer.origin });
   const { body } = await planService.getForViewer(postId, fresh);
   return body;
 }
@@ -612,6 +612,11 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  // Chip in (the extras, 08-extras section 3), while the host has its switch: a private plan of a person's, not a
+  // playdate. Checked before anything is saved.
+  const chipIn = !hostAs && input.chip_in != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planChipIn').enabledFor(viewer.id))
+    ? require('./planChipIn').initialValue(input.chip_in) : null;
   // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
   const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
   // Guests pay their bill here, and tips (B5), while the business has the switch: needs payouts set up as a price does.
@@ -703,6 +708,7 @@ async function createPlan(user, input, internal = {}) {
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
     ...(kidsWelcome ? { kids_welcome: true } : {}),
     ...(bringList ? { bring_list: bringList } : {}),
+    ...(chipIn ? { chip_in: chipIn } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
@@ -779,6 +785,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over, so it can’t change.');
   // The bring list's items are checked before anything is saved (H2).
   if (patch.bring != null) require('./planBring').checkedItems(patch.bring);
+  // So is chip in (the extras), while the host has its switch on a plan that may have it.
+  const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
+    && (await require('./planChipIn').enabledFor(plan.host_user_id));
+  if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
 
   const postUpdate = {};
   const planUpdate = {};
@@ -1008,6 +1018,8 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
     await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
   }
+  // Chip in (the extras): replaced, keeping who paid, or taken away with null.
+  if (chipInChange) await require('./planChipIn').replaceFromForm(plan, patch.chip_in);
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {

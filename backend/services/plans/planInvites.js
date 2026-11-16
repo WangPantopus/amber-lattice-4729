@@ -274,7 +274,7 @@ const STATE_ORDER = { waiting_ok: -1, asked: 0, in: 1, waitlisted: 2, maybe: 3, 
  *   without an account are named with their numbers, Maybe and waiting_ok are states, and the list adds the headcount,
  *   the open link and who can be reminded. Without it, the open link's rows are left out and counted in `in`.
  */
-async function hostView(plan, rows, { guests = false } = {}) {
+async function hostView(plan, rows, { guests = false, chipIn = null } = {}) {
   const userIds = [...new Set(rows.map((r) => r.invitee_user_id).filter(Boolean).map(String))];
   const [people, requests] = await Promise.all([
     names(userIds),
@@ -334,6 +334,12 @@ async function hostView(plan, rows, { guests = false } = {}) {
       }
       // A guest from the open link waiting for the host's yes: POST …/invites/:id/ok.
       view.can_ok = state === 'waiting_ok';
+    }
+    // Chip in (the extras, `extras=1`): whether each person in said they paid, and whom "Mark paid" names.
+    if (chipIn && state === 'in') {
+      const extras = require('./planExtras');
+      const who = userId ? extras.personKey(userId) : extras.guestKey(row.id);
+      view.chip_in = { paid: chipIn.has(who), who };
     }
     // One row a person: an account invite and an email the same person opened show once, at the furthest state.
     const key = view.person ? `user:${view.person.user_id}` : `invite:${row.id}`;
@@ -397,8 +403,15 @@ const guestsOn = (viewer) => Boolean(viewer.guests && viewer.guestAnswersFlag);
 
 async function listForHost(user, postId) {
   const { viewer, plan } = await hostPlan(user, postId);
-  const view = await hostView(plan, await loadInvites(postId), { guests: guestsOn(viewer) });
+  const view = await hostView(plan, await loadInvites(postId), { guests: guestsOn(viewer), chipIn: await chipInFor(plan, viewer) });
   return { ...view, can_invite: Boolean(viewer.invitesFlag) && isOpenForAnswers(plan) && hostMayInvite(plan) };
+}
+
+/** Who said they paid (chip in, the extras), for an app that sent `extras=1` while the host has the switch; else null. */
+async function chipInFor(plan, viewer) {
+  if (!viewer.extras || !plan.chip_in || !require('./planExtras').takesExtras(plan)) return null;
+  const planChipIn = require('./planChipIn');
+  return (await planChipIn.enabledFor(plan.host_user_id)) ? planChipIn.paidSet(plan.chip_in) : null;
 }
 
 // ── People the host can invite ───────────────────────────────
