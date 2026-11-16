@@ -107,6 +107,44 @@ server session asked, told to the founder):
   from your invitation.", and the button "Open your invitation". If room
   opens later, "I'm in" from their link works as on any plan.
 
+- **What the build added** (server PR 4237, November 16). The value also
+  keeps `numbers` (an account's adults and kids, by key) and `answered` (when
+  each first answered, which is the order the pick lets people in). The card's
+  `dates` carries the words: each option's `can_text` ("4 can make it") and,
+  for the host, `pick_text` ("Pick Sunday, Nov 22 · 4:00 PM") and `pick_note`
+  (what picking does, in numbers); `answered_text` ("9 of 14 have answered"
+  for the host, "9 have answered" for a guest); `mine: { answered,
+  party_size, kids_count }`; and the card's `time_text` is "Picking a date".
+  The web page's `dates` adds `host_line` ("{Host} is picking a date"). While
+  a plan is picking, the ordinary ask and a guest's ordinary answer are
+  refused `409 picking`, "Tick the times that work for you.", and a change of
+  the plan's own time is refused `422 picking`, "Pick a date first, or change
+  the times you offered." After the pick, ticking is refused `409 picked`. A
+  time that has started cannot be picked: `409 past`, "That time has passed.
+  Choose another." The pick answers the plan with `settled: { in, waiting,
+  waitlisted, asked, full }`.
+- **A party that does not fit is passed over, not a wall.** At the pick, the
+  people who ticked are taken in the order they answered; one whose party is
+  larger than the room left goes to the waitlist (or Maybe, for a guest), and
+  a later, smaller party may still get in.
+- **A person with an account who waits for the host's yes** at the pick
+  (they came by the open link with "I say yes first" on) is told "{title} is
+  {Sunday, Nov 22 at 4:00 PM}. You'll hear when {Host} says yes." and the
+  host gets the ordinary "wants to come" notice.
+- **When offered times go by** (decided November 16, after the build's
+  report named it as not checked). A time that has started leaves everyone's
+  list: it can no longer be ticked or picked, and it is not counted in
+  "Most". The plan's place in lists follows the earliest time still ahead,
+  moved on the Plans tick, and ticking stays open while any time is ahead.
+  Once, 24 hours before the earliest time still ahead (never in the first
+  hour after posting), the host is told "Pick a date for {title}. {9} of
+  {14} have answered.", which opens the plan. When the last time goes by
+  with no pick, the plan ends on the tick as a plan whose time passed; the
+  host is told once "No date was picked for {title}, and its times have
+  passed."; the invited are told nothing. A plan that ended this way has
+  nobody in, so it has no photos and is not offered under "People from a
+  past plan".
+
 **The card** (with `extras=1`): `"dates": { "state": "picking", "options":
 [{ "id", "text": "Sat, Nov 21 · 6:00 PM", "can": 4, "mine": true }],
 "answered": 9, "invited": 14 }`. The host also gets, for each option, `"who":
