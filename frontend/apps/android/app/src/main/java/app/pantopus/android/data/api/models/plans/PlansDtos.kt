@@ -147,6 +147,8 @@ data class PlanPersonDto(
     /** Plans for the holidays (`guests=1`): a guest without an account who is in, by their invitation's id. */
     @Json(name = "guest_id") val guestId: String? = null,
     @Json(name = "guest") val isGuest: Boolean = false,
+    /** Business track B1, staff only: this guest's free thing (`ready` or `used`), for "Mark used". */
+    @Json(name = "deal") val deal: PlanPersonDealDto? = null,
 )
 
 /** `my_request`: the viewer's own request, once they have one. */
@@ -297,6 +299,8 @@ data class PlanDto(
     @Json(name = "bring") val bring: PlanBringDto? = null,
     /** Plans for the holidays, H3 (contract 8): the occasion it was started from; its tag reads the occasion's name. */
     @Json(name = "occasion") val occasion: PlanOccasionRefDto? = null,
+    /** Business track B1 (contract 9): a business's deal, with every word from the server; none without one. */
+    @Json(name = "deal") val deal: PlanDealDto? = null,
 )
 
 /** `occasion` on a card (Plans for the holidays, H3). */
@@ -637,6 +641,8 @@ data class CreatePlanBody(
     @Json(name = "bring") val bring: PlanBringInput? = null,
     /** Plans for the holidays, H3: the occasion the plan was started from (a key); none for an ordinary plan. */
     @Json(name = "occasion") val occasion: String? = null,
+    /** Business track B1: a business's deal (D3); none leaves it out. */
+    @Json(name = "deal") val deal: PlanDealInput? = null,
 )
 
 /** `PATCH /api/plans/:id` body: only the fields being changed (nulls are left out). */
@@ -667,6 +673,8 @@ data class UpdatePlanBody(
     @Json(name = "gps") val gps: PlanGpsInput? = null,
     /** Plans for the holidays, H1: guests say how many adults and kids (null leaves it as it is). */
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** Business track B1: a changed deal (`409 deal_locked` once someone is in); taking it off is `removeDeal`. */
+    @Json(name = "deal") val deal: PlanDealInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */
@@ -963,6 +971,10 @@ data class HostAsBusinessDto(
     @Json(name = "kinds") val kinds: List<HostAsKindDto> = emptyList(),
     @Json(name = "locations") val locations: List<HostAsLocationDto> = emptyList(),
     @Json(name = "limits") val limits: HostAsLimitsDto = HostAsLimitsDto(),
+    /** Business track: which rows the form draws (deal, price, pay here), while a track switch is on for it. */
+    @Json(name = "can") val can: HostAsCanDto? = null,
+    /** Business track B2: a price can be set now; false offers the payout setup in the price row. */
+    @Json(name = "payouts_ready") val payoutsReady: Boolean = false,
 )
 
 /** `GET /api/businesses/:id/plans` (B6): the business's upcoming plans, soonest first and not folded. */
