@@ -788,7 +788,7 @@ internal fun HostPreviewStep(
     val invitedOnly = ui.isPrivate && privateActions != null
     HostStepScaffold(
         title = "Preview",
-        step = "3 of 3",
+        step = "${ui.stepTotal} of ${ui.stepTotal}",
         leadingClose = false,
         onLeading = onBack,
         footer = {

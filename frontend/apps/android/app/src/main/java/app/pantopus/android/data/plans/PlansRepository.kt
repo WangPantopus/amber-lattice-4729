@@ -859,6 +859,18 @@ val NetworkError.planCode: String?
         return runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
+/** The field a Plans `422 validation` reply names (`{ error, message, field }`), such as `item` or `group_size`. */
+val NetworkError.planField: String?
+    get() {
+        val body =
+            when (this) {
+                is NetworkError.ClientError -> body
+                is NetworkError.Forbidden -> body
+                else -> null
+            } ?: return null
+        return runCatching { JSONObject(body).optString("field") }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
 /** The sentence for people from a Plans error reply, else the error's own copy. */
 val NetworkError.planMessage: String
     get() {

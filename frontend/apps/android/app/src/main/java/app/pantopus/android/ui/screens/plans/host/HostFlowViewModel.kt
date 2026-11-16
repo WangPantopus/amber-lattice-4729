@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.HostAsLabelDto
 import app.pantopus.android.data.api.models.plans.HostAsLocationDto
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
@@ -43,6 +44,7 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
+import app.pantopus.android.data.plans.planField
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
 import app.pantopus.android.ui.screens.plans.bring.BringDraft
@@ -67,8 +69,11 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** The host flow's steps (boards H1, H2 to H5, H7) and the place picker (H6) over them. */
-enum class HostStep { Type, Details, Place, Preview }
+/**
+ * The host flow's steps (boards H1, H2 to H5, H7), the place picker (H6) over them, and a business's deal step between
+ * the details and the preview (Plans for the holidays, business track D3: "3 of 4").
+ */
+enum class HostStep { Type, Details, Deal, Place, Preview }
 
 /** A public place picked on H6 (or found by "You're here now" for a pickup game). */
 data class PickedPlace(
@@ -154,6 +159,10 @@ data class HostDraft(
     /** The occasion the plan was started from (Plans for the holidays, H3): its key, and its name for the title. */
     val occasion: String? = null,
     val occasionText: String? = null,
+    /** A business's deal (business track B1, D3); "No deal" until the business picks one. */
+    val deal: DealDraft = DealDraft(),
+    /** The deal's starting values were set (the first time the deal step opened). */
+    val dealStarted: Boolean = false,
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -233,7 +242,17 @@ data class HostUi(
     val occasionsOn: Boolean = false,
     /** The occasions in season (`GET /api/plans/occasions`); empty draws no strip. */
     val occasions: List<PlanOccasionDto> = emptyList(),
+    /** The deal step's "Guests will read" and field errors (business track B1). */
+    val dealPreview: DealPreviewState = DealPreviewState(),
+    /** The deal step's "Preview" is asking the server about the deal. */
+    val dealChecking: Boolean = false,
 ) {
+    /** A business that takes deals gets the deal step (business track B1, D3); a person's own plan never does. */
+    val showsDealStep: Boolean get() = business?.takesDeals == true
+
+    /** How many steps the bar counts: "of 4" with deals on and a business chosen, else "of 3" (07-screens, settled). */
+    val stepTotal: Int get() = if ((business ?: chosenBusiness)?.takesDeals == true) DEAL_STEPS else PLAIN_STEPS
+
     /**
      * A private plan's room reads "Room for", to 100 (Plans for the holidays, board 3), for the kinds whose row says how
      * many people: not a playdate (families) or a pickup game (players needed).
@@ -966,6 +985,10 @@ class HostFlowViewModel
                 _ui.update { it.copy(error = problem) }
                 return
             }
+            if (_ui.value.step == HostStep.Details && _ui.value.showsDealStep) {
+                openDealStep()
+                return
+            }
             _ui.update { it.copy(step = HostStep.Preview, error = null) }
             loadPreviewArea()
             if (_ui.value.isPrivate && _ui.value.invitePeople !is HostInvitePeople.Loaded) loadInvitePeople()
@@ -1002,8 +1025,9 @@ class HostFlowViewModel
                 when (step) {
                     HostStep.Type -> return false
                     HostStep.Details -> HostStep.Type
+                    HostStep.Deal -> HostStep.Details
                     HostStep.Place -> HostStep.Details
-                    HostStep.Preview -> HostStep.Details
+                    HostStep.Preview -> if (_ui.value.showsDealStep) HostStep.Deal else HostStep.Details
                 }
             _ui.update { it.copy(step = previous, error = null) }
             return true
@@ -1027,7 +1051,7 @@ class HostFlowViewModel
                 val business = ui.business
                 val body =
                     if (business != null) {
-                        businessCreateBody(kind, draft, ui.zone, business)
+                        businessCreateBody(kind, draft, ui.zone, business, deal = draft.deal.toInput(ui.zone).takeIf { ui.showsDealStep })
                     } else {
                         // A private plan can be anywhere: no fix is needed to prove the host is nearby.
                         val fix = if (ui.isPrivate) null else locations.gpsFix()
@@ -1038,7 +1062,109 @@ class HostFlowViewModel
                         events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
                         _ui.update { it.copy(posting = false, postedId = result.data.id) }
                     }
-                    is NetworkResult.Failure -> _ui.update { it.copy(posting = false, error = postError(result.error)) }
+                    is NetworkResult.Failure -> postFailed(result.error)
+                }
+            }
+        }
+
+        /** Posting refused: a deal's field goes back to the deal step with the server's sentence under it (D3). */
+        private fun postFailed(error: NetworkError) {
+            val field = error.planField
+            if (field != null && field in DEAL_FIELDS && _ui.value.showsDealStep) {
+                val errors = mapOf(field to error.planMessage)
+                _ui.update {
+                    it.copy(posting = false, step = HostStep.Deal, dealPreview = it.dealPreview.copy(errors = errors, checked = true))
+                }
+                return
+            }
+            _ui.update { it.copy(posting = false, error = postError(error)) }
+        }
+
+        // ---- Business track B1: the deal step (D3) ----
+
+        private var dealJob: Job? = null
+
+        /** Opens the deal step, with a group deal's starting values the first time. */
+        private fun openDealStep() {
+            _ui.update { ui ->
+                val draft = ui.draft
+                val deal =
+                    if (draft.dealStarted) {
+                        draft.deal
+                    } else {
+                        DealDraft.startingFor(draft.spots, draft.start, LocalDateTime.now(ui.zone))
+                    }
+                ui.copy(step = HostStep.Deal, error = null, draft = draft.copy(deal = deal, dealStarted = true))
+            }
+            askDealPreview(debounce = false)
+        }
+
+        /** A change on the deal step; the server is asked again what guests will read. */
+        fun editDeal(transform: (DealDraft) -> DealDraft) {
+            _ui.update { it.copy(draft = it.draft.copy(deal = transform(it.draft.deal)), error = null) }
+            askDealPreview(debounce = true)
+        }
+
+        private fun askDealPreview(debounce: Boolean) {
+            dealJob?.cancel()
+            val ui = _ui.value
+            if (ui.draft.deal.scope == DealScope.NONE) {
+                _ui.update { it.copy(dealPreview = DealPreviewState()) }
+                return
+            }
+            dealJob =
+                viewModelScope.launch {
+                    if (debounce) delay(DEAL_PREVIEW_DEBOUNCE_MS)
+                    readDealPreview()
+                }
+        }
+
+        /**
+         * Asks the server what guests will read for the deal as it is now; null when it couldn't be asked. [checked]: the
+         * step's "Preview" asked, so every error shows from now on.
+         */
+        private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
+            val ui = _ui.value
+            val business = ui.business ?: return null
+            val body = dealPreviewBody(business, ui.draft.deal, ui.draft.spots, ui.draft.start, ui.zone) ?: return null
+            _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = true, failed = null)) }
+            return when (val result = repository.dealPreview(body)) {
+                is NetworkResult.Success -> {
+                    val answer = result.data
+                    _ui.update {
+                        val shown = checked || it.dealPreview.checked
+                        val preview = DealPreviewState(answer = answer.takeIf { a -> a.ok }, errors = answer.errors, checked = shown)
+                        it.copy(dealPreview = preview)
+                    }
+                    answer
+                }
+                is NetworkResult.Failure -> {
+                    _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = false, failed = result.error.planMessage)) }
+                    null
+                }
+            }
+        }
+
+        /** The deal step's "Preview": on to the preview once the server accepts the deal (or with "No deal"). */
+        fun dealNext() {
+            val ui = _ui.value
+            if (ui.dealChecking) return
+            if (ui.draft.deal.scope == DealScope.NONE) {
+                dealJob?.cancel()
+                _ui.update { it.copy(step = HostStep.Preview, error = null, dealPreview = DealPreviewState()) }
+                loadPreviewArea()
+                return
+            }
+            dealJob?.cancel()
+            _ui.update { it.copy(dealChecking = true, error = null) }
+            viewModelScope.launch {
+                val answer = readDealPreview(checked = true)
+                _ui.update { it.copy(dealChecking = false) }
+                if (answer?.ok == true) {
+                    _ui.update { it.copy(step = HostStep.Preview) }
+                    loadPreviewArea()
+                } else if (answer == null) {
+                    _ui.update { it.copy(error = "Couldn't check the deal. Try again.") }
                 }
             }
         }

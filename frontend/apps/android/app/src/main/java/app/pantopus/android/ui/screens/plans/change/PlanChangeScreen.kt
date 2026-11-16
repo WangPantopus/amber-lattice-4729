@@ -43,7 +43,6 @@ import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTile
 import app.pantopus.android.ui.screens.plans.components.PlanWhenCard
 import app.pantopus.android.ui.screens.plans.detail.PlanPlainScaffold
-import app.pantopus.android.ui.screens.plans.host.BusinessWhereField
 import app.pantopus.android.ui.screens.plans.host.PlacePickerState
 import app.pantopus.android.ui.screens.plans.host.PublicPlacePicker
 import app.pantopus.android.ui.screens.plans.host.placeCaption
@@ -69,6 +68,11 @@ fun PlanChangeScreen(
     LaunchedEffect(ui.saved) { if (ui.saved) onDone() }
     if (ui.picking) {
         ChangePlacePicker(ui, viewModel)
+        return
+    }
+    // Business track B1: D3's form over this one; Back keeps nothing, Done keeps the deal for Save.
+    if (ui.deal.open) {
+        ChangeDealForm(ui, viewModel)
         return
     }
     // The Repeats screen (Plans step 2) over this one; Back and Done come back here, and Save sends the choice.
@@ -104,10 +108,8 @@ fun PlanChangeScreen(
         }
         ChangeWhenField(ui, viewModel, was)
         if (ui.canChangePlace) WhereField(ui, viewModel)
-        // A business's plan: one of its own locations (board B2), never a place picked here.
-        ui.business?.takeIf { ui.canChangeLocation }?.let { business ->
-            BusinessWhereField(business, ui.newLocationId ?: ui.currentLocationId, onPick = viewModel::pickLocation)
-        }
+        // A business's plan: one of its own locations (board B2) and its deal (business track B1).
+        ChangeBusinessFields(ui, viewModel)
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
         if (ui.asksStillComing) {
             StillComingWarning(

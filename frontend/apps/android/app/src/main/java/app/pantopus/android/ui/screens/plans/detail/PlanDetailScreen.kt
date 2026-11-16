@@ -259,6 +259,8 @@ private fun PlanReady(
                     onChange = onChange,
                     onCancel = viewModel::openCancel,
                     onRemove = { person -> person.requestId?.let(viewModel::removeGuest) },
+                    // Business track B1: staff mark a guest's free thing used.
+                    onMarkUsed = { person -> person.requestId?.let(viewModel::markDealUsed) },
                     series =
                         PlanSeriesActions(
                             onSkip = viewModel::skipDate,
@@ -428,7 +430,7 @@ private fun footerFor(
         // Board Online: "Join" for someone in, with "Can't make it" under it.
         standing == PlanViewerStanding.IN ->
             onlineJoinFooter(plan, viewModel::linkUnopened, leave = { confirm(LeaveKind.Plan) }, busy = busy)
-                ?: leaveFooter(busy, confirm)
+                ?: leaveFooter(busy, confirm, dealReady = plan.dealReady)
         standing == PlanViewerStanding.REQUESTED -> {
             {
                 GhostButton(
@@ -486,12 +488,16 @@ private fun remindFooter(
     }
 }
 
-/** J7's footer: "Can't make it". */
+/** J7's footer: "Can't make it", with "Leaving gives up your deal" while a business's deal is ready (business track D2). */
 private fun leaveFooter(
     busy: Boolean,
     confirm: (LeaveKind) -> Unit,
+    dealReady: Boolean = false,
 ): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit =
-    { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
+    {
+        PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy)
+        if (dealReady) PlanFooterCaption("Leaving gives up your deal")
+    }
 
 /** J1 and J2's footer: "Ask to join" (or why not) and its caption. */
 private fun askFooterContent(

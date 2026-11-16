@@ -2,6 +2,7 @@ package app.pantopus.android.ui.screens.plans.host
 
 import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
+import app.pantopus.android.data.api.models.plans.PlanDealInput
 import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanHostAsInput
@@ -121,6 +122,8 @@ internal fun businessCreateBody(
     draft: HostDraft,
     zone: ZoneId,
     business: HostAsBusinessDto,
+    /** Business track B1: the deal chosen on the deal step (D3); null for "No deal" or a business without deals. */
+    deal: PlanDealInput? = null,
 ): CreatePlanBody =
     CreatePlanBody(
         kind = kind.wire,
@@ -142,6 +145,7 @@ internal fun businessCreateBody(
         hostAs = PlanHostAsInput(business.userId),
         businessLocationId = draft.locationId,
         label = draft.label,
+        deal = deal,
     )
 
 /** A study group's subject with its spaces tidied, as the host flow sends it. */
