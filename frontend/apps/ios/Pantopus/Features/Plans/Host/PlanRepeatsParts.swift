@@ -77,6 +77,9 @@ struct PlanRepeatMonthField: View {
 /// Tapping the chosen row opens its picker under it.
 struct PlanRepeatEndsField: View {
     let draft: PlanRepeatDraft
+    /// A picker opened: the screen scrolls it fully into view above Done (the calendar and its month and year
+    /// wheels used to open half under the button).
+    var reveal: (String) -> Void = { _ in }
     @State private var editing: PlanRepeatDraft.Ends?
 
     var body: some View {
@@ -99,6 +102,10 @@ struct PlanRepeatEndsField: View {
                     .tint(Theme.Color.primary700)
                     .environment(\.timeZone, draft.calendar.timeZone)
                     .accessibilityIdentifier("planRepeatUntilPicker")
+                    .id(Self.untilPickerId)
+                    // A tap on the month's name swaps the days for the month and year wheels, in the same space:
+                    // whatever was tapped, the whole calendar comes above Done.
+                    .background(PlanTapObserver { reveal(Self.untilPickerId) })
                 }
                 Divider().overlay(Theme.Color.appBorder)
                 row(
@@ -119,12 +126,23 @@ struct PlanRepeatEndsField: View {
                     }
                     .padding(.vertical, Spacing.s2)
                     .accessibilityIdentifier("planRepeatCountStepper")
+                    .id(Self.countStepperId)
                 }
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Ends")
         }
+        .onChange(of: editing) { _, opened in
+            switch opened {
+            case .onDate: reveal(Self.untilPickerId)
+            case .afterCount: reveal(Self.countStepperId)
+            case nil: break
+            }
+        }
     }
+
+    static let untilPickerId = "planRepeatUntilPicker"
+    static let countStepperId = "planRepeatCountStepper"
 
     private func row(_ ends: PlanRepeatDraft.Ends, title: String, value: String, identifier: String) -> some View {
         let isOn = draft.ends == ends

@@ -24,26 +24,28 @@ struct PlanRepeatsScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             PlanNavBar(title: "Repeats", leading: .back, onLeading: onDone)
-            ScrollView {
-                VStack(alignment: .leading, spacing: Spacing.s5) {
-                    howOften
-                    switch draft.choice {
-                    case .weekly, .biweekly: PlanRepeatDaysField(draft: draft)
-                    case .monthly: PlanRepeatMonthField(draft: draft) { addsDay = true }
-                    case .none: EmptyView()
-                    }
-                    if draft.isOn {
-                        PlanRepeatEndsField(draft: draft)
-                        summary
-                        VStack(alignment: .leading, spacing: 10) {
-                            PlanScopeLine(text: PlanRepeatCopy.eachDateLine, icon: .arrowsRepeat)
-                            PlanScopeLine(text: PlanRepeatCopy.askedLine, icon: .users)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.s5) {
+                        howOften
+                        switch draft.choice {
+                        case .weekly, .biweekly: PlanRepeatDaysField(draft: draft)
+                        case .monthly: PlanRepeatMonthField(draft: draft) { addsDay = true }
+                        case .none: EmptyView()
+                        }
+                        if draft.isOn {
+                            PlanRepeatEndsField(draft: draft) { picker in reveal(picker, with: proxy) }
+                            summary
+                            VStack(alignment: .leading, spacing: 10) {
+                                PlanScopeLine(text: PlanRepeatCopy.eachDateLine, icon: .arrowsRepeat)
+                                PlanScopeLine(text: PlanRepeatCopy.askedLine, icon: .users)
+                            }
                         }
                     }
+                    .padding(.horizontal, Spacing.s4)
+                    .padding(.top, Spacing.s1)
+                    .padding(.bottom, Spacing.s6)
                 }
-                .padding(.horizontal, Spacing.s4)
-                .padding(.top, Spacing.s1)
-                .padding(.bottom, Spacing.s6)
             }
             Button("Done", action: onDone)
                 .planButton(.primary)
@@ -62,6 +64,15 @@ struct PlanRepeatsScreen: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planRepeatsScreen")
+    }
+
+    /// The calendar (with its month and year wheels) or the stepper opened under its row, or the calendar was
+    /// tapped: bring all of it above Done once it has its size. Already in view, nothing moves.
+    private func reveal(_ picker: String, with proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+            withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(picker) }
+        }
     }
 
     // MARK: - How often
