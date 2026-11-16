@@ -547,8 +547,20 @@ before the time, $18.00 more as a second refund, the business paid out on
 what stayed; a claimer leaving after it, nothing). It also made an owed
 refund loud: an error line when a refund first becomes owed, and
 `plans.paid.refund_owed_stuck` at error level on every tick once it has been
-owed an hour. Still open, with the server session: 2, 4, and the part of 3
-after `refund_until` (a removal by the business refunds at any time).
+owed an hour.
+
+Server PR 4261 (the same day, read by the coordinator before it merged)
+closed 2, 3 and 4, so all five are closed on `dev`: a buyer the business
+removes is treated as a buyer who leaves, at any time (seen: 5 bought, 2
+claimed, $54.00 back, both claimers still in); a claimer the business removes
+after the link stopped sends that spot's price back to the buyer at any time
+(seen after `refund_until`: $18.00), and cannot rejoin; owed refunds are kept
+one entry a request key in `Payment.metadata.plan_refunds_owed` (seen: two
+refunds of a part both failing at the payment company, both sent by the next
+tick, once each, one notice each). Every case was seen on the build's setup
+in test mode to the cent, with the payout after it. What this extra still
+lacks: the phones' screen (board 31), the payment company's call-back, and
+live mode.
 
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
