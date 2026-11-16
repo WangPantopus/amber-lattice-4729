@@ -766,6 +766,20 @@ private fun DesignTile(
 
 // ── Step 3: write on the back ────────────────────────────────
 
+/** Beside "Sign your name": what's beside FROM, or that the account couldn't keep the signature (founder, 2026-11-16). */
+private fun signHint(
+    signature: CardSignature?,
+    keeping: CardSignKeeping?,
+    fromName: String,
+): String =
+    when {
+        keeping?.state?.keepFailed == true ->
+            "This card is signed, but your signature couldn’t be kept for next time. Sign again to try once more."
+        signature != null && signature == keeping?.saved -> "Your saved signature is beside FROM."
+        signature != null -> "Signed beside FROM."
+        else -> "Or leave ${fromName.trim().substringBefore(' ')} typed."
+    }
+
 /** The back of the chosen card as the writing surface; "Turn it over" shows the picture; the letters counted. */
 @Composable
 internal fun WriteStep(
@@ -782,6 +796,8 @@ internal fun WriteStep(
     /** The server keeps signatures (`GET /api/mailbox/cards` `signature`, launch key `card_table`). */
     canSign: Boolean = false,
     onSignature: (CardSignature?) -> Unit = {},
+    /** The account keeps one signature for the next cards (`signature.saves`); null: no "Keep this signature" box. */
+    keeping: CardSignKeeping? = null,
     /** The card's own photo (memories plan step 4); "Add a photo" shows when [photos] can be added to this card. */
     photo: CardPhotoDraft? = null,
     photos: CardPhotoCalls? = null,
@@ -884,6 +900,7 @@ internal fun WriteStep(
                     onClick = {
                         focusManager.clearFocus()
                         showBack = true
+                        keeping?.onOpened?.invoke()
                         signing = true
                     },
                     kind = CardButtonKind.Paper,
@@ -891,18 +908,19 @@ internal fun WriteStep(
                     modifier = Modifier.testTag("sendCardSign"),
                 )
                 Text(
-                    if (signature != null) "Signed beside FROM." else "Or leave ${fromName.trim().substringBefore(' ')} typed.",
+                    signHint(signature, keeping, fromName),
                     fontSize = 13.sp,
                     color = DeskInk.quiet,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("sendCardSignHint"),
                 )
             }
         }
         if (signing) {
             CardSignaturePad(
                 initial = signature,
-                onDone = {
-                    onSignature(it)
+                keeping = keeping,
+                onDone = { signed, keep ->
+                    if (keeping != null) keeping.onSigned(signed, keep) else onSignature(signed)
                     signing = false
                 },
                 onTyped = {

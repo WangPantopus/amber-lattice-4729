@@ -357,6 +357,7 @@ private fun Steps(
     }
     val to = form.to
     val design = cards.designs.firstOrNull { it.id == form.design }
+    val keepingState by viewModel.signatureKeeper.state.collectAsStateWithLifecycle()
     when (form.step) {
         SendCardStep.To -> ToStep(form, viewModel)
         SendCardStep.Pick -> PickStep(cards, form.design, onLarge = onLarge)
@@ -375,6 +376,14 @@ private fun Steps(
                         signature = form.signature,
                         canSign = LaunchFeatures.cardTable && cards.signature != null,
                         onSignature = viewModel::onSignature,
+                        keeping =
+                            CardSignKeeping(
+                                saved = cards.signature?.saved?.takeIf { it.drawable },
+                                state = keepingState,
+                                onSigned = viewModel.signatureKeeper::signed,
+                                onForget = viewModel.signatureKeeper::forget,
+                                onOpened = viewModel.signatureKeeper::opened,
+                            ).takeIf { LaunchFeatures.cardTable && cards.signature?.saves == true },
                         photo = form.photo,
                         photos = photoCalls(cards, form, viewModel),
                         voice = form.voice,

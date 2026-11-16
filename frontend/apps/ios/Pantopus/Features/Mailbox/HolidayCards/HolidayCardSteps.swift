@@ -607,8 +607,11 @@ struct HolidayCardWriteStep: View {
         .sheet(isPresented: $signing) {
             CardTableSignPad(
                 initial: viewModel.signature,
-                onDone: { viewModel.signature = $0 },
-                onTyped: { viewModel.signature = nil }
+                onDone: { viewModel.signed($0, keep: $1) },
+                onTyped: { viewModel.signature = nil },
+                keeping: viewModel.signatureSaves
+                    ? CardTableSignPad.Keeping(saved: viewModel.savedSignature) { await viewModel.forgetSavedSignature() }
+                    : nil
             )
             .presentationDetents([.medium, .large])
             .presentationBackground(MailPaper.cardPaper(nil))
@@ -658,12 +661,21 @@ struct HolidayCardWriteStep: View {
                 signing = true
             }
             .accessibilityIdentifier("sendCardSign")
-            Text(signed ? "Signed beside FROM." : "Or leave \(HolidayCardWords.firstName(viewModel.fromName)) typed.")
+            Text(signHint)
                 .font(.system(size: 13))
                 .foregroundStyle(HolidayCardDesk.muted(scheme))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("sendCardSignHint")
             Spacer(minLength: 0)
         }
+    }
+
+    private var signHint: String {
+        if viewModel.keepSignatureFailed {
+            return "This card is signed, but your signature couldn't be kept for next time. Sign again to try once more."
+        }
+        if viewModel.signedWithSaved { return "Your saved signature is beside FROM." }
+        if viewModel.signature != nil { return "Signed beside FROM." }
+        return "Or leave \(HolidayCardWords.firstName(viewModel.fromName)) typed."
     }
 }

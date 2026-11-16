@@ -9,7 +9,7 @@
 
 import { get, post, uploadFile, apiRequest, mailbox, mailCompose } from '@pantopus/api';
 import { launchFeatures } from '@/lib/featureFlags';
-import type { DeletedMail, HolidayCards, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult, WaitingHolidayCard } from '@pantopus/api';
+import type { CardSignature, DeletedMail, HolidayCards, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult, WaitingHolidayCard } from '@pantopus/api';
 
 /** PATCH helper — not barrel-exported from @pantopus/api */
 function patch<T>(url: string, data?: Record<string, any>): Promise<T> {
@@ -127,6 +127,16 @@ async function call<T>(fn: () => Promise<T>): Promise<T> {
 
 export async function getHolidayCards(): Promise<HolidayCards> {
   return call(() => mailbox.getHolidayCards());
+}
+
+/** Keep this signature for the next cards (the account's saved signature). */
+export async function saveCardSignature(signature: CardSignature): Promise<CardSignature> {
+  return (await call(() => mailbox.saveCardSignature(signature))).signature;
+}
+
+/** Forget the account's saved signature. */
+export async function forgetCardSignature(): Promise<void> {
+  await call(() => mailbox.forgetCardSignature());
 }
 
 /** The card waiting for a new account (TABCARD 3), or null; throws MailboxApiError when the server couldn't say. */

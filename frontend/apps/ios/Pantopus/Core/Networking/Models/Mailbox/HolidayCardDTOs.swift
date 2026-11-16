@@ -153,16 +153,39 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
 }
 
 /// `signature` on `GET /api/mailbox/cards`: the box a signature is drawn in (400 × 100) and the most bytes it can take
-/// as compact JSON (2048).
+/// as compact JSON (2048). `saves`: the account can keep one signature for the next cards (founder, 2026-11-16;
+/// `PUT`/`DELETE /api/mailbox/cards/signature`), and `saved` is the one it keeps (nil: none, or an older server).
 public struct HolidayCardSignatureSpec: Decodable, Sendable, Hashable {
     public let width: Int
     public let height: Int
     public let maxBytes: Int
+    public let saves: Bool
+    public let saved: CardSignature?
 
     private enum CodingKeys: String, CodingKey {
         case width = "w"
         case height = "h"
         case maxBytes = "max_bytes"
+        case saves, saved
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        width = try c.decode(Int.self, forKey: .width)
+        height = try c.decode(Int.self, forKey: .height)
+        maxBytes = try c.decode(Int.self, forKey: .maxBytes)
+        saves = (try? c.decodeIfPresent(Bool.self, forKey: .saves)) == true
+        // A saved signature this app can't read leaves the card unsigned, never the signing itself.
+        saved = try? c.decodeIfPresent(CardSignature.self, forKey: .saved)
+    }
+}
+
+/// `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept.
+public struct CardSignatureBody: Codable, Sendable, Hashable {
+    public let signature: CardSignature
+
+    public init(signature: CardSignature) {
+        self.signature = signature
     }
 }
 
