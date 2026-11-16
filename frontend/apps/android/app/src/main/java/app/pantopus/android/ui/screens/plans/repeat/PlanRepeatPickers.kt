@@ -46,8 +46,8 @@ import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
 /*
- * The Repeats screen's pickers (Plans step 2): another day of the month, the end date (within the year), and the
- * number of times (2 to 100). Each keeps what the server would refuse out of reach.
+ * The Repeats screen's pickers (Plans step 2): another day of the month, the end date (from the pattern's second date
+ * to a year out), and the number of times (2 to 100). Each keeps what the server would refuse out of reach.
  */
 
 private const val BY_WEEKDAY = "weekday"
@@ -145,15 +145,18 @@ private fun Caption(text: String) {
     Text(text = text, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
 }
 
-/** "On a date": Android's date picker, from the plan's own date to a year after it. */
+/**
+ * "On a date": Android's date picker, from the pattern's second date ([first]; the plan's own date and the days before
+ * the second date are greyed, so the plan keeps two dates) to a year after the plan's date.
+ */
 @Composable
 internal fun PlanRepeatUntilDialog(
     setup: PlanRepeatSetup,
+    first: LocalDate,
     current: LocalDate,
     onPick: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val first = setup.firstEnd
     val last = setup.lastEnd
     val selectable = remember(first, last) { betweenDates(first, last) }
     val state =

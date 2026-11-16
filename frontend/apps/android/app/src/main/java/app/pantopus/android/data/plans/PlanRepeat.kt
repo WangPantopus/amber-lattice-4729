@@ -117,7 +117,8 @@ data class PlanRepeatPattern(
 
     /**
      * This pattern for a plan whose own date is now [date] (where the pattern starts: [anchor]): the old date's pre-selected
-     * day moves to the new one, and an end date it no longer fits (or the default 12 weeks out) follows it.
+     * day moves to the new one, and an end date it no longer fits (or the default 12 weeks out) follows it. An end date
+     * before the pattern's second date, which would leave the plan one date, moves on too ([PlanSeries.untilWithTwoDates]).
      */
     fun alignedTo(
         date: LocalDate,
@@ -126,16 +127,14 @@ data class PlanRepeatPattern(
         val from = chosenFor ?: date
         val days = if (freq == PlanRepeatFreq.MONTHLY) weekdays else alignedWeekdays(from, date)
         val months = if (freq == PlanRepeatFreq.MONTHLY) alignedMonthDays(from, date) else monthDays
+        val moved = copy(weekdays = days, monthDays = months, chosenFor = date)
         val defaultEnd = until != null && until == PlanSeries.defaultUntil(from, anchor)
         val end =
             until?.let { current ->
-                if (defaultEnd || current.isBefore(date)) {
-                    PlanSeries.defaultUntil(date, anchor)
-                } else {
-                    PlanSeries.earlier(current, PlanSeries.latestEnd(anchor))
-                }
+                val kept = if (defaultEnd) PlanSeries.defaultUntil(date, anchor) else current
+                PlanSeries.untilWithTwoDates(PlanSeries.earlier(kept, PlanSeries.latestEnd(anchor)), moved, date, anchor)
             }
-        return copy(weekdays = days, monthDays = months, until = end, chosenFor = date)
+        return moved.copy(until = end)
     }
 
     private fun alignedWeekdays(
@@ -240,6 +239,30 @@ object PlanSeries {
         return generateSequence(after.plusDays(1)) { it.plusDays(1) }
             .takeWhile { !it.isAfter(last) }
             .filter { matches(pattern, it, anchor) }
+    }
+
+    /**
+     * The pattern's second date: the first day after [anchor] (the plan's own date) that it lands on, whatever its end.
+     * A repeating plan ends on it or later, so it has two dates at least (the server refuses fewer). A pattern that lands
+     * on no other day within the year (none the app makes) answers the year's last day.
+     */
+    fun secondDate(
+        pattern: PlanRepeatPattern,
+        anchor: LocalDate,
+    ): LocalDate = datesAfter(pattern.copy(until = null, count = null), anchor, anchor).firstOrNull() ?: latestEnd(anchor)
+
+    /**
+     * [until] as the end date of [pattern] for a plan on [date] (the pattern starting on [anchor]): kept when it is on or
+     * after the pattern's second date, else moved to the 12-week default, or to the second date when that is later.
+     */
+    fun untilWithTwoDates(
+        until: LocalDate,
+        pattern: PlanRepeatPattern,
+        date: LocalDate,
+        anchor: LocalDate,
+    ): LocalDate {
+        val second = secondDate(pattern, anchor)
+        return if (until.isBefore(second)) clamp(defaultUntil(date, anchor), second, latestEnd(anchor)) else until
     }
 
     /**
