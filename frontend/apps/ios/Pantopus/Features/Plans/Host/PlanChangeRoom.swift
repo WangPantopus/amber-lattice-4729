@@ -13,8 +13,7 @@ import SwiftUI
 
 /// The two rows, drawn as the host form's: "Room for" with its stepper, then "Kids welcome" in "Add to this plan".
 struct PlanChangeRoomRows: View {
-    @Binding var spots: Int
-    @Binding var kidsWelcome: Bool
+    @Binding var room: PlanRoomChange
     /// Seats already taken: the room is never offered below them.
     let seatsTaken: Int
 
@@ -29,8 +28,13 @@ struct PlanChangeRoomRows: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                PlanStepper(value: $spots, range: Self.range(seatsTaken: seatsTaken, spots: spots), label: "Room for", holdStep: 5)
-                    .accessibilityIdentifier("planChangeRoomFor")
+                PlanStepper(
+                    value: $room.spots,
+                    range: Self.range(seatsTaken: seatsTaken, spots: room.spots),
+                    label: "Room for",
+                    holdStep: 5
+                )
+                .accessibilityIdentifier("planChangeRoomFor")
             }
             PlanFormField(label: "Add to this plan") {
                 PlanFormCard {
@@ -38,7 +42,7 @@ struct PlanChangeRoomRows: View {
                         icon: .users,
                         title: "Kids welcome",
                         subtitle: "Guests say how many adults and kids",
-                        isOn: $kidsWelcome
+                        isOn: $room.kidsWelcome
                     )
                     .accessibilityIdentifier("planChangeKidsWelcome")
                 }
@@ -54,6 +58,26 @@ struct PlanChangeRoomRows: View {
 
     /// The most a private plan with guest answers has room for.
     static let most = 100
+}
+
+/// The room and "Kids welcome" as the host changes them; only what changed is sent.
+struct PlanRoomChange {
+    var spots = 1
+    var kidsWelcome = false
+
+    init() {}
+
+    init(card: PlanCardDTO) {
+        spots = card.spots
+        kidsWelcome = card.kidsWelcome
+    }
+
+    @MainActor
+    func apply(to body: inout UpdatePlanBody, card: PlanCardDTO) {
+        guard card.changesRoom else { return }
+        if spots != card.spots { body.spots = spots }
+        if kidsWelcome != card.kidsWelcome { body.kidsWelcome = kidsWelcome }
+    }
 }
 
 extension PlanCardDTO {
