@@ -46,6 +46,19 @@ counts, Kids welcome, the bring list and occasions need new store builds.
 
 ## 3. The business track and its gates
 
+**Changed on November 16.** The founder said to keep every session working
+until everything discussed and designed is built and verified, without asking
+before each piece. The business track is therefore being built now, in the
+order B0 to B6 ([briefs 5 to 7](05-session-briefs.md)). The gates in the table
+below no longer hold the build: they hold switching a step on. Every step is
+built behind a switch that stays off, and turning one on for real people or
+real money stays the founder's, after the gate beside it.
+
+One risk is accepted with this: the accountant's answer on Washington sales
+tax, or the lawyer's read, may change the bill at the place after it is built.
+
+### The gates
+
 | Step | Gate | Who clears it |
 | --- | --- | --- |
 | B0 the shared pieces | The business graph's contract (docs PR 3965) is the plan of record for them; it is approved and unbuilt | The founder says go; its own session builds them as that contract's phase A |
