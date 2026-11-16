@@ -139,7 +139,8 @@ async function verifyAccessToken(token, { authClient, allowExpiredForRevocation 
   return {
     ok: true,
     via: 'supabase',
-    user: { id: data.user.id, email: data.user.email, emailConfirmed: data.user.email_confirmed_at !== null },
+    // Supabase leaves email_confirmed_at out of the user while the address is unconfirmed: absent is not confirmed.
+    user: { id: data.user.id, email: data.user.email, emailConfirmed: Boolean(data.user.email_confirmed_at) },
   };
 }
 

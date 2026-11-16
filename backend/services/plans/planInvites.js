@@ -57,8 +57,8 @@ const OPEN_STATUSES = ['pending', 'accepted', 'declined', 'maybe'];
 const INVITE_COLUMNS = [
   'id', 'post_id', 'host_user_id', 'channel', 'invitee_user_id', 'email', 'status', 'needs_host_ok',
   'email_status', 'claimed_at', 'opened_at', 'answered_at', 'created_at', 'updated_at',
-  // A guest without an account (planGuests.js).
-  'guest_name', 'guest_adults', 'guest_kids', 'reminded_at',
+  // A guest without an account (planGuests.js), and the host's own yes (6.8, 6.9).
+  'guest_name', 'guest_adults', 'guest_kids', 'reminded_at', 'host_ok_at',
 ].join(', ');
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]{1,64}@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -261,7 +261,8 @@ function stateOf(row, request, { guests = false } = {}) {
     if (request.status === 'pending') return 'asked';
     return 'left';
   }
-  return row.channel === 'link' && row.invitee_user_id ? 'opened' : 'invited';
+  // A text invite someone opened, or (6.9) a person with an account who opened the plan's open link.
+  return (row.channel === 'link' || row.channel === 'open') && row.invitee_user_id ? 'opened' : 'invited';
 }
 
 const STATE_ORDER = { waiting_ok: -1, asked: 0, in: 1, waitlisted: 2, maybe: 3, opened: 4, invited: 5, cant_make_it: 6, left: 7 };
@@ -276,7 +277,7 @@ async function hostView(plan, rows, { guests = false } = {}) {
   const [people, requests] = await Promise.all([
     names(userIds),
     userIds.length
-      ? supabaseAdmin.from('PlanRequest').select('id, user_id, status').eq('post_id', plan.post_id).in('user_id', userIds)
+      ? supabaseAdmin.from('PlanRequest').select('id, user_id, status, party_size, kids_count').eq('post_id', plan.post_id).in('user_id', userIds)
       : { data: [] },
   ]);
   if (requests.error) throw new Error(`Failed to load requests: ${requests.error.message}`);
@@ -292,13 +293,14 @@ async function hostView(plan, rows, { guests = false } = {}) {
       if (row.status === 'pending') unopenedLinks += 1;
       continue;
     }
-    // An older app never sees the open link's rows; the ones in are counted in `in`.
-    if (row.channel === 'open' && !guests) {
-      if (row.status === 'accepted') openLinkIn += 1;
-      continue;
-    }
     const userId = row.invitee_user_id ? String(row.invitee_user_id) : null;
     const request = userId ? requestByUser.get(userId) || null : null;
+    // An older app never sees the open link's rows; the ones in are counted in `in` (a person with an account only
+    // once their ask is in: one who waits shows in that app's requests).
+    if (row.channel === 'open' && !guests) {
+      if (userId ? stateOf(row, request) === 'in' : row.status === 'accepted') openLinkIn += 1;
+      continue;
+    }
     const state = stateOf(row, request, { guests });
     // An email invite names its person only once they've said they're in: until then the host sees the address
     // they typed, and never learns whether it has an account.
@@ -319,6 +321,13 @@ async function hostView(plan, rows, { guests = false } = {}) {
     };
     if (guests) {
       Object.assign(view, planGuests.hostRowParts(row));
+      // How the invitation came: 'account', 'email', 'link' or 'open' (the plan's open link, a guest or, 6.9, a person
+      // with an account, whose ask waiting for the host's yes is `asked` with its request_id).
+      view.via = row.channel;
+      // A person with an account who asked: their adults and kids, as a guest's row has them.
+      if (userId && request && ['pending', 'waitlisted', 'accepted'].includes(request.status)) {
+        view.party = { adults: Number(request.party_size) || 1, kids: plan.kids_welcome ? Number(request.kids_count) || 0 : 0 };
+      }
       // A guest from the open link waiting for the host's yes: POST …/invites/:id/ok.
       view.can_ok = state === 'waiting_ok';
     }
@@ -678,7 +687,8 @@ async function createInvites(user, postId, body = {}) {
 
   const existing = await loadInvites(postId);
   const newEmails = emails.filter((e) => !existing.some((r) => r.email === e));
-  const newAccounts = userIds.filter((id) => !existing.some((r) => r.channel === 'account' && String(r.invitee_user_id) === id));
+  // Someone who opened the plan's open link in the app (6.9) is invited already.
+  const newAccounts = userIds.filter((id) => !existing.some((r) => ['account', 'open'].includes(r.channel) && String(r.invitee_user_id) === id));
   if (existing.length + newEmails.length + newAccounts.length > invitesLimit(plan)) {
     fail(429, 'too_many_invites', `A plan can have up to ${invitesLimit(plan)} invitations.`);
   }
@@ -868,9 +878,17 @@ async function cancelInvite(user, postId, inviteId) {
     .eq('id', inviteId).eq('post_id', postId).maybeSingle();
   if (error) throw new Error(`Failed to load the invitation: ${error.message}`);
   if (!row || row.status === 'cancelled') fail(404, 'not_found', "That invitation isn't here.");
+  const waitingAsk = row.channel === 'open' && row.invitee_user_id && row.status === 'accepted'
+    ? (await supabaseAdmin.from('PlanRequest').select('id').eq('post_id', postId).eq('user_id', row.invitee_user_id)
+      .in('status', ['pending', 'waitlisted']).maybeSingle()).data
+    : null;
   if (require('./planGuests').isGuest(row)) {
     // A guest without an account (H1): removed whatever they answered; their key stops showing anything.
     await require('./planGuests').removeGuest(plan, row);
+  } else if (waitingAsk) {
+    // A person from the open link whose ask waits for the host's yes (6.9; a guest who took a waiting answer into the
+    // app keeps the notice that named their row): "Not this time" is the ordinary decline of the ask.
+    await actions().decide(user, postId, waitingAsk.id, 'decline');
   } else {
     if (row.status === 'accepted') fail(409, 'already_in', 'They said they’re in. To take them out, remove them from the people going.');
     const { error: updateError } = await supabaseAdmin.from('PlanInvite')
@@ -897,7 +915,10 @@ async function viewerInvites(viewerId, postIds) {
     return out;
   }
   const rank = (r) => (r.needs_host_ok ? 10 : 0) + ({ accepted: 0, pending: 1, maybe: 1.5, declined: 2 }[r.status] ?? 3);
-  for (const row of data || []) {
+  for (const found of data || []) {
+    // From the open link (6.9), someone the host let in by hand once doesn't wait for the yes again, as a guest
+    // doesn't (planGuests.answer).
+    const row = found.channel === 'open' && found.host_ok_at ? { ...found, needs_host_ok: false } : found;
     const seen = out.get(row.post_id);
     if (!seen || rank(row) < rank(seen)) out.set(row.post_id, row);
   }
@@ -941,8 +962,13 @@ async function hostInviteCounts(postIds) {
   return out;
 }
 
-/** The card's my_invite: what the app shows the person invited. */
-function myInviteView(row, { maybe = false } = {}) {
+/**
+ * The card's my_invite: what the app shows the person invited.
+ * @param {{ maybe?: boolean, via?: boolean }} [opts]  maybe: the app sent `guests=1`; via: that, while the host has
+ *   the switch (H1): `via` says how the invitation came, 'open' for the plan's open link (6.9), so the app can say why
+ *   the host says yes first.
+ */
+function myInviteView(row, { maybe = false, via = false } = {}) {
   if (!row) return null;
   return {
     id: row.id,
@@ -951,31 +977,38 @@ function myInviteView(row, { maybe = false } = {}) {
     channel: row.channel,
     needs_host_ok: Boolean(row.needs_host_ok),
     invited_at: planService.iso(row.created_at),
+    ...(via ? { via: row.channel } : {}),
   };
 }
 
 /**
  * Email invites waiting for this person's verified address become theirs (no link needed): someone invited by email
- * who installs the app and signs up with that address finds the plan. Answers how many it took.
+ * who installs the app and signs up with that address finds the plan. A plan answered in a browser with that address
+ * (H1) becomes theirs with the answer (6.9 item 8), where its host has the switch. Answers how many it took.
+ * @param {{ postId?: string|null }} [opts]  only this plan's
  */
-async function attachEmailInvites(user) {
+async function attachEmailInvites(user, { postId = null } = {}) {
   const email = normalizeEmail(user?.email);
   if (!email) return 0;
   try {
     // Not opened yet, or opened by an account the address isn't verified for (a forwarded email): it's this
-    // person's invitation, so it becomes theirs.
-    const { data, error } = await supabaseAdmin.from('PlanInvite').select(INVITE_COLUMNS)
+    // person's invitation, so it becomes theirs. Answered in a browser: no account yet.
+    let query = supabaseAdmin.from('PlanInvite').select(INVITE_COLUMNS)
       .eq('email', email).neq('status', 'cancelled')
-      .or(`invitee_user_id.is.null,needs_host_ok.eq.true`).limit(20);
+      .or(`invitee_user_id.is.null,needs_host_ok.eq.true`);
+    if (postId) query = query.eq('post_id', postId);
+    const { data, error } = await query.limit(20);
     if (error || !data || data.length === 0) return 0;
-    const mine = data.filter((row) => String(row.host_user_id) !== String(user.id)
-      && String(row.invitee_user_id || '') !== String(user.id)
-      && (row.invitee_user_id ? true : row.status === 'pending'));
-    if (mine.length === 0 || !(await hasVerifiedEmail(user, email))) return 0;
+    const others = data.filter((row) => String(row.host_user_id) !== String(user.id)
+      && String(row.invitee_user_id || '') !== String(user.id));
+    const mine = others.filter((row) => (row.invitee_user_id ? row.channel === 'email' : row.status === 'pending' && !row.guest_name));
+    const answered = others.filter((row) => !row.invitee_user_id && row.guest_name && ['accepted', 'maybe', 'declined'].includes(row.status));
+    if ((mine.length === 0 && answered.length === 0) || !(await hasVerifiedEmail(user, email))) return 0;
     let taken = 0;
     for (const row of mine) {
       if (await takeInvite(row, user.id)) taken += 1;
     }
+    if (answered.length > 0) taken += await require('./planGuests').adoptAnswers(answered, user.id);
     return taken;
   } catch (err) {
     logger.warn('plans.invites.attach_failed', { userId: user?.id, error: err.message });
@@ -1009,7 +1042,9 @@ async function takeInvite(row, userId) {
  * first account to open it); an email invite opened by an account the address isn't verified for waits for the
  * host's yes. Answers the plan as they now see it.
  */
-async function claimInvite(user, postId, token) {
+async function claimInvite(user, postId, token, { open = null } = {}) {
+  // The plan's open link (6.9), from an app that knows it.
+  if (!isToken(token) && open != null) return claimOpenLink(user, postId, open);
   if (!isToken(token)) fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
   const viewer = await loadViewer(user);
   if (!planService.isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
@@ -1025,14 +1060,24 @@ async function claimInvite(user, postId, token) {
   }
   if (!live) fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
   if (require('./planBusiness').runsPlan(plan, viewer)) return { plan: await planBody(postId, viewer) };
-  // Answered in a browser without an account (H1): the invited address's verified owner takes it into the app and
-  // answers anew; anyone else finds it used.
+  // Answered in a browser without an account (H1): the address's verified owner takes it into the app with the answer
+  // (6.9 item 8: the answer, the numbers, the host's yes and the bring-list claims); anyone else finds it used.
   if (!row.invitee_user_id && row.guest_name) {
-    const owner = row.channel === 'email' && (await hasVerifiedEmail(user, row.email));
+    const planGuests = require('./planGuests');
+    const guestAnswers = await planGuests.switchFor(plan.host_user_id);
+    const owner = (row.channel === 'email' || (guestAnswers && row.channel === 'link'))
+      && Boolean(row.email) && (await hasVerifiedEmail(user, row.email));
     if (!owner) {
       fail(409, 'invite_used', rules.isPrivate(plan)
         ? 'Someone else already used this invitation. Ask the host for a new one.'
         : 'Someone else already used this invitation. You can still ask to join.');
+    }
+    if (guestAnswers) {
+      await planGuests.adoptAnswers([row], viewer.id, { io: null });
+      const body = await planBody(postId, viewer);
+      // Their own answer in the app, or the host's no, stays; someone the plan isn't there for finds the link gone.
+      if (!body) fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
+      return { plan: body };
     }
     const { data: taken, error: takeError } = await supabaseAdmin.from('PlanInvite').update({
       invitee_user_id: viewer.id, needs_host_ok: false, status: 'pending', guest_name: null, guest_adults: null,
@@ -1071,6 +1116,99 @@ async function claimInvite(user, postId, token) {
 async function planBody(postId, viewer) {
   const { body } = await planService.getForViewer(postId, viewer);
   return body;
+}
+
+/**
+ * POST /api/plans/:id/invites/claim { open } (contract 6.9): a person who has the app opened the plan's open link.
+ * Only while the host has `plans_guest_answers` and the plan's live open link has this token; otherwise, and for
+ * everyone the link can't invite, `404 invite_unavailable`, the answer an unknown link gets today.
+ *  - The host, and someone already invited (any way, "can't make it" included) or asking: nothing is made.
+ *  - Someone the host said no to or removed on this plan, someone on either side of a block with the host (or who
+ *    muted the host or hid the plan), a plan that is over or cancelled, a link at its rows' limit: invite_unavailable.
+ *  - Their verified email answered this plan in a browser: that answer becomes theirs (item 8). An email invitation to
+ *    that address becomes theirs as signing in makes it.
+ *  - Anyone else: an invitation row, `channel = 'open'`, naming them, pending, waiting for the host's yes when "I say
+ *    yes first" is on. From there it is an invitation like any other: "I'm in" is the ordinary ask.
+ * Answers the plan as they now see it.
+ */
+async function claimOpenLink(user, postId, open) {
+  const gone = () => fail(404, 'invite_unavailable', 'This invitation isn’t available anymore.');
+  const planGuests = require('./planGuests');
+  if (!planGuests.isKey(open) || !planService.isUuid(postId)) gone();
+  const viewer = await loadViewer(user);
+  const plan = await planService.loadPlanRow(postId);
+  if (!plan || !planGuests.isOpenToken(plan, open) || !(await planGuests.switchFor(plan.host_user_id))) gone();
+  if (require('./planBusiness').runsPlan(plan, viewer)) return { plan: await planBody(postId, viewer) };
+  // A block either way, a muted host or a hidden plan: the plan isn't there for them, link or not.
+  if (!planService.isVisibleTo(plan, viewer, { involved: true })) gone();
+
+  const [invitesNow, { data: request, error: requestError }] = await Promise.all([
+    viewerInvites(viewer.id, [postId]),
+    supabaseAdmin.from('PlanRequest').select('id, status').eq('post_id', postId).eq('user_id', viewer.id).maybeSingle(),
+  ]);
+  if (requestError) throw new Error(`Failed to load your request: ${requestError.message}`);
+  if (invitesNow.has(postId) || (request && planService.ACTIVE_REQUEST_STATUSES.includes(request.status))) {
+    return { plan: await planBody(postId, viewer) };
+  }
+  // The host's no, or a removal, on this plan: their request says so, or an invitation of theirs the host ended.
+  if (request && ['declined', 'removed'].includes(request.status)) gone();
+  const { data: ended, error: endedError } = await supabaseAdmin.from('PlanInvite').select('id')
+    .eq('post_id', postId).eq('invitee_user_id', viewer.id).eq('status', 'cancelled').limit(1);
+  if (endedError) throw new Error(`Failed to load your invitation: ${endedError.message}`);
+  if (ended && ended.length) gone();
+
+  // Their verified address on this plan: a browser answer, or an email invitation, becomes theirs.
+  const email = normalizeEmail(user.email);
+  const verified = Boolean(email) && (await hasVerifiedEmail(user, email));
+  if (verified) {
+    const { data: byEmail, error: emailError } = await supabaseAdmin.from('PlanInvite').select('id, status, guest_name, invitee_user_id')
+      .eq('post_id', postId).eq('email', email);
+    if (emailError) throw new Error(`Failed to load the invitation: ${emailError.message}`);
+    const rows = byEmail || [];
+    const live = rows.find((r) => r.status !== 'cancelled');
+    if (live) {
+      if ((await attachEmailInvites(user, { postId })) > 0) return { plan: await planBody(postId, viewer) };
+    } else if (rows.some((r) => r.guest_name || r.invitee_user_id)) {
+      // A guest with this address the host removed.
+      gone();
+    }
+  }
+
+  if (!isOpenForAnswers(plan) || !hostMayInvite(plan)) gone();
+  const existing = await loadInvites(postId);
+  const openRows = existing.filter((r) => r.channel === 'open').length;
+  if (openRows >= plan.spots + planGuests.LIMITS.openRowsOverRoom || existing.length >= invitesLimit(plan)) gone();
+  const stamp = nowIso();
+  const values = {
+    post_id: postId,
+    host_user_id: plan.host_user_id,
+    channel: 'open',
+    invitee_user_id: viewer.id,
+    status: 'pending',
+    needs_host_ok: Boolean(plan.open_invite_ok_first),
+    claimed_at: stamp,
+    opened_at: stamp,
+  };
+  // Their verified address rides on the row (never shown to the host), so the same person answering in a browser
+  // finds their invitation in the app, and one the host removes doesn't come back through the browser with it.
+  let { error } = await supabaseAdmin.from('PlanInvite').insert({ ...values, email: verified ? email : null });
+  if (error && error.code === '23505' && verified) {
+    // A browser answer with the address came in at the same moment, or the account's own claim did.
+    ({ error } = await supabaseAdmin.from('PlanInvite').insert(values));
+  }
+  // A claim at the same moment made it already.
+  if (error && error.code !== '23505') throw new Error(`Failed to open the invitation: ${error.message}`);
+  return { plan: await planBody(postId, viewer) };
+}
+
+/**
+ * The host accepted the ask of someone whose invitation came by the open link (6.9): that is the host's own yes
+ * (host_ok_at), so a move to a home doesn't make them wait and a Maybe and back doesn't either.
+ */
+async function recordHostYes(postId, userId) {
+  const { error } = await supabaseAdmin.from('PlanInvite').update({ host_ok_at: nowIso(), updated_at: nowIso() })
+    .eq('post_id', postId).eq('invitee_user_id', userId).eq('channel', 'open').neq('status', 'cancelled').is('host_ok_at', null);
+  if (error) logger.warn('plans.invites.host_yes_unsaved', { postId, error: error.message });
 }
 
 /** The plan screen was opened: an invitation the person hadn't seen counts as seen (the sign-in jump happens once). */
@@ -1268,6 +1406,7 @@ module.exports = {
   createLinkInvite,
   cancelInvite,
   claimInvite,
+  recordHostYes,
   declineInvite,
   nextInvite,
   attachEmailInvites,

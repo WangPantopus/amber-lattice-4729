@@ -1,14 +1,14 @@
 // ============================================================
 // /plan-invitation/<plan id>?key=<guest's key>: the link in an email to a guest without an account (Plans for the
 // holidays, H1). It keeps the key in this browser's HttpOnly cookie for that plan, the one the page and the answer
-// route read, and opens the plan's page without it, so the key is never in a link the page shows.
+// route read, and opens the guest's page, /plan-link/<id>, without it, so the key is never in a link the page shows.
 //
-// The path is one the apps don't open: the iPhone app opens /plans/* and the Android app every link it has a
-// screen for, and a guest who answered in a browser may still have the app installed.
+// Neither path is one the apps open: the iPhone app opens /plans/* and the Android app every link it has a screen
+// for, and a guest who answered in a browser may still have the app installed. The guest's page isn't /plans/<id>
+// either (contract 6.9): on Android a browser may hand a /plans/ address reached by a redirect back to the app.
 // ============================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { buildPlanPath } from '@pantopus/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!PLAN_ID.test(id)) return redirectHere('/');
   const key = req.nextUrl.searchParams.get('key') || '';
-  const res = redirectHere(buildPlanPath(id.toLowerCase()));
+  const res = redirectHere(`/plan-link/${id.toLowerCase()}`);
   res.headers.set('Cache-Control', 'private, no-store');
   // The link's own address stays out of the next page's Referer.
   res.headers.set('Referrer-Policy', 'no-referrer');
