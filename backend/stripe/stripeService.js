@@ -808,6 +808,35 @@ class StripeService {
       amountToPayeeCents: chargeCents - platformFeeCents - cardFeeEstimateCents, cardFeeEstimateCents };
   }
 
+  /**
+   * Where the business pays the card fee (a sale priced with cardFeeBorneBy 'business'), fixes its share once the card
+   * company has reported the charge's fee (contract K9): amount_to_payee = total - Pantopus's fee - the card fee.
+   * Answers the payment when the share is fixed (now or before), null while the fee isn't reported yet. Any other
+   * payment is answered as it is, untouched.
+   */
+  async settleCardFeeShare(paymentId) {
+    const payment = await this._readPayment(paymentId);
+    if (payment.metadata?.card_fee_by !== 'business' || payment.metadata?.card_fee_reported_at) return payment;
+    if (!payment.stripe_charge_id) return null;
+    const charge = await stripe.charges.retrieve(payment.stripe_charge_id, { expand: ['balance_transaction'] });
+    const reported = charge?.balance_transaction?.fee;
+    if (!Number.isSafeInteger(reported) || reported < 0 || charge.id !== payment.stripe_charge_id) return null;
+    // A card charge always costs something. An account whose balance transactions carry no fee (fees billed apart, as
+    // the Stripe test platform shows them) is charged the standard rate the payments design uses (2.9% + 30 cents),
+    // and the payment says where the figure came from.
+    const fee = reported > 0 ? reported : this.estimateCardFeeCents(payment.amount_total);
+    const source = reported > 0 ? 'reported' : 'standard_rate';
+    const toPayee = payment.amount_total - payment.amount_platform_fee - fee;
+    if (toPayee < 0) throw new Error('Card fee exceeds the business share');
+    const { data, error } = await supabaseAdmin.from('Payment').update({
+      amount_processing_fee: fee,
+      amount_to_payee: toPayee,
+      metadata: { ...payment.metadata, card_fee_cents: fee, card_fee_source: source, card_fee_reported_at: new Date().toISOString() },
+    }).eq('id', paymentId).is('metadata->>card_fee_reported_at', null).select().maybeSingle();
+    if (error) throw error;
+    return data || this._readPayment(paymentId);
+  }
+
   /** A founding business inside its founding year pays no Pantopus rate on its own customers (contract 10.1). */
   async _inFoundingYear(businessUserId) {
     if (!businessUserId) return false;
@@ -1017,6 +1046,8 @@ class StripeService {
     // What was sold, for a payment that records it (shared piece 4): { soldType, soldId, basis, tipCents,
     // payoutAfter }. The payment is then priced by priceSale for feeRateSubjectId (or the payee); without it, as before.
     sale,
+    // The Payment row's payment_type: 'gig_payment' unless a caller names its own (a paid plan spot is 'plan_payment').
+    paymentType = 'gig_payment',
   }) {
     try {
       if (existingPaymentId) {
@@ -1046,6 +1077,8 @@ class StripeService {
           // the charge reports its real fee.
           estimatedStripeFee: priced.cardFeeEstimateCents ?? this.calculateFees(amount).estimatedStripeFee,
         };
+        // Where the business pays the card fee, its share is fixed once the charge reports that fee (contract K9).
+        if (priced.cardFeeBorneBy === 'business') metadata = { ...metadata, card_fee_by: 'business' };
         saleColumns = {
           sold_type: sale.soldType,
           sold_id: sale.soldId || null,
@@ -1131,7 +1164,7 @@ class StripeService {
             amount_to_payee: fees.amountToPayee,
             amount_processing_fee: fees.estimatedStripeFee,
             payment_status: initialStatus,
-            payment_type: 'gig_payment',
+            payment_type: paymentType,
             is_escrowed: true,
             authorization_expires_at: authorizedDeadline?.expiresAt || null,
             stripe_charge_id: authorizedDeadline?.chargeId || null,

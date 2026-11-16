@@ -999,6 +999,10 @@ async function handleAmountCapturableUpdated(paymentIntent, req) {
       paymentId: payment.id,
       authExpiresAt: authExpiresAt.toISOString(),
     });
+    // A paid plan spot is captured at once and the guest let in (Plans for the holidays B2), as the app's confirm does.
+    if (payment.payment_type === 'plan_payment') {
+      await require('../services/plans/planPaid').onPaymentAuthorized(payment);
+    }
   } catch (transErr) {
     // Likely already transitioned by createPaymentIntentForGig
     await requirePaymentReadable(payment.id);

@@ -359,6 +359,16 @@ router.delete('/:id/requests/mine', async (req, res) => {
   }
 });
 
+// POST /api/plans/:id/requests/mine/confirm (B2): the payment sheet closed; in once the payment company says it went
+// through. Answers the plan (PlanDetail), or 409 payment_not_complete / hold_ran_out.
+router.post('/:id/requests/mine/confirm', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPaid').confirmMine(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'paid_confirm', req);
+  }
+});
+
 // POST /api/plans/:id/requests/:requestId/deal-used (B1): staff with plans.manage mark a guest's free thing used.
 router.post('/:id/requests/:requestId/deal-used', async (req, res) => {
   try {

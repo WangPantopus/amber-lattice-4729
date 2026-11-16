@@ -27,6 +27,8 @@ const planBusiness = require('./planBusiness');
 const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
 const planGuests = require('./planGuests');
+// Paid spots (B2); it requires this module, so it is read when called.
+const planPaid = () => require('./planPaid');
 const { findGame } = require('./planGames');
 const { validTimezone } = require('../../utils/timezone');
 
@@ -612,6 +614,8 @@ async function createPlan(user, input, internal = {}) {
     : null;
   // A business's plan's deal (B1), while the business has the switch: checked against its room and start.
   const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at });
+  // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
+  const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -677,7 +681,8 @@ async function createPlan(user, input, internal = {}) {
     } : {}),
     kind,
     spots,
-    auto_rules: autoRules,
+    // A paid plan lets guests in as they pay (approval on a paid plan comes later: Plans with businesses C7).
+    auto_rules: priceCents ? ['open'] : autoRules,
     join_requirement: joinRequirement,
     place_kind: place.kind,
     area_label: label,
@@ -696,6 +701,7 @@ async function createPlan(user, input, internal = {}) {
     ...(bringList ? { bring_list: bringList } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
+    ...(priceCents ? { price_cents: priceCents } : {}),
     timezone,
     status: 'open',
   });
@@ -908,6 +914,15 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     going, spots: planUpdate.spots ?? plan.spots, startsAt: postUpdate.event_date || plan.post.event_date,
   });
   if (dealChange) planUpdate.deal = dealChange.update;
+  // The price of a spot (B2): fixed once anyone has paid; a paid plan lets guests in as they pay.
+  const priceChange = await require('./planPaid').priceChange(plan, patch, { placeKind });
+  if (priceChange) {
+    planUpdate.price_cents = priceChange.price_cents;
+    if (priceChange.price_cents) planUpdate.auto_rules = ['open'];
+  } else if (plan.price_cents && planUpdate.auto_rules && !planUpdate.auto_rules.includes('open')
+    && (await require('./planPaid').enabledFor(plan.host_user_id))) {
+    planUpdate.auto_rules = ['open'];
+  }
   // The occasion (H3): another from the list, or null for none, with the switch on.
   if (patch.occasion !== undefined && !plan.business_user_id && (await require('./planOccasions').enabledFor(viewer.id))) {
     const occasion = patch.occasion === null ? null : require('./planOccasions').checkedKey(patch.occasion);
@@ -1081,6 +1096,15 @@ async function cancelOpenPlan(plan, { hostFirst, cancelNote }) {
     .eq('post_id', postId).in('status', ['pending', 'waitlisted']);
   if (expireError) logger.warn('plans.cancel.expire_failed', { postId, error: expireError.message });
 
+  // Holds on a paid plan end, and everyone who paid gets all of it back (B2).
+  const paying = requests.filter((r) => r.status === 'paying');
+  if (paying.length > 0) {
+    await supabaseAdmin.from('PlanRequest').update({ status: 'expired', updated_at: stamp }).in('id', paying.map((r) => r.id)).eq('status', 'paying');
+  }
+  if (plan.price_cents) {
+    await planPaid().onBusinessEnds(plan, requests.filter((r) => r.status === 'accepted' || r.status === 'paying').map((r) => r.id), 'cancelled')
+      .catch((err) => logger.warn('plans.cancel.refunds_failed', { postId, error: err.message }));
+  }
   if (plan.chat_room_id) {
     await planChat.systemLine(plan.chat_room_id, plan.host_user_id, `${hostFirst} cancelled the plan`);
   }
@@ -1173,7 +1197,7 @@ async function leaveChat(plan, userId, { io, message }) {
 }
 
 /** Let someone in: the chat, the grey line, the notice. When a rule did it, the host hears who is in. */
-async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false, rule = null }) {
+async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false, rule = null, paidCents = null }) {
   const roomId = await planChat.ensureRoom(plan, { io });
   await planChat.addMember(roomId, request.user_id, { io });
   const names = await userNames([request.user_id]);
@@ -1183,7 +1207,7 @@ async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false
   if (viaWaitlist) {
     await planNotify.spotOpened({ plan, request, hostFirst, nowIn: true });
   } else {
-    await planNotify.accepted({ plan, request, hostFirst, byRule });
+    await planNotify.accepted({ plan, request, hostFirst, byRule, paidCents });
   }
   if (byRule) {
     await activeRequests(plan.post_id)
@@ -1208,8 +1232,18 @@ async function offerOpenSpots(plan, { io = null } = {}) {
     if (spotsLeft <= 0) return;
     const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan, r.party_size, r.kids_count) <= spotsLeft);
     if (!next) return;
-    const rule = await ruleFor(plan, next.user_id);
     const stamp = nowIso();
+    // A paid plan (B2): the spot is held 30 minutes for the first person waiting, who pays to take it; then the next.
+    if (plan.price_cents && plan.business_user_id && (await planPaid().enabledFor(plan.host_user_id))) {
+      const fields = await planPaid().payingFields(plan, next.user_id, next.way_in || null, { holdMs: planPaid().WAITLIST_HOLD_MS });
+      const { data: held } = await supabaseAdmin.from('PlanRequest')
+        .update({ ...fields, status: 'paying', payment_id: null, updated_at: stamp })
+        .eq('id', next.id).eq('status', 'waitlisted').select(planService.REQUEST_COLUMNS);
+      if (!held || held.length === 0) continue;
+      await planNotify.spotOpened({ plan, request: held[0], hostFirst, nowIn: false, price: planPaid().priceText(plan.price_cents) });
+      continue;
+    }
+    const rule = await ruleFor(plan, next.user_id);
     if (rule) {
       const { data: moved } = await supabaseAdmin.from('PlanRequest')
         .update({ status: 'accepted', decided_by: 'rule', decided_at: stamp, updated_at: stamp })
@@ -1287,7 +1321,9 @@ async function requestResult(postId, viewer, requestId) {
   const plan = await planBodyFor(postId, viewer);
   const request = plan?.my_request && plan.my_request.id === requestId ? plan.my_request : null;
   return {
-    request: request ? { id: request.id, status: request.status, waitlist_position: request.waitlist_position } : null,
+    request: request ? { id: request.id, status: request.status, waitlist_position: request.waitlist_position,
+      // A spot held while paying (B2): until when.
+      ...(request.hold_expires_at ? { hold_expires_at: request.hold_expires_at } : {}) } : null,
     plan,
   };
 }
@@ -1299,7 +1335,20 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // A business that may no longer host takes nobody new, and nobody waiting moves up by asking again.
   if (plan.business_user_id && !planBusiness.hostsNow(plan)) fail(409, 'ended', REASON_ERRORS.ended[1]);
   const ctx = await planService.loadCardContext([plan], viewer);
-  const mine = ctx.myRequestByPlan.get(postId) || null;
+  let mine = ctx.myRequestByPlan.get(postId) || null;
+  // A spot held while paying (B2): the same payment again while the hold lasts; after it, a fresh start.
+  if (mine && mine.status === 'paying') {
+    const { data: held } = await supabaseAdmin.from('PlanRequest')
+      .select(`${planService.REQUEST_COLUMNS}, payment_id, unit_price_cents, fee_basis, hold_expires_at`).eq('id', mine.id).maybeSingle();
+    if (held && new Date(held.hold_expires_at).getTime() > Date.now()) {
+      const payment = await planPaid().paymentFor(plan, held, viewer.id);
+      return { status: 200, body: { ...(await requestResult(postId, viewer, mine.id)), payment } };
+    }
+    const { data: lapsed } = await supabaseAdmin.from('PlanRequest').update({ status: 'expired', updated_at: nowIso() })
+      .eq('id', mine.id).eq('status', 'paying').select(planService.REQUEST_COLUMNS);
+    if (held?.payment_id) await require('../../stripe/stripeService').cancelAuthorization(held.payment_id).catch(() => null);
+    mine = lapsed?.[0] || { ...mine, status: 'expired' };
+  }
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
   const isIn = Boolean(mine && mine.status === 'accepted');
   // A second ask while waiting, or from someone already in, changes only what it sends; the rest stays as asked.
@@ -1343,6 +1392,12 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
       status = 'pending';
     }
   }
+  // A paid plan (B2): a spot is held for 10 minutes while the guest pays, and they are in once the payment succeeds.
+  const paid = Boolean(plan.price_cents && plan.business_user_id && (await planPaid().enabledFor(plan.host_user_id)));
+  if (paid && status === 'accepted') {
+    status = 'paying';
+    decidedBy = null;
+  }
   const row = {
     ...ask,
     status,
@@ -1360,6 +1415,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     on_my_way_at: null,
     updated_at: stamp,
   };
+  if (status === 'paying') Object.assign(row, await planPaid().payingFields(plan, viewer.id, row.way_in || null), { payment_id: null });
 
   let request;
   if (mine) {
@@ -1389,6 +1445,10 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   recordFunnelEvent('plan_requested', { userId: viewer.id, meta: {
     plan_id: postId, kind: plan.kind, status: request.status, ...(plan.business_user_id ? { business: true, way_in: row.way_in } : {}),
   } });
+  if (request.status === 'paying') {
+    const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis, payment_id: null }, viewer.id);
+    return { status: mine ? 200 : 201, body: { ...(await requestResult(postId, viewer, request.id)), payment } };
+  }
   if (invite) await planInvites.markAccepted(plan, viewer.id, request);
   const names = await userNames([viewer.id]);
   const hostFirst = await hostFirstOf(plan);
@@ -1449,7 +1509,7 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
     .select(planService.REQUEST_COLUMNS).eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
   if (error) throw new Error(`Failed to load your request: ${error.message}`);
   if (!mine) fail(404, 'not_found', "You haven't asked to join this plan.");
-  if (!['pending', 'waitlisted', 'accepted'].includes(mine.status)) return requestResult(postId, viewer, mine.id);
+  if (!['pending', 'waitlisted', 'accepted', 'paying'].includes(mine.status)) return requestResult(postId, viewer, mine.id);
 
   const stamp = nowIso();
   const leaving = mine.status === 'accepted';
@@ -1459,6 +1519,11 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   const { data: changed, error: updateError } = await supabaseAdmin.from('PlanRequest')
     .update(patch).eq('id', mine.id).eq('status', mine.status).select('id');
   if (updateError) throw new Error(`Failed to update your request: ${updateError.message}`);
+  // A paid spot (B2): its money back where the rules say so, or an unpaid hold released.
+  if (changed && changed.length > 0 && (leaving || mine.status === 'paying') && plan.price_cents) {
+    await planPaid().onLeave(plan, mine.id, { reason, wasStatus: mine.status });
+    if (mine.status === 'paying') await offerOpenSpots(plan, { io });
+  }
   if (changed && changed.length > 0 && leaving) {
     // What they were bringing goes back on the list (H2).
     await require('./planBring').clearClaims(postId, 'user', mine.id);
@@ -1595,6 +1660,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
         await require('./planBring').clearClaims(postId, 'user', request.id);
+        // The business removed a guest who paid (B2): all of it back.
+        if (plan.price_cents) await planPaid().onBusinessEnds(plan, [request.id], 'removed');
         await planNotify.declined({ plan, request, hostFirst });
         await offerOpenSpots(plan, { io });
       }
@@ -1685,6 +1752,12 @@ async function reportPlan(user, postId, { reason, details }) {
 }
 
 module.exports = {
+  // For planPaid (paid spots): the same steps a join takes.
+  _activeRequests: activeRequests,
+  _seatsNow: seatsNow,
+  _admit: admit,
+  _hostFirstOf: hostFirstOf,
+  _offerOpenSpots: offerOpenSpots,
   seatsNow,
   PlanError,
   hostFirstOf,
