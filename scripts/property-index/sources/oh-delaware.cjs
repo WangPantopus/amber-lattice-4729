@@ -11,6 +11,7 @@ const { parse } = require('../../../backend/services/propertyRecords/addressKey'
 const { getJson, layerRows, cached } = require('../lib/services.cjs');
 const { year, isoDate, zipCode, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
 const { log } = require('../lib/log.cjs');
@@ -95,11 +96,15 @@ function fromRow(row, site, joined) {
     }
   }
   // A condominium's parcel outline is its whole complex, so a condo unit gets no lot.
+  let mapped = null;
   if (kind !== 'unit' && String(row.ClassCode || '').trim() !== '550') {
     // The revaluation layer's own area is in web map units, so a lot with no acreage takes the monthly layer's area (Ohio North state plane feet).
     if (positive(row.Acres)) put(facts, 'lot_acres', positive(row.Acres));
     else if (own && positive(own.ACRES)) put(facts, 'lot_acres', positive(own.ACRES));
-    else if (own && positive(own.Shape__Area) >= 100) put(facts, 'lot_sqft', Math.round(positive(own.Shape__Area)));
+    else if (own && positive(own.Shape__Area) >= 100) {
+      put(facts, 'lot_sqft', Math.round(positive(own.Shape__Area)));
+      mapped = 'lot_sqft';
+    }
   }
   put(facts, 'market_value', positive(row.CurrentValue));
   if (own) {
@@ -112,7 +117,7 @@ function fromRow(row, site, joined) {
       put(facts, 'sale_date', isoDate(own.SALE_DATE));
     }
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: site.city, zip: zipCode(site.zip) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: site.city, zip: zipCode(site.zip) }, facts, ...mapLot(facts, mapped) };
 }
 
 async function* build({ work }) {

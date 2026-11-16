@@ -9,7 +9,7 @@ const path = require('node:path');
 const { layerRows, cached } = require('../lib/services.cjs');
 const { streetParts, year, isoDate, onRecord } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
-const { hold } = require('../lib/held.cjs');
+const { hold, mapLot } = require('../lib/held.cjs');
 const { zipsByCounty } = require('../lib/zcta.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { isHomeSale } = require('../lib/sales.cjs');
@@ -70,12 +70,16 @@ function fromRow(row) {
   if (kind === 'building') put(facts, 'units', inRange(row.UNITS, 2000));
   // A condominium's parcel is its share of the complex, so a condominium home gets no lot. Parcel size is in acres or square feet as its
   // unit column says; a parcel with none takes the GIS acreage.
+  let mapped = null;
   if (kind !== 'unit' && String(row.PROPERTYUSE || '').trim().toUpperCase() !== 'RESIDENTIAL CONDOMINIUM') {
     const size = positive(row.PARCELSIZE);
     const unitOfSize = String(row.PARCELSIZEUNITOFMEASURE || '').trim().toUpperCase();
     if (size && unitOfSize === 'SQFT') put(facts, 'lot_sqft', size);
     else if (size && unitOfSize === 'ACRE') put(facts, 'lot_acres', size);
-    else put(facts, 'lot_acres', positive(row.GIS_ACRES));
+    else {
+      put(facts, 'lot_acres', positive(row.GIS_ACRES));
+      mapped = 'lot_acres';
+    }
   }
   // Colorado's actual (market) values for the tax year.
   put(facts, 'market_value', positive(row.FINALACTUALVALUE));
@@ -88,7 +92,7 @@ function fromRow(row) {
     put(facts, 'sale_price', positive(row.SALEPRICE));
     put(facts, 'sale_date', saleDate);
   }
-  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts };
+  const record = { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: null }, facts, ...mapLot(facts, mapped) };
   // Read since the county went live, held off its screens until its new_columns switch is on (lib/held.cjs): the lot
   // the plat gives the parcel, where it names one (a condo unit's lot is the complex's, so it has none).
   const lot = String(row.PLATTEDLOT ?? '').trim();

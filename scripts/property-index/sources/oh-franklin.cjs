@@ -12,6 +12,7 @@ const { isHomeSale } = require('../lib/sales.cjs');
 const { lotNumber } = require('../lib/legal.cjs');
 const { year, isoDate, zipCode, realUnit } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
+const { mapLot } = require('../lib/held.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
 const { log } = require('../lib/log.cjs');
 
@@ -145,7 +146,7 @@ function fromRow(row, files = {}) {
     facts.sale_price = positive(row.SALEPRICE);
     put(facts, 'sale_date', isoDate(row.SALEDATE));
   }
-  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.ZIPCD) }, facts };
+  return { id: `pp:${kind}:${FIPS}:${parcel}`, kind, home_type: homeType, address: { ...address, city: '', zip: zipCode(row.ZIPCD) }, facts, ...mapLot(facts, 'lot_acres') };
 }
 
 /** The newest monthly appraisal folder. Its address has its date in it, so the Auditor's listing says which. */

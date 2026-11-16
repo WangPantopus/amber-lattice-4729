@@ -12,6 +12,7 @@ const { getJson, layerRows, socrataRows, cached } = require('../lib/services.cjs
 const { year, isoDate, zipCode, realUnit } = require('../lib/addresses.cjs');
 const { positive, put, word } = require('../lib/values.cjs');
 const { condoBuildings } = require('../lib/condos.cjs');
+const { markMapLot } = require('../lib/held.cjs');
 const { log } = require('../lib/log.cjs');
 
 const LAYER = 'https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/FeatureServer/1';
@@ -149,11 +150,20 @@ async function countyRelease(work, name, asOf) {
   // Where a town's roll gives no acres, the state's own measure of the parcel's shape stands in (within a few percent of the roll's acres
   // where both are given), unless another parcel has the very same measure: those share one shape, a mobile home park's or a
   // condominium's land, which is no one home's lot.
-  for (const [record, acres] of calculated) if (shapes.get(acres) === 1) record.facts.lot_acres = acres;
+  // The state's measure is the parcel map's, not the roll's acreage, and says so once the county is on the switch file's mapped_lots
+  // list (lib/held.cjs).
+  let measured = 0;
+  for (const [record, acres] of calculated) {
+    if (shapes.get(acres) !== 1) continue;
+    record.facts.lot_acres = acres;
+    markMapLot(record, 'lot_acres');
+    measured += 1;
+  }
   log(`${county}: ${records.length} records, ${noAddress} without a street number`);
   for (const building of condoBuildings(records, { fips, county })) records.push(building);
   return {
     fips, state: 'NY', name: county, publisher: 'New York State', dataset: 'public tax parcels and assessment roll', method: 'state', source: 'ny-parcels', title: 'State records', as_of: asOf, stale_after_days: 730, records,
+    ...(measured ? { held_from: { mapped_lots: { lot_acres: 'Measured from New York State\u2019s parcel map', lot_sqft: 'Measured from New York State\u2019s parcel map' } } } : {}),
   };
 }
 
