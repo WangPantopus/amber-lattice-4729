@@ -15,6 +15,8 @@ struct PlanInviteSheet: View {
     let card: PlanCardDTO
 
     @State private var viewModel: PlanInviteViewModel
+    /// Plans for the holidays (board 16): one link for everyone, where the plan takes it.
+    @State private var openLink: PlanOpenLinkModel?
     @State private var toast: String?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var searchFocused: Bool
@@ -22,6 +24,7 @@ struct PlanInviteSheet: View {
     init(card: PlanCardDTO) {
         self.card = card
         _viewModel = State(initialValue: PlanInviteViewModel(planId: card.id, atHome: card.placeKind == .home))
+        _openLink = State(initialValue: card.takesOpenLink ? PlanOpenLinkModel(planId: card.id, atHome: card.placeKind == .home) : nil)
     }
 
     var body: some View {
@@ -70,6 +73,7 @@ struct PlanInviteSheet: View {
             .presentationDetents([.medium, .large])
         }
         .overlay(alignment: .bottom) { toastView }
+        .onChange(of: viewModel.list?.openLink, initial: true) { _, state in openLink?.seed(state) }
         .onChange(of: viewModel.notice) { _, notice in
             guard let notice else { return }
             toast = notice
@@ -229,6 +233,7 @@ extension PlanInviteSheet {
         case .loaded:
             peopleSection
             textInviteCard
+            if let openLink { PlanOpenLinkCard(model: openLink) { toast = $0 } }
             sentSection
             Text("Each invitation is for one person. Emails and texts show the plan's card and area, never your address.")
                 .planFont(.caption)
@@ -447,13 +452,19 @@ enum PlanInviteLines {
         }
     }
 
-    /// Where one invitation stands.
-    static func state(_ row: PlanInviteRowDTO) -> String {
-        let how = switch row.channel {
+    /// How the host sent it.
+    static func how(_ channel: PlanInviteChannel) -> String {
+        switch channel {
         case .email: "By email"
         case .link: "By text"
         case .account: "On Pantopus"
+        case .openLink: "From your link"
         }
+    }
+
+    /// Where one invitation stands.
+    static func state(_ row: PlanInviteRowDTO) -> String {
+        let how = how(row.channel)
         switch row.state {
         case .invited:
             return row.emailFailed ? "Couldn't email this address" : "\(how) · Hasn't answered yet"
@@ -463,6 +474,8 @@ enum PlanInviteLines {
         case .asked: return "Opened your email invitation from another address · Waiting for your yes in Requests"
         case .cantMakeIt: return "Can't make it"
         case .left: return "Said yes, then left"
+        case .maybe: return "\(how) · Maybe"
+        case .waitingOk: return "\(how) · Waiting for your yes"
         }
     }
 

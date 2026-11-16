@@ -307,7 +307,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         )
         let deepLink = assistantPath
             ?? HomeTaskNotificationRoute.pushPath(userInfo)
-            ?? DeepLinkRouter.notificationPath(type: userInfo["type"] as? String, link: userInfo["link"] as? String)
+            ?? DeepLinkRouter.notificationPath(
+                type: userInfo["type"] as? String,
+                link: userInfo["link"] as? String,
+                opens: userInfo["opens"] as? String
+            )
             ?? (userInfo["deepLink"] as? String)
             // Briefing / monthly-receipt pushes carry no `link` — compose one
             // from `type` + `briefingKind` + `briefingDeliveryId`.

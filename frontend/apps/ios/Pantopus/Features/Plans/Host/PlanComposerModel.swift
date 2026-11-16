@@ -282,7 +282,7 @@ final class PlanComposerModel {
             gps: gps
         )
         body.hostedAgainFrom = hostedAgainFrom
-        if isPrivate { privacy.apply(to: &body) }
+        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers) }
         applyRepeat(to: &body)
         return body
     }
@@ -450,8 +450,7 @@ extension PlanComposerModel {
             more.restore(from: details)
         }
         let rules = Set(card.autoRules ?? [])
-        privacy.audience = card.isPrivate && PlansFlags.shared.privatePlans ? .invited : .nearby
-        privacy.guestsCanInvite = card.guestsCanInvite
+        privacy.restore(from: card)
         alsoHostedBefore = rules.contains(.hostedBefore)
         approval = rules.contains(.anyoneNearby) ? .anyoneNearby : rules.contains(.verified) ? .verifiedAuto : .approveEach
         if card.placeKind == .home {

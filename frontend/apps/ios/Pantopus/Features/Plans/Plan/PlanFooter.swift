@@ -74,6 +74,21 @@ struct PlanFooter: View {
                     .planButton(.textDanger)
                     .accessibilityIdentifier("planCantMakeIt")
             )
+        case .hosting where card.answerCounts != nil && viewModel.remindable > 0 && card.state == .upcoming:
+            // Board 4: one reminder each, the way they were invited.
+            AnyView(VStack(spacing: Spacing.s2) {
+                Button { Task { _ = await viewModel.remindEveryone() } } label: {
+                    PlanButtonLabel(
+                        title: "Remind the \(viewModel.remindable) who \(viewModel.remindable == 1 ? "hasn't" : "haven't") answered",
+                        kind: .primary,
+                        isLoading: viewModel.isWorking
+                    )
+                }
+                .planButton(.primary)
+                .disabled(viewModel.isWorking)
+                .accessibilityIdentifier("planRemind")
+                caption("One reminder each, by the way they were invited")
+            })
         case .hosting where card.isOnline && card.state != .cancelled && card.state != .ended:
             AnyView(VStack(spacing: Spacing.s2) { PlanOnlineJoin(place: viewModel.plan?.place) })
         case .hosting, .closed, .notThisTime:

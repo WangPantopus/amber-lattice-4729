@@ -29,8 +29,10 @@ public struct HomeTaskNotificationMetadata: Decodable, Sendable, Hashable {
     public let taskId: String?
     /// A brief's or nudge's assistant conversation (AI assistant phase 2 §3.2).
     public let conversationId: String?
+    /// Plans for the holidays: the screen a Plans notice opens over its plan (`whos_coming`).
+    public let opens: String?
     private enum CodingKeys: String, CodingKey {
-        case homeId = "home_id", taskId = "task_id", conversationId = "conversation_id"
+        case homeId = "home_id", taskId = "task_id", conversationId = "conversation_id", opens
     }
 
     public init(from decoder: any Decoder) throws {
@@ -38,5 +40,6 @@ public struct HomeTaskNotificationMetadata: Decodable, Sendable, Hashable {
         homeId = try? fields?.decode(String.self, forKey: .homeId)
         taskId = try? fields?.decode(String.self, forKey: .taskId)
         conversationId = try? fields?.decode(String.self, forKey: .conversationId)
+        opens = try? fields?.decode(String.self, forKey: .opens)
     }
 }

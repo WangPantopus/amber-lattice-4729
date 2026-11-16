@@ -17,9 +17,9 @@ import Foundation
 
 // MARK: - Values
 
-/// Where the viewer's invitation stands.
+/// Where the viewer's invitation stands. `maybe` (Plans for the holidays H1) comes only with `guests=1`.
 public enum PlanInviteStatus: String, Sendable, Hashable {
-    case pending, accepted, declined, cancelled
+    case pending, accepted, declined, cancelled, maybe
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -29,9 +29,11 @@ public enum PlanInviteStatus: String, Sendable, Hashable {
 
 extension PlanInviteStatus: Codable {}
 
-/// How the host sent it.
+/// How the host sent it. `open` (H1, with `guests=1`): a guest answered the plan's one link for everyone.
 public enum PlanInviteChannel: String, Sendable, Hashable {
     case account, email, link
+    /// Sent as `open`.
+    case openLink = "open"
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -55,6 +57,10 @@ public enum PlanInviteState: String, Sendable, Hashable {
     case cantMakeIt = "cant_make_it"
     /// They said yes, then left.
     case left
+    /// H1, with `guests=1`: they said maybe.
+    case maybe
+    /// H1, with `guests=1`: a guest who answered "I'm in" from the open link, waiting for the host's yes.
+    case waitingOk = "waiting_ok"
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -90,9 +96,9 @@ public struct PlanMyInviteDTO: Codable, Sendable, Hashable {
         invitedAt = try container.decodeIfPresent(String.self, forKey: .invitedAt)
     }
 
-    /// Not answered, or "Can't make it" (the person can still change their mind).
+    /// Not answered, "Can't make it" or "Maybe" (the person can still change their mind).
     var isOpen: Bool {
-        status == .pending || status == .declined
+        status == .pending || status == .declined || status == .maybe
     }
 }
 
@@ -147,13 +153,18 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
     public let requestId: String?
     public let canCancel: Bool
     public let invitedAt: String?
+    /// H1 (`guests=1`): a guest without an account, by the name they typed, with their numbers.
+    public let guest: PlanInviteGuestDTO?
+    /// H1: a guest from the open link waiting for the host's yes (`POST …/invites/:id/ok`).
+    public let canOk: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, channel, state, person, email
+        case id, channel, state, person, email, guest
         case emailFailed = "email_failed"
         case requestId = "request_id"
         case canCancel = "can_cancel"
         case invitedAt = "invited_at"
+        case canOk = "can_ok"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -167,11 +178,13 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
         requestId = try container.decodeIfPresent(String.self, forKey: .requestId)
         canCancel = try container.decodeIfPresent(Bool.self, forKey: .canCancel) ?? false
         invitedAt = try container.decodeIfPresent(String.self, forKey: .invitedAt)
+        guest = try? container.decodeIfPresent(PlanInviteGuestDTO.self, forKey: .guest)
+        canOk = (try? container.decodeIfPresent(Bool.self, forKey: .canOk)) ?? false
     }
 
     /// The name, the address, or "Text invite".
     var title: String {
-        person?.displayName ?? email ?? "Text invite"
+        person?.displayName ?? guest?.name ?? email ?? "Text invite"
     }
 }
 
@@ -181,11 +194,17 @@ public struct PlanInviteCountsDTO: Decodable, Sendable, Hashable {
     public let isIn: Int
     public let waitlisted: Int
     public let cantMakeIt: Int
+    /// H1 (`guests=1`): rows that said maybe, guests waiting for the host's yes, and invitations nobody answered.
+    public let maybe: Int
+    public let waitingOk: Int
+    public let noAnswer: Int
 
     enum CodingKeys: String, CodingKey {
-        case invited, waitlisted
+        case invited, waitlisted, maybe
         case isIn = "in"
         case cantMakeIt = "cant_make_it"
+        case waitingOk = "waiting_ok"
+        case noAnswer = "no_answer"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -194,6 +213,9 @@ public struct PlanInviteCountsDTO: Decodable, Sendable, Hashable {
         isIn = try container.decodeIfPresent(Int.self, forKey: .isIn) ?? 0
         waitlisted = try container.decodeIfPresent(Int.self, forKey: .waitlisted) ?? 0
         cantMakeIt = try container.decodeIfPresent(Int.self, forKey: .cantMakeIt) ?? 0
+        maybe = (try? container.decodeIfPresent(Int.self, forKey: .maybe)) ?? 0
+        waitingOk = (try? container.decodeIfPresent(Int.self, forKey: .waitingOk)) ?? 0
+        noAnswer = (try? container.decodeIfPresent(Int.self, forKey: .noAnswer)) ?? 0
     }
 }
 
@@ -220,12 +242,17 @@ public struct PlanInviteListDTO: Decodable, Sendable, Hashable {
     public let canInvite: Bool
     /// Only after inviting.
     public let results: [PlanInviteResultDTO]
+    /// H1 (`guests=1`): adults and kids in, the open link, and who a reminder would reach.
+    public let headcount: PlanHeadcountDTO?
+    public let openLink: PlanOpenLinkDTO?
+    public let remind: PlanRemindStateDTO?
 
     enum CodingKeys: String, CodingKey {
-        case invites, counts, results
+        case invites, counts, results, headcount, remind
         case unopenedLinks = "unopened_links"
         case emailsLeft = "emails_left"
         case canInvite = "can_invite"
+        case openLink = "open_link"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -236,6 +263,9 @@ public struct PlanInviteListDTO: Decodable, Sendable, Hashable {
         emailsLeft = try container.decodeIfPresent(Int.self, forKey: .emailsLeft)
         canInvite = try container.decodeIfPresent(Bool.self, forKey: .canInvite) ?? true
         results = (try? container.decodeIfPresent([PlanInviteResultDTO].self, forKey: .results)) ?? []
+        headcount = try? container.decodeIfPresent(PlanHeadcountDTO.self, forKey: .headcount)
+        openLink = try? container.decodeIfPresent(PlanOpenLinkDTO.self, forKey: .openLink)
+        remind = try? container.decodeIfPresent(PlanRemindStateDTO.self, forKey: .remind)
     }
 }
 
