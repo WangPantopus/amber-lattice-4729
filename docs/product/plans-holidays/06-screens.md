@@ -68,6 +68,7 @@ States:
 | State | What shows |
 | --- | --- |
 | A field is missing or wrong | The field's own line in the error color: "Add your name.", "That email doesn't look right." The form keeps what was typed |
+| The address asked not to be emailed (`email_opted_out`) | Under the email field, in the error color: "This address asked Pantopus not to email it. Use another one." The form keeps what was typed |
 | The plan is full (`409 full`) | Under the buttons: "This is full. You can say Maybe, and {Host} will see it." "I'm in" turns off |
 | Too many tries (`too_many`) | "Try again in a little while." |
 | The plan ended or was cancelled | The card, then "This plan is over." or "{Host} cancelled this plan." No form |
@@ -148,7 +149,12 @@ All three use the existing invitation email's frame and unsubscribe links.
 | --- | --- | --- |
 | You're in | "You're in: {title}" | "{Host} has you down for {2 adults and 1 kid}." The date. "Open your invitation" (the guest's link). "The address and the bring list are on that page. This link is yours; please don't forward it." |
 | Reminder | "Tomorrow: {title}" (or "Today:") | The time. "Open your invitation." If items are open: "{n} things are still open on the bring list." |
-| Changed or cancelled | "{Host} changed the time of {title}" / "the place of" / "{Host} cancelled {title}" | The new time or place, or the host's cancel note. The guest's link, except when cancelled |
+| Changed or cancelled | "{Host} changed the time of {title}" / "the place of" / "{Host} cancelled {title}" | The new time or place, or the host's cancel note. The guest's link, except when cancelled: a cancellation has no button, and keeps "Don't send me invitations" |
+
+Which of these count against a guest's three a plan, and which always go, is in
+the contract, 6.6. A guest's link sent again (W2, "already an answer for this
+address") uses the "You're in" email for a guest who is in and the invitation
+email's words for anyone else.
 
 ---
 

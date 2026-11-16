@@ -132,6 +132,9 @@ Checks:
 | `guest_key_hashes` | `text[]`, default empty, at most 6 | The hashes of the guest's keys (K3). A GIN index serves the lookup by one hash |
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
+| `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
+| `guest_emails` | `integer`, default 0 | How many of the plan's three emails the guest has had (6.6). Added by the server session |
+| `changed_at`, `changed_reason` | `timestamptz`, `text` (`time`, `place`, `both`) | The plan's time or place changed since the guest answered: their page says so, and the one change email goes once. Added by the server session |
 
 Checks widened:
 
@@ -169,8 +172,20 @@ family.
   text invitation's token (exists), or the plan's open link.
 - **A guest's key** reads the private parts. One is made when a guest answers;
   the web app keeps it in an HttpOnly cookie for that plan and sends it as
-  `guest`. One more is made for each email to the guest that carries their link
-  (You're in, the reminder, a change). Only hashes are saved.
+  `guest`. One more is made for each email to the guest (You're in, the
+  reminder, a change, their link sent again, the cancellation). Only hashes are
+  saved, so an old key cannot be put into a new email.
+- **The cancellation email carries no link to the invitation.** Its "Don't send
+  me invitations" link still needs a key to say whose address it is, so it
+  carries one of its own, which joins the guest's keys like any other.
+- **On a plan that is cancelled or over, no key reads the place, the host's
+  note, who is going or the bring list.** It reads the card and the guest's own
+  answer, so the page can say what happened. The bring list's guest routes
+  refuse there.
+- **The emailed link is `/plan-invitation/<id>?key=…`**, a web route that
+  keeps the key in the cookie and opens `/plans/<id>` without it. It is not
+  under `/plans/` because the iPhone app claims that path; the Android app
+  claims every path and hands a page it has no screen for to the browser.
 - **A guest may hold several keys, and none replaces another.** The link in the
   first email still works after the reminder goes out, and the browser's cookie
   does not stop working because an email was sent. On the day, people look for
@@ -242,6 +257,14 @@ address its link, at a home or not. Otherwise anyone who knows a guest's email
 could take over their answer from the open link. With a valid key, the answer
 changes the row.
 
+- **Maybe and Can't make it at a home** answer `maybe` and `cant` with no key
+  and no email. Only "I'm in" answers `check_email`.
+- **An address that said "don't send me invitations"** gets no email, so at a
+  home it could never see the address and "Check your email" would not be
+  true. Wherever the form asks for an email, an answer with such an address is
+  refused: `409 email_opted_out`, "This address asked Pantopus not to email it.
+  Use another one." Nothing is saved. (Decided November 15 after the server
+  session's build; not built when written.)
 - `in` when the room is full: refused `409 full`, with `can_maybe: true`.
 - `in` from the open link with `open_invite_ok_first`: saved with
   `needs_host_ok = true`. The seats are held (K5). The host is told. The guest's
@@ -272,7 +295,10 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
   "url": "…", "host_says_yes_first": true }`. A guest's email is never in it.
 - `POST /api/plans/:id/invites/:inviteId/ok` lets a waiting guest in and sends
   their email. `DELETE /api/plans/:id/invites/:inviteId` (exists) removes a
-  guest; their key stops working and they are told once.
+  guest; their keys stop working and their page says "This invitation is no
+  longer open." No email goes, as none goes today to a person with an account
+  the host removes. (Corrected November 15: this line said "told once", with
+  no words fixed anywhere.)
 - `POST /api/plans/:id/invites/remind` reminds everyone who has not answered,
   the way each was invited: a push to an account, an email to an address.
   Unopened text invitations have nobody to remind. Once a plan a day, once a
@@ -292,16 +318,32 @@ in: `"headcount": { "adults": 6, "kids": 3 }`. For the host only:
 
 ### 6.6 Emails to a guest without an account
 
-At most three a plan, each with the unsubscribe link invitation emails already
-carry:
+Every one carries the unsubscribe link invitation emails already carry.
+
+**The plan's three.** At most three a plan count against a guest:
 
 1. "You're in" with their link (and, at a home, after the host's yes).
 2. One reminder, at the time people who are in are reminded today
    (`rules.reminderAt`).
-3. A change of time or place, or a cancellation.
+3. The first change of time or place.
 
-They follow the limits that exist: 5 emails an address a day from every host
-together, and an address that said "don't send me invitations" gets none.
+**Two that are outside the three** (made precise on November 15, after the
+server session's build showed a cancellation could be held back):
+
+- **The cancellation.** One a plan, to each guest who is in. A guest still
+  waiting for the host's yes gets none, as with a change. It is never held by
+  the plan's three: it is the one email a guest must not miss.
+- **Their link again**, sent when an answer comes for an address that already
+  has a row without that row's key (6.3). It does not use one of the guest's
+  three, so answering again from a second device costs the guest nothing, and
+  nobody holding the open link can use up another guest's emails. It goes only
+  if no email went to that guest for that plan in the last 24 hours; otherwise
+  nothing is sent and the answer is the same `check_email`.
+
+**The limits that exist hold for all of them**, the cancellation included: 5
+emails an address a day from every host together, each counted by its own time
+(`email_sent_times`), and an address that said "don't send me invitations" gets
+none.
 
 ### 6.7 Limits
 
@@ -647,6 +689,14 @@ Each step is checked in the real apps against a local stack and backend, as
   address gets an email with its link.
 - At a home, an email invitation and a text invitation answered in a browser
   return `check_email` and no key.
+- A guest who already got "You're in", the reminder and a change still gets
+  the cancellation. A guest waiting for the host's yes gets none.
+- The cancellation email has no link to the invitation, and its "Don't send me
+  invitations" link works. With any of the guest's keys, a cancelled plan's
+  page shows no address, note, names or bring list.
+- A second answer for the same address inside a day, without its key, sends
+  nothing and answers the same. A guest's reminder still goes after their link
+  was sent again.
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
 
@@ -679,3 +729,13 @@ payout is not sent before `payout_after`.
    guest who clears cookies and has no email on file (a text invitation).
 5. The date the Gift exchange, Find a date and Chip in extras are drawn; each
    needs its own boards before a contract.
+6. **A plan that moves to a home after guests answered** (the founder's call;
+   as built, nothing changes for them). Away from a home, a guest from the open
+   link is in without the host's yes and their browser holds a key. If the host
+   then changes the place to a home, those guests see the address with no yes
+   from the host and no email. The host can see every name before moving. The
+   designer's recommendation: when a plan moves to a home, guests without an
+   account who came by the open link wait for the host's yes, their seats held,
+   and "I say yes first" turns on. Not built, not drawn.
+7. A guest held by the day's five gets "Check your email" and no email until
+   they answer again a day later. Nothing tells them. Left as it is.
