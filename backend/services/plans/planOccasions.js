@@ -21,43 +21,45 @@ const FRIENDSGIVING_BRING = ['Stuffing', 'Big salad', 'A dessert', 'Drinks for t
 
 /**
  * The fixed list, in the order the strip shows it. `season(year)` answers the first and last day (YYYY-MM-DD, local)
- * the occasion is offered, or null for always. `time(year)` the day and hours it starts as, or null.
+ * the occasion is offered, or null for always. `time(year)` the day and hours it starts as, or null. `spots` the room
+ * it starts with (added November 16, after the two-phone check: a form that started at 6 met a full plan at the first
+ * "Let in"); each fits any host's room (30 without H1's switch).
  */
 const OCCASIONS = Object.freeze([
   {
     key: 'thanksgiving', text: 'Thanksgiving dinner', kind: 'food_drinks', details: { food_kind: 'dinner' },
-    home: true, kids: true, bring: THANKSGIVING_BRING,
+    home: true, kids: true, spots: 12, bring: THANKSGIVING_BRING,
     season: (y) => [`${y}-11-01`, thanksgivingDay(y)],
     time: (y) => ({ date: thanksgivingDay(y), start: '15:00', end: '20:00', endsNextDay: false }),
   },
   {
     key: 'friendsgiving', text: 'Friendsgiving', kind: 'food_drinks', details: { food_kind: 'potluck' },
-    home: false, kids: true, bring: FRIENDSGIVING_BRING,
+    home: false, kids: true, spots: 12, bring: FRIENDSGIVING_BRING,
     season: (y) => [`${y}-11-01`, thanksgivingDay(y)],
     time: null,
   },
   {
     key: 'holiday_party', text: 'Holiday party', kind: 'food_drinks', details: {},
-    home: false, kids: false, bring: null,
+    home: false, kids: false, spots: 20, bring: null,
     season: (y) => [`${y}-11-15`, `${y}-12-31`],
     time: null,
   },
   {
     // The gift exchange extra (names drawn, a budget, wish lists) is a later step.
     key: 'gift_exchange', text: 'Gift exchange', kind: 'something_else', details: {},
-    home: false, kids: false, bring: null,
+    home: false, kids: false, spots: 12, bring: null,
     season: (y) => [`${y}-11-15`, `${y}-12-31`],
     time: null,
   },
   {
     key: 'new_years_eve', text: 'New Year\'s Eve', kind: 'food_drinks', details: { food_kind: 'drinks' },
-    home: false, kids: false, bring: null,
+    home: false, kids: false, spots: 20, bring: null,
     season: (y) => [`${y}-12-10`, `${y}-12-31`],
     time: (y) => ({ date: `${y}-12-31`, start: '20:00', end: '01:00', endsNextDay: true }),
   },
   {
     key: 'birthday', text: 'Birthday', kind: 'something_else', details: {},
-    home: false, kids: true, bring: null,
+    home: false, kids: true, spots: 12, bring: null,
     season: null,
     time: null,
   },
@@ -140,6 +142,7 @@ async function inSeason(viewer, { now = new Date() } = {}) {
       fills: {
         title: occasion.text,
         audience: 'invited',
+        spots: occasion.spots,
         place_kind: occasion.home ? 'home' : null,
         kids_welcome: Boolean(occasion.kids && viewer.guestAnswersFlag),
         bring: occasion.bring && bringOn ? { guests_can_add: true, items: occasion.bring.map((label) => ({ label })) } : null,
