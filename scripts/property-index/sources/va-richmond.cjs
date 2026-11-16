@@ -1,7 +1,7 @@
 'use strict';
 // City of Richmond, Virginia: the City Assessor of Real Estate's Public Data Set, the free Excel file of every parcel that its Data Request page
 // offers and refreshes about the 15th of each month. The page states no license and no limit on use; the city's GIS disclaimer says it assumes
-// no liability for errors. Year built, finished living area, bedrooms, full and half baths, stories, legal acres and land square feet, and the
+// no liability for errors. Year built, finished living area, bedrooms, full and half baths, stories, legal acreage, and the
 // current land, improvement and total assessments (Virginia assesses at full market value), with each parcel's own location, city and ZIP.
 // Owner, mailing and association columns are never asked for.
 
@@ -18,7 +18,7 @@ const { log } = require('../lib/log.cjs');
 const FIPS = '51760';
 const COUNTY = 'City of Richmond';
 const PAGE = 'https://www.rva.gov/assessor-real-estate/data-request';
-const COLUMNS = ['PIN', 'NBHD', 'PRIMARY_USE', 'PROP_TYPE', 'PARCEL_LOCATION', 'PARCEL_LOCATION_CITY', 'PARCEL_LOCATION_ZIP', 'STYLE', 'STORIES', 'YEAR_BUILT', 'LIVING_AREA', 'BED_COUNT', 'BATH_COUNT', 'HALF_BATH_COUNT', 'LEGAL_AC', 'PROP_SF', 'ZONING', 'LEGAL_DESC', 'ASSESSMENT_DATE_1', 'ASSSESS_LAND_VALUE_1', 'ASSSESS_IMP_VALUE_1', 'ASSSESS_TOTAL_VALUE_1'];
+const COLUMNS = ['PIN', 'NBHD', 'PRIMARY_USE', 'PROP_TYPE', 'PARCEL_LOCATION', 'PARCEL_LOCATION_CITY', 'PARCEL_LOCATION_ZIP', 'STYLE', 'STORIES', 'YEAR_BUILT', 'LIVING_AREA', 'BED_COUNT', 'BATH_COUNT', 'HALF_BATH_COUNT', 'LEGAL_AC', 'ZONING', 'LEGAL_DESC', 'ASSESSMENT_DATE_1', 'ASSSESS_LAND_VALUE_1', 'ASSSESS_IMP_VALUE_1', 'ASSSESS_TOTAL_VALUE_1'];
 
 // The Assessor's primary use codes ("120 - R Two Story"): 109-155 and 193 a single-family home by its number of stories or form, 750 a
 // community land trust home on a ground lease; 160-181 two to four families; 210-212 condominium units; 3xx apartments; 101, 201 and
@@ -88,11 +88,8 @@ function fromRow(row) {
     put(facts, 'stories', inRange(row.STORIES, 6));
   }
   if (kind === 'building') put(facts, 'gross_sqft', positive(row.LIVING_AREA));
-  // The legal acres, or the Assessor's land square feet where no acres are recorded. A condominium unit has no lot of its own.
-  if (kind !== 'unit') {
-    if (positive(row.LEGAL_AC)) put(facts, 'lot_acres', positive(row.LEGAL_AC));
-    else put(facts, 'lot_sqft', positive(row.PROP_SF) >= 100 ? Math.round(positive(row.PROP_SF)) : null);
-  }
+  // The lot is the record's legal acreage (LEGAL_AC), never an area measured from the parcel map. A condominium unit has no lot of its own.
+  if (kind !== 'unit') put(facts, 'lot_acres', positive(row.LEGAL_AC));
   const assessed = dayOf(row.ASSESSMENT_DATE_1);
   put(facts, 'value_year', assessed ? assessed.getUTCFullYear() : null);
   put(facts, 'market_value', positive(row.ASSSESS_TOTAL_VALUE_1));
@@ -137,6 +134,6 @@ module.exports = {
   dictionary: {
     // The workbook's column names; the assessment date's year is the year of the value.
     columns: { ...Object.fromEntries(COLUMNS.map((column) => [column, ''])), ASSESSMENT_DATE_1: 'date of the current assessment; its year is the assessment year' },
-    facts: { year_built: 'YEAR_BUILT', living_sqft: 'LIVING_AREA', gross_sqft: 'LIVING_AREA', bedrooms: 'BED_COUNT', bathrooms: 'BATH_COUNT', full_baths: 'BATH_COUNT', half_baths: 'HALF_BATH_COUNT', stories: 'STORIES', lot_acres: 'LEGAL_AC', lot_sqft: 'PROP_SF', value_year: 'ASSESSMENT_DATE_1', market_value: 'ASSSESS_TOTAL_VALUE_1', market_land_value: 'ASSSESS_LAND_VALUE_1', market_building_value: 'ASSSESS_IMP_VALUE_1' },
+    facts: { year_built: 'YEAR_BUILT', living_sqft: 'LIVING_AREA', gross_sqft: 'LIVING_AREA', bedrooms: 'BED_COUNT', bathrooms: 'BATH_COUNT', full_baths: 'BATH_COUNT', half_baths: 'HALF_BATH_COUNT', stories: 'STORIES', lot_acres: 'LEGAL_AC', value_year: 'ASSESSMENT_DATE_1', market_value: 'ASSSESS_TOTAL_VALUE_1', market_land_value: 'ASSSESS_LAND_VALUE_1', market_building_value: 'ASSSESS_IMP_VALUE_1' },
   },
 };
