@@ -8,7 +8,12 @@
 //     venue_id (the venue the author picked in the place picker, its `osm:` id),
 //     altitude_ft, flying (the height above sea level the author chose to show, rounded to 10 ft, and whether they
 //       were in the air; behind the `moment_heights` flag; never kept for a Moment at home, shown as an area or
-//       with no location: shownAltitude) }
+//       with no location: shownAltitude; a floating Moment's is rounded to 100 ft) }
+// The Sky, phase A (behind the `sky_places` flag, read for the author when they post): a Moment floats over an area of
+// at least 100 homes (utils/areaCells.js) unless its author pinned it at a public place by name, and one made at home
+// always floats. A floating Moment stores only its area's point (latitude, longitude and the effective pair),
+// location_precision 'approx_area', show_area true (so apps from before draw it as an area), and
+// post_metadata.area = { v: 1, step, radius_m }. Where the phone was is never written.
 // A Moment with no location (location_source 'none', founder 2026-11-11) has no point and no place: it goes to the
 // author's connections only, never on the map; they find it in the map's row of faces (GET /map `unplaced`).
 // Its place label is location_name (what everyone reads), its audience Post.audience ('nearby' | 'connections').
@@ -25,6 +30,7 @@ const { verifiedResidentUserIds } = require('../../utils/identityProfiles');
 const { PANTOPUS_VERIFIED_STATUSES } = require('../../utils/businessConstants');
 const { applyLocationPrecision, MAX_DISPLAY_OFFSET_DEGREES, snapToNeighborhoodCells } = require('../../utils/locationPrivacy');
 const { shownReaction, reactionSummary } = require('../../utils/postReaction');
+const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
 
 const KINDS = ['photo', 'video', 'text'];
@@ -48,6 +54,10 @@ const CLOCK_SKEW_MS = 2 * 60 * 1000;
 // "Show height" (behind the `moment_heights` flag): a Moment may say how high above sea level it was posted. The phone
 // sends metres; everyone reads feet rounded to HEIGHT_STEP_FT, so the number never tells one floor from the next.
 const HEIGHTS_FLAG = 'moment_heights';
+// The Sky, phase A: approximate places (above).
+const SKY_FLAG = 'sky_places';
+// A floating Moment's height is rounded this much more, so it never points at one spot (the design's decision 13).
+const FLOATING_HEIGHT_STEP_FT = 100;
 // Part D "float by day": Moments with an elevation float on the map, shadows where the sun is. Needs HEIGHTS_FLAG.
 const FLOAT_FLAG = 'moment_float';
 const FEET_PER_M = 3.28084;
@@ -110,13 +120,21 @@ function momentState(row, now = Date.now()) {
   return ['uploading', 'checking', 'live'].includes(state) ? state : 'live';
 }
 
-// The point everyone sees, the author included: the exact pin, or the approximate grid point (docs/location-privacy-
-// matrix.md, approx_area) for a Moment shown as an area.
+// The point everyone sees, the author included: the exact pin, the stored area point of a floating Moment (it holds
+// nothing finer), or the approximate grid point (docs/location-privacy-matrix.md, approx_area) for a Moment shown as
+// an area before the Sky.
 function displayedPoint(row) {
   if (!hasPlace(row)) return { latitude: null, longitude: null };
   const point = { latitude: row.latitude, longitude: row.longitude };
-  if (meta(row).show_area) applyLocationPrecision(point, 'approx_area', false, { setUnlockedFlag: false, stripAddress: false });
+  if (meta(row).show_area && !isFloating(row)) {
+    applyLocationPrecision(point, 'approx_area', false, { setUnlockedFlag: false, stripAddress: false });
+  }
   return point;
+}
+
+/** A floating Moment (the Sky): it stores its area's point and post_metadata.area. */
+function isFloating(row) {
+  return Boolean(row?.post_metadata?.area) && hasPlace(row);
 }
 
 /** Whether the Moment has a point (one posted with no location has none). */
@@ -238,7 +256,8 @@ async function viewerMarks(viewerId, ids) {
  */
 function shownHeight(row) {
   const m = meta(row);
-  if (!Number.isFinite(m.altitude_ft) || m.at_home || m.show_area || !hasPlace(row)) return null;
+  // A floating Moment's height was rounded to 100 ft when it was kept; an area Moment from before the Sky kept none.
+  if (!Number.isFinite(m.altitude_ft) || m.at_home || (m.show_area && !isFloating(row)) || !hasPlace(row)) return null;
   return { altitude_ft: m.altitude_ft, flying: Boolean(m.flying) };
 }
 
@@ -254,6 +273,11 @@ async function heightsOn(viewer) {
 /** Whether Moments float by day on `viewer`'s map: `moment_float` on for them, and heights too. Off for everyone. */
 async function floatOn(viewer) {
   return (await heightsOn(viewer)) && flagOnFor(FLOAT_FLAG, viewer);
+}
+
+/** Whether the Sky's places rules apply to `viewer`'s posts and Post sheet (`sky_places`). Off for everyone. */
+async function skyOn(viewer) {
+  return flagOnFor(SKY_FLAG, viewer);
 }
 
 /** One flag for one person, read from the cached flag row; any failure reads as off. */
@@ -306,6 +330,10 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     longitude: point.longitude,
     no_location: !hasPlace(row),
     show_area: Boolean(m.show_area),
+    // The Sky: a floating Moment and its disc around the area point (null for any other).
+    floating: isFloating(row),
+    area: isFloating(row) && Number.isFinite(row.post_metadata.area.radius_m)
+      ? { radius_m: row.post_metadata.area.radius_m } : null,
     audience: row.audience === 'connections' ? 'connections' : 'nearby',
     created_at: row.created_at,
     expires_at: row.story_expires_at,
@@ -691,9 +719,15 @@ async function viewersOf(row) {
 
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
-  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null }) {
+  location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
+  area = null }) {
   const now = createdAt ? new Date(createdAt) : new Date();
   const live = kind === 'text';
+  // A floating Moment (the Sky) keeps its area's point and nothing finer.
+  if (area) {
+    location = { ...location, latitude: area.latitude, longitude: area.longitude };
+    showArea = true;
+  }
   return {
     user_id: userId,
     author_user_id: userId,
@@ -723,6 +757,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
     moderation_state: 'live',
     gps_timestamp: location.source === 'gps' ? location.fix_at : null,
     post_metadata: {
+      ...(area ? { area: areaMetadata(area) } : {}),
       moment: {
         v: 1,
         kind,
@@ -758,11 +793,12 @@ function takenAtShown(value, now = Date.now()) {
 /**
  * The height a new Moment keeps, { altitude_ft, flying }, or null. `reading` is what the phone sent with "Show height"
  * on: { meters, accuracy_m, speed_mps } (metres above sea level; the last two optional). Nothing is kept for a
- * Moment at home, shown as an area or with no location (a height would narrow down where it is), nor for a reading
- * that can't be right or that the phone says is too rough. A bad reading never fails the post: it is left out.
+ * Moment at home, shown as an area before the Sky or with no location (a height would narrow down where it is), nor
+ * for a reading that can't be right or that the phone says is too rough. A floating Moment (`floating`, the Sky)
+ * keeps feet rounded to 100 instead of 10. A bad reading never fails the post: it is left out.
  */
-function shownAltitude(reading, { atHome = false, showArea = false, unplaced = false } = {}) {
-  if (!reading || atHome || showArea || unplaced) return null;
+function shownAltitude(reading, { atHome = false, showArea = false, unplaced = false, floating = false } = {}) {
+  if (!reading || atHome || (showArea && !floating) || unplaced) return null;
   const meters = Number(reading.meters);
   if (!Number.isFinite(meters) || meters < MIN_ALTITUDE_M || meters > MAX_ALTITUDE_M) return null;
   const speed = Number(reading.speed_mps);
@@ -770,8 +806,9 @@ function shownAltitude(reading, { atHome = false, showArea = false, unplaced = f
   const error = reading.accuracy_m == null ? null : Number(reading.accuracy_m);
   if (error != null && (!Number.isFinite(error) || error < 0
     || error > (flying ? MAX_ALTITUDE_ERROR_FLYING_M : MAX_ALTITUDE_ERROR_M))) return null;
+  const step = floating ? FLOATING_HEIGHT_STEP_FT : HEIGHT_STEP_FT;
   // `|| 0`: a few feet below the sea rounds to 0, never to -0.
-  return { altitude_ft: Math.round((meters * FEET_PER_M) / HEIGHT_STEP_FT) * HEIGHT_STEP_FT || 0, flying };
+  return { altitude_ft: Math.round((meters * FEET_PER_M) / step) * step || 0, flying };
 }
 
 /**
@@ -947,6 +984,6 @@ module.exports = {
   KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
-  newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, HEIGHTS_FLAG, FLOAT_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
 };
