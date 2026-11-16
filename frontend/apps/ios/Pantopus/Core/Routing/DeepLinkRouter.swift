@@ -192,12 +192,15 @@ final class DeepLinkRouter {
         /// existing mail item detail.
         case mailItem(mailId: String)
         /// `/app/mailbox/sent/:id` — a card the person sent, on its page in
-        /// Sent (the holiday_card_claimed / holiday_card_expired notices).
+        /// Sent (the holiday_card_claimed / holiday_card_expired notices, and
+        /// holiday_card_email_failed for one card whose email didn't go out).
         case mailSentCard(id: String)
         /// `/app/mailbox/cards?design=` — sending a Christmas card, with the
         /// picture a public card page chose (on with Christmas cards).
         case mailCards(design: String?)
-        /// `/mailbox` — the Mail tab (the Mail Day summary notification).
+        /// `/mailbox` — the Mail tab (the Mail Day summary notification);
+        /// also `/app/mailbox/sent` (holiday_card_email_failed for several
+        /// cards), since Sent is a drawer of the Mailbox.
         case mailbox
         /// `/app/place/neighbor-message/:id` — a received neighbor message, in
         /// the existing Place message screen.
