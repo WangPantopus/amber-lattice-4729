@@ -287,7 +287,8 @@ private fun PlanReady(
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
             // A private plan's invitation goes under its title (board Invited, Plans step 1).
             // Plans for the holidays (A8): someone who said maybe sees a quiet "You said maybe" with "Change".
-            plan.isPrivate && plan.saidMaybe -> PlanBeforeInBody(plan, afterTitle = { PlanMaybeBanner(plan, onChange = viewModel::openAsk) })
+            plan.isPrivate && plan.saidMaybe ->
+                PlanBeforeInBody(plan, afterTitle = { PlanMaybeBanner(plan, onChange = viewModel::openAsk) })
             plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }

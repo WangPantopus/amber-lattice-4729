@@ -99,8 +99,7 @@ class PlanActionReceiver : BroadcastReceiver() {
     ): NetworkResult<Unit> =
         when (action) {
             // Plans for the holidays: a guest from the open link waits for the host's yes.
-            LET_IN -> inviteId?.let { plans.letIn(planId, it).asUnit() } ?: missing()
-            NOT_THIS_TIME -> inviteId?.let { plans.cancelInvite(planId, it).asUnit() } ?: missing()
+            LET_IN, NOT_THIS_TIME -> answerGuest(action, planId, inviteId)
             ACCEPT -> requestId?.let { plans.accept(planId, it, confirmSharesAddress = false) } ?: missing()
             DECLINE -> requestId?.let { plans.decline(planId, it) } ?: missing()
             ON_MY_WAY -> plans.onMyWay(planId)
@@ -112,6 +111,16 @@ class PlanActionReceiver : BroadcastReceiver() {
             CANT_MAKE_IT_INVITE -> plans.declineInvite(planId).asUnit()
             else -> missing()
         }
+
+    /** "Let in" or "Not this time" on a guest who waits (Plans for the holidays). */
+    private suspend fun answerGuest(
+        action: String,
+        planId: String,
+        inviteId: String?,
+    ): NetworkResult<Unit> {
+        val id = inviteId ?: return missing()
+        return if (action == LET_IN) plans.letIn(planId, id).asUnit() else plans.cancelInvite(planId, id).asUnit()
+    }
 
     private fun <T> NetworkResult<T>.asUnit(): NetworkResult<Unit> =
         when (this) {

@@ -123,7 +123,7 @@ class NotificationDispatcher
          * iOS uses in `userNotificationCenter(_:didReceive:)`.
          */
         fun dispatch(message: RemoteMessage) {
-            val routing = route(message.data, message.notification?.title, message.notification?.body)
+            val routing = withWhosComing(route(message.data, message.notification?.title, message.notification?.body), message.data)
             // Launch cut (2026-09-27): no system notification for a feature
             // hidden for the first launch (bids, listings, Beacon, bookings…).
             if (!DeepLinkRouter.isLaunchAvailable(message.data["type"], routing.deepLink)) {
@@ -166,9 +166,6 @@ class NotificationDispatcher
             // the title — forward it as a `name` query param so the
             // conversation header has a display name on cold-open
             // (`DeepLinkRouter.Destination.Conversation.name`).
-            // Plans for the holidays: a guest's two notices open the host's Who's coming (`opens: whos_coming`).
-            val planId = data["plan_id"]
-            if (data["opens"] == "whos_coming" && !planId.isNullOrBlank()) deepLink = "/plans/$planId/guests"
             if (channel == Channel.CHAT && deepLink != null && !title.isNullOrBlank() && !deepLink.contains('?')) {
                 deepLink = "$deepLink?name=${java.net.URLEncoder.encode(title, "UTF-8")}"
             }
@@ -184,6 +181,18 @@ class NotificationDispatcher
                 conversationId = data["conversation_id"],
                 assistantAction = data["assistant_action"],
             )
+        }
+
+        /**
+         * Plans for the holidays: a guest's two notices ("Dana Lee is in", "Dana Lee wants to come") open the host's Who's
+         * coming (`opens: whos_coming`) instead of the plan.
+         */
+        internal fun withWhosComing(
+            routing: Routing,
+            data: Map<String, String>,
+        ): Routing {
+            val planId = data["plan_id"]?.takeIf(String::isNotBlank) ?: return routing
+            return if (data["opens"] == "whos_coming") routing.copy(deepLink = "/plans/$planId/guests") else routing
         }
 
         /**

@@ -123,7 +123,7 @@ private fun GuestsBody(
     GuestSection("Maybe", ui.maybe, ui, vm)
     GuestSection("Haven't answered", ui.noAnswer, ui, vm)
     GuestSection("Can't make it", ui.cantMakeIt, ui, vm)
-    if (ui.coming.isEmpty() && ui.maybe.isEmpty() && ui.noAnswer.isEmpty() && ui.waiting.isEmpty()) {
+    if (ui.nobodyYet) {
         Text(
             text = "Nobody has answered yet. Invite people with the plus.",
             style = PantopusTextStyle.body,
@@ -251,7 +251,11 @@ private fun GuestRow(
                 .heightIn(min = 56.dp)
                 .then(
                     if (removable) {
-                        Modifier.combinedClickable(onClickLabel = null, onClick = {}, onLongClickLabel = "Remove ${row.name}", onLongClick = onRemove)
+                        Modifier.combinedClickable(
+                            onClick = {},
+                            onLongClickLabel = "Remove ${row.name}",
+                            onLongClick = onRemove,
+                        )
                     } else {
                         Modifier
                     },
@@ -271,16 +275,8 @@ private fun GuestRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
         when (row.channel) {
-            "email" -> PlanIconTile(PantopusIcon.Mail, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 18.dp, corner = 20.dp)
-            "link" ->
-                PlanIconTile(
-                    PantopusIcon.MessageCircle,
-                    PantopusColors.appSurfaceSunken,
-                    PantopusColors.appTextStrong,
-                    size = 40.dp,
-                    glyph = 18.dp,
-                    corner = 20.dp,
-                )
+            "email" -> ChannelTile(PantopusIcon.Mail)
+            "link" -> ChannelTile(PantopusIcon.MessageCircle)
             else -> PlanAvatar(name = row.name, seed = row.userId ?: row.key, avatarUrl = row.avatarUrl)
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -288,6 +284,12 @@ private fun GuestRow(
             Text(text = row.line, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
         }
     }
+}
+
+/** An address or a text invite: its glyph in a round tile where a picture would be. */
+@Composable
+private fun ChannelTile(icon: PantopusIcon) {
+    PlanIconTile(icon, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 18.dp, corner = 20.dp)
 }
 
 /** "Remind {n} people", the note about unopened text invites, and "Reminded today" once used. */

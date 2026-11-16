@@ -770,6 +770,7 @@ internal fun AddToThisPlan(
 }
 
 /** One row of "Add to this plan": a 36 dp tile with its glyph, the name and its line, and a switch (board "rowlink"). */
+@Suppress("LongParameterList")
 @Composable
 internal fun AddToPlanRow(
     first: Boolean,

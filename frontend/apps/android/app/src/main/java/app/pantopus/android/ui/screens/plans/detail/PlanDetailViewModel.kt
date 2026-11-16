@@ -295,7 +295,8 @@ class PlanDetailViewModel
                     when (result) {
                         is NetworkResult.Success -> {
                             val n = result.data.reminded
-                            it.copy(reminding = false, remindedToday = true, notice = if (n == 1) "Reminded 1 person." else "Reminded $n people.")
+                            val notice = if (n == 1) "Reminded 1 person." else "Reminded $n people."
+                            it.copy(reminding = false, remindedToday = true, notice = notice)
                         }
                         is NetworkResult.Failure ->
                             if (result.error.planCode in setOf("reminded_today", "too_many")) {

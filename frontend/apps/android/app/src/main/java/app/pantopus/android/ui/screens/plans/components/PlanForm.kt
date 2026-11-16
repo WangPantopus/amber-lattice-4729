@@ -414,7 +414,7 @@ fun PlanStepperRow(
     range: IntRange,
     onChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    /** Holding the plus steps by this much (Plans for the holidays' "Room for": 5); 1 leaves holding out. */
+    /** Holding the plus steps to the next multiple of this (Plans for the holidays' "Room for": 5); 1 leaves holding out. */
     holdStep: Int = 1,
 ) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -433,7 +433,7 @@ fun PlanStepperControl(
     range: IntRange,
     label: String,
     onChange: (Int) -> Unit,
-    /** Holding the plus steps by this much, again every quarter second; 1 leaves holding out. */
+    /** Holding the plus goes to the next multiple of this, again every quarter second; 1 leaves holding out. */
     holdStep: Int = 1,
 ) {
     Row(
@@ -459,7 +459,8 @@ fun PlanStepperControl(
                 icon = PantopusIcon.Plus,
                 label = "One more",
                 enabled = value < range.last,
-                onHold = { onChange((value + holdStep).coerceAtMost(range.last)) },
+                // Holding goes to the next multiple of [holdStep] (12, 15, 20…), as on iPhone.
+                onHold = { onChange(((value / holdStep + 1) * holdStep).coerceAtMost(range.last)) },
                 holdLabel = "$holdStep more",
             ) { onChange(value + 1) }
         } else {

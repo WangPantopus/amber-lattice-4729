@@ -205,7 +205,7 @@ data class PlanGuestsUi(
     ): PlanGuestRow {
         val guest = row.guest
         val person = row.person
-        val match = people.firstOrNull { p -> (row.requestId != null && p.requestId == row.requestId) || (person != null && p.userId == person.userId) }
+        val match = people.firstOrNull { p -> sameAs(row, p) }
         val line =
             when {
                 guest != null -> "${countWords(guest.adults, guest.kids)} · answered in a browser"
@@ -221,13 +221,7 @@ data class PlanGuestsUi(
             channel = row.channel.takeIf { person == null && guest == null },
             inviteId = row.id,
             requestId = row.requestId ?: match?.requestId,
-            removal =
-                when {
-                    guest != null -> PlanGuestRemoval.Invite
-                    (row.requestId ?: match?.requestId) != null -> PlanGuestRemoval.Request
-                    row.canCancel -> PlanGuestRemoval.Invite
-                    else -> null
-                },
+            removal = removalFor(row, match),
             adults = guest?.adults ?: match?.partySize ?: 1,
             kids = guest?.kids ?: match?.kidsCount ?: 0,
         )
@@ -264,6 +258,31 @@ data class PlanGuestsUi(
             }
         return (listOf(first) + extra).joinToString(" ")
     }
+
+    /** The person in the plan's people this invitation is: the same request, or the same account. */
+    private fun sameAs(
+        row: PlanInviteRowDto,
+        person: PlanPersonDto,
+    ): Boolean {
+        val sameRequest = row.requestId != null && person.requestId == row.requestId
+        val sameAccount = row.person != null && person.userId == row.person.userId
+        return sameRequest || sameAccount
+    }
+
+    /** A guest or an unanswered invitation goes by the invitation; an account who is in by its request. */
+    private fun removalFor(
+        row: PlanInviteRowDto,
+        match: PlanPersonDto?,
+    ): PlanGuestRemoval? =
+        when {
+            row.guest != null -> PlanGuestRemoval.Invite
+            (row.requestId ?: match?.requestId) != null -> PlanGuestRemoval.Request
+            row.canCancel -> PlanGuestRemoval.Invite
+            else -> null
+        }
+
+    /** Nobody has answered, nobody waits and nobody is invited yet. */
+    val nobodyYet: Boolean get() = coming.isEmpty() && maybe.isEmpty() && noAnswer.isEmpty() && waiting.isEmpty()
 
     private fun personLine(person: PlanPersonDto): String = countWords(person.partySize, person.kidsCount ?: 0)
 
@@ -400,7 +419,8 @@ class PlanGuestsViewModel
                     when (result) {
                         is NetworkResult.Success -> {
                             val n = result.data.reminded
-                            it.copy(reminding = false, remindedToday = true, notice = if (n == 1) "Reminded 1 person." else "Reminded $n people.")
+                            val notice = if (n == 1) "Reminded 1 person." else "Reminded $n people."
+                            it.copy(reminding = false, remindedToday = true, notice = notice)
                         }
                         is NetworkResult.Failure ->
                             if (result.error.planCode in REMINDED_CODES) {

@@ -73,6 +73,7 @@ private val helloStarters = listOf("First time", "Bringing a snack", "Can help s
  * sentence and "Send request". Party size counts against spots, so choices past the spots left are shown at half
  * strength (a full plan's request goes to the waitlist and keeps every choice).
  */
+@Suppress("LongParameterList")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlanAskSheet(
@@ -311,6 +312,7 @@ internal fun PlanDto.answersWithCounts(invited: Boolean): Boolean =
     kidsWelcome != null && isPrivate && !isPlaydate && (invited || standing == PlanViewerStanding.IN)
 
 /** Board 18: "Who's coming?", adults and kids (or how many), a note, then I'm in, Maybe and Can't make it. */
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 private fun PlanAnswerContent(
     plan: PlanDto,

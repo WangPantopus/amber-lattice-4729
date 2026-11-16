@@ -35,6 +35,7 @@ import app.pantopus.android.ui.theme.Spacing
  * link glyph and what it is for, "Copy link" and "Share", then "I say yes first". "Turn this link off" follows the card
  * once a link exists.
  */
+@Suppress("LongMethod")
 @Composable
 internal fun PlanOpenLinkCard(
     ui: PlanInviteUi,
@@ -46,7 +47,14 @@ internal fun PlanOpenLinkCard(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-            PlanIconTile(PantopusIcon.Link, PantopusColors.primary100, PantopusColors.primary700, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+            PlanIconTile(
+                PantopusIcon.Link,
+                PantopusColors.primary100,
+                PantopusColors.primary700,
+                size = 40.dp,
+                glyph = 20.dp,
+                corner = 12.dp,
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "One link for everyone",

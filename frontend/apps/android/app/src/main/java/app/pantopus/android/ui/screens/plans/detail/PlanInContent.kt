@@ -70,6 +70,7 @@ import app.pantopus.android.ui.theme.Spacing
  * in. [reveal] slides "You're in" up 8 dp and fades it in (300 to 450 ms of the reveal; a crossfade under Reduce
  * Motion).
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun ColumnScope.PlanInBody(
     plan: PlanDto,

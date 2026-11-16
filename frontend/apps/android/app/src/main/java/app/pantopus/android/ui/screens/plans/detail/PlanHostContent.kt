@@ -122,10 +122,7 @@ internal fun ColumnScope.PlanHostBody(
     InviteCard(plan, closed, onOpen = onInvite)
     // Plans for the holidays (A6): the three counts and the people line with their numbers, both opening Who's coming,
     // in place of the going list (Who's coming has every guest, with or without an account, and Remove).
-    val counts = plan.guestCounts()
-    if (counts != null) {
-        HostAnswers(counts, PlanGuestsUi(plan = plan, list = guests), onOpenGuests)
-    } else {
+    HostPeople(plan, guests, onOpenGuests) {
         GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
     }
     if (closed && plan.chatRoomId != null) {
@@ -135,7 +132,7 @@ internal fun ColumnScope.PlanHostBody(
     if (!closed) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // Plans for the holidays (A6 item 4): "Share link" first, opening the invite sheet's one link for everyone.
-            if (counts != null && plan.isPrivate && plan.invites?.canInvite == true) {
+            if (plan.showsShareLink) {
                 GhostButton(title = "Share link", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planShareLink"))
             }
             if (plan.chatRoomId != null) {
@@ -150,6 +147,27 @@ internal fun ColumnScope.PlanHostBody(
         }
     }
 }
+
+/**
+ * Who is coming, on the host's page: the counts and the people line (Plans for the holidays, A6) on a private plan
+ * whose card carries `answers`; otherwise the shipped going list ([going]). A public plan keeps it (as on iPhone).
+ */
+@Composable
+private fun HostPeople(
+    plan: PlanDto,
+    guests: PlanInviteListDto?,
+    onOpenGuests: () -> Unit,
+    going: @Composable () -> Unit,
+) {
+    val counts = plan.hostCounts
+    if (counts != null) HostAnswers(counts, PlanGuestsUi(plan = plan, list = guests), onOpenGuests) else going()
+}
+
+/** The host's counts (Plans for the holidays, A6) on a private plan whose card carries `answers`; null otherwise. */
+private val PlanDto.hostCounts: PlanGuestCounts? get() = guestCounts()?.takeIf { isPrivate }
+
+/** "Share link" leads the buttons (A6 item 4) on such a plan while its host can invite. */
+private val PlanDto.showsShareLink: Boolean get() = hostCounts != null && invites?.canInvite == true
 
 /**
  * The host's answers (Plans for the holidays, board 4, A6 item 2): the three counts, then the people coming with their
@@ -182,7 +200,12 @@ private fun HostAnswers(
             ) {
                 PlanAvatarStack(names = guests.coming.take(4).map { it.name to (it.userId ?: it.key) })
                 Text(text = line, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary, modifier = Modifier.weight(1f))
-                PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
+                PantopusIconImage(
+                    icon = PantopusIcon.ChevronRight,
+                    contentDescription = null,
+                    size = 16.dp,
+                    tint = PantopusColors.appTextMuted,
+                )
             }
         }
     }

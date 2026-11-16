@@ -609,7 +609,8 @@ class PlansRepository
             confirmSharesAddress: Boolean,
         ): NetworkResult<PlanOpenLinkResponse> =
             write(id) {
-                api.openLink(id, PlanOpenLinkBody(hostSaysYesFirst = hostSaysYesFirst, confirmSharesAddress = confirmSharesAddress.takeIf { it }))
+                val body = PlanOpenLinkBody(hostSaysYesFirst = hostSaysYesFirst, confirmSharesAddress = confirmSharesAddress.takeIf { it })
+                api.openLink(id, body)
             }
 
         /** "Turn this link off". */

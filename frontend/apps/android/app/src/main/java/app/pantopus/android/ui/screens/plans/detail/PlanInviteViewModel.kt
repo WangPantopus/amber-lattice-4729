@@ -100,6 +100,8 @@ data class PlanInviteUi(
  * came to their plans), anyone by email, and a one-person link to text. The invitations already sent, with where each
  * stands, and taking one back. Everything is the server's (planInvites.js); the same screen as iOS's PlanInviteSheet.
  */
+// The open link (Plans for the holidays, A4) adds its own small steps to the sheet's.
+@Suppress("TooManyFunctions")
 @HiltViewModel
 class PlanInviteViewModel
     @Inject
