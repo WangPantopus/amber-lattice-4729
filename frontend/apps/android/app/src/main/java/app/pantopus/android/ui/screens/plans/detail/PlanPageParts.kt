@@ -130,6 +130,8 @@ fun PlanPlainScaffold(
     title: String? = null,
     closeIcon: Boolean = false,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
+    /** A button on the bar's right (Who's coming's "+"); a 44 dp space keeps the title centered without one. */
+    trailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize().background(PantopusColors.appBg)) {
@@ -153,7 +155,7 @@ fun PlanPlainScaffold(
                 modifier = Modifier.weight(1f).semantics { heading() },
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Spacer(modifier = Modifier.size(44.dp))
+            if (trailing != null) trailing() else Spacer(modifier = Modifier.size(44.dp))
         }
         Column(
             modifier =

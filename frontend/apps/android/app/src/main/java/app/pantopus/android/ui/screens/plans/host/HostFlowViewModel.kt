@@ -142,6 +142,8 @@ data class HostDraft(
     val foodKind: String = "dinner",
     val gameKind: String = "board_games",
     val outdoorKind: String = "hike",
+    /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1): guests say how many adults and kids. */
+    val kidsWelcome: Boolean = false,
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -211,7 +213,21 @@ data class HostUi(
     val onlineOn: Boolean = false,
     /** `plans_kinds` is on for this person: the type picker shows nine kinds (Plans step 4). */
     val kindsOn: Boolean = false,
+    /** `plans_guest_answers` is on for this person (Plans for the holidays, H1): "Room for" and "Add to this plan". */
+    val guestAnswersOn: Boolean = false,
 ) {
+    /**
+     * A private plan's room reads "Room for", to 100 (Plans for the holidays, board 3), for the kinds whose row says how
+     * many people: not a playdate (families) or a pickup game (players needed).
+     */
+    val showsRoomFor: Boolean get() = guestAnswersOn && isPrivate && draft.kind?.countsPeople == true
+
+    /** The most the room stepper allows: 100 for "Room for", 30 otherwise. */
+    val spotsMax: Int get() = if (showsRoomFor) ROOM_FOR_MAX else MAX_SPOTS
+
+    /** The "Add to this plan" card shows (Plans for the holidays, board 3): on a private plan with "Room for". */
+    val showsAddToPlan: Boolean get() = showsRoomFor
+
     /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
     val showsRepeats: Boolean get() = repeatOn && business == null
 
@@ -305,6 +321,7 @@ class HostFlowViewModel
                     repeatOn = feature.flags.value.repeatOn,
                     onlineOn = feature.flags.value.onlineOn,
                     kindsOn = feature.flags.value.kindsOn,
+                    guestAnswersOn = feature.flags.value.guestAnswersOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -353,7 +370,8 @@ class HostFlowViewModel
             }
             // A private plan is hosted again as a private one, with nobody invited yet.
             val keepPrivate = plan.isPrivate && _ui.value.privateOn
-            val draft = copiedDraft(plan, kind, start, end, keepPrivate)
+            val roomMax = if (keepPrivate && _ui.value.guestAnswersOn && kind.countsPeople) ROOM_FOR_MAX else MAX_SPOTS
+            val draft = copiedDraft(plan, kind, start, end, keepPrivate, roomMax)
             _ui.update { it.copy(zone = zone, step = HostStep.Details, draft = draft, privateChoice = keepPrivate) }
             showCopy(plan)
         }
@@ -579,8 +597,15 @@ class HostFlowViewModel
         /** "Who can see this" (Plans step 1): anyone nearby, or only the people the host invites. */
         fun setPrivate(invitedOnly: Boolean) {
             if (!_ui.value.showsAudience) return
-            _ui.update { it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly), error = null) }
+            _ui.update {
+                // A plan anyone nearby can see keeps to 30 (Plans for the holidays: only a private plan has room for 100).
+                val spots = if (invitedOnly) it.draft.spots else it.draft.spots.coerceAtMost(MAX_SPOTS)
+                it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly, spots = spots), error = null)
+            }
         }
+
+        /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1). */
+        fun setKidsWelcome(on: Boolean) = edit { it.copy(kidsWelcome = on) }
 
         /** "Guests can bring a friend" on a private plan. */
         fun setGuestsCanInvite(on: Boolean) = edit { it.copy(guestsCanInvite = on) }
@@ -1034,6 +1059,8 @@ class HostFlowViewModel
                 audience = PlanAudience.INVITED.takeIf { invitedOnly },
                 guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },
                 inviteUserIds = draft.inviteIds.take(MAX_INVITES_AT_POST).takeIf { invitedOnly && it.isNotEmpty() },
+                // Plans for the holidays, H1: sent only while the card shows, so the body is as before without it.
+                kidsWelcome = draft.kidsWelcome.takeIf { ui.showsAddToPlan },
             )
         }
 
@@ -1178,6 +1205,8 @@ private fun copiedDraft(
     start: LocalDateTime,
     end: LocalDateTime,
     keepPrivate: Boolean,
+    /** The most the copy's room may be: 100 for a private plan's "Room for" (Plans for the holidays), else 30. */
+    roomMax: Int = MAX_SPOTS,
 ): HostDraft {
     val place =
         plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
@@ -1196,7 +1225,7 @@ private fun copiedDraft(
         end = end,
         atHome = plan.placeKind == "home",
         place = place,
-        spots = plan.spots.coerceIn(1, 30),
+        spots = plan.spots.coerceIn(1, roomMax),
         approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
         autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
         hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
@@ -1219,5 +1248,6 @@ private fun copiedDraft(
         foodKind = d?.foodKind ?: "dinner",
         gameKind = d?.gameKind ?: "board_games",
         outdoorKind = d?.outdoorKind ?: "hike",
+        kidsWelcome = keepPrivate && plan.kidsWelcome == true,
     )
 }

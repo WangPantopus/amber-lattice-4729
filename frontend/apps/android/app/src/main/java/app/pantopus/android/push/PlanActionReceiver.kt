@@ -72,7 +72,7 @@ class PlanActionReceiver : BroadcastReceiver() {
                     }
                     appLock.configure(actor)
                     if (appLock.isLocked.value) return@withTimeout
-                    val result = perform(action, planId, intent.getStringExtra(REQUEST))
+                    val result = perform(action, planId, intent.getStringExtra(REQUEST), intent.getStringExtra(INVITE))
                     when (result) {
                         is NetworkResult.Success -> NotificationManagerCompat.from(context).cancel(notificationId)
                         is NetworkResult.Failure ->
@@ -95,8 +95,12 @@ class PlanActionReceiver : BroadcastReceiver() {
         action: String,
         planId: String,
         requestId: String?,
+        inviteId: String?,
     ): NetworkResult<Unit> =
         when (action) {
+            // Plans for the holidays: a guest from the open link waits for the host's yes.
+            LET_IN -> inviteId?.let { plans.letIn(planId, it).asUnit() } ?: missing()
+            NOT_THIS_TIME -> inviteId?.let { plans.cancelInvite(planId, it).asUnit() } ?: missing()
             ACCEPT -> requestId?.let { plans.accept(planId, it, confirmSharesAddress = false) } ?: missing()
             DECLINE -> requestId?.let { plans.decline(planId, it) } ?: missing()
             ON_MY_WAY -> plans.onMyWay(planId)
@@ -133,8 +137,14 @@ class PlanActionReceiver : BroadcastReceiver() {
             return
         }
         val toRequests = action == ACCEPT || action == DECLINE
+        val toGuests = action == LET_IN || action == NOT_THIS_TIME
         val (title, body) = failure(action, pushTitle, error)
-        val link = if (toRequests) "pantopus://plans/$planId/requests" else "pantopus://plans/$planId"
+        val link =
+            when {
+                toRequests -> "pantopus://plans/$planId/requests"
+                toGuests -> "pantopus://plans/$planId/guests"
+                else -> "pantopus://plans/$planId"
+            }
         val open =
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -174,6 +184,9 @@ class PlanActionReceiver : BroadcastReceiver() {
         const val CATEGORY_CHANGED = "PLAN_CHANGED"
         const val CATEGORY_INVITE = "PLAN_INVITE"
 
+        /** Plans for the holidays: "Dana Lee wants to come. Let them in?" with Let in and Not this time. */
+        const val CATEGORY_GUEST_OK = "PLAN_GUEST_OK"
+
         const val ACCEPT = "PLAN_ACCEPT"
         const val DECLINE = "PLAN_DECLINE"
         const val ON_MY_WAY = "PLAN_ON_MY_WAY"
@@ -182,15 +195,29 @@ class PlanActionReceiver : BroadcastReceiver() {
         const val CANT_MAKE_IT_CHANGED = "PLAN_CANT_MAKE_IT_CHANGED"
         const val IM_IN = "PLAN_IM_IN"
         const val CANT_MAKE_IT_INVITE = "PLAN_CANT_MAKE_IT_INVITE"
+        const val LET_IN = "PLAN_LET_IN"
+        const val NOT_THIS_TIME = "PLAN_NOT_THIS_TIME"
 
         private val ACTIONS =
-            setOf(ACCEPT, DECLINE, ON_MY_WAY, CANT_MAKE_IT, STILL_COMING, CANT_MAKE_IT_CHANGED, IM_IN, CANT_MAKE_IT_INVITE)
+            setOf(
+                ACCEPT,
+                DECLINE,
+                ON_MY_WAY,
+                CANT_MAKE_IT,
+                STILL_COMING,
+                CANT_MAKE_IT_CHANGED,
+                IM_IN,
+                CANT_MAKE_IT_INVITE,
+                LET_IN,
+                NOT_THIS_TIME,
+            )
 
         /** Refusals that mean "the host must confirm sharing their address first" (H10). */
         private val ADDRESS_CODES = setOf("confirm_shares_address", "confirm_shares_address_required", "needs_address_confirmation")
 
         const val PLAN = "pantopus.plan.id"
         const val REQUEST = "pantopus.plan.request"
+        const val INVITE = "pantopus.plan.invite"
         const val RECIPIENT = "pantopus.plan.recipient"
         const val SESSION = "pantopus.plan.session"
         const val NOTIFICATION_ID = "pantopus.plan.notificationId"
@@ -215,6 +242,8 @@ class PlanActionReceiver : BroadcastReceiver() {
                     ON_MY_WAY -> "Couldn't send “On my way”"
                     STILL_COMING -> "Couldn't send “Still coming”"
                     IM_IN -> "Couldn't say you're in"
+                    LET_IN -> "Couldn't let ${guestFirst(pushTitle) ?: "them"} in"
+                    NOT_THIS_TIME -> "Couldn't answer ${guestFirst(pushTitle) ?: "them"}"
                     else -> "Couldn't tell the host you can't make it"
                 }
             val reason =
@@ -233,6 +262,13 @@ class PlanActionReceiver : BroadcastReceiver() {
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
 
+        /** "Dana Lee" from "Dana Lee wants to come. Let them in?", else null. */
+        internal fun guestFirst(pushTitle: String?): String? =
+            pushTitle
+                ?.substringBefore(" wants to come", missingDelimiterValue = "")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+
         /** The buttons a category gets (board A3), or null for none. */
         fun buttonsFor(category: String?): List<Button>? =
             when (category) {
@@ -247,6 +283,9 @@ class PlanActionReceiver : BroadcastReceiver() {
                 // An invitation (never a playdate's, which asks the kids' ages first).
                 CATEGORY_INVITE ->
                     listOf(Button(IM_IN, "I'm in", needsUnlock = true), Button(CANT_MAKE_IT_INVITE, "Can't make it", needsUnlock = true))
+                // Plans for the holidays: letting someone in sends them the address, so both need the phone unlocked.
+                CATEGORY_GUEST_OK ->
+                    listOf(Button(LET_IN, "Let in", needsUnlock = true), Button(NOT_THIS_TIME, "Not this time", needsUnlock = true))
                 else -> null
             }
     }

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanDto
+import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -28,6 +29,7 @@ import app.pantopus.android.data.plans.isDrawable
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.PlansRoutes
 import app.pantopus.android.ui.screens.plans.plansVerificationTarget
@@ -72,6 +74,8 @@ data class AskDraft(
     val ageBands: Set<String> = emptySet(),
     /** "I'll stay with my kids": the parent ticks it for a new ask (as on iOS); an edited ask kept it. */
     val staysWithKids: Boolean = false,
+    /** Plans for the holidays (A7): kids coming, 0 to 10, on a plan with kids welcome ([partySize] is then the adults). */
+    val kids: Int = 0,
     val sending: Boolean = false,
     val error: String? = null,
 )
@@ -98,6 +102,12 @@ data class PlanDetailUi(
     val makingFriendLink: Boolean = false,
     /** A repeating plan's next date to open in this one's place, once skipping it posted one (Plans step 2). */
     val nextPlanId: String? = null,
+    /** Plans for the holidays (A6): the host's answers, read when the card carries `answers` (H1 is on for them). */
+    val guests: PlanInviteListDto? = null,
+    /** "Remind the {n} who haven't answered" is on its way. */
+    val reminding: Boolean = false,
+    /** Today's reminder went (one a plan a day). */
+    val remindedToday: Boolean = false,
 )
 
 /**
@@ -133,6 +143,7 @@ class PlanDetailViewModel
 
         private var loadJob: Job? = null
         private var requestsJob: Job? = null
+        private var guestsJob: Job? = null
         private var askedOnOpen = false
         private var active = true
         private var readGeneration = 0L
@@ -260,6 +271,52 @@ class PlanDetailViewModel
                 openAsk()
             }
             if (plan.standing == PlanViewerStanding.HOSTING) loadRequests()
+            if (plan.standing == PlanViewerStanding.HOSTING && plan.answers != null) loadGuests()
+        }
+
+        /** The host's answers for the counts, the people line and Remind (Plans for the holidays, A6). */
+        private fun loadGuests() {
+            guestsJob?.cancel()
+            val generation = readGeneration
+            guestsJob =
+                viewModelScope.launch {
+                    val reply = (repository.invites(planId) as? NetworkResult.Success)?.data ?: return@launch
+                    if (active && generation == readGeneration) _ui.update { it.copy(guests = reply) }
+                }
+        }
+
+        /** "Remind the {n} who haven't answered": once a plan a day, the way each was invited. */
+        fun remind() {
+            if (_ui.value.reminding || _ui.value.remindedToday) return
+            _ui.update { it.copy(reminding = true) }
+            viewModelScope.launch {
+                val result = repository.remind(planId)
+                _ui.update {
+                    when (result) {
+                        is NetworkResult.Success -> {
+                            val n = result.data.reminded
+                            it.copy(reminding = false, remindedToday = true, notice = if (n == 1) "Reminded 1 person." else "Reminded $n people.")
+                        }
+                        is NetworkResult.Failure ->
+                            if (result.error.planCode in setOf("reminded_today", "too_many")) {
+                                it.copy(reminding = false, remindedToday = true)
+                            } else {
+                                it.copy(reminding = false, notice = result.error.planMessage)
+                            }
+                    }
+                }
+            }
+        }
+
+        /** "Maybe" to an invitation (Plans for the holidays, A7): the host sees it; I'm in or Can't make it replaces it. */
+        fun maybeInvite() {
+            _ui.update { it.copy(askOpen = false) }
+            act(done = "${hostFirst()} sees your maybe") {
+                when (val result = repository.maybeInvite(planId)) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
+            }
         }
 
         private fun loadRequests() {
@@ -366,7 +423,9 @@ class PlanDetailViewModel
             if (!ready.fresh) return
             val plan = ready.plan
             // Only a request still waiting fills the sheet ("Change who's coming"); a withdrawn or declined one starts fresh.
-            val mine = plan.myRequest?.takeIf { plan.standing == PlanViewerStanding.REQUESTED }
+            // With Plans for the holidays a guest who is in changes their numbers here too ("Change", A8).
+            val changing = plan.standing == PlanViewerStanding.IN && plan.kidsWelcome != null
+            val mine = plan.myRequest?.takeIf { plan.standing == PlanViewerStanding.REQUESTED || changing }
             _ui.update {
                 it.copy(
                     askOpen = true,
@@ -377,6 +436,7 @@ class PlanDetailViewModel
                             kidsCount = mine?.kidsCount ?: 1,
                             ageBands = mine?.kidsAgeBands.orEmpty().toSet(),
                             staysWithKids = mine != null && plan.kind == PlanKind.PLAYDATE.wire,
+                            kids = mine?.kidsCount?.takeIf { plan.takesKids } ?: 0,
                         ),
                 )
             }
@@ -409,6 +469,13 @@ class PlanDetailViewModel
                             kidsCount = draft.kidsCount,
                             kidsAgeBands = draft.ageBands.toList(),
                             staysWithKids = true,
+                        )
+                    } else if (plan.takesKids) {
+                        // Plans for the holidays (A7): adults as the party, kids beside them (none sent as no kids).
+                        AskToJoinBody(
+                            partySize = draft.partySize,
+                            note = draft.note.trim().takeIf(String::isNotEmpty),
+                            kidsCount = draft.kids.takeIf { it > 0 },
                         )
                     } else {
                         AskToJoinBody(partySize = draft.partySize, note = draft.note.trim().takeIf(String::isNotEmpty))

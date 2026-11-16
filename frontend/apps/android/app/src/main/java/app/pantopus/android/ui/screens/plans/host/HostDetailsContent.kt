@@ -4,23 +4,32 @@ package app.pantopus.android.ui.screens.plans.host
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -34,6 +43,7 @@ import app.pantopus.android.data.plans.PlanStudyStyle
 import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanChoice
 import app.pantopus.android.ui.screens.plans.components.PlanChoiceGroup
+import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanField
 import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
@@ -54,6 +64,7 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
+import app.pantopus.android.ui.theme.Spacing
 import java.util.Locale
 
 /** H2 to H5: the details for the chosen type. */
@@ -175,14 +186,9 @@ private fun ColumnScope.WatchFields(
     WhenField(ui, vm)
     WhereField(ui, vm, homeLabel = "My place")
     AudienceField(ui, vm)
-    PlanStepperRow(
-        title = "Spots",
-        caption = "People who can join, besides you",
-        value = draft.spots,
-        range = 1..MAX_SPOTS,
-        onChange = { value -> vm.edit { it.copy(spots = value) } },
-    )
+    RoomField(ui, vm, title = "Spots", caption = "People who can join, besides you")
     HowPeopleGetIn(ui, vm)
+    AddToThisPlan(ui, vm)
     NoteField(
         draft.note,
         label = "Note for people who are in",
@@ -385,14 +391,9 @@ private fun ColumnScope.WalkFields(
     WhenField(ui, vm)
     WhereField(ui, vm, homeLabel = "My porch")
     AudienceField(ui, vm)
-    PlanStepperRow(
-        title = "People",
-        caption = "Besides you",
-        value = draft.spots,
-        range = 1..MAX_SPOTS,
-        onChange = { value -> vm.edit { it.copy(spots = value) } },
-    )
+    RoomField(ui, vm, title = "People", caption = "Besides you")
     HowPeopleGetIn(ui, vm)
+    AddToThisPlan(ui, vm)
     NoteField(
         draft.note,
         label = "Note for people who are in",
@@ -433,14 +434,9 @@ private fun ColumnScope.StudyFields(
         PlaceOrOnline(ui, vm)
     }
     AudienceField(ui, vm)
-    PlanStepperRow(
-        title = "Spots",
-        caption = "People who can join, besides you",
-        value = draft.spots,
-        range = 1..MAX_SPOTS,
-        onChange = { value -> vm.edit { it.copy(spots = value) } },
-    )
+    RoomField(ui, vm, title = "Spots", caption = "People who can join, besides you")
     HowPeopleGetIn(ui, vm)
+    AddToThisPlan(ui, vm)
     NoteField(
         draft.note,
         label = "Note for people who are in",
@@ -451,6 +447,12 @@ private fun ColumnScope.StudyFields(
 }
 
 internal const val MAX_SPOTS = 30
+
+/** A private plan's "Room for" goes to 100 (Plans for the holidays, contract 5.1). */
+internal const val ROOM_FOR_MAX = 100
+
+/** Holding the plus on "Room for" steps by 5. */
+private const val ROOM_FOR_HOLD_STEP = 5
 private const val MAX_FAMILIES = 10
 internal const val ABOUT_MAX = 500
 private const val NOTE_MAX = 500
@@ -708,6 +710,115 @@ internal fun HowPeopleGetIn(
 }
 
 /**
+ * The room stepper: on a private plan with Plans for the holidays, "Room for" / "Adults and kids, besides your
+ * household", to 100, holding the plus steps by 5 (board 3); otherwise the kind's own row ([title], [caption]), to 30.
+ */
+@Composable
+internal fun RoomField(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+    title: String,
+    caption: String,
+) {
+    val draft = ui.draft
+    if (ui.showsRoomFor) {
+        PlanStepperRow(
+            title = "Room for",
+            caption = "Adults and kids, besides your household",
+            value = draft.spots,
+            range = 1..ROOM_FOR_MAX,
+            onChange = { value -> vm.edit { it.copy(spots = value.coerceIn(1, ROOM_FOR_MAX)) } },
+            modifier = Modifier.testTag("planRoomFor"),
+            holdStep = ROOM_FOR_HOLD_STEP,
+        )
+    } else {
+        PlanStepperRow(
+            title = title,
+            caption = caption,
+            value = draft.spots.coerceAtMost(MAX_SPOTS),
+            range = 1..MAX_SPOTS,
+            onChange = { value -> vm.edit { it.copy(spots = value) } },
+        )
+    }
+}
+
+/**
+ * "Add to this plan" (Plans for the holidays, board 3): one card of switches on a private plan, each a small tile, a
+ * name, a line under it and a switch, then the line that says only what is on shows. H1 has "Kids welcome"; the bring
+ * list joins it with H2.
+ */
+@Composable
+internal fun AddToThisPlan(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+) {
+    if (!ui.showsAddToPlan) return
+    PlanField(label = "Add to this plan", modifier = Modifier.testTag("planAddToPlan")) {
+        PlanFormCard {
+            AddToPlanRow(
+                first = true,
+                icon = PantopusIcon.AdultChild,
+                title = "Kids welcome",
+                caption = "Guests say how many adults and kids",
+                checked = ui.draft.kidsWelcome,
+                tag = "planKidsWelcome",
+                onChecked = vm::setKidsWelcome,
+            )
+        }
+        PlanScopeLine("Only what you switch on shows on the plan. Everything else stays out of the way.", icon = PantopusIcon.Info)
+    }
+}
+
+/** One row of "Add to this plan": a 36 dp tile with its glyph, the name and its line, and a switch (board "rowlink"). */
+@Composable
+internal fun AddToPlanRow(
+    first: Boolean,
+    icon: PantopusIcon,
+    title: String,
+    caption: String,
+    checked: Boolean,
+    tag: String,
+    onChecked: (Boolean) -> Unit,
+    tileBackground: Color = PantopusColors.appSurfaceSunken,
+    tileTint: Color = PantopusColors.appTextStrong,
+    onOpen: (() -> Unit)? = null,
+) {
+    // A row that opens something once on (the bring list) opens it from the row and switches from the switch alone.
+    val opens = onOpen != null && checked
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (!first) PlanDivider()
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .testTag(tag)
+                    .then(
+                        if (opens) {
+                            Modifier.clickable(role = Role.Button, onClickLabel = "Open $title", onClick = onOpen!!)
+                        } else {
+                            Modifier.toggleable(value = checked, role = Role.Switch, onValueChange = onChecked)
+                        },
+                    ).padding(vertical = Spacing.s2),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+        ) {
+            PlanIconTile(icon = icon, background = tileBackground, tint = tileTint, size = 36.dp, glyph = 18.dp, corner = 10.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = semibold, color = PantopusColors.appText)
+                Text(text = caption, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = if (opens) onChecked else null,
+                modifier = if (opens) Modifier.semantics { contentDescription = title } else Modifier,
+                colors = SwitchDefaults.colors(checkedTrackColor = PantopusColors.primary600),
+            )
+        }
+    }
+}
+
+/**
  * "Who can see this" (board Details, Plans step 1): anyone nearby, or only the people the host invites, with what a
  * private plan allows under it. Only with `plans_private`, and never on a business's plan.
  */
@@ -738,7 +849,13 @@ internal fun AudienceField(
                 first = false,
                 selected = ui.draft.isPrivate,
                 title = "Only people I invite",
-                caption = "Private. Not on the map, the list or anywhere else.",
+                caption =
+                    if (ui.guestAnswersOn) {
+                        // Plans for the holidays (board 3): people invited can answer from the link, app or not.
+                        "Private. Not on the map, the list or anywhere else. They can answer from the link, with or without the app."
+                    } else {
+                        "Private. Not on the map, the list or anywhere else."
+                    },
                 lock = true,
                 tag = "plansAudienceInvited",
                 onClick = { vm.setPrivate(true) },

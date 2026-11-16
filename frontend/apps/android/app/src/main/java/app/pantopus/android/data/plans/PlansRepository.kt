@@ -22,9 +22,12 @@ import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
@@ -596,6 +599,38 @@ class PlansRepository
 
         /** "Can't make it" to an invitation. */
         suspend fun declineInvite(id: String): NetworkResult<PlanInvitePlanResponse> = write(id, chats = true) { api.declineInvite(id) }
+
+        // ---- Plans for the holidays, H1 (contract 6.4) ----
+
+        /** The plan's one link for everyone: made the first time, then the same; also saves "I say yes first". */
+        suspend fun openLink(
+            id: String,
+            hostSaysYesFirst: Boolean?,
+            confirmSharesAddress: Boolean,
+        ): NetworkResult<PlanOpenLinkResponse> =
+            write(id) {
+                api.openLink(id, PlanOpenLinkBody(hostSaysYesFirst = hostSaysYesFirst, confirmSharesAddress = confirmSharesAddress.takeIf { it }))
+            }
+
+        /** "Turn this link off". */
+        suspend fun closeOpenLink(id: String): NetworkResult<Unit> = write(id) { api.closeOpenLink(id) }
+
+        /** "Let in": a guest who waits for the host's yes is in. */
+        suspend fun letIn(
+            id: String,
+            inviteId: String,
+        ): NetworkResult<PlanInviteListDto> = write(id) { api.letIn(id, inviteId) }
+
+        /** "Remind": everyone who hasn't answered, the way each was invited. */
+        suspend fun remind(id: String): NetworkResult<PlanRemindResponse> = write(id) { api.remind(id) }
+
+        /** "Maybe" to an invitation. */
+        suspend fun maybeInvite(id: String): NetworkResult<PlanInvitePlanResponse> {
+            val session = cacheSession()
+            return write(id) { api.maybeInvite(id) }.also { result ->
+                (result as? NetworkResult.Success)?.data?.plan?.let { rememberCard(it, session) }
+            }
+        }
 
         /** Right after signing in: the newest invitation not opened yet (an email invite finds its verified address). */
         suspend fun nextInvite(): NetworkResult<PlanNextInviteResponse> = safeApiCall { api.nextInvite() }

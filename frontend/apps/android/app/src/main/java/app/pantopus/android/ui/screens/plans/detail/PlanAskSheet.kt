@@ -20,9 +20,11 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.plans.KidsAgeBand
@@ -33,16 +35,22 @@ import app.pantopus.android.data.plans.hostApproves
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.standing
+import app.pantopus.android.data.plans.takesKids
+import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusCheckbox
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.plans.components.PlanChoice
 import app.pantopus.android.ui.screens.plans.components.PlanChoiceGroup
+import app.pantopus.android.ui.screens.plans.components.PlanDivider
+import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
 import app.pantopus.android.ui.screens.plans.components.PlanStepperControl
+import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
 import app.pantopus.android.ui.screens.plans.components.PlanTextArea
 import app.pantopus.android.ui.screens.plans.components.PlanWell
 import app.pantopus.android.ui.screens.plans.map.planH3
@@ -75,9 +83,26 @@ internal fun PlanAskSheet(
     onClose: () -> Unit,
     /** The host invited them: saying they're in lets them in, no request (planInvites.js). */
     invited: Boolean = false,
+    /** Plans for the holidays (A7): "Maybe"; null leaves the shipped sheet. */
+    onMaybe: (() -> Unit)? = null,
+    /** Plans for the holidays (A7): "Can't make it". */
+    onDecline: (() -> Unit)? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val host = plan.hostFirst
+    // Plans for the holidays (board 18): an invited person on a private plan whose host has H1 answers with adults
+    // and kids (or how many), Maybe or Can't make it.
+    if (plan.answersWithCounts(invited) && onMaybe != null && onDecline != null) {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = sheet,
+            containerColor = PantopusColors.appSurface,
+            modifier = Modifier.sheetKeyboardRules().testTag("planAnswerSheet"),
+        ) {
+            PlanAnswerContent(plan, draft, onEdit, onSend, onMaybe, onDecline, onClose)
+        }
+        return
+    }
     // A business's plan that lets anyone in right away: "Join", not a request (board G3).
     val joinsAtOnce = plan.isBusiness && !plan.hostApproves
     ModalBottomSheet(
@@ -272,5 +297,128 @@ private fun HelloField(
                 multiSelect = true,
             )
         }
+    }
+}
+
+/** The most adults or kids one answer brings on a private plan (Plans for the holidays, contract 5.3). */
+private const val MAX_HOLIDAY_PARTY = 10
+
+/**
+ * The sheet answers with counts (Plans for the holidays, A7): an invited person (or someone in changing their numbers)
+ * on a private plan whose card carries `kids_welcome` (sent only while H1 is on for its host). Never a playdate.
+ */
+internal fun PlanDto.answersWithCounts(invited: Boolean): Boolean =
+    kidsWelcome != null && isPrivate && !isPlaydate && (invited || standing == PlanViewerStanding.IN)
+
+/** Board 18: "Who's coming?", adults and kids (or how many), a note, then I'm in, Maybe and Can't make it. */
+@Composable
+private fun PlanAnswerContent(
+    plan: PlanDto,
+    draft: AskDraft,
+    onEdit: ((AskDraft) -> AskDraft) -> Unit,
+    onSend: () -> Unit,
+    onMaybe: () -> Unit,
+    onDecline: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val host = plan.hostFirst
+    val kids = plan.takesKids
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.s4)
+                .padding(bottom = Spacing.s6)
+                .navigationBarsPadding()
+                .imePadding(),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s4),
+    ) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Who's coming?", style = planH3, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+                Text(
+                    text =
+                        if (kids) {
+                            "$host asked for adults and kids"
+                        } else {
+                            listOf(PlanFormat.shortTitle(plan), PlanFormat.rowWhen(plan) ?: PlanFormat.hiddenWhen(plan))
+                                .filter(String::isNotBlank)
+                                .joinToString(" · ")
+                        },
+                    style = PantopusTextStyle.small,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
+            PlanRoundButton(icon = PantopusIcon.X, label = "Close", onClick = onClose, glass = false)
+        }
+        PlanFormCard {
+            if (kids) {
+                PlanStepperRow(
+                    title = "Adults",
+                    caption = null,
+                    value = draft.partySize.coerceIn(1, MAX_HOLIDAY_PARTY),
+                    range = 1..MAX_HOLIDAY_PARTY,
+                    onChange = { value -> onEdit { it.copy(partySize = value) } },
+                    modifier = Modifier.padding(vertical = 10.dp).testTag("planAnswerAdults"),
+                )
+                PlanDivider()
+                PlanStepperRow(
+                    title = "Kids",
+                    caption = null,
+                    value = draft.kids.coerceIn(0, MAX_HOLIDAY_PARTY),
+                    range = 0..MAX_HOLIDAY_PARTY,
+                    onChange = { value -> onEdit { it.copy(kids = value) } },
+                    modifier = Modifier.padding(vertical = 10.dp).testTag("planAnswerKids"),
+                )
+            } else {
+                PlanStepperRow(
+                    title = "People",
+                    caption = "Including you",
+                    value = draft.partySize.coerceIn(1, MAX_HOLIDAY_PARTY),
+                    range = 1..MAX_HOLIDAY_PARTY,
+                    onChange = { value -> onEdit { it.copy(partySize = value) } },
+                    modifier = Modifier.padding(vertical = 10.dp).testTag("planAnswerPeople"),
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            PlanOverline("A note for $host, if you like")
+            PlanTextArea(
+                value = draft.note,
+                onValue = { text -> onEdit { it.copy(note = text.take(NOTE_MAX)) } },
+                placeholder = "Anything $host should know",
+                label = "A note for $host, if you like",
+            )
+        }
+        draft.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
+        PrimaryButton(
+            title = "I'm in",
+            onClick = onSend,
+            isLoading = draft.sending,
+            isEnabled = !draft.sending,
+            modifier = Modifier.height(50.dp).testTag("planAnswerIn"),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GhostButton(
+                title = "Maybe",
+                onClick = onMaybe,
+                isEnabled = !draft.sending,
+                modifier = Modifier.weight(1f).height(50.dp).testTag("planAnswerMaybe"),
+            )
+            GhostButton(
+                title = "Can't make it",
+                onClick = onDecline,
+                isEnabled = !draft.sending,
+                modifier = Modifier.weight(1f).height(50.dp).testTag("planAnswerCant"),
+            )
+        }
+        Text(
+            text = "$host sees your answer",
+            style = PantopusTextStyle.caption,
+            color = PantopusColors.appTextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

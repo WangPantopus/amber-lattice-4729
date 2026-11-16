@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanHostInvitesDto
+import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.plans.KidsAgeBand
@@ -54,6 +55,7 @@ import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
+import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
@@ -65,6 +67,10 @@ import app.pantopus.android.ui.screens.plans.components.PlanStatusChip
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanWell
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestCounts
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestCountsRow
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestsUi
+import app.pantopus.android.ui.screens.plans.guests.guestCounts
 import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.map.planH3
 import app.pantopus.android.ui.screens.plans.opensPlanProfile
@@ -91,6 +97,10 @@ internal fun ColumnScope.PlanHostBody(
     onCancel: () -> Unit,
     onRemove: (PlanPersonDto) -> Unit,
     series: PlanSeriesActions? = null,
+    /** Plans for the holidays (A6): the host's answers, for the people line; null while they load. */
+    guests: PlanInviteListDto? = null,
+    /** Opens Who's coming (A5). */
+    onOpenGuests: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
@@ -110,13 +120,24 @@ internal fun ColumnScope.PlanHostBody(
         WaitlistCard(waitingCount, waiting.mapNotNull { it.user?.displayName }, onOpenRequests)
     }
     InviteCard(plan, closed, onOpen = onInvite)
-    GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
+    // Plans for the holidays (A6): the three counts and the people line with their numbers, both opening Who's coming,
+    // in place of the going list (Who's coming has every guest, with or without an account, and Remove).
+    val counts = plan.guestCounts()
+    if (counts != null) {
+        HostAnswers(counts, PlanGuestsUi(plan = plan, list = guests), onOpenGuests)
+    } else {
+        GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
+    }
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)
     }
     if (!closed) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Plans for the holidays (A6 item 4): "Share link" first, opening the invite sheet's one link for everyone.
+            if (counts != null && plan.isPrivate && plan.invites?.canInvite == true) {
+                GhostButton(title = "Share link", onClick = onInvite, modifier = Modifier.weight(1f).testTag("planShareLink"))
+            }
             if (plan.chatRoomId != null) {
                 GhostButton(title = "Message guests", onClick = onMessageGuests, modifier = Modifier.weight(1f))
             }
@@ -126,6 +147,43 @@ internal fun ColumnScope.PlanHostBody(
         Column {
             PlanTextButton(title = changeTitle(plan), onClick = onChange, enabled = !busy)
             PlanTextButton(title = "Cancel plan", onClick = onCancel, danger = true, enabled = !busy)
+        }
+    }
+}
+
+/**
+ * The host's answers (Plans for the holidays, board 4, A6 item 2): the three counts, then the people coming with their
+ * numbers ("Dana + 2 kids, Sam, Priya + 1 and 2 more") and a chevron. Either opens Who's coming.
+ */
+@Composable
+private fun HostAnswers(
+    counts: PlanGuestCounts,
+    guests: PlanGuestsUi,
+    onOpen: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("planHostAnswers"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        Box(modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open who's coming", onClick = onOpen)) {
+            PlanGuestCountsRow(counts)
+        }
+        val line = guests.comingLine
+        if (line != null) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button, onClickLabel = "Open who's coming", onClick = onOpen)
+                        .semantics(mergeDescendants = true) {}
+                        .testTag("planHostPeopleLine"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+            ) {
+                PlanAvatarStack(names = guests.coming.take(4).map { it.name to (it.userId ?: it.key) })
+                Text(text = line, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary, modifier = Modifier.weight(1f))
+                PantopusIconImage(icon = PantopusIcon.ChevronRight, contentDescription = null, size = 16.dp, tint = PantopusColors.appTextMuted)
+            }
         }
     }
 }

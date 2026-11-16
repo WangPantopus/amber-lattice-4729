@@ -14,6 +14,10 @@ import okhttp3.Response
  *   Without it such a plan does not exist for the request (older apps decode `kind` and `place_kind` as closed lists),
  *   and creating or changing one is refused. Always sent, whatever the `plans_online` and `plans_kinds` switches say.
  *
+ * - `guests=1` (Plans for the holidays, contract section 4, K10), on `/api/plans` only: this app can draw guests who
+ *   answered without an account, Maybe, and a private plan with room for more than 30. Without it the server answers
+ *   as before (room over 30 reads 30, Maybe reads as invited, open-link rows are left out of the invitation list).
+ *
  * Nothing else changes for a person without the server's switches: the server answers them exactly as before.
  */
 class PlansBizInterceptor : Interceptor {
@@ -21,7 +25,8 @@ class PlansBizInterceptor : Interceptor {
         val request = chain.request()
         val url = request.url
         if (!wantsBiz(url.encodedPath, url.queryParameter("layers"))) return chain.proceed(request)
-        val missing = MARKERS.filter { url.queryParameter(it) == null }
+        val markers = if (PLANS.matches(url.encodedPath)) PLANS_MARKERS else MARKERS
+        val missing = markers.filter { url.queryParameter(it) == null }
         if (missing.isEmpty()) return chain.proceed(request)
         val marked = url.newBuilder()
         missing.forEach { marked.addQueryParameter(it, "1") }
@@ -34,7 +39,11 @@ class PlansBizInterceptor : Interceptor {
         /** `more=1`: this app can draw an online plan and the four newer kinds (Plans steps 3 and 4). */
         const val MORE_PARAM = "more"
 
+        /** `guests=1`: this app can draw the holidays' guests, Maybe and room over 30 (Plans for the holidays, H1). */
+        const val GUESTS_PARAM = "guests"
+
         private val MARKERS = listOf(PARAM, MORE_PARAM)
+        private val PLANS_MARKERS = MARKERS + GUESTS_PARAM
         private val PLANS = Regex("^/api/plans(/.*)?$")
         private val BUSINESS_PLANS = Regex("^/api/businesses/[^/]+/plans$")
         private const val MAP = "/api/posts/map"

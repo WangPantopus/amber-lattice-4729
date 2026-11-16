@@ -158,6 +158,21 @@ private fun spotsEnd(plan: PlanDto): PlanRowEnd =
         else -> PlanRowEnd.Note("${plan.spotsLeft} spots")
     }
 
+/**
+ * A row's end under "Yours" (Plans for the holidays, board 1): one count. A host's requests first (they wait on the
+ * host), then "{n} coming" where the server counts adults and kids, else the shipped count.
+ */
+internal fun yoursEnd(plan: PlanDto): PlanRowEnd {
+    val requests = plan.requestsCount ?: 0
+    val coming = plan.headcount?.total
+    return when {
+        plan.standing == PlanViewerStanding.HOSTING && requests > 0 -> hostingEnd(plan)
+        coming != null -> PlanRowEnd.Note("$coming coming")
+        plan.standing == PlanViewerStanding.HOSTING -> hostingEnd(plan)
+        else -> spotsEnd(plan)
+    }
+}
+
 /** A hosted plan's row end: its requests, else how many are going. */
 private fun hostingEnd(plan: PlanDto): PlanRowEnd {
     val requests = plan.requestsCount ?: 0
@@ -189,6 +204,7 @@ internal fun ordinal(n: Int): String {
 internal fun rowSpoken(
     plan: PlanDto,
     end: PlanRowEnd,
+    subtitle: String = PlanFormat.rowSubtitle(plan),
 ): String {
     val endWords =
         when (end) {
@@ -204,7 +220,7 @@ internal fun rowSpoken(
     val privateWord = PLAN_PRIVATE_SPOKEN.takeIf { plan.isPrivate }
     // A repeating plan says how (Plans step 2), as its row's third line shows it.
     val repeatWords = PlanRepeatWords.cardLine(plan.repeat)
-    return listOfNotNull(kind, business, privateWord, plan.title, PlanFormat.rowSubtitle(plan), repeatWords, endWords).joinToString(", ")
+    return listOfNotNull(kind, business, privateWord, plan.title, subtitle, repeatWords, endWords).joinToString(", ")
 }
 
 /** One plan as a row of the list; at the sheet's lowest stop ([peek], board F1) a chevron ends it, as on iOS. */
@@ -217,17 +233,20 @@ internal fun PlanListRow(
     peek: Boolean = false,
     /** Opens one of a venue's later plans from its fold (the full list only; null leaves the fold out). */
     fold: PlanFoldScope? = null,
+    /** A row under "Yours" (Plans for the holidays): the person's part ends the second line, a count ends the row. */
+    yours: Boolean = false,
 ) {
-    val status = rowEnd(plan, mine)
+    val status = if (yours) yoursEnd(plan) else rowEnd(plan, mine)
     val repeatLine = PlanRepeatWords.cardLine(plan.repeat)
+    val subtitle = if (yours) PlanFormat.yoursSubtitle(plan) else PlanFormat.rowSubtitle(plan)
     PlanRow(
         title = plan.title,
-        subtitle = PlanFormat.rowSubtitle(plan),
+        subtitle = subtitle,
         end = if (peek) PlanRowEnd.Chevron else status,
         first = first,
         leading = { PlanKindLeading(plan.planKind, business = plan.isBusiness, isPrivate = plan.isPrivate) },
         // TalkBack still hears the status or spots a peek row doesn't show (as VoiceOver does on iOS).
-        spoken = rowSpoken(plan, status),
+        spoken = rowSpoken(plan, status, subtitle),
         onClick = { onOpen(plan) },
         below = if (repeatLine != null) ({ PlanRowRepeat(repeatLine) }) else null,
     )
@@ -455,14 +474,28 @@ internal fun ColumnScope.PlansPeekContent(
                         modifier = Modifier.padding(vertical = Spacing.s3),
                     )
                 } else {
-                    PlanListRow(soonest, first = true, mine = soonest in state.mineShown, onOpen = onOpen, peek = true)
+                    PlanListRow(
+                        soonest,
+                        first = true,
+                        mine = soonest in state.mineShown,
+                        onOpen = onOpen,
+                        peek = true,
+                        yours = state.flags.guestAnswersOn && soonest in state.mineShown,
+                    )
                 }
             }
         }
     }
     if (state.listStatus == PlansListStatus.Loaded) {
         all.drop(1).take(PEEK_ROWS - 1).forEach { plan ->
-            PlanListRow(plan, first = false, mine = plan in state.mineShown, onOpen = onOpen, peek = true)
+            PlanListRow(
+                plan,
+                first = false,
+                mine = plan in state.mineShown,
+                onOpen = onOpen,
+                peek = true,
+                yours = state.flags.guestAnswersOn && plan in state.mineShown,
+            )
         }
     }
 }
@@ -533,13 +566,20 @@ internal fun PlansListContent(
             item(key = "loading") { PlanRowsSkeleton(rows = 4) }
         }
         if (state.mineShown.isNotEmpty()) {
-            item(key = "mine-title") { SectionTitle("Your plans", top = 10.dp) }
+            // "Yours" with Plans for the holidays (board 1), "Your plans" before it.
+            item(key = "mine-title") { SectionTitle(if (state.flags.guestAnswersOn) "Yours" else "Your plans", top = 10.dp) }
             items(state.mineShown, key = { "mine-${it.id}" }) { plan ->
                 val series = seriesActions?.takeIf { plan.isHostedSeries }
                 if (series != null) {
                     PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
                 } else {
-                    PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen)
+                    PlanListRow(
+                        plan,
+                        first = plan == state.mineShown.first(),
+                        mine = true,
+                        onOpen = onOpen,
+                        yours = state.flags.guestAnswersOn,
+                    )
                 }
             }
         }

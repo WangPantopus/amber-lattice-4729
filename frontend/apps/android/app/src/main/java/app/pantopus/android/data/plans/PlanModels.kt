@@ -44,6 +44,12 @@ enum class PlanKind(
     /** It can meet online (Plans step 3): not a playdate, a pickup game or an outdoor plan, which meet in person. */
     val canBeOnline: Boolean get() = this != PLAYDATE && this != PICKUP_GAME && this != OUTDOORS
 
+    /**
+     * Its room counts people (Plans for the holidays, "Room for"): not a playdate, which counts families, or a pickup
+     * game, which counts the players it needs.
+     */
+    val countsPeople: Boolean get() = this != PLAYDATE && this != PICKUP_GAME
+
     companion object {
         fun from(wire: String?): PlanKind? = entries.firstOrNull { it.wire == wire }
 
@@ -202,6 +208,21 @@ val PlanDto.isBusiness: Boolean get() = business != null
 
 /** A business's pin. */
 val PlanPinDto.isBusiness: Boolean get() = business != null
+
+/** The viewer's invitation, not answered yet. */
+val PlanDto.invitedNoAnswer: Boolean get() = standing == PlanViewerStanding.NONE && myInvite?.status == PlanInviteStatus.PENDING
+
+/** The viewer said Maybe to their invitation (Plans for the holidays, H1; sent only with `guests=1`). */
+val PlanDto.saidMaybe: Boolean get() = standing == PlanViewerStanding.NONE && myInvite?.status == PlanInviteStatus.MAYBE
+
+/** A private plan whose guests say how many adults and kids (Plans for the holidays, H1). */
+val PlanDto.takesKids: Boolean get() = kidsWelcome == true && !isPlaydate
+
+/** `my_invite.status` values. */
+object PlanInviteStatus {
+    const val PENDING = "pending"
+    const val MAYBE = "maybe"
+}
 
 val PlanDto.isPlaydate: Boolean get() = planKind == PlanKind.PLAYDATE
 val PlanDto.isAtHome: Boolean get() = placeKind == "home"

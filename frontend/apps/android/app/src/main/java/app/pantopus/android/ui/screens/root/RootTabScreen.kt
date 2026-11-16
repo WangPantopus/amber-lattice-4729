@@ -3125,6 +3125,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 openPlansLink(PlansRoutes.requests(pending.id))
                 DeepLinkRouter.consume()
             }
+            is DeepLinkRouter.Destination.PlanGuests -> {
+                openPlansLink(PlansRoutes.guests(pending.id))
+                DeepLinkRouter.consume()
+            }
             DeepLinkRouter.Destination.NewPlan -> {
                 openPlansLink(PlansRoutes.host())
                 DeepLinkRouter.consume()
