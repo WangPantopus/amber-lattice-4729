@@ -41,9 +41,7 @@ struct MomentsMapView: View {
     /// The iPhone Duo: how tall the card at the bottom left is (open, the pill or the empty, location or load-failed
     /// card; closed, the strip or one of those cards). MapKit's Legal link sits just above it.
     @State var leftCardHeight: CGFloat = 52
-    /// Zoomed out past where Moments show: Apple's satellite map, which turns into a globe (`MomentsGlobe.swift`).
-    /// `wantsGlobe` follows the camera; `showsGlobe` is the style drawn, switched under `globeCover` so the moment the
-    /// new style loads (about a third of a second of blank map) is covered by a fade.
+    /// Zoomed far out, the satellite globe (`MomentsGlobe.swift`): the camera sets `wantsGlobe`; `showsGlobe` changes under a fade.
     @State var wantsGlobe = false
     @State var showsGlobe = false
     @State var globeCover = 0.0

@@ -473,18 +473,12 @@ final class MomentsMapViewModel {
         nameTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
-            let name = wide ? await Self.countryName(at: point) : await Self.areaName(at: point)
+            let name = wide ? await MomentsGlobe.countryName(at: point) : await Self.areaName(at: point)
             guard !Task.isCancelled, let self else { return }
             namedAt = point
             namedWide = wide
             if let name { areaName = name }
         }
-    }
-
-    /// Zoomed out to a globe: the country under the middle of the map, or "The world" over the sea.
-    private static func countryName(at point: CLLocation) async -> String {
-        let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first
-        return placemark?.country ?? "The world"
     }
 
     /// "Downtown Vancouver": the neighborhood and the town, or the town alone.

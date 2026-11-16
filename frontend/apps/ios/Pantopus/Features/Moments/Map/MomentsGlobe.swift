@@ -41,6 +41,31 @@ enum MomentsGlobe {
     static func widest(_ span: MKCoordinateSpan) -> Double {
         max(span.latitudeDelta, span.longitudeDelta)
     }
+
+    /// The area pill zoomed out to a globe: the country under the middle of the map, or "The world" over the sea.
+    static func countryName(at point: CLLocation) async -> String {
+        let placemark = try? await CLGeocoder().reverseGeocodeLocation(point).first
+        return placemark?.country ?? "The world"
+    }
+}
+
+/// Zoomed out past where Moments show: not "nothing here", since the server only reads a view about 300 miles across
+/// or less.
+struct MomentsZoomInCard: View {
+    let onBack: @MainActor () -> Void
+
+    var body: some View {
+        MomentsMapCard(
+            icon: .globe,
+            title: "Zoom in to see Moments",
+            line: "Moments show when the map is about 300 miles across or less.",
+            button: "Back to near you",
+            buttonIcon: nil,
+            buttonId: "moments.zoomIn.back",
+            action: onBack
+        )
+        .accessibilityIdentifier("moments.zoomIn")
+    }
 }
 
 extension MomentsMapViewModel {
