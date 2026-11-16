@@ -359,6 +359,46 @@ host flow with section 6's invitations chosen. Notice, once, the day after:
 "Photos from {title}" / "{Host} added {14}. Add yours and keep them together."
 (to people who came, only if someone added any).
 
+**Settled while it was built** (server PR 4242, November 16; the coordinator
+read the merged change for where a picture is stored and who can read it):
+
+- **Where a picture lives.** In the private bucket Moments use, under
+  `plan-photos/<plan>/<person>/`, cleaned of its metadata, with a thumbnail.
+  Nothing answers a picture's address: the grid carries links signed for 15
+  minutes (`expires_in`), made only for the host, an account that was in at
+  the end, and a guest who was in, by their key. With no private bucket set,
+  or a public one, the card and every route are gone whatever the switch
+  says.
+- **The grid** is `GET /api/plans/:id/photos`: `{ "photos": [{ "id", "url",
+  "thumb_url", "w", "h", "by_name", "mine", "can_remove", "at" }], "count",
+  "text", "can_add", "note", "expires_in" }`; the public read adds `add_text`
+  ("Add yours in the app."). The card of a plan that is over carries
+  `photos: { "count", "text", "banner", "came_text", "can_add", "note" }`
+  and the pictures come from the grid. Adding and removing answer the grid.
+- **Limits and refusals.** JPEG, HEIC or PNG, one a call; `415 unreadable`,
+  `413 too_large`, `409 too_many` (200 a plan, 30 a person), `409 closed`
+  after 60 days, `409 not_over` before the plan ends, `403 not_in`, `422
+  held` ("This picture can't be added to the plan.") when the check holds
+  it.
+- **The day-after notice names whoever added the most**, the host on a tie:
+  "{Name} added {14}. Add yours and keep them together."
+
+**Decided after the build's report** (November 16, the designer's calls; both
+make it stricter; not built when written):
+
+- **A picture the check could not look at is not kept.** As first built, a
+  picture was stored unchecked when the check could not run, and nothing
+  looked at it again. Now it is refused, `503 check_unavailable`, "This
+  picture couldn't be checked right now. Try again in a little while.", and
+  nothing is stored. Where an environment has no picture check set up at
+  all, photos are off there, as they are with no private bucket.
+- **Deleting an account takes its pictures.** When a person deletes their
+  account, every picture they added to anyone's plan goes, its files and its
+  entry, and so do the files of every plan they hosted, before the account's
+  rows go. Until this is built a deleted account's pictures stay in the
+  bucket with nothing pointing at them, so `plans_photos` stays off
+  everywhere but a rig.
+
 ## 6. The same people again
 
 Board 30 (`SameAgain`).
