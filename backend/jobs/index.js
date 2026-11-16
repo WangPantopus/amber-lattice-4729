@@ -94,7 +94,7 @@ const expirePopupBusinesses = require('./expirePopupBusinesses');
 const draftBusinessReminder = require('./draftBusinessReminder');
 // Mail escrow expiry
 const mailEscrowExpiry = require('./mailEscrowExpiry');
-const cardEmailRetry = require('./cardEmailRetry');
+const cardEmailSend = require('./cardEmailSend');
 const mailDeletedPurge = require('./mailDeletedPurge');
 // Home intelligence jobs
 const nfipTractWarm = require('./nfipTractWarm');
@@ -692,8 +692,9 @@ function startJobs(options = {}) {
     timezone: 'UTC',
   });
 
-  // Every 10 minutes: tries again the emails of Christmas cards by email that didn't go out.
-  scheduleCron('*/10 * * * *', wrapJob('cardEmailRetry', cardEmailRetry), {
+  // Every 5 minutes: sends the emails of Christmas cards by email that are due (the sender's 7 a.m., Christmas morning)
+  // and tries again those that didn't go out.
+  scheduleCron('*/5 * * * *', wrapJob('cardEmailSend', cardEmailSend), {
     scheduled: true,
     timezone: 'UTC',
   });

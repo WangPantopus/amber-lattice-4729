@@ -151,6 +151,9 @@ const DESIGN_BY_ID = new Map(DESIGNS.map((design) => [design.id, design]));
 // A card to someone not on Pantopus comes when they open the email (`now`), sealed until Christmas or not.
 const PERSON_ARRIVALS = ['next_morning', 'sealed_christmas', 'christmas_morning'];
 const EMAIL_ARRIVALS = ['now', 'sealed_christmas'];
+// Every choice a card by email has for apps that word them all (founder, November 15): the three a person has, its email
+// going at the sender's 7 a.m. (the person's time zone isn't known), and Right away. Older apps get EMAIL_ARRIVALS.
+const EMAIL_ARRIVALS_ALL = ['next_morning', 'sealed_christmas', 'christmas_morning', 'now'];
 
 function designById(id) {
   return DESIGN_BY_ID.get(String(id || '')) || null;
@@ -191,20 +194,23 @@ function cardEmailToken(mailId) {
 }
 
 // ---- A card by email's email (services/cardEmail) ----
-// The Mail row of a card by email keeps where its email is in mail_extracted.card.email: { state, tries, at, sent_at }.
-// `state` is 'sending' while a try runs, 'sent' once the mail server took it, 'failed' after a try didn't go. Cards sent
-// before this was kept have none and are read as emailed. A link goes to no address, so it has none.
+// The Mail row of a card by email keeps where its email is in mail_extracted.card.email: { state, tries, at, sent_at,
+// send_at }. `state` is 'scheduled' until `send_at` (its 7 a.m. or Christmas morning), 'sending' while a try runs, 'sent'
+// once the mail server took it, 'failed' after a try didn't go. Cards sent before this was kept have none and are read as
+// emailed. A link goes to no address, so it has none.
 const EMAIL_TRIES = 5;
 const EMAIL_GIVE_UP_MS = 60 * 60 * 1000;
 
 /** Where a card's email is: null (it went, or the card has no email record), 'retrying', or 'failed'. */
 function emailTrouble(mail, now = new Date()) {
   const email = mail?.mail_extracted?.card?.email;
-  if (!email || email.state === 'sent' || !mail.escrow_status) return null;
-  // Its first try runs as it's sent; a card still sending a while later lost its try, which the retry job picks up.
+  if (!email || email.state === 'sent' || email.state === 'scheduled' || !mail.escrow_status) return null;
+  // Its first try runs as it's sent (or as it's due); a card still sending a while later lost its try, which the job
+  // picks up.
   if (email.state === 'sending' && !(Number(email.tries) > 0)
     && now.getTime() - Date.parse(email.at || mail.created_at) < 10 * 60 * 1000) return null;
-  const old = now.getTime() - Date.parse(mail.created_at) >= EMAIL_GIVE_UP_MS;
+  // Given up an hour after the email was due (as it was sealed, or its 7 a.m.), even if the job isn't running.
+  const old = now.getTime() - Date.parse(email.send_at || mail.created_at) >= EMAIL_GIVE_UP_MS;
   return Number(email.tries) >= EMAIL_TRIES || old ? 'failed' : 'retrying';
 }
 
@@ -312,8 +318,9 @@ function daysBetween(fromDay, toDay) {
  * The arrivals open now. A person's: the sealed and Christmas-morning choices only while the next morning round in
  * their time zone comes before Christmas morning. An email's: sealed only before Christmas morning where the sender is.
  */
-function arrivalsFor({ byEmail, timeZone, now = new Date(), nextRound }) {
+function arrivalsFor({ byEmail, all = false, timeZone, now = new Date(), nextRound }) {
   const christmas = christmasMorning(timeZone).getTime();
+  if (byEmail && all) return now.getTime() < christmas ? EMAIL_ARRIVALS_ALL : ['next_morning', 'now'];
   if (byEmail) return now.getTime() < christmas ? EMAIL_ARRIVALS : ['now'];
   return nextRound(timeZone, now).getTime() < christmas ? PERSON_ARRIVALS : ['next_morning'];
 }
@@ -333,6 +340,25 @@ function personDelivery({ arrival, timeZone, now = new Date(), nextRound }) {
     sealed_until: arrival === 'sealed_christmas' ? christmas.toISOString() : null,
     take_back_until: pickup.toISOString(),
   };
+}
+
+/**
+ * When a card by email's email goes, by the sender's clock (`timeZone`; the other person's isn't known until they join):
+ * at their next 7 a.m. (next_morning), at 7 a.m. on Christmas morning (christmas_morning), or now (now, and
+ * sealed_christmas, whose card stays sealed until Christmas morning). Answers ISO strings; `sealed_until` is null unless
+ * it's sealed. The card can be opened once they join with that address and its seal, if any, lifts.
+ */
+function emailDelivery({ arrival, timeZone, now = new Date(), nextRound }) {
+  if (arrival === 'next_morning') return { send_at: nextRound(timeZone, now).toISOString(), sealed_until: null };
+  if (arrival === 'christmas_morning') return { send_at: christmasMorning(timeZone).toISOString(), sealed_until: null };
+  return { send_at: now.toISOString(),
+    sealed_until: arrival === 'sealed_christmas' ? christmasMorning(timeZone).toISOString() : null };
+}
+
+/** When a card by email's email is set to go, while it waits for that time (services/cardEmail), else null. */
+function emailSendAt(mail) {
+  const email = mail?.mail_extracted?.card?.email;
+  return mail?.escrow_status === 'pending' && email?.state === 'scheduled' && email.send_at ? email.send_at : null;
 }
 
 /** The card as the apps read it on a piece (mailPiece.present), or null when the piece isn't a card. */
@@ -410,6 +436,8 @@ function sentSummary(mail, now = new Date()) {
     by_email: byEmail,
     // By link it also counts as by email (older apps read it that way); newer apps say it in link words.
     ...(card.by_link ? { by_link: true } : {}),
+    // By email, set to go at 7 a.m. or on Christmas morning: when (older apps read it as waiting for them).
+    ...(emailSendAt(mail) ? { email_send_at: emailSendAt(mail) } : {}),
     arrival: card.arrival || null,
     arrives_at: byEmail ? null : mail.delivered_at,
     // The day it reaches them by their clock (cards sent before this was kept: null; the apps read arrives_at).
@@ -513,6 +541,8 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
     by_email: byEmail,
     ...(card.by_link ? { by_link: true } : {}),
     ...(trouble ? { email_status: trouble, email_to: mail.escrow_recipient_contact || null } : {}),
+    // Set to go at 7 a.m. or on Christmas morning, by the sender's clock: when. Older apps read it as waiting for them.
+    ...(isHolidayCard && status === 'email_waiting' && emailSendAt(mail) ? { email_send_at: emailSendAt(mail) } : {}),
     arrival: card.arrival || null,
     status,
     arrives_at: byEmail ? null : instant(mail.delivered_at),
@@ -587,9 +617,9 @@ async function sentLine(userId, now = new Date()) {
 }
 
 module.exports = {
-  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS,
+  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
-  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailWent, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
+  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,
-  personDelivery, cardView, pickupAt, sentSummary, sentCards, notDeliveredOf, sentStatus, sentPiece, sentTrail, sentLine,
+  personDelivery, emailDelivery, cardView, pickupAt, sentSummary, sentCards, notDeliveredOf, sentStatus, sentPiece, sentTrail, sentLine,
 };
