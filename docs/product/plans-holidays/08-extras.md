@@ -172,6 +172,30 @@ straight to {Host}. Pantopus doesn't handle this money." The host sees the same
 card with the count and, in Who's coming, "paid" on a row and a row action
 "Mark paid". No notice is sent for chipping in.
 
+**Settled while it was built** (server PR 4235, November 16; the designer's
+yes, told to the founder):
+
+- **"{7} of {12} paid" counts answers, not heads.** One mark an answer: a
+  person with an account, or a guest's row, whatever its adults and kids. `of`
+  is the answers that are in, without the host and without anyone waiting for
+  the host's yes. The amount stays "each person"; a party settles its own
+  total with the host.
+- **The words are the server's**: `paid_text` ("7 of 12 paid"), `pay_text`
+  ("Pay Maya on Venmo") and `straight_text` ("This goes straight to Maya.
+  Pantopus doesn't handle this money.") come with the card, beside
+  `amount_cents`. `mine` is null for the host.
+- **The link** is at most 300 characters, with no port and no sign-in part,
+  and a service's home page is refused as any other site is. A refusal
+  carries `field` (`link`, `amount_cents` or `note`), and a bad value refuses
+  the whole change.
+- **Changing it.** A new value on the Change screen keeps who paid; `"chip_in":
+  null` takes it away and forgets who paid.
+- **Marks** can change while the plan is on and after it is over, never on a
+  cancelled plan (`409 ended`). On the host's screens each person who is in
+  carries `"chip_in": { "paid", "who" }`, and `who` is what "Mark paid" sends.
+  A guest without an account reads the card in `for_guest.chip_in` on the web
+  page and marks through the public route with their key.
+
 ## 4. Gift exchange
 
 Boards 26 (`ExtrasForm`), 28 (`GiftDraw`).
