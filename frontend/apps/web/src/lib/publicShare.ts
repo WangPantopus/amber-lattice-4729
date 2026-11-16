@@ -251,6 +251,8 @@ export type PublicPlanPrice = {
   per: 'person' | 'family';
   // Sent while the business takes payment for spots (Plans for the holidays B2/B3): the server's own words.
   text?: string;
+  line?: string;
+  join_text?: string;
   refund_until?: string;
   refund_text?: string;
 };

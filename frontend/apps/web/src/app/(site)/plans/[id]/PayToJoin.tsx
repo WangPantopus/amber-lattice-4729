@@ -5,14 +5,16 @@
 // has `plans_paid`. "Join for $18" opens the web's shipped sign-in and comes back here with `?join=1`; signed in, it
 // holds the spot (POST /api/plans/:id/requests, the same route the apps call), shows P1's lines and the payment
 // company's web payment form (card, Apple Pay, Google Pay), and lets the person in only once the server confirms the
-// payment (…/requests/mine/confirm). Every amount and line is the server's. No payment without an account.
+// payment (…/requests/mine/confirm). Every amount and line is the server's. No payment without an account. A hold
+// that runs out before the card is accepted says "That took a while. Start again."; a payment that went through after
+// the plan filled (409 full) or stopped taking people (409 ended) shows the server's words: the money is on its way back.
 
 import { useEffect, useRef, useState } from 'react';
 import { PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import * as api from '@pantopus/api';
 import StripeProvider from '@/components/payments/StripeProvider';
 
-type Paid = { text: string; leave_text?: string | null; receipt_url?: string | null };
+type Paid = { text: string; leave_text?: string | null; leave_back_cents?: number; receipt?: { link: string } | null };
 type Payment = { payment_id: string; amount_cents: number; amount_text: string; client_secret: string };
 type Hold = { payment: Payment; holdUntil: string | null };
 
@@ -44,7 +46,13 @@ function calendarHref({ title, startsAt, endsAt, place }: { title: string; start
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join('\r\n'))}`;
 }
 
-function PayForm({ planId, amountText, onPaid, onLate }: { planId: string; amountText: string; onPaid: (paid: Paid) => void; onLate: () => void }) {
+function PayForm({ planId, amountText, onPaid, onAccepted, onRefunded }: {
+  planId: string;
+  amountText: string;
+  onPaid: (paid: Paid) => void;
+  onAccepted: () => void;
+  onRefunded: (message: string) => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
@@ -73,13 +81,14 @@ function PayForm({ planId, amountText, onPaid, onLate }: { planId: string; amoun
           return;
         }
         setAccepted(true);
+        onAccepted();
       }
       const plan = await api.post(`/api/plans/${encodeURIComponent(planId)}/requests/mine/confirm?biz=1`, {});
       if (plan?.paid) onPaid(plan.paid as Paid);
       else setMessage("This payment hasn't gone through yet. Please try again in a moment.");
     } catch (err) {
       const { code, message: text } = errorOf(err);
-      if (code === 'hold_ran_out') onLate();
+      if (code === 'full' || code === 'ended') onRefunded(text);
       else setMessage(text);
     } finally {
       setProcessing(false);
@@ -115,10 +124,21 @@ export default function PayToJoin({
 }) {
   const [hold, setHold] = useState<Hold | null>(null);
   const [paid, setPaid] = useState<Paid | null>(paidAtLoad);
-  const [state, setState] = useState<'idle' | 'holding' | 'waitlisted' | 'late'>(waiting ? 'waitlisted' : 'idle');
+  const [state, setState] = useState<'idle' | 'holding' | 'waitlisted' | 'late' | 'refunded'>(waiting ? 'waitlisted' : 'idle');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const started = useRef(false);
+  // Once the card is accepted the server decides (in, or the money back); the hold's end no longer matters here.
+  const accepted = useRef(false);
+
+  // The spot is held for 10 minutes: a form left open past that starts again (07-screens P1).
+  useEffect(() => {
+    if (state !== 'holding' || !hold?.holdUntil) return undefined;
+    const ms = new Date(hold.holdUntil).getTime() - Date.now();
+    if (Number.isNaN(ms)) return undefined;
+    const timer = setTimeout(() => { if (!accepted.current) setState('late'); }, Math.max(0, ms));
+    return () => clearTimeout(timer);
+  }, [state, hold]);
 
   const join = async () => {
     if (busy) return;
@@ -129,6 +149,7 @@ export default function PayToJoin({
       // otherwise Pantopus, as for a friend's share).
       const result = await api.post(`/api/plans/${encodeURIComponent(planId)}/requests?biz=1`, { party_size: 1 });
       if (result?.payment?.client_secret) {
+        accepted.current = false;
         setHold({ payment: result.payment as Payment, holdUntil: result.request?.hold_expires_at || null });
         setState('holding');
       } else if (result?.request?.status === 'waitlisted') {
@@ -180,6 +201,10 @@ export default function PayToJoin({
     return <p className="text-sm leading-5 text-app-text-secondary">It&apos;s full right now. You&apos;re on the waitlist, and nothing is charged to wait.</p>;
   }
 
+  if (state === 'refunded') {
+    return <p role="alert" className="text-sm leading-5 text-app-text">{message}</p>;
+  }
+
   if (state === 'late') {
     return (
       <div className="flex flex-col gap-3">
@@ -206,7 +231,13 @@ export default function PayToJoin({
         {refundText ? <p className="text-sm leading-5 text-app-text-secondary">{refundText}</p> : null}
         {until ? <p className="text-xs leading-4 text-app-text-secondary">Your spot is held until {until}.</p> : null}
         <StripeProvider clientSecret={hold.payment.client_secret}>
-          <PayForm planId={planId} amountText={hold.payment.amount_text} onPaid={setPaid} onLate={() => setState('late')} />
+          <PayForm
+            planId={planId}
+            amountText={hold.payment.amount_text}
+            onPaid={setPaid}
+            onAccepted={() => { accepted.current = true; }}
+            onRefunded={(text) => { setMessage(text); setState('refunded'); }}
+          />
         </StripeProvider>
       </section>
     );

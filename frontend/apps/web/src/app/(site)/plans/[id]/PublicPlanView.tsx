@@ -57,7 +57,7 @@ type PlanViewer = {
   role: 'host' | 'guest' | 'none';
   requestStatus: string | null;
   requestsWaiting: number;
-  paid: { text: string; leave_text?: string | null; receipt_url?: string | null } | null;
+  paid: { text: string; leave_text?: string | null; leave_back_cents?: number; receipt?: { link: string } | null } | null;
 };
 
 /**
