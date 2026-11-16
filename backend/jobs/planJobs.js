@@ -49,6 +49,7 @@ const PLAN_NOTICE_TYPES = [
   'plan_deal_close', 'plan_deal_unlocked', 'plan_deal_short', 'plan_deal_removed', 'plan_refunded', 'plan_check',
   // The extras: find a date's pick, the gift exchange's draw.
   'plan_date_picked', 'plan_gift_drawn', 'plan_gift_short', 'plan_gift_left', 'plan_photos',
+  'plan_date_pick', 'plan_date_lapsed',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -89,7 +90,8 @@ async function claimNotice(row, patch) {
 /** Has this notice's moment passed? */
 /** A plan still picking its date (planDates): nothing runs on its time. */
 const picking = (plan) => require('../services/plans/planDates').isPicking(plan);
-const allTimesPast = (plan, now) => (plan.date_options.options || []).every((o) => new Date(o.ends_at).getTime() <= now);
+// Every offered time has started (planDates.runTimes then sets the plan's end to the moment they all went by).
+const allTimesPast = (plan, now) => (plan.date_options.options || []).every((o) => new Date(o.starts_at).getTime() <= now);
 
 function isStale(row, plan, request, invite = null) {
   if (!plan) return true;
@@ -471,6 +473,13 @@ async function runPlansTick() {
   } catch (err) {
     logger.warn('plans.tick.gone_business_failed', { error: err.message });
   }
+  // Find a date (the extras): picking plans follow their earliest time ahead; one whose times all passed ends below.
+  let dateTimes = null;
+  try {
+    dateTimes = await require('../services/plans/planDates').runTimes();
+  } catch (err) {
+    logger.warn('plans.tick.dates_failed', { error: err.message });
+  }
   const lifecycle = await closeAskingAndEnd();
   // Repeating plans that just ended: their next date is posted, and the people who came are asked to it.
   let series = 0;
@@ -542,6 +551,7 @@ async function runPlansTick() {
     released, ...lifecycle, askedAgain, reminders, summaries, ...(nudges ? { nudges } : {}), ...(alerts ? { alerts } : {}), ...(repeats ? { repeats } : {}),
     ...(goneCancelled ? { goneCancelled } : {}), ...(series ? { series } : {}), ...(bringOpen ? { bringOpen } : {}),
     ...(deals && (deals.settled || deals.closeSent) ? { deals } : {}), ...(holds ? { holds } : {}), ...(gifts ? { gifts } : {}), ...(photos ? { photos } : {}),
+    ...(dateTimes && (dateTimes.moved || dateTimes.reminded || dateTimes.lapsed) ? { dateTimes } : {}),
   };
   if (released || askedAgain || reminders || summaries || goneCancelled || lifecycle.expiredCount || lifecycle.endedCount || lifecycle.closedCount
     || (nudges && nudges.sent) || alerts || repeats || series) {
