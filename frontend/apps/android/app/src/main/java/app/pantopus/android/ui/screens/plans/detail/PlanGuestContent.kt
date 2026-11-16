@@ -437,6 +437,9 @@ private fun YourRequestCard(plan: PlanDto) {
                 val kids = mine.kidsCount ?: 1
                 listOfNotNull("You + $kids ${if (kids == 1) "kid" else "kids"}", KidsAgeBand.rangeLabel(mine.kidsAgeBands))
                     .joinToString(" · ")
+            } else if (plan.takesKids) {
+                // Plans for the holidays (A11): the adults and kids the person asked with, "2 adults, 1 kid".
+                myCounts(plan)
             } else {
                 val size = mine.partySize ?: 1
                 if (size <= 1) "Just you" else "You + ${size - 1}"

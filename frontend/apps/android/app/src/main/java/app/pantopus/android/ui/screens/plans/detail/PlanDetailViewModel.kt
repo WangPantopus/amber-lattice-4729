@@ -9,7 +9,6 @@ import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
-import app.pantopus.android.data.api.models.plans.PlanMyRequestDto
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -140,6 +139,9 @@ class PlanDetailViewModel
         /** An email or text invitation's token (`?invite=`): the plan opens it for this account first. */
         private val inviteToken: String? = savedStateHandle.get<String>(PlansRoutes.INVITE_KEY)?.takeIf(String::isNotBlank)
 
+        /** The plan's one link for everyone (`?open=`, Plans for the holidays, contract 6.9): claimed for this account first. */
+        private val openToken: String? = savedStateHandle.get<String>(PlansRoutes.OPEN_KEY)?.takeIf(String::isNotBlank)
+
         /** How the person came to a business's plan, when the app knows (`business_page`), sent with the ask. */
         private val via: String? = savedStateHandle.get<String>(PlansRoutes.VIA_KEY)?.takeIf { it == PlansRoutes.VIA_BUSINESS_PAGE }
         private var inviteClaimed = false
@@ -180,12 +182,20 @@ class PlanDetailViewModel
         /**
          * Opened from an email or text invitation: it becomes this account's. Someone else already used it, or the host
          * took it back: the plan opens as any shared plan does, with a sentence saying so (as on iOS). True when the
-         * invitation wasn't found.
+         * invitation wasn't found. The plan's one link for everyone is claimed the same way (contract 6.9): the person
+         * is invited as themselves, and every refusal (removed, turned down, a block, the link off) is a 404.
          */
         private suspend fun claimInviteOnce(): Boolean {
-            val token = inviteToken?.takeUnless { inviteClaimed } ?: return false
+            if (inviteClaimed) return false
+            val token = inviteToken
+            val open = openToken
             val generation = readGeneration
-            val result = repository.claimInvite(planId, token)
+            val result =
+                when {
+                    token != null -> repository.claimInvite(planId, token)
+                    open != null -> repository.claimOpenLink(planId, open)
+                    else -> return false
+                }
             if (!active || generation != readGeneration) return false
             inviteClaimed = true
             return when (result) {
@@ -531,35 +541,28 @@ class PlanDetailViewModel
                             _ui.update { it.copy(state = PlanDetailUiState.Ready(reply, fresh = false)) }
                         }
                         if (status == PlanRequestStatus.ACCEPTED) _ui.update { it.copy(reveal = true) }
-                        keptNumbersLine(plan, body, result.data.plan?.myRequest)?.let { line -> _ui.update { it.copy(notice = line) } }
                         read()
                     }
-                    is NetworkResult.Failure ->
-                        _ui.update { it.copy(ask = it.ask.copy(sending = false, error = askError(result.error))) }
+                    is NetworkResult.Failure -> {
+                        val inAlready = plan.standing == PlanViewerStanding.IN
+                        _ui.update { it.copy(ask = it.ask.copy(sending = false, error = askError(result.error, inAlready))) }
+                    }
                 }
             }
         }
 
         /**
-         * Someone already in who changed their numbers ("Change", Plans for the holidays A8): the server keeps the first
-         * adults and kids for a request it already took, so say so, as iOS does, instead of showing nothing.
+         * The server's own sentence for a refused ask, as iOS shows it; the 10-request limit says what to do. Someone
+         * already in who asked for more seats than are left keeps their answer (Plans for the holidays, "Change"): the
+         * server says so.
          */
-        private fun keptNumbersLine(
-            before: PlanDto,
-            sent: AskToJoinBody,
-            kept: PlanMyRequestDto?,
-        ): String? {
-            val changing = before.standing == PlanViewerStanding.IN && before.kidsWelcome != null
-            if (!changing || kept == null) return null
-            val same = (kept.partySize ?: 1) == sent.partySize && (kept.kidsCount ?: 0) == (sent.kidsCount ?: 0)
-            return if (same) null else "Couldn't change your numbers here yet. Tell ${hostFirst()} in the group chat."
-        }
-
-        /** The server's own sentence for a refused ask, as iOS shows it; the 10-request limit says what to do. */
-        private fun askError(error: NetworkError): String =
-            when (error.planCode) {
-                "too_many_requests" -> "You have 10 open requests. Withdraw one to ask here."
-                "full" -> "It just filled up. You can join the waitlist."
+        private fun askError(
+            error: NetworkError,
+            inAlready: Boolean,
+        ): String =
+            when {
+                error.planCode == "too_many_requests" -> "You have 10 open requests. Withdraw one to ask here."
+                error.planCode == "full" && !inAlready -> "It just filled up. You can join the waitlist."
                 else -> error.planMessage
             }
 

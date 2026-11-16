@@ -83,6 +83,8 @@ data class PlanGuestsUi(
     val confirmRemove: PlanGuestRow? = null,
     /** The invite sheet (A4) is open over the list. */
     val inviting: Boolean = false,
+    /** "Let in" on an account from the link needs the shipped "Accepting shares your address" first (a home's first yes). */
+    val confirmAccept: PlanInviteRowDto? = null,
 ) {
     private val rows: List<PlanInviteRowDto> get() = list?.invites.orEmpty()
     private val kidsWelcome: Boolean get() = plan?.takesKids == true
@@ -100,8 +102,11 @@ data class PlanGuestsUi(
             )
         }
 
-    /** "Waiting for you": guests from the open link who wait for the host's yes. */
-    val waiting: List<PlanInviteRowDto> get() = rows.filter { it.state == STATE_WAITING || it.canOk }
+    /**
+     * "Waiting for you": guests from the open link who wait for the host's yes, and people with an account who came by
+     * the link and asked (contract 6.9, picture 23).
+     */
+    val waiting: List<PlanInviteRowDto> get() = rows.filter { it.state == STATE_WAITING || it.canOk || it.isLinkAccountWaiting }
 
     /** "Coming": the invitations that are in, then anyone else in the plan's people (an ask, a friend's friend). */
     val coming: List<PlanGuestRow>
@@ -139,12 +144,14 @@ data class PlanGuestsUi(
     val noAnswer: List<PlanGuestRow>
         get() {
             val open =
-                rows.filter { it.state in NO_ANSWER_STATES }.map { row ->
+                rows.filter { it.state in NO_ANSWER_STATES && !it.isLinkAccountWaiting }.map { row ->
                     PlanGuestRow(
                         key = "invite-${row.id}",
                         name = row.title,
                         line =
                             when {
+                                // An account that opened the plan's one link and hasn't answered (contract 6.9).
+                                row.via == "open" && row.person != null -> "Opened your link"
                                 row.state == "asked" -> "Waiting for your yes in Requests"
                                 row.emailFailed -> "Couldn't email this address"
                                 row.person != null && row.channel == "link" -> "Opened your text invite"
@@ -199,8 +206,15 @@ data class PlanGuestsUi(
     /** A text invite nobody opened has nobody to remind: the footer says so. */
     val hasUnopenedText: Boolean get() = (list?.unopenedLinks ?: 0) > 0
 
-    /** "2 adults, 1 kid · answered from your link" for a waiting guest. */
+    /**
+     * "2 adults, 1 kid · answered from your link" for a waiting guest; "2 adults · on Pantopus · from your link" for a
+     * person with an account from the link (contract 6.9).
+     */
     fun waitingLine(row: PlanInviteRowDto): String {
+        if (row.isLinkAccountWaiting) {
+            val party = row.party
+            return listOfNotNull(party?.let { countWords(it.adults, it.kids) }, "on Pantopus", "from your link").joinToString(" · ")
+        }
         val guest = row.guest
         val count = guest?.let { countWords(it.adults, it.kids) }
         return listOfNotNull(count, "answered from your link").joinToString(" · ")
@@ -217,6 +231,7 @@ data class PlanGuestsUi(
             when {
                 guest != null -> "${countWords(guest.adults, guest.kids)} · answered in a browser"
                 match != null -> personLine(match)
+                row.party != null -> countWords(row.party.adults, row.party.kids)
                 else -> countWords(1, 0)
             }
         return PlanGuestRow(
@@ -229,8 +244,8 @@ data class PlanGuestsUi(
             inviteId = row.id,
             requestId = row.requestId ?: match?.requestId,
             removal = removalFor(row, match),
-            adults = guest?.adults ?: match?.partySize ?: 1,
-            kids = guest?.kids ?: match?.kidsCount ?: 0,
+            adults = guest?.adults ?: match?.partySize ?: row.party?.adults ?: 1,
+            kids = guest?.kids ?: match?.kidsCount ?: row.party?.kids ?: 0,
         )
     }
 
@@ -351,8 +366,12 @@ class PlanGuestsViewModel
                 }
         }
 
-        /** "Let in": the guest is in and their email goes. */
+        /** The host already said yes to sharing the address for this plan (asked once, as on the requests screen). */
+        private var sharedAddressOk = false
+
+        /** "Let in": the guest is in and their email goes; a person from the link has their ask accepted. */
         fun letIn(row: PlanInviteRowDto) {
+            if (row.isLinkAccountWaiting) return answerLinkAsk(row, accept = true)
             if (row.id in _ui.value.working) return
             _ui.update { it.copy(working = it.working + row.id) }
             viewModelScope.launch {
@@ -368,8 +387,9 @@ class PlanGuestsViewModel
             }
         }
 
-        /** "Not this time" on a waiting guest: the same as Remove, asked first. */
+        /** "Not this time" on a waiting guest: the same as Remove, asked first. A person from the link: their ask is declined. */
         fun askNotThisTime(row: PlanInviteRowDto) {
+            if (row.isLinkAccountWaiting) return answerLinkAsk(row, accept = false)
             _ui.update {
                 it.copy(
                     confirmRemove =
@@ -409,6 +429,54 @@ class PlanGuestsViewModel
                     when (result) {
                         is NetworkResult.Failure -> it.copy(working = it.working - key, notice = result.error.planMessage)
                         else -> it.copy(working = it.working - key, notice = "${PlanFormat.firstName(row.name)} is off the list.")
+                    }
+                }
+                repository.changed(planId)
+                load()
+            }
+        }
+
+        /** The host said yes to sharing their address (the shipped sentence); "Let in" goes ahead. */
+        fun confirmSharingAddress() {
+            val row = _ui.value.confirmAccept ?: return
+            sharedAddressOk = true
+            _ui.update { it.copy(confirmAccept = null) }
+            answerLinkAsk(row, accept = true)
+        }
+
+        fun dismissConfirm() {
+            _ui.update { it.copy(confirmAccept = null) }
+        }
+
+        /**
+         * A person with an account from the plan's one link (contract 6.9): "Let in" is the shipped accept of their ask,
+         * with "Accepting shares your address" first at a home (409 `confirm_shares_address`); "Not this time" the shipped
+         * decline.
+         */
+        private fun answerLinkAsk(
+            row: PlanInviteRowDto,
+            accept: Boolean,
+        ) {
+            val requestId = row.requestId ?: return
+            if (row.id in _ui.value.working) return
+            _ui.update { it.copy(working = it.working + row.id) }
+            viewModelScope.launch {
+                val result =
+                    if (accept) {
+                        repository.accept(planId, requestId, confirmSharesAddress = sharedAddressOk)
+                    } else {
+                        repository.decline(planId, requestId)
+                    }
+                val first = PlanFormat.firstName(row.title)
+                _ui.update {
+                    when {
+                        result is NetworkResult.Success -> {
+                            val done = if (accept) "$first is in." else "Declined. They won't see who said no."
+                            it.copy(working = it.working - row.id, notice = done)
+                        }
+                        (result as? NetworkResult.Failure)?.error?.planCode == "confirm_shares_address" ->
+                            it.copy(working = it.working - row.id, confirmAccept = row)
+                        else -> it.copy(working = it.working - row.id, notice = (result as? NetworkResult.Failure)?.error?.planMessage)
                     }
                 }
                 repository.changed(planId)
