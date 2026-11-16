@@ -319,8 +319,8 @@ change line by line for who can read a pair):
 - **Someone who leaves** before the draw leaves the exchange. After it, the
   host's notice "{Name} left after the names were drawn." opens the plan,
   where "Draw again" draws for everyone still in and tells each "Names were
-  drawn again." The host may also draw again at any time before the plan
-  starts.
+  drawn again." The host may also draw again at any time until the plan is
+  over.
 
 ## 5. Photos afterwards
 
