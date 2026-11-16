@@ -59,6 +59,7 @@ const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
 // Bills from business invoices in the payer's Mail (Mail tab, SRV-7).
 const invoiceBills = require('../services/invoiceBills');
+const { recordBusinessContact } = require('../services/businessCustomers');
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
@@ -5277,6 +5278,9 @@ async function markInvoicePaid(invoiceId) {
   // Its bill in the payer's Mail shows Paid and moves to Receipts (Mail tab, SRV-7); never fails the payment.
   void invoiceBills.onInvoicePaid(invoiceId);
   if (updatedRows?.[0]) {
+    // The business now knows this person as a customer (shared piece 3); it never fails the payment.
+    void recordBusinessContact({ businessUserId: updatedRows[0].business_user_id, userId: updatedRows[0].recipient_user_id,
+      feature: 'invoice', basis: 'own', at: updatedRows[0].paid_at });
     // Only the request that marked it paid says so; a notice that fails never fails the payment.
     notifyInvoicePaid(updatedRows[0]).catch((err) => {
       logger.warn('Invoice paid notice skipped', { invoiceId, error: err.message });
