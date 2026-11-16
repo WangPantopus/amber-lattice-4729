@@ -135,7 +135,13 @@ struct MomentsMapBottom: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
                         .padding(.top, 14)
                 } else if viewModel.isEmpty, postings.isEmpty {
-                    MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                    Group {
+                        if viewModel.tooWide {
+                            MomentsZoomInCard { Task { await viewModel.locate() } }
+                        } else {
+                            MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                        }
+                    }
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
                         .padding(.top, 14)
                 } else if viewModel.showsRow(postings: postings) {
@@ -384,6 +390,25 @@ struct MomentsEmptyCard: View {
             action: onAdd
         )
         .accessibilityIdentifier("moments.empty")
+    }
+}
+
+/// Zoomed out past where Moments show (`MomentsGlobe.swift`): not "nothing here", since the server only reads a view
+/// about 300 miles across or less.
+struct MomentsZoomInCard: View {
+    let onBack: @MainActor () -> Void
+
+    var body: some View {
+        MomentsMapCard(
+            icon: .globe,
+            title: "Zoom in to see Moments",
+            line: "Moments show when the map is about 300 miles across or less.",
+            button: "Back to near you",
+            buttonIcon: nil,
+            buttonId: "moments.zoomIn.back",
+            action: onBack
+        )
+        .accessibilityIdentifier("moments.zoomIn")
     }
 }
 
