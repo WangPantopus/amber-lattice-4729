@@ -789,6 +789,8 @@ function buildCard(plan, viewer, ctx) {
     if (dates) {
       card.dates = dates;
       card.time_text = 'Picking a date';
+      // Whoever saved their times has answered: not "no answer" on the host's card.
+      if (card.answers) card.answers.no_answer = Math.max(0, card.answers.no_answer - dates.answered);
     }
   }
   // Chip in (the extras, 08-extras section 3), with `extras=1`, for the host and the people in, while the host has

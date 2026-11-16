@@ -356,7 +356,14 @@ async function settle(plan, value, option, { io }) {
         const row = rowById.get(key.slice(2));
         if (!row || row.status === 'cancelled' || row.invitee_user_id) continue;
         const seats = (Number(row.guest_adults) || 1) + (plan.kids_welcome ? Number(row.guest_kids) || 0 : 0);
-        if (seats > free) continue; // asked below, with everyone else not in
+        if (seats > free) {
+          // No waitlist without an account: their answer becomes Maybe, with one email in place of "Can you make it?".
+          if (await guests().settleFull(plan, row, when)) {
+            settledKeys.add(key);
+            out.full = (out.full || 0) + 1;
+          }
+          continue;
+        }
         const settled = await guests().settlePicked(plan, row);
         if (!settled) continue;
         settledKeys.add(key);

@@ -47,6 +47,8 @@ const PLAN_NOTICE_TYPES = [
   'plan_moved_home', 'plan_moved_home_wait',
   // The business track: deals (B1), money back on a paid spot or a group price (B2, B4), a check at the place (B5).
   'plan_deal_close', 'plan_deal_unlocked', 'plan_deal_short', 'plan_deal_removed', 'plan_refunded', 'plan_check',
+  // The extras: find a date's pick.
+  'plan_date_picked',
 ];
 const CHAT_OPEN_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;

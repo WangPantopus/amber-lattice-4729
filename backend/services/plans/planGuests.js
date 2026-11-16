@@ -434,6 +434,17 @@ async function settlePicked(plan, row) {
   return 'in';
 }
 
+/** A guest who ticked the picked time but doesn't fit: Maybe, and "{title} is full right now" by email. */
+async function settleFull(plan, row, when) {
+  const { data, error } = await supabaseAdmin.from('PlanInvite')
+    .update({ status: 'maybe', answered_at: nowIso(), updated_at: nowIso() })
+    .eq('id', row.id).eq('status', 'pending').select(GUEST_COLUMNS);
+  if (error) throw new Error(`Failed to save the answer: ${error.message}`);
+  if (!data || data.length === 0) return false;
+  await sendDateEmail(plan, data[0], 'date_full', { when });
+  return true;
+}
+
 /** A find-a-date email to a guest (outside the plan's three): 'dates_saved', 'date_in' or 'date_ask'. */
 async function sendDateEmail(plan, row, kind, { when = null, stamp = null } = {}) {
   const planDates = require('./planDates');
@@ -1426,6 +1437,7 @@ async function sendReminders(plans) {
 module.exports = {
   answerDates,
   settlePicked,
+  settleFull,
   sendDateEmail,
   guestRowsFull,
   guestSeatsOf: (postId) => guestSeats(postId),

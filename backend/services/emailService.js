@@ -578,6 +578,17 @@ function planGuestEmailContent(kind, words) {
       footer,
     };
   }
+  if (kind === 'date_full') {
+    return {
+      subject: `${title} is ${words.when}`,
+      heading: `${title} is full right now`,
+      lines: [`It’s ${words.when}, a time you ticked, but it filled up with people who answered first. You’re down as Maybe, so ${words.hostFirst} sees you’d still like to come. You can change that from your invitation.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
   if (kind === 'dates_saved') {
     return {
       subject: `Your times for ${title}`,
