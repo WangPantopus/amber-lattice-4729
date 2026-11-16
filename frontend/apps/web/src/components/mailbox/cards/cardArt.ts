@@ -158,6 +158,11 @@ export function shortDay(iso: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/** When a card's email goes, by your clock: "Mon, Nov 16 at 7 a.m.". */
+export function emailGoesAt(iso: string | null | undefined): string {
+  return iso ? `${shortDay(iso)} at ${clockTime(iso)}` : '';
+}
+
 /** "7 a.m." */
 export function clockTime(iso: string | null | undefined): string {
   if (!iso) return '';
