@@ -1286,10 +1286,11 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   const ctx = await planService.loadCardContext([plan], viewer);
   const mine = ctx.myRequestByPlan.get(postId) || null;
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
-  // A second ask while waiting changes only what it sends; the rest stays as asked.
+  const isIn = Boolean(mine && mine.status === 'accepted');
+  // A second ask while waiting, or from someone already in, changes only what it sends; the rest stays as asked.
   const keep = (key) => (body[key] !== undefined ? body[key] : mine[key]);
   const guestAnswers = await planGuests.switchFor(plan.host_user_id);
-  const ask = cleanAsk(plan, waiting
+  const ask = cleanAsk(plan, waiting || isIn
     ? { party_size: keep('party_size'), note: keep('note'), kids_count: keep('kids_count'), kids_age_bands: keep('kids_age_bands'), stays_with_kids: keep('stays_with_kids') }
     : body, { guestAnswers });
   const stamp = nowIso();
@@ -1300,7 +1301,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     if (error) throw new Error(`Failed to update your request: ${error.message}`);
     return { status: 200, body: await requestResult(postId, viewer, mine.id) };
   }
-  if (mine && mine.status === 'accepted') return { status: 200, body: await requestResult(postId, viewer, mine.id) };
+  if (isIn) return changeWhoIsComing(plan, mine, ask, body, { viewer, io });
 
   const requests = ctx.requestsByPlan.get(postId) || [];
   const spotsLeft = plan.spots - (await seatsNow(plan, requests));
@@ -1389,6 +1390,40 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     });
   }
   return { status: mine ? 200 : 201, body: await requestResult(postId, viewer, request.id) };
+}
+
+/**
+ * Someone already in changes who's coming (Plans for the holidays, the guest's "Change", 06-screens A8 and A7): new
+ * adults (party_size) and kids (kids_count), within the plan's limits for them. More seats are taken only while the
+ * plan has room for the difference: no new approval and no notice to the host, but `409 full` with the old numbers kept
+ * when there isn't. Fewer always save, and the seats they free are offered as any freed seats are. Anything else in
+ * the ask (the hello) stays as it was.
+ */
+async function changeWhoIsComing(plan, mine, ask, body, { viewer, io }) {
+  const result = async () => ({ status: 200, body: await requestResult(plan.post_id, viewer, mine.id) });
+  if (body.party_size === undefined && body.kids_count === undefined) return result();
+  // Kids are saved only where they are welcome; kids already counted keep their seats if the host turned that off.
+  const kids = ask.kids_count !== undefined ? ask.kids_count ?? null : mine.kids_count ?? null;
+  const before = rules.seatsFor(plan, mine.party_size, mine.kids_count);
+  const after = rules.seatsFor(plan, ask.party_size, kids);
+  if (ask.party_size === mine.party_size && kids === (mine.kids_count ?? null)) return result();
+  const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
+  if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over.');
+  const full = () => fail(409, 'full', 'There’s no room for more people. Your answer stays as it was.');
+  if (after > before && after - before > plan.spots - (await seatsNow(plan, await activeRequests(plan.post_id)))) full();
+  const numbers = { party_size: ask.party_size, kids_count: kids };
+  const { data: changed, error } = await supabaseAdmin.from('PlanRequest')
+    .update({ ...numbers, updated_at: nowIso() }).eq('id', mine.id).eq('status', 'accepted').select('id');
+  if (error) throw new Error(`Failed to change who's coming: ${error.message}`);
+  if (!changed || changed.length === 0) return result();
+  if (after > before && (await seatsNow(plan, await activeRequests(plan.post_id))) > plan.spots) {
+    // Someone else took the last seats at the same moment: the old numbers stay.
+    await supabaseAdmin.from('PlanRequest')
+      .update({ party_size: mine.party_size, kids_count: mine.kids_count ?? null, updated_at: nowIso() }).eq('id', mine.id);
+    full();
+  }
+  if (after < before) await offerOpenSpots(plan, { io });
+  return result();
 }
 
 /** Withdraw (pending or waitlisted) or leave (accepted). */
