@@ -10,7 +10,8 @@ founder's go.
 
 **November 16:** the founder accepted one rule for lift (close in, height is real; zoomed out, height is reach) and
 gave ideas for later, which the design records. Claiming the airspace over a home is not to be built as described.
-The hand-off's section 0 has what changed since it was written.
+The hand-off's section 0 has what changed since it was written. Screens 1, 2, 6 and 7 were redrawn the same day for
+that rule; the founder approved screen 1 first, with the disc shown only for the post you tap.
 
 ## What is here
 
@@ -29,7 +30,7 @@ The hand-off's section 0 has what changed since it was written.
 
 | # | Screen | Picture |
 | --- | --- | --- |
-| 1 | Close in: pins on the ground, posts in the air | [day](screens/01-close-in.jpg) · [night](screens/01-close-in-night.jpg) |
+| 1 | Close in: posts on the ground, one in the air | [day](screens/01-close-in.jpg) · [night](screens/01-close-in-night.jpg) |
 | 2 | Zoomed out to the city | [day](screens/02-city.jpg) · [night](screens/02-city-night.jpg) |
 | 3 | Country view and World view | [country](screens/03-country.jpg) · [world](screens/03-world.jpg) |
 | 4 | Posting: floating (the default) | [picture](screens/04-posting-floating.jpg) |
@@ -47,18 +48,31 @@ The hand-off's section 0 has what changed since it was written.
 - The wider maps in 2 and 3 were drawn by the web app's map engine. On iPhone they will be Apple's maps.
 - The night version of screen 1 is the day capture recoloured from a dark capture of the same view.
 - The tab bar is the 2.1.2 store app's, not the newer bar with Mail third.
-- **The discs are drawn at about three quarters of their real size.** The phase A contract (call C2) sets the real
-  size: about 0.4 mile across at the smallest.
-- **Screens 1, 2, 6 and 7 are partly out of date.** They draw lift as reach. Later on November 14 the founder decided
-  that lift is a post's height above the ground under it, and reach is brightness, size and how far out a post
-  stays visible (the design's "Changed on November 14" section). They are to be redrawn before phase B.
+- **Discs.** On screen 1 the disc is at its real size (call C2 of the phase A contract: about 0.4 mile across, about
+  124 points at that zoom) and shows only for the post you tap. At real size neighbouring discs overlap, because area
+  centres form a regular grid about 70 points apart side to side and 100 up and down there. The map previews on the
+  Post sheet in 4 and 5 still draw the disc at about three quarters of its real size.
+- **Screens 1, 2, 6 and 7 were redrawn on November 16** for the rule "close in, lift is real height". A post from an
+  area sits on the map at its area's centre, with no tail; a tail still means exactly here. Only a post really in the
+  air is lifted (a paraglider on screen 1, a plane on screen 2), drawn as the built Elevation view draws it: no tail,
+  a little bigger, its shadow cast by the sun, and its height tag with the number above sea level. Reach shows as
+  size and the level's name; glow is only a night extra. On screen 6 the Moment grows where it is, with a soft ring
+  around it, instead of rising. Screen 7 keeps the built height scale, now measured from the ground, and shows the
+  level beside the name instead of a ladder of levels.
+- **Still approximate in the redraw:** where the grid of area centres falls on the screen 1 map is a guess (its
+  spacing is not); the map scale is the hand-off's arithmetic, not re-measured; the paraglider and plane photos are
+  new drawings in the style of the others; the night boards keep the day's shadow for a post in the air, though the
+  built view draws no shadow after sunset, so how height shows at night is still open; the flying posts show their
+  height tags while the Elevation chip is off, and what that chip does now is open (screen 10); "Floating over …" is
+  kept until the founder decides the wording.
 - **Screen 3 is right as drawn.** Under the November 16 rule, lift is reach once the map is zoomed out to a state or
   wider.
 - Phase A builds only screens 4, 5 and 9. The others belong to phases B and C.
 
 The editable boards are a private design canvas, and the design is a private Claude Doc; both belong to the
-founder's account. The boards' sources, the pictures they use and the tools that drew them are on the founder's
-Mac at `~/pantopus-moments/sky-design-src/`.
+founder's account. The canvas holds every board's source and picture. The folder that first held
+them is gone; a small tool that renders a board locally was rebuilt on November 16 on the founder's Mac at
+`~/.pantopus-review/handoffs/sky-redraw-tools/`.
 
 ## What is decided, and what is open
 
@@ -78,8 +92,11 @@ and a view where the ground rises where it is busy.
 **Open:**
 
 - The go for phase A.
-- Four questions from the November 15 review of the screens (the hand-off's section 0), the first of which touches
-  phase A's words on the app screens.
+- The first of the four questions from the November 15 review (the hand-off's section 0): the word "Floating",
+  which touches phase A's words on the app screens. The redraw settled the second (the founder accepted screen 1
+  with the disc only for the tapped post) and follows the third and fourth (a paraglider, not a balcony in a tower;
+  size and the level's name carry reach by day).
+- How a post in the air shows its height after sunset, and what the Elevation chip does now.
 - The founder's ideas of November 16 (the design's "Added on November 16" section): directions only.
 - Details and drawings for the higher starting level and the terrain.
 - Contracts for phases B to E.
