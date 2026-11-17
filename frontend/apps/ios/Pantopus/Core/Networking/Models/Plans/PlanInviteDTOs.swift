@@ -168,9 +168,13 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
     public let canOk: Bool
     /// Contract 6.9: an account's numbers on a row with an ask (pending, waitlisted or in).
     public let party: PlanInvitePartyDTO?
+    /// The same people again (08-extras section 6): an email invitation made from a past plan shows the name the guest
+    /// gave there, and `email` is null; the host never reads that address.
+    public let knownName: String?
 
     enum CodingKeys: String, CodingKey {
         case id, channel, state, person, email, guest, party
+        case knownName = "name"
         case emailFailed = "email_failed"
         case requestId = "request_id"
         case canCancel = "can_cancel"
@@ -192,6 +196,7 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
         guest = try? container.decodeIfPresent(PlanInviteGuestDTO.self, forKey: .guest)
         canOk = (try? container.decodeIfPresent(Bool.self, forKey: .canOk)) ?? false
         party = try? container.decodeIfPresent(PlanInvitePartyDTO.self, forKey: .party)
+        knownName = try? container.decodeIfPresent(String.self, forKey: .knownName)
     }
 
     /// A person with an account who came by the plan's one link (contract 6.9, `via: open`).
@@ -199,9 +204,9 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
         channel == .openLink && person != nil
     }
 
-    /// The name, the address, or "Text invite".
+    /// The name, the address (or the name a guest gave on a past plan), or "Text invite".
     var title: String {
-        person?.displayName ?? guest?.name ?? email ?? "Text invite"
+        person?.displayName ?? guest?.name ?? email ?? knownName ?? "Text invite"
     }
 }
 

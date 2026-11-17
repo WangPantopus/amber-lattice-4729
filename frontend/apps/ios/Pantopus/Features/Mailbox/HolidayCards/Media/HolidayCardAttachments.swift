@@ -33,6 +33,25 @@ final class HolidayCardAttachments {
         var stored: CardPhoto?
         /// Which upload this is, so an older one's answer never lands on a newer photo.
         var token = UUID()
+        /// A Live Photo: its moving part, made here with no metadata, and where its own upload stands. A still has none.
+        var live: Live?
+    }
+
+    /// A Live Photo's moving part beside its photo (contract section 13). It never holds the card up: if it can't be
+    /// stored the photo goes as a still, and the row says so.
+    struct Live {
+        enum Status: Equatable {
+            case uploading
+            case ready
+            /// It couldn't be stored: the photo goes as a still.
+            case failed
+        }
+
+        var status: Status
+        /// The bytes sent; empty on a draft brought back (they're stored already).
+        var clip: Data
+        /// Off: the person chose to send the photo as a still.
+        var sends = true
     }
 
     /// The card's own voice greeting (memories plan step 7): uploaded as soon as the recording stops.
@@ -61,6 +80,7 @@ final class HolidayCardAttachments {
     @ObservationIgnored private let uploader: MultipartUploader
 
     @ObservationIgnored private var voiceTask: Task<Void, Never>?
+    @ObservationIgnored private var liveTask: Task<Void, Never>?
 
     init(uploader: MultipartUploader = .shared) {
         self.uploader = uploader
@@ -76,6 +96,8 @@ final class HolidayCardAttachments {
             let alt = photoAlt.trimmingCharacters(in: .whitespacesAndNewlines)
             pick.photo = stored.fileId
             pick.photoAlt = alt.isEmpty ? nil : alt
+            // The moving part only once it's stored, and only while they send it as a Live Photo.
+            if let live = photo?.live, live.status == .ready, live.sends { pick.photoLive = stored.live?.fileId }
         }
         if let stored = voice?.stored, voice?.status == .ready { pick.voice = stored.fileId }
         return pick
@@ -88,6 +110,7 @@ final class HolidayCardAttachments {
         case .failed: return "The photo didn’t upload. Try again, or remove it."
         case .ready, nil: break
         }
+        if let live = photo?.live, live.sends, live.status == .uploading { return "Waiting for the Live Photo to finish uploading." }
         if recorder.recording { return "Stop the recording first." }
         switch voice?.status {
         case .uploading: return "Waiting for the greeting to finish uploading."
@@ -145,10 +168,18 @@ final class HolidayCardAttachments {
 
     /// A photo chosen in the system picker: made into an upright JPEG with no metadata here, then uploaded at once.
     /// What can't be read as a still picture goes as it is, so the server says why it can't take it.
-    func add(_ data: Data) {
+    func add(_ data: Data, live clip: Data? = nil) {
         uploadTask?.cancel()
+        liveTask?.cancel()
         let token = UUID()
-        photo = Photo(status: .uploading, upload: data, mimeType: "application/octet-stream", preview: nil, token: token)
+        photo = Photo(
+            status: .uploading,
+            upload: data,
+            mimeType: "application/octet-stream",
+            preview: nil,
+            token: token,
+            live: clip.map { Live(status: .uploading, clip: $0) }
+        )
         uploadTask = Task { [weak self] in
             // Drawing a 12-megapixel photo takes a moment: off the main thread.
             let made = await Task.detached(priority: .userInitiated) { Self.jpeg(from: data) }.value
@@ -175,8 +206,15 @@ final class HolidayCardAttachments {
     func remove() {
         uploadTask?.cancel()
         uploadTask = nil
+        liveTask?.cancel()
+        liveTask = nil
         photo = nil
         photoAlt = ""
+    }
+
+    /// "Send as a Live Photo" or "Send as a still photo": theirs to choose, since the moving part carries sound.
+    func setSendsLive(_ sends: Bool) {
+        photo?.live?.sends = sends
     }
 
     /// A draft brought back after the app was closed: its stored photo and greeting, by reference only. Nothing of their
@@ -184,7 +222,17 @@ final class HolidayCardAttachments {
     func restore(photo stored: CardPhoto?, alt: String, voice storedVoice: CardVoice?) {
         uploadTask?.cancel()
         voiceTask?.cancel()
-        photo = stored.map { Photo(status: .ready, upload: Data(), mimeType: "image/jpeg", progress: 1, stored: $0) }
+        liveTask?.cancel()
+        photo = stored.map {
+            Photo(
+                status: .ready,
+                upload: Data(),
+                mimeType: "image/jpeg",
+                progress: 1,
+                stored: $0,
+                live: $0.live == nil ? nil : Live(status: .ready, clip: Data())
+            )
+        }
         photoAlt = stored == nil ? "" : alt
         voice = storedVoice.map { Voice(status: .ready, upload: Data(), stored: $0) }
     }
@@ -235,6 +283,31 @@ final class HolidayCardAttachments {
         photo?.progress = 1
         if let bytes = photo?.upload, photo?.mimeType == "image/jpeg" {
             HolidayCardMediaStore.shared.keep(bytes, for: media.fileId)
+        }
+        uploadLive(token: token)
+    }
+
+    /// The Live Photo's moving part, once its photo is stored. A failure leaves the photo as a still.
+    private func uploadLive(token: UUID) {
+        guard let live = photo?.live, live.status == .uploading, !live.clip.isEmpty else { return }
+        let file = MultipartFile(fieldName: "file", filename: "live.mp4", mimeType: "video/mp4", data: live.clip)
+        let uploader = uploader
+        liveTask = Task { [weak self] in
+            let answer = try? await uploader.uploadHolidayCardMedia(kind: "live", file: file)
+            guard !Task.isCancelled, let self, photo?.token == token, let stored = photo?.stored else { return }
+            guard let media = answer?.media else {
+                photo?.live?.status = .failed
+                return
+            }
+            photo?.stored = CardPhoto(
+                fileId: stored.fileId,
+                width: stored.width,
+                height: stored.height,
+                alt: stored.alt,
+                live: CardLive(fileId: media.fileId, mimeType: "video/mp4", durationMs: media.durationMs)
+            )
+            photo?.live?.status = .ready
+            HolidayCardMediaStore.shared.keep(live.clip, for: media.fileId)
         }
     }
 
