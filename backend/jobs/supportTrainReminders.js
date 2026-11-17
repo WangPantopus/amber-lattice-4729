@@ -76,7 +76,7 @@ async function _send24hReminders() {
       .from('SupportTrainReservation')
       .select(`
         id, user_id, guest_name, guest_email, support_train_id, contribution_mode,
-        dish_title, restaurant_name, guest_address_shared_at, last_reminder_sent,
+        dish_title, restaurant_name, guest_address_shared_at, guest_email_confirmed_at, last_reminder_sent,
         SupportTrain:support_train_id ( delivery_lat, delivery_lng, status, Activity:activity_id(timezone) ),
         SupportTrainSlot:slot_id (
           id, slot_date, slot_label, support_mode, start_time, end_time, status
@@ -116,6 +116,7 @@ async function _send24hReminders() {
           dish_title: res.dish_title,
           restaurant_name: res.restaurant_name,
           guest_address_shared_at: res.guest_address_shared_at,
+          guest_email_confirmed: Boolean(res.guest_email_confirmed_at),
           slot_id: slot.id,
           slot_label: slot.slot_label,
           slot_date: slot.slot_date,
@@ -150,7 +151,7 @@ async function _sendDayOfReminders() {
       .from('SupportTrainReservation')
       .select(`
         id, user_id, guest_name, guest_email, support_train_id, contribution_mode,
-        dish_title, restaurant_name, guest_address_shared_at, day_of_reminder_sent_at,
+        dish_title, restaurant_name, guest_address_shared_at, guest_email_confirmed_at, day_of_reminder_sent_at,
         SupportTrain:support_train_id ( delivery_lat, delivery_lng, status, Activity:activity_id(timezone) ),
         SupportTrainSlot:slot_id (
           id, slot_date, slot_label, support_mode, start_time, end_time, status
@@ -199,6 +200,7 @@ async function _sendDayOfReminders() {
           dish_title: res.dish_title,
           restaurant_name: res.restaurant_name,
           guest_address_shared_at: res.guest_address_shared_at,
+          guest_email_confirmed: Boolean(res.guest_email_confirmed_at),
           slot_id: slot.id,
           slot_label: slot.slot_label,
           slot_date: slot.slot_date,
