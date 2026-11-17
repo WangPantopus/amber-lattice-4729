@@ -598,14 +598,14 @@ function emailedWithinDay(row) {
     || (row.channel === 'email' && row.email_status === 'sent' && after(row.created_at));
 }
 
-/** The words every guest email shares. */
+/** The words every guest email shares. While the plan picks its date they name none (08-extras section 2). */
 async function guestEmailWords(plan, row) {
   const hostFirst = await actions().hostFirstOf(plan);
   return {
     hostFirst,
     title: plan.post.title,
     icon: planNotify.ICON_BY_KIND[plan.kind] || '📅',
-    when: invites().dateText(plan),
+    when: (await require('./planDates').invitesWhilePicking(plan)) ? null : invites().dateText(plan),
     people: planNotify.peopleText(row.guest_adults, row.guest_kids, { and: true }),
   };
 }

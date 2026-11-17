@@ -475,11 +475,13 @@ async function cancelled({ plan, request, hostFirst, note, wasIn }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), {
     long: true, hideTime, dayPart: rules.dayPart(plan.post.event_date, rules.timezoneForPlan(plan)),
   });
+  // Still picking its date (08-extras section 2): no date, "Sam cancelled {title}." in place of "{when} is off.".
+  const picking = await require('./planDates').invitesWhilePicking(plan);
   return notify({
     userId: request.user_id,
     type: 'plan_cancelled',
     title: `${hostFirst} cancelled the ${noun(plan)}`,
-    body: note ? `“${note}”` : `${capitalized(when)} is off.`,
+    body: note ? `“${note}”` : picking ? `${hostFirst} cancelled ${plan.post.title}.` : `${capitalized(when)} is off.`,
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: wasIn,
