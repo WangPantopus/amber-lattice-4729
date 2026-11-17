@@ -71,7 +71,6 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.R
 import app.pantopus.android.data.moments.MomentHeight
 import app.pantopus.android.ui.screens.moments.components.MomentSelfFace
-import app.pantopus.android.ui.sky.SkyFloatingIcon
 import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevation
@@ -120,7 +119,7 @@ fun MomentsPostSheet(
     val venue = state.pickedVenue
     // "Don't show where": no pin, no map, connections only.
     val unplaced = state.noLocationOn
-    // Under the Sky the home has its own note ([SkyHomeNote]): the Moment floats there whatever is picked.
+    // Under the Sky the home has its own note ([SkyHomeNote]): the Moment shows only its area there whatever is picked.
     val atHome = !state.sky && state.place?.atHome == true && venue == null && !unplaced
     val density = LocalDensity.current
     val keyboardPx = WindowInsets.ime.getBottom(density)
@@ -149,11 +148,12 @@ fun MomentsPostSheet(
                 )
             }
             state.pin?.takeIf { !unplaced }?.let { pin ->
-                // The Sky: a floating Moment's map shows its area's disc around the area's own point.
+                // The Sky: at home the map shows the area's disc around the area's own point.
                 val disc = state.place?.area?.takeIf { state.sky && state.floats }
+                val atVenue = state.venuePoint(pin.latitude, pin.longitude)
                 PinMap(
-                    latitude = disc?.latitude ?: venue?.latitude ?: pin.latitude,
-                    longitude = disc?.longitude ?: venue?.longitude ?: pin.longitude,
+                    latitude = disc?.latitude ?: atVenue?.first ?: pin.latitude,
+                    longitude = disc?.longitude ?: atVenue?.second ?: pin.longitude,
                     area = state.floats,
                     avatarUrl = avatarUrl,
                     discRadiusM = disc?.radiusM,
@@ -487,23 +487,18 @@ private fun PlaceRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
-            if (state.showsFloatingIcon) {
-                // The Sky: a floating Moment's icon is the dashed circle with a dot in it.
-                SkyFloatingIcon(color = PantopusColors.primary600)
-            } else {
-                PantopusIconImage(
-                    icon =
-                        when {
-                            state.noLocationOn -> PantopusIcon.MapPinOff
-                            atHome && !state.showArea || state.skyAtHome -> PantopusIcon.Home
-                            else -> PantopusIcon.MapPin
-                        },
-                    contentDescription = null,
-                    size = 18.dp,
-                    strokeWidth = 2.2f,
-                    tint = PantopusColors.primary600,
-                )
-            }
+            PantopusIconImage(
+                icon =
+                    when {
+                        state.noLocationOn -> PantopusIcon.MapPinOff
+                        atHome && !state.showArea || state.skyAtHome -> PantopusIcon.Home
+                        else -> PantopusIcon.MapPin
+                    },
+                contentDescription = null,
+                size = 18.dp,
+                strokeWidth = 2.2f,
+                tint = PantopusColors.primary600,
+            )
             Text(
                 text = label,
                 fontSize = 15.5.sp,

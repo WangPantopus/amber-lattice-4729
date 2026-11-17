@@ -49,10 +49,11 @@ extension MomentsComposerModel {
     /// "Your home".
     var placeLine: String {
         if noLocationOn { return "No location" }
-        // The Sky: "At Esther Short Park", else "Around Washougal, WA".
+        // The Sky: "At Esther Short Park"; at home "Around Washougal, WA"; else the name of where it was taken.
         if let sky {
             if let skyPlaceName { return SkyWords.at(skyPlaceName) }
-            return SkyWords.floatingOver(sky.area?.label ?? place?.areaLabel ?? "this area")
+            if floats { return SkyWords.floatingOver(sky.area?.label ?? place?.areaLabel ?? "this area") }
+            return place?.placeLabel.isEmpty == false ? place?.placeLabel ?? "" : "Near you"
         }
         if showArea { return place?.areaLabel ?? place?.placeLabel ?? "This area" }
         if let pickedVenue { return pickedVenue.name }
@@ -85,10 +86,17 @@ extension MomentsComposerModel {
         sky == nil && place?.atHome == true && !showArea && pickedVenue == nil && !noLocationOn
     }
 
-    /// The pin the sheet's map shows: at the venue picked, else `basePin`.
+    /// The pin the sheet's map shows: at the venue picked, else `basePin`. Under the Sky a place whose own point is
+    /// farther off than a place may be picked (the middle of a big park the photo was taken in) names the Moment and
+    /// the pin stays where it was taken, as the server keeps it.
     var pin: CLLocationCoordinate2D? {
-        if let pickedVenue { return CLLocationCoordinate2D(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude) }
-        return basePin
+        guard let pickedVenue else { return basePin }
+        if sky != nil, let basePin {
+            let spot = CLLocation(latitude: basePin.latitude, longitude: basePin.longitude)
+            let far = CLLocation(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude).distance(from: spot)
+            if far > pickWithinM { return basePin }
+        }
+        return CLLocationCoordinate2D(latitude: pickedVenue.latitude, longitude: pickedVenue.longitude)
     }
 
     /// The venue that names the Moment: for an exact pin, while the pin is still the one it was picked around.
@@ -115,7 +123,8 @@ extension MomentsComposerModel {
         basePin == nil
     }
 
-    /// How far from the pin the picker's places may be (the server's number, else 1500 m).
+    /// How far from the pin the picker's places may be (the server's number, else 1500 m). Under the Sky the server
+    /// gives less where the spot is built up and more in open country.
     var pickWithinM: Double {
         place?.pickWithinM ?? 1500
     }

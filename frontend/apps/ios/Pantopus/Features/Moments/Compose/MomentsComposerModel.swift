@@ -81,7 +81,8 @@ final class MomentsComposerModel {
     var choseNoLocation = false
     /// "Show elevation" (board H1, `+Height`): the Moment says how high above sea level it was made.
     var showHeight = false
-    /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment floats.
+    /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
+    /// it was taken.
     var pinsAtPlace = false
     /// The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); nil posts now.
     var shareLaterKey: String?
@@ -201,7 +202,7 @@ final class MomentsComposerModel {
                 longitude: longitude
             ))
             place = reply
-            // A new spot starts floating again: a pin is always picked for the spot on the sheet.
+            // A new spot starts where it was taken: a place is always picked for the spot on the sheet.
             pinsAtPlace = false
             if let has = reply.hasConnections { hasConnections = has }
             // A picked name stays only while it still fits the pin.
@@ -405,7 +406,7 @@ final class MomentsComposerModel {
     func clearVenue() {
         venue = nil
         findsPlace = false
-        // The Sky: with no place picked the Moment floats again.
+        // The Sky: with no place picked the Moment is where it was taken again.
         pinsAtPlace = false
     }
 }

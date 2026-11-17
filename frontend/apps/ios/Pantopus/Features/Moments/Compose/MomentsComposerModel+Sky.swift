@@ -2,13 +2,13 @@
 //  MomentsComposerModel+Sky.swift
 //  Pantopus
 //
-//  The Sky's approximate places on the Post sheet (phase A, contract section
-//  10.1), only while the place preview answers `sky: true`: a Moment floats
-//  over its area by default ("Around Washougal, WA"); "Pin it at a
-//  place" pins it at a public place picked by name; at home it always floats
-//  and says so; "Share later" holds it until a time picked. The server decides
-//  again when it's posted. With no `sky` in the answer nothing here applies
-//  and the sheet is the one from before.
+//  The Sky's places on the Post sheet, only while the place preview answers
+//  `sky: true` (founder 2026-11-17): a Moment is where it was taken; "Pin it
+//  at a place" pins it at a public place close by, picked by name; at home it
+//  shows only its area ("Around Washougal, WA") and says so; "Share later"
+//  holds it until a time picked. The server decides again when it's posted.
+//  With no `sky` in the answer nothing here applies and the sheet is the one
+//  from before.
 //
 
 import CoreLocation
@@ -20,9 +20,10 @@ extension MomentsComposerModel {
         place?.sky
     }
 
-    /// The Moment floats over its area: under the Sky unless it pins at a place; before it, "Show the area instead".
+    /// The Moment shows only its area: under the Sky at home, where it never shows the spot; before it, "Show the
+    /// area instead".
     var floats: Bool {
-        sky == nil ? showArea : !pinsHere
+        sky == nil ? showArea : skyAtHome
     }
 
     /// The Sky: it pins at a public place. "Pin it at a place" is on, the spot isn't home, and there's a place: the
@@ -43,14 +44,14 @@ extension MomentsComposerModel {
         sky != nil && place?.atHome == true && !noLocationOn
     }
 
-    /// The disc the small map draws for a floating Moment: the area's own point and its radius.
+    /// The disc the small map draws for a Moment at home: the area's own point and its radius.
     var skyDisc: (center: CLLocationCoordinate2D, radiusM: Double)? {
         guard floats, let area = sky?.area else { return nil }
         return (CLLocationCoordinate2D(latitude: area.latitude, longitude: area.longitude), area.radiusM)
     }
 
     /// "Pin it at a place" switched: on uses the place that names the spot, else opens the place picker (a place
-    /// picked there turns it on); off, the Moment floats again.
+    /// picked there turns it on); off, the Moment is where it was taken again.
     func setPinAtPlace(_ on: Bool) {
         error = nil
         guard on else {
@@ -63,7 +64,7 @@ extension MomentsComposerModel {
     }
 
     /// The place picker lists only places that can take a pin: under the Sky, never a school or a preschool (call C9;
-    /// the server floats a Moment picked at one).
+    /// the server leaves a Moment picked at one where it was taken).
     func canPin(_ place: GeoPlace) -> Bool {
         sky == nil || !Self.notPinnable.contains(place.category ?? "")
     }

@@ -89,6 +89,8 @@ private sealed interface MomentItem {
         val tag: MomentTagSide? = null,
         /** Part D: the elevation it floats at by day (`MomentsFloat.kt`); null for a pin standing on its spot. */
         val float: MomentShownHeight? = null,
+        /** The Sky: its Moment shows only its area (made at home), so it floats low over its spot with no tail. */
+        val overArea: Boolean = false,
     ) : MomentItem {
         override val key: String get() = "ring:${ring.id}"
         override val latitude: Double get() = ring.latitude
@@ -172,7 +174,7 @@ fun MomentsMapOverlay(
                     when (item) {
                         is MomentItem.Single -> {
                             val height = item.ring.ring.shownHeight.takeIf { heights.shown }
-                            RingItem(item.ring, height, item.tag, item.float) { onRing(item.ring) }
+                            RingItem(item.ring, height, item.tag, item.float, item.overArea) { onRing(item.ring) }
                         }
                         is MomentItem.Group -> ClusterItem(item.rings) { onCluster(item.rings) }
                         is MomentItem.Posting -> PostingItem(item.posting, avatarUrl) { onPosting(item.posting) }
@@ -217,6 +219,7 @@ private class OverlaySpots(
     ): IntOffset {
         val single = item as? MomentItem.Single
         single?.float?.let { return floatTopLeft(point, width, single.tag, density.floatDiscPx(it), tagAbove) }
+        if (single?.overArea == true) return floatTopLeft(point, width, null, pinWidth, tagAbove)
         val anchorY = if (item is MomentItem.Group) clusterAnchor else pinAnchor
         // A pin with a height tag is bigger than its ring: the ring, not the pair, stands on the spot.
         val (ringMiddle, over) = single?.tag.ringIn(width, pinWidth, tagAbove)
@@ -230,23 +233,26 @@ private class OverlaySpots(
 /**
  * Part D: the floating pins' shadows on the map, under every pin, drawn from the camera as it is in the draw step, so
  * they move and turn with the map without recomposing. [camera] gives the map's projection and bearing (null before
- * the map is ready). Nothing is added while no pin floats.
+ * the map is ready). A pin over its area (a Moment made at home) has its own shadow right under it, whatever the hour.
+ * Nothing is added while no pin floats.
  */
 private fun Modifier.floatShadows(
     items: List<MomentItem>,
     sun: MomentSunDto?,
     camera: () -> Pair<Projection, Float>?,
 ): Modifier {
-    val floats = items.filterIsInstance<MomentItem.Single>().filter { it.float != null }
-    if (sun == null || floats.isEmpty()) return this
+    val singles = items.filterIsInstance<MomentItem.Single>()
+    val floats = singles.filter { (it.float != null && sun != null) || it.overArea }
+    if (floats.isEmpty()) return this
     return drawBehind {
         val (projection, bearing) = camera() ?: return@drawBehind
         floats.forEach { single ->
             val point = projection.toScreenLocation(LatLng(single.latitude, single.longitude))
             // As the pins: one off the map isn't drawn, and neither is its shadow.
             if (point.x !in 0..size.width.roundToInt() || point.y !in 0..size.height.roundToInt()) return@forEach
-            val height = single.float ?: return@forEach
-            drawFloatShadow(Offset(point.x.toFloat(), point.y.toFloat()), MomentsFloat.shadow(height, sun, bearing))
+            val height = single.float
+            val shadow = if (height != null && sun != null) MomentsFloat.shadow(height, sun, bearing) else MomentsFloat.AREA_SHADOW
+            drawFloatShadow(Offset(point.x.toFloat(), point.y.toFloat()), shadow)
         }
     }
 }
@@ -286,10 +292,16 @@ private fun RingItem(
     tag: MomentTagSide?,
     /** Part D: the elevation it floats at by day (`MomentsFloat.kt`); null stands on its spot as before. */
     float: MomentShownHeight?,
+    /** The Sky: its Moment shows only its area, so it floats low over its spot (`AreaRingItem`). */
+    overArea: Boolean,
     onTap: () -> Unit,
 ) {
     if (float != null) {
         FloatRingItem(ring, float, tag, onTap)
+        return
+    }
+    if (overArea) {
+        AreaRingItem(ring, onTap)
         return
     }
     // The tag is inside the ring's own tap, so a tap on it plays the ring as a tap on the pin does.
@@ -797,11 +809,25 @@ private fun buildItems(
     val standing = if (exact == zoom) positions else rings.associate { it.id to worldDp(it.latitude, it.longitude, exact) }
     if (heights.sun != null && heights.shown) {
         return floatItems(groups, singles, bubbles, posting, standing, exact, zoom, fontScale, heights, tagWidth, bearing)
+            .overAreas()
     }
     val taken = groups.map { frameOf(it, standing, zoom, fontScale) }
     val ordered = tagged(singles.sortedBy { it.ring.anyNew }, taken, exact, heights, tagWidth)
-    return bubbles + ordered + posting.map { MomentItem.Posting(it) }
+    return (bubbles + ordered + posting.map { MomentItem.Posting(it) }).overAreas()
 }
+
+/**
+ * The Sky: a single pin whose newest Moment shows only its area (made at home) floats low over its spot with no tail.
+ * One that already floats at its elevation, carries a height tag or is fanned round a shared spot stays as it is.
+ */
+private fun List<MomentItem>.overAreas(): List<MomentItem> =
+    map { item -> if (item is MomentItem.Single && item.floatsOverArea) item.copy(overArea = true) else item }
+
+private val MomentItem.Single.floatsOverArea: Boolean
+    get() {
+        val standing = float == null && tag == null && !fanned
+        return standing && ring.ring.floating
+    }
 
 /**
  * Part D, by day: each single pin with an elevation floats (fans and crowded spots don't), covers its disc for the

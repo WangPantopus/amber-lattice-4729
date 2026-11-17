@@ -1,15 +1,15 @@
 package app.pantopus.android.ui.screens.moments.compose
 
 import app.pantopus.android.data.api.models.moments.MomentShareLaterDto
+import app.pantopus.android.ui.screens.moments.map.metersBetween
 import app.pantopus.android.ui.sky.SkyWords
 import java.time.Instant
 
 /*
- * The Sky's approximate places on the Post sheet (phase A, contract section 10.1), only while the place preview answers
- * `sky: true`: a Moment floats over its area by default ("Around Washougal, WA"); "Pin it at a place" pins it at
- * a public place picked by name; at home it always floats and says so; "Share later" holds it until a time picked. The
- * server decides again when it's posted. With no `sky` in the answer nothing here applies and the sheet is the one from
- * before.
+ * The Sky's places on the Post sheet, only while the place preview answers `sky: true` (founder 2026-11-17): a Moment
+ * is where it was taken; "Pin it at a place" pins it at a public place close by, picked by name; at home it shows only
+ * its area ("Around Washougal, WA") and says so; "Share later" holds it until a time picked. The server decides again
+ * when it's posted. With no `sky` in the answer nothing here applies and the sheet is the one from before.
  */
 
 /** The preview answered `sky: true`: the sheet draws the Sky's rows. */
@@ -22,8 +22,8 @@ val MomentsComposeUiState.sky: Boolean get() = place?.sky == true
 val MomentsComposeUiState.pinsHere: Boolean
     get() = sky && pinsAtPlace && place?.canPin == true && !noLocationOn && (venue != null || place?.skyPlace != null)
 
-/** It floats over its area: under the Sky unless it pins at a place; before it, "Show the area instead". */
-val MomentsComposeUiState.floats: Boolean get() = if (sky) !pinsHere else showArea
+/** It shows only its area: under the Sky at home, where it never shows the spot; before it, "Show the area instead". */
+val MomentsComposeUiState.floats: Boolean get() = if (sky) skyAtHome else showArea
 
 /** The place's name while it pins at one: "Esther Short Park". */
 val MomentsComposeUiState.skyPlaceName: String? get() = if (pinsHere) venue?.name ?: place?.skyPlace?.label else null
@@ -37,9 +37,32 @@ val MomentsComposeUiState.skyAtHome: Boolean get() = sky && place?.atHome == tru
  */
 val MomentsComposeUiState.greysHeight: Boolean get() = skyAtHome
 
-/** The place row's words under the Sky: "At Esther Short Park", else "Around Washougal, WA". */
+/**
+ * The place row's words under the Sky: "At Esther Short Park"; at home "Around Washougal, WA"; else the name of where
+ * it was taken.
+ */
 val MomentsComposeUiState.skyLine: String
-    get() = skyPlaceName?.let(SkyWords::at) ?: SkyWords.floatingOver(place?.area?.label ?: place?.areaLabel ?: "this area")
+    get() =
+        skyPlaceName?.let(SkyWords::at)
+            ?: if (floats) {
+                SkyWords.floatingOver(place?.area?.label ?: place?.areaLabel ?: "this area")
+            } else {
+                place?.placeLabel?.takeIf { it.isNotBlank() } ?: "Where you are"
+            }
+
+/**
+ * Where the sheet's map shows a venue picked for a Moment taken at [latitude], [longitude]: at the venue, unless, under
+ * the Sky, its own point is farther off than a place may be picked (the middle of a big park the photo was taken in).
+ * Then the place names the Moment and the pin stays where it was taken, as the server keeps it.
+ */
+fun MomentsComposeUiState.venuePoint(
+    latitude: Double,
+    longitude: Double,
+): Pair<Double, Double>? =
+    pickedVenue?.let { picked ->
+        val far = sky && metersBetween(latitude, longitude, picked.latitude, picked.longitude) > pickWithinM
+        if (far) latitude to longitude else picked.latitude to picked.longitude
+    }
 
 /** The "Share later" times on offer now, from the preview. */
 val MomentsComposeUiState.shareLaterChoices: List<MomentShareLaterDto> get() = if (sky) place?.shareLater.orEmpty() else emptyList()
@@ -67,7 +90,7 @@ private const val HOUR_S = 3600L
 
 /**
  * The Sky's "Pin it at a place" switched: on uses the place that names the spot, else opens the place picker (a place
- * picked there turns it on); off, the Moment floats again.
+ * picked there turns it on); off, the Moment is where it was taken again.
  */
 fun MomentsComposeUiState.withPinAtPlace(on: Boolean): MomentsComposeUiState =
     when {
@@ -92,9 +115,6 @@ fun MomentsComposeUiState.skyRefused(code: String?): MomentsComposeUiState =
     } else {
         copy(notice = SkyWords.SHARE_TIME_PASSED)
     }
-
-/** The place row shows the floating icon (a dashed circle with a dot in it): a floating Moment, not at home. */
-val MomentsComposeUiState.showsFloatingIcon: Boolean get() = sky && floats && !noLocationOn && !skyAtHome
 
 /** The Sky's rows on the Post sheet: "Pin it at a place" switched, "Share later" switched, one of its times picked. */
 data class MomentsSkyActions(
