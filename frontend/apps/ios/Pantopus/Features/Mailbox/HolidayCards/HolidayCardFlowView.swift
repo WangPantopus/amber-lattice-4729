@@ -74,9 +74,18 @@ struct HolidayCardFlowView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.s3) {
                         content
-                        if postageOn, viewModel.step == .sent, viewModel.sent != nil || viewModel.listResults != nil {
-                            HolidayCardPaperButton(title: "Send another card", fullWidth: true) { viewModel.startOver() }
-                                .accessibilityIdentifier("sendAnotherCard")
+                        if viewModel.step == .sent, viewModel.sent != nil || viewModel.listResults != nil {
+                            if postageOn {
+                                HolidayCardPaperButton(title: "Send another card", fullWidth: true) { viewModel.startOver() }
+                                    .accessibilityIdentifier("sendAnotherCard")
+                            }
+                            // The fastest second card (experience plan Part 6).
+                            if viewModel.canSendAnother, viewModel.design != nil {
+                                HolidayCardPaperButton(title: "Send this card to someone else", fullWidth: true) {
+                                    viewModel.sendThisCardAgain()
+                                }
+                                .accessibilityIdentifier("sendThisCardAgain")
+                            }
                         }
                     }
                     .frame(maxWidth: 560)

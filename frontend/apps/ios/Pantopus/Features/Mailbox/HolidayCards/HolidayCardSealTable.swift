@@ -176,12 +176,13 @@ struct CardTableSendCover: ViewModifier {
         let share = CardTableMenuItem(title: "Share this card", identifier: "cardTableSendShare") { [weak model] in
             model?.isSharing = true
         }
+        let again = await sendAgain(viewModel)
         if let results = viewModel.listResults {
             let sent = results.filter { $0.card != nil }.count
             let words = sent == 1 ? "1 card on its way." : "\(sent) cards on their way."
-            return .sent(words: words, primary: "Done", buttons: [share])
+            return .sent(words: words, primary: "Done", buttons: [share] + again)
         }
-        guard let card = viewModel.sent else { return .sent(words: "On its way.", primary: "Done", buttons: [share]) }
+        guard let card = viewModel.sent else { return .sent(words: "On its way.", primary: "Done", buttons: [share] + again) }
         if card.byLink, let link = viewModel.sentLink {
             let from = HolidayCardWords.firstName(viewModel.fromName)
             let copy = CardTableMenuItem(title: "Copy link", identifier: "cardTableSendCopyLink") { [weak model] in
@@ -191,7 +192,7 @@ struct CardTableSendCover: ViewModifier {
             let shareLink = CardTableMenuItem(title: "Share", identifier: "cardTableSendShareLink") { [weak model] in
                 model?.linkShareText = "A Christmas card for you from \(from): \(link)"
             }
-            return .sent(words: "Your card is ready.", primary: "Done", buttons: [copy, shareLink])
+            return .sent(words: "Your card is ready.", primary: "Done", buttons: [copy, shareLink] + again)
         }
         let first = MailPieceModel.firstText(card.toName).map(HolidayCardWords.firstName) ?? "them"
         let lines = [HolidayCardWords.arrivalLine(card), HolidayCardWords.takeBackLine(card)].compactMap(\.self)
@@ -202,7 +203,20 @@ struct CardTableSendCover: ViewModifier {
             })
         }
         buttons.append(share)
-        return .sent(words: (["On its way to \(first)."] + lines).joined(separator: "\n"), primary: "Done", buttons: buttons)
+        return .sent(words: (["On its way to \(first)."] + lines).joined(separator: "\n"), primary: "Done", buttons: buttons + again)
+    }
+
+    /// "Send this card to someone else" under the sent card (experience plan Part 6), when another card can go now: the
+    /// table goes, and the flow starts again at Who it's for with the same picture.
+    @MainActor
+    private static func sendAgain(_ viewModel: HolidayCardFlowViewModel) async -> [CardTableMenuItem] {
+        if viewModel.cards?.postageEnabled == true { await viewModel.stamps.refresh() }
+        guard viewModel.canSendAnother, viewModel.design != nil else { return [] }
+        let again = CardTableMenuItem(title: "Send this card to someone else", identifier: "cardTableSendAgain") { [viewModel] in
+            viewModel.sealsAtTable = false
+            viewModel.sendThisCardAgain()
+        }
+        return [again]
     }
 }
 

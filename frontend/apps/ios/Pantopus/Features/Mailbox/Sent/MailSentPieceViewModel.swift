@@ -40,6 +40,9 @@ final class MailSentPieceViewModel {
     /// was given up on says its stamp comes back when it's taken back.
     private(set) var postage: Bool
     private var didReadPostage = false
+    /// Another card can go now (a stamp left, or without stamps today's card not used): "Send this card to someone
+    /// else" shows (experience plan Part 6).
+    private(set) var canSendAnother = false
 
     private let api: APIClient
 
@@ -69,6 +72,7 @@ final class MailSentPieceViewModel {
             let detail: MailSentDetail = try await HolidayCardFlowViewModel.answer(MailSentEndpoints.piece(id: id), api: api)
             state = .loaded(detail.item)
             if detail.item.emailStatus == .failed { await readPostageOnce() }
+            if !detail.item.isLetter { await readCanSendAnother() }
         } catch {
             let sentence = HolidayCardFlowViewModel.refusal(
                 error,
@@ -82,6 +86,16 @@ final class MailSentPieceViewModel {
             guard piece == nil else { return }
             state = .error(message: sentence)
         }
+    }
+
+    /// Whether another card can go now; a failure hides the button.
+    private func readCanSendAnother() async {
+        let cards: HolidayCardsResponse? = try? await api.request(HolidayCardEndpoints.cards())
+        guard let cards, cards.open else {
+            canSendAnother = false
+            return
+        }
+        canSendAnother = cards.postageEnabled ? (cards.stamps?.available ?? 0) > 0 : HolidayCardWords.today(cards) == nil
     }
 
     /// After "Take your card back?". True when it's gone; too late, the
