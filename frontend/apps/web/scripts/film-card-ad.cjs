@@ -1086,6 +1086,38 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
         console.log(`end card  ${bounds(union)}`);
       }
       await context.close();
+    } else if (process.argv.includes('--bars-sheet')) {
+      // The platforms' bars over a finished tall cut (from --out) at each of its words and its end card: one row a
+      // platform, one column a moment, for the safe-area check on the frames that ship.
+      const name = argument('cut', 'main');
+      const cut = SHOTS.cuts[name];
+      const shape = SHAPES.tall;
+      const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+      const base = path.join(out, `cards-ad-${name}${/^\d+$/.test(name) ? 's' : ''}-tall`);
+      const times = [...cut.words.map(([a, b]) => (a + b) / 2), ...(cut.end ? [cut.end.full + 0.6] : [])];
+      const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
+      const bars = [];
+      for (const platform of ['meta', 'tiktok', 'youtube']) bars.push(await drawOverlay(context, shape, barsHtml(platform)));
+      await context.close();
+      const [tw, th, lab, gap] = [270, 480, 26, 4];
+      const tiles = [];
+      for (const [col, t] of times.entries()) {
+        const grab = spawnSync('ffmpeg', ['-v', 'error', '-ss', t.toFixed(3), '-i', `${base}.mp4`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { maxBuffer: w * h * 4 });
+        if (grab.status !== 0 || grab.stdout.length !== w * h * 3) throw new Error(`no frame at ${t} s in ${base}.mp4`);
+        for (const [row, overlay] of bars.entries()) {
+          const mixed = Buffer.from(grab.stdout);
+          for (let p = 0, q = 0; p < mixed.length; p += 3, q += 4) {
+            const a = overlay[q + 3] / 255;
+            if (a > 0) for (let c = 0; c < 3; c += 1) mixed[p + c] = Math.round(mixed[p + c] * (1 - a) + overlay[q + c] * a);
+          }
+          tiles.push({ input: await sharp(mixed, { raw: { width: w, height: h, channels: 3 } }).resize(tw, th).png().toBuffer(), left: gap + col * (tw + gap), top: lab + row * (th + gap) });
+        }
+        tiles.push({ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="${lab}"><text x="2" y="18" font-family="Helvetica" font-size="16" fill="#ddd">${t.toFixed(2)} s</text></svg>`), left: gap + col * (tw + gap), top: 0 });
+      }
+      const sheet = `${base}-bars.jpg`;
+      await sharp({ create: { width: gap + times.length * (tw + gap), height: lab + bars.length * (th + gap), channels: 3, background: '#111' } })
+        .composite(tiles).jpeg({ quality: 88 }).toFile(sheet);
+      console.log(sheet);
     } else if (process.argv.includes('--stills')) {
       const made = await stills({ browser, server: server.url, shapeName, work, out, art });
       console.log(`${made.length} stills in ${out}`);
