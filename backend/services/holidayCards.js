@@ -400,9 +400,12 @@ function mediaView(mail, sealed) {
   const media = sealed ? null : (mail.card_media || mediaOf(mail.object_payload));
   const photo = media?.photo?.file_id ? media.photo : null;
   const voice = media?.voice?.file_id ? media.voice : null;
+  // A Live Photo's moving part rides its photo (kind `live`, founder November 16): covered whenever the photo is.
+  const live = photo && media?.live?.file_id ? media.live : null;
   return {
     photo: photo ? { file_id: photo.file_id, width: photo.width ?? null, height: photo.height ?? null, alt: photo.alt || null,
-      covered: mail.card_photo_covered !== false } : null,
+      covered: mail.card_photo_covered !== false,
+      live: live ? { file_id: live.file_id, mime_type: live.mime_type || null, duration_ms: live.duration_ms ?? null } : null } : null,
     voice: voice ? { file_id: voice.file_id, duration_ms: voice.duration_ms ?? null } : null,
   };
 }

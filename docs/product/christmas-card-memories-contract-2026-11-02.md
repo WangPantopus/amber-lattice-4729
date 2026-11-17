@@ -92,9 +92,11 @@ The three reply routes need `mailbox` and `holiday_card_memories`, never `holida
 **A card on a piece.** `piece.card` (`holidayCards.cardView`) keeps every field it has today and adds:
 
 ```text
-card.photo   { file_id, width, height, alt, covered } | null
+card.photo   { file_id, width, height, alt, covered, live } | null
 card.voice   { file_id, duration_ms } | null
 ```
+
+`card.photo.live` is `{ file_id, mime_type, duration_ms }` when the photo is a Live Photo, else null (section 13).
 
 Both are null while the card is sealed or not yet delivered, and nothing about them appears then (no size, length, name or link). `covered` is set for the reader (section 10).
 
@@ -243,3 +245,17 @@ Resolve and dismiss work as today. Someone has to work the queue promptly; Apple
 
 - Personal media and reply content stay out of invite emails, public claim pages, push previews, summaries, analytics and operational logs. Logs carry ids, never file names or signed links.
 - A sealed or pending piece never leaks a thumbnail, duration, file name or link through any route, Look it over and Sent excepted for its author.
+
+## 13. Live Photos (founder, November 16)
+
+The founder asked that a Live Photo attached to a card plays for the person who gets it, as Live Photos do in Pulse and chat. It needs no new table and no new launch key: it is on wherever `holiday_card_memories` is.
+
+- **What it is.** A third kind of card media, `live`: the few seconds of video an iPhone keeps with a Live Photo. It goes on a card only beside its photo. The photo is still stored as a still (section 3), so every app and every older build shows the card as before.
+- **Limits.** MP4 or QuickTime, at most 15 MiB and 10 seconds. A longer video is refused with 413 `CARD_LIVE_TOO_LONG`, a larger one with 413 `CARD_LIVE_TOO_LARGE`, and anything that isn't such a clip with 415 `CARD_LIVE_UNREADABLE`. Each refusal says the card can still go with the photo as a still.
+- **Stored as it came.** Nothing is re-encoded. Its location, camera and title tags are blanked in place by `services/videoMetadata`, the cleaner posts and chats use. Its sound stays. The row has `metadata.kind: 'live'` and `metadata.duration_ms`.
+- **Upload.** `POST /api/mailbox/cards/media` with `kind: 'live'`. `GET /api/mailbox/cards` adds `media.photo.live: { usable, max_bytes, max_seconds }`, so an app offers it only where the server takes it.
+- **Send.** `POST /api/mailbox/cards` (and `/cards/preview`) take `photo_live`, the clip's file id, beside `photo`. Without `photo` the send is refused with 400 `CARD_LIVE_NEEDS_PHOTO`. It is checked like the photo (the sender's own upload, within its 72 hours, on no other card) and counts in the request digest only when present, so every other card's digest is unchanged. It needs the bought stamp the photo already needs, and no more.
+- **Read.** `card.photo.live` on an opened card, Look it over and Sent's detail. Its bytes come from the same three media routes as the photo's, with byte ranges. It is never readable before delivery, while sealed, by anyone but the card's two people, or after a block that came before delivery.
+- **Covered.** When the photo is covered (section 10), the apps fetch neither the photo nor its clip until the tap.
+- **Keeping.** Taking back, a block, account deletion and the nightly cleanup treat it as they treat the photo: they act on every file of the card.
+- **Playing.** Press and hold the opened photo, or its LIVE button. The iPhone and Android apps play it with its sound, as Pulse does; the web plays it muted, as browsers require.
