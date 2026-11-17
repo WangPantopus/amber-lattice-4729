@@ -93,7 +93,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | The bill at the place, tips (B5) | 4222 | **not started** | 4267 |
 | A tip after a paid plan (B6) | 4223 | **not started** | 4268 |
 | The same people again | 4234 | 4284 | **not started** |
-| Chip in | 4235 | **not started** | **not started** |
+| Chip in | 4235 | 4294 | **not started** |
 | Find a date | 4237, 4245 | **not started** | **not started** |
 | Gift exchange | 4239 | **not started** | **not started** |
 | Photos afterwards | 4242, 4249 | **not started** | **not started** |

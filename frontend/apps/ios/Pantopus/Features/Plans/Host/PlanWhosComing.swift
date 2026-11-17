@@ -221,7 +221,7 @@ struct PlanWhosComingScreen: View {
     }
 
     /// An account's row opens its profile; a guest's, an address's or a text invite's is plain.
-    @ViewBuilder private func personRow(_ row: PlanWhoRow) -> some View {
+    @ViewBuilder private func personRowMain(_ row: PlanWhoRow) -> some View {
         let content = HStack(spacing: Spacing.s3) {
             leading(row)
             words(row)
@@ -239,8 +239,12 @@ struct PlanWhosComingScreen: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .contextMenu { removeButton(row) }
+        .contextMenu {
+            if row.chipIn?.paid == true { Button("Not paid") { Task { await model.markPaid(row, paid: false) } } }
+            removeButton(row)
+        }
         .accessibilityActions {
+            if row.chipIn?.paid == true { Button("Not paid") { Task { await model.markPaid(row, paid: false) } } }
             if row.canRemove { Button("Remove \(row.name)") { model.confirmRemove = row } }
         }
         .accessibilityIdentifier("planWhoRow")
@@ -325,6 +329,26 @@ struct PlanWhosComingScreen: View {
             ToastView(message: ToastMessage(text: toast))
                 .padding(.bottom, 96)
                 .dismissToast(after: toast, minimum: 2.5) { model.toast = nil }
+        }
+    }
+}
+
+// MARK: - Chip in
+
+extension PlanWhosComingScreen {
+    /// A row, with chip in's "Mark paid" on the right of someone who is in and hasn't marked it (08-extras section 3).
+    func personRow(_ row: PlanWhoRow) -> some View {
+        HStack(spacing: 0) {
+            personRowMain(row)
+            if let chipIn = row.chipIn, !chipIn.paid {
+                Button("Mark paid") { Task { await model.markPaid(row, paid: true) } }
+                    .planButton(.text, size: .small)
+                    .fixedSize()
+                    .padding(.trailing, Spacing.s2)
+                    .disabled(model.working.contains(row.id))
+                    .accessibilityLabel("Mark \(row.name) paid")
+                    .accessibilityIdentifier("planWhoMarkPaid")
+            }
         }
     }
 }

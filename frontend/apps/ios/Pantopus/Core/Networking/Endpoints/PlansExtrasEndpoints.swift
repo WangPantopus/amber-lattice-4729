@@ -31,4 +31,21 @@ public extension PlansEndpoints {
     static func inviteFromPlan(planId: String, _ body: PlanFromPlanBody) -> Endpoint {
         Endpoint(method: .post, path: "\(base)/\(planId)/invites/from-plan", query: biz(), body: body)
     }
+
+    // MARK: - Chip in (`plans_chip_in`)
+
+    /// `POST /api/plans/:id/chip-in/paid` — "I've paid" for the caller, or the host's "Mark paid" with `who`
+    /// (`p:<user id>` / `g:<guest id>`); answers `{ chip_in }`. 403 `not_in` / `not_host`, 409 `ended`.
+    /// Route `backend/routes/plans.js` (`/:id/chip-in/paid`), `planChipIn.mark`.
+    static func markChipIn(planId: String, who: String? = nil) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/chip-in/paid", query: biz(), body: PlanChipInMarkBody(who: who))
+    }
+
+    /// `DELETE /api/plans/:id/chip-in/paid` — "Undo", or the host unmarking `who` (`?who=`); answers `{ chip_in }`.
+    /// Route `backend/routes/plans.js` (`/:id/chip-in/paid`), `planChipIn.unmark`.
+    static func unmarkChipIn(planId: String, who: String? = nil) -> Endpoint {
+        var query: [String: String] = [:]
+        if let who { query["who"] = who }
+        return Endpoint(method: .delete, path: "\(base)/\(planId)/chip-in/paid", query: biz(query))
+    }
 }

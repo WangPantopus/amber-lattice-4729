@@ -155,12 +155,15 @@ public struct CreatePlanBody: Encodable, Sendable {
     /// B5: guests pay their bill here, and take tips (left out: the server's start for the kind).
     public var payHere: Bool?
     public var tipsOn: Bool?
+    /// The extras (08-extras): chip in. Left out unless the host switched it on (`plans_chip_in`).
+    public var chipIn: PlanChipInBody?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
         case priceCents = "price_cents"
         case payHere = "pay_here"
         case tipsOn = "tips_on"
+        case chipIn = "chip_in"
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
@@ -231,12 +234,15 @@ public struct UpdatePlanBody: Encodable, Sendable {
     /// B5: guests pay their bill here, and take tips; any time (contract 10.2).
     public var payHere: Bool?
     public var tipsOn: Bool?
+    /// The extras: chip in changed (who paid is kept), or `.remove` (sent as `null`, who paid is forgotten).
+    public var chipIn: PlanChipInChange?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
         case priceCents = "price_cents"
         case payHere = "pay_here"
         case tipsOn = "tips_on"
+        case chipIn = "chip_in"
         case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"
