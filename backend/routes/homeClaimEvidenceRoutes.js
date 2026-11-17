@@ -66,6 +66,12 @@ module.exports = function registerHomeClaimEvidenceRoutes(router, { verifyToken,
     } catch (error) { evidence.sendError(res, error); }
   });
   router.delete('/home-claim-evidence/:homeId/:claimId/:evidenceId', verifyToken, expectedScope, async (req, res) => {
-    try { res.json({ evidence: await evidence.remove(args(req)) }); } catch (error) { evidence.sendError(res, error); }
+    try {
+      const removed = await evidence.remove(args(req));
+      // A deleted residency document can't be reviewed any more: a Verified mark its bill read gave comes off with it
+      // (FASTVERIFY; it stays while another document of theirs for this Home is still in review).
+      await require('../services/fastCheck/billCheck').billWithdrawn({ homeId: req.params.homeId, claimId: req.params.claimId });
+      res.json({ evidence: removed });
+    } catch (error) { evidence.sendError(res, error); }
   });
 };

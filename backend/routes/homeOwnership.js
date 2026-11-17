@@ -2533,12 +2533,20 @@ async function mayRequestPostcard(homeId, userId) {
 const postcardNoStore = (_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); };
 const postcardRequests = require('../services/homePostcardRequestService');
 const postalRecheckService = require('../services/addressValidation/postalRecheckService');
+// "This wasn't me" (FASTVERIFY): while Pantopus looks into a card this person asked for here and someone at the
+// address reported, no other card goes to that address for them ("their claim is held until the case is resolved").
+// The words are the reported card's own, so nothing says who reported it. No report, no hold: one small read. If the
+// cases can't be read, the card waits (as homeFastCheckService does for the fast checks).
+async function reportedCardHold(homeId, userId) {
+  const open = await require('../services/addressValidation/addressReviewService').postcardReportOpen(homeId, userId).catch(() => true);
+  return open ? { code: 'POSTCARD_NO_LONGER_AVAILABLE', message: require('../utils/homePostcardErrors').MESSAGES.POSTCARD_NO_LONGER_AVAILABLE } : null;
+}
 router.post('/:id/postcard-requests', postcardNoStore, verifyToken, homePostcardRequestLimiter, async (req, res) => {
   try {
     if (!req.body || Object.keys(req.body).some(key => !['request_id', 'address'].includes(key))) {
       return res.status(400).json({ code: 'POSTCARD_REQUEST_INVALID', error: 'Check the mailing address and apartment before continuing.' });
     }
-    const postalHold = await postalRecheckService.holdForHome(req.params.id);
+    const postalHold = await postalRecheckService.holdForHome(req.params.id) || await reportedCardHold(req.params.id, req.user.id);
     if (postalHold) return res.status(409).json({ code: postalHold.code, error: postalHold.message });
     postcardRequests.send(res, await postcardRequests.submit({ homeId: req.params.id, actorId: req.user.id,
       requestId: req.body.request_id, address: req.body.address }));
@@ -2555,7 +2563,8 @@ router.post('/:id/postcard-requests/:requestId/cancel', postcardNoStore, verifyT
 router.get('/:id/postcard-status', postcardNoStore, verifyToken, async (req, res) => {
   try {
     const status = await postcardRequests.current({ homeId: req.params.id, actorId: req.user.id });
-    const postalHold = status.can_request ? await postalRecheckService.holdForHome(req.params.id) : null;
+    const postalHold = status.can_request
+      ? await postalRecheckService.holdForHome(req.params.id) || await reportedCardHold(req.params.id, req.user.id) : null;
     res.status(200).json(postalRecheckService.applyHoldToPostcardStatus(status, postalHold));
   }
   catch (error) { postcardRequests.sendError(res, error); }

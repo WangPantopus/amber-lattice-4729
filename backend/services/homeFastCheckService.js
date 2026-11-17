@@ -86,10 +86,14 @@ async function countTry(kind, status, reasons = []) {
 
 // ── Per-person limits: HomeAuditLog rows FAST_CHECK_TRIED (kind in metadata, never a number) ─────────────────────
 
-/** Write a FAST_CHECK_TRIED row for this person. `ref` is a short keyed hash (phone), never the number. */
-async function logTry({ homeId, userId, kind, step = 'check', ref = null }) {
+/**
+ * Write a FAST_CHECK_TRIED row for this person. `ref` is a short keyed hash (phone), never the number. `accuracyM`
+ * (location) is the reading's accuracy in whole meters, never the coordinates.
+ */
+async function logTry({ homeId, userId, kind, step = 'check', ref = null, accuracyM = null }) {
   const metadata = { kind, step };
   if (ref) metadata.ref = ref;
+  if (Number.isFinite(accuracyM) && accuracyM >= 0) metadata.accuracy_m = Math.round(accuracyM);
   const { error } = await db.from('HomeAuditLog').insert({
     home_id: homeId, actor_user_id: userId, action: 'FAST_CHECK_TRIED', target_type: 'HomeOccupancy', target_id: null, metadata,
   });
@@ -268,6 +272,8 @@ async function verifyOptions({ homeId, user, platform = null }) {
     && !nonResident && !(await claimSetAside(homeId, userId).catch(() => true));
 
   const elsewhere = claim ? await fastCheckedElsewhere(userId, homeId) : null;
+  // A card this person asked for here was reported ("This wasn't me"): fast checks and another card wait for Pantopus.
+  const reported = !proven && !nonResident && await reportedHere(homeId, userId);
   const options = [];
   for (const id of OPTION_ORDER) {
     let reason = null;
@@ -276,7 +282,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'location' && platform !== 'ios' && platform !== 'android') reason = 'APP_ONLY';
       else if (!claim) reason = 'NEEDS_CLAIM';
       else if (elsewhere) reason = 'ONE_HOME';
-      else if (await reportedHere(homeId, userId)) reason = 'IN_REVIEW';
+      else if (reported) reason = 'IN_REVIEW';
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
       // eslint-disable-next-line global-require
       else if (id === 'location' && !require('./fastCheck/locationCheck').ready(platform)) reason = 'UNAVAILABLE';
@@ -286,6 +292,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
       // eslint-disable-next-line global-require
       const mailVendorService = require('./addressValidation/mailVendorService');
       if (proven || nonResident || !mailVendorService.canSendPostcards()) reason = 'UNAVAILABLE';
+      else if (reported) reason = 'IN_REVIEW';
     } else if (id === 'landlord') {
       if (proven || nonResident || !(await landlordDoor(homeId, userId))) reason = 'UNAVAILABLE';
     }
