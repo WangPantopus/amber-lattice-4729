@@ -2600,6 +2600,13 @@ public struct HubTabRoot: View {
                 onVerifyHome: { homeId in showVerifyHome(homeId) },
                 onSendCard: { userId, name in
                     Task { @MainActor in push(.christmasCards(toUserId: userId, toName: name)) }
+                },
+                // "Open the next card": the next card's page takes this one's place, so ✕ still returns to the Mailbox.
+                onOpenNextCard: { nextId in
+                    Task { @MainActor in
+                        if !path.isEmpty { path.removeLast() }
+                        push(.mailItemDetail(mailId: nextId))
+                    }
                 }
             )
             // A link that swaps one open letter for another gets a fresh page,
