@@ -1767,6 +1767,8 @@ const CARD_MEDIA_FIELDS = {
   photo: Joi.string().uuid().allow(null),
   photo_alt: Joi.string().allow('', null).max(800),
   voice: Joi.string().uuid().allow(null),
+  // A Live Photo's moving part (kind `live` from POST /cards/media), beside `photo`.
+  photo_live: Joi.string().uuid().allow(null),
 };
 const sendCardSchema = Joi.object({
   use_stamp: Joi.boolean(),
@@ -1787,7 +1789,7 @@ const sendCardSchema = Joi.object({
   // The card's own photo and voice (launch key holiday_card_memories): file ids from POST /cards/media, and the photo's
   // description for screen readers. A card with them always carries its request ID, which ties them to the card.
   ...CARD_MEDIA_FIELDS,
-}).with('photo', 'request_id').with('voice', 'request_id');
+}).with('photo', 'request_id').with('voice', 'request_id').with('photo_live', 'request_id');
 
 // A list (POST /cards/batch and its look): the same picture, note and choice of arrival for up to 20 people or
 // addresses, each with a request ID of its own. No links: a link is one card for whoever opens it.
@@ -2364,26 +2366,34 @@ const cardMediaLimiter = rateLimit({
   keyGenerator: (req) => `card-media-${req.user?.id}`,
   message: { error: 'Too many at once. Try again later.', code: 'CARD_MEDIA_LIMIT' },
 });
-// Held in memory: a photo is at most 10 MiB as it comes, and is read whole to be made into the card's copy.
+// Held in memory: a photo is at most 10 MiB as it comes (a Live Photo's moving part 15), and is read whole to be made
+// into the card's copy. Each kind's own limit is checked again once its kind is read.
 const cardMediaParts = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: cardMedia.PHOTO.max_bytes, files: 1, fields: 4, parts: 6, fieldSize: 256 },
+  limits: { fileSize: Math.max(cardMedia.PHOTO.max_bytes, cardMedia.LIVE.max_bytes), files: 1, fields: 4, parts: 6, fieldSize: 256 },
 }).single('file');
 const cardMediaInvalid = (res) => res.status(400)
-  .json({ error: 'Send one photo or voice greeting as "file", with its kind.', code: 'CARD_MEDIA_INVALID' });
-const cardMediaTooLarge = (res, kind) => (kind === 'voice'
-  ? res.status(413).json({ error: 'This recording is too large. Record a shorter greeting.', code: 'CARD_VOICE_TOO_LARGE' })
-  : res.status(413).json({ error: cardMedia.photoTooLarge().message, code: 'CARD_PHOTO_TOO_LARGE' }));
+  .json({ error: 'Send one photo, Live Photo clip or voice greeting as "file", with its kind.', code: 'CARD_MEDIA_INVALID' });
+const cardMediaTooLarge = (res, kind) => {
+  if (kind === 'voice') {
+    return res.status(413).json({ error: 'This recording is too large. Record a shorter greeting.', code: 'CARD_VOICE_TOO_LARGE' });
+  }
+  const tooLarge = kind === 'live' ? cardMedia.liveTooLarge() : cardMedia.photoTooLarge();
+  return res.status(413).json({ error: tooLarge.message, code: tooLarge.code });
+};
 
 /**
- * POST /api/mailbox/cards/media  multipart: `file` and `kind` (photo | voice)
- * Adds a photo or a voice greeting for a card the sender is writing. A photo is stored as the card keeps it: upright, at
- * most 1600 px on its long side, a JPEG with no metadata (the original is never kept). A voice greeting is AAC-LC in an
- * ordinary or fragmented MP4, at most 5 MiB and 60 seconds, stored as it came with its metadata boxes blanked; its
- * length is read from the file (`duration_ms`, which the apps show). Answers 201 { media, expires_at }: `media` as a
- * send names it (file_id, kind, mime_type, size, width and height, or duration_ms), sendable by its uploader until
- * `expires_at` (72 hours). Refusals: 415 CARD_PHOTO_UNREADABLE / CARD_PHOTO_NOT_STILL, 413 CARD_PHOTO_TOO_LARGE, 415
- * CARD_VOICE_UNREADABLE (WebM, Ogg, MP3, video, damaged), 413 CARD_VOICE_TOO_LONG / CARD_VOICE_TOO_LARGE, 503
+ * POST /api/mailbox/cards/media  multipart: `file` and `kind` (photo | voice | live)
+ * Adds a photo, a Live Photo's moving part or a voice greeting for a card the sender is writing. A photo is stored as
+ * the card keeps it: upright, at most 1600 px on its long side, a JPEG with no metadata (the original is never kept). A
+ * voice greeting is AAC-LC in an ordinary or fragmented MP4, at most 5 MiB and 60 seconds, stored as it came with its
+ * metadata boxes blanked; its length is read from the file (`duration_ms`, which the apps show). A Live Photo's moving
+ * part (`live`, founder November 16) is an MP4 or QuickTime clip of at most 15 MiB and 10 seconds, stored as it came
+ * with its location, camera and title tags blanked; a send names it as `photo_live`, beside its `photo`. Answers 201
+ * { media, expires_at }: `media` as a send names it (file_id, kind, mime_type, size, width and height, or duration_ms),
+ * sendable by its uploader until `expires_at` (72 hours). Refusals: 415 CARD_PHOTO_UNREADABLE / CARD_PHOTO_NOT_STILL,
+ * 413 CARD_PHOTO_TOO_LARGE, 415 CARD_VOICE_UNREADABLE (WebM, Ogg, MP3, video, damaged), 413 CARD_VOICE_TOO_LONG /
+ * CARD_VOICE_TOO_LARGE, 415 CARD_LIVE_UNREADABLE, 413 CARD_LIVE_TOO_LONG / CARD_LIVE_TOO_LARGE, 503
  * CARD_MEDIA_UNAVAILABLE.
  */
 router.post('/cards/media', verifyToken, cardMediaLimiter, (req, res, next) => {
@@ -2396,8 +2406,17 @@ router.post('/cards/media', verifyToken, cardMediaLimiter, (req, res, next) => {
 }, async (req, res) => {
   const userId = req.user.id;
   const kind = String(req.body?.kind || '');
-  if (!['photo', 'voice'].includes(kind) || !req.file?.buffer?.length) return cardMediaInvalid(res);
+  if (!['photo', 'voice', 'live'].includes(kind) || !req.file?.buffer?.length) return cardMediaInvalid(res);
   try {
+    if (kind === 'live') {
+      // A Live Photo's few seconds of video, stored as it came with its tags blanked (services/holidayCardMedia cardLive).
+      if (req.file.buffer.length > cardMedia.LIVE.max_bytes) return cardMediaTooLarge(res, 'live');
+      const clip = await cardMedia.cardLive(req.file.buffer);
+      const { file } = await cardMedia.storeUpload({ userId, kind, buffer: clip.buffer, mimeType: clip.mimeType, ext: clip.ext,
+        facts: { duration_ms: clip.durationMs } });
+      logMailEvent('holiday_card_media_added', null, userId, { kind });
+      return res.status(201).json({ media: cardMedia.mediaRef(file), expires_at: cardMedia.expiresAt(file) });
+    }
     if (kind === 'voice') {
       if (!cardMedia.voiceOn()) {
         return res.status(403).json({ error: 'Voice greetings on cards aren’t open yet.', code: 'CARD_MEDIA_OFF' });
@@ -2410,6 +2429,7 @@ router.post('/cards/media', verifyToken, cardMediaLimiter, (req, res, next) => {
       logMailEvent('holiday_card_media_added', null, userId, { kind });
       return res.status(201).json({ media: cardMedia.mediaRef(file), expires_at: cardMedia.expiresAt(file) });
     }
+    if (req.file.buffer.length > cardMedia.PHOTO.max_bytes) return cardMediaTooLarge(res, 'photo');
     const photo = await cardMedia.cardPhoto(req.file.buffer, req.file.mimetype);
     const { file } = await cardMedia.storeUpload({ userId, kind, buffer: photo.buffer, mimeType: 'image/jpeg',
       facts: { width: photo.width, height: photo.height } });
@@ -2679,7 +2699,7 @@ async function storeCard({ senderId, checked, requestId, rowId, digest, now, lis
   }
 
   const onList = listSize ? { listSize } : {};
-  const withMedia = media ? { withPhoto: Boolean(media.photo), withVoice: Boolean(media.voice) } : {};
+  const withMedia = media ? { withPhoto: Boolean(media.photo), withVoice: Boolean(media.voice), withLive: Boolean(media.live) } : {};
   logMailEvent('holiday_card_sent', mail.id, senderId, { design: design.id, arrival, byEmail: Boolean(toEmail), ...(byLink ? { byLink } : {}), ...onList, ...withMedia });
   logger.info('Christmas card sent', { mailId: mail.id, senderId, arrival, byEmail: Boolean(toEmail), byLink, ...onList });
   return { status: 201, body: cardAnswer(mail, now) };
