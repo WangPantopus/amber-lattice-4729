@@ -89,4 +89,18 @@ public extension PlansEndpoints {
     static func drawGift(planId: String) -> Endpoint {
         Endpoint(method: .post, path: "\(base)/\(planId)/gift/draw", query: biz())
     }
+
+    // MARK: - Photos afterwards (`plans_photos`, with a private bucket and the picture check)
+
+    /// `GET /api/plans/:id/photos` — the grid, with links signed for `expires_in` seconds (never cache them). 403
+    /// `not_in`, 409 `not_over`. Route `backend/routes/plans.js` (`/:id/photos`), `planPhotos.list`.
+    static func planPhotos(planId: String) -> Endpoint {
+        Endpoint(method: .get, path: "\(base)/\(planId)/photos", query: biz())
+    }
+
+    /// `DELETE /api/plans/:id/photos/:photoId` (whoever added it, or the host) — answers the grid. 403 `not_yours`.
+    /// Route `backend/routes/plans.js` (`/:id/photos/:photoId`), `planPhotos.remove`.
+    static func removePlanPhoto(planId: String, photoId: String) -> Endpoint {
+        Endpoint(method: .delete, path: "\(base)/\(planId)/photos/\(photoId)", query: biz())
+    }
 }
