@@ -138,9 +138,10 @@ extension CardTableModel {
         }
     }
 
-    /// Where the open Duo's pages must end: above the buttons when one can show under them (plan 1.7).
+    /// Where the open Duo's pages must end: above the buttons when one can show under them (plan 1.7), or when the
+    /// hint is a link to read ("Read it in print", "Read the verse").
     func pagesBottomRoom(_ layout: CardTableLayout) -> CGFloat? {
-        reservesSecondary ? layout.bottomControls + 12 : nil
+        reservesSecondary || hintLink != nil || printIsButton ? layout.bottomControls + 12 : nil
     }
 
     /// Once the card is on the table.
