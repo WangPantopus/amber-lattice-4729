@@ -7,8 +7,9 @@
 // sessions, routing and delivery records) go with it, and tasks, map pins,
 // Mail Day pieces, earnings, community items and mail events keep their
 // rows with the letter link cleared.
-// A Christmas card a person sent stays: it stays in its sender's Sent after
-// the other person shreds it (founder decision 2026-10-30). For them it's gone
+// A Christmas card a person sent stays, and so does a reply to one (memories
+// contract section 11): it stays in its sender's Sent after the other person
+// shreds it (founder decision 2026-10-30). For them it's gone
 // all the same: Recently shredded and restore stop at 30 days, and it no
 // longer opens (homeMailAccess.restoreWindowOver). A deleted account's mail
 // still goes with the account.
@@ -18,12 +19,12 @@
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { MAIL_RESTORE_DAYS } = require('../utils/homeMailAccess');
-const { CARD_TAG } = require('../services/holidayCards');
+const { CARD_TAG, REPLY_TAG } = require('../services/holidayCards');
 
 const BATCH_SIZE = 200;
 const MAX_BATCHES = 50;
-// Everything but a card a person sent (sender_user_id set and the card tag).
-const NOT_A_SENT_CARD = `sender_user_id.is.null,tags.is.null,tags.not.cs.{${CARD_TAG}}`;
+// Everything but a card or a reply a person sent (sender_user_id set and either tag).
+const NOT_A_SENT_CARD = `sender_user_id.is.null,tags.is.null,tags.not.ov.{${CARD_TAG},${REPLY_TAG}}`;
 
 /** The deleted letters the job erases: deleted before `cutoff`, except the cards people sent. */
 function duePurge(cutoff) {

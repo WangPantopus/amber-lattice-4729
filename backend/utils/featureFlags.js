@@ -72,6 +72,7 @@ const LAUNCH_FEATURE_KEYS = [
   'holiday_card_memories', // 14. A card's own photo and voice greeting (memories plan 2026-11-02, built 2026-11-10); needs `mailbox` on too
   'card_note_help', // 15. "Help me write it" on a Christmas card: three AI-written notes to pick from and edit (2026-11-11); needs `mailbox` and `holiday_cards` on too
   'card_share_video', // 16. Sharing a Christmas card as a video of it arriving (2026-11-14): one film per picture, never a note or a name; needs `mailbox`, `holiday_cards` and `card_table` on too
+  'card_replies', // 17. "Write back to {first name}": one reply to a Christmas card, note only (founder's D4, 2026-11-17); server only, needs `mailbox` and `holiday_card_memories` on too
 ];
 
 function isLaunchFeatureEnabled(key) {

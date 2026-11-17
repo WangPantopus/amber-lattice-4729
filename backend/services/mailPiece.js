@@ -106,6 +106,8 @@ function present(mail, { timeZone = FALLBACK_TIME_ZONE } = {}) {
     summary: summaryOf(mail),
     // A Christmas card: its picture, caption and year, and whether it's still sealed (services/holidayCards).
     card: holidayCards.cardView(mail),
+    // A reply to one (card_replies): the card it answers, drawn on the same picture; null on anything else.
+    card_reply: holidayCards.replyView(mail),
   };
 }
 
