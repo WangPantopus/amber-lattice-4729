@@ -27,6 +27,7 @@ import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
 import app.pantopus.android.ui.screens.plans.host.DEAL_PREVIEW_DEBOUNCE_MS
 import app.pantopus.android.ui.screens.plans.host.DealDraft
+import app.pantopus.android.ui.screens.plans.host.DealPlanFacts
 import app.pantopus.android.ui.screens.plans.host.DealPreviewState
 import app.pantopus.android.ui.screens.plans.host.DealScope
 import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
@@ -537,7 +538,8 @@ class PlanChangeViewModel
         private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
             val ui = _ui.value
             val business = ui.business ?: return null
-            val body = dealPreviewBody(business, ui.deal.draft, ui.plan?.spots ?: 0, ui.start, ui.zone) ?: return null
+            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents)
+            val body = dealPreviewBody(business, ui.deal.draft, facts, ui.zone) ?: return null
             _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = true, failed = null))) }
             return when (val result = repository.dealPreview(body)) {
                 is NetworkResult.Success -> {

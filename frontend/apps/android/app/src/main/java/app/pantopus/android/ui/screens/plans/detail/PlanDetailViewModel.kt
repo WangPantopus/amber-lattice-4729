@@ -495,6 +495,15 @@ class PlanDetailViewModel
             _ui.update { it.copy(askOpen = false) }
         }
 
+        /** Business track B2: P1 finished: in (the reveal), or the server's sentence (it filled while paying). */
+        fun paidDone(
+            reveal: Boolean,
+            notice: String?,
+        ) {
+            _ui.update { it.copy(askOpen = false, reveal = reveal || it.reveal, notice = notice ?: it.notice) }
+            viewModelScope.launch { read() }
+        }
+
         fun editAsk(transform: (AskDraft) -> AskDraft) {
             _ui.update { it.copy(ask = transform(it.ask).copy(error = null)) }
         }

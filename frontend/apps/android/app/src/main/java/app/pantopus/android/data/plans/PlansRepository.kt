@@ -34,6 +34,8 @@ import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanQuoteBody
+import app.pantopus.android.data.api.models.plans.PlanQuoteDto
 import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
@@ -453,6 +455,15 @@ class PlansRepository
         ): NetworkResult<Unit> = safeApiCall(surfaceForbiddenBody = true) { api.report(id, PlanReportBody(reason)) }
 
         suspend fun withdraw(id: String): NetworkResult<Unit> = write(id, chats = true) { api.withdraw(id) }
+
+        /** Business track B2: P1's amounts for a party (the server multiplies; the app never does). */
+        suspend fun quote(
+            id: String,
+            body: PlanQuoteBody,
+        ): NetworkResult<PlanQuoteDto> = safeApiCall { api.quote(id, body) }
+
+        /** Business track B2: the payment sheet closed; the server lets the guest in once the payment went through. */
+        suspend fun confirmMine(id: String): NetworkResult<PlanDto> = write(id, chats = true) { api.confirmMine(id) }
 
         suspend fun requests(id: String): NetworkResult<PlanRequestsResponse> =
             safeApiCall(

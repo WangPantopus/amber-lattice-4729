@@ -199,6 +199,7 @@ const val PLAN_FREE = "Free"
  * "What guests see" (boards B2 preview and B3): a business's plan as its card reads, label and "Free", title, when and
  * spots, and its place with the street address (public for a business's plan).
  */
+@Suppress("LongParameterList")
 @Composable
 fun PlanGuestsSeeCard(
     kind: PlanKind,
@@ -208,6 +209,8 @@ fun PlanGuestsSeeCard(
     spots: Int,
     place: String,
     modifier: Modifier = Modifier,
+    /** Business track B2: the price's chip ("$18"); "Free" without one. */
+    price: String = PLAN_FREE,
 ) {
     Column(
         modifier = modifier.fillMaxWidth().planCard().padding(Spacing.s4).semantics(mergeDescendants = true) {},
@@ -216,7 +219,7 @@ fun PlanGuestsSeeCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlanTypeTag(kind, label = label)
             Spacer(modifier = Modifier.weight(1f))
-            PlanPriceChip()
+            PlanPriceChip(text = price)
         }
         Text(text = title, style = PantopusTextStyle.h3, color = PantopusColors.appText)
         Text(

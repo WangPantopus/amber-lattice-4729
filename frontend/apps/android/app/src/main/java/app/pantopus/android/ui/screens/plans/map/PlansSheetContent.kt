@@ -153,8 +153,8 @@ private fun spotsEnd(plan: PlanDto): PlanRowEnd =
     when {
         // One tag a row (business track B1, settled): the deal's tag before the price or "Free".
         plan.isBusiness && !plan.isFull && !plan.deal?.tag.isNullOrBlank() -> PlanRowEnd.Deal(plan.deal?.tag.orEmpty())
-        // "Free" in step 2 (no price exists yet).
-        plan.isBusiness && !plan.isFull -> if (plan.price == null) PlanRowEnd.Price(PLAN_FREE) else PlanRowEnd.None
+        // The price's chip ("$18", business track B2), else "Free".
+        plan.isBusiness && !plan.isFull -> PlanRowEnd.Price(plan.price?.text?.takeIf(String::isNotBlank) ?: PLAN_FREE)
         plan.planState == PlanState.LIVE -> PlanRowEnd.Note("${plan.goingCount} going")
         plan.isFull -> PlanRowEnd.Note("Full")
         plan.spotsLeft == 1 -> PlanRowEnd.Note("1 spot")
@@ -1271,6 +1271,8 @@ internal fun PlanPostedBusinessContent(
                 whenText = PlanFormat.whenLine(plan, long = true),
                 spots = plan.spots,
                 place = listOfNotNull(plan.place?.name, plan.place?.address).joinToString(" · "),
+                // Business track B2: the price's chip ("$18"), the server's words; "Free" without one.
+                price = plan.price?.text?.takeIf(String::isNotBlank) ?: PLAN_FREE,
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {

@@ -153,6 +153,8 @@ private fun ColumnScope.BusinessFields(
         range = 1..business.limits.spotsMax,
         onChange = { value -> vm.edit { it.copy(spots = value) } },
     )
+    // Business track B2: "Price a spot", while the business's switch is on.
+    if (ui.showsPrice) BusinessPriceField(ui, vm)
     PlanField(label = "Who gets in") {
         PlanSegmented(
             options = listOf(WHO_OPEN to "Right away", WHO_APPROVE to "I approve each"),

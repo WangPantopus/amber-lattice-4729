@@ -18,8 +18,75 @@ import java.time.ZoneId
  * how it's claimed), and any field the server refuses comes back with its own sentence.
  */
 
-/** "Something free" (B1's one kind); the money kinds come with B4 and B5. */
+/** "Something free" (B1's one kind); the money kinds come with B4 (on a priced spot) and B5 (on the bill). */
 const val DEAL_FREE_ITEM = "free_item"
+
+/** B4: "Percent off" (5 to 50) and "Dollars off" (cents). */
+const val DEAL_PERCENT = "percent"
+const val DEAL_AMOUNT = "amount"
+
+/** B4: "On" is "The spot" on a priced plan (the bill's targets come with B5). */
+const val DEAL_ON_SPOT = "spot"
+
+/** A percent off starts at 10, from 5 to 50. */
+const val DEAL_PERCENT_START = 10
+val DEAL_PERCENT_RANGE = 5..50
+
+/** Cents from what was typed in dollars ("18", "18.50", "$4"); null when it isn't an amount. */
+fun centsOf(dollars: String): Int? {
+    val text = dollars.trim().removePrefix("$").trim()
+    if (text.isEmpty()) return null
+    val amount = text.toBigDecimalOrNull() ?: return null
+    if (amount.signum() < 0 || amount.scale() > 2) return null
+    return runCatching { amount.movePointRight(2).intValueExact() }.getOrNull()
+}
+
+/**
+ * One part of a deal: the deal itself, or the smaller one everyone gets if a group deal falls short. Something free
+ * names its [item]; money off the spot (B4) is a [percent] or [dollars] typed in.
+ */
+data class DealPart(
+    val kind: String = DEAL_FREE_ITEM,
+    /** "What is it?" for something free: "appetizer for the table" ("A free" is the server's). */
+    val item: String = "",
+    val percent: Int = DEAL_PERCENT_START,
+    val dollars: String = "",
+) {
+    /** What the server takes as `value`: the percent, or the cents typed; none for something free. */
+    val value: Int?
+        get() =
+            when (kind) {
+                DEAL_PERCENT -> percent
+                DEAL_AMOUNT -> centsOf(dollars)
+                else -> null
+            }
+
+    /** `applies_to`: "The spot" for money off (B4); none for something free. */
+    val appliesTo: String? get() = if (kind == DEAL_PERCENT || kind == DEAL_AMOUNT) DEAL_ON_SPOT else null
+
+    /** `item` for something free; none for money off. */
+    val itemOrNull: String? get() = if (kind == DEAL_FREE_ITEM) item.trim() else null
+
+    companion object {
+        /** A part as the server sends it back in the staff's form (`kind`, `item`, `value`). */
+        fun of(
+            kind: String?,
+            item: String?,
+            value: Int?,
+        ): DealPart =
+            when (kind) {
+                DEAL_PERCENT -> DealPart(kind = DEAL_PERCENT, percent = value ?: DEAL_PERCENT_START)
+                DEAL_AMOUNT -> DealPart(kind = DEAL_AMOUNT, dollars = value?.let(::dollarsOf).orEmpty())
+                else -> DealPart(kind = DEAL_FREE_ITEM, item = item.orEmpty())
+            }
+
+        /** "4" or "4.50" for cents, to fill the field again. */
+        private fun dollarsOf(cents: Int): String =
+            if (cents % CENTS == 0) "${cents / CENTS}" else "%d.%02d".format(cents / CENTS, cents % CENTS)
+
+        private const val CENTS = 100
+    }
+}
 
 /** The most a "What is it?" may hold (the server's limit). */
 const val DEAL_ITEM_MAX = 40
@@ -36,33 +103,42 @@ enum class DealScope(
 /** D3's form as the business fills it in. Every guest-facing word comes from deal-preview, not from this. */
 data class DealDraft(
     val scope: DealScope = DealScope.NONE,
-    val kind: String = DEAL_FREE_ITEM,
-    /** "What is it?" for something free: "appetizer for the table" ("A free" is the server's). */
-    val item: String = "",
+    /** What they get. */
+    val main: DealPart = DealPart(),
     /** A group deal: how many people must be in. */
     val groupSize: Int = 2,
     /** A group deal: by when (in the plan's zone). */
     val groupBy: LocalDateTime? = null,
     /** "If it doesn't unlock": false = "The plan still happens", true = "Give a smaller deal anyway". */
     val smaller: Boolean = false,
-    val smallerKind: String = DEAL_FREE_ITEM,
-    val smallerItem: String = "",
+    /** The smaller deal everyone gets anyway (the same family as [main]: free after free, money after money). */
+    val fallback: DealPart = DealPart(),
 ) {
     /** The deal as the server takes it, or null for "No deal". */
-    fun toInput(zone: ZoneId): PlanDealInput? =
-        when (scope) {
-            DealScope.NONE -> null
-            DealScope.EVERYONE -> PlanDealInput(scope = scope.wire, kind = kind, item = item.trim())
-            DealScope.GROUP ->
-                PlanDealInput(
-                    scope = scope.wire,
-                    kind = kind,
-                    item = item.trim(),
-                    groupSize = groupSize,
-                    groupBy = groupBy?.atZone(zone)?.toInstant()?.toString(),
-                    ifShort = if (smaller) PlanDealIfShortDto(kind = smallerKind, item = smallerItem.trim()) else null,
-                )
-        }
+    fun toInput(zone: ZoneId): PlanDealInput? {
+        if (scope == DealScope.NONE) return null
+        val group = scope == DealScope.GROUP
+        return PlanDealInput(
+            scope = scope.wire,
+            kind = main.kind,
+            item = main.itemOrNull,
+            value = main.value,
+            appliesTo = main.appliesTo,
+            groupSize = groupSize.takeIf { group },
+            groupBy = groupBy?.atZone(zone)?.toInstant()?.toString()?.takeIf { group },
+            ifShort =
+                if (group && smaller) {
+                    PlanDealIfShortDto(
+                        kind = fallback.kind,
+                        item = fallback.itemOrNull,
+                        value = fallback.value,
+                        appliesTo = fallback.appliesTo,
+                    )
+                } else {
+                    null
+                },
+        )
+    }
 
     companion object {
         /**
@@ -88,13 +164,11 @@ data class DealDraft(
             val smaller = form.ifShort
             return DealDraft(
                 scope = scope,
-                kind = form.kind ?: DEAL_FREE_ITEM,
-                item = form.item.orEmpty(),
+                main = DealPart.of(form.kind, form.item, form.value),
                 groupSize = form.groupSize ?: MIN_GROUP,
                 groupBy = PlanFormat.instant(form.groupBy)?.atZone(zone)?.toLocalDateTime(),
                 smaller = smaller != null,
-                smallerKind = smaller?.kind ?: DEAL_FREE_ITEM,
-                smallerItem = smaller?.item.orEmpty(),
+                fallback = smaller?.let { DealPart.of(it.kind, it.item, it.value) } ?: DealPart(),
             )
         }
 
@@ -135,18 +209,33 @@ data class DealPreviewState(
 /** Whether the business can add a deal to its plan (host-as `can.deals`, contract 9.2). */
 val HostAsBusinessDto.takesDeals: Boolean get() = can?.deals == true
 
-/** deal-preview's body for [draft] on a plan of [spots] starting at [start] (in [zone]); null for "No deal". */
+/**
+ * deal-preview's body for [draft] on a plan of [spots] starting at [start] (in [zone]), with the spot's price in cents
+ * when it has one (B4: money off the spot); null for "No deal".
+ */
 internal fun dealPreviewBody(
     business: HostAsBusinessDto,
     draft: DealDraft,
-    spots: Int,
-    start: LocalDateTime?,
+    plan: DealPlanFacts,
     zone: ZoneId,
 ): PlanDealPreviewBody? {
     val deal = draft.toInput(zone) ?: return null
-    val startsAt = start?.atZone(zone)?.toInstant()?.toString() ?: return null
-    return PlanDealPreviewBody(businessUserId = business.userId, deal = deal, spots = spots, startsAt = startsAt)
+    val startsAt = plan.start?.atZone(zone)?.toInstant()?.toString() ?: return null
+    return PlanDealPreviewBody(
+        businessUserId = business.userId,
+        deal = deal,
+        spots = plan.spots,
+        startsAt = startsAt,
+        priceCents = plan.priceCents,
+    )
 }
+
+/** What deal-preview needs to know about the plan: its spots, its start, and a spot's price (B4). */
+data class DealPlanFacts(
+    val spots: Int,
+    val start: LocalDateTime?,
+    val priceCents: Int? = null,
+)
 
 /** How long the form waits after the last edit before asking the server again. */
 const val DEAL_PREVIEW_DEBOUNCE_MS = 400L
@@ -156,4 +245,4 @@ const val DEAL_STEPS = 4
 const val PLAIN_STEPS = 3
 
 /** The fields a refused deal names: they belong under the deal step's controls. */
-val DEAL_FIELDS = setOf("deal", "scope", "kind", "item", "group_size", "group_by", "if_short")
+val DEAL_FIELDS = setOf("deal", "scope", "kind", "item", "value", "applies_to", "group_size", "group_by", "if_short")

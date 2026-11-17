@@ -501,6 +501,7 @@ private fun HostDealStep(
                     ),
                 preview = ui.dealPreview,
                 onEdit = viewModel::editDeal,
+                priced = ui.priceCents != null,
             )
         }
     }

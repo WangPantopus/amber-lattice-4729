@@ -36,6 +36,8 @@ import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanQuoteBody
+import app.pantopus.android.data.api.models.plans.PlanQuoteDto
 import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
@@ -206,6 +208,19 @@ interface PlansApi {
         @Path("id") id: String,
         @Path("requestId") requestId: String,
     ): PlanDealUsedResponse
+
+    /** `POST /api/plans/:id/requests/quote` (business track B2): P1's amounts for a party; no side effect. */
+    @POST("api/plans/{id}/requests/quote")
+    suspend fun quote(
+        @Path("id") id: String,
+        @Body body: PlanQuoteBody,
+    ): PlanQuoteDto
+
+    /** `POST /api/plans/:id/requests/mine/confirm` (business track B2): the payment sheet closed; in once it went through. */
+    @POST("api/plans/{id}/requests/mine/confirm")
+    suspend fun confirmMine(
+        @Path("id") id: String,
+    ): PlanDto
 
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")

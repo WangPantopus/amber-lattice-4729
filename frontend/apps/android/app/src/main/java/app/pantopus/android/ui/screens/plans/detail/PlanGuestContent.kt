@@ -297,8 +297,10 @@ internal fun ColumnScope.PlanBeforeInBody(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PlanInfoLine(PantopusIcon.Users, PlanFormat.howPeopleGetIn(plan))
-            // Plans for the holidays: a plan with kids welcome doesn't say it's for adults.
-            PlanInfoLine(PantopusIcon.ShieldCheck, if (plan.takesKids) "Free, and kids are welcome" else "Free, and for adults")
+            // Plans for the holidays: a plan with kids welcome doesn't say it's for adults. A price (business track B2)
+            // reads the server's line in place of "Free" ("$18 a person, and for adults").
+            val cost = plan.price?.line?.takeIf(String::isNotBlank) ?: "Free"
+            PlanInfoLine(PantopusIcon.ShieldCheck, if (plan.takesKids) "$cost, and kids are welcome" else "$cost, and for adults")
         }
     }
 }
@@ -333,7 +335,8 @@ internal fun askFooter(plan: PlanDto): AskFooter {
                 enabled = true,
                 caption =
                     when {
-                        // A business's plan with a deal (D1 item 5): the server's line under "Join".
+                        // A priced plan (B2, G28): the price's line under "Join"; with a deal (D1 item 5), the deal's.
+                        plan.isBusiness && !plan.hostApproves && !plan.price?.joinText.isNullOrBlank() -> plan.price?.joinText
                         plan.isBusiness && !plan.hostApproves && !plan.deal?.joinText.isNullOrBlank() -> plan.deal?.joinText
                         // A business's plan (board G3): "Join", in right away; or the business approves each person.
                         plan.isBusiness && !plan.hostApproves -> "You're in right away. No approval needed."

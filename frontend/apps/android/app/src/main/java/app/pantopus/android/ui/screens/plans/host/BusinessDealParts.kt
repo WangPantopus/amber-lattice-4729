@@ -1,12 +1,15 @@
 package app.pantopus.android.ui.screens.plans.host
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
 import app.pantopus.android.ui.screens.plans.components.PlanBusinessShape
@@ -59,14 +63,16 @@ internal fun ColumnScope.BusinessDealForm(
     planLine: DealPlanLine,
     preview: DealPreviewState,
     onEdit: ((DealDraft) -> DealDraft) -> Unit,
+    /** B4: the plan has a price the business can charge, so money off "The spot" is offered. */
+    priced: Boolean = false,
 ) {
-    // Live answers don't flag a "What is it?" nobody has typed in yet; "Preview" (or "Done") shows every error.
+    // Live answers don't flag a field nobody has filled in yet; "Preview" (or "Done") shows every error.
     val errors =
         if (preview.checked) {
             preview.errors
         } else {
             preview.errors.filterKeys { key ->
-                !(key == "item" && draft.item.isBlank()) && !(key == "if_short" && draft.smaller && draft.smallerItem.isBlank())
+                !(key in PART_FIELDS && draft.main.isBlank()) && !(key == "if_short" && draft.smaller && draft.fallback.isBlank())
             }
         }
     DealPlanHeader(planLine)
@@ -74,12 +80,11 @@ internal fun ColumnScope.BusinessDealForm(
     if (draft.scope == DealScope.NONE) return
     DealWhatField(
         label = "What they get",
-        kind = draft.kind,
-        item = draft.item,
+        part = draft.main,
+        kinds = dealKinds(priced),
         smaller = false,
-        errors = errors["kind"] to errors["item"],
-        onKind = { kind -> onEdit { it.copy(kind = kind) } },
-        onItem = { text -> onEdit { it.copy(item = text.take(DEAL_ITEM_MAX)) } },
+        errors = errors,
+        onPart = { change -> onEdit { it.copy(main = change(it.main)) } },
     )
     if (draft.scope == DealScope.GROUP) {
         DealUnlocksField(draft, spots, errors, onEdit)
@@ -111,7 +116,7 @@ private fun DealScopeField(
     onEdit: ((DealDraft) -> DealDraft) -> Unit,
 ) {
     // Something free is claimed at the place; money off is taken when they pay (B4, B5).
-    val everyoneCaption = if (draft.kind == DEAL_FREE_ITEM) "Each guest gets it there" else "Each guest gets it when they pay"
+    val everyoneCaption = if (draft.main.kind == DEAL_FREE_ITEM) "Each guest gets it there" else "Each guest gets it when they pay"
     PlanField(label = "Deal") {
         PlanFormCard(modifier = Modifier.selectableGroup()) {
             DealRadioRow(
@@ -144,42 +149,131 @@ private fun DealScopeField(
 }
 
 /**
- * "What they get" and "How much": in B1, "Something free" and "What is it?". Used for the smaller deal too ([smaller]).
- * [errors] is the kind's error and the item's.
+ * "What they get" and "How much": "Something free" with "What is it?", or (B4, on a priced plan) "Percent off" (5 to 50)
+ * or "Dollars off" (an amount) on "The spot". Used for the smaller deal too ([smaller]). [errors] are the server's, by
+ * field.
  */
 @Composable
 private fun DealWhatField(
     label: String,
-    kind: String,
-    item: String,
+    part: DealPart,
+    kinds: List<PlanChoice>,
     smaller: Boolean,
-    errors: Pair<String?, String?>,
-    onKind: (String) -> Unit,
-    onItem: (String) -> Unit,
+    errors: Map<String, String>,
+    onPart: ((DealPart) -> DealPart) -> Unit,
 ) {
-    val (kindError, itemError) = errors
+    val prefix = if (smaller) "planDealSmaller" else "planDeal"
     PlanField(label = label) {
         PlanChoiceGroup(
-            choices = listOf(PlanChoice(DEAL_FREE_ITEM, "Something free")),
-            isSelected = { it.id == kind },
-            onSelect = { onKind(it.id) },
-            tagPrefix = if (smaller) "planDealSmallerKind" else "planDealKind",
+            choices = kinds,
+            isSelected = { it.id == part.kind },
+            onSelect = { choice -> onPart { it.copy(kind = choice.id) } },
+            tagPrefix = "${prefix}Kind",
         )
-        DealFieldError(kindError)
+        if (!smaller) DealFieldError(errors["kind"])
     }
-    if (kind == DEAL_FREE_ITEM) {
-        PlanField(label = "What is it?", modifier = Modifier.testTag(if (smaller) "planDealSmallerItem" else "planDealItem")) {
+    // The smaller deal's errors all come back under `if_short`.
+    val itemError = if (smaller) errors["if_short"] else errors["item"]
+    val valueError = if (smaller) errors["if_short"] else errors["value"] ?: errors["applies_to"]
+    if (part.kind == DEAL_FREE_ITEM) {
+        PlanField(label = "What is it?", modifier = Modifier.testTag("${prefix}Item")) {
             PlanTextArea(
-                value = item,
-                onValue = onItem,
+                value = part.item,
+                onValue = { text -> onPart { it.copy(item = text.take(DEAL_ITEM_MAX)) } },
                 placeholder = "appetizer for the table",
                 label = "What is it?",
                 singleLine = true,
             )
             DealFieldError(itemError)
         }
+    } else {
+        DealHowMuch(part, prefix, valueError, onPart)
     }
 }
+
+/** B4's "How much" and "On": a percent (5 to 50) or dollars off, on "The spot". */
+@Composable
+private fun DealHowMuch(
+    part: DealPart,
+    prefix: String,
+    error: String?,
+    onPart: ((DealPart) -> DealPart) -> Unit,
+) {
+    PlanField(label = "How much") {
+        PlanFormCard {
+            PlanOptionRow(first = true, modifier = Modifier.testTag("${prefix}Value")) {
+                Text(
+                    text = if (part.kind == DEAL_PERCENT) "Percent off" else "Dollars off",
+                    style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.appText,
+                    modifier = Modifier.weight(1f),
+                )
+                if (part.kind == DEAL_PERCENT) {
+                    PlanStepperControl(
+                        value = part.percent.coerceIn(DEAL_PERCENT_RANGE),
+                        range = DEAL_PERCENT_RANGE,
+                        label = "Percent off",
+                        onChange = { value -> onPart { it.copy(percent = value) } },
+                        holdStep = PERCENT_HOLD_STEP,
+                    )
+                    Text(text = "%", style = PantopusTextStyle.body, color = PantopusColors.appText)
+                } else {
+                    Text(text = "$", style = PantopusTextStyle.body, color = PantopusColors.appText)
+                    Box(modifier = Modifier.width(DOLLARS_FIELD_WIDTH)) {
+                        PlanTextArea(
+                            value = part.dollars,
+                            onValue = { text -> onPart { it.copy(dollars = amountTyped(text, DOLLARS_MAX)) } },
+                            placeholder = "4",
+                            label = "Dollars off",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                    }
+                }
+            }
+            PlanOptionRow {
+                Text(text = "On", style = PantopusTextStyle.body, color = PantopusColors.appText, modifier = Modifier.weight(1f))
+                Text(
+                    text = "The spot",
+                    style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.appText,
+                )
+            }
+        }
+        DealFieldError(error)
+    }
+}
+
+/** The kinds a deal may be: "Something free", and on a priced plan (B4) "Percent off" and "Dollars off". */
+private fun dealKinds(priced: Boolean): List<PlanChoice> =
+    buildList {
+        if (priced) {
+            add(PlanChoice(DEAL_PERCENT, "Percent off"))
+            add(PlanChoice(DEAL_AMOUNT, "Dollars off"))
+        }
+        add(PlanChoice(DEAL_FREE_ITEM, "Something free"))
+    }
+
+/** A smaller deal is the same family as the deal: free after free, money after money (the server's rule). */
+private fun smallerKinds(main: DealPart): List<PlanChoice> =
+    if (main.kind == DEAL_FREE_ITEM) {
+        listOf(PlanChoice(DEAL_FREE_ITEM, "Something free"))
+    } else {
+        listOf(PlanChoice(DEAL_PERCENT, "Percent off"), PlanChoice(DEAL_AMOUNT, "Dollars off"))
+    }
+
+/** Nothing typed in yet: an empty "What is it?" or "Dollars off". */
+private fun DealPart.isBlank(): Boolean =
+    when (kind) {
+        DEAL_FREE_ITEM -> item.isBlank()
+        DEAL_AMOUNT -> dollars.isBlank()
+        else -> false
+    }
+
+private val PART_FIELDS = setOf("item", "value")
+private const val PERCENT_HOLD_STEP = 5
+private const val DOLLARS_MAX = 7
+private val DOLLARS_FIELD_WIDTH = 96.dp
 
 private val byFormat = DateTimeFormatter.ofPattern("EEE, MMM d · h:mm a", Locale.US)
 
@@ -275,12 +369,11 @@ private fun DealIfShortField(
     if (draft.smaller) {
         DealWhatField(
             label = "The smaller deal",
-            kind = draft.smallerKind,
-            item = draft.smallerItem,
+            part = draft.fallback,
+            kinds = smallerKinds(draft.main),
             smaller = true,
-            errors = null to error,
-            onKind = { kind -> onEdit { it.copy(smallerKind = kind) } },
-            onItem = { text -> onEdit { it.copy(smallerItem = text.take(DEAL_ITEM_MAX)) } },
+            errors = listOfNotNull(error?.let { "if_short" to it }).toMap(),
+            onPart = { change -> onEdit { it.copy(fallback = change(it.fallback)) } },
         )
     }
 }

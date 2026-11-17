@@ -77,6 +77,9 @@ enum class PlanRequestStatus(
     LEFT("left"),
     REMOVED("removed"),
     EXPIRED("expired"),
+
+    /** Business track B2: the spot is held for 10 minutes while the guest pays. */
+    PAYING("paying"),
     ;
 
     companion object {
@@ -149,6 +152,9 @@ enum class PlanViewerStanding {
     DECLINED,
     REMOVED,
     LEFT,
+
+    /** Business track B2: paying for a held spot (Join reopens the payment). */
+    PAYING,
     ;
 
     companion object {
@@ -166,6 +172,7 @@ enum class PlanViewerStanding {
                         PlanRequestStatus.DECLINED, PlanRequestStatus.EXPIRED -> DECLINED
                         PlanRequestStatus.REMOVED -> REMOVED
                         PlanRequestStatus.LEFT, PlanRequestStatus.WITHDRAWN -> LEFT
+                        PlanRequestStatus.PAYING -> PAYING
                         null -> NONE
                     }
             }

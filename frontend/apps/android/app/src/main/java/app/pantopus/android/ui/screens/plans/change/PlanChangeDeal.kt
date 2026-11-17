@@ -34,6 +34,12 @@ data class PlanChangeDeal(
 /** The Deal row shows for a business's plan the viewer may post for, when the business takes deals or has one. */
 val PlanChangeUi.showsDeal: Boolean get() = business != null && (business.takesDeals || plan?.deal != null)
 
+/** B4: a spot's full price in cents on a priced plan (the struck price under a deal for everyone), for deal-preview. */
+val PlanChangeUi.spotPriceCents: Int? get() = plan?.price?.let { it.wasCents ?: it.cents }
+
+/** B4: money off "The spot" is offered on a priced plan the business can charge for. */
+val PlanChangeUi.priced: Boolean get() = spotPriceCents != null && business?.can?.price == true
+
 /** Anyone is in: the deal can't change (only be removed). */
 val PlanChangeUi.dealLocked: Boolean get() = plan?.deal?.let { !it.canChange } ?: (peopleIn > 0)
 
