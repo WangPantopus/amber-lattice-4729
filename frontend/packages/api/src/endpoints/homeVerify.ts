@@ -94,3 +94,18 @@ export function verifyOptionReason(options: VerifyOptions | null | undefined, id
 export async function reportPostcard(homeId: string, code: string): Promise<{ recorded: boolean }> {
   return post<{ recorded: boolean }>('/api/public/postcard-report', { home_id: homeId, code });
 }
+
+// ── Phone number (home_fast_verify_phone) ────────────────────────────────────
+
+export interface PhoneCheckStart { sent: boolean; resend_after_s: number }
+export interface PhoneCheckResult { result: 'verified' | 'no_match' | 'wrong_code'; level: VerifyLevel; tries_left?: number }
+
+/** POST /api/homes/:id/fast-check/phone/start: texts a code. Name fields only when the account is in someone else's name. */
+export async function startPhoneCheck(homeId: string, body: { phone: string; account_first_name?: string; account_last_name?: string }): Promise<PhoneCheckStart> {
+  return post<PhoneCheckStart>(`/api/homes/${encodeURIComponent(homeId)}/fast-check/phone/start`, body);
+}
+
+/** POST /api/homes/:id/fast-check/phone/verify: the code, then the records question. */
+export async function verifyPhoneCheck(homeId: string, body: { phone: string; code: string; account_first_name?: string; account_last_name?: string }): Promise<PhoneCheckResult> {
+  return post<PhoneCheckResult>(`/api/homes/${encodeURIComponent(homeId)}/fast-check/phone/verify`, body);
+}
