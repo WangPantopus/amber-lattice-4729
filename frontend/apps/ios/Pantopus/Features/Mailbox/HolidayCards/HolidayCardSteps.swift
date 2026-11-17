@@ -318,7 +318,7 @@ struct HolidayCardToStep: View {
                 .accessibilityIdentifier("sendCardEmail")
             Text(
                 "They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. "
-                    + "The email doesn’t show the card."
+                    + "The email never shows your note."
             )
             .font(.system(size: 14))
             .foregroundStyle(HolidayCardDesk.muted(scheme))

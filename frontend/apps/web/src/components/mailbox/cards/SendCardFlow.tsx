@@ -398,7 +398,7 @@ function ToStep({
         />
         <p className={`mt-2 text-[14px] leading-5 ${muted}`}>
           They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. The
-          email doesn&rsquo;t show the card.
+          email never shows your note.
         </p>
         <button type="submit" data-testid="sendCardEmailDone" disabled={!emailOk || (many && full)} className={`${primary} mt-5`} style={{ backgroundColor: WAX }}>
           {many ? 'Add to the list' : 'Continue'}

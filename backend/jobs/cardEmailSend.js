@@ -6,6 +6,10 @@
 // nothing is due or its 4 minutes are up, and never overlaps the one before. After a card's last try its sender is told,
 // once for all their cards that gave up in this run (a list sent during a mail server outage is one notice, not 20),
 // and their Sent offers Email it again or Take it back.
+//
+// Then, with the time left, each card still unopened 3 days after its email went out (and less than about 10 days) gets
+// its one reminder (cardEmail.remind), a few at a time, while the server's CARD_EMAIL_REMINDERS switch is on. A reminder
+// that doesn't go is tried again by a later run, 3 tries in all, and never tells the sender anything.
 // ============================================================
 
 const cardEmail = require('../services/cardEmail');
@@ -57,6 +61,34 @@ async function cardEmailSend() {
     }
     for (const [senderId, cards] of gaveUp) await cardEmail.tellSender(senderId, cards);
     if (due) logger.info('[CardEmailSend] Done', { due, sent, failed, gaveUp: [...gaveUp.values()].flat().length });
+
+    let reminded = 0;
+    let notReminded = 0;
+    const remindedIds = new Set();
+    while (Date.now() - started < RUN_BUDGET_MS) {
+      let page;
+      try {
+        page = (await cardEmail.dueToRemind(new Date())).filter((mail) => !remindedIds.has(mail.id));
+      } catch (err) {
+        logger.error('[CardEmailSend] Could not read the cards due a reminder', { error: err.message });
+        break;
+      }
+      if (!page.length) break;
+      page.forEach((mail) => remindedIds.add(mail.id));
+      for (let i = 0; i < page.length; i += cardEmail.AT_ONCE) {
+        await Promise.all(page.slice(i, i + cardEmail.AT_ONCE).map(async (mail) => {
+          try {
+            const result = await cardEmail.remind(mail);
+            if (result.sent) reminded += 1;
+            else if (!result.skipped) notReminded += 1;
+          } catch (err) {
+            notReminded += 1;
+            logger.warn('[CardEmailSend] Reminder failed', { mailId: mail.id, error: err.message });
+          }
+        }));
+      }
+    }
+    if (remindedIds.size) logger.info('[CardEmailSend] Reminders done', { due: remindedIds.size, reminded, failed: notReminded });
   } finally {
     running = false;
   }
