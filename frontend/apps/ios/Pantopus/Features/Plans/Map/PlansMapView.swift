@@ -235,6 +235,8 @@ struct PlansHostStart: Hashable {
     var game: PlanGameOptionDTO?
     /// A5 "Host again": the earlier plan, a week later.
     var again: PlanDetailDTO?
+    /// Board 29's "Plan the next one with the same people": once posted, the invite sheet opens on this plan's people.
+    var samePeopleFrom: String?
 }
 
 /// The region that shows some points inside a window of the map (a rect in
