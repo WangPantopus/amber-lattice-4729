@@ -43,6 +43,7 @@ import {
   type SportsComposerMetadata, type SportsMode,
 } from '@/constants/feedTopics';
 import { FEED_POST_CREATED_EVENT } from '@/lib/feedComposerEvents';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { launchFeatures } from '@/lib/featureFlags';
 import { useReducedMotion } from '@/components/scheduling/polish/a11y';
 import { usePulseQuickReturn } from './usePulseQuickReturn';
@@ -509,7 +510,7 @@ export default function FeedPage() {
         {/* Area picker (Place surface only) */}
         {feed.surface === 'place' && (
           <div className="border-b border-app px-4 py-2.5">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2" data-testid="pulse.area">
               <div className="text-xs text-app-muted">
                 <span className="font-semibold text-app">Viewing:</span>{' '}
                 <span className="truncate">{area.viewingLabel}</span>
@@ -620,6 +621,8 @@ export default function FeedPage() {
         </div>
       ) : (
         <div>
+          {/* Pulse's list has loaded: its guidance cards may show. */}
+          {!feed.loading && !areaResolving ? <GuidanceScreen name="pulse" /> : null}
           <div
             ref={setHeaderElement}
             data-testid="pulseHeader"
@@ -647,6 +650,7 @@ export default function FeedPage() {
 
             {showComposer && (
               <PostComposer
+                textBoxTestId="pulse.post"
                 onPost={feed.handleCreatePost}
                 isPosting={feed.isPosting}
                 user={feed.user}

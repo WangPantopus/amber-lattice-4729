@@ -4186,12 +4186,10 @@ function inviteUrl(code) {
 // Never throws: a missed credit must not fail sign-up.
 async function creditReferralJoin(userId, code) {
   try {
-    const { data: link, error: linkErr } = await supabaseAdmin
-      .from('UserReferral')
-      .select('referrer_id')
-      .eq('invite_code', code)
-      .maybeSingle();
-    if (linkErr) throw linkErr;
+    // A creator's code (services/creatorLinks.js) is found in any letter case; everyone's own codes are exact.
+    // Required here, not at the top: the privacy gate allowlists a line above by its number.
+    const creatorLinks = require('../services/creatorLinks');
+    const link = await creatorLinks.findReferralLink(code, 'referrer_id, source');
     if (!link || link.referrer_id === userId) return;
 
     const { data: credited, error: creditedErr } = await supabaseAdmin
@@ -4209,7 +4207,8 @@ async function creditReferralJoin(userId, code) {
         invite_code: generateInviteCode(),
         referred_user_id: userId,
         converted_at: new Date().toISOString(),
-        source: 'join_link',
+        // Joined through a creator's code: the founder's creator sales report counts these.
+        source: link.source === creatorLinks.CREATOR_SOURCE ? creatorLinks.CREATOR_JOIN_SOURCE : 'join_link',
       });
       if (!error) {
         inviteRewardService.forgetInviteProgress(link.referrer_id);
@@ -4349,11 +4348,8 @@ router.get('/public/join/:code', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const { data: referral } = await supabaseAdmin
-      .from('UserReferral')
-      .select('id, referrer_id, invite_code')
-      .eq('invite_code', code)
-      .maybeSingle();
+    const creatorLinks = require('../services/creatorLinks');
+    const referral = await creatorLinks.findReferralLink(code, 'id, referrer_id, invite_code, source');
 
     if (!referral) {
       return res.json({ valid: false });
@@ -4377,6 +4373,8 @@ router.get('/public/join/:code', async (req, res) => {
       referrer_name: referrerName,
       referrer_avatar: shownReferrer?.profile_picture_url || null,
       code: referral.invite_code,
+      // A creator's code (the Christmas card pages' store button carries only these through an install).
+      ...(referral.source === creatorLinks.CREATOR_SOURCE ? { creator: true } : {}),
     });
   } catch (err) {
     logger.error('public join lookup error', { error: err.message, code: req.params.code });

@@ -85,11 +85,29 @@ export const fetchPublicPost = cache(async (id: string): Promise<PublicFetchResu
   return { data: result.data?.post ?? null, status: result.status };
 });
 
-/** A friend's invite link: who sent it (as neighbors see them), or valid: false for a code nobody has. */
-export type PublicJoin = { valid: boolean; referrer_name?: string; referrer_avatar?: string | null; code?: string };
+/**
+ * A friend's invite link: who sent it (as neighbors see them), or valid: false for a code nobody has. `creator`: the
+ * code is one the founder gave a creator (admin creator links).
+ */
+export type PublicJoin = { valid: boolean; referrer_name?: string; referrer_avatar?: string | null; code?: string; creator?: boolean };
 
 export const fetchPublicJoin = cache(async (code: string): Promise<PublicFetchResult<PublicJoin>> =>
   fetchPublicJson<PublicJoin>(`/api/users/public/join/${encodeURIComponent(code)}`, { noStore: true }));
+
+/**
+ * What a Christmas card page's store button carries through the install. With a `ref` that is a creator's code (admin
+ * creator links), its join link: both apps open `/join/<code>` into Create account with the code, so the account is
+ * recorded against the creator. The apps can take only one link, so that person starts on the app's first screen rather
+ * than on the cards. Anything else (no `ref`, a person's own invite code from a shared card, a code nobody has): the
+ * sending flow (`path`), exactly as before.
+ */
+export async function cardsStoreLink(path: string, ref: string | null): Promise<{ path: string; joins: boolean }> {
+  if (!ref) return { path, joins: false };
+  const { data } = await fetchPublicJoin(ref);
+  return data?.valid && data.creator === true && data.code
+    ? { path: `/join/${encodeURIComponent(data.code)}`, joins: true }
+    : { path, joins: false };
+}
 
 export const fetchPublicSupportTrain = cache(async (id: string): Promise<PublicFetchResult<any>> => {
   const result = await fetchPublicJson<any>(

@@ -43,9 +43,11 @@ interface IntentSelectorProps {
   activeSurface?: FeedSurface;
   /** When set, only these post types are offered (the Place feed refuses the others). */
   allowedTypes?: readonly string[];
+  /** data-testid on the "Share something…" button that starts a post. */
+  promptTestId?: string;
 }
 
-export default function IntentSelector({ onSelect, user, activeSurface, allowedTypes }: IntentSelectorProps) {
+export default function IntentSelector({ onSelect, user, activeSurface, allowedTypes, promptTestId }: IntentSelectorProps) {
   const isNetworkSurface = activeSurface === 'connections';
   const sharePrompt = activeSurface === 'connections'
     ? 'Share something with your connections…'
@@ -68,6 +70,7 @@ export default function IntentSelector({ onSelect, user, activeSurface, allowedT
         )}
         <button
           onClick={() => onSelect('general')}
+          data-testid={promptTestId}
           className="flex-1 text-left text-app-muted text-sm bg-surface-muted rounded-xl px-4 py-2.5 hover-bg-app transition"
         >
           {sharePrompt}

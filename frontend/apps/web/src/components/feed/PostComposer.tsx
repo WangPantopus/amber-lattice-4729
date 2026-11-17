@@ -215,6 +215,8 @@ export interface PostComposerSubmitData {
 }
 
 interface PostComposerProps {
+  /** data-testid on the "Share something…" button, and on the text row once open (Pulse's pointer "Post to Pulse" rings it). */
+  textBoxTestId?: string;
   /** Creates a post (not used when `editPost` is set). */
   onPost?: (data: PostComposerSubmitData) => Promise<boolean | void>;
   /**
@@ -294,6 +296,7 @@ export default function PostComposer({
   onLeaveSportsTopic,
   quotedPost = null,
   onCancel,
+  textBoxTestId,
 }: PostComposerProps) {
   const isEdit = editPost != null;
   // An edit never quotes: the edit screen keeps working as it did and sends no quotedPostId.
@@ -899,6 +902,7 @@ export default function PostComposer({
       {!f.expanded && !isEdit && (
         <IntentSelector
           onSelect={selectIntent}
+          promptTestId={textBoxTestId}
           user={user}
           activeSurface={activeSurface}
           // Match submission rules in both the Place and global composers.
@@ -1051,7 +1055,7 @@ export default function PostComposer({
           )}
 
           <div className="p-4">
-            <div className="flex gap-3">
+            <div className="flex gap-3" data-testid={textBoxTestId}>
               {user?.profile_picture_url ? (
                 <Image
                   src={user.profile_picture_url}
