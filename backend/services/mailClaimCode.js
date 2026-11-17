@@ -8,6 +8,12 @@
  * which is what POST /api/mailbox/claim/:mailId asks of an account. The claim token alone never signs anyone in: it
  * only says which letter and which address, and the code still has to come from that inbox.
  *
+ * A code takes TRIES_PER_CODE tries through POST /api/users/mail-code, counted per address (per Auth user) in
+ * AuthSecurityEvent, so the count holds across restarts and processes and across every link to that address: each code
+ * sent records 'mail_code_sent', each try records 'mail_code_try' before it is checked. After the last try fails, the
+ * code is replaced in Supabase Auth by one nobody is sent, so it stops working anywhere; the next code sent starts the
+ * count again.
+ *
  * Routes: POST /api/mailbox/claim/:mailId/code sends it; POST /api/users/mail-code checks it and signs in.
  */
 
@@ -16,9 +22,15 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const emailService = require('./emailService');
 const holidayCards = require('./holidayCards');
 const logger = require('../utils/logger');
+const authSessionService = require('./authSessionService');
 
 /** How long a code works. Supabase Auth keeps its own, longer expiry; this one is checked when the code is used. */
 const CODE_MINUTES = 10;
+/** Tries a code takes, right or wrong; the code stops working when the last of them is wrong. */
+const TRIES_PER_CODE = 5;
+// Their rows in AuthSecurityEvent (authSessionService leaves both out of the person's security activity).
+const SENT_EVENT = 'mail_code_sent';
+const TRY_EVENT = 'mail_code_try';
 
 // ---- The claim token ----
 
@@ -164,14 +176,22 @@ Pantopus — Your household, organized.
  * with the code); entering the code confirms it. Each code replaces the address's earlier one. Answers 'sent',
  * 'unavailable' (email can't be delivered now) or 'failed'. Never says whether the address had an account.
  */
-async function sendCode({ address, senderName, card }) {
+async function sendCode({ address, senderName, card, mailId, req }) {
   if (!(await emailService.checkDeliveryAvailability()).available) return 'unavailable';
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({ type: 'magiclink', email: address });
   const code = data?.properties?.email_otp;
-  if (error || !code) {
+  if (error || !code || !data?.user?.id) {
     logger.error('Mail code: generateLink failed', { error: error?.message || 'no email_otp', status: error?.status || null });
     return 'failed';
   }
+  // An address nobody has confirmed can hold two codes in Supabase Auth: its sign-up code (the first one sent) and a
+  // sign-in code (each one after). This code replaced the sign-in one; replace the sign-up one too, so only this works.
+  if (!data.user.email_confirmed_at && data.properties.verification_type !== 'signup' && !(await replaceSignupCode(address))) {
+    return 'failed';
+  }
+  // The count of tries starts here; without this row the code can't be used, so it isn't sent.
+  const sent = await authSessionService.recordSecurityEvent({ userId: data.user.id, type: SENT_EVENT, req, meta: { mail_id: mailId } });
+  if (!sent) return 'failed';
   const result = await emailService.sendEmail({ to: address, ...codeEmail({ code, senderName, card }) });
   if (!result?.success) {
     logger.error('Mail code: email send failed', { error: result?.error || null });
@@ -189,8 +209,81 @@ function codeIsFresh(user, now = Date.now()) {
   return sent > 0 && now - sent <= CODE_MINUTES * 60 * 1000;
 }
 
+/**
+ * The Auth user an address belongs to, or null. Supabase Auth's admin list matches `filter` anywhere in the email, so
+ * only the exact address counts. Every address a code went to has one: sending the code makes it.
+ */
+async function authUserByEmail(address) {
+  const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const response = await fetch(`${base}/auth/v1/admin/users?filter=${encodeURIComponent(address)}&per_page=50`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!response.ok) throw new Error(`auth user lookup failed: ${response.status}`);
+  const { users = [] } = await response.json();
+  return users.find((user) => normalEmail(user.email) === address) || null;
+}
+
+/**
+ * Takes one try at the address's newest code before it is checked, so tries made at the same moment can't all slip
+ * under the count. { tryId, tryNumber } (1 for the first try at that code), or { stopped: true } when there is no code
+ * to try (none sent in the last hour) or its tries are used up. A try that turns out not to have been checked (Auth was
+ * busy) gives its turn back with giveBackTry.
+ */
+async function takeTry({ userId, mailId, req }) {
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: sent, error: sentError } = await supabaseAdmin.from('AuthSecurityEvent').select('id')
+    .eq('user_id', userId).eq('type', SENT_EVENT).gt('created_at', since)
+    .order('id', { ascending: false }).limit(1).maybeSingle();
+  if (sentError) throw new Error(`code sent read failed: ${sentError.message}`);
+  if (!sent) return { stopped: true };
+  const taken = await authSessionService.recordSecurityEvent({ userId, type: TRY_EVENT, req, meta: { mail_id: mailId } });
+  if (!taken) throw new Error('code try not recorded');
+  const { count, error } = await supabaseAdmin.from('AuthSecurityEvent').select('id', { count: 'exact', head: true })
+    // In the order the rows were written (their ids), whichever process wrote them.
+    .eq('user_id', userId).eq('type', TRY_EVENT).gt('id', sent.id).lte('id', taken.id);
+  if (error) throw new Error(`code tries read failed: ${error.message}`);
+  if (count > TRIES_PER_CODE) {
+    // Not a try: the code had stopped. Its row goes, so the rows stay at most TRIES_PER_CODE per code sent.
+    await giveBackTry(taken.id);
+    return { stopped: true };
+  }
+  return { tryId: taken.id, tryNumber: count };
+}
+
+async function giveBackTry(tryId) {
+  if (!tryId) return;
+  const { error } = await supabaseAdmin.from('AuthSecurityEvent').delete().eq('id', tryId).eq('type', TRY_EVENT);
+  if (error) logger.warn('Mail code: try not given back', { error: error.message });
+}
+
+// A new sign-up code for an address nobody has confirmed, never sent: the one it had stops working. Supabase Auth asks
+// for a password here and keeps the user's own (it sets one only when it makes the user).
+async function replaceSignupCode(address) {
+  const { error } = await supabaseAdmin.auth.admin.generateLink({ type: 'signup', email: address, password: crypto.randomBytes(24).toString('base64url') });
+  if (error) logger.error('Mail code: replacing a sign-up code failed', { error: error.message, status: error.status || null });
+  return !error;
+}
+
+/**
+ * The address's code stops working: Supabase Auth replaces its codes with ones that are never sent (the sign-in code,
+ * and the sign-up code of an address nobody has confirmed), so the old code fails there too, not only here. Nothing
+ * else changes (no sign-out, no password), and the answer is the same whether or not the address has an account. It
+ * also replaces a password-reset link sent to that address in the meantime, as any new code does.
+ */
+async function stopCode(address, owner) {
+  const { error } = await supabaseAdmin.auth.admin.generateLink({ type: 'magiclink', email: address });
+  if (error) logger.error('Mail code: stopping a code failed', { error: error.message, status: error.status || null });
+  if (!owner?.email_confirmed_at) await replaceSignupCode(address);
+}
+
 module.exports = {
   CODE_MINUTES,
+  TRIES_PER_CODE,
+  authUserByEmail,
+  takeTry,
+  giveBackTry,
+  stopCode,
   hashClaimToken,
   claimTokenMatches,
   codeAddress,

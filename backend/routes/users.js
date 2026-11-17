@@ -934,13 +934,15 @@ const mailClaimCode = require('../services/mailClaimCode');
 // tries. Supabase Auth's verify limit, shared by everyone on hosted, is spent only on codes that get this far.
 const MAIL_CODE_TRIES_LIMIT = { error: 'Too many wrong codes. Try again later with a new code, or sign in another way.', code: 'CODE_TRIES' };
 const mailCodeAccepted = (_req, res) => res.locals.mailCodeRefused !== true;
-const mailCodeTriesLimiter = (windowMs, max, keyGenerator) => rateLimit({
-  windowMs, max, keyGenerator, skipSuccessfulRequests: true, requestWasSuccessful: mailCodeAccepted, message: MAIL_CODE_TRIES_LIMIT,
+// Per letter and address, a refusal counts only when a code was checked (not a code that had already stopped).
+const mailCodeCheckAccepted = (_req, res) => res.locals.mailCodeRefused !== true || res.locals.mailCodeUnchecked === true;
+const mailCodeTriesLimiter = (windowMs, max, keyGenerator, requestWasSuccessful = mailCodeAccepted) => rateLimit({
+  windowMs, max, keyGenerator, skipSuccessfulRequests: true, requestWasSuccessful, message: MAIL_CODE_TRIES_LIMIT,
 });
 const mailCodeNetworkLimiter = mailCodeTriesLimiter(15 * 60 * 1000, 10, clientIpKey);
 const mailCodeLetterLimiters = [
-  mailCodeTriesLimiter(60 * 60 * 1000, 6, (req) => `mail:${String(req.body?.mail_id || '').toLowerCase()}`),
-  mailCodeTriesLimiter(60 * 60 * 1000, 6, (_req, res) => `to:${res.locals.mailCodeAddress}`),
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (req) => `mail:${String(req.body?.mail_id || '').toLowerCase()}`, mailCodeCheckAccepted),
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (_req, res) => `to:${res.locals.mailCodeAddress}`, mailCodeCheckAccepted),
 ];
 // The letter behind the link and the address its code went to (res.locals.mailCodeAddress), before the per-letter and
 // per-address limits. A link that doesn't work is refused here, counted only per network.
@@ -4517,21 +4519,45 @@ router.post('/verify-email', verifyEmailNetworkLimiter, validate(verifyEmailSche
  * address's account, made now when it has none (no password, no name: the app asks for a name, and "Forgot password"
  * or another code signs them in again). The letter's link must still be good; the claim itself is POST
  * /api/mailbox/claim/:mailId, which checks the address as for any account. A wrong, used or replaced code answers 400
- * CODE_WRONG, one older than 10 minutes 400 CODE_EXPIRED. Answers like /login, with `newAccount`.
+ * CODE_WRONG, one older than 10 minutes 400 CODE_EXPIRED, and after 5 tries at one code (the 5th wrong) 400
+ * CODE_STOPPED until a new code is sent. Answers like /login, with `newAccount`.
  */
 router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mailCodeLetter, mailCodeLetterLimiters, authRouteDpop(), async (req, res) => {
   const { mail_id: mailId, code } = req.body;
   const address = res.locals.mailCodeAddress;
+  const wrongCode = () => {
+    res.locals.mailCodeRefused = true;
+    return res.status(400).json({ error: 'That code didn’t work. Check the newest email from Pantopus, or send a new code.', code: 'CODE_WRONG' });
+  };
+  // A code that has already stopped is refused without asking Supabase Auth: it counts per network, but not toward the
+  // letter's and address's hourly tries, which the person's next code needs.
+  const stoppedCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'This code has stopped working after too many wrong tries. Send a new code.', code: 'CODE_STOPPED' });
+  };
   try {
+    // A code takes 5 tries, counted for the address across every link and network (services/mailClaimCode). An
+    // address with no Auth user was never sent a code, so there is nothing to try: the same answer as a wrong code.
+    const owner = await mailClaimCode.authUserByEmail(address);
+    if (!owner) return wrongCode();
+    const turn = await mailClaimCode.takeTry({ userId: owner.id, mailId, req });
+    if (turn.stopped) return stoppedCode({ checked: false });
+
     const authClient = createAuthClient();
     const { data, error } = await authClient.auth.verifyOtp({ email: address, token: code, type: 'email' });
     if (authSessionService.isAuthServiceBusy(error)) {
       logger.error('Mail code check failed - Supabase Auth refused or unreachable', { status: error.status, code: error.code });
+      await mailClaimCode.giveBackTry(turn.tryId);
       return res.status(503).json({ error: 'Sign-in is busy right now. Your code still works: try again in a minute.', code: 'AUTH_BUSY' });
     }
     if (error || !data?.session?.access_token || !data?.user?.id) {
-      res.locals.mailCodeRefused = true;
-      return res.status(400).json({ error: 'That code didn’t work. Check the newest email from Pantopus, or send a new code.', code: 'CODE_WRONG' });
+      // The last try was wrong: the code stops working everywhere, Supabase Auth's own check included.
+      if (turn.tryNumber >= mailClaimCode.TRIES_PER_CODE) {
+        await mailClaimCode.stopCode(address, owner);
+        return stoppedCode({ checked: true });
+      }
+      return wrongCode();
     }
     const { session, user } = data;
     const userId = user.id;

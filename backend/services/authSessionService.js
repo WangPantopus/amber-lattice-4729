@@ -748,12 +748,17 @@ async function recordSecurityEvent({ userId, deviceRowId = null, sessionId = nul
   return data || row;
 }
 
+// A letter's one-time code keeps its count of tries in these rows (services/mailClaimCode): bookkeeping, not something
+// the person did, so their security activity leaves them out.
+const BOOKKEEPING_EVENT_TYPES = ['mail_code_sent', 'mail_code_try'];
+
 async function listSecurityEvents(userId, limit = 20) {
   const n = Math.max(1, Math.min(200, Number(limit) || 20));
   const { data, error } = await supabaseAdmin
     .from('AuthSecurityEvent')
     .select('id, type, created_at, device_id, session_id, meta')
     .eq('user_id', userId)
+    .not('type', 'in', `(${BOOKKEEPING_EVENT_TYPES.join(',')})`)
     .order('created_at', { ascending: false })
     .limit(n);
   if (error) {

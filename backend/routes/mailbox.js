@@ -4260,7 +4260,7 @@ router.post('/claim/:mailId/code', mailCodeNetworkLimiter, validate(mailCodeSche
 
     const card = holidayCards.isCard(mail);
     const { senderName } = sentAsBusiness(mail) ? claimPageSender(mail) : await claimPagePerson(mail.sender_user_id, mail.sender_display);
-    const sent = await mailClaimCode.sendCode({ address, senderName, card });
+    const sent = await mailClaimCode.sendCode({ address, senderName, card, mailId, req });
     if (sent !== 'sent') {
       return res.status(503).json({
         error: sent === 'unavailable' ? 'Email can’t be sent just now. Try again in a few minutes.' : 'Couldn’t send your code. Try again in a moment.',
