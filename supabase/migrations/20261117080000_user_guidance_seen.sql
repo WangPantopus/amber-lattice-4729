@@ -7,6 +7,10 @@
 --   { "<card id>": { "times": <int >= 1>, "last_at": "<ISO time>" } }
 -- The backend checks the ids and writes the map (POST /api/users/guidance/shown and /reset); the database keeps the
 -- value. No index and no backfill.
-SET LOCAL lock_timeout='5s';
+BEGIN;
+
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE public."User" ADD COLUMN IF NOT EXISTS guidance_seen jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+COMMIT;
