@@ -68,4 +68,23 @@ extension View {
                 }
         }
     }
+
+    /// A pinned button's background (experience plan 5.2): no panel, only a soft fade into the page's colour, so what
+    /// scrolls under it shows until it reaches the button.
+    func holidayCardButtonFade(_ scheme: ColorScheme, atTable: Bool) -> some View {
+        let base = atTable ? MailPaper.tableNight : HolidayCardDesk.background(scheme)
+        return background(
+            LinearGradient(
+                stops: [
+                    .init(color: base.opacity(0), location: 0),
+                    .init(color: base.opacity(atTable ? 0.7 : 0.92), location: 0.45),
+                    .init(color: base.opacity(atTable ? 0.85 : 1), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        )
+    }
 }

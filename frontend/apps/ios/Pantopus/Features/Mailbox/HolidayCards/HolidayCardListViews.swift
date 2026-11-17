@@ -98,7 +98,28 @@ struct HolidayCardListLookStep: View {
                 HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: first, preview: preview)
             }
             HolidayCardListLines(viewModel: viewModel, lines: look.recipients)
+            end
         }
+    }
+
+    /// The end of the page, scrolling with it (experience plan 5.2): until when each card can be taken back, and what
+    /// the cards cost.
+    private var end: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let entries = viewModel.recipient?.entries {
+                HolidayCardLookNote(text: HolidayCardWords.sealNote(list: entries))
+            }
+            if look.needed > 0 {
+                StampPostageLine(store: viewModel.stamps, design: design.id, count: look.needed)
+            } else {
+                Text("None of these cards can go now.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(MailPaper.cardTextSoft)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sendCardLookEnd")
     }
 }
 
@@ -156,58 +177,28 @@ struct HolidayCardListLines: View {
     }
 }
 
-/// Under a list's Look it over, pinned: until when each card can be taken
-/// back, what the cards cost, why sending didn't go, and "Seal and send 4
-/// cards" (or, with too few stamps, "Get stamps to send").
+/// Under a list's Look it over, pinned: only "Seal and send 4 cards" (or, with too few stamps, "Get stamps to send") on
+/// a soft fade, with why sending didn't go in one line above it (experience plan 5.2).
 struct HolidayCardListLookFooter: View {
     let viewModel: HolidayCardFlowViewModel
     let entries: [HolidayCardRecipient]
     let look: HolidayCardListPreview
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let needed = look.needed
         let needsStamps = (viewModel.stamps.balance?.available ?? needed) < needed
         let cardsWord = needed == 1 ? "1 card" : "\(needed) cards"
-        VStack(alignment: .leading, spacing: 10) {
-            Text(HolidayCardWords.sealNote(list: entries))
-                .font(.system(size: 13))
-                .foregroundStyle(MailPaper.cardTextSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, Spacing.s3)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
-            if needed > 0, let design = viewModel.design {
-                StampPostageLine(store: viewModel.stamps, design: design.id, count: needed)
-            } else if needed == 0 {
-                Text("None of these cards can go now.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(HolidayCardDesk.muted(scheme))
-                    .frame(maxWidth: .infinity)
-            }
-            if let error = viewModel.sendError {
-                Text(error)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(HolidayCardDesk.error(scheme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("sendCardError")
-            }
+        HolidayCardPinnedButton(error: viewModel.sendError) {
             HolidayCardWaxButton(
                 title: needsStamps ? "Get stamps to send" : viewModel.sending ? "Sending \(cardsWord)…" : "Seal and send \(cardsWord)",
                 isLoading: viewModel.sending,
-                isEnabled: needed > 0
+                isEnabled: needed > 0,
+                height: 52
             ) {
                 if needsStamps { viewModel.getStampsForList() } else { viewModel.sealOrSend() }
             }
             .accessibilityIdentifier("sendCardLookSend")
         }
-        .frame(maxWidth: 560)
-        .padding(.horizontal, Spacing.s4)
-        .padding(.vertical, Spacing.s3)
-        .frame(maxWidth: .infinity)
-        .holidayCardBarBackground(scheme, atTable: LaunchFeatures.cardTable)
     }
 }
 
