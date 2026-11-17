@@ -90,6 +90,7 @@ class CardMediaUploads
 
         private companion object {
             const val FOLDER = "card-media"
+
             // What the server keeps (2400 since November 16, so an opened photo stays sharp when it's enlarged).
             const val PHOTO_LONG_SIDE = 2400
             const val PHOTO_QUALITY = 90
