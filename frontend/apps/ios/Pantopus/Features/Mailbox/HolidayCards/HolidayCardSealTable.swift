@@ -3,10 +3,10 @@
 //  Pantopus
 //
 //  The send flow's side of sealing a card by hand (plan Part 2, launch key
-//  `card_table`): "Seal and send" on Look it over opens the table over the
-//  flow, the seal sends the card with the draft's request ID, and step 5's
-//  Done, Take it back and Share this card answer from the flow. The table's
-//  own moves are in `CardTableSending.swift`.
+//  `card_table`): "Seal and send" on Seal it for the day or on Look it over
+//  opens the table over the flow, the seal sends the card with the draft's
+//  request ID, and step 5's Done, Take it back and Share this card answer
+//  from the flow. The table's own moves are in `CardTableSending.swift`.
 //
 
 import SwiftUI
@@ -21,6 +21,15 @@ extension HolidayCardFlowViewModel {
         } else {
             Task { await send() }
         }
+    }
+
+    /// "Seal and send" on Seal it for the day (experience plan 5.1): the check Look it over runs, then straight to the
+    /// sealing table, where the card is sealed by hand as from Look it over. A refusal stays under the choices; a list
+    /// with a card that won't go opens Look it over instead; a server that can't show the look still lets it be sealed.
+    func sealFromChoices() async {
+        let passed = await lookItOver(opens: false)
+        guard passed || (lookUnavailable && recipient?.entries == nil) else { return }
+        sealOrSend()
     }
 
     /// The card on the sending table as the other person will find it: as Look it over lays it out, or for a list,
@@ -156,8 +165,9 @@ struct CardTableSendCover: ViewModifier {
         guard viewModel.step == .sent else {
             // Out of stamps: the seal doesn't take and the stamp books open over the table (as web).
             if viewModel.showsStampBooks { return .refused(nil) }
-            // An arrival that closed: back to its choices, which say why.
-            if viewModel.step != .look {
+            // An arrival that closed, or a card sealed from Seal it for the day that didn't go: back to its choices,
+            // which say why. A list says why on the table.
+            if viewModel.step != .look, viewModel.sendError == nil {
                 viewModel.sealsAtTable = false
                 return .refused(nil)
             }
@@ -256,11 +266,11 @@ struct CardTableSendPage: View {
     private var closeLabel: String {
         switch model.sending {
         case .addressing, .gone: "Done"
-        default: "Back to Look it over"
+        default: viewModel.step == .look ? "Back to Look it over" : "Back to \(viewModel.step.title)"
         }
     }
 
-    /// ✕: before the seal, back to Look it over with nothing sent; once it's sent, the same as Done.
+    /// ✕: before the seal, back to the page it was opened from with nothing sent; once it's sent, the same as Done.
     private func close() {
         switch model.sending {
         case .sealing:

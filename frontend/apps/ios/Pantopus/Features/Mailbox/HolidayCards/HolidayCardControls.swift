@@ -16,6 +16,7 @@ struct HolidayCardWaxButton: View {
     var isLoading = false
     var isEnabled = true
     var fullWidth = true
+    var height: CGFloat = 48
     let action: () -> Void
 
     var body: some View {
@@ -31,7 +32,7 @@ struct HolidayCardWaxButton: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(MailPaper.waxText)
             .padding(.horizontal, Spacing.s5)
-            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 48)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: height)
             .background(MailPaper.wax, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
             .opacity(isEnabled ? 1 : 0.5)
             .contentShape(Rectangle())

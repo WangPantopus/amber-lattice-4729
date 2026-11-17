@@ -6,9 +6,10 @@
 //  `/app/mailbox/cards`), opened from the row at the top of Me in the
 //  Mailbox. The whole screen is the cream desk the card sits on: Back, the
 //  step's title and five step dots, then who it's for → pick a card → write
-//  on the back → seal it for the day → look it over, with "Seal and send"
-//  pinned under it. Once today's card is sent it shows that card instead,
-//  with Take it back until the pickup.
+//  on the back → seal it for the day ("Seal and send", or "Look it over"
+//  first) → look it over, with only "Seal and send" pinned under it. Once
+//  today's card is sent it shows that card instead, with Take it back until
+//  the pickup.
 //
 
 import SwiftUI
@@ -308,6 +309,7 @@ struct HolidayCardFlowView: View {
                 HolidayCardListLookStep(viewModel: viewModel, cards: cards, design: design, look: look)
             } else if let design = viewModel.design, let recipient = viewModel.recipient, let preview = viewModel.preview {
                 HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: recipient, preview: preview)
+                HolidayCardLookEnd(viewModel: viewModel, byEmail: recipient.isEmail)
             }
         case .sent:
             EmptyView()

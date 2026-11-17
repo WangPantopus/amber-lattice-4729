@@ -417,15 +417,17 @@ final class HolidayCardFlowViewModel {
     /// "Look it over": what the other person will see, from the same checks
     /// sending runs (nothing is stored or sent), then step 5. A refusal stays
     /// on step 4 with the server's sentence; a server that can't show the
-    /// look leaves "Seal and send" on step 4.
-    func lookItOver() async {
-        guard !previewing else { return }
+    /// look leaves "Seal and send" on step 4. With `opens` false (step 4's
+    /// "Seal and send", experience plan 5.1) the check runs and step 5 stays
+    /// closed. True when the check passed.
+    @discardableResult
+    func lookItOver(opens: Bool = true) async -> Bool {
+        guard !previewing else { return false }
         if recipient?.entries != nil {
-            await lookOverList()
-            return
+            return await lookOverList(opens: opens)
         }
         requestId = requestId ?? UUID().uuidString.lowercased()
-        guard let body = sendBody else { return }
+        guard let body = sendBody else { return false }
         saveDraft()
         previewing = true
         previewError = nil
@@ -434,15 +436,17 @@ final class HolidayCardFlowViewModel {
             let look: HolidayCardPreview = try await answer(HolidayCardEndpoints.preview(body))
             preview = look
             sendError = nil
-            step = .look
+            if opens { step = .look }
+            return true
         } catch {
-            if await wentEarlier(error) { return }
+            if await wentEarlier(error) { return false }
             if Self.lookIsUnavailable(error) {
                 lookUnavailable = true
-                return
+                return false
             }
             previewError = Self.refusal(error, fallback: "Couldn’t show your card just now. Try again in a moment.")
             await needsBoughtStamp(error)
+            return false
         }
     }
 
@@ -806,9 +810,12 @@ extension HolidayCardFlowViewModel {
 
     /// "Look it over" for a list: every card's line, and the first card that
     /// can go as its person will see it. A refusal of the whole list (the
-    /// season closed, say) stays on step 4.
-    private func lookOverList() async {
-        guard let body = listBody() else { return }
+    /// season closed, say) stays on step 4. With `opens` false the check runs
+    /// and step 5 opens only when a card on the list won't go, since that page
+    /// shows each person's line (experience plan 5.1). True when every card
+    /// on the list can go.
+    private func lookOverList(opens: Bool) async -> Bool {
+        guard let body = listBody() else { return false }
         saveDraft()
         previewing = true
         previewError = nil
@@ -817,9 +824,12 @@ extension HolidayCardFlowViewModel {
             let look: HolidayCardListPreview = try await answer(HolidayCardEndpoints.previewList(body))
             listPreview = look
             sendError = nil
-            step = .look
+            let allGo = look.needed > 0 && look.recipients.allSatisfy { $0.status == "ready" }
+            if opens || !allGo { step = .look }
+            return allGo
         } catch {
             previewError = Self.refusal(error, fallback: "Couldn’t show your cards just now. Try again in a moment.")
+            return false
         }
     }
 
