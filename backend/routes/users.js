@@ -4531,6 +4531,11 @@ router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mail
   };
   // A code that has already stopped is refused without asking Supabase Auth: it counts per network, but not toward the
   // letter's and address's hourly tries, which the person's next code needs.
+  const expiredCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'That code has expired. Send a new one.', code: 'CODE_EXPIRED' });
+  };
   const stoppedCode = ({ checked }) => {
     res.locals.mailCodeRefused = true;
     if (!checked) res.locals.mailCodeUnchecked = true;
@@ -4538,10 +4543,10 @@ router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mail
   };
   try {
     // A code takes 5 tries, counted for the address across every link and network (services/mailClaimCode). An
-    // address with no Auth user was never sent a code, so there is nothing to try: the same answer as a wrong code.
-    const owner = await mailClaimCode.authUserByEmail(address);
-    if (!owner) return wrongCode();
-    const turn = await mailClaimCode.takeTry({ userId: owner.id, mailId, req });
+    // address never sent a code has nothing to try: the same answer as a wrong code. One sent too long ago has expired.
+    const turn = await mailClaimCode.takeTry({ address, mailId, req });
+    if (turn.noCode) return wrongCode();
+    if (turn.expired) return expiredCode({ checked: false });
     if (turn.stopped) return stoppedCode({ checked: false });
 
     const authClient = createAuthClient();
@@ -4554,7 +4559,7 @@ router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mail
     if (error || !data?.session?.access_token || !data?.user?.id) {
       // The last try was wrong: the code stops working everywhere, Supabase Auth's own check included.
       if (turn.tryNumber >= mailClaimCode.TRIES_PER_CODE) {
-        await mailClaimCode.stopCode(address, owner);
+        await mailClaimCode.stopCode(address, turn.userId);
         return stoppedCode({ checked: true });
       }
       return wrongCode();
@@ -4580,9 +4585,8 @@ router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mail
     }
 
     if (!mailClaimCode.codeIsFresh(user)) {
-      res.locals.mailCodeRefused = true;
       await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_expired', userId });
-      return res.status(400).json({ error: 'That code has expired. Send a new one.', code: 'CODE_EXPIRED' });
+      return expiredCode({ checked: true });
     }
 
     const existing = await getOAuthProfileById(userId);

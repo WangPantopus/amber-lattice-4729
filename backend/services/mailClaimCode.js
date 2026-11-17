@@ -8,9 +8,10 @@
  * which is what POST /api/mailbox/claim/:mailId asks of an account. The claim token alone never signs anyone in: it
  * only says which letter and which address, and the code still has to come from that inbox.
  *
- * A code takes TRIES_PER_CODE tries through POST /api/users/mail-code, counted per address (per Auth user) in
- * AuthSecurityEvent, so the count holds across restarts and processes and across every link to that address: each code
- * sent records 'mail_code_sent', each try records 'mail_code_try' before it is checked. After the last try fails, the
+ * A code takes TRIES_PER_CODE tries through POST /api/users/mail-code, counted per address in AuthSecurityEvent, so
+ * the count holds across restarts and processes and across every link to that address: each code sent records
+ * 'mail_code_sent' (its meta.to a keyed hash of the address, never the address), each try records 'mail_code_try'
+ * before it is checked. After the last try fails, the
  * code is replaced in Supabase Auth by one nobody is sent, so it stops working anywhere; the next code sent starts the
  * count again.
  *
@@ -97,6 +98,13 @@ async function letterAndAddress({ mailId, token, email }) {
   if (!mail || !claimTokenMatches(mail, token)) return { refusal: LINK_INVALID };
   const found = codeAddress(mail, email);
   return found.refusal ? found : { mail, address: found.address };
+}
+
+// The address as the code's rows know it: a keyed hash (the server's secret, as card links use, under its own label),
+// so the rows never hold the address and the newest code for it is found by an index, not by its Auth user's email.
+function addressKey(address) {
+  const secret = process.env.MAIL_ENCLOSURE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  return crypto.createHmac('sha256', secret).update(`pantopus:mail-code-to:v1:${normalEmail(address)}`).digest('base64url');
 }
 
 // ---- Sending it ----
@@ -190,7 +198,7 @@ async function sendCode({ address, senderName, card, mailId, req }) {
     return 'failed';
   }
   // The count of tries starts here; without this row the code can't be used, so it isn't sent.
-  const sent = await authSessionService.recordSecurityEvent({ userId: data.user.id, type: SENT_EVENT, req, meta: { mail_id: mailId } });
+  const sent = await authSessionService.recordSecurityEvent({ userId: data.user.id, type: SENT_EVENT, req, meta: { mail_id: mailId, to: addressKey(address) } });
   if (!sent) return 'failed';
   const result = await emailService.sendEmail({ to: address, ...codeEmail({ code, senderName, card }) });
   if (!result?.success) {
@@ -210,33 +218,20 @@ function codeIsFresh(user, now = Date.now()) {
 }
 
 /**
- * The Auth user an address belongs to, or null. Supabase Auth's admin list matches `filter` anywhere in the email, so
- * only the exact address counts. Every address a code went to has one: sending the code makes it.
- */
-async function authUserByEmail(address) {
-  const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const response = await fetch(`${base}/auth/v1/admin/users?filter=${encodeURIComponent(address)}&per_page=50`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-  });
-  if (!response.ok) throw new Error(`auth user lookup failed: ${response.status}`);
-  const { users = [] } = await response.json();
-  return users.find((user) => normalEmail(user.email) === address) || null;
-}
-
-/**
  * Takes one try at the address's newest code before it is checked, so tries made at the same moment can't all slip
- * under the count. { tryId, tryNumber } (1 for the first try at that code), or { stopped: true } when there is no code
- * to try (none sent in the last hour) or its tries are used up. A try that turns out not to have been checked (Auth was
- * busy) gives its turn back with giveBackTry.
+ * under the count. The code is the newest 'mail_code_sent' row for the address's key. { tryId, tryNumber, userId }
+ * (tryNumber 1 for the first try at that code); { noCode: true } when no code was ever sent to the address;
+ * { expired: true } when the newest one is older than CODE_MINUTES; { stopped: true, userId } when its tries are used
+ * up. A try that turns out not to have been checked (Auth was busy) gives its turn back with giveBackTry.
  */
-async function takeTry({ userId, mailId, req }) {
-  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data: sent, error: sentError } = await supabaseAdmin.from('AuthSecurityEvent').select('id')
-    .eq('user_id', userId).eq('type', SENT_EVENT).gt('created_at', since)
+async function takeTry({ address, mailId, req }) {
+  const { data: sent, error: sentError } = await supabaseAdmin.from('AuthSecurityEvent').select('id, user_id, created_at')
+    .eq('type', SENT_EVENT).eq('meta->>to', addressKey(address))
     .order('id', { ascending: false }).limit(1).maybeSingle();
   if (sentError) throw new Error(`code sent read failed: ${sentError.message}`);
-  if (!sent) return { stopped: true };
+  if (!sent) return { noCode: true };
+  if (Date.now() - Date.parse(sent.created_at) > CODE_MINUTES * 60 * 1000) return { expired: true };
+  const userId = sent.user_id;
   const taken = await authSessionService.recordSecurityEvent({ userId, type: TRY_EVENT, req, meta: { mail_id: mailId } });
   if (!taken) throw new Error('code try not recorded');
   const { count, error } = await supabaseAdmin.from('AuthSecurityEvent').select('id', { count: 'exact', head: true })
@@ -246,9 +241,9 @@ async function takeTry({ userId, mailId, req }) {
   if (count > TRIES_PER_CODE) {
     // Not a try: the code had stopped. Its row goes, so the rows stay at most TRIES_PER_CODE per code sent.
     await giveBackTry(taken.id);
-    return { stopped: true };
+    return { stopped: true, userId };
   }
-  return { tryId: taken.id, tryNumber: count };
+  return { tryId: taken.id, tryNumber: count, userId };
 }
 
 async function giveBackTry(tryId) {
@@ -271,16 +266,16 @@ async function replaceSignupCode(address) {
  * else changes (no sign-out, no password), and the answer is the same whether or not the address has an account. It
  * also replaces a password-reset link sent to that address in the meantime, as any new code does.
  */
-async function stopCode(address, owner) {
+async function stopCode(address, userId) {
   const { error } = await supabaseAdmin.auth.admin.generateLink({ type: 'magiclink', email: address });
   if (error) logger.error('Mail code: stopping a code failed', { error: error.message, status: error.status || null });
-  if (!owner?.email_confirmed_at) await replaceSignupCode(address);
+  const { data: owner } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (!owner?.user?.email_confirmed_at) await replaceSignupCode(address);
 }
 
 module.exports = {
   CODE_MINUTES,
   TRIES_PER_CODE,
-  authUserByEmail,
   takeTry,
   giveBackTry,
   stopCode,
