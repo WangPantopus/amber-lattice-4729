@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
@@ -53,11 +56,13 @@ import app.pantopus.android.data.api.models.mailbox.CardPhoto
 import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.MailLetterCard
 import app.pantopus.android.ui.theme.PantopusColors
 import coil.compose.AsyncImage
+import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import java.io.File
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -144,6 +149,8 @@ internal fun CardPrint(
     fromFirst: String = "",
     uploading: Boolean = false,
     tilt: Float = -3f,
+    /** A tap on the photo opens it over the whole screen, with the print's own copy to show meanwhile; null: it only shows. */
+    onOpen: ((MemoryCache.Key?) -> Unit)? = null,
 ) {
     var uncovered by remember(photo?.url) { mutableStateOf(false) }
     val covered = photo?.covered == true && !uncovered
@@ -181,7 +188,7 @@ internal fun CardPrint(
                     )
                 }
             } else {
-                PrintPicture(photo, local, ratio, datedOn, who)
+                PrintPicture(photo, local, ratio, datedOn, who, onOpen)
             }
         }
         if (uploading) {
@@ -203,10 +210,12 @@ private fun PrintPicture(
     ratio: Float,
     datedOn: String?,
     who: String,
+    onOpen: ((MemoryCache.Key?) -> Unit)?,
 ) {
     val context = LocalContext.current
     var failed by remember(photo?.url, local) { mutableStateOf(false) }
     var shown by remember(photo?.url, local) { mutableStateOf(false) }
+    var drawn by remember(photo?.url, local) { mutableStateOf<MemoryCache.Key?>(null) }
     val model =
         remember(photo?.url, local) {
             when {
@@ -221,13 +230,18 @@ private fun PrintPicture(
                 else -> null
             }
         }
-    Box(modifier = Modifier.fillMaxWidth().aspectRatio(ratio).background(PantopusColors.cardPrintEmpty)) {
+    // Once it's drawn, a tap opens it over the whole screen.
+    val opens = if (shown && photo != null) Modifier.opensPhoto(onOpen) { drawn } else Modifier
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(ratio).background(PantopusColors.cardPrintEmpty).then(opens)) {
         if (model != null) {
             AsyncImage(
                 model = model,
                 contentDescription = photo?.alt?.takeIf { it.isNotBlank() } ?: "Photo from $who",
                 contentScale = ContentScale.Crop,
-                onSuccess = { shown = true },
+                onSuccess = {
+                    shown = true
+                    drawn = it.result.memoryCacheKey
+                },
                 onError = { failed = true },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -279,11 +293,22 @@ private fun PrintPicture(
     }
 }
 
+/** A tap opens the photo over the whole screen, with the print's own copy ([drawn]) to show while the full one is read. */
+private fun Modifier.opensPhoto(
+    onOpen: ((MemoryCache.Key?) -> Unit)?,
+    drawn: () -> MemoryCache.Key?,
+): Modifier {
+    onOpen ?: return this
+    return clickable(role = Role.Button, onClickLabel = "Open the photo") { onOpen(drawn()) }.testTag("cardPrintOpen")
+}
+
 /**
- * The card's own photo lying on the table once the card is turned over (wave 4 drawings 3 and 4): under the card and a
- * little over its bottom edge, in the room the table keeps for it ([TableGeometry.mediaRoom]), clear of FROM and the
- * signature and of the buttons. It isn't part of the card: it stays put while the card moves and never turns with it,
- * and screen readers reach it. Hidden while the card is enlarged; it fades in (at once with Reduce Motion).
+ * The card's own photo and greeting lying on the table once the card is turned over (wave 4 drawings 3 and 4): under
+ * the card, in the room the card leaves as it moves up on being turned ([TableGeometry.mediaRoom]), so nothing printed
+ * on the card is ever under them, and clear of the buttons. They aren't part of the card: they stay put while it moves
+ * and never turn with it, and screen readers reach them. They come as the card arrives at its place and go as it
+ * leaves (they follow its own turn, so a finger turning it brings them and takes them away); hidden while the card is
+ * enlarged. A tap on the print opens the photo over the whole screen ([onOpenPhoto]).
  */
 @Composable
 internal fun TableMedia(
@@ -291,48 +316,73 @@ internal fun TableMedia(
     card: CardOnTable,
     g: TableGeometry,
     reduceMotion: Boolean,
+    onOpenPhoto: (CardPhotoOpened) -> Unit = {},
 ) {
     if (!card.hasMedia || g.mediaRoom <= 0f) return
-    val shown = state.cardOutForOrder && state.cardBackShows && !state.enlarged
-    val seen by animateFloatAsState(if (shown) 1f else 0f, tween(if (reduceMotion) 0 else 450), label = "cardMedia")
-    if (seen <= 0f) return
+    // On the table at all: once the card is out and most of the way over.
+    val present by remember(state) {
+        derivedStateOf { state.cardOutForOrder && state.sending == null && state.turnedOver > MEDIA_COMES_FROM }
+    }
+    val notEnlarged by animateFloatAsState(if (state.enlarged) 0f else 1f, tween(if (reduceMotion) 0 else 300), label = "cardMedia")
+    if (!present) return
     val density = LocalDensity.current
     val fade =
         Modifier.graphicsLayer {
-            alpha = seen
-            translationY = (1f - seen) * g.mediaRoom * 0.05f
+            val seen = CardTableState.smooth(MEDIA_COMES_FROM, 1f, state.turnedOver)
+            alpha = seen * notEnlarged
+            translationY = if (reduceMotion) 0f else (1f - seen) * g.mediaRoom * 0.05f
         }
+    // Where the things under the card start: the foot of the turned-over card. Their small turn lifts a corner a few
+    // pixels onto the card's blank margin and no further.
+    val under = g.cardTopBack + g.cardHeight - g.cardWidth * 0.004f
     card.photo?.let { photo ->
         // A portrait print lies narrower than a landscape one, so either fits the room.
         val printK = 0.88f / photo.ratio + 0.2f
-        val width = min(g.cardWidth * 0.47f, g.mediaRoom * 1.1f / printK)
+        val width = min(g.cardWidth * 0.47f, g.mediaRoom / printK)
         val left = g.cardX + g.cardWidth * 0.02f
-        val top = g.cardTop + g.cardHeight - g.mediaRoom * 0.16f
+        val border = width * 0.06f
         CardPrint(
             photo = photo,
             datedOn = card.mailedOn.takeIf { state.mood == CardMood.Nostalgia },
             fromFirst = card.fromFirst,
-            tilt = -3f,
+            tilt = PRINT_TILT,
+            onOpen = { thumbnail ->
+                val across = width - border * 2f
+                onOpenPhoto(
+                    CardPhotoOpened(
+                        photo = photo,
+                        fromFirst = card.fromFirst,
+                        thumbnail = thumbnail,
+                        origin = Rect(Offset(left + border, under + border), Size(across, across / photo.ratio)),
+                        originTilt = PRINT_TILT,
+                    ),
+                )
+            },
             modifier =
                 Modifier
-                    .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                    .offset { IntOffset(left.roundToInt(), under.roundToInt()) }
                     .width(with(density) { width.toDp() })
                     .then(fade)
                     .testTag("cardTablePrint"),
         )
     }
     card.voice?.let { voice ->
-        // As the web lays it: at the right under the card (in the middle when there's no photo).
-        val width = min(g.cardWidth * 0.45f, (g.mediaRoom * 1.02f - 30.4f * g.density) / 0.62f)
+        // At the right under the card (in the middle when there's no photo), a little lower than the print, as things
+        // put down by hand lie.
+        // A cassette is 0.62 of its width tall with a pill under it; a gift tag 0.53 with none, so it can lie wider.
+        val gift = state.mood == CardMood.Reverence
+        val fits = if (gift) g.mediaRoom * 0.95f / 0.53f else (g.mediaRoom * 0.95f - 30.4f * g.density) / 0.62f
+        val width = min(g.cardWidth * 0.45f, max(80f * g.density, fits))
         val left = if (card.photo != null) g.cardX + g.cardWidth * 0.98f - width else g.cardX + (g.cardWidth - width) / 2f
-        val top = g.cardTop + g.cardHeight - g.mediaRoom * 0.08f
+        // A gift tag is turned twice as far as a cassette, which lifts its far corner: it starts that much lower.
+        val top = under + g.mediaRoom * 0.04f + if (gift) width * 0.06f else 0f
         CardGreeting(
             voice = voice,
             forFirst = card.to?.trim()?.substringBefore(' ')?.takeIf { it.isNotEmpty() } ?: "you",
             fromFirst = card.fromFirst,
-            gift = state.mood == CardMood.Reverence,
+            gift = gift,
             tilt = 3f,
-            active = shown,
+            active = !state.enlarged,
             modifier =
                 Modifier
                     .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
@@ -342,6 +392,11 @@ internal fun TableMedia(
         )
     }
 }
+
+/** The card's photo and greeting start to show once it's this far turned over, and are whole when it lies flat. */
+private const val MEDIA_COMES_FROM = 0.72f
+
+private const val PRINT_TILT = -3f
 
 /**
  * A card's own photo and voice greeting under its back where the sender looks at them (Look it over, Sent): theirs, so
@@ -357,6 +412,11 @@ internal fun LetterCardPrint(
 ) {
     if (card.photo == null && card.voice == null) return
     val mood = CardMood.of(card.number, card.design)
+    // Their own photo opens over the whole screen, in a window of its own: there's no table under it here.
+    var opened by remember(card.photo?.url) { mutableStateOf<CardPhotoOpened?>(null) }
+    opened?.let { photo ->
+        FullScreenWindow(onDismissRequest = { opened = null }) { CardPhotoViewer(photo, onClose = { opened = null }) }
+    }
     Row(
         modifier = modifier.fillMaxWidth().testTag("cardLetterMedia"),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -368,6 +428,7 @@ internal fun LetterCardPrint(
                 datedOn = card.mailedOn.takeIf { mood == CardMood.Nostalgia },
                 fromFirst = fromFirst,
                 tilt = -3f,
+                onOpen = { thumbnail -> opened = CardPhotoOpened(photo, fromFirst, thumbnail) },
                 modifier = Modifier.weight(0.55f).testTag("cardLetterPrint"),
             )
         }

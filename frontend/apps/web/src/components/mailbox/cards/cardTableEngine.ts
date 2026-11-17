@@ -54,7 +54,9 @@ type Drag = {
   env0: number; pull0: number; deg0: number; lay0: number; xs?: number; ys?: number; holdTimer?: number; zx0?: number; zy0?: number;
 };
 type Geometry = {
-  w: number; h: number; cw: number; ch: number; ew: number; eh: number; fd: number; cardTop: number; envTopFinal: number;
+  w: number; h: number; cw: number; ch: number; ew: number; eh: number; fd: number;
+  /** Laid down, picture side up; and note side up, higher where the card's own photo or greeting lies under it. */
+  cardTop: number; cardTopBack: number; envTopFinal: number; envTopFinalBack: number;
   envX: number; envY: number; cardX: number; envYOpen: number; envTopOut: number; cardTopOut: number;
 };
 
@@ -167,6 +169,8 @@ export class CardTableEngine {
 
   /** The card brings its own photo or voice greeting (memories plan steps 4 and 7): room is kept for them on the table. */
   private readonly media: boolean;
+  /** How much of the card's photo and greeting shows, 0 to 1, as last written to the stage (`--media-seen`). */
+  private mediaSeen = -1;
 
   constructor(root: HTMLElement, options: { sealed: boolean; crackedSrc: string; wholeSrc: string; callbacks: TableCallbacks; sending?: boolean; mood?: CardMood; media?: boolean }) {
     this.root = root;
@@ -555,37 +559,49 @@ export class CardTableEngine {
     const safeTop = probe.height;
     const bottom = this.$('bottom').getBoundingClientRect().height + 8;
     const topGap = safeTop + 6;
+    // The laid-down card stays clear of the round buttons (10 + 40 below the safe area), with 8 between and 4 for its
+    // small turn, which lifts a corner.
+    const underButtons = safeTop + 62;
     const side = w < 560 ? 9 : 14;
-    const fit = (below: number) => {
-      const room = h - topGap - below;
-      // Phones: nearly as wide as the screen. Tablets and wide windows cap the card on a big table.
-      // Tablets and wide windows go to 640 where the height allows (design plan 6.3); the room below keeps it in.
-      let cw = Math.min(w - side * 2, w < 760 ? 470 : 640);
-      let peek = room - cw * 1.2;
-      const minPeek = cw * 0.13;
-      const maxPeek = cw * 0.47;
-      if (peek < minPeek) { cw = Math.min(cw, room / (1.2 + 0.13)); peek = cw * 0.13; }
-      peek = Math.min(peek, maxPeek);
-      const spare = Math.max(0, room - cw * 1.2 - peek);
-      return { cw, peek, cardTop: topGap + spare * 0.46 + peek };
-    };
-    let { cw, peek, cardTop } = fit(bottom);
+    const room = h - topGap - bottom;
+    // The card is as wide as the screen lets it be (the founder, November 16): nearly the phone's width, and up to 640
+    // on tablets and wide windows where the height allows (design plan 6.3). Shut, the envelope sits at least 88 below
+    // the safe area and clear of the buttons.
+    const widest = Math.min(w - side * 2, w < 760 ? 470 : 640);
+    const shutLimit = (h - safeTop - bottom - 88) / ((1.012 * 1392) / 1200);
+    const fitted = (under: number) => Math.max(0, Math.min(
+      widest, shutLimit, (room - under) / (1.2 + 0.13), (h - underButtons - bottom - under) / 1.2,
+    ));
     // The card's own photo and greeting lie beside it where the table has room at its sides (wave 4 drawing 3), else
-    // under it, a little over its bottom edge: then the card keeps that much room free above the buttons.
+    // under it once it's turned over. The card comes first: they get what a full-size card leaves under it, up to 160
+    // (a tap opens the photo over the whole screen, so its print can be small); only where the least isn't left does
+    // the card give way.
     let media: 'beside' | 'below' | '' = '';
     let mediaRoom = 0;
     if (this.media) {
-      if ((w - cw) / 2 >= MEDIA_BESIDE) media = 'beside';
+      if ((w - fitted(0)) / 2 >= MEDIA_BESIDE) media = 'beside';
       else {
         media = 'below';
-        mediaRoom = Math.round(clamp(w * 0.34, 112, 176));
-        ({ cw, peek, cardTop } = fit(bottom + mediaRoom));
+        mediaRoom = Math.round(clamp(h - underButtons - bottom - fitted(0) * 1.2, h < 720 ? 110 : 124, 160));
       }
     }
+    const cw = fitted(mediaRoom);
     const ew = cw * 1.012;
     const eh = (ew * 1392) / 1200;
     const fd = (ew * 512) / 1200;
-    const envTopFinal = cardTop - peek + fd;
+    // Laid down, the envelope's pocket ends at the card's lower edge, so its flap rises 0.406 card widths above the
+    // card: past the top of the screen where the card nearly fills it. With more room than that, the card lies lower
+    // and all of the flap shows, up to 47% of the card's width above it.
+    const flapAbove = ((1.012 * (512 + 1392)) / 1200 - 1.2) * cw;
+    const laid = (space: number) => {
+      const peek = clamp(space - cw * 1.2, cw * 0.13, cw * 0.47);
+      const spare = Math.max(0, space - cw * 1.2 - peek);
+      const top = Math.max(topGap + spare * 0.46 + peek, underButtons);
+      return { top, env: top - Math.max(peek, flapAbove) + fd };
+    };
+    // With its picture up the card lies under the whole flap; turned over, it lies higher and leaves the room under it.
+    const front = laid(room);
+    const back = laid(room - mediaRoom);
     // Shut, it sits a little above the middle of the free space, under the words.
     const free = h - safeTop - bottom;
     // Large text: the words above it may take two lines.
@@ -593,7 +609,8 @@ export class CardTableEngine {
     const envY = safeTop + Math.max(88, 54 + wordSize * 1.3 * (wordSize >= 24 ? 2 : 1) + 6, (free - eh) * 0.56);
     const envTopOut = Math.min(h - eh * 0.5, cw * 1.2 * 0.8 + 8);
     this.g = {
-      w, h, cw, ch: cw * 1.2, ew, eh, fd, cardTop, envTopFinal, envX: (w - ew) / 2, envY, cardX: (w - cw) / 2,
+      w, h, cw, ch: cw * 1.2, ew, eh, fd, cardTop: front.top, cardTopBack: back.top, envTopFinal: front.env,
+      envTopFinalBack: back.env, envX: (w - ew) / 2, envY, cardX: (w - cw) / 2,
       envYOpen: Math.max(envY, safeTop + fd * 0.9 + 4), envTopOut, cardTopOut: envTopOut - cw * 1.2 * 1.02 - 8,
     };
     stage.style.setProperty('--ew', `${ew}px`);
@@ -601,7 +618,8 @@ export class CardTableEngine {
     if (this.media) {
       stage.dataset.media = media;
       stage.style.setProperty('--card-x', `${(w - cw) / 2}px`);
-      stage.style.setProperty('--card-top', `${cardTop}px`);
+      // Where the turned-over card lies: its photo and greeting are laid from there.
+      stage.style.setProperty('--card-top', `${back.top}px`);
       stage.style.setProperty('--card-w', `${cw}px`);
       stage.style.setProperty('--card-h', `${cw * 1.2}px`);
       stage.style.setProperty('--media-room', `${mediaRoom}px`);
@@ -876,7 +894,10 @@ export class CardTableEngine {
     // Envelope pose.
     const eRot = lerp(lerp(-1.1, 0.4, r), 1.5, lay);
     let eTop = lerp(lerp(g.envY, g.envYOpen, flapT), g.envTopOut, r);
-    eTop = lerp(eTop, g.envTopFinal, lay);
+    // Laid down, the card and its envelope move up the table as the card is turned over, where its own photo or
+    // greeting needs the room under it: 0 picture side up, 1 note side up, easing through the turn.
+    const over = (1 - Math.cos((v.deg.x * Math.PI) / 180)) / 2;
+    eTop = lerp(eTop, lerp(g.envTopFinal, g.envTopFinalBack, over), lay);
     const arrive = drop * (g.h * 0.9);
     const ex = g.envX + tx * 2.5;
     const ey = eTop + ty * 2.5 - arrive;
@@ -925,7 +946,15 @@ export class CardTableEngine {
     let cTop = lerp(cardIn, g.cardTopOut, r);
     let cRot = lerp(eRot, -0.8, r);
     let cs = lerp(0.94, 1.03, smooth(0.2, 1, r));
-    cTop = lerp(cTop, g.cardTop, lay);
+    cTop = lerp(cTop, lerp(g.cardTop, g.cardTopBack, over), lay);
+    // The photo and greeting come as the card arrives at its place and go as it leaves.
+    if (this.media) {
+      const seen = this.step === 'out' ? smooth(0.72, 1, over) : 0;
+      if (seen !== this.mediaSeen) {
+        this.mediaSeen = seen;
+        this.root.style.setProperty('--media-seen', seen.toFixed(3));
+      }
+    }
     cRot = lerp(cRot, -1.05, lay);
     cs = lerp(cs, 1, lay);
     const cx = g.cardX + tx * 5;

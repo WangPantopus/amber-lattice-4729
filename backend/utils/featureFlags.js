@@ -30,6 +30,17 @@ function aroundYouEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// A Christmas card by email's one reminder, three days after its email (founder, November 16; services/cardEmail).
+// CARD_EMAIL_REMINDERS is '0' (off) or '1' (on); unset, it is on where the server runs as staging or production
+// (NODE_ENV=production) and off on a laptop or in tests, so a local run never emails a reminder to a real address.
+// Changing it takes a restart of the API and worker with the new value, not a new build.
+function cardEmailRemindersEnabled(env = process.env) {
+  const value = String(env.CARD_EMAIL_REMINDERS || '').trim().toLowerCase();
+  if (DISABLED_VALUES.includes(value)) return false;
+  if (['1', 'true', 'on'].includes(value)) return true;
+  return env.NODE_ENV === 'production';
+}
+
 // First-launch scope (founder direction, 2026-09-27). These features are
 // hidden for the first launch; their code stays. A feature is OFF unless its
 // key is listed in LAUNCH_FEATURES (comma-separated, or "all"). The same keys
@@ -214,6 +225,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 
 module.exports = {
   aroundYouEnabled,
+  cardEmailRemindersEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
   areLaunchFeaturesEnabled,

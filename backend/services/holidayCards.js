@@ -214,6 +214,19 @@ function emailTrouble(mail, now = new Date()) {
   return Number(email.tries) >= EMAIL_TRIES || old ? 'failed' : 'retrying';
 }
 
+/**
+ * The picture at the top of a card's email and of its look (services/emailService cardWaitingEmailContent), as a path
+ * on the website: the front the sender picked, lying on its open envelope (the picture's link preview, 1200x630 JPEG,
+ * which every mail client draws), or the sealed envelope for a card sealed until Christmas (founder, November 16: the
+ * stock picture may show before they join; never the note, signature, own photo or voice). A design this server doesn't
+ * know gets the sealed envelope too. Answers { path, alt, caption }.
+ */
+function emailPicture({ design, sealed }) {
+  const picked = sealed ? null : designById(design);
+  if (!picked) return { path: '/holiday-cards/share/sealed-link.jpg', alt: 'A sealed red envelope with a gold wax seal', caption: null };
+  return { path: `/holiday-cards/share/${picked.id}-link.jpg`, alt: `A Christmas card: ${picked.caption}`, caption: picked.caption };
+}
+
 /** Whether a card's email went out (or it never kept a record, before this was kept). */
 function emailWent(mail) {
   const email = mail?.mail_extracted?.card?.email;
@@ -400,9 +413,12 @@ function mediaView(mail, sealed) {
   const media = sealed ? null : (mail.card_media || mediaOf(mail.object_payload));
   const photo = media?.photo?.file_id ? media.photo : null;
   const voice = media?.voice?.file_id ? media.voice : null;
+  // A Live Photo's moving part rides its photo (kind `live`, founder November 16): covered whenever the photo is.
+  const live = photo && media?.live?.file_id ? media.live : null;
   return {
     photo: photo ? { file_id: photo.file_id, width: photo.width ?? null, height: photo.height ?? null, alt: photo.alt || null,
-      covered: mail.card_photo_covered !== false } : null,
+      covered: mail.card_photo_covered !== false,
+      live: live ? { file_id: live.file_id, mime_type: live.mime_type || null, duration_ms: live.duration_ms ?? null } : null } : null,
     voice: voice ? { file_id: voice.file_id, duration_ms: voice.duration_ms ?? null } : null,
   };
 }
@@ -619,7 +635,7 @@ async function sentLine(userId, now = new Date()) {
 module.exports = {
   CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
-  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
+  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,
   personDelivery, emailDelivery, cardView, pickupAt, sentSummary, sentCards, notDeliveredOf, sentStatus, sentPiece, sentTrail, sentLine,
 };
