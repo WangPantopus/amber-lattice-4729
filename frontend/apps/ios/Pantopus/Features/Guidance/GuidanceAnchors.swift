@@ -28,6 +28,12 @@ extension View {
         modifier(GuidanceScreenModifier(screen: screen, ready: ready, variants: variants, active: active))
     }
 
+    /// What the button of card `id` does on this screen (cards 24 to 27 open their next step). The last screen to
+    /// appear with an action for the card is the one that runs it; `active` false takes it away.
+    func guidanceAction(_ id: GuidanceCardID, active: Bool = true, perform: @escaping () -> Void) -> some View {
+        modifier(GuidanceActionModifier(id: id, active: active, perform: perform))
+    }
+
     /// A control a pointer explains. `when` is the pointer's own condition (no row opened yet, no post yet …);
     /// `cornerRadius` shapes the ring for a control that isn't round. Several controls with one id get one
     /// ring around all of them (Mail's "Me" and "Home").
@@ -69,6 +75,24 @@ private struct GuidanceScreenModifier: ViewModifier {
             return
         }
         GuidanceCenter.shared.screenAppeared(token, screen: screen, ready: ready, variants: variants)
+    }
+}
+
+private struct GuidanceActionModifier: ViewModifier {
+    let id: GuidanceCardID
+    let active: Bool
+    let perform: () -> Void
+    @State private var token = UUID()
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: register)
+            .onDisappear { GuidanceCenter.shared.setAction(token, id: id, run: nil) }
+            .onChange(of: active) { _, _ in register() }
+    }
+
+    private func register() {
+        GuidanceCenter.shared.setAction(token, id: id, run: active ? perform : nil)
     }
 }
 

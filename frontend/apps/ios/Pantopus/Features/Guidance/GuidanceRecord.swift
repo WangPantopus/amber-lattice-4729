@@ -29,6 +29,36 @@ struct GuidanceRecord: Codable, Equatable {
     var facts: Set<String> = []
     /// The day (yyyy-MM-dd, the phone's calendar) a centre card last showed.
     var lastCentreDay: String?
+    /// After-action cards (16 to 23) whose action finished here and that wait for their screen.
+    var pending: Set<String> = []
+    /// The account's sign-up (ISO 8601, the profile's `createdAt`): "two days after sign-up" (card 24).
+    var createdAt: String?
+    /// The app version an introduction last showed in: at most one per app update.
+    var lastIntroVersion: String?
+
+    init() {}
+
+    /// A record saved by an earlier build lacks the newer fields: they start empty, the rest is kept.
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        seen = try c.decodeIfPresent([String: GuidanceSeenDTO].self, forKey: .seen) ?? [:]
+        unsent = try c.decodeIfPresent([String].self, forKey: .unsent) ?? []
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        newAccount = try c.decodeIfPresent(Bool.self, forKey: .newAccount) ?? false
+        known = try c.decodeIfPresent(Bool.self, forKey: .known) ?? false
+        opens = try c.decodeIfPresent(Int.self, forKey: .opens) ?? 0
+        visits = try c.decodeIfPresent([String: Int].self, forKey: .visits) ?? [:]
+        facts = try c.decodeIfPresent(Set<String>.self, forKey: .facts) ?? []
+        lastCentreDay = try c.decodeIfPresent(String.self, forKey: .lastCentreDay)
+        pending = try c.decodeIfPresent(Set<String>.self, forKey: .pending) ?? []
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        lastIntroVersion = try c.decodeIfPresent(String.self, forKey: .lastIntroVersion)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case seen, unsent, enabled, newAccount, known, opens, visits, facts, lastCentreDay
+        case pending, createdAt, lastIntroVersion
+    }
 
     func hasSeen(_ id: GuidanceCardID) -> Bool {
         (seen[id.rawValue]?.times ?? 0) > 0
@@ -36,6 +66,28 @@ struct GuidanceRecord: Codable, Equatable {
 
     func has(_ fact: GuidanceFact) -> Bool {
         facts.contains(fact.rawValue)
+    }
+
+    /// How often a card has closed, on any device.
+    func times(_ id: GuidanceCardID) -> Int {
+        seen[id.rawValue]?.times ?? 0
+    }
+
+    /// When a card last closed, on any device.
+    func lastSeen(_ id: GuidanceCardID) -> Date? {
+        seen[id.rawValue]?.lastAt.flatMap(GuidanceRecord.date)
+    }
+
+    /// An ISO 8601 time as the server or this phone wrote it: with or without fractions of a second, or a bare day.
+    static func date(_ iso: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        for options: ISO8601DateFormatter.Options in [
+            [.withInternetDateTime, .withFractionalSeconds], [.withInternetDateTime], [.withFullDate]
+        ] {
+            formatter.formatOptions = options
+            if let date = formatter.date(from: iso) { return date }
+        }
+        return nil
     }
 
     /// A close made here: counted at once and queued for the server.

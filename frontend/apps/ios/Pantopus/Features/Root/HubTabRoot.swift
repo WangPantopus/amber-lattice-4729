@@ -100,6 +100,8 @@ public enum HubRoute: Hashable {
     case homeMembers(homeId: String)
     /// The Members sub-screen opened on its Requests tab (access requests).
     case homeMemberRequests(homeId: String)
+    /// The Members sub-screen with its invite open (the guidance reminder "Invite your household").
+    case homeMembersInvite(homeId: String)
     /// The Owners list, and the owner's claim review (the lists the You
     /// stack already hosts), for Home notification links.
     case homeOwners(homeId: String)
@@ -1604,6 +1606,8 @@ public struct HubTabRoot: View {
                 // Another Home is another dashboard, with its own state.
                 .id(homeId)
                 .onAppear { Self.placeRootViewed("home") }
+                // The guidance reminder "Invite your household": its button opens the Members invite.
+                .guidanceAction(.nextInvite) { path.append(.homeMembersInvite(homeId: homeId)) }
         case let .claim(homeId):
             // The same dashboard: the claimed Home's public view, its claim's status on top.
             placeDashboard(homeId: homeId, isActive: path.isEmpty && rootTabs.selected == owningTab, isRoot: true)
@@ -1621,7 +1625,9 @@ public struct HubTabRoot: View {
                 onOpenDetail: { path.append(.savedPlaceDetail(savedPlaceId: place.id, group: $0)) }
             )
             .id(place.id)
-            .guidanceScreen(.place, variants: GuidanceVariants(savedAddress: true, placeHasAddress: true))
+            .guidanceScreen(.place, variants: GuidanceVariants(savedAddress: true, placeHasAddress: true, savedPlaceAt: place.createdAt))
+            // The guidance reminder "Set up your home": its button opens the set-up flow, as the page's own does.
+            .guidanceAction(.nextSetupHome) { path.append(.addHomeAt(address: place.label)) }
             .onAppear { Self.placeRootViewed("saved_place") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
@@ -1640,7 +1646,7 @@ public struct HubTabRoot: View {
             .accessibilityIdentifier("place.firstRun")
             .toolbar(.hidden, for: .navigationBar)
             .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
-            .guidanceScreen(.place)
+            .guidanceScreen(.place, variants: GuidanceVariants(firstRun: true))
             .onAppear { Self.placeRootViewed("first_run") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
@@ -2378,6 +2384,12 @@ public struct HubTabRoot: View {
             }
         case let .homeMemberRequests(homeId):
             MembersListView(homeId: homeId, initialTab: MembersTab.requests) { userId in
+                Task { @MainActor in push(.publicProfile(userId: userId)) }
+            } onAddGuest: {
+                Task { @MainActor in push(.guestPasses(homeId: homeId)) }
+            }
+        case let .homeMembersInvite(homeId):
+            MembersListView(homeId: homeId, opensInvite: true) { userId in
                 Task { @MainActor in push(.publicProfile(userId: userId)) }
             } onAddGuest: {
                 Task { @MainActor in push(.guestPasses(homeId: homeId)) }

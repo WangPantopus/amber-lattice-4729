@@ -327,6 +327,8 @@ public final class CeremonialMailViewModel: WizardModel {
             let _: SendMailResponse = try await api.request(MailComposeEndpoints.send(body: body))
             step = .success
             NotificationCenter.default.post(name: .mailboxSentChanged, object: nil)
+            // The guidance card "It's on its way" follows in Mail, after the first letter or card.
+            GuidanceCenter.shared.pend(.doneFirstLetter)
         } catch {
             submitError = (error as? APIError)?.errorDescription ?? "Couldn't send your letter. Try again."
         }
