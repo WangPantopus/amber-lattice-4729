@@ -118,3 +118,57 @@ data class PlanChipInWhoBody(
 data class PlanChipInResponse(
     @Json(name = "chip_in") val chipIn: PlanChipInDto? = null,
 )
+
+// ---- 3. Find a date (boards 24 to 26, switch `plans_find_date`) ----
+
+/**
+ * The card's `dates` while the host is picking (`extras=1`); gone after the pick. Every word with a date or a count in it
+ * is the server's ([answeredText], each option's `text` and `can_text`, the host's `pick_text` and `pick_note`).
+ */
+@JsonClass(generateAdapter = true)
+data class PlanDatesDto(
+    @Json(name = "state") val state: String = "picking",
+    @Json(name = "answered") val answered: Int = 0,
+    @Json(name = "invited") val invited: Int = 0,
+    @Json(name = "answered_text") val answeredText: String? = null,
+    @Json(name = "options") val options: List<PlanDateOptionDto> = emptyList(),
+    /** An invited person's own answer; absent for the host. */
+    @Json(name = "mine") val mine: PlanDatesMineDto? = null,
+)
+
+/** One time offered. The host's options also carry [who], [most], [pickText] and [pickNote], favorite first. */
+@JsonClass(generateAdapter = true)
+data class PlanDateOptionDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "starts_at") val startsAt: String? = null,
+    @Json(name = "ends_at") val endsAt: String? = null,
+    @Json(name = "text") val text: String = "",
+    @Json(name = "can") val can: Int = 0,
+    @Json(name = "can_text") val canText: String? = null,
+    @Json(name = "mine") val mine: Boolean = false,
+    @Json(name = "who") val who: List<String>? = null,
+    @Json(name = "most") val most: Boolean = false,
+    @Json(name = "pick_text") val pickText: String? = null,
+    @Json(name = "pick_note") val pickNote: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanDatesMineDto(
+    @Json(name = "answered") val answered: Boolean = false,
+    @Json(name = "party_size") val partySize: Int? = null,
+    @Json(name = "kids_count") val kidsCount: Int? = null,
+)
+
+/** `PUT /api/plans/:id/dates/mine`: the times that work (`[]` is "none of these") and the numbers. */
+@JsonClass(generateAdapter = true)
+data class PlanDatesMineBody(
+    @Json(name = "options") val options: List<String>,
+    @Json(name = "party_size") val partySize: Int,
+    @Json(name = "kids_count") val kidsCount: Int,
+)
+
+/** `POST /api/plans/:id/dates/pick`. */
+@JsonClass(generateAdapter = true)
+data class PlanDatePickBody(
+    @Json(name = "option_id") val optionId: String,
+)

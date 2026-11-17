@@ -2,6 +2,9 @@ package app.pantopus.android.data.plans
 
 import app.pantopus.android.data.api.models.plans.PlanChipInResponse
 import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
+import app.pantopus.android.data.api.models.plans.PlanDatePickBody
+import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
@@ -42,4 +45,16 @@ class PlanExtrasRepository
             paid: Boolean,
         ): NetworkResult<PlanChipInResponse> =
             safeApiCall { if (paid) api.markChipIn(id, PlanChipInWhoBody(who)) else api.unmarkChipIn(id, who) }
+
+        // ---- 3. Find a date ----
+
+        suspend fun saveDates(
+            id: String,
+            body: PlanDatesMineBody,
+        ): NetworkResult<PlanDto> = safeApiCall { api.saveDates(id, body) }
+
+        suspend fun pickDate(
+            id: String,
+            optionId: String,
+        ): NetworkResult<PlanDto> = safeApiCall { api.pickDate(id, PlanDatePickBody(optionId)) }
     }

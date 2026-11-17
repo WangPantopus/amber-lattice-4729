@@ -121,18 +121,16 @@ struct PlanGiftEdit {
         draft = original
     }
 
-    /// Puts the change on `body`: a new value or `null` (calls it off). After the draw only the budget counts; the
-    /// server still checks the draw time, so a draw time gone by is sent as the plan's start. Answers the sentence to
-    /// show instead when "Spend up to" is empty.
-    func apply(to body: inout UpdatePlanBody, start: Date) -> String? {
+    /// Puts the change on `body`: a new value or `null` (calls it off). After the draw only the budget changes, so it
+    /// goes alone. Answers the sentence to show instead when "Spend up to" is empty.
+    func apply(to body: inout UpdatePlanBody) -> String? {
         guard draft != original else { return nil }
-        guard var draft else {
+        guard let draft else {
             body.gift = .remove
             return nil
         }
-        if isDrawn, draft.drawAt <= Date() { draft.drawAt = start }
         guard let value = draft.body else { return PlanGiftDraft.incomplete }
-        body.gift = .set(value)
+        body.gift = .set(isDrawn ? PlanGiftBody(budgetCents: value.budgetCents, drawAt: nil) : value)
         return nil
     }
 }

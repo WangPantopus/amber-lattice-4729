@@ -270,7 +270,7 @@ struct PlanChangeScreen: View {
             error = problem
             return
         }
-        if plan?.card.changesGift == true, let problem = gift.apply(to: &body, start: start) {
+        if plan?.card.changesGift == true, let problem = gift.apply(to: &body) {
             isSaving = false
             error = problem
             return
