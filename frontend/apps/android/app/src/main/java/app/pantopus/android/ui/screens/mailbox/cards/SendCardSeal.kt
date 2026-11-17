@@ -27,6 +27,7 @@ import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.tableCard
  * second press sends nothing more). A refusal lifts the seal and says why. Once it's gone, "Done" shows the card sent
  * underneath, with every word and rule it had before.
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SealByHand(
     cards: HolidayCardsResponse,
