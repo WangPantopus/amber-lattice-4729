@@ -76,6 +76,12 @@ data class CardTableSendBack(
     val onClick: () -> Unit,
 )
 
+/** "Open the next card" (plan Part 4): how many more are waiting after this one, and opening the first. */
+data class CardTableNext(
+    val waiting: Int,
+    val onClick: () -> Unit,
+)
+
 /** The quiet button's words: the cream of the words at the top, a little smaller than the main button. */
 internal val tableQuietStyle =
     TextStyle(
@@ -135,6 +141,8 @@ internal fun CardTableControls(
     sendBack: CardTableSendBack? = null,
     /** The sender's quiet buttons once their card is gone. */
     gone: List<CardTableSendBack> = emptyList(),
+    /** "Open the next card" once the card has been turned over, with the Mailbox list's waiting cards in hand. */
+    next: CardTableNext? = null,
 ) {
     val top = insets.calculateTopPadding()
     val bottom = insets.calculateBottomPadding()
@@ -151,7 +159,7 @@ internal fun CardTableControls(
         }
     Box(modifier = Modifier.fillMaxSize()) {
         Words(state, top)
-        ActionBlock(state, hidden, bottom, quiet)
+        ActionBlock(state, hidden, bottom, quiet, next.takeIf { state.sendBackShows })
         if (showsTurnTip) TurnTip()
         TopRow(state, top, hidden, canShare, menu.isNotEmpty(), onClose, onShare)
         if (state.menuOpen && menu.isNotEmpty()) MenuPanel(state, top, menu)
@@ -261,6 +269,7 @@ private fun ActionBlock(
     hidden: Boolean,
     bottom: Dp,
     quiet: List<CardTableSendBack>,
+    next: CardTableNext?,
 ) {
     val away = hidden || state.step == TableStep.Pulling
     val fade by animateFloatAsState(if (away) 0f else 1f, tween(350), label = "tableAct")
@@ -296,6 +305,7 @@ private fun ActionBlock(
             } else {
                 quiet.forEachIndexed { index, action -> QuietButton(action, away, "cardTableGone.$index") }
             }
+            next?.let { NextCardButton(it, away) }
             HintSlot(state, away, printButton)
         }
     }
@@ -326,6 +336,32 @@ private fun TablePill(
         Text(words, style = tablePrimaryStyle)
     }
 }
+
+/** "Open the next card" with "{n} more waiting" as the line under it, one button to touch and to hear (plan Part 4). */
+@Composable
+private fun NextCardButton(
+    next: CardTableNext,
+    away: Boolean,
+) {
+    Column(
+        modifier =
+            Modifier
+                .minimumInteractiveComponentSize()
+                .clip(RoundedCornerShape(22.dp))
+                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = next.onClick))
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag("cardTableNextCard"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(OPEN_THE_NEXT_CARD, style = tableQuietStyle)
+        Text("${next.waiting} more waiting", style = tableHintStyle, modifier = Modifier.testTag("cardTableNextWaiting"))
+    }
+}
+
+/** The reader's way on to the next card waiting (plan Part 4). */
+internal const val OPEN_THE_NEXT_CARD = "Open the next card"
 
 /** A quiet button under the main one: words only, 44 dp to touch. */
 @Composable
