@@ -220,7 +220,13 @@ export default function VerifyPhonePage() {
 
   if (step === 'no_match') {
     const rowWords: Record<string, { label: string; sub: string; icon: typeof Camera; href: string }> = {
-      document: { label: FAST_VERIFY_ROWS.document.label, sub: 'About a minute.', icon: Camera, href: `/app/homes/${homeId}/verify-residency${toPlace ? '?return=place' : ''}` },
+      document: {
+        // Read at once (drawing F1), or today's reviewed upload when the server says it isn't.
+        ...(verify.data?.options.find((o) => o.id === 'document')?.fast === false
+          ? { label: 'Upload a document', sub: 'A utility bill, lease, or ID. A person reviews it.' }
+          : { label: FAST_VERIFY_ROWS.document.label, sub: 'About a minute.' }),
+        icon: Camera, href: `/app/homes/${homeId}/verify-residency${toPlace ? '?return=place' : ''}`,
+      },
       mail: { label: FAST_VERIFY_ROWS.mail.label, sub: 'Arrives in about a week.', icon: Mail, href: `/app/homes/${homeId}/verify-postcard${toPlace ? '?return=place' : ''}` },
       landlord: { label: FAST_VERIFY_ROWS.landlord.label, sub: FAST_VERIFY_ROWS.landlord.sub, icon: ShieldCheck, href: `/app/homes/${homeId}/verify-landlord${toPlace ? '?return=place' : ''}` },
     };
