@@ -42,24 +42,29 @@ const SHOTS = require(path.resolve(argument('shots', path.join(__dirname, 'card-
 const FPS = SHOTS.fps;
 /** A finger's touches reach the page 120 times a second of the table's time, as a phone's screen samples them, however the film's frames and steps fall. */
 const TOUCH_EVERY = 1000 / 120;
-/** The shutter for the fast moments: four steps over half a frame (180°, as a film camera), blended. */
+/** The shutter for the fast moments: steps over half a frame (180°, as a film camera), blended. */
 const SHUTTER = 0.5;
+/** How many steps a fast moment is blended from, unless its blur range says: at 16 even the spin shows no separate copies. */
+const BLUR_STEPS = 16;
 /** The serif the table prints in (CardTable.module.css --serif): the ad's words are set in it. */
 const SERIF = "ui-serif, 'New York', Georgia, 'Times New Roman', serif";
 const CREAM = '#f6ecd9';
 
 /**
  * The shapes. tall: a 360 × 640 phone at 3× (1080 × 1920); the table makes room above and below itself for the
- * platforms' own buttons. wide: a 1920 × 1080 window, where the card stands at its 640 cap.
+ * platforms' own buttons. wide: a 1920 × 1080 window; the table keeps 200 px above and below itself, so its card
+ * (about 500 px, under its 640 cap) leaves the cloth at either side free for words set large.
  */
 const SHAPES = {
   tall: { width: 360, height: 640, scale: 3, mobile: true, top: 150, bottom: 150 },
-  wide: { width: 1920, height: 1080, scale: 1, mobile: false, top: 40, bottom: 60 },
+  wide: { width: 1920, height: 1080, scale: 1, mobile: false, top: 200, bottom: 200 },
 };
 /** 4:5 (the feeds) is cut from the tall film, rows 192-1542: the tall frames, words and end card, cropped. */
 SHAPES.post = { ...SHAPES.tall, frames: 'tall', crop: { top: 192, height: 1350 } };
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+/** A view key's zoom in this shape: a number, or one per shape ({ tall, wide }). */
+const zoomOf = (key, shapeName) => (key.z && typeof key.z === 'object' ? key.z[shapeName] : key.z) || 1;
 /** "4a" → "04a", for file names that sort in shot order. */
 const label = (shot) => String(shot).replace(/^\d+/, (n) => n.padStart(2, '0'));
 const smooth = (x) => { const t = clamp(x); return t * t * (3 - 2 * t); };
@@ -303,7 +308,7 @@ class Take {
     this.filmAt = clockOf(this.def);
     // A take that moves in is drawn at its closest view's scale from the start (a 1.6× close-up of a 3× phone: 4.8×),
     // and every frame is taken at or below it: nothing is ever enlarged, and a layer mid-animation keeps its detail.
-    this.dpr = shape.scale * Math.max(1, ...(this.def.view || []).map((key) => key.z || 1));
+    this.dpr = shape.scale * Math.max(1, ...(this.def.view || []).map((key) => zoomOf(key, shapeName)));
     this.sounds = [];
     this.expected = 0;
     this.gestures = (this.def.gestures || []).map((g) => ({ ...g, t0: this.filmAt(g.at), state: 'waiting' }));
@@ -322,9 +327,10 @@ class Take {
     const left = this.def.insets?.[this.shapeName]?.left;
     if (left) query.set('left', String(left));
     if (this.def.scene === 'rack') {
-      const rack = story.rack.map((n) => story.cards.get(n)).map(({ id, number, caption, paper, table }) => ({ id, number, caption, paper, table }));
+      // A take may open the rack on its own cards (one collection's, at its `start`), else the story's at their first.
+      const rack = (this.def.rack || story.rack).map((n) => story.cards.get(n)).map(({ id, number, caption, paper, table }) => ({ id, number, caption, paper, table }));
       query.set('rack', JSON.stringify(rack));
-      query.set('start', rack[0].id);
+      query.set('start', this.def.start ? story.cards.get(this.def.start).id : rack[0].id);
     }
     return `${this.server}/dev/card-film?${query}`;
   }
@@ -523,7 +529,7 @@ class Take {
     };
     const ca = await centre(a);
     const cb = b === a ? ca : await centre(b);
-    const z = a.z + (b.z - a.z) * k;
+    const z = zoomOf(a, this.shapeName) + (zoomOf(b, this.shapeName) - zoomOf(a, this.shapeName)) * k;
     const w = width / z;
     const h = height / z;
     const x = ca.x + (cb.x - ca.x) * k;
@@ -543,7 +549,7 @@ class Take {
       const fresh = await this.page.evaluate((from) => window.__film.sounds.slice(from), this.sounds.length);
       for (const sound of fresh) this.sounds.push({ name: path.basename(new URL(sound.src).pathname, '.mp3'), table: sound.at, second: s });
     }
-    if (process.env.AD_DEBUG && Math.abs(s * 10 - Math.round(s * 10)) < 0.022) {
+    if (process.env.AD_DEBUG && (process.env.AD_DEBUG === '2' || Math.abs(s * 10 - Math.round(s * 10)) < 0.022)) {
       const state = await this.page.evaluate(() => { const e = window.__cardTable; return e ? { step: e.step, send: e.send, pull: +e.v.pull.x.toFixed(3), lay: +e.v.lay.x.toFixed(3), env: +e.v.envDeg.x.toFixed(1), deg: +e.v.deg.x.toFixed(1), drag: e.dragging?.mode ?? null } : null; });
       console.log(`${this.name} ${s.toFixed(1)}s t=${t.toFixed(0)} ${JSON.stringify(state)}`);
     }
@@ -564,13 +570,15 @@ class Take {
     return raw.raw().toBuffer();
   }
 
-  /** Is the take's second `s` one of its fast moments, filmed in four steps over a 180° shutter and blended? */
-  blurred(s) {
-    return (this.def.blur || []).some(([a, b]) => s >= a && s < b);
+  /** How many steps the take's second `s` is filmed in: in a fast moment, its blur range's steps (BLUR_STEPS unless the
+   * range gives a third number), over a 180° shutter and blended; else one. */
+  steps(s) {
+    const range = (this.def.blur || []).find(([a, b]) => s >= a && s < b);
+    return range ? range[2] || BLUR_STEPS : 1;
   }
 
   /**
-   * Films the take: every frame steps the clock (four steps where it's blurred), and the frames in `wanted` (indexes,
+   * Films the take: every frame steps the clock (in several steps where it's blurred), and the frames in `wanted` (indexes,
    * or all) are written as PNG. Returns the sounds, each with the second it fired on.
    */
   async film(dir, wanted = null) {
@@ -581,15 +589,16 @@ class Take {
       const capture = !wanted || wanted.has(i);
       const s = i / FPS;
       let frame;
-      if (this.blurred(s)) {
+      const n = this.steps(s);
+      if (n > 1) {
         const sum = new Float32Array(ow * oh * 3);
-        for (let k = 0; k < 4; k += 1) {
-          const raw = await this.step(s + ((k - 1.5) / 4) * (SHUTTER / FPS), capture);
+        for (let k = 0; k < n; k += 1) {
+          const raw = await this.step(s + ((k - (n - 1) / 2) / n) * (SHUTTER / FPS), capture);
           if (raw) for (let p = 0; p < sum.length; p += 1) sum[p] += raw[p];
         }
         if (capture) {
           frame = Buffer.alloc(sum.length);
-          for (let p = 0; p < sum.length; p += 1) frame[p] = Math.round(sum[p] / 4);
+          for (let p = 0; p < sum.length; p += 1) frame[p] = Math.round(sum[p] / n);
         }
       } else {
         frame = await this.step(s, capture);
@@ -606,11 +615,13 @@ class Take {
 
 // ---- Words, the end card and the platforms' bars, drawn once by Chrome as transparent pictures ----
 
-function wordsHtml(shape, lines) {
+function wordsHtml(shape, lines, at = null) {
   const tall = shape.mobile;
+  // Tall: a band above the table (15-23% of the height), or (at 'seal') on the envelope's red front under the seal in
+  // the close-up (about 53-60%, above the platforms' bottom 35%). Wide: on the cloth at the left of the table.
   const box = tall
-    ? 'left: 20px; right: 20px; top: 96px; height: 51px; justify-content: center; align-items: center; text-align: center; font-size: 23px;'
-    : 'left: 88px; width: 520px; top: 330px; height: 170px; justify-content: center; align-items: flex-start; text-align: left; font-size: 54px;';
+    ? `left: 20px; right: 20px; top: ${at === 'seal' ? 338 : 96}px; height: 51px; justify-content: center; align-items: center; text-align: center; font-size: 23px;`
+    : 'left: 72px; width: 680px; top: 320px; height: 190px; justify-content: center; align-items: flex-start; text-align: left; font-size: 64px;';
   return `<!doctype html><html><head><style>
     html, body { margin: 0; background: transparent; }
     .w { position: absolute; display: flex; flex-direction: column; ${box} font-family: ${SERIF}; font-style: italic; line-height: 1.1;
@@ -709,12 +720,25 @@ function cutPlan(cut) {
   return { pieces, length: at };
 }
 
-function wordsAlpha(cut, s) {
+/**
+ * A cut's words as this shape shows them: [from, to, lines, at]. An entry's fourth item may move or retime it in one
+ * shape ({ tall: { from, to, at: 'seal' }, wide: { to } }); 4:5 follows tall. at 'seal': on the envelope's front under
+ * the seal, in the close-up.
+ */
+function wordsFor(cut, shape) {
+  const key = shape.mobile ? 'tall' : 'wide';
+  return (cut.words || []).map(([a, b, lines, by]) => {
+    const own = (by && by[key]) || {};
+    return [own.from ?? a, own.to ?? b, lines, own.at || null];
+  });
+}
+
+function wordsAlpha(words, s) {
   const out = [];
-  for (const [a, b, lines] of cut.words) {
+  for (const [a, b, lines, at] of words) {
     if (s < a - 0.001 || s > b + 0.001) continue;
     const k = Math.min(smooth((s - a) / 0.22), smooth((b - s) / 0.22));
-    if (k > 0.001) out.push({ lines, k });
+    if (k > 0.001) out.push({ lines, at, k });
   }
   return out;
 }
@@ -744,7 +768,7 @@ async function compose({ raw, shape, s, cut, overlays, frameNo, bars }) {
   const dip = dipAt(cut, s);
   if (dip < 0.999) for (let p = 0; p < rgb.length; p += 1) rgb[p] = Math.round(rgb[p] * dip);
   const layers = [];
-  for (const { lines, k } of wordsAlpha(cut, s)) layers.push({ image: await overlays.words(lines), k });
+  for (const { lines, at, k } of wordsAlpha(wordsFor(cut, shape), s)) layers.push({ image: await overlays.words(lines, at), k });
   if (end && s >= end.at) {
     const parts = ['mark', 'name', 'line', 'badges', 'address'];
     const span = end.full - end.at - 0.25;
@@ -790,9 +814,9 @@ function overlayCache(context, shape, server, endCard = SHOTS.end) {
   const words = new Map();
   const ends = new Map();
   return {
-    words: async (lines) => {
-      const key = lines.join('\n');
-      if (!words.has(key)) words.set(key, await drawOverlay(context, shape, wordsHtml(shape, lines)));
+    words: async (lines, at = null) => {
+      const key = `${at || ''}|${lines.join('\n')}`;
+      if (!words.has(key)) words.set(key, await drawOverlay(context, shape, wordsHtml(shape, lines, at)));
       return words.get(key);
     },
     end: async (part) => {
@@ -1092,7 +1116,7 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
         const pc = (v, of) => `${((100 * v) / of).toFixed(1)}%`;
         return x1 < 0 ? 'nothing drawn' : `x ${pc(x0, w)}–${pc(x1 + 1, w)}, y ${pc(y0 - top, h)}–${pc(y1 + 1 - top, h)}${y0 < top || y1 >= top + h || x0 <= 0 || x1 >= w - 1 ? '  CUT OFF' : ''}`;
       };
-      for (const [a, b, lines] of cut.words) console.log(`words ${a}–${b}s  "${lines.join(' / ')}"  ${bounds(await overlays.words(lines))}`);
+      for (const [a, b, lines, at] of wordsFor(cut, shape)) console.log(`words ${a}–${b}s${at ? ` (${at})` : ''}  "${lines.join(' / ')}"  ${bounds(await overlays.words(lines, at))}`);
       if (cut.end) {
         const parts = await Promise.all(['mark', 'name', 'line', 'badges', 'address'].map((part) => overlays.end(part)));
         const union = Buffer.alloc(parts[0].length);
@@ -1108,7 +1132,7 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
       const shape = SHAPES.tall;
       const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
       const base = path.join(out, `cards-ad-${name}${/^\d+$/.test(name) ? 's' : ''}-tall`);
-      const times = [...cut.words.map(([a, b]) => (a + b) / 2), ...(cut.end ? [cut.end.full + 0.6] : [])];
+      const times = [...wordsFor(cut, shape).map(([a, b]) => (a + b) / 2), ...(cut.end ? [cut.end.full + 0.6] : [])];
       const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
       const bars = [];
       for (const platform of ['meta', 'tiktok', 'youtube']) bars.push(await drawOverlay(context, shape, barsHtml(platform)));
