@@ -68,6 +68,8 @@ data class PlanInviteRowDto(
      * `email: null` and the guest's name from that plan here.
      */
     @Json(name = "name") val name: String? = null,
+    /** The holidays' chip in, on an `in` row (with `extras=1`): whether they paid, and `who` for "Mark paid". */
+    @Json(name = "chip_in") val chipIn: PlanChipInMarkDto? = null,
     /** The email couldn't be sent (the address said no to invitation emails, or it bounced). */
     @Json(name = "email_failed") val emailFailed: Boolean = false,
     @Json(name = "request_id") val requestId: String? = null,

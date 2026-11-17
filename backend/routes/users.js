@@ -2971,10 +2971,133 @@ router.get('/profile', verifyToken, async (req, res) => {
         updatedAt: userData.updated_at,
       },
       invite_progress: inviteProgress,
+      guidance: guidanceFor(userData),
     });
   } catch (err) {
     logger.error('Profile fetch error', { error: err.message, userId: req.user.id });
     res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// ============ GUIDANCE CARDS ============
+// The centre cards and pointer bubbles that explain the app to a new account (founder approval 2026-11-16). The apps
+// decide when a card shows; the server keeps which cards the person has closed, in User.guidance_seen:
+// { "<card id>": { "times": <int>, "last_at": "<ISO time>" } }, so a card closed on one app stays closed on the others.
+// The profile above carries `guidance` = { enabled, new_account, seen }; both routes below answer { guidance }.
+// (Required here, not at the top: scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up.)
+const { guidanceCardsEnabled } = require('../utils/featureFlags');
+const GUIDANCE_CARD_IDS = new Set([
+  // First open of each screen.
+  'welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments', 'tab_plans',
+  // Pointers.
+  'tip_ask', 'tip_messages', 'tip_menu', 'tip_verify', 'tip_place_row', 'tip_pulse_post', 'tip_pulse_area',
+  'tip_mail_me_home',
+  // Right after doing something for the first time.
+  'done_home_setup', 'done_verified', 'done_first_post', 'done_first_moment', 'done_first_plan', 'done_connected',
+  'done_first_letter', 'done_household',
+  // Reminders of the next step.
+  'next_add_address', 'next_setup_home', 'next_verify', 'next_invite',
+  // Introducing something new.
+  'new_plans',
+]);
+const GUIDANCE_ID_PATTERN = /^[a-z][a-z0-9_]{2,40}$/;
+// Introductions are named new_<word>, so a later one needs no server change.
+const GUIDANCE_INTRODUCTION_PATTERN = /^new_[a-z][a-z0-9_]*$/;
+// Introduction ids are open-ended; this keeps one account's map small.
+const GUIDANCE_MAX_INTRODUCTIONS = 50;
+const GUIDANCE_NEW_ACCOUNT_MS = 14 * 24 * 60 * 60 * 1000;
+
+function guidanceSeenMap(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** The profile's `guidance`: the switch, whether the account is under 14 days old, and the cards it has closed. */
+function guidanceFor(user) {
+  const createdAt = Date.parse(user?.created_at || '');
+  const newAccount = Number.isFinite(createdAt) && Date.now() - createdAt < GUIDANCE_NEW_ACCOUNT_MS;
+  if (!guidanceCardsEnabled()) return { enabled: false, new_account: newAccount, seen: {} };
+  return { enabled: true, new_account: newAccount, seen: guidanceSeenMap(user?.guidance_seen) };
+}
+
+function isGuidanceCardId(id, seen) {
+  if (typeof id !== 'string' || !GUIDANCE_ID_PATTERN.test(id)) return false;
+  if (GUIDANCE_CARD_IDS.has(id)) return true;
+  if (!GUIDANCE_INTRODUCTION_PATTERN.test(id)) return false;
+  if (Object.prototype.hasOwnProperty.call(seen, id)) return true;
+  const introductions = Object.keys(seen).filter((key) => key.startsWith('new_') && !GUIDANCE_CARD_IDS.has(key));
+  return introductions.length < GUIDANCE_MAX_INTRODUCTIONS;
+}
+
+// With the switch off the routes are not there: the same 404 as any unknown path (app.js).
+function requireGuidanceCards(req, res, next) {
+  if (guidanceCardsEnabled()) return next();
+  return res.status(404).json({ error: 'Route not found', path: req.baseUrl + req.path, method: req.method });
+}
+
+async function loadGuidanceUser(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('User')
+    .select('id, created_at, guidance_seen')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function saveGuidanceSeen(userId, seen) {
+  const { data, error } = await supabaseAdmin
+    .from('User')
+    .update({ guidance_seen: seen })
+    .eq('id', userId)
+    .select('id, created_at, guidance_seen')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * POST /api/users/guidance/shown   body { card: "<card id>" }
+ * A card closed: adds one to its `times` and sets its `last_at` to now. Answers { guidance }. An id that is not one of
+ * the cards answers 400 GUIDANCE_CARD_UNKNOWN. Writes go through verifyToken's per-person write limit, as the other
+ * profile writes do.
+ */
+router.post('/guidance/shown', requireGuidanceCards, verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const user = await loadGuidanceUser(userId);
+    if (!user) return res.status(404).json({ error: 'User profile not found' });
+
+    const seen = guidanceSeenMap(user.guidance_seen);
+    const card = req.body?.card;
+    if (!isGuidanceCardId(card, seen)) {
+      return res.status(400).json({ error: 'Unknown guidance card', code: 'GUIDANCE_CARD_UNKNOWN' });
+    }
+
+    const previous = Object.prototype.hasOwnProperty.call(seen, card) ? seen[card] : null;
+    const times = Number.isInteger(previous?.times) && previous.times > 0 ? previous.times + 1 : 1;
+    const saved = await saveGuidanceSeen(userId, { ...seen, [card]: { times, last_at: new Date().toISOString() } });
+    if (!saved) return res.status(404).json({ error: 'User profile not found' });
+    res.json({ guidance: guidanceFor(saved) });
+  } catch (err) {
+    logger.error('Guidance shown error', { error: err.message, userId });
+    res.status(500).json({ error: 'Failed to save guidance' });
+  }
+});
+
+/**
+ * POST /api/users/guidance/reset
+ * Clears the person's own map of closed cards, so every card can show again. For testing and the founder's own
+ * checks; no app shows a button for it. Answers { guidance }.
+ */
+router.post('/guidance/reset', requireGuidanceCards, verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const saved = await saveGuidanceSeen(userId, {});
+    if (!saved) return res.status(404).json({ error: 'User profile not found' });
+    res.json({ guidance: guidanceFor(saved) });
+  } catch (err) {
+    logger.error('Guidance reset error', { error: err.message, userId });
+    res.status(500).json({ error: 'Failed to reset guidance' });
   }
 });
 

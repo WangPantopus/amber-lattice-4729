@@ -234,7 +234,9 @@ yes, told to the founder):
   carries `field` (`link`, `amount_cents` or `note`), and a bad value refuses
   the whole change.
 - **Changing it.** A new value on the Change screen keeps who paid; `"chip_in":
-  null` takes it away and forgets who paid.
+  null` takes it away and forgets who paid. Both phones' Change screens carry
+  the host form's "Chip in" card for this (the iPhone since 4294; settled for
+  Android on November 17, after its first build left it to the web).
 - **Marks** can change while the plan is on and after it is over, never on a
   cancelled plan (`409 ended`). On the host's screens each person who is in
   carries `"chip_in": { "paid", "who" }`, and `who` is what "Mark paid" sends.
