@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -156,6 +157,7 @@ internal fun CardTableControls(
         if (state.menuOpen && menu.isNotEmpty()) MenuPanel(state, top, menu)
         TableToast(state, top)
         if (state.verseOpen) VerseBookmark(state.card, bottom, onClose = { state.verseOpen = false })
+        if (state.printOpen) NoteBookmark(state.card, bottom, onClose = { state.printOpen = false })
     }
 }
 
@@ -262,6 +264,8 @@ private fun ActionBlock(
 ) {
     val away = hidden || state.step == TableStep.Pulling
     val fade by animateFloatAsState(if (away) 0f else 1f, tween(350), label = "tableAct")
+    // At larger text "Read it in print" is a full button beside "Turn it back", not a small line (plan Part 2).
+    val printButton = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE && state.readsInPrint
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Column(
             modifier =
@@ -271,28 +275,16 @@ private fun ActionBlock(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            if (state.primaryLabel.isNotEmpty()) {
-                val shape = RoundedCornerShape(22.dp)
-                Box(
-                    modifier =
-                        Modifier
-                            .minimumInteractiveComponentSize()
-                            .clip(shape)
-                            .background(PantopusColors.tableGlass)
-                            .border(0.5.dp, PantopusColors.tableGlassLine, shape)
-                            .then(
-                                if (away) {
-                                    Modifier
-                                } else {
-                                    Modifier.clickable(role = Role.Button, onClick = state::primary)
-                                },
-                            ).heightIn(min = 44.dp)
-                            .padding(horizontal = 24.dp)
-                            .testTag("cardTablePrimary"),
-                    contentAlignment = Alignment.Center,
+            if (state.primaryLabel.isNotEmpty() && printButton) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(state.primaryLabel, style = tablePrimaryStyle)
+                    TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary)
+                    TablePill(READ_IT_IN_PRINT, away, "cardTableReadInPrint") { state.openPrint() }
                 }
+            } else if (state.primaryLabel.isNotEmpty()) {
+                TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary)
             }
             if (state.sending == null) {
                 // The reader's quiet buttons side by side in the one quiet line (plan 11.1), wrapping at large text.
@@ -304,8 +296,34 @@ private fun ActionBlock(
             } else {
                 quiet.forEachIndexed { index, action -> QuietButton(action, away, "cardTableGone.$index") }
             }
-            HintSlot(state, away)
+            HintSlot(state, away, printButton)
         }
+    }
+}
+
+/** The table's main button: a glass pill, 44 dp tall. */
+@Composable
+private fun TablePill(
+    words: String,
+    away: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        modifier =
+            Modifier
+                .minimumInteractiveComponentSize()
+                .clip(shape)
+                .background(PantopusColors.tableGlass)
+                .border(0.5.dp, PantopusColors.tableGlassLine, shape)
+                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick))
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 24.dp)
+                .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(words, style = tablePrimaryStyle)
     }
 }
 
@@ -332,42 +350,64 @@ private fun QuietButton(
 }
 
 /**
- * The hint under the button. A verse card has "Read the verse" in its place once the card lies out (plan 6.2), in one
- * slot, so the card doesn't move when one replaces the other.
+ * The hint under the button, in one slot so nothing moves when a link replaces it. Note side up, "Read it in print" takes
+ * its place (plan Part 2; at larger text it's the full button beside the main one instead, [printButton]); picture side
+ * up, a verse card has "Read the verse" there once the card lies out (plan 6.2).
  */
 @Composable
 private fun HintSlot(
     state: CardTableState,
     away: Boolean,
+    printButton: Boolean,
 ) {
-    if (state.card.verse == null || state.sending != null) {
+    val verse = state.card.verse != null
+    if (state.sending != null || !(verse || state.printable)) {
         Text(state.hint, style = tableHintStyle, modifier = Modifier.heightIn(min = 16.dp).testTag("cardTableHint"))
         return
     }
     Box(modifier = Modifier.heightIn(min = 44.dp), contentAlignment = Alignment.Center) {
         val lying = state.step == TableStep.Out && !state.enlarged
-        if (!away && !state.card.sealed && lying) {
-            Box(
-                modifier =
-                    Modifier
-                        .heightIn(min = 44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .clickable(role = Role.Button) {
-                            state.menuOpen = false
-                            state.verseOpen = true
-                        }.padding(horizontal = 16.dp)
-                        .testTag("cardTableReadVerse"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(READ_THE_VERSE, style = tableVerseLinkStyle)
-            }
-        } else {
-            Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
+        when {
+            away || !lying -> Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
+            state.readsInPrint -> if (!printButton) HintLink(READ_IT_IN_PRINT, "cardTableReadInPrint", state::openPrint)
+            verse && !state.card.sealed ->
+                HintLink(READ_THE_VERSE, "cardTableReadVerse") {
+                    state.menuOpen = false
+                    state.verseOpen = true
+                }
+            else -> Text(state.hint, style = tableHintStyle, modifier = Modifier.testTag("cardTableHint"))
         }
     }
 }
 
+/** A link in the hint's place, 44 dp to touch. */
+@Composable
+private fun HintLink(
+    words: String,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = 16.dp)
+                .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(words, style = tableVerseLinkStyle)
+    }
+}
+
 internal const val READ_THE_VERSE = "Read the verse"
+
+/** The note in plain type on the bookmark (plan Part 2). */
+internal const val READ_IT_IN_PRINT = "Read it in print"
+
+/** Android's "larger text": font scale 1.15 or more (plan Part 2). */
+internal const val LARGE_TEXT_SCALE = 1.15f
 
 /** "Read the verse" under the button: a link, white at 85%, underlined. */
 internal val tableVerseLinkStyle =

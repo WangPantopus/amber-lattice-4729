@@ -87,6 +87,9 @@ data class CardOnTable(
     /** Its picture is read for the table: not while it's sealed (the server keeps it), and a letter has none. */
     val hasPicture: Boolean get() = !sealed && !letter
 
+    /** Its note can open in plain type on the bookmark (plan Part 2): not while it's sealed, and not a letter's. */
+    val printable: Boolean get() = !sealed && !letter && note.isNotBlank()
+
     /** The words and printing on its two faces. */
     internal fun words(paperColor: Int): CardFaceWords =
         CardFaceWords(
@@ -365,6 +368,21 @@ internal class CardTableState(
 
     /** "Read the verse" has the bookmark up over the table (plan 6.2). */
     var verseOpen by mutableStateOf(false)
+
+    /** "Read it in print" has the note's bookmark up over the table (plan Part 2). */
+    var printOpen by mutableStateOf(false)
+
+    /** Its note can be read in print (plan Part 2): a card being read, not sealed, with a note; never a letter. */
+    val printable: Boolean get() = sending == null && card.printable
+
+    /** "Read it in print" shows now: the card lies out note side up and isn't enlarged. */
+    val readsInPrint: Boolean get() = printable && step == TableStep.Out && backUp && !enlarged
+
+    /** Puts the note's bookmark up over the table. */
+    fun openPrint() {
+        menuOpen = false
+        printOpen = true
+    }
 
     /** Called the first time the card leaves its envelope on this visit: it's opened. */
     var onOpened: () -> Unit = {}

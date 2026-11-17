@@ -144,6 +144,7 @@ private fun CardTable(
     BackHandler(enabled = state.enlarged) { state.resetZoom() }
     BackHandler(enabled = state.menuOpen) { state.menuOpen = false }
     BackHandler(enabled = state.verseOpen) { state.verseOpen = false }
+    BackHandler(enabled = state.printOpen) { state.printOpen = false }
 
     // The sheet stands over the table, and the table rests under it.
     var sharing by rememberSaveable(card.id) { mutableStateOf(false) }
@@ -356,17 +357,22 @@ private fun rememberTableGeometry(
     val width = constraints.maxWidth
     val height = constraints.maxHeight
     val readsVerse = card.verse != null && !sending
+    // "Read it in print" under the button once the note side is up (plan Part 2), or a full button beside it at large text.
+    val readsInPrint = card.printable && !sending
     // The card's own photo and greeting lie under it once it's turned over (wave 4 drawing 3): the table keeps them room.
     val media = card.hasMedia && !sending
-    return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, media) {
+    return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, readsInPrint, media) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
             val hintWidth = Constraints(maxWidth = textWidth.coerceAtLeast(1))
             val hintHeight =
                 HINTS.maxOf { hint -> measurer.measure(hint, tableHintStyle, constraints = hintWidth).size.height }.let { hints ->
-                    // A verse card's hint slot also holds "Read the verse", 44 dp to touch (plan 6.2).
-                    if (readsVerse) {
-                        val link = measurer.measure(READ_THE_VERSE, tableVerseLinkStyle).size.height + 12.dp.roundToPx()
+                    // The hint slot also holds "Read the verse" (plan 6.2) or "Read it in print" (Part 2), 44 dp to touch.
+                    if (readsVerse || readsInPrint) {
+                        val link =
+                            listOf(READ_THE_VERSE, READ_IT_IN_PRINT).maxOf {
+                                measurer.measure(it, tableVerseLinkStyle, constraints = hintWidth).size.height
+                            } + 12.dp.roundToPx()
                         maxOf(hints, 44.dp.roundToPx(), link)
                     } else {
                         hints
@@ -374,6 +380,15 @@ private fun rememberTableGeometry(
                 }
             val primaryHeight = measurer.measure("Take the card out", tablePrimaryStyle).size.height
             val pillHeight = max(48.dp.toPx(), primaryHeight + 12.dp.toPx())
+            // At large text "Read it in print" is a full button beside "Turn it back"; one under the other when they don't fit.
+            val printRow =
+                if (readsInPrint && fontScale >= LARGE_TEXT_SCALE) {
+                    val turn = measurer.measure("Turn it back", tablePrimaryStyle).size.width
+                    val print = measurer.measure(READ_IT_IN_PRINT, tablePrimaryStyle).size.width
+                    if (turn + print + (2 * 48 + 8).dp.roundToPx() > textWidth) pillHeight + 2.dp.toPx() else 0f
+                } else {
+                    0f
+                }
             val quietHeight =
                 if (quietButton && !card.sealed) {
                     val send = measurer.measure("Send ${card.fromFirst} a card", tableQuietStyle).size
@@ -387,7 +402,7 @@ private fun rememberTableGeometry(
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + gap
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height
