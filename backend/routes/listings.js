@@ -18,6 +18,8 @@ const { assertListingInteractionAllowed } = require('../services/marketplace/lis
 const { LISTING_LIST } = require('../utils/columns');
 const { applyLocationPrecision } = require('../utils/locationPrivacy');
 const { haversineMiles } = require('../utils/geo');
+const { isIsoTime } = require('../utils/pagingValues');
+const s3 = require('../services/s3Service');
 const {
   hydrateListingCreatorIdentities,
   hydrateTaskPeople,
@@ -481,6 +483,12 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// A listing's photos are files uploaded through the API. True when one of `urls` is outside this deployment's public
+// storage and isn't already on the listing (`kept`).
+const hasOutsideMedia = (urls, kept = []) => (urls || [])
+  .some((url) => !kept.includes(url) && !s3.isPublicStorageUrl(url));
+const OUTSIDE_MEDIA = { error: 'Listing photos must be uploaded through Pantopus.', code: 'LISTING_MEDIA_NOT_UPLOADED' };
+
 // ============ ROUTES ============
 
 /**
@@ -508,6 +516,8 @@ router.post('/', verifyToken, validate(createListingSchema), async (req, res) =>
       // Recurring & pre-order
       isRecurring, recurrenceSchedule, isPreorder, preorderDeadline, preorderFulfillmentDate,
     } = req.body;
+
+    if (hasOutsideMedia(mediaUrls)) return res.status(400).json(OUTSIDE_MEDIA);
 
     // Compute expiration from listing type
     const resolvedType = listingType || (isWanted ? 'wanted_request' : (isFree ? 'free_item' : LAYER_TYPE_DEFAULTS[layer || 'goods']));
@@ -720,6 +730,9 @@ router.get('/browse', optionalAuth, async (req, res) => {
     if (!south || !west || !north || !east) {
       return res.status(400).json({ error: 'Bounding box required: south, west, north, east' });
     }
+    if (created_after != null && created_after !== '' && !isIsoTime(created_after)) {
+      return res.status(400).json({ error: 'created_after must be an ISO time' });
+    }
 
     // Extract user ID if authenticated (optional for browse)
     const userId = req.user?.id || null;
@@ -782,6 +795,9 @@ router.get('/browse', optionalAuth, async (req, res) => {
     if (err.details) errPayload.details = err.details;
     if (err.hint) errPayload.hint = err.hint;
     if (err.code) errPayload.code = err.code;
+    if (err.status === 400 && err.code === 'INVALID_CURSOR') {
+      return res.status(400).json({ error: err.message, code: err.code });
+    }
     logger.error('marketplace.browse.error', errPayload);
     res.status(500).json({ error: 'Failed to browse listings' });
   }
@@ -1621,13 +1637,16 @@ router.patch('/:id', verifyToken, validate(updateListingSchema), async (req, res
     const { id } = req.params;
     const userId = req.user.id;
 
-    const { data: existing, error: fetchErr } = await supabaseAdmin.from('Listing').select('user_id').eq('id', id).single();
+    const { data: existing, error: fetchErr } = await supabaseAdmin.from('Listing').select('user_id, media_urls').eq('id', id).single();
     if (fetchErr) {
       logger.error('Error fetching listing for edit', { error: fetchErr.message, listingId: id });
       return res.status(500).json({ error: 'Failed to fetch listing' });
     }
     if (!existing) return res.status(404).json({ error: 'Listing not found' });
     if (existing.user_id !== userId) return res.status(403).json({ error: 'You can only edit your own listings' });
+    if (hasOutsideMedia(req.body.mediaUrls, existing.media_urls || [])) {
+      return res.status(400).json(OUTSIDE_MEDIA);
+    }
 
     const updates = { updated_at: new Date().toISOString() };
     for (const [camel, snake] of Object.entries(FIELD_MAP)) {

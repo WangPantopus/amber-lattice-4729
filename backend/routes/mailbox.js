@@ -23,6 +23,7 @@ const verifyToken = require('../middleware/verifyToken');
 const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
+const { isIsoTime } = require('../utils/pagingValues');
 const { checkHomePermission } = require('../utils/homePermissions');
 const { getBusinessIdsWithPermissions } = require('../utils/businessPermissions');
 const { VERIFICATION_RANK } = require('../utils/businessConstants');
@@ -3524,7 +3525,7 @@ const sentNotFound = (res) => res.status(404).json({ error: 'This mail isn’t h
 const sentCursor = (mail) => Buffer.from(`${mail.created_at}|${mail.id}`).toString('base64url');
 function readSentCursor(value) {
   const [at, id] = Buffer.from(String(value), 'base64url').toString('utf8').split('|');
-  return at && !Number.isNaN(Date.parse(at)) && UUID_REGEX.test(id || '') ? { at, id } : null;
+  return isIsoTime(at) && UUID_REGEX.test(id || '') ? { at, id } : null;
 }
 
 // What sentPiece needs for each card: the name on its envelope (the sender's Local Profile, as the recipient sees it),

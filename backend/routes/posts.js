@@ -4278,7 +4278,12 @@ async function sendProfilePosts(req, res, { pinned = false } = {}) {
   try {
     const { userId } = req.params;
     const requestingUserId = req.user.id;
-    const { limit = 20, cursorCreatedAt, cursorId, include_archived: includeArchived } = req.query;
+    const { limit = 20, include_archived: includeArchived } = req.query;
+    if (!UUID_RE.test(String(userId))) return res.status(404).json({ error: 'User not found' });
+    const cursor = parseFeedCursor(req.query);
+    if (cursor === false) return res.status(400).json({ error: 'Invalid cursor' });
+    const cursorCreatedAt = cursor?.createdAt || null;
+    const cursorId = cursor?.id || null;
     const parsedLimit = pinned ? PROFILE_PIN_LIMIT : parseInt(limit);
     const page = (rows) => (pinned ? {} : { pagination: buildCursorPagination(rows, parsedLimit) });
 
