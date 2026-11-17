@@ -1,6 +1,7 @@
 package app.pantopus.android.ui.guidance
 
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -112,6 +113,9 @@ fun GuidanceCentreCardView(
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect {
             window?.let { w ->
+                // No platform dim: a window that dims behind makes the phone draw white status icons, as if the strip
+                // were dimmed, and the strip stays white (the app draws it outside the dim), so they vanished.
+                w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 w.setDimAmount(0f)
                 w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 // The status strip above the app stays light (the app draws it outside the tabs): dark icons there; the
