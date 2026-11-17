@@ -357,8 +357,9 @@ change line by line for who can read a pair):
   "Spend up to" only; turning the exchange off forgets the pairs. Such a
   change takes `budget_cents` alone: the draw time is not asked for or
   checked again (settled November 17 after the iPhone's build found the
-  server still checking it; the server change is owed, and until then the
-  iPhone sends the plan's start as the draw time).
+  server still checking it; the server takes it so since November 17: a
+  `draw_at` sent along after the draw, absent or anything, is ignored and
+  the stored one stays).
 - **Someone who leaves** before the draw leaves the exchange. After it, the
   host's notice "{Name} left after the names were drawn." opens the plan,
   where "Draw again" draws for everyone still in and tells each "Names were
