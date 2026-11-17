@@ -171,6 +171,7 @@ struct PlanGoingExtraCards: View {
         PlanGoingDealCards(card: card)
         if let chipIn = card.extrasPart.chipIn { PlanChipInCard(viewModel: viewModel, chipIn: chipIn) }
         if let gift = card.extrasPart.gift { PlanGiftCard(viewModel: viewModel, gift: gift, isHost: false) }
+        if let groupPay = card.extrasPart.groupPay { PlanGroupPayCard(viewModel: viewModel, groupPay: groupPay) }
     }
 }
 

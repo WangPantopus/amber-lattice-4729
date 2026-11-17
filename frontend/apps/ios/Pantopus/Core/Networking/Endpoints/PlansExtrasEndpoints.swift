@@ -103,4 +103,19 @@ public extension PlansEndpoints {
     static func removePlanPhoto(planId: String, photoId: String) -> Endpoint {
         Endpoint(method: .delete, path: "\(base)/\(planId)/photos/\(photoId)", query: biz())
     }
+
+    // MARK: - One person pays for the group (`plans_group_pay`, a business's paid plan)
+
+    /// `POST /api/plans/:id/requests` with `{ for: "link", spots }` — every spot in one payment, answered as a paid
+    /// join (`request`, `payment`); then the shipped payment sheet and `…/requests/mine/confirm`. 409
+    /// `group_pay_not_now`, 409 `full`. Route `backend/routes/plans.js` (`/:id/requests`), `planActions.requestToJoin`.
+    static func buySpots(planId: String, _ body: PlanBuySpotsBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/requests/mine/give-back-spots` — the buyer gives the spots nobody took back early: one
+    /// refund, and the link stops; answers the plan. 409 `link_stopped` / `all_taken`. Route `backend/routes/plans.js`.
+    static func giveBackSpots(planId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/mine/give-back-spots", query: biz())
+    }
 }

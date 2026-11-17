@@ -20,17 +20,28 @@ struct PlanPaySpotSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var partySize = 1
     @State private var quote: PlanQuoteDTO?
+    /// What the shown quote was asked for: paying sends exactly this, and only while it is what's chosen now.
+    @State private var quotedFor: PlanQuoteAsk?
     @State private var quoteProblem: String?
     @State private var isPaying = false
     @State private var failed: String?
     @State private var contentHeight: CGFloat = 0
+    /// One person pays for the group (08-extras section 7): the quote's "Who are they for?", and the link's spots.
+    @State private var groupOffer: PlanGroupPayOfferDTO?
+    @State private var forLink = false
+    @State private var linkSpots = 2
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 header
-                party
+                // While paying, the choice stays as it was paid for.
+                if !forLink { party.disabled(isPaying) }
+                if let groupOffer, partySize > 1 || forLink {
+                    PlanGroupPayChooser(offer: groupOffer, forLink: $forLink, spots: $linkSpots).disabled(isPaying)
+                }
                 amounts
+                if forLink, let note = shownQuote?.note { PlanGroupPayNote(text: note) }
                 if let failed {
                     Text(failed)
                         .planFont(.small)
@@ -39,10 +50,10 @@ struct PlanPaySpotSheet: View {
                         .accessibilityIdentifier("planPayError")
                 }
                 Button(action: pay) {
-                    PlanButtonLabel(title: quote.map { "Pay \($0.totalText)" } ?? "Pay", kind: .primary, isLoading: isPaying)
+                    PlanButtonLabel(title: shownQuote.map { "Pay \($0.totalText)" } ?? "Pay", kind: .primary, isLoading: isPaying)
                 }
                 .planButton(.primary)
-                .disabled(quote == nil || isPaying)
+                .disabled(shownQuote == nil || isPaying)
                 .accessibilityIdentifier("planPayButton")
             }
             .padding(.horizontal, Spacing.s4)
@@ -54,7 +65,8 @@ struct PlanPaySpotSheet: View {
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(26)
         .presentationBackground(Theme.Color.appSurface)
-        .task(id: partySize) { await requote() }
+        .task(id: "\(partySize) \(forLink) \(linkSpots)") { await requote() }
+        .onChange(of: forLink) { _, link in if link { linkSpots = max(partySize, 2) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPaySheet")
     }
@@ -103,7 +115,7 @@ struct PlanPaySpotSheet: View {
     }
 
     @ViewBuilder private var amounts: some View {
-        if let quote {
+        if let quote = shownQuote {
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 HStack {
                     Text(quote.spotsText).planFont(.body).foregroundStyle(Theme.Color.appText)
@@ -176,25 +188,43 @@ struct PlanPaySpotSheet: View {
         .accessibilityIdentifier("planPayGroup")
     }
 
+    /// What is chosen now: the party, or a link with these spots.
+    private var asking: PlanQuoteAsk {
+        PlanQuoteAsk(partySize: partySize, linkSpots: forLink ? linkSpots : nil)
+    }
+
+    /// The quote only while it is for what's chosen now: a new choice shows the shimmer (or a refusal) and Pay is off
+    /// until the server answers for it (contract 11.2).
+    private var shownQuote: PlanQuoteDTO? {
+        quotedFor == asking ? quote : nil
+    }
+
     private func requote() async {
+        let ask = asking
+        quoteProblem = nil
         do {
             let answer: PlanQuoteDTO = try await APIClient.shared.request(
-                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: partySize))
+                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: ask.partySize, linkSpots: ask.linkSpots))
             )
+            guard ask == asking else { return }
             quote = answer
-            quoteProblem = nil
+            quotedFor = ask
+            if let offer = answer.groupPay { groupOffer = offer }
         } catch is CancellationError {
         } catch {
+            guard ask == asking else { return }
+            quote = nil
+            quotedFor = nil
             quoteProblem = PlanErrors.sentence(for: error)
         }
     }
 
     private func pay() {
-        guard !isPaying else { return }
+        guard !isPaying, shownQuote != nil, let ask = quotedFor else { return }
         isPaying = true
         failed = nil
         Task {
-            let outcome = await viewModel.joinAndPay(partySize: partySize)
+            let outcome = await viewModel.joinAndPay(partySize: ask.partySize, linkSpots: ask.linkSpots)
             isPaying = false
             switch outcome {
             case .done: dismiss()
@@ -203,6 +233,12 @@ struct PlanPaySpotSheet: View {
             }
         }
     }
+}
+
+/// What a quote was asked for: a party, or a link with these spots.
+struct PlanQuoteAsk: Equatable {
+    let partySize: Int
+    let linkSpots: Int?
 }
 
 /// How joining a paid plan ended.
@@ -217,15 +253,32 @@ enum PlanPayOutcome: Equatable {
 
 extension PlanScreenViewModel {
     /// P1: hold the spot, pay through the shipped sheet, then confirm. Never sends an amount.
-    func joinAndPay(partySize: Int, presenter: PaymentSheetPresenting = StripePaymentSheetPresenter()) async -> PlanPayOutcome {
+    /// `linkSpots`: "I'll send a link", every spot in one payment (08-extras section 7).
+    func joinAndPay(
+        partySize: Int,
+        linkSpots: Int? = nil,
+        presenter: PaymentSheetPresenting = StripePaymentSheetPresenter()
+    ) async -> PlanPayOutcome {
         // A sheet left open past the 10-minute hold starts again (P1).
         if let held = payHoldExpires, held < Date() {
             payHoldExpires = nil
             return .problem("That took a while. Start again.")
         }
+        // A fresh fix, as "Send request" sends one: without a home on file the server asks for it.
+        let location = DeviceLocationProvider.shared
+        let fix = location.canLocateWithoutAsking ? await location.requestCurrent(timeoutSeconds: 4) : nil
+        let gps = fix.map { PlanGPSBody(latitude: $0.latitude, longitude: $0.longitude, timestamp: Date()) }
         let reply: PlanAskResponse
         do {
-            reply = try await api.request(PlansEndpoints.ask(planId: planId, AskToJoinBody(partySize: partySize, note: nil)))
+            if let linkSpots {
+                var body = PlanBuySpotsBody(spots: linkSpots)
+                body.gps = gps
+                reply = try await api.request(PlansEndpoints.buySpots(planId: planId, body))
+            } else {
+                var body = AskToJoinBody(partySize: partySize, note: nil)
+                body.gps = gps
+                reply = try await api.request(PlansEndpoints.ask(planId: planId, body))
+            }
         } catch {
             return .problem(PlanErrors.sentence(for: error))
         }
