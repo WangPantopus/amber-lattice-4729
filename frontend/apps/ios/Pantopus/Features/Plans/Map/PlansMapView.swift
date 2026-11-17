@@ -206,6 +206,13 @@ enum PlanOpenIntent: Hashable {
     case invite(token: String)
     /// Opened from the plan's one link for everyone (Plans for the holidays, contract 6.9): claimed first.
     case openLink(token: String)
+    /// Opened from a buyer's link (one person pays for the group, 08-extras section 7): the spot is offered first.
+    case spot(token: String)
+
+    /// A plan link's way in: an invitation first, then the open link, then a buyer's link.
+    init(invite: String?, open: String?, spot: String?) {
+        self = invite.map { .invite(token: $0) } ?? open.map { .openLink(token: $0) } ?? spot.map { .spot(token: $0) } ?? .view
+    }
 }
 
 /// The actions the map hands to the Plans tab's stack.
