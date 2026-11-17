@@ -546,12 +546,6 @@ object DeepLinkRouter {
     suspend fun momentsAnswer(): Boolean = momentsAnswerProvider()
 
     /**
-     * A pantopus.com address of a plan's one link for everyone (`/plan-link/:id?open=`, `/plans/:id?open=`, contract 6.9):
-     * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
-     * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
-     * sign-in instead, as plan links are.
-     */
-    /**
      * `/plans/:id` with its tokens: an email or text invitation (`invite`), the plan's one link (`open`), or, from the web
      * page's "Open app" (web #4367), a spot someone bought for whoever opens it (`spot`, read as on `/plan-link/:id`, so
      * the page offers the free "I'm in" and never the paid "Join" for it).
@@ -566,6 +560,12 @@ object DeepLinkRouter {
         return Destination.Plan(id, invite = invite, open = open, spot = spot.takeIf { invite == null && open == null })
     }
 
+    /**
+     * A pantopus.com address of a plan's one link for everyone (`/plan-link/:id?open=`, `/plans/:id?open=`, contract 6.9):
+     * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
+     * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
+     * sign-in instead, as plan links are.
+     */
     fun opensOnlySignedIn(uri: Uri): Boolean =
         uri.scheme.equals("https", ignoreCase = true) && (resolve(uri) as? Destination.Plan)?.let { it.open ?: it.spot } != null
 
