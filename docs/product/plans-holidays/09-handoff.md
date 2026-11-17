@@ -90,8 +90,8 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | "Room for" and "Kids welcome" on a private plan's Change screen | 4227 (the room an occasion starts with) | 4236 | **not built** |
 | Deals without money (B1) | 4209, 4212, 4214 | 4243 | 4240 |
 | Paying to join, the group price (B2 to B4) | 4215, 4216, 4221, 4252 | 4254 | 4258 |
-| The bill at the place, tips (B5) | 4222 | **not started** | 4267, **open** |
-| A tip after a paid plan (B6) | 4223 | **not started** | 4268, **open** |
+| The bill at the place, tips (B5) | 4222 | **not started** | 4267 |
+| A tip after a paid plan (B6) | 4223 | **not started** | 4268 |
 | The same people again | 4234 | **not started** | **not started** |
 | Chip in | 4235 | **not started** | **not started** |
 | Find a date | 4237, 4245 | **not started** | **not started** |
@@ -110,10 +110,12 @@ Also done:
   invoices are untouched. Seen passing on the server rig, on the iPhone
   simulator and against Android's setup. Contract 10.4 has the rule.
 - **Android's business track** was built and emulator-checked by its session,
-  which ran out of room before merging. A server session merged 4240 and 4258
-  on those checks without changing Android code; 4267 and 4268 are open and
-  wait for green checks, in that order (4268 is stacked on 4267; merge
-  commits, never squash).
+  which ran out of room before merging. A server session then merged all four
+  pull requests (4240, 4258, 4267, 4268) on those checks, each after green
+  checks on a head that contained `dev`, without changing Android code; the
+  last went in at 6:33 PM Pacific on November 16. Nobody has run the merged
+  build on an emulator since: the first Android session's first job is to
+  build `dev` and smoke-check the four steps.
 
 **Switches** (all `FeatureFlag` rows, all off everywhere but a session's own
 rig, except one): `plans_guest_answers` (on in staging only, at the founder's
@@ -138,8 +140,10 @@ In the order it should be done. Each item is its own small pull request into
 
 **Android**
 
-1. Merge 4267 (the bill and tips), then 4268 (the tip afterwards), each after
-   green checks on a head that contains `dev`.
+1. Build current `dev` and smoke-check the business track on the emulator in
+   test mode (deals, paying for a spot, the bill with a tip, the tip
+   afterwards): the four pull requests were merged on the earlier session's
+   checks, and the merged build has not been run.
 2. One small fix from the people track's two-phone check: on a private plan's
    Change screen, "Room for" (from the people already in up to 100) and "Kids
    welcome"; the occasion's tag on the page of a person who is in; an
@@ -324,13 +328,15 @@ the hand-off gave the founder; it starts the others with these.
 > names (the rig, the emulator, the traps). Its "Merge rule" section is out of
 > date: merge each pull request on its own green checks, with no wait for a
 > staging release and no HOLD lines. Report to the coordinator session that
-> started you. Do, in order: (1) look at 4267 and 4268 with `gh pr view`; if
-> either is still open, bring it up to date with `origin/dev` and merge it
-> when green, 4267 first, with merge commits; (2) the small fix of the
-> hand-off's section 4, item 2; (3) rerun on the emulator, against a backend
-> on current `origin/dev`: two guests pay $18.00, the group price comes back,
-> one leaves in time; expect the rest sent and the notice "$14.00 is on its
-> way back to your card"; (4) the six extras in `08-extras.md` section 8's
+> started you. Do, in order: (1) the four business pull requests (4240,
+> 4258, 4267, 4268) are merged, on the earlier session's emulator checks:
+> build current `origin/dev` and smoke-check deals, paying for a spot, the
+> bill with a tip and the tip afterwards on the emulator in test mode, and
+> say what you saw; (2) the small fix of the hand-off's section 4, item 2;
+> (3) rerun on the emulator, against a backend on current `origin/dev`: two
+> guests pay $18.00, the group price comes back, one leaves in time; expect
+> the rest sent and the notice "$14.00 is on its way back to your card";
+> (4) the six extras in `08-extras.md` section 8's
 > order, each as its own small pull request, as the iPhone extras brief
 > describes them, with TalkBack and the largest font in place of VoiceOver and
 > text size. Send `extras=1` from the first extras pull request on. After each
