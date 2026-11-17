@@ -105,6 +105,10 @@ fun PlanDetailScreen(
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
+    val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${viewModel.planId}")
+    val spot by spotVm.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { spotVm.readOffer() }
     val toast = remember { ToastController() }
     val scope = rememberCoroutineScope()
     val openVerification: () -> Unit = { scope.launch { onOpenVerification(viewModel.verificationTarget()) } }
@@ -255,7 +259,20 @@ private fun PlanReady(
         // A private plan is never shared by link (Plans step 1): its host invites, a guest may bring a friend.
         onShare = if (plan.shareUrl != null && !closed && !plan.isPrivate) ({ context.sharePlan(plan) }) else null,
         menu = menu,
-        footer = footerFor(plan, ui, closed, viewModel, onSeeAllPlans, onVerify, askLocation) { confirmLeave = it },
+        footer =
+            footerFor(
+                plan,
+                ui,
+                closed,
+                viewModel,
+                onSeeAllPlans,
+                onVerify,
+                askLocation,
+                // While a spot link's offer is being read, live, or couldn't be read: its own action, never the paid "Join".
+                spotFooter =
+                    spotFooter(spot, onClaim = { spotVm.claim(viewModel::load) }, onRetry = spotVm::retry)
+                        .takeIf { spot.spot.holdsFooter },
+            ) { confirmLeave = it },
         onAsk = onAskPantopus?.let { ask -> { ask(AIScreenContext.plan(plan.id, PlanFormat.shortTitle(plan), hosting)) } },
     ) {
         when {
@@ -337,7 +354,7 @@ private fun PlanReady(
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
                 // The holidays' one person pays for the group: opened from a spot link, "{Chris} got you a spot".
-                PlanBeforeInBody(plan, afterTitle = { PlanSpotOffer(plan, onClaimed = viewModel::load) })
+                PlanBeforeInBody(plan, afterTitle = { PlanSpotCard(spot) })
             }
         }
     }
@@ -451,6 +468,7 @@ private fun footerFor(
     onSeeAll: () -> Unit,
     onVerify: () -> Unit,
     onLocation: () -> Unit,
+    spotFooter: (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)?,
     confirm: (LeaveKind) -> Unit,
 ): (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? {
     val standing = plan.standing
@@ -498,6 +516,8 @@ private fun footerFor(
                 waitlistCaption(plan)?.let { PlanFooterCaption(it) }
             }
         }
+        // The holidays' one person pays for the group: a spot link's free "I'm in" (or "Try again"), never the paid "Join".
+        spotFooter != null -> spotFooter
         // The holidays' find a date (board 24): "Save my times" in place of the answer buttons while the host is picking.
         plan.isPicking -> datesFooter(plan, viewModel::load)
         plan.openInvite != null &&
