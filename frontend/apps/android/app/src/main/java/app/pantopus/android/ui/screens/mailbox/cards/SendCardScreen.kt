@@ -345,6 +345,28 @@ fun SendCardScreen(
     }
 }
 
+/** Under a card just sent: "Send another card", and "Send this card to someone else" while another can go (Part 6). */
+@Composable
+private fun AnotherCardButtons(
+    onAnother: () -> Unit,
+    onSendAgain: (() -> Unit)?,
+) {
+    CardButton(
+        "Send another card",
+        onClick = onAnother,
+        kind = CardButtonKind.Paper,
+        modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4).testTag("sendAnotherCard"),
+    )
+    if (onSendAgain != null) {
+        CardButton(
+            SEND_THIS_CARD_AGAIN,
+            onClick = onSendAgain,
+            kind = CardButtonKind.Paper,
+            modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s2).testTag("sendThisCardAgain"),
+        )
+    }
+}
+
 /** "Send this card to someone else" (plan Part 6). */
 internal const val SEND_THIS_CARD_AGAIN = "Send this card to someone else"
 
@@ -535,28 +557,7 @@ private fun Steps(
                     onSeeInSent = { onSeeInSent(card.id) },
                 )
                 // With digital stamps there's no card a day: another card starts here, under the one just sent.
-                if (cards.postageEnabled) {
-                    CardButton(
-                        "Send another card",
-                        onClick = { viewModel.startAnotherCard() },
-                        kind = CardButtonKind.Paper,
-                        modifier =
-                            Modifier
-                                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4)
-                                .testTag("sendAnotherCard"),
-                    )
-                    onSendAgain?.let { sendAgain ->
-                        CardButton(
-                            SEND_THIS_CARD_AGAIN,
-                            onClick = sendAgain,
-                            kind = CardButtonKind.Paper,
-                            modifier =
-                                Modifier
-                                    .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s2)
-                                    .testTag("sendThisCardAgain"),
-                        )
-                    }
-                }
+                if (cards.postageEnabled) AnotherCardButtons(onAnother = { viewModel.startAnotherCard() }, onSendAgain = onSendAgain)
             }
     }
 }
