@@ -20,6 +20,8 @@ struct PlanPaySpotSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var partySize = 1
     @State private var quote: PlanQuoteDTO?
+    /// What the shown quote was asked for: paying sends exactly this, and only while it is what's chosen now.
+    @State private var quotedFor: PlanQuoteAsk?
     @State private var quoteProblem: String?
     @State private var isPaying = false
     @State private var failed: String?
@@ -38,7 +40,7 @@ struct PlanPaySpotSheet: View {
                     PlanGroupPayChooser(offer: groupOffer, forLink: $forLink, spots: $linkSpots)
                 }
                 amounts
-                if forLink, let note = quote?.note { PlanGroupPayNote(text: note) }
+                if forLink, let note = shownQuote?.note { PlanGroupPayNote(text: note) }
                 if let failed {
                     Text(failed)
                         .planFont(.small)
@@ -47,10 +49,10 @@ struct PlanPaySpotSheet: View {
                         .accessibilityIdentifier("planPayError")
                 }
                 Button(action: pay) {
-                    PlanButtonLabel(title: quote.map { "Pay \($0.totalText)" } ?? "Pay", kind: .primary, isLoading: isPaying)
+                    PlanButtonLabel(title: shownQuote.map { "Pay \($0.totalText)" } ?? "Pay", kind: .primary, isLoading: isPaying)
                 }
                 .planButton(.primary)
-                .disabled(quote == nil || isPaying)
+                .disabled(shownQuote == nil || isPaying)
                 .accessibilityIdentifier("planPayButton")
             }
             .padding(.horizontal, Spacing.s4)
@@ -112,7 +114,7 @@ struct PlanPaySpotSheet: View {
     }
 
     @ViewBuilder private var amounts: some View {
-        if let quote {
+        if let quote = shownQuote {
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 HStack {
                     Text(quote.spotsText).planFont(.body).foregroundStyle(Theme.Color.appText)
@@ -185,26 +187,43 @@ struct PlanPaySpotSheet: View {
         .accessibilityIdentifier("planPayGroup")
     }
 
+    /// What is chosen now: the party, or a link with these spots.
+    private var asking: PlanQuoteAsk {
+        PlanQuoteAsk(partySize: partySize, linkSpots: forLink ? linkSpots : nil)
+    }
+
+    /// The quote only while it is for what's chosen now: a new choice shows the shimmer (or a refusal) and Pay is off
+    /// until the server answers for it (contract 11.2).
+    private var shownQuote: PlanQuoteDTO? {
+        quotedFor == asking ? quote : nil
+    }
+
     private func requote() async {
+        let ask = asking
+        quoteProblem = nil
         do {
             let answer: PlanQuoteDTO = try await APIClient.shared.request(
-                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: partySize, linkSpots: forLink ? linkSpots : nil))
+                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: ask.partySize, linkSpots: ask.linkSpots))
             )
+            guard ask == asking else { return }
             quote = answer
+            quotedFor = ask
             if let offer = answer.groupPay { groupOffer = offer }
-            quoteProblem = nil
         } catch is CancellationError {
         } catch {
+            guard ask == asking else { return }
+            quote = nil
+            quotedFor = nil
             quoteProblem = PlanErrors.sentence(for: error)
         }
     }
 
     private func pay() {
-        guard !isPaying else { return }
+        guard !isPaying, shownQuote != nil, let ask = quotedFor else { return }
         isPaying = true
         failed = nil
         Task {
-            let outcome = await viewModel.joinAndPay(partySize: partySize, linkSpots: forLink ? linkSpots : nil)
+            let outcome = await viewModel.joinAndPay(partySize: ask.partySize, linkSpots: ask.linkSpots)
             isPaying = false
             switch outcome {
             case .done: dismiss()
@@ -213,6 +232,12 @@ struct PlanPaySpotSheet: View {
             }
         }
     }
+}
+
+/// What a quote was asked for: a party, or a link with these spots.
+struct PlanQuoteAsk: Equatable {
+    let partySize: Int
+    let linkSpots: Int?
 }
 
 /// How joining a paid plan ended.
