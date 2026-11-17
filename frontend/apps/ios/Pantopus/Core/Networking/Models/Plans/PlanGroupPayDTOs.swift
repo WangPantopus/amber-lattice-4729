@@ -102,3 +102,42 @@ public struct PlanGroupPayGiveBackDTO: Decodable, Sendable, Hashable {
         case backCents = "back_cents"
     }
 }
+
+/// `GET /api/plans/:id/spot?token=`: what the buyer's link offers whoever opens it. `open` false with `closedText`
+/// ("This link isn't taking anyone now." / "All the spots on this link are taken.").
+public struct PlanSpotOfferDTO: Decodable, Sendable, Hashable {
+    /// "Chris".
+    public let from: String?
+    /// "Chris got you a spot".
+    public let text: String
+    public let left: Int
+    public let open: Bool
+    /// "I'm in".
+    public let button: String
+    public let closedText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case from, text, left, open, button
+        case closedText = "closed_text"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        from = try container.decodeIfPresent(String.self, forKey: .from)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        left = try container.decodeIfPresent(Int.self, forKey: .left) ?? 0
+        open = try container.decodeIfPresent(Bool.self, forKey: .open) ?? false
+        button = try container.decodeIfPresent(String.self, forKey: .button) ?? "I'm in"
+        closedText = try container.decodeIfPresent(String.self, forKey: .closedText)
+    }
+}
+
+/// `{ spot }`.
+public struct PlanSpotOfferResponse: Decodable, Sendable, Hashable {
+    public let spot: PlanSpotOfferDTO?
+}
+
+/// `POST /api/plans/:id/requests/claim-spot`.
+public struct PlanClaimSpotBody: Encodable, Sendable {
+    public let token: String
+}

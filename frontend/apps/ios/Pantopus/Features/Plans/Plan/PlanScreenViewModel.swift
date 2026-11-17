@@ -53,6 +53,8 @@ final class PlanScreenViewModel {
     var notice: String?
     /// The plan's one link for everyone was refused (contract 6.9): an unreadable plan says the invitation is gone.
     private(set) var openLinkRefused = false
+    /// A buyer's link (`?spot=`) and what it offers, while the offer is open (PlanSpotOffer.swift).
+    var spot: PlanSpotState?
     /// A repeating plan's date skipped (Plans step 2): the date posted in its place, for the screen to open.
     var nextPlanId: String?
     /// The plan became "in" while this screen was open: play the reveal.

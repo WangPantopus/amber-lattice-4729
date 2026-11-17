@@ -264,7 +264,8 @@ final class DeepLinkRouter {
         /// the Plans tab's stack; dropped while the `plans` flag is off.
         /// `?invite=` carries an email or text invitation for the plan to open.
         /// `?invite=`: an email or text invitation; `?open=`: the plan's one link for everyone (contract 6.9).
-        case plan(id: String, invite: String?, open: String? = nil)
+        /// `?spot=`: a spot someone bought for whoever opens the link (one person pays for the group).
+        case plan(id: String, invite: String?, open: String? = nil, spot: String? = nil)
         /// `/plans/:id/requests` — the host's requests (H10).
         case planRequests(id: String)
         /// `/plans/:id/guests` — the host's "Who's coming" (Plans for the holidays; the two H1 notices open it).
@@ -626,6 +627,13 @@ final class DeepLinkRouter {
             // `/moments` (the tab) and `/moments/:id` (that Moment in the viewer).
             guard let id = segments.dropFirst().first, !id.isEmpty else { return .moments }
             return .moment(id: id)
+        case "plan-link":
+            // `/plan-link/:id?open=` or `?spot=` (the web's address for the open link and a buyer's link): the plan.
+            guard let id = segments.dropFirst().first, !id.isEmpty, segments.count == 2 else { return .unknown(url) }
+            let open = queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            let spot = queryValue("spot", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            guard open != nil || spot != nil else { return .unknown(url) }
+            return .plan(id: id, invite: nil, open: open, spot: open == nil ? spot : nil)
         case "plans", "plan":
             // `/plans` (the tab), `/plans/new`, `/plans/:id`, `/plans/:id/requests`.
             guard let id = segments.dropFirst().first, !id.isEmpty else { return .plans }
@@ -639,7 +647,8 @@ final class DeepLinkRouter {
             return .plan(
                 id: id,
                 invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 },
-                open: queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+                open: queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 },
+                spot: queryValue("spot", in: comps).flatMap { $0.isEmpty ? nil : $0 }
             )
         case "notifications":
             return .notifications
