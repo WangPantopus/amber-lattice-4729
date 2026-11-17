@@ -36,9 +36,12 @@ struct PlanComposerRoot: View {
         _path = State(initialValue: start?.again != nil ? [.preview] : [])
         self.onFinish = onFinish
         startsAtDetails = start != nil
+        samePeopleFrom = start?.samePeopleFrom
     }
 
     private let startsAtDetails: Bool
+    /// Board 29: the past plan whose people the posted plan's invite sheet opens on.
+    private let samePeopleFrom: String?
 
     var body: some View {
         Group {
@@ -49,6 +52,7 @@ struct PlanComposerRoot: View {
                 PlanPostedScreen(
                     plan: posted,
                     opensInvite: model.privacy.opensInviteSheet,
+                    samePeopleFrom: samePeopleFrom,
                     inviteProblem: model.privacy.inviteProblem,
                     onSeePlan: { onFinish(posted.id) },
                     onDone: { onFinish(nil) }

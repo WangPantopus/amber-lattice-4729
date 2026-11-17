@@ -213,6 +213,7 @@ struct PlanScreen: View {
                 },
                 onConfirm: { confirmation = $0 }
             )
+            PlanSamePeopleFooter(viewModel: viewModel, onHost: onHost)
         }
         .refreshableUnlessZoomed { await viewModel.load() }
     }

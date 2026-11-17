@@ -19,12 +19,14 @@ struct PlanInviteSheet: View {
     @State private var openLink: PlanOpenLinkModel?
     /// The same people again (board 30): the row shows only when the host has a past plan to offer.
     @State private var pastPeople: PlanPastPeopleModel
+    private let samePeopleFrom: String?
     @State private var toast: String?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var searchFocused: Bool
 
-    init(card: PlanCardDTO) {
+    init(card: PlanCardDTO, samePeopleFrom: String? = nil) {
         self.card = card
+        self.samePeopleFrom = samePeopleFrom
         _viewModel = State(initialValue: PlanInviteViewModel(planId: card.id, atHome: card.placeKind == .home))
         _openLink = State(initialValue: card.takesOpenLink ? PlanOpenLinkModel(planId: card.id, atHome: card.placeKind == .home) : nil)
         _pastPeople = State(initialValue: PlanPastPeopleModel(planId: card.id))
@@ -57,7 +59,7 @@ struct PlanInviteSheet: View {
         .presentationCornerRadius(26)
         .presentationBackground(Theme.Color.appSurface)
         .task { await viewModel.load() }
-        .task { await pastPeople.loadPlans() }
+        .task { await pastPeople.loadPlans(opening: samePeopleFrom) }
         .task(id: viewModel.searchText) {
             // A short pause while typing, then the people list for the name.
             try? await Task.sleep(for: .milliseconds(250))

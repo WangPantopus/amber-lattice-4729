@@ -189,6 +189,7 @@ struct PlanPostedScreen: View {
     let plan: PlanDetailDTO
     /// A private plan's preview asked for "Text a link" or "Email": the invite sheet opens over this screen.
     var opensInvite = false
+    var samePeopleFrom: String?
     /// A private plan posted with people chosen: the invitations that didn't go (the server's words, or how many).
     var inviteProblem: String?
     let onSeePlan: () -> Void
@@ -219,8 +220,8 @@ struct PlanPostedScreen: View {
         }
         .sensoryFeedback(.success, trigger: landed)
         .onAppear(perform: drop)
-        .task { if opensInvite, plan.card.invites?.canInvite == true { showsInvite = true } }
-        .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card) }
+        .task { if opensInvite || samePeopleFrom != nil, plan.card.invites?.canInvite == true { showsInvite = true } }
+        .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card, samePeopleFrom: samePeopleFrom) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPosted")
     }
