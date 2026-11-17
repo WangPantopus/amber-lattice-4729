@@ -2667,7 +2667,7 @@ async function cardLook(senderId, checked, now) {
     take_back_until: card.take_back_until,
     email: toEmail
       ? emailService.cardWaitingEmailContent({ senderName: senderDisplay, expiresAt: checked.escrowExpiresAt, sealed,
-        timeZone: checked.senderZone })
+        design: card.design, timeZone: checked.senderZone })
       : null,
     // By email, set to go at the sender's 7 a.m. or on Christmas morning: when (null: it goes as it's sealed).
     email_send_at: toEmail ? checked.emailSendAt || null : null,

@@ -6,6 +6,11 @@
 // nothing is due or its 4 minutes are up, and never overlaps the one before. After a card's last try its sender is told,
 // once for all their cards that gave up in this run (a list sent during a mail server outage is one notice, not 20),
 // and their Sent offers Email it again or Take it back.
+//
+// Then, with the time left, each card still unopened 3 days after its email went out (and less than about 10 days) gets
+// its one reminder (cardEmail.remind), a few at a time, between 9 a.m. and 8 p.m. where its sender lives, while the
+// server's CARD_EMAIL_REMINDERS switch is on. One that comes due at night stays due and goes at the sender's next 9 a.m.
+// A reminder that doesn't go is tried again by a later run, 3 tries in all, and never tells the sender anything.
 // ============================================================
 
 const cardEmail = require('../services/cardEmail');
@@ -57,6 +62,48 @@ async function cardEmailSend() {
     }
     for (const [senderId, cards] of gaveUp) await cardEmail.tellSender(senderId, cards);
     if (due) logger.info('[CardEmailSend] Done', { due, sent, failed, gaveUp: [...gaveUp.values()].flat().length });
+
+    let reminded = 0;
+    let notReminded = 0;
+    let waiting = 0;
+    const remindedIds = new Set();
+    // A page's cards that weren't tried (waiting for their sender's morning, or seen already) stay in the list, so the
+    // next page starts after them; the ones tried leave it. Every page moves on, so a run never reads one page twice.
+    let offset = 0;
+    while (Date.now() - started < RUN_BUDGET_MS) {
+      let page;
+      let fresh;
+      try {
+        const due = await cardEmail.dueToRemind(new Date(), { offset });
+        fresh = new Set(due.fresh.map((mail) => mail.id));
+        page = [...due.fresh, ...due.again].filter((mail) => !remindedIds.has(mail.id));
+      } catch (err) {
+        logger.error('[CardEmailSend] Could not read the cards due a reminder', { error: err.message });
+        break;
+      }
+      if (!fresh.size && !page.length) break;
+      page.forEach((mail) => remindedIds.add(mail.id));
+      let tried = 0;
+      for (let i = 0; i < page.length; i += cardEmail.AT_ONCE) {
+        await Promise.all(page.slice(i, i + cardEmail.AT_ONCE).map(async (mail) => {
+          try {
+            const result = await cardEmail.remind(mail);
+            if (result.sent) reminded += 1;
+            else if (!result.skipped) notReminded += 1;
+            if (result.night) waiting += 1;
+            if (fresh.has(mail.id) && !result.skipped) tried += 1;
+          } catch (err) {
+            notReminded += 1;
+            logger.warn('[CardEmailSend] Reminder failed', { mailId: mail.id, error: err.message });
+          }
+        }));
+      }
+      if (!fresh.size) break;
+      offset += fresh.size - tried;
+    }
+    if (remindedIds.size) {
+      logger.info('[CardEmailSend] Reminders done', { due: remindedIds.size, reminded, failed: notReminded, waitingForDaytime: waiting });
+    }
   } finally {
     running = false;
   }
