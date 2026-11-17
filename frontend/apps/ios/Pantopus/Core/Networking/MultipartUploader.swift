@@ -76,7 +76,7 @@ public final class MultipartUploader: @unchecked Sendable {
     /// mapping. If a 401 survives the refresh, the user is signed out before
     /// returning so the caller's `case 401` maps to `.unauthorized` uniformly.
     @MainActor
-    private func performUpload(
+    func performUpload(
         to url: URL,
         boundary: String,
         body: Data = Data(),

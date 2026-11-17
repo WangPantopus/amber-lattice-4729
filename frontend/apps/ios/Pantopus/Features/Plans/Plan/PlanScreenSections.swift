@@ -420,11 +420,13 @@ struct PlanClosedSection: View {
     var onOpenChat: (() -> Void)?
 
     var body: some View {
+        // Board 29: a plan that is over with photos reads "This was Saturday, Nov 21" / "12 people came".
+        let photos = card.state == .ended ? card.extrasPart.photos : nil
         PlanBanner(
             tone: .neutral,
-            icon: card.state == .cancelled ? .calendarX : .checkCircle,
-            title: title,
-            message: message
+            icon: card.state == .cancelled ? .calendarX : photos != nil ? .calendar : .checkCircle,
+            title: photos?.banner ?? title,
+            message: photos?.cameText ?? message
         )
         // The host's own note, as everyone was sent it (as on Android).
         if isHost, card.state == .cancelled, let note {
@@ -434,6 +436,7 @@ struct PlanClosedSection: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         if showsTitle { PlanTitleBlock(card: card) }
+        if let photos { PlanPhotosCard(planId: card.id, photos: photos) }
         // B6 (07-screens C4): a guest who paid, once, for 7 days after the end (the server sends it only then).
         if card.state == .ended, let tipLater = card.tipLater { PlanTipLaterCard(card: card, tipLater: tipLater) }
         if let onOpenChat {
