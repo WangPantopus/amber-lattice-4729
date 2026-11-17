@@ -821,13 +821,12 @@ private fun buildItems(
  * One that already floats at its elevation, carries a height tag or is fanned round a shared spot stays as it is.
  */
 private fun List<MomentItem>.overAreas(): List<MomentItem> =
-    map { item ->
-        val single = item as? MomentItem.Single
-        if (single != null && single.ring.ring.floating && single.float == null && single.tag == null && !single.fanned) {
-            single.copy(overArea = true)
-        } else {
-            item
-        }
+    map { item -> if (item is MomentItem.Single && item.floatsOverArea) item.copy(overArea = true) else item }
+
+private val MomentItem.Single.floatsOverArea: Boolean
+    get() {
+        val standing = float == null && tag == null && !fanned
+        return standing && ring.ring.floating
     }
 
 /**
