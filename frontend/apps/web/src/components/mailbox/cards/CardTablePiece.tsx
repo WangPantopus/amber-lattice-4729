@@ -248,7 +248,7 @@ export default function CardTablePiece({
           {sheet === 'share' ? (
             <CardShareSheet
               details={{ card, note: piece.content || '', fromName: from, mailedOn: piece.postmark?.date || piece.created_at, signature: card.signature ?? null }}
-              slug={card.slug}
+              slug={piece.card?.slug}
               onClose={() => setSheet(null)}
             />
           ) : null}
