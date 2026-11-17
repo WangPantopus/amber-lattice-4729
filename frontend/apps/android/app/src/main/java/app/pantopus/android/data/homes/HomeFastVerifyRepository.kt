@@ -1,11 +1,13 @@
 package app.pantopus.android.data.homes
 
+import android.content.Context
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.HomeFastVerifyApi
 import app.pantopus.android.data.auth.AuthRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -24,7 +26,10 @@ class HomeFastVerifyRepository
     constructor(
         private val api: HomeFastVerifyApi,
         private val auth: AuthRepository,
+        @ApplicationContext context: Context,
     ) {
+        private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
         private data class Key(
             val account: String,
             val homeId: String,
@@ -33,8 +38,7 @@ class HomeFastVerifyRepository
         /** A Home's last answer: its options, or null when the server doesn't offer them. No entry: not read yet. */
         private val answers = MutableStateFlow<Map<Key, HomeVerifyOptions?>>(emptyMap())
 
-        private fun key(homeId: String): Key? =
-            (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id?.let { Key(it, homeId.lowercase()) }
+        private fun key(homeId: String): Key? = account()?.let { Key(it, homeId.lowercase()) }
 
         /** The kept options for [homeId], for the first frame; null when not offered or not read yet. */
         fun cached(homeId: String): HomeVerifyOptions? = key(homeId)?.let { answers.value[it] }
@@ -57,5 +61,25 @@ class HomeFastVerifyRepository
                     if (result.error is NetworkError.NotFound && key(homeId) == key) answers.update { it + (key to null) }
             }
             return cached(homeId)
+        }
+
+        private fun account(): String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
+
+        /** Add Home in two steps (`home_short_add`) as last read for the signed-in person; off when never read. */
+        fun keptShortAddHome(): Boolean = account()?.let { prefs.getBoolean("$SHORT_ADD.$it", false) } ?: false
+
+        /** Reads `home_short_add` again and keeps it for the signed-in person; a failed read keeps the last answer. */
+        suspend fun refreshShortAddHome(): Boolean {
+            val account = account() ?: return false
+            val result = safeApiCall { api.shortAddHomeFlag() }
+            if (result is NetworkResult.Success && account() == account) {
+                prefs.edit().putBoolean("$SHORT_ADD.$account", result.data.enabled).apply()
+            }
+            return keptShortAddHome()
+        }
+
+        private companion object {
+            const val PREFS = "home_fast_verify"
+            const val SHORT_ADD = "short_add_home"
         }
     }

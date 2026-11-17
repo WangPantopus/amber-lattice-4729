@@ -253,10 +253,12 @@ sealed interface AddHomeOutboundEvent {
 
     /**
      * Reload current list authority after acknowledging the saved command. [homeId] is the Home it created or asked
-     * to join (null when the confirmed outcome named none): the Place tab lands on it when it can open it.
+     * to join (null when the confirmed outcome named none): the Place tab lands on it when it can open it. With
+     * [openVerify] (Add Home in two steps) Place opens its verify sheet over the new Home.
      */
     data class OpenHomes(
         val homeId: String?,
+        val openVerify: Boolean = false,
     ) : AddHomeOutboundEvent
 
     /**

@@ -115,7 +115,7 @@ const val PLACE_DASHBOARD_HOME_ID_KEY = "homeId"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun PlaceDashboardScreen(
     homeId: String,
     onOpenSection: (homeId: String, slug: String) -> Unit,
@@ -154,6 +154,9 @@ fun PlaceDashboardScreen(
     onOpenTask: ((taskId: String) -> Unit)? = null,
     /** Today's home setup on this Home's radon question (Risk and environment's next step); null leaves it out. */
     onOpenTodayRadon: (() -> Unit)? = null,
+    /** Add Home in two steps just made this Home: the verify sheet opens once the dashboard has loaded. */
+    openVerify: Boolean = false,
+    onVerifyOpened: () -> Unit = {},
     viewModel: PlaceDashboardViewModel = hiltViewModel(key = "place-$homeId"),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -189,6 +192,13 @@ fun PlaceDashboardScreen(
     var showSwitcher by remember { mutableStateOf(false) }
     var showVerify by remember { mutableStateOf(false) }
     GuidanceVerifyAction(ready = state is PlaceDashboardUiState.Loaded) { showVerify = true }
+    val loaded = state is PlaceDashboardUiState.Loaded
+    LaunchedEffect(openVerify, loaded) {
+        if (openVerify && loaded) {
+            showVerify = true
+            onVerifyOpened()
+        }
+    }
     val verifyAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.label.orEmpty()
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }

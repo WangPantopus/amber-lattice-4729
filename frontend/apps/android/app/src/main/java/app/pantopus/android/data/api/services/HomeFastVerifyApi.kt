@@ -1,6 +1,7 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.Path
@@ -16,4 +17,12 @@ interface HomeFastVerifyApi {
     suspend fun verifyOptions(
         @Path("id") homeId: String,
     ): HomeVerifyOptions
+
+    /**
+     * `GET /api/feature-flags/home_short_add` (`backend/routes/featureFlags.js:30`): Add Home in two steps. Read before
+     * any Home exists, so it can't come from [verifyOptions].
+     */
+    @Headers("Cache-Control: no-cache, no-store")
+    @GET("api/feature-flags/home_short_add")
+    suspend fun shortAddHomeFlag(): FeatureFlagResponse
 }
