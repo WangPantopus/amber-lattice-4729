@@ -97,7 +97,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335, 4344 |
 | Gift exchange | 4239, 4329 | 4317, 4333 | 4347 |
 | Photos afterwards | 4242, 4249 | 4321, 4323, 4333 | 4348 |
-| One person pays for the group | 4255, 4259, 4261, 4359, 4367, 4370 | 4327, 4366 and 4376 (claiming a spot from the link) | 4351, 4372 |
+| One person pays for the group | 4255, 4259, 4261, 4359, 4367, 4370 | 4327, 4366 and 4376 (claiming a spot from the link) | 4351, 4372, 4388 |
 
 Also done:
 
@@ -173,8 +173,8 @@ In the order it should be done. Each item is its own small pull request into
    for a spot; the group price coming back and then leaving; the bill with a
    deal and a tip; the tip afterwards. Written into `NEXT_STEPS.md` the way the
    people track's check is.
-8. Under way since November 17 (done so far: the same people again, chip in, find a date, gift exchange, photos afterwards; one person pays for the group passed on the money and found the iPhone's spot claim missing, which is being built and re-checked; `NEXT_STEPS.md` lists each as it
-   finishes). A two-phone check of each extra, with a browser guest where the extra has
+8. Done November 17: each of the six passed both ways round, after a relaunch and with its switch off; what the
+   checks found was fixed and looked at again (`NEXT_STEPS.md` has each). A two-phone check of each extra, with a browser guest where the extra has
    one, written into `NEXT_STEPS.md`.
 
 **Server and web**
@@ -213,6 +213,12 @@ person's plan photos, and the refund fix in the shared refund code); each
 switch in production; the store builds.
 
 ## 5. When it is done
+
+**Reached on November 17, 2026, at 10:57 AM Pacific** (the last change, Android's 4388). Every line below holds as
+`NEXT_STEPS.md` records it, piece by piece, with what was seen and what was not. The sessions of that night and their
+notes: `~/pantopus-plans/holidays-notes/` (`COORDINATOR-NOTES.md`, `HOLSRV-gaps.md` with the fifteen server and web
+fixes the phones and the checks found, `TWO-PHONE-BUSINESS-RESULTS.md`, `TWO-PHONE-EXTRAS-RESULTS.md`). What remains
+is the founder's own list at the end of the Plans section of `NEXT_STEPS.md`.
 
 - The business track and the six extras are on `dev` on the server, the web,
   the iPhone and Android, each checked in the real app by its session from both

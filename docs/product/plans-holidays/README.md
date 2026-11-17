@@ -1,9 +1,10 @@
 # Plans for the holidays, and paying businesses
 
-Written November 15, 2026. Design, architecture and build plan. The build
-started the same day and is under way in separate sessions
-([session briefs](05-session-briefs.md)); what is built is under Status below
-and, item by item, in `NEXT_STEPS.md`, section "Plans for the holidays".
+Written November 15, 2026. Design, architecture and build plan. The build ran
+from that day to November 17 in separate sessions
+([session briefs](05-session-briefs.md), [hand-off](09-handoff.md)) and is
+finished; what is built is under Status below and, item by item, in
+`NEXT_STEPS.md`, section "Plans for the holidays".
 
 Plans today is good for small get-togethers among people who have the app. This
 set of documents makes it carry holiday plans (Thanksgiving, Christmas, New
@@ -49,6 +50,10 @@ Pantopus, with tips.
 
 ## Status
 
+**The build is finished (November 17, 2026): everything in these documents is on `dev` on the server, the web, the
+iPhone and Android, behind switches that are off.** What only the founder can do is the list at the end of the Plans
+section of `NEXT_STEPS.md`.
+
 | | |
 | --- | --- |
 | The research and the first report | Done November 15 |
@@ -60,7 +65,7 @@ Pantopus, with tips.
 | Build | The founder said "yes, let's start" on November 15 for the people track, and on November 16 to keep every session working until everything discussed and designed is built and checked, without being asked before each piece. The build sessions run on Opus 5.5 at Extra High; one session designs and coordinates and writes no product code |
 | The people track | On `dev` on the server, the web, the iPhone and Android (November 15 and 16, with the Change screen's "Room for" and "Kids welcome" on both phones), and checked with the two phones together both ways round. Its server and web halves are on staging, with guests answering in a browser turned on there at the founder's word. Production has none of it |
 | The business track | On `dev` on the server and the web (every switch off, checked in the payment company's test mode on a session's own setup). On the phones: all of it is on `dev` on Android (merged on its session's emulator checks, and the merged build smoke-checked on an emulator in test mode the evening of November 16), and all of it is on `dev` on the iPhone too since November 16 (the bill with tips 4289, the tip afterwards 4307). The two phones were checked together on it on November 17, both ways round, in test mode, with the payout after ([09-handoff.md](09-handoff.md), section 3) |
-| The six extras | On `dev` on the server, the web, the iPhone and Android since November 17, each behind its own switch, off. iPhone: the same people again 4284, chip in 4294, find a date 4300 and 4312, the gift exchange 4317, photos afterwards 4321 and 4323, one person pays for the group 4327. Android: 4297, 4314 and 4346, 4335 and 4344, 4347, 4348, 4351. The two phones were checked together on the same people again, chip in and find a date; the other three checks are under way ([09-handoff.md](09-handoff.md), section 4; `NEXT_STEPS.md` lists each) |
+| The six extras | On `dev` on the server, the web, the iPhone and Android since November 17, each behind its own switch, off. iPhone: the same people again 4284, chip in 4294, find a date 4300, 4312 and 4362, the gift exchange 4317 and 4333, photos afterwards 4321 and 4323, one person pays for the group 4327, 4366 and 4376. Android: 4297, 4314 and 4346, 4335, 4344 and 4364, 4347, 4348, 4351, 4372 and 4388. The two phones were checked together on each of the six on November 17, both ways round, after a relaunch and with the switch off; what those checks found is fixed ([09-handoff.md](09-handoff.md), sections 4 and 5; `NEXT_STEPS.md` has each) |
 | Staging | The server and the web there have the people track, the whole business track and all six extras since 7:22 PM Pacific on November 16 (`dev` 2d7e0857d9), every switch off except guests answering in a browser. Nobody has tried the business track or the extras there |
 | Made precise during the build | Several keys a guest, and the key only by email at a home (contract 6.1, 6.3). Which emails count against a guest's three, and that a cancellation always goes (contract 6.6). Both were the designer's calls after the server session asked, reported to the founder, not separately approved |
 
