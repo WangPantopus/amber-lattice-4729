@@ -19,7 +19,9 @@ public struct PlanPastPlanDTO: Decodable, Sendable, Hashable, Identifiable {
     /// The people who were in at the end, one a party.
     public let count: Int
 
-    public var id: String { postId }
+    public var id: String {
+        postId
+    }
 
     enum CodingKeys: String, CodingKey {
         case title, kind, count
@@ -56,7 +58,9 @@ public struct PlanPastPersonDTO: Decodable, Sendable, Hashable, Identifiable {
     /// False for a guest who came by a text invitation and gave no email: can't be reached again.
     public let canInvite: Bool
 
-    public var id: String { key }
+    public var id: String {
+        key
+    }
 
     enum CodingKeys: String, CodingKey {
         case key, name, via

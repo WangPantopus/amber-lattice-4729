@@ -54,6 +54,10 @@ final class PlansFlags {
     private(set) var guestAnswers = false
     /// Plans for the holidays H2: the bring list on the host form (never without `plans`).
     private(set) var bringList = false
+    /// The extras (08-extras), each its own switch for the host form's rows: chip in, find a date, gift exchange.
+    private(set) var chipIn = false
+    private(set) var findDate = false
+    private(set) var giftExchange = false
 
     /// Checks closer together than this reuse the last answer.
     static let recheckAfter: TimeInterval = 30
@@ -84,7 +88,10 @@ final class PlansFlags {
                 kinds: false,
                 online: false,
                 guestAnswers: false,
-                bringList: false
+                bringList: false,
+                chipIn: false,
+                findDate: false,
+                giftExchange: false
             ))
             return
         }
@@ -134,6 +141,9 @@ final class PlansFlags {
         async let onlineAnswer = Self.read("plans_online", api: api)
         async let guestAnswersAnswer = Self.read("plans_guest_answers", api: api)
         async let bringListAnswer = Self.read("plans_bring_list", api: api)
+        async let chipInAnswer = Self.read("plans_chip_in", api: api)
+        async let findDateAnswer = Self.read("plans_find_date", api: api)
+        async let giftAnswer = Self.read("plans_gift_exchange", api: api)
         let answers = await (
             plans: plansAnswer,
             playdates: playdatesAnswer,
@@ -143,7 +153,10 @@ final class PlansFlags {
             kinds: kindsAnswer,
             online: onlineAnswer,
             guestAnswers: guestAnswersAnswer,
-            bringList: bringListAnswer
+            bringList: bringListAnswer,
+            chipIn: chipInAnswer,
+            findDate: findDateAnswer,
+            giftExchange: giftAnswer
         )
         // An account switch while the check ran: its answers aren't this account's.
         guard account == checked else { return }
@@ -158,11 +171,14 @@ final class PlansFlags {
             kinds: plansOn && (answers.kinds ?? kinds),
             online: plansOn && (answers.online ?? online),
             guestAnswers: plansOn && (answers.guestAnswers ?? guestAnswers),
-            bringList: plansOn && (answers.bringList ?? bringList)
+            bringList: plansOn && (answers.bringList ?? bringList),
+            chipIn: plansOn && (answers.chipIn ?? chipIn),
+            findDate: plansOn && (answers.findDate ?? findDate),
+            giftExchange: plansOn && (answers.giftExchange ?? giftExchange)
         ))
         // One list per account; a shorter one saved by an older build restores the missing switches as off.
         defaults.set(
-            [plans, playdates, business, privatePlans, repeating, kinds, online, guestAnswers, bringList],
+            [plans, playdates, business, privatePlans, repeating, kinds, online, guestAnswers, bringList, chipIn, findDate, giftExchange],
             forKey: Self.key(checked)
         )
     }
@@ -179,7 +195,10 @@ final class PlansFlags {
             kinds: plansOn && saved.dropFirst(5).first == true,
             online: plansOn && saved.dropFirst(6).first == true,
             guestAnswers: plansOn && saved.dropFirst(7).first == true,
-            bringList: plansOn && saved.dropFirst(8).first == true
+            bringList: plansOn && saved.dropFirst(8).first == true,
+            chipIn: plansOn && saved.dropFirst(9).first == true,
+            findDate: plansOn && saved.dropFirst(10).first == true,
+            giftExchange: plansOn && saved.dropFirst(11).first == true
         ))
     }
 
@@ -194,6 +213,9 @@ final class PlansFlags {
         let online: Bool
         let guestAnswers: Bool
         let bringList: Bool
+        let chipIn: Bool
+        let findDate: Bool
+        let giftExchange: Bool
     }
 
     private func apply(_ answers: Answers) {
@@ -206,6 +228,9 @@ final class PlansFlags {
         if online != answers.online { online = answers.online }
         if guestAnswers != answers.guestAnswers { guestAnswers = answers.guestAnswers }
         if bringList != answers.bringList { bringList = answers.bringList }
+        if chipIn != answers.chipIn { chipIn = answers.chipIn }
+        if findDate != answers.findDate { findDate = answers.findDate }
+        if giftExchange != answers.giftExchange { giftExchange = answers.giftExchange }
     }
 
     /// The flag's answer, or nil when it couldn't be read (offline, 5xx).

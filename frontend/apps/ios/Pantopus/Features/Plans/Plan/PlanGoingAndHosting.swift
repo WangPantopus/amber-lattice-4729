@@ -61,7 +61,7 @@ struct PlanGoingSection: View {
             if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) } // board Online
-        PlanGoingDealCards(card: card)
+        PlanGoingExtraCards(viewModel: viewModel, card: card) // deals and paid (B1, B2), then the extras (chip in)
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 HStack(spacing: Spacing.s2) {
@@ -263,7 +263,7 @@ struct PlanHostingSection: View {
             } else {
                 going
             }
-            if let bring = card.bring { PlanBringHostCard(bring: bring, onOpen: onOpenBring) }
+            PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
             // Side by side; one under another when the words don't fit beside each other (the largest text).
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) { hostButtons }

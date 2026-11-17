@@ -66,6 +66,8 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
     public let deal: PlanPersonDealDTO?
     /// B2, staff only: what the guest paid and who brought them.
     public let paid: PlanPersonPaidDTO?
+    /// Chip in (08-extras section 3), the host only: whether they marked it and the key "Mark paid" sends.
+    public let chipIn: PlanPersonChipInDTO?
 
     public var id: String {
         userId
@@ -90,6 +92,7 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
         case isGuest = "guest"
         case guestId = "guest_id"
         case deal, paid
+        case chipIn = "chip_in"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -117,6 +120,7 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
         kidsAgeBands = try? container.decodeIfPresent([PlanKidsAgeBand].self, forKey: .kidsAgeBands)
         deal = try? container.decodeIfPresent(PlanPersonDealDTO.self, forKey: .deal)
         paid = try? container.decodeIfPresent(PlanPersonPaidDTO.self, forKey: .paid)
+        chipIn = try? container.decodeIfPresent(PlanPersonChipInDTO.self, forKey: .chipIn)
     }
 }
 

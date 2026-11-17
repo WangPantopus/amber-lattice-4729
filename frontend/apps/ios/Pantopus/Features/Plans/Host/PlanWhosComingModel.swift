@@ -36,6 +36,8 @@ struct PlanWhoRow: Identifiable, Hashable {
     /// A person with an account from the plan's one link waiting for the yes (contract 6.9): "Let in" accepts their
     /// ask and "Not this time" declines it, as the shipped Requests screen does.
     var answersAsk = false
+    /// Chip in (08-extras section 3): whether this person who is in marked it, and the key "Mark paid" sends.
+    var chipIn: PlanPersonChipInDTO?
 }
 
 struct PlanWhoSection: Identifiable, Hashable {
@@ -135,6 +137,17 @@ final class PlanWhosComingModel {
         if error == nil { toast = "Removed." }
     }
 
+    /// Chip in: the host marks someone who paid another way, or takes the mark back. No notice is sent.
+    func markPaid(_ row: PlanWhoRow, paid: Bool) async {
+        guard let who = row.chipIn?.who else { return }
+        await act(row.id) {
+            let endpoint = paid
+                ? PlansEndpoints.markChipIn(planId: planId, who: who)
+                : PlansEndpoints.unmarkChipIn(planId: planId, who: who)
+            _ = try await api.request(endpoint, as: PlanChipInResponse.self)
+        }
+    }
+
     func remind() async {
         var reminded = 0
         await act("remind") {
@@ -219,17 +232,19 @@ final class PlanWhosComingModel {
         }
         // A person with an account from the plan's one link, waiting for the yes (contract 6.9): their ask is answered here.
         let linkAsk = invite.isAccountFromOpenLink && invite.state == .asked && invite.requestId != nil
+        let chipIn = invite.chipIn ?? person?.chipIn
         return PlanWhoRow(
             id: invite.id,
             name: name,
-            line: line(invite, person: person),
+            line: line(invite, person: person) + (chipIn?.paid == true ? " · paid" : ""),
             leading: leading,
             inviteId: invite.id,
             requestId: linkAsk ? invite.requestId : invite.state == .isIn || invite.state == .waitlisted ? person?.requestId : nil,
             canLetIn: invite.canOk || linkAsk,
             canRemove: invite.canCancel || (invite.state == .isIn && person?.requestId != nil),
             opensRequests: invite.state == .asked && !linkAsk,
-            answersAsk: linkAsk
+            answersAsk: linkAsk,
+            chipIn: chipIn
         )
     }
 

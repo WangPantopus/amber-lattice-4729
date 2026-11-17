@@ -171,10 +171,13 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
     /// The same people again (08-extras section 6): an email invitation made from a past plan shows the name the guest
     /// gave there, and `email` is null; the host never reads that address.
     public let knownName: String?
+    /// Chip in (08-extras section 3), on a row that is in: whether they marked it and the key "Mark paid" sends.
+    public let chipIn: PlanPersonChipInDTO?
 
     enum CodingKeys: String, CodingKey {
         case id, channel, state, person, email, guest, party
         case knownName = "name"
+        case chipIn = "chip_in"
         case emailFailed = "email_failed"
         case requestId = "request_id"
         case canCancel = "can_cancel"
@@ -197,6 +200,7 @@ public struct PlanInviteRowDTO: Decodable, Sendable, Hashable, Identifiable {
         canOk = (try? container.decodeIfPresent(Bool.self, forKey: .canOk)) ?? false
         party = try? container.decodeIfPresent(PlanInvitePartyDTO.self, forKey: .party)
         knownName = try? container.decodeIfPresent(String.self, forKey: .knownName)
+        chipIn = try? container.decodeIfPresent(PlanPersonChipInDTO.self, forKey: .chipIn)
     }
 
     /// A person with an account who came by the plan's one link (contract 6.9, `via: open`).
