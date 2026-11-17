@@ -309,7 +309,12 @@ export default function CardTable({
   const [verseOpen, setVerseOpen] = useState(false);
   const verseCloseRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { if (verseOpen) verseCloseRef.current?.focus(); }, [verseOpen]);
-  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen); }, [paused, verseOpen]);
+  // The card has been enlarged once, so the hint that says how has done its job.
+  const [enlargedOnce, setEnlargedOnce] = useState(false);
+  if (ui.enlarged && !enlargedOnce) setEnlargedOnce(true);
+  // The card's own photo, opened over the window from its print: the table rests under it, and its keys are the photo's.
+  const [photoOpen, setPhotoOpen] = useState(false);
+  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen || photoOpen); }, [paused, verseOpen, photoOpen]);
 
   // "Open it again".
   const playedRef = useRef(replay);
@@ -334,7 +339,7 @@ export default function CardTable({
   useEffect(() => {
     if (!mounted) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (paused) return;
+      if (paused || photoOpen) return;
       const stage = stageRef.current;
       const active = document.activeElement;
       const here = !active || active === document.body || Boolean(stage?.contains(active));
@@ -368,7 +373,7 @@ export default function CardTable({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [mounted, paused, menuOpen, onClose, ui.step, ui.enlarged, verseOpen]);
+  }, [mounted, paused, photoOpen, menuOpen, onClose, ui.step, ui.enlarged, verseOpen]);
 
   // Focus comes to the table as it opens, and goes back where it was when it closes.
   useEffect(() => {
@@ -431,6 +436,8 @@ export default function CardTable({
   } else if (step === 'out') {
     primary = backUp ? 'Turn it back' : 'Turn it over';
     if (!turnedOnce) hint = 'or swipe it';
+    // Until it's been enlarged once (the card could always be enlarged, but nothing said so).
+    else if (!enlargedOnce) hint = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches ? 'double-tap the card to enlarge it' : 'double-click the card to enlarge it';
     else if (!heldOnce && typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches) hint = 'press and hold, then move your finger: the light moves';
   }
   // Enlarged (design plan 6.1): how to bring it back. A verse card on the table offers its verse in place of the hint.
@@ -460,7 +467,8 @@ export default function CardTable({
     : `Christmas card from ${fromName}${sealed ? ', sealed until Christmas morning' : ''}`;
   const day = postmarkDay(mailedOn || new Date().toISOString());
   const [month, date] = day.split(' ');
-  // Shown once it's turned over, and not while it's enlarged (it would lie over them).
+  // On the table once it's turned over (how much of them shows follows the card's own turn, from the engine), and not
+  // while it's enlarged (it would lie over them).
   const mediaShown = hasMedia && turnedOver && !ui.enlarged;
   if (mediaShown && !mediaSeen) setMediaSeen(true);
 
@@ -578,7 +586,11 @@ export default function CardTable({
             drawings 3 and 4), or under it on a narrow table, where the engine keeps them room. Not part of the card: they
             stay put while it moves, and screen readers reach them. */}
         {hasMedia ? (
-          <div className={`${styles.media} ${mediaShown ? styles.mediaShown : ''}`} inert={!mediaShown} data-testid="cardTableMedia">
+          <div
+            className={`${styles.media} ${mediaShown ? styles.mediaShown : ''} ${ui.enlarged ? styles.mediaAway : ''}`}
+            inert={!mediaShown}
+            data-testid="cardTableMedia"
+          >
             {photo ? (
               <div
                 className={styles.mediaPrint}
@@ -598,11 +610,13 @@ export default function CardTable({
                   datedOn={mood === 'nostalgia' ? mailedOn : null}
                   tilt={-3}
                   className="w-full"
+                  opens
+                  onViewing={setPhotoOpen}
                 />
               </div>
             ) : null}
             {voice ? (
-              <div className={`${styles.mediaVoice} ${photo ? '' : styles.mediaVoiceAlone}`} data-ui>
+              <div className={`${styles.mediaVoice} ${mood === 'reverence' ? styles.mediaVoiceGift : ''} ${photo ? '' : styles.mediaVoiceAlone}`} data-ui>
                 <CardGreeting
                   source={mediaFrom!(voice.file_id)}
                   durationMs={voice.duration_ms}
