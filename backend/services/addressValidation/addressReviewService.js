@@ -155,6 +155,42 @@ async function flagAddressWatch({ homeId, userId = null, signals, source = null 
   }
 }
 
+// "This wasn't me" (FASTVERIFY): a resident reported a verify postcard someone else asked for. One case per report,
+// about the person who asked (user_id) at the home. While one is open that person can't make a fast check there.
+const POSTCARD_REPORT = 'postcard_report';
+
+/** Open a case for a reported postcard. Returns its id, or null when it couldn't be written (never throws). */
+async function flagPostcardReport({ homeId, userId }) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('AddressReviewCase')
+      .insert({ home_id: homeId, user_id: userId, verdict_status: 'POSTCARD_REPORTED', reasons: ['POSTCARD_REPORTED'],
+        trigger: POSTCARD_REPORT, status: 'open' })
+      .select('id')
+      .single();
+    if (error) throw error;
+    logger.warn('addressReview: postcard report case opened', { caseId: data.id, homeId, userId });
+    return data.id;
+  } catch (error) {
+    logger.error('addressReview: postcard report case not written', { homeId, error: error.message });
+    return null;
+  }
+}
+
+/** Is a reported-postcard case open about this person at this home? Throws when it can't be read. */
+async function postcardReportOpen(homeId, userId) {
+  const { data, error } = await supabaseAdmin
+    .from('AddressReviewCase')
+    .select('id')
+    .eq('trigger', POSTCARD_REPORT)
+    .eq('home_id', homeId)
+    .eq('user_id', userId)
+    .in('status', OPEN_STATUSES)
+    .limit(1);
+  if (error) throw error;
+  return (data || []).length > 0;
+}
+
 const RECORD_PROBLEM = 'record_problem';
 const MAX_RECORD_PROBLEMS = 30;
 
@@ -307,4 +343,4 @@ async function resolveCase({ caseId, reviewerId, outcome, note = null }) {
   return { success: true };
 }
 
-module.exports = { needsReview, openCase, flagAddressWatch, flagRecordProblem, flagFloorPlanSheet, openRecordProblems, listOpenCases, resolveCase, OPEN_STATUSES };
+module.exports = { needsReview, openCase, flagAddressWatch, flagPostcardReport, postcardReportOpen, flagRecordProblem, flagFloorPlanSheet, openRecordProblems, listOpenCases, resolveCase, OPEN_STATUSES };

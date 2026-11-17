@@ -72,12 +72,16 @@ async function dispatchPostcardCode(home, code, homePostcardId, homeId) {
     return { success: false, deliveryUnknown: false, error: 'Mail could not be sent right now' };
   }
 
+  // home_postcard_scan (FASTVERIFY): the card carries a QR picture of its link and the "This wasn't me" line.
+  // eslint-disable-next-line global-require
+  const scan = await require('../services/postcardScan').scanFor(homePostcardId);
+  if (scan) logger.info('postcard_scan.on_card', { postcard_id: homePostcardId });
   try {
     const result = await provider.sendPostcard(
       destination,
       code,
       addressConfig.lob.postcardTemplateId || null,
-      { homePostcardId, homeId },
+      { homePostcardId, homeId, ...(scan ? { scan } : {}) },
     );
     mailVendorService.noteSendResult(provider.name, true);
     if (!result?.vendorJobId) return { success: false, deliveryUnknown: true, error: 'Mail receipt is not confirmed' };

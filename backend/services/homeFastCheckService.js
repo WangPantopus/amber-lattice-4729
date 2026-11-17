@@ -195,6 +195,12 @@ async function documentInReview(homeId, userId) {
   return (evidence || []).length > 0;
 }
 
+/** Is a "This wasn't me" case open about this person at this home? Unreadable counts as yes (held). */
+async function reportedHere(homeId, userId) {
+  // eslint-disable-next-line global-require
+  return require('./addressValidation/addressReviewService').postcardReportOpen(homeId, userId).catch(() => true);
+}
+
 /** Today's landlord door rule (GET /api/v1/tenant/home/:id/status): a verified landlord, or the person's own lease. */
 async function landlordDoor(homeId, userId) {
   const [authority, lease] = await Promise.all([
@@ -263,6 +269,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'location' && platform !== 'ios' && platform !== 'android') reason = 'APP_ONLY';
       else if (!claim) reason = 'NEEDS_CLAIM';
       else if (elsewhere) reason = 'ONE_HOME';
+      else if (await reportedHere(homeId, userId)) reason = 'IN_REVIEW';
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
       else if (id === 'document' && await documentInReview(homeId, userId)) reason = 'IN_REVIEW';
       else if (await overLimit(userId, id)) reason = 'LIMIT';
@@ -327,6 +334,11 @@ async function admit({ homeId, user, kind, countLimit = true }) {
   if (await fastCheckedElsewhere(user.id, homeId)) {
     void countTry(kind, 'refused', ['one_home']);
     throw new FastCheckError('FAST_CHECK_ONE_HOME');
+  }
+  // A card they asked for here was reported ("This wasn't me"): held until Pantopus decides the case.
+  if (await reportedHere(homeId, user.id)) {
+    void countTry(kind, 'refused', ['reported']);
+    throw new FastCheckError('FAST_CHECK_NEEDS_CLAIM');
   }
   if (countLimit && await overLimit(user.id, kind)) {
     void countTry(kind, 'refused', ['limit']);
