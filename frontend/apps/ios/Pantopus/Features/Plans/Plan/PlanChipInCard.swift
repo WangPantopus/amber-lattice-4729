@@ -117,7 +117,8 @@ struct PlanChipInCard: View {
     @ViewBuilder private var payButton: some View {
         if let text = chipIn.payText, let link = chipIn.link, let url = URL(string: link), url.scheme?.lowercased() == "https" {
             Button { openURL(url) } label: {
-                PlanButtonLabel(title: text, kind: .primary)
+                // "Pay Maya on Venmo" wraps at the largest text sizes instead of being cut.
+                Text(text).lineLimit(3).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             }
             .planButton(.primary, size: .small)
             .accessibilityHint("Opens outside Pantopus")

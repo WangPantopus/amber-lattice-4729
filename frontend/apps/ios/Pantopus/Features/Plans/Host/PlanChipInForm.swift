@@ -53,6 +53,7 @@ struct PlanChipInDraft: Equatable {
 struct PlanChipInFormCard: View {
     @Binding var draft: PlanChipInDraft?
     var identifierPrefix = "planChipIn"
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
@@ -109,17 +110,15 @@ struct PlanChipInFormCard: View {
         Binding(get: { draft?[keyPath: path] ?? "" }, set: { draft?[keyPath: path] = $0 })
     }
 
+    /// The label on the left and the field on the right; one under the other at the accessibility text sizes. One
+    /// layout for the whole time the field is typed in, so a long link never moves the field and drops the keyboard.
     private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: Spacing.s3) {
-                Text(label).planFont(.body).foregroundStyle(Theme.Color.appText).fixedSize()
-                Spacer(minLength: Spacing.s2)
-                content()
-            }
-            VStack(alignment: .leading, spacing: Spacing.s1) {
-                Text(label).planFont(.body).foregroundStyle(Theme.Color.appText)
-                content()
-            }
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.s1))
+            : AnyLayout(HStackLayout(spacing: Spacing.s3))
+        return layout {
+            Text(label).planFont(.body).foregroundStyle(Theme.Color.appText).fixedSize()
+            content().frame(maxWidth: .infinity, alignment: typeSize.isAccessibilitySize ? .leading : .trailing)
         }
         .padding(.vertical, Spacing.s2)
         .frame(minHeight: 52)
@@ -129,7 +128,7 @@ struct PlanChipInFormCard: View {
         TextField(placeholder, text: text)
             .planFont(.bodyStrong)
             .foregroundStyle(Theme.Color.appText)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(typeSize.isAccessibilitySize ? .leading : .trailing)
             .onChange(of: text.wrappedValue) { _, new in
                 if new.count > limit { text.wrappedValue = String(new.prefix(limit)) }
             }
