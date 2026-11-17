@@ -393,6 +393,6 @@ async function levelFor(homeId, userId) {
 
 module.exports = {
   FLAGS, KINDS, REFUSALS, LIMITS, FAST_BY, FastCheckError, sendError, flagOn,
-  countTry, logTry, triesSince, overLimit, fastCheckedElsewhere, provenBy, fastView,
+  countTry, logTry, triesSince, overLimit, fastCheckedElsewhere, provenBy, fastView, phoneDailyCeilingReached,
   verifyOptions, admit, markFastCheck, clearFastCheck, levelFor,
 };
