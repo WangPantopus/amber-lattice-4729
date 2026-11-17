@@ -97,7 +97,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335, 4344 |
 | Gift exchange | 4239, 4329 | 4317, 4333 | 4347 |
 | Photos afterwards | 4242, 4249 | 4321, 4323, 4333 | 4348 |
-| One person pays for the group | 4255, 4259, 4261 | 4327 | **not started** |
+| One person pays for the group | 4255, 4259, 4261 | 4327 | 4351 |
 
 Also done:
 
@@ -152,7 +152,7 @@ In the order it should be done. Each item is its own small pull request into
    Change screen, "Room for" (from the people already in up to 100) and "Kids
    welcome"; the occasion's tag on the page of a person who is in; an
    occasion's form starting at the server's room. The iPhone's is 4236.
-3. The six extras, in `08-extras.md` section 8's order: the same people again,
+3. Done November 17 (4297, 4314 and 4346, 4335 and 4344, 4347, 4348, 4351). The six extras, in `08-extras.md` section 8's order: the same people again,
    chip in, find a date, gift exchange, photos afterwards, one person pays for
    the group.
 
