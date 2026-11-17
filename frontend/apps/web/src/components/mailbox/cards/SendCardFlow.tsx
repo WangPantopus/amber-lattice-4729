@@ -1569,9 +1569,12 @@ function SentCard({
 
 // ── The flow ─────────────────────────────────────────────────
 
-export default function SendCardFlow({ chosenDesign = null, chosenPerson = null }: {
+export default function SendCardFlow({ chosenDesign = null, chosenPerson = null, sendAgain = false }: {
   /** The picture a public card page sent them here with (launch key card_table). */
   chosenDesign?: string | null;
+  /** "Send this card to someone else" from Sent (mail-cards-experience Part 6): its picture stays chosen and Pick a card
+   *  is skipped. */
+  sendAgain?: boolean;
   /** Send one back (launch key card_table): the person a card on the table sent them here for. */
   chosenPerson?: string | null;
 }) {
@@ -1597,6 +1600,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   // A person's arrivals and day go by their clock, read once they're chosen and again on the last step.
   const theirs = useCardArrivals(to?.kind === 'person' ? to.userId : null);
   const [designId, setDesignId] = useState<string | null>(launchFeatures.cardTable ? chosenDesign : null);
+  // Send this card to someone else (Part 6): the picture is already chosen, so Who it's for goes on to Write on the back.
+  const [keepPicture, setKeepPicture] = useState(Boolean(sendAgain && chosenDesign && launchFeatures.cardTable));
   const [message, setMessage] = useState('');
   // Signed beside FROM (design plan 8.2); null: the first name typed in the pen, as before.
   const [signature, setSignature] = useState<CardSignature | null>(null);
@@ -1650,6 +1655,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const mediaStamp = mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null);
   const design = useMemo(() => data?.designs.find((d) => d.id === designId) ?? null, [data, designId]);
   const today = sent ?? (data?.today && data.today.status !== 'withdrawn' ? data.today : null);
+  // Another card can go now (Part 6): a stamp left, or without stamps, today's card not used yet.
+  const canSendAgain = Boolean(data?.open && designId)
+    && (data?.postage_enabled ? (stamps.balance?.available ?? 0) > 0 : !today);
   const options = useMemo<HolidayCardArrival[]>(() => {
     if (!data || !to) return [];
     // By email every choice the server offers (arrivals.email_all); a link keeps its two.
@@ -1672,7 +1680,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
   const continueWithList = () => {
     if (!listed.length) return;
     setTo(listed.length === 1 ? listed[0] : { kind: 'list', entries: listed });
-    setStep('pick');
+    setStep(keepPicture && designId ? 'write' : 'pick');
   };
 
   // Send one back: that person is already chosen and the flow opens at Pick a card, unless today's card has gone and
@@ -1839,7 +1847,16 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
     setSentLink(null);
     setTo(null); setDesignId(null); setMessage(''); setSignature(savedSignature); removePhoto(); removeVoice(); setArrival(null); setLook(null); setLookUnavailable(false);
     setListed([]); setListLook(null); setListSent(null); setListError(null); setListTakenBack(new Set()); setListTakeBackError(null);
+    setKeepPicture(false);
     setStep('to');
+  };
+
+  // "Send this card to someone else" (mail-cards-experience Part 6): the same picture and the saved signature; the note
+  // starts empty and the arrival is asked again. Who it's for, then Write on the back, then Seal it for the day.
+  const sendThisAgain = () => {
+    const picture = designId;
+    startOver();
+    if (picture) { setDesignId(picture); setKeepPicture(true); }
   };
 
   // This card already went with an earlier try whose answer was lost: show the card it sent, or, once it was taken
@@ -2185,7 +2202,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
 
       {step === 'to' ? (
         <ToStep
-          onChoose={(next) => { setTo(next); setStep('pick'); }}
+          onChoose={(next) => { setTo(next); setStep(keepPicture && designId ? 'write' : 'pick'); }}
           max={max}
           listed={listed}
           onToggle={toggleListed}
@@ -2318,7 +2335,10 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
         <SentCard postageEnabled={data.postage_enabled} card={sent} designs={data.designs} title={sent.by_link ? 'Your card' : 'On its way'} seeInSent link={sentLink} fromName={fromName} onTakeBack={() => { void doTakeBack(); }} takingBack={takeBack.isPending} takeBackError={takeBackError} />
       ) : null}
       {data.postage_enabled && step === 'sent' ? (
-        <div className="mx-auto max-w-[420px] px-4 pb-4">
+        <div className="mx-auto max-w-[420px] space-y-2.5 px-4 pb-4">
+          {canSendAgain ? (
+            <button type="button" data-testid="sendThisCardAgain" className={secondary} onClick={sendThisAgain}>Send this card to someone else</button>
+          ) : null}
           <button type="button" data-testid="sendAnotherCard" className={secondary} onClick={startOver}>Send another card</button>
         </div>
       ) : null}
@@ -2345,6 +2365,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
                 <div data-row>
                   <button type="button" data-strong data-testid="sealDone" onClick={sealingDone}>{listMissed ? 'See which' : 'Done'}</button>
                   {listMissed ? null : <button type="button" data-testid="sealSeeThem" onClick={closeSealing}>See them</button>}
+                  {!listMissed && canSendAgain ? (
+                    <button type="button" data-testid="sealSendAgain" onClick={() => { setSealing(null); setSealShare(false); sendThisAgain(); }}>Send this card to someone else</button>
+                  ) : null}
                 </div>
               </>
             ) : sent ? (
@@ -2362,6 +2385,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
                     <button type="button" data-testid="sealTakeBack" disabled={takeBack.isPending} onClick={() => { void doTakeBack(); }}>Take it back</button>
                   ) : null}
                   {sent.by_link ? null : <button type="button" data-testid="sealShare" onClick={() => setSealShare(true)}>Share this card</button>}
+                  {canSendAgain ? (
+                    <button type="button" data-testid="sealSendAgain" onClick={() => { setSealing(null); setSealShare(false); sendThisAgain(); }}>Send this card to someone else</button>
+                  ) : null}
                 </div>
                 {linkSaid || takeBackError ? <p role="status">{linkSaid ?? takeBackError}</p> : null}
               </>

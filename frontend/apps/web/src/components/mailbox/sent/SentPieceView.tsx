@@ -74,6 +74,11 @@ export default function SentPieceView({ id }: { id: string }) {
   const [onTable, setOnTable] = useState(false);
   const [sharing, setSharing] = useState(false);
   const backToSent = () => router.push('/app/mailbox/sent');
+  // Send this card to someone else (mail-cards-experience Part 6): only while another card can go now (a stamp left, or
+  // without stamps, today's card not used).
+  const canSendAgain = Boolean(holidayCards?.open) && launchFeatures.cardTable && (holidayCards?.postage_enabled
+    ? (holidayCards?.stamps?.available ?? 0) > 0
+    : !(holidayCards?.today && holidayCards.today.status !== 'withdrawn'));
 
   if (isLoading) {
     return (
@@ -287,6 +292,16 @@ export default function SentPieceView({ id }: { id: string }) {
                       >
                         Share
                       </button>
+                      {canSendAgain && card.design ? (
+                        <button
+                          type="button"
+                          data-testid="mailSentSendAgain"
+                          onClick={() => router.push(`/app/mailbox/cards?again=${encodeURIComponent(card.design as string)}`)}
+                          className={`${button} border border-[#d6cbb6] bg-[#fffdf8] px-5 text-[15px] text-[#374151] hover:bg-[#f5efe3] focus-visible:ring-[#8b1d1d]`}
+                        >
+                          Send this card to someone else
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {front ? (
