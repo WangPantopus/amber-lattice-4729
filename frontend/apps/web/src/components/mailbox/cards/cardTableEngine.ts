@@ -65,8 +65,10 @@ type Geometry = {
 const FLAP_OPEN = 0.3;
 /** The table's room at each side of the card for its photo and greeting to lie beside it, rather than under it. */
 const MEDIA_BESIDE = 176;
-// How far a reply sheet reaches below the card, as a share of the card's height (CardTable's .replySheet).
-const REPLY_BELOW = 0.2;
+// How far a reply sheet reaches below the card, as a share of the card's height (CardTable's .replySheet): its top lies
+// at 86% of the card's height, over the printed strip only, so the whole picture shows (founder, November 17), and it is
+// 90% of the card's height tall.
+const REPLY_BELOW = 0.76;
 /** The press that seals it, in milliseconds. */
 const SEAL_HOLD = 600;
 /** The gold seal stays in sight this long before the envelope turns over. */
@@ -576,8 +578,10 @@ export class CardTableEngine {
     // the safe area and clear of the buttons.
     const widest = Math.min(w - side * 2, w < 760 ? 470 : 640);
     const shutLimit = (h - safeTop - bottom - 88) / ((1.012 * 1392) / 1200);
+    // With a reply on the card, the card and the reply below it fit together: both are smaller.
+    const replyReach = this.reply ? 1.2 * REPLY_BELOW : 0;
     const fitted = (under: number) => Math.max(0, Math.min(
-      widest, shutLimit, (room - under) / (1.2 + 0.13), (h - underButtons - bottom - under) / 1.2,
+      widest, shutLimit, (room - under) / (1.2 + 0.13 + replyReach), (h - underButtons - bottom - under) / (1.2 + replyReach),
     ));
     // The card's own photo and greeting lie beside it where the table has room at its sides (wave 4 drawing 3), else
     // under it once it's turned over. The card comes first: they get what a full-size card leaves under it, up to 160
@@ -592,9 +596,9 @@ export class CardTableEngine {
         mediaRoom = Math.round(clamp(h - underButtons - bottom - fitted(0) * 1.2, h < 720 ? 110 : 124, 160));
       }
     }
-    // A reply sheet lies over the card's lower part and reaches a fifth of the card's height below it (REPLY_BELOW).
-    const replyRoom = this.reply ? Math.round(fitted(mediaRoom) * 1.2 * REPLY_BELOW) : 0;
-    const cw = fitted(mediaRoom + replyRoom);
+    const cw = fitted(mediaRoom);
+    // The room the reply takes under the card (REPLY_BELOW).
+    const replyRoom = Math.round(cw * replyReach);
     const ew = cw * 1.012;
     const eh = (ew * 1392) / 1200;
     const fd = (ew * 512) / 1200;
