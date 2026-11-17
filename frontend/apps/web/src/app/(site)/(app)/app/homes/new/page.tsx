@@ -1085,7 +1085,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     return (
       <div className="bg-app-surface-raised min-h-full">
         <div className="max-w-xl mx-auto px-4 pt-4">
-          <div className="grid grid-cols-[44px_1fr_44px] items-center">
+          <div className="grid grid-cols-[minmax(44px,auto)_1fr_minmax(44px,auto)] items-center gap-2">
             <button
               type="button"
               aria-label="Back"
