@@ -17,123 +17,8 @@ import PinnedPostsField from '@/components/profile/edit/PinnedPostsField';
 import ProfileAvatar from '@/components/profile/public/atoms/ProfileAvatar';
 import { joinedText } from '@/components/profile/public/ProfileHeader';
 import { useOwnLocalProfile, usePrivacySettings } from '@/lib/me';
-
-type GeoSuggestion = api.geo.GeoSuggestion;
-type NormalizedAddress = api.geo.NormalizedAddress;
-
-function useDebounced<T>(value: T, delayMs: number) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), delayMs);
-    return () => clearTimeout(t);
-  }, [value, delayMs]);
-  return v;
-}
-
-function AddressAutocomplete({
-  id,
-  value,
-  onChange,
-  onSelectNormalized,
-  placeholder = '123 Main St',
-}: {
-  id?: string;
-  value: string;
-  onChange: (v: string) => void;
-  onSelectNormalized: (n: NormalizedAddress) => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<GeoSuggestion[]>([]);
-  const [error, setError] = useState('');
-
-  const debounced = useDebounced(value, 250);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    setError('');
-    const q = (debounced || '').trim();
-    if (q.length < 3) {
-      setSuggestions([]);
-      return;
-    }
-
-    const run = async () => {
-      abortRef.current?.abort();
-      const ac = new AbortController();
-      abortRef.current = ac;
-
-      setLoading(true);
-      try {
-        const data = await api.geo.autocomplete(q);
-        setSuggestions(data.suggestions || []);
-        setOpen(true);
-      } catch (e: unknown) {
-        if (e instanceof Error && e.name !== 'AbortError') setError(e.message || 'Failed to load suggestions');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
-  }, [debounced]);
-
-  const selectSuggestion = async (s: GeoSuggestion) => {
-    setOpen(false);
-    setSuggestions([]);
-
-    try {
-      const data = await api.geo.resolve(s.suggestion_id);
-      const n = data.normalized;
-
-      onChange(n.address);
-      onSelectNormalized(n);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to resolve address');
-    }
-  };
-
-  return (
-    <div className="relative">
-      <input
-        id={id}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => value.trim().length >= 3 && setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
-        className="w-full px-4 py-2 border border-app-strong rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-app bg-surface"
-        placeholder={placeholder}
-        autoComplete="off"
-      />
-
-      {loading && <div className="absolute right-3 top-2.5 text-app-muted text-sm">…</div>}
-
-      {open && suggestions.length > 0 && (
-        <div className="absolute z-50 mt-2 w-full bg-surface border border-app rounded-lg shadow-lg overflow-hidden">
-          {suggestions.map((s) => (
-            <button
-              key={s.suggestion_id}
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => selectSuggestion(s)}
-              className="w-full text-left px-4 py-2 hover:bg-surface-raised text-sm text-app"
-            >
-              <strong>{s.primary_text}</strong> {s.secondary_text}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-      <p className="mt-1 text-xs text-app-secondary">Start typing, then pick a suggestion to verify.</p>
-    </div>
-  );
-}
-
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 // The same field-error treatment as the sign-up form.
 const inputErrorClass = ' border-red-300 dark:border-red-700 bg-red-50/40 dark:bg-red-950/20';
@@ -216,6 +101,8 @@ function LinkRow({ icon, title, detail, value, href, onOpen }: {
  */
 export default function EditProfilePage() {
   const router = useRouter();
+  // Address suggestions list addresses near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
 
   const {
     form, setField, setFields,
@@ -706,6 +593,8 @@ export default function EditProfilePage() {
                     setAddressVerified(true);
                   }}
                   placeholder="123 Main St"
+                  near={homeCenter}
+                  inputClassName="w-full px-4 py-2 border border-app-strong rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-app bg-surface"
                 />
                 {fieldErrors.address ? <p className={fieldErrorClass}>{fieldErrors.address}</p> : null}
                 <p className="mt-2 text-xs text-app-secondary">

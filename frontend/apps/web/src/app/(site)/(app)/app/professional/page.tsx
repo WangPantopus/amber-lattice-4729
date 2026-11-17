@@ -8,6 +8,8 @@ import { toast } from '@/components/ui/toast-store';
 import { confirmStore } from '@/components/ui/confirm-store';
 import ErrorState from '@/components/ui/ErrorState';
 import type { UserProfile } from '@pantopus/types';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: 'handyman', label: 'Handyman' },
@@ -415,6 +417,8 @@ function ProfileForm({
   serviceState: string; setServiceState: (v: string) => void;
   radiusKm: string; setRadiusKm: (v: string) => void;
 }) {
+  // City suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   return (
     <div className="space-y-6">
       {/* Headline */}
@@ -475,12 +479,16 @@ function ProfileForm({
       <div>
         <label className="block text-sm font-medium text-app-text-strong mb-2">Service Area</label>
         <div className="grid sm:grid-cols-3 gap-3">
-          <input
-            type="text"
+          <AddressAutocomplete
             value={serviceCity}
-            onChange={(e) => setServiceCity(e.target.value)}
+            onChange={setServiceCity}
+            onSelectNormalized={(n) => { if (n.state) setServiceState(n.state); }}
+            fillPicked={(n) => n.city || n.address}
+            near={homeCenter}
+            hintText={null}
+            ariaLabel="City"
             placeholder="City"
-            className="px-4 py-2.5 border border-app-border rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            inputClassName="w-full px-4 py-2.5 border border-app-border rounded-xl bg-app-surface text-app-text focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           <input
             type="text"

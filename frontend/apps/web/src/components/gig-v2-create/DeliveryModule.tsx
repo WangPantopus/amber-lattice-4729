@@ -1,6 +1,8 @@
 'use client';
 
 import { DELIVERY_CATEGORIES } from '@pantopus/types';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 export function isDeliveryCategory(category: string): boolean {
   return DELIVERY_CATEGORIES.some(
@@ -33,6 +35,8 @@ export default function DeliveryModule({
   onSameAsTaskLocationChange,
 }: DeliveryModuleProps) {
   const update = (partial: Partial<DeliveryData>) => onChange({ ...data, ...partial });
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
 
   const addItem = () =>
     update({ items: [...data.items, { name: '', notes: '', budgetCap: '', preferredStore: '' }] });
@@ -63,12 +67,16 @@ export default function DeliveryModule({
           </label>
         )}
         {!sameAsTaskLocation && (
-          <input
-            type="text"
+          <AddressAutocomplete
             value={data.pickupAddress}
-            onChange={(e) => update({ pickupAddress: e.target.value })}
+            onChange={(v) => update({ pickupAddress: v })}
+            onSelectNormalized={() => {}}
+            fillPicked={(n) => [n.address, n.city, [n.state, n.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+            near={homeCenter}
+            hintText={null}
+            ariaLabel="Pickup address"
             placeholder="Pickup address"
-            className="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            inputClassName="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400"
           />
         )}
         <input
@@ -83,12 +91,16 @@ export default function DeliveryModule({
       {/* Dropoff */}
       <div className="space-y-2">
         <p className="text-sm font-semibold text-app-text-strong">Dropoff</p>
-        <input
-          type="text"
+        <AddressAutocomplete
           value={data.dropoffAddress}
-          onChange={(e) => update({ dropoffAddress: e.target.value })}
+          onChange={(v) => update({ dropoffAddress: v })}
+          onSelectNormalized={() => {}}
+          fillPicked={(n) => [n.address, n.city, [n.state, n.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+          near={homeCenter}
+          hintText={null}
+          ariaLabel="Dropoff address"
           placeholder="Dropoff address (defaults to your home)"
-          className="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          inputClassName="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface placeholder:text-app-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-400"
         />
         <input
           type="text"

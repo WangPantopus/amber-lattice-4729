@@ -6,6 +6,7 @@ import { X, Home as HomeIcon, Briefcase, Clock, MapPin, Pin, PinOff, Check } fro
 import * as api from '@pantopus/api';
 import { useDialogFocusTrap } from '@/lib/useDialogFocusTrap';
 import AddressAutocomplete from '../AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type LocationPayload = Awaited<ReturnType<typeof api.location.getLocation>>;
 type ViewingLocationType = Parameters<typeof api.location.setLocation>[0]['type'];
@@ -64,6 +65,8 @@ function OptionRow({
 // Main component ------------------------------------------------------------
 
 export default function ChangeLocationModal({ onClose, onLocationChanged }: ChangeLocationModalProps) {
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [payload, setPayload] = useState<LocationPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -242,7 +245,7 @@ export default function ChangeLocationModal({ onClose, onLocationChanged }: Chan
                 <div className="text-xs font-bold text-app-text-muted uppercase tracking-wider mb-2">
                   Search an address
                 </div>
-                <AddressAutocomplete
+                <AddressAutocomplete near={homeCenter}
                   value={searchValue}
                   onChange={setSearchValue}
                   onSelectNormalized={(n) => {
