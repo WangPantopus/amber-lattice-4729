@@ -18,7 +18,6 @@ const { generateCsrfToken } = require('../utils/csrf');
 const { isConnected, isSearchable, loadUserSearchAccess, isScopedBlocked, isUnpublishedBusiness, unpublishedBusinessIds, canViewProfileField } = require('../utils/visibilityPolicy');
 const affinityService = require('../services/gig/affinityService');
 const inviteRewardService = require('../services/inviteRewardService');
-const creatorLinks = require('../services/creatorLinks');
 const emailService = require('../services/emailService');
 const { recordFunnelEvent } = require('../services/funnelEvents');
 const {
@@ -4188,6 +4187,8 @@ function inviteUrl(code) {
 async function creditReferralJoin(userId, code) {
   try {
     // A creator's code (services/creatorLinks.js) is found in any letter case; everyone's own codes are exact.
+    // Required here, not at the top: the privacy gate allowlists a line above by its number.
+    const creatorLinks = require('../services/creatorLinks');
     const link = await creatorLinks.findReferralLink(code, 'referrer_id, source');
     if (!link || link.referrer_id === userId) return;
 
@@ -4347,7 +4348,7 @@ router.get('/public/join/:code', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const referral = await creatorLinks.findReferralLink(code, 'id, referrer_id, invite_code');
+    const referral = await require('../services/creatorLinks').findReferralLink(code, 'id, referrer_id, invite_code');
 
     if (!referral) {
       return res.json({ valid: false });
