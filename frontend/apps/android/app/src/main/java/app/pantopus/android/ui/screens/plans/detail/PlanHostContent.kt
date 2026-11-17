@@ -104,11 +104,15 @@ internal fun ColumnScope.PlanHostBody(
     onOpenGuests: () -> Unit = {},
     /** Opens the bring list (A9). */
     onOpenBring: () -> Unit = {},
+    /** Business track B1: staff mark a guest's free thing used. */
+    onMarkUsed: (PlanPersonDto) -> Unit = {},
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
+    // Business track B1: the business's deal as guests see it (its count and time left, or how it settled).
+    PlanDealCardOf(plan)
     HostSeries(plan, closed, series)
     // An online plan's link, as the people in see it (Plans step 3); "Join" is in the footer. Nothing once it's over.
     PlanOnlineLinkCard(plan, hosting = true)
@@ -126,7 +130,7 @@ internal fun ColumnScope.PlanHostBody(
     // Plans for the holidays (A6): the three counts and the people line with their numbers, both opening Who's coming,
     // in place of the going list (Who's coming has every guest, with or without an account, and Remove).
     HostPeople(plan, guests, onOpenGuests) {
-        GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove)
+        GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove, onMarkUsed = onMarkUsed)
     }
     // Plans for the holidays (A6 item 3): the bring list, while the plan has one and is still on.
     plan.bring?.takeIf { !closed }?.let { PlanBringHostCard(it, onOpen = onOpenBring) }
@@ -424,6 +428,7 @@ private fun GoingSection(
     closed: Boolean,
     asked: Boolean,
     onRemove: (PlanPersonDto) -> Unit,
+    onMarkUsed: (PlanPersonDto) -> Unit = {},
 ) {
     val guests = plan.people.orEmpty().filter { !it.isHost && it.userId != viewerId }
     // A cancelled or ended plan with nobody in has no "going" to show.
@@ -459,7 +464,14 @@ private fun GoingSection(
         }
         guests.forEachIndexed { index, person ->
             // Nobody can be removed from a plan that's over (as on iOS, which drops the list there).
-            GuestRow(person, first = index == 0, atHome = plan.isAtHome, busy = busy, onRemove = onRemove.takeUnless { closed })
+            GuestRow(
+                person,
+                first = index == 0,
+                atHome = plan.isAtHome,
+                busy = busy,
+                onRemove = onRemove.takeUnless { closed },
+                deal = GuestDeal(plan, onMarkUsed.takeUnless { closed }),
+            )
         }
     }
 }
@@ -471,6 +483,7 @@ private fun GuestRow(
     atHome: Boolean,
     busy: Boolean,
     onRemove: ((PlanPersonDto) -> Unit)?,
+    deal: GuestDeal? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -481,20 +494,7 @@ private fun GuestRow(
             listOfNotNull("$count ${if (count == 1) "kid" else "kids"}", KidsAgeBand.rangeLabel(person.kidsAgeBands))
                 .joinToString(", ")
         }
-    // Board H9, as on iOS: "Verified · about 1 mi · you hosted Alex before", "About 1 mi · new to Pantopus".
-    val subtitle =
-        listOfNotNull(
-            if (person.onMyWay) "On the way" else null,
-            if (person.verifiedAddress) "Verified" else null,
-            PlanFormat.distance(person.distanceBand),
-            kids,
-            when {
-                person.hostedBefore == true -> "you hosted ${PlanFormat.firstName(name)} before"
-                person.newToPantopus == true -> "new to Pantopus"
-                else -> null
-            },
-            if (person.reconfirmNeeded == true) "asked “Still coming?”" else null,
-        ).joinToString(" · ").replaceFirstChar { it.titlecase() }.ifBlank { "Going" }
+    val subtitle = guestSubtitle(person, name, kids, deal)
     Column(modifier = Modifier.fillMaxWidth()) {
         if (!first) PlanDivider()
         Row(
@@ -518,6 +518,7 @@ private fun GuestRow(
                     Text(text = subtitle, style = PantopusTextStyle.small.copy(fontSize = 13.sp), color = PantopusColors.appTextSecondary)
                 }
             }
+            if (deal != null && person.requestId != null) PlanMarkUsed(person, deal, busy)
             if (person.requestId != null && onRemove != null) {
                 Box {
                     PlanRoundButton(
@@ -562,6 +563,28 @@ private fun GuestRow(
         )
     }
 }
+
+/** A Going row's second line (board H9, as on iOS): "Verified · about 1 mi · you hosted Alex before". */
+private fun guestSubtitle(
+    person: PlanPersonDto,
+    name: String,
+    kids: String?,
+    deal: GuestDeal?,
+): String =
+    listOfNotNull(
+        if (person.onMyWay) "On the way" else null,
+        if (person.verifiedAddress) "Verified" else null,
+        PlanFormat.distance(person.distanceBand),
+        kids,
+        when {
+            person.hostedBefore == true -> "you hosted ${PlanFormat.firstName(name)} before"
+            person.newToPantopus == true -> "new to Pantopus"
+            else -> null
+        },
+        if (person.reconfirmNeeded == true) "asked “Still coming?”" else null,
+        // Business track B1: "Used 8:40 PM" once staff marked the guest's free thing used.
+        deal?.usedLine(person),
+    ).joinToString(" · ").replaceFirstChar { it.titlecase() }.ifBlank { "Going" }
 
 /** H12: cancel the plan, with an optional note to everyone. */
 @OptIn(ExperimentalMaterial3Api::class)

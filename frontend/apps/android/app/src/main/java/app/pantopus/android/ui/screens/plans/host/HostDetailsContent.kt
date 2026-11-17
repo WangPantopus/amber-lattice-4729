@@ -83,7 +83,7 @@ internal fun HostDetailsStep(
             business?.kinds?.firstOrNull { it.kind == kind.wire }?.name?.takeIf(String::isNotBlank)
                 ?: ui.draft.occasionText.takeIf { business == null }
                 ?: kind.label,
-        step = "2 of 3",
+        step = "2 of ${ui.stepTotal}",
         leadingClose = false,
         onLeading = onBack,
         footer = {

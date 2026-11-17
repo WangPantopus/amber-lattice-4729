@@ -544,6 +544,12 @@ object PlanFormat {
         }
     }
 
+    /** "8:40 PM" in the plan's zone: when a business's deal was used (business track B1, "Used {8:40 PM}"). */
+    fun clockAt(
+        raw: String?,
+        timezone: String?,
+    ): String? = instant(raw)?.atZone(zone(timezone))?.format(clock)
+
     /** "just now", "12 min ago", "3 hours ago", else the day ("Mon 9:42 AM"): when someone answered (J7). */
     fun ago(
         raw: String?,

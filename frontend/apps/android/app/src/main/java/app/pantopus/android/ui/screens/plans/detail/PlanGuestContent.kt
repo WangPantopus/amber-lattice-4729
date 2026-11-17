@@ -278,6 +278,8 @@ internal fun ColumnScope.PlanBeforeInBody(
     PlanTitleBlock(plan)
     afterTitle?.invoke()
     PlanHostCard(plan)
+    // Business track B1 (D1): a business's deal, under its name, with "Share" while a group deal is counting.
+    plan.deal?.let { deal -> PlanDealCard(plan, deal, onShare = rememberDealShare(plan)) }
     PlanSpots(plan, note = if (plan.isPlaydate) null else "Names show once you're in")
     plan.about?.takeIf(String::isNotBlank)?.let { Text(text = it, style = PantopusTextStyle.body, color = PantopusColors.appText) }
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
@@ -331,6 +333,8 @@ internal fun askFooter(plan: PlanDto): AskFooter {
                 enabled = true,
                 caption =
                     when {
+                        // A business's plan with a deal (D1 item 5): the server's line under "Join".
+                        plan.isBusiness && !plan.hostApproves && !plan.deal?.joinText.isNullOrBlank() -> plan.deal?.joinText
                         // A business's plan (board G3): "Join", in right away; or the business approves each person.
                         plan.isBusiness && !plan.hostApproves -> "You're in right away. No approval needed."
                         plan.isBusiness -> approves ?: "$host approves each person"
@@ -640,6 +644,8 @@ internal fun ColumnScope.PlanClosedBody(
         tone = PlanBannerTone.Neutral,
     )
     PlanTitleBlock(plan)
+    // Business track B1 (D1 states): the deal card stays as it was last.
+    plan.deal?.let { deal -> PlanDealCard(plan, deal) }
     // The chat stays to read for people who were in (the server sends its room only to them), as on iOS.
     onOpenChat?.let { GhostButton(title = "Read the group chat", onClick = it) }
 }

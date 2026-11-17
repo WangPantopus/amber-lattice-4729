@@ -57,6 +57,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
 import app.pantopus.android.ui.screens.plans.components.PlanTile
 import app.pantopus.android.ui.screens.plans.components.planCard
 import app.pantopus.android.ui.screens.plans.detail.PlanFooter
+import app.pantopus.android.ui.screens.plans.detail.PlanFooterCaption
 import app.pantopus.android.ui.screens.plans.detail.PlanRoundButton
 import app.pantopus.android.ui.screens.plans.map.planH4
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatsScreen
@@ -65,6 +66,8 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Spacing
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Host a plan: pick a type (H1), fill in its details (H2 to H5), choose a place (H6), preview (H7) and post. Posting
@@ -106,6 +109,8 @@ fun HostFlowScreen(
                 } else {
                     HostDetailsStep(ui, viewModel, onBack = { if (!viewModel.back()) onClose() })
                 }
+            // Business track B1 (D3): the deal, between a business's details and the preview.
+            HostStep.Deal -> HostDealStep(ui, viewModel)
             HostStep.Place -> PlacePickerStep(ui, viewModel)
             HostStep.Preview ->
                 HostPreviewStep(
@@ -229,7 +234,7 @@ private fun HostTypeStep(
             hostKinds(ui)
         }
     val large = LocalDensity.current.fontScale >= LARGE_TEXT_SCALE
-    HostStepScaffold(title = "Host a plan", step = "1 of 3", leadingClose = true, onLeading = onClose, footer = null) {
+    HostStepScaffold(title = "Host a plan", step = "1 of ${ui.stepTotal}", leadingClose = true, onLeading = onClose, footer = null) {
         if (ui.businesses.isNotEmpty()) HostAsSection(ui, onHostAs)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
@@ -463,3 +468,42 @@ internal fun HostFooterButton(
 ) {
     PrimaryButton(title = title, onClick = onClick, isLoading = loading, isEnabled = enabled, modifier = Modifier.height(50.dp))
 }
+
+/** D3 (business track B1, picture 09): "A deal for this plan", "3 of 4", with "Preview" in the footer. */
+@Composable
+private fun HostDealStep(
+    ui: HostUi,
+    viewModel: HostFlowViewModel,
+) {
+    val draft = ui.draft
+    val business = ui.business ?: return
+    val whenText = draft.start?.format(DEAL_LINE_TIME).orEmpty()
+    HostStepScaffold(
+        title = "A deal for this plan",
+        step = "3 of ${ui.stepTotal}",
+        leadingClose = false,
+        onLeading = { viewModel.back() },
+        footer = {
+            ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
+            HostFooterButton(title = "Preview", onClick = viewModel::dealNext, loading = ui.dealChecking)
+            PlanFooterCaption("Afterwards you see who joined, who paid and what the deal cost you")
+        },
+    ) {
+        Column(modifier = Modifier.testTag("planDealStep"), verticalArrangement = Arrangement.spacedBy(Spacing.s6)) {
+            BusinessDealForm(
+                draft = draft.deal,
+                spots = draft.spots,
+                planLine =
+                    DealPlanLine(
+                        title = draft.title.trim().ifEmpty { "Your plan" },
+                        detail = listOf(locationTitle(business, ui.location), whenText).filter(String::isNotBlank).joinToString(" · "),
+                        avatarUrl = business.avatarUrl,
+                    ),
+                preview = ui.dealPreview,
+                onEdit = viewModel::editDeal,
+            )
+        }
+    }
+}
+
+private val DEAL_LINE_TIME = DateTimeFormatter.ofPattern("EEE, MMM d · h:mm a", Locale.US)

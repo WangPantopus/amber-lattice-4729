@@ -12,6 +12,9 @@ import app.pantopus.android.data.api.models.plans.MyPlansResponse
 import app.pantopus.android.data.api.models.plans.PlanBringAddBody
 import app.pantopus.android.data.api.models.plans.PlanBringInput
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewBody
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
+import app.pantopus.android.data.api.models.plans.PlanDealUsedResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -415,6 +418,22 @@ class PlansRepository
             return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
         }
 
+        /** Business track B1: takes a business's deal off (`PATCH` with `"deal": null`); everyone in is told. */
+        suspend fun removeDeal(id: String): NetworkResult<PlanDto> {
+            val session = cacheSession()
+            val raw = JSONObject().put(DEAL_FIELD, JSONObject.NULL).toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            return write(id) { api.updateRaw(id, raw) }.also { rememberResult(it, session) }
+        }
+
+        /** Business track B1: the server's words for the deal the form describes (D3); nothing is saved. */
+        suspend fun dealPreview(body: PlanDealPreviewBody): NetworkResult<PlanDealPreviewResponse> = safeApiCall { api.dealPreview(body) }
+
+        /** Business track B1: "Mark used" on a guest's free thing (staff); answers its new state. */
+        suspend fun markDealUsed(
+            id: String,
+            requestId: String,
+        ): NetworkResult<PlanDealUsedResponse> = write(id) { api.markDealUsed(id, requestId) }
+
         suspend fun ask(
             id: String,
             body: AskToJoinBody,
@@ -774,6 +793,7 @@ class PlansRepository
             const val GPS_MAX_AGE_SECONDS = 300L
             const val REPEAT_KEEP = "keep"
             const val REPEAT_FIELD = "repeat"
+            const val DEAL_FIELD = "deal"
             const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
         }
     }
@@ -837,6 +857,18 @@ val NetworkError.planCode: String?
                 else -> null
             } ?: return null
         return runCatching { JSONObject(body).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+/** The field a Plans `422 validation` reply names (`{ error, message, field }`), such as `item` or `group_size`. */
+val NetworkError.planField: String?
+    get() {
+        val body =
+            when (this) {
+                is NetworkError.ClientError -> body
+                is NetworkError.Forbidden -> body
+                else -> null
+            } ?: return null
+        return runCatching { JSONObject(body).optString("field") }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
 /** The sentence for people from a Plans error reply, else the error's own copy. */

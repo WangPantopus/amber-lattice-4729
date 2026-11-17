@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
@@ -24,10 +25,15 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.host.DEAL_PREVIEW_DEBOUNCE_MS
+import app.pantopus.android.ui.screens.plans.host.DealDraft
+import app.pantopus.android.ui.screens.plans.host.DealPreviewState
+import app.pantopus.android.ui.screens.plans.host.DealScope
 import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
 import app.pantopus.android.ui.screens.plans.host.PLACES_SLOW
 import app.pantopus.android.ui.screens.plans.host.PickedPlace
 import app.pantopus.android.ui.screens.plans.host.PlaceSuggestions
+import app.pantopus.android.ui.screens.plans.host.dealPreviewBody
 import app.pantopus.android.ui.screens.plans.host.placeQuery
 import app.pantopus.android.ui.screens.plans.host.placesFailure
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
@@ -86,6 +92,8 @@ data class PlanChangeUi(
     val repeatsOpen: Boolean = false,
     /** Online or a place, and the link (Plans step 3, PlanChangeOnline.kt). */
     val online: PlanChangeOnline = PlanChangeOnline(),
+    /** A business's deal (business track B1, PlanChangeDeal.kt). */
+    val deal: PlanChangeDeal = PlanChangeDeal(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -182,7 +190,7 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -243,6 +251,7 @@ class PlanChangeViewModel
                                         chosen = plan.isOnline,
                                         link = plan.place?.link.orEmpty(),
                                     ),
+                                deal = DealDraft.from(plan.deal?.form, zone).let { PlanChangeDeal(original = it, draft = it) },
                             )
                         }
                         lookForOrigin()
@@ -461,12 +470,125 @@ class PlanChangeViewModel
                         // A new pattern from this date on (Plans step 2); "Doesn't repeat" adds `"repeat": null`, below.
                         repeat = ui.repeatToSend?.toInput()?.takeIf { ui.repeatChanged },
                         gps = fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) },
+                        // Business track B1: a changed deal; "No deal" takes it off with its own request, below.
+                        deal = ui.deal.chosen?.toInput(ui.zone)?.takeIf { ui.dealChanged },
                     )
-                // One request either way: "Doesn't repeat" goes with the other changes as a raw body.
-                val result = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
-                when (result) {
+                when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
                     is NetworkResult.Failure -> _ui.update { it.copy(saving = false, error = result.error.planMessage) }
+                }
+            }
+        }
+
+        /**
+         * One request either way: "Doesn't repeat" goes with the other changes as a raw body. Taking a deal off (business
+         * track B1) is its own request, after the other changes when there are any.
+         */
+        private suspend fun send(
+            ui: PlanChangeUi,
+            body: UpdatePlanBody,
+        ): NetworkResult<PlanDto> {
+            val others = ui.changedBesidesRepeat || ui.repeatChanged
+            if (ui.removesDeal && !others) return repository.removeDeal(planId)
+            val first = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
+            return if (first is NetworkResult.Success && ui.removesDeal) repository.removeDeal(planId) else first
+        }
+
+        // ---- Business track B1: the deal (D3 over this page) ----
+
+        private var dealJob: Job? = null
+
+        /** The Deal row: D3's form over this page, starting from the deal chosen here or the plan's own. */
+        fun openDeal() {
+            val ui = _ui.value
+            if (ui.dealLocked) return
+            val from = ui.deal.chosen ?: ui.deal.original
+            val start = if (from.groupBy == null) DealDraft.startingFor(ui.plan?.spots ?: 2, ui.start, LocalDateTime.now(ui.zone)) else null
+            val draft = if (start != null) from.copy(groupSize = start.groupSize, groupBy = start.groupBy) else from
+            _ui.update { it.copy(deal = it.deal.copy(open = true, draft = draft, preview = DealPreviewState())) }
+            askDealPreview(debounce = false)
+        }
+
+        /** Back on D3: nothing chosen there is kept. */
+        fun closeDeal() {
+            dealJob?.cancel()
+            _ui.update { it.copy(deal = it.deal.copy(open = false, checking = false)) }
+        }
+
+        fun editDeal(transform: (DealDraft) -> DealDraft) {
+            _ui.update { it.copy(deal = it.deal.copy(draft = transform(it.deal.draft)), error = null) }
+            askDealPreview(debounce = true)
+        }
+
+        private fun askDealPreview(debounce: Boolean) {
+            dealJob?.cancel()
+            if (_ui.value.deal.draft.scope == DealScope.NONE) {
+                _ui.update { it.copy(deal = it.deal.copy(preview = DealPreviewState())) }
+                return
+            }
+            dealJob =
+                viewModelScope.launch {
+                    if (debounce) delay(DEAL_PREVIEW_DEBOUNCE_MS)
+                    readDealPreview()
+                }
+        }
+
+        /** Asks the server about the deal on the form; [checked]: "Done" asked, so every error shows from now on. */
+        private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
+            val ui = _ui.value
+            val business = ui.business ?: return null
+            val body = dealPreviewBody(business, ui.deal.draft, ui.plan?.spots ?: 0, ui.start, ui.zone) ?: return null
+            _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = true, failed = null))) }
+            return when (val result = repository.dealPreview(body)) {
+                is NetworkResult.Success -> {
+                    val answer = result.data
+                    _ui.update {
+                        val shown = checked || it.deal.preview.checked
+                        val preview = DealPreviewState(answer = answer.takeIf { a -> a.ok }, errors = answer.errors, checked = shown)
+                        it.copy(deal = it.deal.copy(preview = preview))
+                    }
+                    answer
+                }
+                is NetworkResult.Failure -> {
+                    val failed = result.error.planMessage
+                    _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = false, failed = failed))) }
+                    null
+                }
+            }
+        }
+
+        /** "Done" on D3: kept for Save once the server accepts the deal (or with "No deal"). */
+        fun dealDone() {
+            val ui = _ui.value
+            if (ui.deal.checking) return
+            dealJob?.cancel()
+            if (ui.deal.draft.scope == DealScope.NONE) {
+                _ui.update { it.copy(deal = it.deal.copy(open = false, chosen = it.deal.draft, chosenText = null)) }
+                return
+            }
+            _ui.update { it.copy(deal = it.deal.copy(checking = true)) }
+            viewModelScope.launch {
+                val answer = readDealPreview(checked = true)
+                _ui.update { current ->
+                    val deal = current.deal.copy(checking = false)
+                    when {
+                        answer?.ok == true -> current.copy(deal = deal.copy(open = false, chosen = deal.draft, chosenText = answer.text))
+                        answer == null -> current.copy(deal = deal, error = "Couldn't check the deal. Try again.")
+                        else -> current.copy(deal = deal)
+                    }
+                }
+            }
+        }
+
+        /** "Remove the deal" once anyone is in (after its question): everyone in is told. */
+        fun removeDeal() {
+            if (_ui.value.deal.removing) return
+            _ui.update { it.copy(deal = it.deal.copy(removing = true), error = null) }
+            viewModelScope.launch {
+                when (val result = repository.removeDeal(planId)) {
+                    is NetworkResult.Success -> _ui.update { it.copy(deal = it.deal.copy(removing = false), saved = true) }
+                    is NetworkResult.Failure ->
+                        _ui.update { it.copy(deal = it.deal.copy(removing = false), error = result.error.planMessage) }
                 }
             }
         }

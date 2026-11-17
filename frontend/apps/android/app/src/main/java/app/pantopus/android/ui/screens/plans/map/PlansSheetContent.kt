@@ -151,6 +151,8 @@ internal fun rowEnd(
 /** A plan the viewer has no part in: how many are going or spots left; a business's shows its price instead (G2). */
 private fun spotsEnd(plan: PlanDto): PlanRowEnd =
     when {
+        // One tag a row (business track B1, settled): the deal's tag before the price or "Free".
+        plan.isBusiness && !plan.isFull && !plan.deal?.tag.isNullOrBlank() -> PlanRowEnd.Deal(plan.deal?.tag.orEmpty())
         // "Free" in step 2 (no price exists yet).
         plan.isBusiness && !plan.isFull -> if (plan.price == null) PlanRowEnd.Price(PLAN_FREE) else PlanRowEnd.None
         plan.planState == PlanState.LIVE -> PlanRowEnd.Note("${plan.goingCount} going")
@@ -212,6 +214,7 @@ internal fun rowSpoken(
             is PlanRowEnd.Status -> end.text
             is PlanRowEnd.Note -> end.text
             is PlanRowEnd.Price -> end.text
+            is PlanRowEnd.Deal -> end.text
             else -> null
         }
     // A business's plan: what it calls it ("Clinic"), and that a business hosts it (the badge's words).

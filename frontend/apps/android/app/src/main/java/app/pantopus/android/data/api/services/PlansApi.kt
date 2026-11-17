@@ -15,6 +15,9 @@ import app.pantopus.android.data.api.models.plans.PlanBringAddBody
 import app.pantopus.android.data.api.models.plans.PlanBringInput
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanCancelReply
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewBody
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
+import app.pantopus.android.data.api.models.plans.PlanDealUsedResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -180,6 +183,29 @@ interface PlansApi {
         @Path("id") id: String,
         @Body body: RequestBody,
     ): PlanDto
+
+    /**
+     * `PATCH /api/plans/:id` with a raw body (business track B1): `"deal": null` takes a business's deal off at any time,
+     * which [UpdatePlanBody] can't say (nulls are left out).
+     */
+    @PATCH("api/plans/{id}")
+    suspend fun updateRaw(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): PlanDto
+
+    /** `POST /api/plans/deal-preview` (business track B1, staff with plans.manage): the server's words; nothing is saved. */
+    @POST("api/plans/deal-preview")
+    suspend fun dealPreview(
+        @Body body: PlanDealPreviewBody,
+    ): PlanDealPreviewResponse
+
+    /** `POST /api/plans/:id/requests/:requestId/deal-used` (business track B1, staff): "Mark used"; no undo. */
+    @POST("api/plans/{id}/requests/{requestId}/deal-used")
+    suspend fun markDealUsed(
+        @Path("id") id: String,
+        @Path("requestId") requestId: String,
+    ): PlanDealUsedResponse
 
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")

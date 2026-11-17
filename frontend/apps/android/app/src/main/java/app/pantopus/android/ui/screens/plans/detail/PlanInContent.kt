@@ -98,6 +98,11 @@ internal fun ColumnScope.PlanInBody(
         InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         InPlaceTitle(plan)
     }
+    // Business track B1 (D2): before a group deal settles (or after it fell short) D1's card; then "Your deal".
+    plan.deal?.let { deal ->
+        if (deal.isGroup && !deal.isUnlocked) PlanDealCard(plan, deal, onShare = rememberDealShare(plan))
+        deal.mine?.let { mine -> PlanYourDealCard(plan, deal, mine) }
+    }
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
     val list = plan.bring
     if (list != null && bring != null) {
@@ -267,9 +272,11 @@ private fun InBanner(
             plan.isOnline -> "${plan.hostFirst} let you in. The link is below."
             else -> listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
         }
+    // Business track B1 (D2 item 1): a group deal that unlocked takes the banner's words; no second banner.
+    val unlocked = plan.deal?.takeIf { it.isUnlocked }?.stateText
     PlanBanner(
-        title = "You're in",
-        subtitle = subtitle,
+        title = unlocked ?: "You're in",
+        subtitle = if (unlocked != null) "Everyone who's in gets the deal" else subtitle,
         icon = PantopusIcon.Check,
         tone = PlanBannerTone.Ok,
         trailing = if (counts != null && onChangeAnswer != null) ({ PlanBannerChange(onChangeAnswer) }) else null,

@@ -609,6 +609,15 @@ class PlanDetailViewModel
 
         fun removeGuest(requestId: String) = act(done = "Removed. They no longer see the plan.") { repository.remove(planId, requestId) }
 
+        /** Business track B1: "Mark used" on a guest's free thing (staff); the row then reads "Used {time}". */
+        fun markDealUsed(requestId: String) =
+            act {
+                when (val result = repository.markDealUsed(planId, requestId)) {
+                    is NetworkResult.Success -> NetworkResult.Success(Unit)
+                    is NetworkResult.Failure -> result
+                }
+            }
+
         // ---- A repeating plan (Plans step 2, board Regulars) ----
 
         /** "Skip Thursday": cancels this date only; the next date, posted at once, opens in its place and says so. */
