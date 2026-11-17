@@ -6,14 +6,21 @@
 // (card-film-clock.cjs). The story, its takes and its words are the shot list,
 // card-ad-shots.cjs.
 //
-//   node scripts/film-card-ad.cjs --stills             one still per shot (checkpoint 1)
-//   node scripts/film-card-ad.cjs --takes send,open    film whole takes as frames
-//   node scripts/film-card-ad.cjs --cut 30             lay the filmed takes into a cut (needs its takes)
-//   --shape tall|wide   tall: 1080 × 1920, the table at phone size; wide: 1920 × 1080, a wide window
-//   --work <folder>     frames, sounds and overlays (default <repo>/test-results/card-ad)
-//   --out <folder>      the stills and films (default <work>/out)
+//   node scripts/film-card-ad.cjs --takes open1,send    film whole takes as frames (every take without --takes)
+//   node scripts/film-card-ad.cjs --cut main --music <wav>
+//                                    lay the filmed takes into a cut (main, 15, 6, seal), with a music bed
+//   node scripts/film-card-ad.cjs --stills              one still per shot of the main cut
+//   node scripts/film-card-ad.cjs --strip open:2:4:0.2  a row of one take's frames, to look its timing over
+//   --shape tall|wide|post  tall: 1080 × 1920 at phone size; wide: 1920 × 1080, a wide window; post: 1080 × 1350, cut
+//                       from the tall frames (rows 192-1542)
+//   --work <folder>     frames and sounds (default <repo>/test-results/card-ad); --out <folder> the stills and films
+//   --from, --to        with --takes: keep only these seconds' frames (the clock still runs through the take)
+//   --keep-picture, --reuse-picture
+//                       keep a cut's silent picture master; later lay a new sound under it without composing again
+//   --card, --rack, --only   another star card or rack (--card 44 --rack 40,45,8,44); only these shots' stills
 //   --art <folder>      envelope and seal art to film with in place of the app's (art drawn larger; never shipped)
 //   --url, --port       as film-card-videos.cjs
+//   AD_DEBUG=1          log the table's state every tenth of a second and where each touch lands
 //
 // Everything on screen is the app's own table: its envelope, wax, cloth, light,
 // pen and sounds. The film adds only the words, a fingertip mark, moving in
@@ -22,7 +29,7 @@
 // own touch events), so the card and the flap follow it as they do in the app.
 // Sounds are written down by the frame they fired on and laid in by ffmpeg.
 // ============================================================
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { WEB, REPO, chromium, CHROME, argument, designs, devServer, clockShim } = require('./card-film-clock.cjs');
@@ -47,6 +54,8 @@ const SHAPES = {
   tall: { width: 360, height: 640, scale: 3, mobile: true, top: 150, bottom: 150 },
   wide: { width: 1920, height: 1080, scale: 1, mobile: false, top: 40, bottom: 60 },
 };
+/** 4:5 (the feeds) is cut from the tall film, rows 192-1542: the tall frames, words and end card, cropped. */
+SHAPES.post = { ...SHAPES.tall, frames: 'tall', crop: { top: 192, height: 1350 } };
 
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 /** "4a" → "04a", for file names that sort in shot order. */
@@ -253,7 +262,6 @@ function anchors() {
     front: box('[data-el="lFront"]'),
     pocket: box('[data-el="lPocket"]'),
     sign: box('[data-testid="cardSignature"] svg'),
-    from: box('[data-el="card"] b'),
     rackCard: box('[data-testid="cardRackCard"]'),
     rackWrite: box('[data-testid="cardRackWrite"]'),
   };
@@ -375,7 +383,6 @@ class Take {
         await Promise.all(ids.map((id) => { const image = new Image(); image.src = `/holiday-cards/card/${id}.jpg`; return image.decode().catch(() => {}); }));
       }, this.story.rack.map((n) => this.story.cards.get(n).id));
     }
-    this.t = 0;
   }
 
   async close() {
@@ -532,7 +539,6 @@ class Take {
       const fresh = await this.page.evaluate((from) => window.__film.sounds.slice(from), this.sounds.length);
       for (const sound of fresh) this.sounds.push({ name: path.basename(new URL(sound.src).pathname, '.mp3'), table: sound.at, second: s });
     }
-    this.t = t;
     if (process.env.AD_DEBUG && Math.abs(s * 10 - Math.round(s * 10)) < 0.022) {
       const state = await this.page.evaluate(() => { const e = window.__cardTable; return e ? { step: e.step, send: e.send, pull: +e.v.pull.x.toFixed(3), lay: +e.v.lay.x.toFixed(3), env: +e.v.envDeg.x.toFixed(1), deg: +e.v.deg.x.toFixed(1), drag: e.dragging?.mode ?? null } : null; });
       console.log(`${this.name} ${s.toFixed(1)}s t=${t.toFixed(0)} ${JSON.stringify(state)}`);
@@ -540,11 +546,14 @@ class Take {
     if (!capture) return null;
     const v = await this.view(s);
     const [ow, oh] = [this.shape.width * this.shape.scale, this.shape.height * this.shape.scale];
-    // The view's part of the page at the film's size: moving in films the page larger.
-    const shot = await this.cdp.send('Page.captureScreenshot', {
-      format: 'png', optimizeForSpeed: true, captureBeyondViewport: false,
-      clip: { x: v.x, y: v.y, width: v.width, height: v.height, scale: ow / (v.width * this.dpr) },
-    });
+    // The view's part of the page at the film's size: moving in films the page larger. When the scale has changed since
+    // the last picture, Chrome draws the page afresh at the new scale and may hand over a picture before every tile is
+    // drawn: that first picture is thrown away and the next one, complete, is kept.
+    const clip = { x: v.x, y: v.y, width: v.width, height: v.height, scale: ow / (v.width * this.dpr) };
+    const shoot = () => this.cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, captureBeyondViewport: false, clip });
+    if (this.lastScale !== undefined && Math.abs(this.lastScale - clip.scale) > 1e-6) await shoot();
+    this.lastScale = clip.scale;
+    const shot = await shoot();
     const image = sharp(Buffer.from(shot.data, 'base64')).removeAlpha();
     const meta = await image.metadata();
     const raw = meta.width === ow && meta.height === oh ? image : image.resize(ow, oh, { fit: 'fill', kernel: 'lanczos3' });
@@ -772,8 +781,8 @@ async function compose({ raw, shape, s, cut, overlays, frameNo, bars }) {
   return rgb;
 }
 
-/** The overlays a cut needs, drawn once each and kept. */
-function overlayCache(context, shape, server) {
+/** The overlays a cut needs, drawn once each and kept; the end card is the cut's own (or the shot list's). */
+function overlayCache(context, shape, server, endCard = SHOTS.end) {
   const words = new Map();
   const ends = new Map();
   return {
@@ -784,9 +793,7 @@ function overlayCache(context, shape, server) {
     },
     end: async (part) => {
       if (!ends.has(part)) {
-        const order = ['mark', 'name', 'line', 'badges', 'address'];
-        const end = SHOTS.end;
-        ends.set(part, await drawOverlay(context, shape, endHtml(shape, server, end, [order[order.indexOf(part)]])));
+        ends.set(part, await drawOverlay(context, shape, endHtml(shape, server, endCard, [part])));
       }
       return ends.get(part);
     },
@@ -884,7 +891,7 @@ async function filmTakes({ browser, server, shapeName, work, art }) {
 
 /** Runs ffmpeg and throws with its words if it fails (`loud`: keep its information lines, for readings like loudness). */
 function ffmpeg(args, loud = false) {
-  const run = require('child_process').spawnSync('ffmpeg', ['-hide_banner', '-v', loud ? 'info' : 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  const run = spawnSync('ffmpeg', ['-hide_banner', '-v', loud ? 'info' : 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (run.status !== 0) throw new Error(`ffmpeg failed: ${run.stderr.slice(-2000)}`);
   return run;
 }
@@ -902,9 +909,11 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
   const cut = SHOTS.cuts[name];
   if (!cut) throw new Error(`No cut ${name}: ${Object.keys(SHOTS.cuts).join(', ')}.`);
   const plan = cutPlan(cut);
-  const [w, h] = [shape.width * shape.scale, shape.height * shape.scale];
+  const frameShape = shape.frames || shapeName;
+  const [w, fullH] = [shape.width * shape.scale, shape.height * shape.scale];
+  const h = shape.crop ? shape.crop.height : fullH;
   const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
-  const overlays = overlayCache(context, shape, server);
+  const overlays = overlayCache(context, shape, server, cut.end || SHOTS.end);
   fs.mkdirSync(out, { recursive: true });
   const base = path.join(out, `cards-ad-${name}${/^\d+$/.test(name) ? 's' : ''}-${shapeName}`);
   const silent = `${base}-master-silent.mov`;
@@ -915,7 +924,7 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
   const frames = Math.round(plan.length * FPS);
   const sounds = [];
   for (const piece of plan.pieces) {
-    const file = path.join(work, shapeName, piece.take, 'sounds.json');
+    const file = path.join(work, frameShape, piece.take, 'sounds.json');
     const list = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
     for (const sound of list) if (sound.second >= piece.from && sound.second < piece.to) sounds.push({ name: sound.name, at: piece.at + (sound.second - piece.from), take: piece.take, second: sound.second });
   }
@@ -924,9 +933,10 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
     const s = j / FPS;
     const piece = [...plan.pieces].reverse().find((p) => s >= p.at - 1e-9);
     const frame = Math.min(Math.round((piece.from + (s - piece.at)) * FPS), Math.round(piece.to * FPS) - 1);
-    const file = path.join(work, shapeName, piece.take, `f_${String(frame).padStart(5, '0')}.png`);
+    const file = path.join(work, frameShape, piece.take, `f_${String(frame).padStart(5, '0')}.png`);
     const raw = await sharp(file).removeAlpha().raw().toBuffer();
-    const rgb = await compose({ raw, shape, s, cut, overlays, frameNo: j });
+    const full = await compose({ raw, shape, s, cut, overlays, frameNo: j });
+    const rgb = shape.crop ? full.subarray(shape.crop.top * w * 3, (shape.crop.top + h) * w * 3) : full;
     if (j % (FPS / 4) === 0) sheet.push({ s, image: await sharp(rgb, { raw: { width: w, height: h, channels: 3 } }).resize(shape.mobile ? 180 : 320).jpeg({ quality: 85 }).toBuffer() });
     if (!master.stdin.write(rgb)) await new Promise((done) => { master.stdin.once('drain', done); });
     if (j % 60 === 0) process.stdout.write(`  cut ${name} ${s.toFixed(1)}s\r`);
@@ -966,8 +976,18 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
       return `(1-${(1 - floor).toFixed(4)}*clip((t-${a})/${(b - a).toFixed(3)},0,1)*(1-clip((t-${c})/${(d - c).toFixed(3)},0,1)))`;
     });
     const fade = cut.music.fade ?? 1.6;
-    graph.push(`[${m}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,atrim=0:${seconds},asetpts=PTS-STARTPTS,volume=${bedGain.toFixed(2)}dB`
-      + `${breaths.length ? `,volume='${breaths.join('*')}':eval=frame` : ''},afade=t=out:st=${(length - fade).toFixed(3)}:d=${fade}[bed]`);
+    // Where the piece sits: from the cut's start, or (align 'end') so that its own ending lands on the cut's end. A piece
+    // longer than the room starts part way in, faded in; a shorter one starts late, after the table's sounds alone.
+    const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', musicFile], { encoding: 'utf8' });
+    const musicLength = Number(probe.stdout.trim());
+    const offset = cut.music.align === 'end' ? length - musicLength : 0;
+    const placed = offset >= 0
+      ? `adelay=${Math.round(offset * 1000)}|${Math.round(offset * 1000)},apad,atrim=0:${seconds}`
+      : `atrim=start=${(-offset).toFixed(3)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${cut.music.fadeIn ?? 0.4},apad,atrim=0:${seconds}`;
+    // A piece that ends by itself inside the cut needs no fade; one cut short is faded out with the end card.
+    const fadeOut = cut.music.align === 'end' ? '' : `,afade=t=out:st=${(length - fade).toFixed(3)}:d=${fade}`;
+    graph.push(`[${m}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,${placed},asetpts=PTS-STARTPTS,volume=${bedGain.toFixed(2)}dB`
+      + `${breaths.length ? `,volume='${breaths.join('*')}':eval=frame` : ''}${fadeOut}[bed]`);
     // The ducking looks ahead: the key is the sounds as they are, while the music and the sounds in the mix run late by
     // the look-ahead; the music is already down when each sound lands, and the finished mix is moved back into place.
     const ahead = (cut.music.lookahead ?? 0.08).toFixed(3);
@@ -986,14 +1006,13 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
     const stats = JSON.parse(first.slice(first.lastIndexOf('{'), first.lastIndexOf('}') + 1));
     graph.push(`[mix]loudnorm=${target}:measured_I=${stats.input_i}:measured_TP=${stats.input_tp}:measured_LRA=${stats.input_lra}:measured_thresh=${stats.input_thresh}:offset=${stats.target_offset}:linear=true,aresample=48000[final]`, sinks);
     audioLabel = '[final]';
-    fs.writeFileSync(`${base}-mix.json`, JSON.stringify({ music: path.basename(musicFile), musicLoudness, bedGain, soundGain: cut.soundGain, loudnorm: stats }, null, 1));
+    fs.writeFileSync(`${base}-mix.json`, JSON.stringify({ music: path.basename(musicFile), musicLength, offset, musicLoudness, bedGain, soundGain: cut.soundGain, loudnorm: stats }, null, 1));
   } else {
     graph.push('[sfx]anull[final]');
     audioLabel = '[final]';
   }
-  const mix = graph;
   const withSound = `${base}-master.mov`;
-  ffmpeg([...inputs, '-filter_complex', mix.join(';'), '-map', '0:v', '-map', audioLabel, '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', seconds, withSound]);
+  ffmpeg([...inputs, '-filter_complex', graph.join(';'), '-map', '0:v', '-map', audioLabel, '-c:v', 'copy', '-c:a', 'pcm_s24le', '-ar', '48000', '-t', seconds, withSound]);
   if (!process.argv.includes('--keep-picture') && !process.argv.includes('--reuse-picture')) fs.rmSync(silent);
   // The film: H.264 High, 4:2:0, limited range, BT.709, about 18 Mbps, AAC 256 kbps 48 kHz, fast start.
   const film = `${base}.mp4`;
@@ -1012,7 +1031,7 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
 
 (async () => {
   const shapeName = argument('shape', 'tall');
-  if (!SHAPES[shapeName]) throw new Error(`No shape ${shapeName}: tall or wide.`);
+  if (!SHAPES[shapeName]) throw new Error(`No shape ${shapeName}: ${Object.keys(SHAPES).join(', ')}.`);
   const work = path.resolve(argument('work', path.join(REPO, 'test-results/card-ad')));
   const out = path.resolve(argument('out', path.join(work, 'out')));
   const art = argument('art') ? path.resolve(argument('art')) : null;

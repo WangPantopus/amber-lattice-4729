@@ -185,6 +185,25 @@ const cuts = {
     music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [[12.9, 13.25, 13.95, 14.5, 4], [19.0, 19.4, 20.15, 20.7, 9]], fade: 1.8, loudness: -14, truePeak: -1 },
     end: { at: 30.85, full: 31.65, ...END },
   },
+  // 15 seconds: the seal cracking close up, the seal pressed and the envelope addressed, the card turned and spun on
+  // Christmas morning (a quick dip between the two tables), the end card.
+  15: {
+    pieces: [['open1', 0, 3.6], ['send', 6.1, 10.85], ['open', 6.55, 13.2]],
+    words: [[0.15, 1.35, W.open], [2.6, 3.55, W.phone], [3.7, 4.95, W.seal], [6.0, 8.2, W.sealed], [8.6, 10.2, W.mail]],
+    dips: [[8.05, 8.35, 8.35, 8.75, 0.06]],
+    soundGain: 15,
+    music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [[3.55, 3.85, 4.6, 5.1, 4]], fade: 1.2, loudness: -14, truePeak: -1 },
+    end: { at: 12.05, full: 12.85, ...END },
+  },
+  // 6 seconds: the seal cracking close up, then the end card with one line.
+  6: {
+    pieces: [['open1', 0, 3.5], ['open', 10.7, 13.2]],
+    words: [],
+    dips: [],
+    soundGain: 15,
+    music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [], fade: 0.9, loudness: -14, truePeak: -1 },
+    end: { at: 3.5, full: 4.3, lines: ['Christmas cards', 'they open by hand.'], address: END.address },
+  },
 };
 
 /** One still per shot, at these seconds of the main cut. */
