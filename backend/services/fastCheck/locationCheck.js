@@ -150,8 +150,8 @@ async function check({ homeId, user, input }) {
     return { result, level, recheck_due_at: due || null };
   };
   const accuracy = Number(input.accuracy_m);
-  await fastCheck.logTry({ homeId, userId: user.id, kind: KIND, step: 'check' });
   // The accuracy is kept with the try (a whole number of meters); the coordinates never are.
+  await fastCheck.logTry({ homeId, userId: user.id, kind: KIND, step: 'check', accuracyM: accuracy });
   if (!challengeValid(input.challenge, homeId, user.id)) {
     void fastCheck.countTry(KIND, 'refused', ['challenge']);
     return answer('not_counted');

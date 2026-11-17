@@ -86,10 +86,14 @@ async function countTry(kind, status, reasons = []) {
 
 // ── Per-person limits: HomeAuditLog rows FAST_CHECK_TRIED (kind in metadata, never a number) ─────────────────────
 
-/** Write a FAST_CHECK_TRIED row for this person. `ref` is a short keyed hash (phone), never the number. */
-async function logTry({ homeId, userId, kind, step = 'check', ref = null }) {
+/**
+ * Write a FAST_CHECK_TRIED row for this person. `ref` is a short keyed hash (phone), never the number. `accuracyM`
+ * (location) is the reading's accuracy in whole meters, never the coordinates.
+ */
+async function logTry({ homeId, userId, kind, step = 'check', ref = null, accuracyM = null }) {
   const metadata = { kind, step };
   if (ref) metadata.ref = ref;
+  if (Number.isFinite(accuracyM) && accuracyM >= 0) metadata.accuracy_m = Math.round(accuracyM);
   const { error } = await db.from('HomeAuditLog').insert({
     home_id: homeId, actor_user_id: userId, action: 'FAST_CHECK_TRIED', target_type: 'HomeOccupancy', target_id: null, metadata,
   });
