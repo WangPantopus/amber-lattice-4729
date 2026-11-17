@@ -669,6 +669,22 @@ nobody takes come back to your card a day before."; the pay buttons. After
 paying, on the plan: "Your {11} spots" with "{4} taken", "Copy link" and
 "Share". A claimer sees "{Chris} got you a spot" and "I'm in".
 
+**A bought spot is never paid for twice** (settled November 17, after the
+two-phone check found the iPhone could not take a spot from the link, and the
+coordinator's read found the paid "Join" still reachable on both phones):
+
+- A buyer's link reaches the app as `/plan-link/<id>?spot=<token>` and as
+  `pantopus:///plans/<id>?spot=<token>`; the browser page's "Open app" carries
+  the spot while the link has one, and for a live offer the page shows
+  "{Chris} got you a spot" before any pay panel.
+- While a live offer is on the screen, the only action is the free "I'm in"
+  (the offer's own button). The paid "Join" and the pay sheet are not offered.
+- Only a clear answer leads to the ordinary page: the server's "not
+  available", or a closed offer, whose closed words are shown first. When the
+  offer could not be read, or a claim failed without a refusal, the app keeps
+  the token and shows "Couldn't check your spot. Try again." with "Try
+  again"; it does not fall back to the paid "Join".
+
 ## 8. Who builds what
 
 The same three streams, after the people track and beside the business track.
