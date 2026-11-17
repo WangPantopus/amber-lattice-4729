@@ -33,7 +33,6 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGroupPayDto
 import app.pantopus.android.data.api.models.plans.PlanGroupPayGiveBackDto
-import app.pantopus.android.data.api.models.plans.PlanSpotDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanExtrasRepository
 import app.pantopus.android.data.plans.planMessage
@@ -59,13 +58,12 @@ import javax.inject.Inject
  * The holidays' one person pays for the group on the plan's page (08-extras section 7, board 31; a business's paid
  * plan, `plans_group_pay`). The buyer sees "Your {11} spots" with "{4} taken", "Copy link" and "Share", and "Give back
  * {n} spots" (asks first, with the server's sentence); a claimer sees "{Chris} got you a spot". Someone who opens the
- * link (`/plan-link/:id?spot=`) sees "{Chris} got you a spot" with "I'm in", which puts them in, free to them. Every
- * amount is the server's; buying is the payment sheet's "I'll send a link".
+ * link (`/plan-link/:id?spot=`) sees "{Chris} got you a spot" with "I'm in" (PlanSpotOffer.kt). Every amount is the
+ * server's; buying is the payment sheet's "I'll send a link".
  */
 
-/** The spot link the page was opened with, what it offers, and where claiming or giving back stands. */
+/** The buyer's card after giving spots back, and where that stands. */
 data class PlanGroupPayUi(
-    val offer: PlanSpotDto? = null,
     /** The card after giving spots back, until the plan is read again. */
     val card: PlanGroupPayDto? = null,
     val busy: Boolean = false,
@@ -80,34 +78,8 @@ class PlanGroupPayViewModel
         private val repository: PlanExtrasRepository,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
-
-        /** `?spot=` from the link someone sent; claimed only on "I'm in". */
-        private val token: String? = savedStateHandle.get<String>(PlansRoutes.SPOT_KEY)?.takeIf(String::isNotBlank)
         private val _ui = MutableStateFlow(PlanGroupPayUi())
         val ui: StateFlow<PlanGroupPayUi> = _ui.asStateFlow()
-        private var offerRead = false
-
-        /** Reads what the link offers, once, for someone not in yet. */
-        fun readOffer() {
-            val spot = token ?: return
-            if (offerRead) return
-            offerRead = true
-            viewModelScope.launch {
-                when (val result = repository.spot(planId, spot)) {
-                    is NetworkResult.Success -> _ui.update { it.copy(offer = result.data.spot) }
-                    is NetworkResult.Failure -> _ui.update { it.copy(error = result.error.planMessage) }
-                }
-            }
-        }
-
-        /** "I'm in": in, free to the reader; [then] reads the plan again. */
-        fun claim(then: () -> Unit) {
-            val spot = token ?: return
-            run({ repository.claimSpot(planId, spot) }) {
-                _ui.update { it.copy(offer = null) }
-                then()
-            }
-        }
 
         /** "Give back {n} spots": the spots nobody took go back to the buyer's card and the link stops. */
         fun giveBack(then: () -> Unit) {
@@ -264,52 +236,6 @@ private fun GiveBackDialog(
 @Composable
 private fun GroupPayTile(icon: PantopusIcon) {
     PlanIconTile(icon, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
-}
-
-/**
- * Opened from a spot link (`?spot=`) by someone not in: "{Chris} got you a spot" and "I'm in", or the server's reason
- * the link takes nobody now. [onClaimed] reads the plan again.
- */
-@Composable
-internal fun PlanSpotOffer(
-    plan: PlanDto,
-    onClaimed: () -> Unit,
-    vm: PlanGroupPayViewModel = hiltViewModel(key = "planGroupPay-${plan.id}"),
-) {
-    val ui by vm.ui.collectAsStateWithLifecycle()
-    LaunchedEffect(plan.id) { vm.readOffer() }
-    val offer = ui.offer ?: return
-    Column(
-        modifier = Modifier.fillMaxWidth().planCard().padding(14.dp).testTag("planSpotOffer"),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
-    ) {
-        Row(
-            modifier = Modifier.semantics(mergeDescendants = true) {},
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
-        ) {
-            GroupPayTile(PantopusIcon.Gift)
-            // A link that stopped names nobody: its own sentence is the card's line ("This link isn't taking anyone now.").
-            Text(
-                text = offer.text ?: offer.closedText.orEmpty(),
-                style = SEMIBOLD,
-                color = PantopusColors.appText,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        if (offer.open) {
-            PrimaryButton(
-                title = offer.button ?: "I'm in",
-                onClick = { vm.claim(onClaimed) },
-                isLoading = ui.busy,
-                isEnabled = !ui.busy,
-                modifier = Modifier.fillMaxWidth().testTag("planSpotClaim"),
-            )
-        } else if (offer.text != null) {
-            offer.closedText?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
-        }
-        ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
-    }
 }
 
 private val SEMIBOLD = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold)
