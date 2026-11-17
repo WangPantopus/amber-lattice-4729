@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -379,13 +382,15 @@ private fun PlanPickDateSheet(
                 },
                 isLoading = ui.picking,
                 isEnabled = chosen != null && !ui.picking,
-                modifier = Modifier.fillMaxWidth().height(50.dp).testTag("planDatesPick"),
+                // At large text the date wraps rather than being cut ("Pick Sunday, Nov 22 · 4:00 PM").
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("planDatesPick"),
             )
             PlanFooterCaption("You can still change the date afterwards")
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PickRow(
     text: String,
@@ -405,7 +410,11 @@ private fun PickRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            // "Most" goes under the time when they don't fit side by side (large text).
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s1),
+            ) {
                 Text(text = text, style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold), color = PantopusColors.appText)
                 if (most) {
                     Text(

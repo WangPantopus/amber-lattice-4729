@@ -172,6 +172,8 @@ data class HostDraft(
     val tipsOn: Boolean? = null,
     /** The holidays' chip in (extras section 3): the amount each person, what for, and the payment link; null while off. */
     val chipIn: ChipInDraft? = null,
+    /** The holidays' find a date (extras section 2): the times offered, earliest first; null while off. */
+    val dateOptions: List<DateOptionDraft>? = null,
 )
 
 /** "Chip in" as typed: dollars each person, what for, and the host's own Venmo, PayPal or Cash App link. */
@@ -264,6 +266,8 @@ data class HostUi(
     val dealChecking: Boolean = false,
     /** `plans_chip_in` is on for this person (the holidays' extras, section 3): the "Chip in" row. */
     val chipInOn: Boolean = false,
+    /** `plans_find_date` is on for this person (extras section 2): the "Let guests pick the date" row. */
+    val findDateOn: Boolean = false,
     /** The server's sentence under a chip-in field it refused (`amount_cents`, `note` or `link`). */
     val chipInErrors: Map<String, String> = emptyMap(),
 ) {
@@ -305,7 +309,17 @@ data class HostUi(
     val showsBringRow: Boolean get() = bringOn && isPrivate && draft.kind?.countsPeople == true
 
     /** The "Add to this plan" card shows (Plans for the holidays, board 3) while any of its rows does. */
-    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn
+    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn || showsFindDate
+
+    /**
+     * "Let guests pick the date" shows in the card (extras section 2): a private plan of a person's, never a playdate,
+     * and never one set to repeat (the server's own rule).
+     */
+    val showsFindDate: Boolean
+        get() = findDateOn && isPrivate && business == null && draft.kind?.countsPeople == true && repeat == null
+
+    /** The plan is posted with times to pick from: the row shows and is on. */
+    val postsFindDate: Boolean get() = showsFindDate && draft.dateOptions != null
 
     /** "Chip in" shows in the card (extras section 3): a private plan of a person's, never a playdate. */
     val showsChipIn: Boolean get() = chipInOn && isPrivate && business == null && draft.kind != PlanKind.PLAYDATE
@@ -410,6 +424,7 @@ class HostFlowViewModel
                     bringOn = feature.flags.value.bringOn,
                     occasionsOn = feature.flags.value.occasionsOn,
                     chipInOn = feature.flags.value.chipInOn,
+                    findDateOn = feature.flags.value.findDateOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -709,6 +724,24 @@ class HostFlowViewModel
                 it.copy(draft = it.draft.copy(chipIn = chip), chipInErrors = emptyMap())
             }
         }
+
+        /** "Let guests pick the date" on or off (extras section 2): on, the form's own time is the first offered. */
+        fun setFindDate(on: Boolean) =
+            edit { draft ->
+                val start = draft.start
+                val end = draft.end
+                val first = if (start != null && end != null) listOf(DateOptionDraft(key = 1, start = start, end = end)) else emptyList()
+                draft.copy(dateOptions = if (on) draft.dateOptions ?: first else null)
+            }
+
+        /** "Add a time": the plan's own time follows the earliest offered (the server's rule). */
+        fun addDateOption(
+            start: LocalDateTime,
+            end: LocalDateTime,
+        ) = edit { draft -> draft.withDateOptions(draft.dateOptions.orEmpty().adding(start, end)) }
+
+        /** "Remove" on an offered time. */
+        fun removeDateOption(key: Int) = edit { draft -> draft.withDateOptions(draft.dateOptions.orEmpty().filter { it.key != key }) }
 
         /** A chip-in field typed into; its refusal goes. */
         fun editChipIn(
@@ -1342,6 +1375,8 @@ class HostFlowViewModel
                 occasion = draft.occasion,
                 // Extras section 3: chip in; the server checks the amount, the note and the link, and says why in words.
                 chipIn = draft.chipIn?.takeIf { ui.showsChipIn }?.toInput(),
+                // Extras section 2: the times guests tick; the plan's own time above is the earliest of them.
+                dateOptions = draft.dateOptions?.takeIf { ui.postsFindDate }?.map { it.toInput(zone) },
             )
         }
 
@@ -1371,8 +1406,10 @@ class HostFlowViewModel
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
             val tooFar = tooFarAhead(draft, now)
+            val extras = extrasProblem(draft)
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
+                extras != null -> extras
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
                 tooFar != null -> tooFar
@@ -1382,6 +1419,13 @@ class HostFlowViewModel
                 else -> placeProblem(draft)
             }
         }
+
+        /** What the holidays' extras still need: find a date's two times; null when nothing. */
+        private fun extrasProblem(draft: HostDraft): String? =
+            when {
+                _ui.value.postsFindDate && draft.dateOptions.orEmpty().size < DATE_OPTIONS_FEWEST -> DATE_OPTIONS_TOO_FEW
+                else -> null
+            }
 
         /** What Where still needs: an online plan's link (Plans step 3), the host's home, or a place; null when nothing. */
         private fun placeProblem(draft: HostDraft): String? =
@@ -1608,6 +1652,12 @@ private fun copiedBring(
     val list = plan.bring?.takeIf { keepPrivate && it.items.isNotEmpty() } ?: return null
     val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
     return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
+}
+
+/** The draft with these times offered, and its own time the earliest of them (as the server sets it). */
+private fun HostDraft.withDateOptions(options: List<DateOptionDraft>): HostDraft {
+    val first = options.minByOrNull { it.start } ?: return copy(dateOptions = options)
+    return copy(dateOptions = options.sortedBy { it.start }, start = first.start, end = first.end)
 }
 
 /** The fields a chip-in refusal names (`field`), 08-extras section 3. */

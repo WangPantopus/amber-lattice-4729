@@ -26,6 +26,7 @@ import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.host.DATE_OPTIONS_FEWEST
 import app.pantopus.android.ui.screens.plans.host.DEAL_PREVIEW_DEBOUNCE_MS
 import app.pantopus.android.ui.screens.plans.host.DealDraft
 import app.pantopus.android.ui.screens.plans.host.DealPlanFacts
@@ -35,6 +36,7 @@ import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
 import app.pantopus.android.ui.screens.plans.host.PLACES_SLOW
 import app.pantopus.android.ui.screens.plans.host.PickedPlace
 import app.pantopus.android.ui.screens.plans.host.PlaceSuggestions
+import app.pantopus.android.ui.screens.plans.host.adding
 import app.pantopus.android.ui.screens.plans.host.dealPreviewBody
 import app.pantopus.android.ui.screens.plans.host.placeQuery
 import app.pantopus.android.ui.screens.plans.host.placesFailure
@@ -100,6 +102,8 @@ data class PlanChangeUi(
     val money: PlanChangeMoney = PlanChangeMoney(),
     /** A private plan's "Room for" and "Kids welcome" (Plans for the holidays, PlanChangeRoom.kt). */
     val room: PlanChangeRoom = PlanChangeRoom(),
+    /** The holidays' find a date: the times offered while the plan is picking (PlanChangeTimes.kt). */
+    val times: PlanChangeTimes = PlanChangeTimes(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -196,7 +200,7 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -261,6 +265,7 @@ class PlanChangeViewModel
                                 deal = DealDraft.from(plan.deal?.form, zone).let { PlanChangeDeal(original = it, draft = it) },
                                 money = PlanChangeMoney.of(plan),
                                 room = PlanChangeRoom.of(plan, feature.flags.value.guestAnswersOn),
+                                times = PlanChangeTimes.of(plan, zone),
                             )
                         }
                         lookForOrigin()
@@ -460,7 +465,7 @@ class PlanChangeViewModel
             // posted up to 62 days ahead): the times are checked, and sent, only when they moved. Where (an online plan's
             // link, or the place it moves to) is checked whatever moved (Plans step 3).
             val timesProblem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
-            val problem = timesProblem ?: ui.whereProblem()
+            val problem = timesProblem ?: ui.times.problem ?: ui.whereProblem()
             if (problem != null) {
                 _ui.update { it.copy(error = problem) }
                 return
@@ -488,6 +493,8 @@ class PlanChangeViewModel
                         // Plans for the holidays: a private plan's room and "Kids welcome", each only when changed.
                         spots = ui.room.spots.takeIf { ui.room.spotsChanged },
                         kidsWelcome = ui.room.kidsWelcome.takeIf { ui.room.kidsChanged },
+                        // The holidays' find a date, while picking: the times offered now (kept ones as the server sent them).
+                        dateOptions = ui.times.toInput(ui.zone).takeIf { ui.times.changed },
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
@@ -516,6 +523,23 @@ class PlanChangeViewModel
             val second = if (others && ui.removesDeal) repository.removeDeal(planId) else first
             if (second !is NetworkResult.Success) return second
             return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
+        }
+
+        // ---- Plans for the holidays: the times offered while picking ----
+
+        fun addTime(
+            start: LocalDateTime,
+            end: LocalDateTime,
+        ) {
+            _ui.update { it.copy(times = it.times.copy(options = it.times.options.adding(start, end)), error = null) }
+        }
+
+        fun removeTime(key: Int) {
+            _ui.update { ui ->
+                // At least two stay (the list's "Remove" is off at two).
+                if (ui.times.options.size <= DATE_OPTIONS_FEWEST) return@update ui
+                ui.copy(times = ui.times.copy(options = ui.times.options.filter { it.key != key }), error = null)
+            }
         }
 
         // ---- Plans for the holidays: a private plan's room and "Kids welcome" ----
