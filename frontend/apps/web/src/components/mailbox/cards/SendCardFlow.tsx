@@ -43,7 +43,7 @@ import CardRack from './CardRack';
 import { askTakeBack } from './takeBack';
 import { chosenPersonFor } from './sendOneBack';
 import { clearCardDraft, readCardDraft, saveCardDraft } from './cardDraft';
-import { cardMood, cardPicture, clockTime, emailGoesAt, firstNameOf, SERIF, shortDay, WAX, WAX_BUTTON } from './cardArt';
+import { cardMood, cardPicture, clockTime, emailGoesAt, firstNameOf, SERIF, shortDay, tableTint, WAX, WAX_BUTTON } from './cardArt';
 
 type Step = 'to' | 'pick' | 'write' | 'seal' | 'look' | 'sent';
 /** Someone on a list (digital stamps on): a person found by name, or an address. */
@@ -68,6 +68,15 @@ const page = 'min-h-[calc(100dvh-8rem)] bg-[#f5f0e8] text-[#111827] md:h-full md
 const primary = WAX_BUTTON;
 const secondary = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#d6cbb6] bg-[#fffdf8] text-[15px] font-semibold text-[#374151] transition hover:bg-[#f5efe3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d] disabled:opacity-50';
 const muted = 'text-[#4e5563] [@media(prefers-color-scheme:dark)]:text-app-text-secondary';
+// "Look it over" on the cloth (5.1): the quieter button under "Seal and send", glass on the cloth.
+const LOOK_ON_CLOTH = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#f6ecd9]/30 bg-[#18100e]/35 text-[15px] font-semibold text-[#f6ecd9] backdrop-blur transition hover:bg-[#18100e]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f] disabled:opacity-50';
+/** The soft fade under a pinned button (5.2): clear at its top, nearly the colour under it at the bottom. */
+// On the cloth, `shade` darkens the tint toward the vignette's darker edge, so the fade meets the cloth it lies on.
+const fadeOf = (rgb: string, shade = 1) => {
+  const parts = rgb.match(/\d+/g)?.slice(0, 3).map((c) => Math.round(Number(c) * shade)).join(', ') ?? '245, 240, 232';
+  return `linear-gradient(to bottom, rgba(${parts}, 0) 0, rgba(${parts}, 0.78) 12px, rgba(${parts}, 0.9) 100%)`;
+};
+const PAGE_FADE = fadeOf('rgb(245, 240, 232)');
 
 /** Step 4 when the server can't show the look; "Seal and send" is then on step 4. */
 const LOOK_UNAVAILABLE = 'Pantopus can’t show how your card will look yet. You can still seal and send it.';
@@ -1149,7 +1158,7 @@ function SealStep({
   sending,
   error,
   onLook,
-  onSend,
+  onSeal,
   stamps = null,
   onGetStamps,
   onCloth = false,
@@ -1162,21 +1171,26 @@ function SealStep({
   fromName: string;
   arrival: HolidayCardArrival | null;
   onArrival: (arrival: HolidayCardArrival) => void;
-  /** Reading what they will get (the next step). */
+  /** Running the server's check (the one Look it over runs) before the sealing table or Look it over opens. */
   looking: boolean;
-  /** The server can't show the look: "Seal and send" is here instead. */
+  /** The server can't show the look: no "Look it over", and the main button seals without it. */
   sendsHere: boolean;
   sending: boolean;
   error: string | null;
+  /** "Look it over" (mail-cards-experience 5.1): the fifth page, as it is. */
   onLook: () => void;
-  onSend: () => void;
-  /** Digital stamps (postage on), for when this step seals and sends itself. */
+  /** The main button: check the card, then seal it by hand on the table (or send it, without the table). */
+  onSeal: () => void;
+  /** Digital stamps (postage on): the postage line, and with none left the main button opens the stamp books. */
   stamps?: Stamps | null;
   onGetStamps?: () => void;
   /** On the card's cloth (design plan Part 9): the choices on a cream slip. */
   onCloth?: boolean;
 }) {
-  const needsStamps = sendsHere && stamps?.balance?.available === 0;
+  // No stamp left (for a list, fewer than its cards): the main button opens the stamp books, as Look it over's does.
+  const count = to.kind === 'list' ? to.entries.length : 1;
+  const needsStamps = Boolean(stamps?.balance) && (stamps?.balance?.available ?? 0) < count;
+  const busy = looking || sending;
   const preview = {
     id: `preview-${design.id}`,
     sender_display: fromName,
@@ -1225,20 +1239,27 @@ function SealStep({
         {/* Before it's sent we don't know their clock; the sent card says the time on this one. */}
         {takeBackBefore(to)}
       </p>
-      {sendsHere && stamps ? <div className="mx-auto mt-3 max-w-[420px]"><PostageLine stamps={stamps} design={design.id} /></div> : null}
+      {/* The postage line too (5.1), so a sender who goes straight to the table has read both. */}
+      {stamps ? <div className="mx-auto mt-3 max-w-[420px]"><PostageLine stamps={stamps} design={design.id} count={to.kind === 'list' ? count : undefined} /></div> : null}
       {error ? <p role="alert" className={`mx-auto mt-3 max-w-[420px] text-[14px] font-medium ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
-      <div className="mx-auto mt-5 max-w-[420px] pb-4">
+      <div className="mx-auto mt-5 max-w-[420px] space-y-2.5 pb-4">
+        {/* "Seal and send" above "Look it over" (founder, November 17): straight to the sealing table, or the look. */}
         <button
           type="button"
           data-testid="sendCardSend"
-          disabled={!arrival || looking || sending}
-          onClick={needsStamps ? onGetStamps : sendsHere ? onSend : onLook}
+          disabled={!arrival || busy}
+          onClick={needsStamps ? onGetStamps : onSeal}
           className={primary}
           style={{ backgroundColor: WAX }}
         >
-          {looking || sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
-          {needsStamps ? 'Get stamps to send' : sendsHere ? sendWords(to) : 'Look it over'}
+          {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
+          {needsStamps ? 'Get stamps to send' : to.kind === 'list' ? `Seal and send ${count} cards` : sendWords(to)}
         </button>
+        {sendsHere ? null : (
+          <button type="button" data-testid="sendCardLookOver" disabled={!arrival || busy} onClick={onLook} className={onCloth ? LOOK_ON_CLOTH : secondary}>
+            Look it over
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1257,6 +1278,7 @@ function LookStep({
   onGetStamps,
   onSealOnTable,
   onCloth = false,
+  fade = PAGE_FADE,
 }: {
   preview: HolidayCardPreview;
   to: Recipient;
@@ -1271,21 +1293,40 @@ function LookStep({
   onSealOnTable?: () => void;
   /** On the card's cloth (design plan Part 9). */
   onCloth?: boolean;
+  /** The soft fade the pinned button sits on: the cloth's colour, or the page's. */
+  fade?: string;
 }) {
   const needsStamps = stamps?.balance?.available === 0;
   return (
     <div data-testid="sendCardLook">
       <LookItOver onCloth={onCloth} preview={preview} toName={envelopeName(to)} toFirstName={to.kind === 'person' ? firstName(to.name) : ''} byEmail={to.kind !== 'person'} byLink={to.kind === 'link'} />
-      <div className="mx-auto mt-7 max-w-[420px] px-4 pb-4">
+      {/* The take-back and postage lines end the page and scroll with it (5.2); they were on Seal it for the day too. */}
+      <div className="mx-auto mt-7 max-w-[420px] px-4">
         <p className="rounded-xl border border-[#e7dcc6] bg-[#fbf6ec] px-3.5 py-3 text-[13px] leading-[18px] text-[#374151]">
           {takeBackBefore(to)}
         </p>
         {stamps ? <div className="mt-3"><PostageLine stamps={stamps} design={design} /></div> : null}
-        {error ? <p role="alert" className={`mt-3 text-[14px] font-medium ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
-        <button type="button" data-testid="sendCardLookSend" disabled={sending} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={`${primary} mt-5`} style={{ backgroundColor: WAX }}>
+      </div>
+      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
+        <button type="button" data-testid="sendCardLookSend" disabled={sending} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={primary} style={{ backgroundColor: WAX }}>
           {sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
           {needsStamps ? 'Get stamps to send' : sendWords(to)}
         </button>
+      </PinnedSend>
+    </div>
+  );
+}
+
+/**
+ * Look it over's main button, pinned to the bottom (mail-cards-experience 5.2): only the button, on a soft fade of the
+ * cloth with no panel behind it, so the card is in sight down to the button. A refusal is one line just above it.
+ */
+function PinnedSend({ fade, error, onCloth, children }: { fade: string; error: string | null; onCloth: boolean; children: ReactNode }) {
+  return (
+    <div className="sticky bottom-0 z-10 mt-4 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 md:-bottom-6" style={{ backgroundImage: fade }} data-testid="sendCardPinned">
+      <div className="mx-auto max-w-[420px]">
+        {error ? <p role="alert" className={`mb-2 text-[14px] font-medium leading-5 ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
+        {children}
       </div>
     </div>
   );
@@ -1325,6 +1366,7 @@ function ListLookStep({
   onGetStamps,
   onSealOnTable,
   onCloth = false,
+  fade = PAGE_FADE,
 }: {
   look: HolidayCardListPreview;
   entries: ListEntry[];
@@ -1339,6 +1381,8 @@ function ListLookStep({
   onSealOnTable?: () => void;
   /** On the card's cloth (design plan Part 9). */
   onCloth?: boolean;
+  /** The soft fade the pinned button sits on (5.2). */
+  fade?: string;
 }) {
   const byId = new Map(entries.map((entry) => [idOf(entry), entry]));
   const ready = look.recipients.filter((line) => line.status === 'ready');
@@ -1350,7 +1394,7 @@ function ListLookStep({
       {look.piece && first ? (
         <LookItOver onCloth={onCloth} preview={look as HolidayCardPreview} toName={entryName(first)} toFirstName={first.kind === 'person' ? firstName(first.name) : ''} byEmail={first.kind !== 'person'} />
       ) : null}
-      <div className="mx-auto mt-7 max-w-[420px] px-4 pb-4">
+      <div className="mx-auto mt-7 max-w-[420px] px-4">
         <section aria-label="Who it’s going to" data-testid="sendCardListLook">
           <h2 className={`text-[16px] font-semibold ${onCloth ? 'text-[#f6ecd9]' : ''}`}>Going to {ready.length} {ready.length === 1 ? 'person' : 'people'}</h2>
           <ul className="mt-2 divide-y divide-[#e7dcc6] overflow-hidden rounded-xl border border-[#e3d8c3] bg-[#fffdf8] text-[#111827]">
@@ -1374,12 +1418,13 @@ function ListLookStep({
         </p>
         {stamps && look.needed ? <div className="mt-3"><PostageLine stamps={stamps} design={design} count={look.needed} /></div> : null}
         {!look.needed ? <p className={`mt-3 text-center text-[14px] ${onCloth ? ON_CLOTH_MUTED : muted}`}>None of these cards can go now.</p> : null}
-        {error ? <p role="alert" className={`mt-3 text-[14px] font-medium ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
-        <button type="button" data-testid="sendCardLookSend" disabled={sending || !look.needed} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={`${primary} mt-5`} style={{ backgroundColor: WAX }}>
+      </div>
+      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
+        <button type="button" data-testid="sendCardLookSend" disabled={sending || !look.needed} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={primary} style={{ backgroundColor: WAX }}>
           {sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
           {needsStamps ? 'Get stamps to send' : sending ? `Sending ${cards}…` : `Seal and send ${cards}`}
         </button>
-      </div>
+      </PinnedSend>
     </div>
   );
 }
@@ -1908,6 +1953,56 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     });
   };
 
+  // "Seal and send" on Seal it for the day (mail-cards-experience 5.1): the same check Look it over runs, then straight to
+  // the sealing table (without the card table, it sends from here). A refusal shows under the choices. A list with any
+  // card that won't go, or too few stamps for it, opens Look it over instead, which shows each person's line.
+  const doSealFromSeal = () => {
+    if (lookUnavailable) {
+      if (launchFeatures.cardTable) openSealing(null);
+      else doSend();
+      return;
+    }
+    if (to?.kind === 'list') {
+      const list = listToSend(to.entries);
+      if (!list) return;
+      setSealError(null);
+      previewList.mutate(list, {
+        onSuccess: (res) => {
+          setListLook(res);
+          setListError(null);
+          const everyOneGoes = res.needed > 0 && res.recipients.every((line) => line.status === 'ready');
+          const enoughStamps = !stamps.balance || (stamps.balance.available ?? 0) >= res.needed;
+          if (everyOneGoes && enoughStamps && launchFeatures.cardTable) openSealing(res.piece ?? null);
+          else setStep('look');
+        },
+        onError: (error) => setSealError(sendMessage(error)),
+      });
+      return;
+    }
+    const card = cardToSend();
+    if (!card) return;
+    setSealError(null);
+    preview.mutate(card, {
+      onSuccess: (res) => {
+        // An answer without the card can't be shown: the seal still runs every check as it sends.
+        if (!res?.piece) setLookUnavailable(true);
+        else setLook(res);
+        if (launchFeatures.cardTable) openSealing(res?.piece ?? null);
+        else doSend();
+      },
+      onError: (error) => {
+        if (wentEarlier(error)) return;
+        if (lookIsUnavailable(error)) {
+          setLookUnavailable(true);
+          preview.reset();
+          if (launchFeatures.cardTable) openSealing(null);
+          return;
+        }
+        if (error.serverCode === 'CARD_MEDIA_NEEDS_STAMP') { void stamps.refresh(); setStampShort(null); setStampReason(MEDIA_NEEDS_STAMP); setStampSheet(true); }
+      },
+    });
+  };
+
   const doSend = () => {
     const card = cardToSend();
     if (!card) return;
@@ -1987,9 +2082,11 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   };
 
   // ── Sealing it by hand on the table ──
-  const openSealing = () => {
+  // `checked`: the piece the server's check just answered with (from Seal it for the day, before its state has landed);
+  // null when the look couldn't be shown; left out from Look it over.
+  const openSealing = (checked?: MailItemV2 | null) => {
     if (!to || !data) return;
-    const piece = to.kind === 'list' ? listLook?.piece : look?.piece;
+    const piece = checked !== undefined ? checked : to.kind === 'list' ? listLook?.piece : look?.piece;
     const card: TableCard | null = piece?.card ?? (design ? {
       design: design.id, number: design.number, caption: design.caption, paper: design.paper, table: design.table ?? null, year: data.year, sealed: false,
       signature,
@@ -2276,9 +2373,16 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           sending={send.isPending}
           error={sealError ?? (lookUnavailable ? LOOK_UNAVAILABLE : preview.isError ? sendMessage(preview.error, to.kind === 'email') : null)}
           onLook={doLook}
-          onSend={doSend}
+          onSeal={doSealFromSeal}
           stamps={data.postage_enabled ? stamps : null}
-          onGetStamps={() => setStampSheet(true)}
+          onGetStamps={() => {
+            // A list short of stamps: the stamp books say how many more its cards need, as Look it over's do.
+            if (to.kind === 'list') {
+              const have = stamps.balance?.available ?? 0;
+              setStampShort({ cards: to.entries.length, missing: Math.max(1, to.entries.length - have) });
+            }
+            setStampSheet(true);
+          }}
           onCloth={atTable}
         />
       ) : null}
@@ -2292,8 +2396,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           stamps={data.postage_enabled ? stamps : null}
           design={design?.id ?? ''}
           onGetStamps={() => setStampSheet(true)}
-          onSealOnTable={launchFeatures.cardTable ? openSealing : undefined}
+          onSealOnTable={launchFeatures.cardTable ? () => openSealing() : undefined}
           onCloth={atTable}
+          fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
         />
       ) : null}
       {step === 'look' && listLook && to?.kind === 'list' ? (
@@ -2311,8 +2416,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             setStampShort({ cards: listLook.needed, missing: Math.max(1, listLook.needed - have) });
             setStampSheet(true);
           }}
-          onSealOnTable={launchFeatures.cardTable ? openSealing : undefined}
+          onSealOnTable={launchFeatures.cardTable ? () => openSealing() : undefined}
           onCloth={atTable}
+          fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
         />
       ) : null}
       </StepsAtTable>
@@ -2349,7 +2455,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           note={sealing.note}
           fromName={sealing.fromName}
           toName={sealing.toName}
-          closeLabel={sent || listSent ? 'Done' : 'Back to Look it over'}
+          closeLabel={sent || listSent ? 'Done' : step === 'look' ? 'Back to Look it over' : 'Back to Seal it for the day'}
           paused={sealShare || stampSheet}
           onClose={closeSealing}
           sendMoment={{
