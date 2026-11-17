@@ -4208,23 +4208,43 @@ router.get('/claim/:mailId', async (req, res) => {
   }
 });
 
-// The one-time code from a letter's page: 10 asks every 15 minutes per network (IP, IPv6 by its /64), 5 an hour per
-// letter and 5 an hour per typed address (a card by link), and one every 30 seconds per letter and address while the
-// last one is on its way. Each code replaces the one before it.
+// The one-time code from a letter's page: 10 asks every 15 minutes per network (IP, IPv6 by its /64), links that don't
+// work included. Then, only for a link that works (checked first, so nobody without it can use up someone's codes):
+// 5 an hour per letter, 5 an hour per address the code goes to, and one every 30 seconds per letter and address while
+// the last one is on its way. Each code replaces the one before it.
 const MAIL_CODE_LIMIT = { error: 'Too many codes asked for. Try again later, or sign in another way.', code: 'CODE_LIMIT' };
-const typedCodeEmail = (req) => String(req.body?.email || '').trim().toLowerCase();
-const mailCodeLimiters = [
-  rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyGenerator: clientIpKey, message: MAIL_CODE_LIMIT }),
-  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (req) => `mail:${req.params.mailId}`, message: MAIL_CODE_LIMIT }),
-  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (req) => `to:${typedCodeEmail(req)}`, skip: (req) => !typedCodeEmail(req), message: MAIL_CODE_LIMIT }),
-  rateLimit({ windowMs: 30 * 1000, max: 1, skipFailedRequests: true, keyGenerator: (req) => `just:${req.params.mailId}:${typedCodeEmail(req)}`,
+const mailCodeNetworkLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyGenerator: clientIpKey, message: MAIL_CODE_LIMIT });
+// The 30-second one first, so asking again too soon doesn't use up the hour's codes.
+const mailCodeLetterLimiters = [
+  rateLimit({ windowMs: 30 * 1000, max: 1, skipFailedRequests: true, keyGenerator: (req, res) => `just:${req.params.mailId}:${res.locals.codeAddress}`,
     message: { error: 'A code is on its way. Check your email, or ask for a new one in a moment.', code: 'CODE_JUST_SENT' } }),
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (req) => `mail:${req.params.mailId}`, message: MAIL_CODE_LIMIT }),
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (_req, res) => `to:${res.locals.codeAddress}`, message: MAIL_CODE_LIMIT }),
 ];
 const mailCodeSchema = Joi.object({
   token: Joi.string().max(256).required(),
   // A card by link went to no address: the address the person types.
   email: Joi.string().trim().email().max(320).allow('', null),
 });
+
+// The letter behind a working link that can still be opened, and the address its code goes to (res.locals), before the
+// per-letter and per-address limits.
+async function codeLetter(req, res, next) {
+  try {
+    const { mailId } = req.params;
+    if (!UUID_REGEX.test(mailId)) return sendClaimLinkInvalid(res);
+    const found = await mailClaimCode.letterAndAddress({ mailId, token: req.body.token, email: req.body.email });
+    if (found.refusal) return res.status(found.refusal.status).json({ error: found.refusal.error, code: found.refusal.code });
+    const closed = closedEscrowReason(found.mail);
+    if (closed) return res.status(closed.status).json({ error: closed.error, code: closed.code, card: closed.card });
+    res.locals.codeMail = found.mail;
+    res.locals.codeAddress = found.address;
+    return next();
+  } catch (err) {
+    logger.error('Mail code letter read failed', { error: err.message, mailId: req.params.mailId });
+    return res.status(500).json({ error: 'Couldn’t send your code. Try again in a moment.', code: 'CODE_UNAVAILABLE' });
+  }
+}
 
 /**
  * POST /api/mailbox/claim/:mailId/code  { token, email? }
@@ -4233,16 +4253,10 @@ const mailCodeSchema = Joi.object({
  * and POST /claim/:mailId puts it in their mailbox. Answers { sent_to (masked), minutes } whether or not the address has
  * an account. A letter sent by text answers 400 CODE_BY_TEXT (its page keeps signing in and creating an account).
  */
-router.post('/claim/:mailId/code', mailCodeLimiters, validate(mailCodeSchema), async (req, res) => {
+router.post('/claim/:mailId/code', mailCodeNetworkLimiter, validate(mailCodeSchema), codeLetter, mailCodeLetterLimiters, async (req, res) => {
   try {
     const { mailId } = req.params;
-    if (!UUID_REGEX.test(mailId)) return sendClaimLinkInvalid(res);
-    const found = await mailClaimCode.letterAndAddress({ mailId, token: req.body.token, email: req.body.email });
-    if (found.refusal) return res.status(found.refusal.status).json({ error: found.refusal.error, code: found.refusal.code });
-    const { mail, address } = found;
-
-    const closed = closedEscrowReason(mail);
-    if (closed) return res.status(closed.status).json({ error: closed.error, code: closed.code, card: closed.card });
+    const { codeMail: mail, codeAddress: address } = res.locals;
 
     const card = holidayCards.isCard(mail);
     const { senderName } = sentAsBusiness(mail) ? claimPageSender(mail) : await claimPagePerson(mail.sender_user_id, mail.sender_display);
