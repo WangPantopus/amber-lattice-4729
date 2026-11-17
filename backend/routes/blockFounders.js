@@ -18,7 +18,7 @@ const express = require('express');
 const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerifiedResident, mailLevelRefusal } = require('../utils/homePermissions');
 const { homeOutboundLimiter } = require('../middleware/rateLimiter');
 const blockFoundersService = require('../services/blockFoundersService');
 const supabaseAdmin = require('../config/supabaseAdmin');
@@ -33,10 +33,10 @@ async function gatedHome(req, res) {
     return null;
   }
   if (!isVerifiedResident(access)) {
-    res.status(403).json({
+    res.status(403).json(await mailLevelRefusal(access, {
       error: 'Verify your address to see your block’s founders.',
       code: 'VERIFICATION_REQUIRED',
-    });
+    }));
     return null;
   }
   const { data: home } = await supabaseAdmin

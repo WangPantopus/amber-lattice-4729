@@ -482,6 +482,7 @@ app.use('/api/homes', require('./routes/mailboxCheck'));  // Mailbox reality che
 app.use('/api/homes', require('./routes/homeRecordWatch')); // Rate watch (/:id/record-watch)
 app.use('/api/homes', require('./routes/blockFounders')); // Founding ranks + postcard invites (/:id/block-founders)
 app.use('/api/homes', require('./routes/realRent')); // Real Rent Benchmark contribution (/:id/rent-report)
+app.use('/api/homes', require('./routes/homeFastCheck')); // Faster home verification (/:id/verify-options, /:id/fast-check/*)
 app.use('/api/homes', require('./routes/unlisted')); // Unlisted removal tracking (/:id/unlisted)
 app.use('/api/homes', require('./routes/addressCalendar')); // Address calendar + pickup day (/:id/calendar)
 app.use('/api/scout', require('./routes/scout')); // Before-You-Sign Scout (T1, no home)

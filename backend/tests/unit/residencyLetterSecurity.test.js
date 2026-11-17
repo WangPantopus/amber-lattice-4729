@@ -142,6 +142,8 @@ describe('a stale verification cannot mint a fresh letter (flag-gated)', () => {
     // The stale-aware resident check is shared from the real module (it is
     // the behaviour under test); only the permission lookup is stubbed.
     isVerifiedResident: jest.requireActual('../../utils/homePermissions').isVerifiedResident,
+    // A refusal stays the route's own unless the person is Verified by a fast check (FASTVERIFY).
+    mailLevelRefusal: jest.requireActual('../../utils/homePermissions').mailLevelRefusal,
     isVerifiedOwner: jest.fn().mockResolvedValue({ isOwner: false }),
     mapLegacyRole: jest.fn((r) => r),
     writeAuditLog: jest.fn().mockResolvedValue(undefined),

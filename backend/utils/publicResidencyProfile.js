@@ -13,7 +13,7 @@
  */
 
 const supabaseAdmin = require('../config/supabaseAdmin');
-const { isVerifiedResident } = require('./homePermissions');
+const { isVerified, FAST_CHECK_COLUMNS } = require('./homePermissions');
 
 /**
  * @param {string} userId - whose residency is being summarised
@@ -34,9 +34,13 @@ async function getPublicResidencySummary(userId, viewerId = null) {
       supabaseAdmin
         .from('HomeOccupancy')
         .select(`
+          home_id,
+          user_id,
+          is_active,
           verification_status,
           verification_source,
           verified_at,
+          ${FAST_CHECK_COLUMNS},
           created_at,
           home:home_id ( id, city, state )
         `)
@@ -54,9 +58,9 @@ async function getPublicResidencySummary(userId, viewerId = null) {
     if (occ && occ.home) {
       const home = occ.home;
       const homeId = home.id;
-      // Use the same attestation gate as home artifacts: an accepted household
-      // invitation grants household tools, not an address-verified badge.
-      let verified = isVerifiedResident({ occupancy: occ });
+      // The Verified gate (mail, or a fast check while home_fast_verify is on): an accepted household
+      // invitation grants household tools, not a verified badge.
+      let verified = await isVerified({ occupancy: occ });
       if (!verified) {
         // A verified ownership of this Home as a person (homePermissions.isVerifiedOwner). An unreadable
         // ownership read, or more than one such row, leaves the summary empty, as that check's error did.
