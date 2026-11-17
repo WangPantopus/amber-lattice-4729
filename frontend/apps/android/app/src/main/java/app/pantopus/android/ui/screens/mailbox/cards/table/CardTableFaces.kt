@@ -140,10 +140,14 @@ internal fun CardTableBack(
                             start = with(density) { (u * 8f).toDp() },
                             end = with(density) { (u * 7f).toDp() },
                             top = with(density) { (u * 9f).toDp() },
-                            // A little room under the last rule (above FROM): the pen's last line, its descenders and
-                            // the cursor run just past it when the note fills the rules, and the box mustn't scroll.
-                        ).height(with(density) { (u * (83.6f + 4f)).toDp() }),
+                        ).height(with(density) { (u * (83.6f + UNDER_THE_RULES)).toDp() }),
             ) { writing(style) }
         }
     }
 }
+
+/**
+ * Room under the writing box's last rule, above FROM: the pen's last line, its descenders and the cursor run just past
+ * the rules when the note fills them, and the box mustn't scroll then (plan Part 1).
+ */
+private const val UNDER_THE_RULES = 4f
