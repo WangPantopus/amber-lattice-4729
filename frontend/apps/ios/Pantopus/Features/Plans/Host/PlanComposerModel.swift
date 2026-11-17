@@ -191,7 +191,7 @@ final class PlanComposerModel {
         if effectiveTitle.trimmingCharacters(in: .whitespaces).isEmpty { return "Give your plan a title." }
         if whereKind == .publicPlace, place == nil { return "Choose a place." }
         if whereKind == .home, home == nil { return "Add your home to host there, or choose a public place." }
-        if let onlineProblem { return onlineProblem }
+        if let problem = onlineProblem ?? extrasProblem { return problem }
         let span = end.timeIntervalSince(effectiveStart)
         if span < 15 * 60 { return "A plan lasts at least 15 minutes." }
         if span > 8 * 3600 { return "A plan lasts at most 8 hours." }
@@ -284,7 +284,7 @@ final class PlanComposerModel {
         )
         body.hostedAgainFrom = hostedAgainFrom
         if !isBusiness { body.occasion = privacy.occasion?.key } // H3, on a public or a private plan
-        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers, bringList: offersBringList) }
+        if isPrivate { privacy.apply(to: &body, offers: self) }
         applyRepeat(to: &body)
         return body
     }

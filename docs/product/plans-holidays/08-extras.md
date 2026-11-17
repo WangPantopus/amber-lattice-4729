@@ -170,6 +170,13 @@ pick, `dates` is gone and the plan is an ordinary plan.
   4:00 PM}" and "You can still change the date afterwards".
 - **Lists**: a plan that is picking shows "Picking a date" where its time
   shows.
+- **The Change screen while picking** (settled November 16 after the iPhone's
+  build named it as not built; no board, it reuses board 26's list): in place
+  of "When", the host form's list of times, each with "Remove", and "Add a
+  time" with "Up to 5"; at least two stay. Under it, "Removing a time clears
+  its ticks." Saving sends `date_options` through the shipped change call: a
+  kept time keeps its ticks, a removed time's ticks go, and nobody is told.
+  After the pick the Change screen is any plan's.
 
 ## 3. Chip in
 
@@ -444,6 +451,10 @@ yes to both, told to the founder):
   (`invited`, `already_invited`, `already_in`, `unavailable`, `text_only`),
   `invited`, `text_only` and `text` ("Invited 4. 1 can only be reached by
   text."), which the screen shows as it is.
+- **When nobody new is invited** (settled November 16 after Android's check
+  read "Invited 0."): `text` reads "Nobody new was invited.", with the
+  text-only sentence after it when there is one. The apps show `text` as it
+  comes.
 - **The address stays hidden afterwards too.** One added column,
   `PlanInvite.known_name` (email invitations only, 1 to 100 characters; a
   column, not a table): an email invitation made this way keeps the name the

@@ -18,6 +18,10 @@ import okhttp3.Response
  *   answered without an account, Maybe, and a private plan with room for more than 30. Without it the server answers
  *   as before (room over 30 reads 30, Maybe reads as invited, open-link rows are left out of the invitation list).
  *
+ * - `extras=1` (Plans for the holidays, the six extras, 08-extras section 1), on `/api/plans` only: this app can draw
+ *   the extras. Without it a plan still picking its date does not exist, and every other plan reads without the
+ *   extras' fields.
+ *
  * Nothing else changes for a person without the server's switches: the server answers them exactly as before.
  */
 class PlansBizInterceptor : Interceptor {
@@ -42,8 +46,11 @@ class PlansBizInterceptor : Interceptor {
         /** `guests=1`: this app can draw the holidays' guests, Maybe and room over 30 (Plans for the holidays, H1). */
         const val GUESTS_PARAM = "guests"
 
+        /** `extras=1`: this app can draw the holidays' six extras (08-extras section 1). */
+        const val EXTRAS_PARAM = "extras"
+
         private val MARKERS = listOf(PARAM, MORE_PARAM)
-        private val PLANS_MARKERS = MARKERS + GUESTS_PARAM
+        private val PLANS_MARKERS = MARKERS + GUESTS_PARAM + EXTRAS_PARAM
         private val PLANS = Regex("^/api/plans(/.*)?$")
         private val BUSINESS_PLANS = Regex("^/api/businesses/[^/]+/plans$")
         private const val MAP = "/api/posts/map"

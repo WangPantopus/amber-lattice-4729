@@ -5,8 +5,9 @@
  * Stored the chat-files way (founder, November 2): one private `File` row per item (file_context holiday_card_media)
  * and one private S3 object under a key that names no one (holiday-card-media/<time>_<random>.<ext>). The bytes come
  * only through API routes that check the reader on every request, answered private and no-store; a file id never grants
- * anything by itself. A photo is stored once, as the server made it: upright, at most 1600 px on its long side, a JPEG
- * with every piece of metadata removed. The original is never stored.
+ * anything by itself. A photo is stored once, as the server made it: upright, at most 2400 px on its long side, a JPEG
+ * with every piece of metadata removed. The original is never stored. (1600 px until November 16, when the founder chose
+ * the larger copy so an opened photo stays sharp when it's enlarged; photos stored before then keep their size.)
  *
  * A Live Photo (founder, November 16) is that photo plus its few seconds of video, a third kind of item (`live`): an MP4
  * or QuickTime clip of at most 10 seconds and 15 MiB, stored as it came with its location, camera and title tags blanked
@@ -33,7 +34,7 @@ const CONTEXT = 'holiday_card_media';
 const STORAGE_CONTRACT = 'holiday_card_media_v1';
 const PREFIX = 'holiday-card-media/';
 const MiB = 1024 * 1024;
-const PHOTO = { max_bytes: 10 * MiB, long_side: 1600 };
+const PHOTO = { max_bytes: 10 * MiB, long_side: 2400 };
 const VOICE = { max_bytes: 5 * MiB, max_seconds: 60 };
 const LIVE = { max_bytes: 15 * MiB, max_seconds: 10 };
 const ALT_LIMIT = 200;
@@ -93,7 +94,7 @@ function oneAtATime(work) {
 
 /**
  * The photo as a card keeps it, from what the bytes are (never what the upload says they are): { buffer, width, height },
- * a JPEG turned upright by its orientation, at most 1600 px on its long side, in sRGB and with no metadata. An iPhone's
+ * a JPEG turned upright by its orientation, at most 2400 px on its long side, in sRGB and with no metadata. An iPhone's
  * HEIC is decoded on the server (photoMetadata, #3166). Throws the contract's refusals: unreadable, not a still (video
  * or animated), too large.
  */

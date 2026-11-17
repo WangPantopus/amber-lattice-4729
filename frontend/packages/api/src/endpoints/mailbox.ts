@@ -692,7 +692,7 @@ export interface CardMediaRef {
   kind: 'photo' | 'voice';
   mime_type: string;
   size: number;
-  /** A photo, upright as stored (at most 1600 on the long side). */
+  /** A photo, upright as stored (at most 2400 on the long side). */
   width?: number | null;
   height?: number | null;
   alt?: string | null;

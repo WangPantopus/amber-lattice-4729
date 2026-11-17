@@ -6,9 +6,9 @@
 //  plan" card for a private plan. Each extra is a row of its own with a small
 //  tile, a name, a line under it and a switch, all off unless the plan needs
 //  them; only what is switched on shows on the plan. H1 adds "Kids welcome",
-//  H2 "Bring list".
-//  "Let guests pick the date", "Chip in" and "Gift exchange" on the board are
-//  later steps and are not built.
+//  H2 "Bring list". The extras (board 26) each add a card of their own under
+//  it: "Let guests pick the date" (PlanFindDateForm.swift) and "Chip in"
+//  (PlanChipInForm.swift), each behind its own switch.
 //
 
 import SwiftUI
@@ -20,37 +20,45 @@ struct PlanAddToPlanCard: View {
 
     var body: some View {
         PlanFormField(label: "Add to this plan") {
-            PlanFormCard {
-                if model.offersBringList {
-                    PlanExtraSwitchRow(
-                        icon: .list,
-                        title: "Bring list",
-                        subtitle: bringSubtitle,
-                        isOn: Binding(get: { model.privacy.bring != nil }, set: { on in
-                            model.privacy.bring = on ? PlanBringEditor() : nil
-                            if on { onBringList() }
-                        }),
-                        tint: model.kind.tint,
-                        ink: model.kind.color,
-                        onTapRow: model.privacy.bring == nil ? nil : onBringList
-                    )
-                    .accessibilityIdentifier("planBringListRow")
-                }
-                if model.offersBringList, model.offersGuestAnswers { Divider().overlay(Theme.Color.appBorder) }
-                if model.offersGuestAnswers {
-                    PlanExtraSwitchRow(
-                        icon: .users,
-                        title: "Kids welcome",
-                        subtitle: "Guests say how many adults and kids",
-                        isOn: Binding(get: { model.privacy.kidsWelcome }, set: { model.privacy.kidsWelcome = $0 })
-                    )
-                    .accessibilityIdentifier("planKidsWelcome")
-                }
-            }
+            if model.offersBringList || model.offersGuestAnswers { shippedRows }
+            // Board 26: each extra its own card, with its line under it.
+            if model.offersFindDate { PlanFindDateFormCard(model: model) }
+            if model.offersChipIn { PlanChipInFormCard(draft: Bindable(model.privacy).chipIn) }
             PlanScopeLine(text: "Only what you switch on shows on the plan. Everything else stays out of the way.", icon: .info)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planAddToPlan")
+    }
+
+    /// "Bring list" and "Kids welcome" (H1, H2), in one card.
+    private var shippedRows: some View {
+        PlanFormCard {
+            if model.offersBringList {
+                PlanExtraSwitchRow(
+                    icon: .list,
+                    title: "Bring list",
+                    subtitle: bringSubtitle,
+                    isOn: Binding(get: { model.privacy.bring != nil }, set: { on in
+                        model.privacy.bring = on ? PlanBringEditor() : nil
+                        if on { onBringList() }
+                    }),
+                    tint: model.kind.tint,
+                    ink: model.kind.color,
+                    onTapRow: model.privacy.bring == nil ? nil : onBringList
+                )
+                .accessibilityIdentifier("planBringListRow")
+            }
+            if model.offersBringList, model.offersGuestAnswers { Divider().overlay(Theme.Color.appBorder) }
+            if model.offersGuestAnswers {
+                PlanExtraSwitchRow(
+                    icon: .users,
+                    title: "Kids welcome",
+                    subtitle: "Guests say how many adults and kids",
+                    isOn: Binding(get: { model.privacy.kidsWelcome }, set: { model.privacy.kidsWelcome = $0 })
+                )
+                .accessibilityIdentifier("planKidsWelcome")
+            }
+        }
     }
 
     /// "6 things · guests pick what they'll bring", or "Guests pick what they'll bring" while empty.

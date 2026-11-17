@@ -243,12 +243,13 @@ struct PlanPostedScreen: View {
             Annotation("", coordinate: point, anchor: .center) {
                 PlanPinView(look: PlanPinLook(
                     kind: plan.card.kind,
-                    tag: "Your plan · " + PlanFormat.pinTag(
+                    // Find a date: "Your plan · Picking a date" until the host picks one.
+                    tag: "Your plan · " + (plan.card.pickingText ?? PlanFormat.pinTag(
                         state: plan.card.state,
                         isFull: false,
                         startsAt: plan.card.startsAtDate,
                         dayPart: plan.card.dayPart
-                    ),
+                    )),
                     isSelected: true,
                     badge: .hosting
                 ))

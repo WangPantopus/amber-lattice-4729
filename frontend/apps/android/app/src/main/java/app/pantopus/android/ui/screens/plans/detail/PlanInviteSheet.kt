@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -97,13 +98,17 @@ internal fun PlanInviteSheet(
     /** Make a text invite as it opens (a private plan's "Text a link" on its preview, Plans step 1). */
     textFirst: Boolean = false,
     vm: PlanInviteViewModel = hiltViewModel(key = "planInvite-${plan.id}"),
+    pastVm: PlanPastPeopleViewModel = hiltViewModel(key = "planPast-${plan.id}"),
 ) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val past by pastVm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toast = remember { ToastController() }
     LaunchedEffect(plan.id) {
         // One link for everyone (Plans for the holidays, A4): a private plan of a person's that isn't a playdate.
         vm.start(plan.id, openLink = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate, atHome = plan.isAtHome)
+        // The same people again (the holidays' extras, section 6): the same plans as the one link.
+        pastVm.start(plan.id, eligible = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate)
         if (textFirst) vm.makeTextInvite()
     }
     // The open link: to the clipboard ("Link copied."), or to the share sheet with the host's words.
@@ -121,6 +126,13 @@ internal fun PlanInviteSheet(
                 .putExtra(Intent.EXTRA_TEXT, listOf(link.message, link.url).filter(String::isNotBlank).joinToString(" "))
         runCatching { context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         vm.openLinkShared()
+    }
+    // Invitations from a past plan went: the server's line ("Invited 4. 1 can only be reached by text."), the list again.
+    LaunchedEffect(past.done) {
+        val done = past.done ?: return@LaunchedEffect
+        toast.info(done)
+        vm.load()
+        pastVm.doneShown()
     }
     LaunchedEffect(ui.notice) {
         ui.notice?.let {
@@ -155,14 +167,21 @@ internal fun PlanInviteSheet(
                             .padding(bottom = Spacing.s4),
                     verticalArrangement = Arrangement.spacedBy(Spacing.s4),
                 ) {
-                    InviteHeader(plan, onDismiss)
-                    InviteBody(ui, vm, privatePlan = plan.isPrivate)
+                    if (past.page != PastPeoplePage.Closed) {
+                        PastPeoplePageContent(past, pastVm)
+                    } else {
+                        InviteHeader(plan, onDismiss)
+                        InviteBody(ui, vm, privatePlan = plan.isPrivate, pastRow = past.showsRow, onPast = pastVm::open)
+                    }
                 }
-                SendBar(ui, onSend = vm::send)
+                if (past.page != PastPeoplePage.Closed) PastPeopleSendBar(past, onSend = pastVm::send) else SendBar(ui, onSend = vm::send)
             }
             ToastHost(controller = toast, modifier = Modifier.align(Alignment.TopCenter))
         }
+        // Back on board 30 goes back a page, not out of the sheet.
+        BackHandler(enabled = past.page != PastPeoplePage.Closed, onBack = pastVm::back)
     }
+    if (past.asksAboutAddress) ShareAddressDialog(onAgree = pastVm::agreeToShareAddress, onDecline = pastVm::declineToShareAddress)
     if (ui.asksAboutAddress) ShareAddressDialog(onAgree = vm::agreeToShareAddress, onDecline = vm::declineToShareAddress)
 }
 
@@ -172,6 +191,9 @@ private fun ColumnScope.InviteBody(
     ui: PlanInviteUi,
     vm: PlanInviteViewModel,
     privatePlan: Boolean,
+    /** "People from a past plan" shows (the holidays' extras, section 6). */
+    pastRow: Boolean = false,
+    onPast: () -> Unit = {},
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.weight(1f).testTag("planInviteSearch")) {
@@ -206,6 +228,7 @@ private fun ColumnScope.InviteBody(
         PlanInviteLoad.Loaded -> {
             People(ui, onToggle = vm::toggle)
             TextInviteCard(making = ui.makingLink, onText = vm::makeTextInvite)
+            if (pastRow) PastPeopleRow(onOpen = onPast)
             PlanOpenLinkCard(ui, vm)
             Sent(ui, onCancel = vm::cancel)
             Text(
