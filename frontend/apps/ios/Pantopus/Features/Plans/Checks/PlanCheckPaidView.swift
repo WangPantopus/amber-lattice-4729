@@ -22,6 +22,9 @@ struct PlanCheckPaidView: View {
     let businessName: String
     let onAction: (Action) -> Void
 
+    /// "Paid $47.04", large (board 13), growing with the text size.
+    @ScaledMetric(relativeTo: .largeTitle) private var amountSize: CGFloat = 40
+
     var body: some View {
         ScrollView {
             VStack(spacing: Spacing.s4) {
@@ -63,7 +66,7 @@ struct PlanCheckPaidView: View {
                 .overlay(Icon(.check, size: 40, strokeWidth: 3, color: Theme.Color.appTextInverse))
                 .accessibilityHidden(true)
             Text(check.paidTotalText ?? check.totalText)
-                .font(.system(size: 40, weight: .bold))
+                .font(.system(size: amountSize, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appText)
                 .minimumScaleFactor(0.6)

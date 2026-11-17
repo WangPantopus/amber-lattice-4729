@@ -20,6 +20,8 @@ struct PlanCheckScreen: View {
     let onOpenChat: (InboxConversationDestination, String) -> Void
 
     @State private var typedTotal = ""
+    /// The check's amount, large (board 12), growing with the text size.
+    @ScaledMetric(relativeTo: .largeTitle) private var amountSize: CGFloat = 44
     @State private var asksOther = false
     @State private var typedTip = ""
 
@@ -112,7 +114,7 @@ struct PlanCheckScreen: View {
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)
             Text(check.amountText)
-                .font(.system(size: 44, weight: .bold))
+                .font(.system(size: amountSize, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.Color.appText)
                 .minimumScaleFactor(0.6)
@@ -266,7 +268,8 @@ struct PlanCheckScreen: View {
                 initials: words.isEmpty ? "··" : words.uppercased(),
                 avatarURL: business.avatarUrl,
                 identityKind: "business",
-                verified: business.verified
+                // As the business page's Message: a person thread's "verified" reads "Verified neighbor".
+                verified: false
             )
             onOpenChat(destination, line)
         }

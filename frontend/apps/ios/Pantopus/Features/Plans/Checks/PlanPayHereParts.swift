@@ -57,7 +57,12 @@ struct PlanPayHereRow: View {
                 .accessibilityElement(children: .contain)
             } else {
                 Button { openRoute?(.check(planId: card.id)) } label: {
-                    PlanButtonLabel(title: payHere.text, icon: .creditCard, kind: .primary)
+                    // The business's name wraps at the largest text instead of being cut off.
+                    HStack(spacing: Spacing.s2) {
+                        Icon(.creditCard, size: 18, color: PlanButtonStyle.Kind.primary.foreground)
+                        Text(payHere.text).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, Spacing.s2)
                 }
                 .planButton(.primary, size: .small)
                 .accessibilityIdentifier("planPayAtBusiness")
