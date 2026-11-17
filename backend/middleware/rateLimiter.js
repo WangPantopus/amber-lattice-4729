@@ -382,6 +382,12 @@ const aiDraftLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
   message: { error: 'AI_RATE_LIMITED', message: 'Too many AI requests. Please try again later.' },
+  // A route that has a plain answer of its own (req.aiDraftFallback, the task draft's parser) carries on past the
+  // limit with req.aiDraftRefused set; every other route answers 429 as before.
+  handler: (req, res, next, options) => {
+    if (req.aiDraftFallback) { req.aiDraftRefused = true; return next(); }
+    return res.status(options.statusCode).send(options.message);
+  },
 });
 
 /**

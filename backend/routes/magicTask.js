@@ -24,6 +24,9 @@ const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
 const { generateMagicDraft, generateBasicDraft, VALID_CATEGORIES, canonicalGigCategory } = require('../services/magicTaskService');
+const { aiDraftLimiter } = require('../middleware/rateLimiter');
+const { checkDraftBudget } = require('../services/ai/assistantBudget');
+const { resolveModel } = require('../config/anthropic');
 const { userTimeZone } = require('../services/ai/chatContext');
 const { inferEngagementMode } = require('../services/offerScoringService');
 const {
@@ -344,14 +347,31 @@ router.get('/templates/library', (_req, res) => {
  * Generate a structured task draft from free-text input.
  * Returns the draft, confidence score, and optional clarifying question.
  */
-router.post('/magic-draft', verifyToken, validate(magicDraftSchema), async (req, res) => {
+// The AI draft limits apply (the hourly limiter, the daily ceilings and the off switch in assistantBudget.js). Past
+// any of them the plain parser answers, as POST /basic-draft does, so the composer always gets a draft.
+const withPlainFallback = (req, _res, next) => { req.aiDraftFallback = true; next(); };
+
+router.post('/magic-draft', verifyToken, withPlainFallback, aiDraftLimiter, validate(magicDraftSchema), async (req, res) => {
   const { text, context, attachmentUrls } = req.body;
   const userId = req.user.id;
 
   logger.info('Magic draft requested', { userId, textLength: text.length });
 
+  if (req.aiDraftRefused || await checkDraftBudget(userId)) {
+    try {
+      return res.json(generateBasicDraft(text, context || {}));
+    } catch (fallbackErr) {
+      return res.status(500).json({ error: 'Failed to generate task draft' });
+    }
+  }
+
   try {
     const result = await generateMagicDraft(text, { ...(context || {}), timeZone: await userTimeZone(userId) });
+    // Counted with the other drafts (assistantBudget.DRAFT_ENDPOINTS).
+    supabaseAdmin.from('AIRequestLog').insert({
+      user_id: userId, endpoint: 'draft/magic-task', model: resolveModel(process.env.MAGIC_TASK_AI_MODEL),
+      status: result.source === 'ai' ? 'ok' : 'error', latency_ms: Math.round(Number(result.elapsed) || 0),
+    }).then(({ error }) => { if (error) logger.warn('Magic draft not logged', { error: error.message }); }, () => {});
 
     // If attachments were provided, mark them
     if (attachmentUrls && attachmentUrls.length > 0) {
