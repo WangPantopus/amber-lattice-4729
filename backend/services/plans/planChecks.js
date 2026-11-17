@@ -182,8 +182,9 @@ async function checkView(plan, check, request, { tipCents = 0, tipLabel = null }
     total_cents: priced.totalCents,
     total_text: money(priced.totalCents),
     tips_on: Boolean(plan.tips_on),
+    // "…, before the deal" only when a deal comes off this check (contract 11.2).
     ...(priced.tip_choices ? { tip_choices: priced.tip_choices, no_tip: priced.no_tip,
-      tip_base_text: `Percent of ${money(check.subtotal_cents)}, before the deal` } : {}),
+      tip_base_text: `Percent of ${money(check.subtotal_cents)}${priced.discountCents > 0 ? ', before the deal' : ''}` } : {}),
     note_text: priced.discountCents > 0
       ? `The deal came off because you're paying here. The tip goes to ${businessName}; Pantopus takes none of it.`
       : `The tip goes to ${businessName}; Pantopus takes none of it.`,
