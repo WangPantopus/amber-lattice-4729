@@ -319,6 +319,8 @@ internal fun ListSentSection(
     onClose: () -> Unit,
     onSeeInSent: () -> Unit,
     onAnother: () -> Unit,
+    /** "Send this card to someone else" while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val results = form.listResults.orEmpty()
@@ -404,6 +406,9 @@ internal fun ListSentSection(
             kind = CardButtonKind.Paper,
             modifier = Modifier.testTag("sendAnotherCard"),
         )
+        onSendAgain?.let {
+            CardButton(SEND_THIS_CARD_AGAIN, onClick = it, kind = CardButtonKind.Paper, modifier = Modifier.testTag("sendThisCardAgain"))
+        }
     }
 }
 

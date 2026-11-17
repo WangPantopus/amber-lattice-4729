@@ -211,6 +211,8 @@ data class SendCardForm(
     val listTakingBack: String? = null,
     /** Why a card on the list couldn't be taken back: its id and the sentence. */
     val listTakeBackError: Pair<String, String>? = null,
+    /** "Send this card to someone else" (plan Part 6): its picture is kept, so step 1 goes straight to the note. */
+    val samePicture: Boolean = false,
 ) {
     /** The person or address on the list whose card has this request ID. */
     fun listEntry(requestId: String): CardRecipient? {
@@ -229,7 +231,17 @@ data class SendCardForm(
 
     /** This form with its card's request ID, made now if it has none yet. */
     fun withRequestId(): SendCardForm = if (requestId != null) this else copy(requestId = UUID.randomUUID().toString())
+
+    /** After step 1: Pick a card, or straight to the note when the picture is kept (plan Part 6). */
+    val stepAfterTo: SendCardStep get() = if (samePicture && design != null) SendCardStep.Write else SendCardStep.Pick
+
+    /** A new card with [sent]'s picture kept, for "Send this card to someone else"; null [sent]: this card as it is. */
+    fun withPictureOf(sent: SendCardForm?): SendCardForm =
+        if (sent?.design == null) this else copy(design = sent.design, samePicture = true)
 }
+
+/** The send flow's route flag: "Send this card to someone else" from Sent keeps the named picture (plan Part 6). */
+const val SEND_CARD_SAME_PICTURE_KEY = "samePicture"
 
 /**
  * The card's own photo while the card is written (memories plan step 4): it uploads as soon as it's chosen. [local] is the
@@ -328,10 +340,10 @@ class SendCardViewModel
         /** The card's own photo and greeting while it's written (memories plan steps 4 and 7). */
         val drafts = SendCardMedia(viewModelScope, media, _form) { error, doing -> sendMessage(error, doing) }
 
-        /** "Send another card" under a card just sent (digital stamps on): a new card from the first step. */
-        fun startAnotherCard() {
+        /** "Send another card" (digital stamps on): a new card from the first step; [samePicture] keeps this one's (Part 6). */
+        fun startAnotherCard(samePicture: Boolean = false) {
             _query.value = ""
-            _form.value = SendCardForm(signature = signatureKeeper.saved)
+            _form.value = SendCardForm(signature = signatureKeeper.saved).withPictureOf(_form.value.takeIf { samePicture })
         }
 
         private val _stampsNeeded = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
@@ -443,7 +455,7 @@ class SendCardViewModel
         fun choose(to: CardRecipient) {
             _form.update {
                 val theirs = it.theirs.takeIf { _ -> it.to == to }
-                it.copy(to = to, step = SendCardStep.Pick, tookBack = false, theirs = theirs, arrival = arrivalFor(to, it.arrival, theirs))
+                it.copy(to = to, step = it.stepAfterTo, tookBack = false, theirs = theirs, arrival = arrivalFor(to, it.arrival, theirs))
             }
             readTheirs()
         }
@@ -925,6 +937,7 @@ class SendCardViewModel
                 email = email,
                 to = to.takeIf { reachable != SendCardStep.To },
                 design = design,
+                samePicture = design != null && saved.get<Boolean>(SEND_CARD_SAME_PICTURE_KEY) == true,
                 message = message,
                 signature = signature,
                 photo = photo,
