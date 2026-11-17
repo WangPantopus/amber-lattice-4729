@@ -61,9 +61,14 @@ public struct PlanCardBusinessPart: Decodable, Sendable, Hashable {
     public let guestsCanInvite: Bool?
     /// The venue's later plans in the list's window, folded under this one.
     public let moreTimes: PlanMoreTimesDTO?
+    /// Plans for the holidays B1: the plan's one deal, while its business has `plans_deals`.
+    public let deal: PlanDealDTO?
+    /// B2: the price a spot (nil is "Free") and, for a guest who paid, what they paid.
+    public let price: PlanPriceDTO?
+    public let paid: PlanPaidDTO?
 
     enum CodingKeys: String, CodingKey {
-        case business, label, place
+        case business, label, place, deal, price, paid
         case labelText = "label_text"
         case guestsCanInvite = "guests_can_invite"
         case moreTimes = "more_times"
@@ -77,6 +82,9 @@ public struct PlanCardBusinessPart: Decodable, Sendable, Hashable {
         place = try? container.decodeIfPresent(PlanPlaceDTO.self, forKey: .place)
         guestsCanInvite = try? container.decodeIfPresent(Bool.self, forKey: .guestsCanInvite)
         moreTimes = try? container.decodeIfPresent(PlanMoreTimesDTO.self, forKey: .moreTimes)
+        deal = try? container.decodeIfPresent(PlanDealDTO.self, forKey: .deal)
+        price = try? container.decodeIfPresent(PlanPriceDTO.self, forKey: .price)
+        paid = try? container.decodeIfPresent(PlanPaidDTO.self, forKey: .paid)
     }
 }
 

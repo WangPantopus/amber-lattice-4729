@@ -41,6 +41,7 @@ struct PlanDetailsForm: View {
                     if model.isBusiness { PlanBusinessWhereField(model: model) } else { whereSection }
                     if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow
+                    if model.offersPrice { PlanBusinessPriceField(model: model) } // B2: "Price a spot"
                     // Plans for the holidays (board 3): the extras, each behind its own switch, under "Room for".
                     if model.offersAddToPlan { PlanAddToPlanCard(model: model, onBringList: onBringList) }
                     // A private plan's people get in right away: "Guests can bring a friend" instead (board Details).

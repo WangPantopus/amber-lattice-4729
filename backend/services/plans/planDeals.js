@@ -332,6 +332,21 @@ function givenNow(deal) {
 }
 
 /**
+ * The line under "I'm in" for what the deal gives now: after a group deal fell short, the smaller deal in its place,
+ * and with nothing in its place no deal at all ("Free to join." on a free plan; on a priced one the price's own
+ * join_text, as without a deal).
+ */
+function joinText(deal, paid) {
+  const smaller = deal.state === 'short' ? givenNow(deal) : null;
+  // The smaller deal is off the same thing as the group deal unless it says otherwise.
+  const given = deal.state === 'short' ? (smaller ? { applies_to: deal.applies_to, ...smaller } : null) : deal;
+  if (!given) return paid ? null : 'Free to join.';
+  if (given.kind === 'free_item') return paid ? 'Show your deal there.' : 'Free to join. Show your deal there.';
+  if (isBillDeal(given)) return paid ? 'Pay your bill there in Pantopus and the deal comes off.' : 'Free to join. Pay your bill there in Pantopus and the deal comes off.';
+  return null;
+}
+
+/**
  * The card's `deal` (contract 9.2), for an app that sent `biz=1`, while the plan's host has the switch.
  * @param {{ role: string, request: object|null, going: number, paid?: boolean }} opts  paid: the card carries a price
  */
@@ -354,9 +369,7 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
     // The banner or the card once a group deal settled.
     state_text: deal.state === 'unlocked' ? `Unlocked: ${going} are in` : deal.state === 'short' ? shortText(deal, paid ? plan : null) : null,
     // The line under "I'm in" (D1 item 5); on a priced plan (B2) the price's join_text says what joining costs.
-    join_text: deal.kind === 'free_item' ? (paid ? 'Show your deal there.' : 'Free to join. Show your deal there.')
-      : isBillDeal(deal) ? (paid ? 'Pay your bill there in Pantopus and the deal comes off.' : 'Free to join. Pay your bill there in Pantopus and the deal comes off.')
-        : null,
+    join_text: joinText(deal, paid),
   };
   // Money off a priced spot (B4): what one spot costs with the deal (the group price, or the deal price), or null once
   // a group price fell short with nothing smaller.

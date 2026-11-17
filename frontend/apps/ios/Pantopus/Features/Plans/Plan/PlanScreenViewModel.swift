@@ -45,7 +45,7 @@ final class PlanScreenViewModel {
 
     let planId: String
     private(set) var phase: Phase = .loading
-    private(set) var plan: PlanDetailDTO?
+    var plan: PlanDetailDTO? // set by the paid join too (PlanPaySpotSheet)
     private(set) var isWorking = false
     /// A sentence for a failed action, shown under the footer.
     var actionError: String?
@@ -69,9 +69,10 @@ final class PlanScreenViewModel {
     private(set) var isLoadingDetails = false
     private var readGeneration = 0
     private var isOnScreen = true
+    var payHoldExpires: Date? // B2: when a held paid spot is let go
 
     let api: APIClient
-    private let store: ScreenStore
+    let store: ScreenStore
 
     init(planId: String, seed: PlanCardDTO? = nil, api: APIClient = .shared) {
         self.planId = planId
@@ -108,7 +109,7 @@ final class PlanScreenViewModel {
         case .pending: return .requested
         case .waitlisted: return .waitlisted
         case .declined, .removed, .expired: return .notThisTime(status ?? .declined)
-        case .withdrawn, .left, nil: return .browsing
+        case .withdrawn, .left, .paying, nil: return .browsing
         }
     }
 
@@ -344,6 +345,14 @@ final class PlanScreenViewModel {
         await perform {
             let updated: PlanDetailDTO = try await api.request(PlansEndpoints.update(id: planId, body))
             plan = updated
+        }
+    }
+
+    /// Plans for the holidays B1: staff mark a guest's free thing used. It can't be undone.
+    func markDealUsed(requestId: String) async -> Bool {
+        await perform {
+            _ = try await api.request(PlansEndpoints.dealUsed(planId: planId, requestId: requestId), as: PlanDealUsedResponse.self)
+            await load()
         }
     }
 

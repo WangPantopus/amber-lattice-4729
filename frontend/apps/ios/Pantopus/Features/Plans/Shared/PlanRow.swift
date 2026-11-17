@@ -16,8 +16,10 @@ enum PlanRowTrailing: Equatable {
     case chevron
     case text(String)
     case status(String, PantopusIcon?)
-    /// A business's plan: "Free" (Plans with businesses, board G2).
-    case price
+    /// A business's plan: "Free" (Plans with businesses, board G2), or its price ("$18", B2).
+    case price(String)
+    /// Plans for the holidays B1: a business's plan with a deal shows the deal's one tag ("Deal", "20% off").
+    case deal(String)
 }
 
 struct PlanRowModel: Identifiable, Equatable {
@@ -46,7 +48,7 @@ struct PlanRowModel: Identifiable, Equatable {
                 kind: card.kind,
                 title: card.title,
                 subtitle: [when, business.name].compactMap { $0 }.joined(separator: " · "),
-                trailing: trailing ?? .price,
+                trailing: trailing ?? card.deal?.tag.map { .deal($0) } ?? .price(card.price?.text ?? "Free"),
                 accessibilityLabel: spoken(card, now: now),
                 isBusiness: true
             )
@@ -256,7 +258,7 @@ struct PlanRowModel: Identifiable, Equatable {
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")
         if let line = PlanRepeatCopy.spoken(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
-        if card.isBusiness { parts.append("Free") }
+        if card.isBusiness { parts.append(card.price?.text ?? "Free") }
         return parts.joined(separator: ", ")
     }
 }
@@ -341,14 +343,16 @@ struct PlanRow: View {
                 .lineLimit(1)
         case let .status(text, icon):
             StatusChip(text, variant: .neutral, icon: icon).accessibilityLabel(text)
-        case .price:
-            PlanPriceChip()
+        case let .price(text):
+            PlanPriceChip(text: text)
+        case let .deal(text):
+            PlanDealTag(text: text).accessibilityIdentifier("planDealTag")
         }
     }
 
     private var trailingSpoken: String {
         switch model.trailing {
-        case let .status(text, _): ". \(text)"
+        case let .status(text, _), let .deal(text): ". \(text)"
         case .chevron, .text, .price: ""
         }
     }

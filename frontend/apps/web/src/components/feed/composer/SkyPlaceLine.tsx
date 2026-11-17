@@ -22,7 +22,7 @@ function PinIcon() {
 }
 
 /**
- * The Pulse composer's place line under the Sky (phase A, contract section 10.2): "Floating over Camas, WA" with a
+ * The Pulse composer's place line under the Sky (phase A, contract section 10.2): "Around Camas, WA" with a
  * small "Pin it at a place" button that opens the place picker, or "At Esther Short Park" when a venue is tagged and a
  * photo taken there pins the post exactly.
  */

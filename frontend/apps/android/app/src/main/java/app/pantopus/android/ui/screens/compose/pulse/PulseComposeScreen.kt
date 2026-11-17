@@ -602,7 +602,7 @@ internal data class PulseComposeContentState(
     val eligibilityWarning: String? = null,
     /** The draft may post to its tagged place because an attachment was taken there (the check's `photo` basis). */
     val isPhotoPlaced: Boolean = false,
-    /** The Sky (phase A): the town the post floats over ("Floating over Camas, WA"); null draws "Posting to …". */
+    /** The Sky (phase A): the town the post floats over ("Around Camas, WA"); null draws "Posting to …". */
     val skyArea: String? = null,
     /** The Sky: the venue the post pins at ("At Esther Short Park"); null while it floats. */
     val skyPinnedAt: String? = null,
@@ -805,7 +805,7 @@ private fun FlowContextHeader(
     eligibilityWarning: String? = null,
     /** A quote's "Change" beside "Posting to …": back to the first step, where the audience is picked. */
     onChangeTarget: (() -> Unit)? = null,
-    /** The Sky: "Floating over Camas, WA" and "Pin it at a place" in place of "Posting to …". */
+    /** The Sky: "Around Camas, WA" and "Pin it at a place" in place of "Posting to …". */
     sky: PulseSkyLine? = null,
 ) {
     purpose?.let { p ->
@@ -1903,7 +1903,7 @@ private const val PHOTO_PLACED_NOTE =
 private data class PlaceCheckNote(
     val warning: String? = null,
     val isPhotoPlaced: Boolean = false,
-    /** The Sky: the photo doesn't pin the post ("The post floats over the area"). */
+    /** The Sky: the photo doesn't pin the post ("The post shows only the area"). */
     val skyFloats: Boolean = false,
     val onShareWithConnections: (() -> Unit)? = null,
 )
