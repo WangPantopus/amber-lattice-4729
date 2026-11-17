@@ -24,13 +24,21 @@ struct PlanPaySpotSheet: View {
     @State private var isPaying = false
     @State private var failed: String?
     @State private var contentHeight: CGFloat = 0
+    /// One person pays for the group (08-extras section 7): the quote's "Who are they for?", and the link's spots.
+    @State private var groupOffer: PlanGroupPayOfferDTO?
+    @State private var forLink = false
+    @State private var linkSpots = 2
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 header
-                party
+                if !forLink { party }
+                if let groupOffer, partySize > 1 || forLink {
+                    PlanGroupPayChooser(offer: groupOffer, forLink: $forLink, spots: $linkSpots)
+                }
                 amounts
+                if forLink, let note = quote?.note { PlanGroupPayNote(text: note) }
                 if let failed {
                     Text(failed)
                         .planFont(.small)
@@ -54,7 +62,8 @@ struct PlanPaySpotSheet: View {
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(26)
         .presentationBackground(Theme.Color.appSurface)
-        .task(id: partySize) { await requote() }
+        .task(id: "\(partySize) \(forLink) \(linkSpots)") { await requote() }
+        .onChange(of: forLink) { _, link in if link { linkSpots = max(partySize, 2) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPaySheet")
     }
@@ -179,9 +188,10 @@ struct PlanPaySpotSheet: View {
     private func requote() async {
         do {
             let answer: PlanQuoteDTO = try await APIClient.shared.request(
-                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: partySize))
+                PlansEndpoints.quote(planId: card.id, PlanQuoteBody(partySize: partySize, linkSpots: forLink ? linkSpots : nil))
             )
             quote = answer
+            if let offer = answer.groupPay { groupOffer = offer }
             quoteProblem = nil
         } catch is CancellationError {
         } catch {
@@ -194,7 +204,7 @@ struct PlanPaySpotSheet: View {
         isPaying = true
         failed = nil
         Task {
-            let outcome = await viewModel.joinAndPay(partySize: partySize)
+            let outcome = await viewModel.joinAndPay(partySize: partySize, linkSpots: forLink ? linkSpots : nil)
             isPaying = false
             switch outcome {
             case .done: dismiss()
@@ -217,7 +227,12 @@ enum PlanPayOutcome: Equatable {
 
 extension PlanScreenViewModel {
     /// P1: hold the spot, pay through the shipped sheet, then confirm. Never sends an amount.
-    func joinAndPay(partySize: Int, presenter: PaymentSheetPresenting = StripePaymentSheetPresenter()) async -> PlanPayOutcome {
+    /// `linkSpots`: "I'll send a link", every spot in one payment (08-extras section 7).
+    func joinAndPay(
+        partySize: Int,
+        linkSpots: Int? = nil,
+        presenter: PaymentSheetPresenting = StripePaymentSheetPresenter()
+    ) async -> PlanPayOutcome {
         // A sheet left open past the 10-minute hold starts again (P1).
         if let held = payHoldExpires, held < Date() {
             payHoldExpires = nil
@@ -225,7 +240,8 @@ extension PlanScreenViewModel {
         }
         let reply: PlanAskResponse
         do {
-            reply = try await api.request(PlansEndpoints.ask(planId: planId, AskToJoinBody(partySize: partySize, note: nil)))
+            reply = try await api.request(linkSpots.map { PlansEndpoints.buySpots(planId: planId, spots: $0) }
+                ?? PlansEndpoints.ask(planId: planId, AskToJoinBody(partySize: partySize, note: nil)))
         } catch {
             return .problem(PlanErrors.sentence(for: error))
         }

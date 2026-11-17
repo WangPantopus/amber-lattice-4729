@@ -107,15 +107,22 @@ public struct PlanPersonPaidDTO: Codable, Sendable, Hashable {
 public struct PlanQuoteBody: Encodable, Sendable, Hashable {
     public let partySize: Int
     public let kidsCount: Int?
+    /// One person pays for the group: `"link"` with the spots bought; left out for today's party.
+    public let forWhom: String?
+    public let spots: Int?
 
     enum CodingKeys: String, CodingKey {
+        case spots
         case partySize = "party_size"
         case kidsCount = "kids_count"
+        case forWhom = "for"
     }
 
-    public init(partySize: Int, kidsCount: Int? = nil) {
+    public init(partySize: Int, kidsCount: Int? = nil, linkSpots: Int? = nil) {
         self.partySize = partySize
         self.kidsCount = kidsCount
+        forWhom = linkSpots == nil ? nil : "link"
+        spots = linkSpots
     }
 }
 
@@ -152,9 +159,13 @@ public struct PlanQuoteDTO: Decodable, Sendable, Hashable {
     public let totalText: String
     public let group: PlanQuoteGroupDTO?
     public let refundText: String?
+    /// One person pays for the group: "Who are they for?" on any quote, and a link quote's note.
+    public let groupPay: PlanGroupPayOfferDTO?
+    public let note: String?
 
     enum CodingKeys: String, CodingKey {
-        case spots, group
+        case spots, group, note
+        case groupPay = "group_pay"
         case spotsText = "spots_text"
         case eachText = "each_text"
         case totalCents = "total_cents"
@@ -171,6 +182,8 @@ public struct PlanQuoteDTO: Decodable, Sendable, Hashable {
         totalText = try container.decode(String.self, forKey: .totalText)
         group = try? container.decodeIfPresent(PlanQuoteGroupDTO.self, forKey: .group)
         refundText = try? container.decodeIfPresent(String.self, forKey: .refundText)
+        groupPay = try? container.decodeIfPresent(PlanGroupPayOfferDTO.self, forKey: .groupPay)
+        note = try? container.decodeIfPresent(String.self, forKey: .note)
     }
 }
 
