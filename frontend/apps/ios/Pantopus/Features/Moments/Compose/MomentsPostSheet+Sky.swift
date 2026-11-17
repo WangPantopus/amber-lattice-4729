@@ -2,10 +2,11 @@
 //  MomentsPostSheet+Sky.swift
 //  Pantopus
 //
-//  The Post sheet's Sky rows (phase A, contract section 10.1), drawn only
-//  while the place preview answers `sky: true`: "Pin it at a place" in place
-//  of "Show the area instead", the blue note at home, "Show elevation" greyed
-//  out at home, and "Share later" with its times. The words are `SkyWords`.
+//  The Post sheet's Sky rows, drawn only while the place preview answers
+//  `sky: true`: "Pin it at a place" (off, the Moment is where it was taken) in
+//  place of "Show the area instead", the blue note at home, "Show elevation"
+//  greyed out at home, and "Share later" with its times. The words are
+//  `SkyWords`.
 //
 
 import SwiftUI

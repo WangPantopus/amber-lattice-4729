@@ -121,7 +121,8 @@ extension MomentsComposerModel {
             hours: hours,
             // No location goes only to connections ("Everyone nearby" needs a place).
             audience: noLocationOn ? .connections : audience,
-            // Under the Sky an unpinned Moment says so too: should the server's switch go off meanwhile, it still floats.
+            // Under the Sky a Moment at home says so too: should the server's switch go off meanwhile, it still shows
+            // only its area.
             showArea: floats && !noLocationOn,
             caption: kind == .text || caption.isEmpty ? nil : caption,
             text: kind == .text ? text.trimmingCharacters(in: .whitespacesAndNewlines) : nil,

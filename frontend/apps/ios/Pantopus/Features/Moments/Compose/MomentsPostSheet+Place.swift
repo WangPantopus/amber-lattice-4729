@@ -74,17 +74,12 @@ extension MomentsPostSheet {
 
     func placeLine(canChange: Bool) -> some View {
         HStack(spacing: Spacing.s2) {
-            // The Sky: a floating Moment's icon is the dashed circle with a dot in it.
-            if model.sky != nil, model.floats, !model.noLocationOn, !model.skyAtHome {
-                SkyFloatingIcon()
-            } else {
-                Icon(
-                    model.noLocationOn ? .mapPinOff : model.showsHomeNotice || model.skyAtHome ? .home : .mapPin,
-                    size: 18,
-                    strokeWidth: 2.2,
-                    color: Theme.Color.primaryTint
-                )
-            }
+            Icon(
+                model.noLocationOn ? .mapPinOff : model.showsHomeNotice || model.skyAtHome ? .home : .mapPin,
+                size: 18,
+                strokeWidth: 2.2,
+                color: Theme.Color.primaryTint
+            )
             Text(model.placeLine)
                 .font(.system(size: 15.5, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)
@@ -147,7 +142,7 @@ extension MomentsPostSheet {
                 Text("Show elevation")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Theme.Color.appText)
-                // The Sky: a floating Moment's height is "About 4,400 ft above sea level".
+                // The Sky: a Moment that shows only its area reads "About 4,400 ft above sea level".
                 Text(model.sky != nil && model.floats ? SkyWords.aboutHeight(feet: feet) : MomentHeight.line(feet: feet))
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.Color.appTextSecondary)

@@ -780,7 +780,8 @@ class MomentsComposeViewModel
                         kind = current.kind,
                         hours = current.hours,
                         audience = current.audience,
-                        // Under the Sky an unpinned Moment says so too: should the server's switch go off meanwhile, it still floats.
+                        // Under the Sky a Moment at home says so too: should the server's switch go off meanwhile, it still
+                        // shows only its area.
                         showArea = current.floats,
                         caption = current.caption.trim().takeIf { it.isNotEmpty() && current.media != null },
                         text = current.text.trim().takeIf { current.media == null },
