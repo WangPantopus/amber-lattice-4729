@@ -23,6 +23,7 @@ import ErrorState from '@/components/ui/ErrorState';
 import SendCardRow from '@/components/mailbox/cards/SendCardRow';
 import SentList from '@/components/mailbox/sent/SentList';
 import { startCardRun } from '@/components/mailbox/cards/cardRun';
+import MailMantel from '@/components/mailbox/cards/MailMantel';
 
 // ── Types ────────────────────────────────────────────────────
 type DrawerParam = MailboxDrawer;
@@ -272,6 +273,9 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
 
         {/* Item list */}
         <div className="md:flex-1 md:overflow-y-auto">
+          {/* The mantel (mail-cards-experience Part 7): this season's opened cards on a shelf, the first thing in your
+              own mail; it scrolls away with the list. */}
+          {drawer === 'personal' && launchFeatures.cardTable && !homeId ? <MailMantel items={allItems} onOpen={handleItemClick} /> : null}
           {/* Christmas cards (holiday_cards): the way in, at the top of your own mail */}
           {drawer === 'personal' ? <SendCardRow /> : null}
           {!homeLocked ? lockedHomes.map((home) => <HomeLockedBox key={home.home_id} home={home} compact />) : null}
