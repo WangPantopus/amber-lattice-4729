@@ -135,6 +135,18 @@ server session asked, told to the founder):
   goes on the waitlist and a guest becomes Maybe, and the note does not tell
   them apart. "The other {3} are asked …" and "The {5} who haven't answered
   …" stay; `pick_text` and the pick do not change.
+  Someone who ticked and will wait for the host's yes at the pick (settled
+  November 17 after the two-phone check at a home with "I say yes first" on:
+  a guest or an account who came by the open link while it is on, not yet
+  let in) is not counted as in. When anyone who ticked would wait: "Of the 3
+  who ticked Sunday: 1 is in as soon as you pick it, 1 waits for your yes, 1
+  doesn't fit in the room for now." with a part that is zero left out ("2
+  are in", "2 wait", "2 don't fit"); when nobody would, the sentences above.
+  The line under "Save my times" comes from the server as `dates.mine_text`
+  (on an invited person's card and the web page's `dates`): "You're in when
+  {Host} picks a time you ticked." and, for someone who will wait for the
+  host's yes, "When {Host} picks a time you ticked, {Host} lets you in." The
+  web and the apps draw it as it comes.
 - **A party that does not fit is passed over, not a wall.** At the pick, the
   people who ticked are taken in the order they answered; one whose party is
   larger than the room left goes to the waitlist (or Maybe, for a guest), and

@@ -280,6 +280,9 @@ export type PublicPlanGift = {
 export type PublicPlanDates = {
   state: 'picking';
   host_line: string;
+  /** The line under "Save my times": "You’re in when {Host} picks a time you ticked." or, for someone who will wait for
+   * the host's yes, "When {Host} picks a time you ticked, {Host} lets you in." (08-extras section 2). */
+  mine_text?: string;
   answered: number;
   invited: number;
   answered_text: string;

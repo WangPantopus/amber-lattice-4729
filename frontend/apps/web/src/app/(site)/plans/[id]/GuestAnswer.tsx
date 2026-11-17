@@ -803,7 +803,7 @@ function DatesForm(props: GuestAnswerProps & { dates: PublicPlanDates }) {
         <button type="button" className={PRIMARY} disabled={busy || !answer.can} onClick={save}>
           {busy ? <Spinner /> : null}Save my times
         </button>
-        <p className="text-center text-[13px] leading-[18px] text-app-text-secondary">{`You’re in when ${hostFirst} picks a time you ticked`}</p>
+        <p className="text-center text-[13px] leading-[18px] text-app-text-secondary">{dates.mine_text || `You’re in when ${hostFirst} picks a time you ticked`}</p>
         {line ? <p className="text-center text-sm leading-5 text-app-text-strong" role="status">{line}</p> : null}
       </div>
     </div>

@@ -827,6 +827,7 @@ function buildCard(plan, viewer, ctx) {
     const dates = require('./planDates').view(plan, {
       mineKey: role === 'host' ? null : require('./planExtras').personKey(viewer.id),
       host: role === 'host', names: parts.names, invited: parts.invited, room: parts.room,
+      hostFirst: firstName(host), mineWaits: Boolean(myInvite?.needs_host_ok),
     });
     if (dates) {
       card.dates = dates;
