@@ -63,13 +63,18 @@ struct PlansDestination: View {
                     onPosted: { _ in pop() }
                 )
                 .toolbar(.hidden, for: .navigationBar)
-            case let .chat(dest):
+            case let .check(planId):
+                PlanCheckScreen(planId: planId, onBack: { pop() }, onOpenChat: { path.append(.chatAbout($0, firstLine: $1)) })
+            case let .checks(planId):
+                PlanChecksScreen(planId: planId) { pop() }
+            case let .chat(dest), let .chatAbout(dest, _):
                 ChatConversationView(
                     viewModel: ChatConversationViewModel(
                         mode: dest.threadMode,
                         counterparty: dest.counterparty,
                         counterpartyAvatarURL: dest.avatarURL.flatMap(URL.init(string:)),
                         currentUserId: currentUserId ?? "",
+                        initialComposerText: firstLine,
                         initialTopic: dest.initialTopic
                     ),
                     mode: dest.kind,
@@ -83,6 +88,12 @@ struct PlansDestination: View {
         // A link that replaces the screen on top (another plan) must start a
         // fresh screen: the stack reuses its slot, and the old plan's state with it.
         .id(route)
+    }
+
+    /// C2's "Something's wrong with this payment": the conversation's first line names the payment.
+    private var firstLine: String {
+        if case let .chatAbout(_, line) = route { return line }
+        return ""
     }
 
     private var currentUserId: String? {

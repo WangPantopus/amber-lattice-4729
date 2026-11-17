@@ -116,6 +116,7 @@ struct PlanScreen: View {
         .navigationDestination(item: $chatRoute) { route in
             PlanChatScreen(route: route)
         }
+        .environment(\.planOpenRoute) { path.append($0) } // B5: the check and the guest list with money
         .overlay(alignment: .bottom) { toastView }
         .onChange(of: viewModel.notice) { _, notice in
             guard let notice else { return }

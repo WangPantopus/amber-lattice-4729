@@ -136,6 +136,8 @@ struct PlanYourDealCard: View {
     let card: PlanCardDTO
     let deal: PlanDealDTO
     let mine: PlanDealMineDTO
+    /// B5: a deal on the bill carries "Pay at {business}" (or, once paid, "Paid … Receipt").
+    var payHere: PlanPayHereDTO?
 
     var body: some View {
         PlanCardBox(padding: Spacing.s4) {
@@ -164,9 +166,10 @@ struct PlanYourDealCard: View {
                         .foregroundStyle(Theme.Color.appTextStrong)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let payHere { PlanPayHereRow(card: card, payHere: payHere).padding(.top, Spacing.s1) }
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: payHere == nil ? .combine : .contain)
         .accessibilityIdentifier("planYourDeal")
     }
 
@@ -284,6 +287,16 @@ struct PlanGoingDealCards: View {
     var body: some View {
         if let paid = card.paid { PlanPaidLine(paid: paid) }
         if let deal = card.deal, deal.isGroup, deal.state == .open || deal.state == .short { PlanDealCard(card: card, deal: deal) }
-        if let deal = card.deal, let mine = card.myDeal { PlanYourDealCard(card: card, deal: deal, mine: mine) }
+        if let deal = card.deal, let mine = card.myDeal {
+            PlanYourDealCard(card: card, deal: deal, mine: mine, payHere: payInDeal ? card.payHere : nil)
+        }
+        // B5: "Pay at {business}" in its own card when no money deal carries it.
+        if let payHere = card.payHere, !payInDeal { PlanPayHereCard(card: card, payHere: payHere) }
+    }
+
+    /// A money deal on a free plan is a deal on the bill: its "Your deal" card carries the pay button (D2).
+    private var payInDeal: Bool {
+        guard card.payHere != nil, card.myDeal != nil, let deal = card.deal else { return false }
+        return deal.kind != "free_item" && card.price == nil
     }
 }

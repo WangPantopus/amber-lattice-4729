@@ -261,7 +261,7 @@ struct PlanHostingSection: View {
             if let answers = card.answerCounts {
                 PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
             } else {
-                going
+                PlanHostGoingWithMoney(card: card) { going } // B5: the guest list's totals while guests pay here
             }
             PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
             // Side by side; one under another when the words don't fit beside each other (the largest text).

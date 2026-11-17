@@ -269,6 +269,8 @@ final class DeepLinkRouter {
         case planRequests(id: String)
         /// `/plans/:id/guests` — the host's "Who's coming" (Plans for the holidays; the two H1 notices open it).
         case planGuests(id: String)
+        /// `/plans/:id/check` — the guest's check at the place (Plans for the holidays B5; the check's notices open it).
+        case planCheck(id: String)
         /// `/plans/new` — the host composer (H1).
         case planNew
         case unknown(URL)
@@ -630,6 +632,7 @@ final class DeepLinkRouter {
             if id == "new" { return .planNew }
             if segments.dropFirst(2).first == "requests" { return .planRequests(id: id) }
             if segments.dropFirst(2).first == "guests" { return .planGuests(id: id) }
+            if segments.dropFirst(2).first == "check" { return .planCheck(id: id) }
             // `?open=`: the plan's one link for everyone (Plans for the holidays, contract 6.9), from the browser
             // page's "Open app" (`pantopus:///plans/<id>?open=`) or `https://…/plans/<id>?open=`: claimed for this
             // account. Signed out it waits through sign-in like any plan link.
@@ -850,6 +853,10 @@ final class DeepLinkRouter {
         let aboutGuests = opens == "whos_coming" || type == "plan_guest_answered" || type == "plan_guest_waiting"
         if aboutGuests, let link, link.hasPrefix("/plans/"), !link.contains("?"), link.split(separator: "/").count == 2 {
             return link + "/guests"
+        }
+        // B5: a check's notices (`opens: check`: the check sent, a refund of it) open the check over its plan.
+        if opens == "check", let link, link.hasPrefix("/plans/"), !link.contains("?"), link.split(separator: "/").count == 2 {
+            return link + "/check"
         }
         guard type == "new_follower" || type == "connection_accepted", let link else { return link }
         let trimmed = link.hasPrefix("/") ? String(link.dropFirst()) : link

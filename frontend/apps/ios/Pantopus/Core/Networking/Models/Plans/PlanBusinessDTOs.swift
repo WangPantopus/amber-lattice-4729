@@ -66,9 +66,15 @@ public struct PlanCardBusinessPart: Decodable, Sendable, Hashable {
     /// B2: the price a spot (nil is "Free") and, for a guest who paid, what they paid.
     public let price: PlanPriceDTO?
     public let paid: PlanPaidDTO?
+    /// B5: "Pay at {business}" for staff and guests who are in, while the business has `plans_pay_here`.
+    public let payHere: PlanPayHereDTO?
+    /// B6: a tip after a paid plan, for a guest who paid, from the plan's end for 7 days, once.
+    public let tipLater: PlanTipLaterDTO?
 
     enum CodingKeys: String, CodingKey {
         case business, label, place, deal, price, paid
+        case payHere = "pay_here"
+        case tipLater = "tip_later"
         case labelText = "label_text"
         case guestsCanInvite = "guests_can_invite"
         case moreTimes = "more_times"
@@ -85,6 +91,8 @@ public struct PlanCardBusinessPart: Decodable, Sendable, Hashable {
         deal = try? container.decodeIfPresent(PlanDealDTO.self, forKey: .deal)
         price = try? container.decodeIfPresent(PlanPriceDTO.self, forKey: .price)
         paid = try? container.decodeIfPresent(PlanPaidDTO.self, forKey: .paid)
+        payHere = try? container.decodeIfPresent(PlanPayHereDTO.self, forKey: .payHere)
+        tipLater = try? container.decodeIfPresent(PlanTipLaterDTO.self, forKey: .tipLater)
     }
 }
 

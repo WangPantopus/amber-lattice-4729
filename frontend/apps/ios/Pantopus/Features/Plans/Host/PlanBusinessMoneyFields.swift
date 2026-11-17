@@ -20,6 +20,9 @@ final class PlanMoneyDraft {
     /// "Price a spot", and the dollars typed (whole dollars or with cents).
     var priceOn = false
     var priceDollars = ""
+    /// B5: "Guests can pay their bill here", and "Take tips" (nil until the business touches it: the server's start).
+    var payHere = false
+    var tipsOn: Bool?
 
     init() {}
 }

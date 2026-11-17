@@ -152,6 +152,9 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var deal: PlanDealInput?
     /// B2: a business's price a spot, in cents (100 to 50000). Left out for a free plan.
     public var priceCents: Int?
+    /// B5: guests pay their bill here, and take tips (left out: the server's start for the kind).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
     /// The extras (08-extras): chip in. Left out unless the host switched it on (`plans_chip_in`).
     public var chipIn: PlanChipInBody?
     /// Find a date: 2 to 5 times guests tick (`plans_find_date`); `starts_at` is then the earliest.
@@ -160,6 +163,8 @@ public struct CreatePlanBody: Encodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
         case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
         case chipIn = "chip_in"
         case dateOptions = "date_options"
         case kidsWelcome = "kids_welcome"
@@ -229,12 +234,17 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var priceCents: PlanPriceChange?
     /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
     public var kidsWelcome: Bool?
+    /// B5: guests pay their bill here, and take tips; any time (contract 10.2).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
     /// The extras: chip in changed (who paid is kept), or `.remove` (sent as `null`, who paid is forgotten).
     public var chipIn: PlanChipInChange?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
         case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
         case chipIn = "chip_in"
         case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
