@@ -17,6 +17,8 @@ import StripeProvider from '@/components/payments/StripeProvider';
 type Paid = { text: string; leave_text?: string | null; leave_back_cents?: number; receipt?: { link: string } | null };
 type Payment = { payment_id: string; amount_cents: number; amount_text: string; client_secret: string };
 type Hold = { payment: Payment; holdUntil: string | null };
+/** The quote's group price (P1 item 4): open with how many are in, or unlocked. Every word is the server's. */
+type Group = { state: 'open' | 'unlocked'; in: number; size: number; price_cents: number; text: string };
 
 const BUTTON = 'flex h-12 w-full items-center justify-center rounded-xl bg-primary-600 px-4 text-[15px] font-semibold text-white transition hover:bg-primary-700 disabled:opacity-60';
 const SECONDARY = 'flex h-12 w-full items-center justify-center rounded-xl border border-app-border px-4 text-[15px] font-semibold text-app-text transition hover:bg-app-hover disabled:opacity-60';
@@ -44,6 +46,22 @@ function calendarHref({ title, startsAt, endsAt, place }: { title: string; start
     `DTSTART:${stamp(startsAt)}`, `DTEND:${stamp(endsAt || startsAt)}`, `SUMMARY:${escape(title)}`, `LOCATION:${escape(place)}`,
     'END:VEVENT', 'END:VCALENDAR'];
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join('\r\n'))}`;
+}
+
+/** P1 item 4 (B4): "Group price" and "{7} of {10} in" with the server's sentence while open; "Group price: $14" unlocked. */
+function GroupCard({ group }: { group: Group }) {
+  const open = group.state === 'open';
+  return (
+    <div aria-label="Group price" className="flex flex-col gap-1 rounded-2xl bg-app-success-bg px-[14px] py-3">
+      {open ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm font-semibold text-app-text">Group price</span>
+          <span className="text-xs text-app-text-secondary [font-variant-numeric:tabular-nums]">{`${group.in} of ${group.size} in`}</span>
+        </div>
+      ) : null}
+      <p className={open ? 'text-sm leading-5 text-app-text-strong' : 'text-sm font-semibold leading-5 text-app-text-strong'}>{group.text}</p>
+    </div>
+  );
 }
 
 function PayForm({ planId, amountText, onPaid, onAccepted, onRefunded }: {
@@ -127,6 +145,8 @@ export default function PayToJoin({
   const [state, setState] = useState<'idle' | 'holding' | 'waitlisted' | 'late' | 'refunded'>(waiting ? 'waitlisted' : 'idle');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The quote's group price for the one spot being paid (null: none, fell short, or not asked yet).
+  const [group, setGroup] = useState<Group | null>(null);
   const started = useRef(false);
   // Once the card is accepted the server decides (in, or the money back); the hold's end no longer matters here.
   const accepted = useRef(false);
@@ -152,6 +172,10 @@ export default function PayToJoin({
         accepted.current = false;
         setHold({ payment: result.payment as Payment, holdUntil: result.request?.hold_expires_at || null });
         setState('holding');
+        // The same quote the apps ask for (no side effect): its `group` is P1's group price card.
+        api.post(`/api/plans/${encodeURIComponent(planId)}/requests/quote?biz=1`, { party_size: 1 })
+          .then((quote) => setGroup((quote?.group as Group | null) ?? null))
+          .catch(() => setGroup(null));
       } else if (result?.request?.status === 'waitlisted') {
         setState('waitlisted');
       } else if (result?.plan?.paid) {
@@ -228,6 +252,7 @@ export default function PayToJoin({
           <span className="text-sm text-app-text-secondary">You pay today</span>
           <span className="text-2xl font-semibold text-app-text [font-variant-numeric:tabular-nums]">{hold.payment.amount_text}</span>
         </div>
+        {group ? <GroupCard group={group} /> : null}
         {refundText ? <p className="text-sm leading-5 text-app-text-secondary">{refundText}</p> : null}
         {until ? <p className="text-xs leading-4 text-app-text-secondary">Your spot is held until {until}.</p> : null}
         <StripeProvider clientSecret={hold.payment.client_secret}>
