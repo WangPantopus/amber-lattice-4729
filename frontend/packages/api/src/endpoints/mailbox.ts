@@ -700,8 +700,15 @@ export interface CardMediaRef {
   duration_ms?: number;
 }
 
-/** A card's photo on a piece, Look it over or Sent: null while sealed. `covered` until the reader taps (a non-connection). */
-export interface CardPhoto { file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean }
+/** A Live Photo's moving part: an MP4 or QuickTime clip of at most 10 seconds, read from the same routes as its photo. */
+export interface CardLive { file_id: string; mime_type: string | null; duration_ms: number | null }
+/**
+ * A card's photo on a piece, Look it over or Sent: null while sealed. `covered` until the reader taps (a non-connection).
+ * `live` when it's a Live Photo (contract section 13), covered whenever the photo is.
+ */
+export interface CardPhoto {
+  file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean; live?: CardLive | null;
+}
 export interface CardVoice { file_id: string; duration_ms: number | null }
 
 /**

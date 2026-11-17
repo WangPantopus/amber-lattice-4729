@@ -77,6 +77,7 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
                 datedOn={mood === 'nostalgia' ? (piece.postmark?.date || piece.created_at) : null}
                 className="w-full"
                 opens
+                live={photo.live ? { own: photo.live.file_id } : null}
               />
             </div>
           ) : null}
