@@ -177,11 +177,11 @@ In the order it should be done. Each item is its own small pull request into
 
 **Server and web**
 
-9. Two sentences to change, found by Android's smoke check and settled in
-   contract 9.2 and 10.2: "Unlocked: 1 are in" and "Paid $18.00" after $4.00
-   came back. The list a server session works from, with its brief, is
-   `~/pantopus-plans/holidays-notes/HOLSRV-gaps.md`. Otherwise a server
-   session is needed when a phone session finds a gap. Staging carries 4259 and 4261 since 4:08 PM Pacific on
+9. Nothing is open. Two sentences found by Android's smoke check ("Unlocked:
+   1 are in", and "Paid $18.00" after $4.00 came back) were settled in
+   contract 9.2 and 10.2 and changed in 4283. A server session (HOLSRV-8,
+   started November 16) waits for gaps the phones find; its list, with a
+   brief, is `~/pantopus-plans/holidays-notes/HOLSRV-gaps.md`. Staging carries 4259 and 4261 since 4:08 PM Pacific on
    November 16 (section 3).
 
 **Documents**
