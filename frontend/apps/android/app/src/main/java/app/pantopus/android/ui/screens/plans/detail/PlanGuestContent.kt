@@ -640,9 +640,11 @@ internal fun ColumnScope.PlanClosedBody(
     onOpenChat: (() -> Unit)?,
 ) {
     val cancelled = plan.planState == PlanState.CANCELLED
+    // The holidays' photos afterwards (board 29): "This was Saturday, Nov 21" / "12 people came", when it has them.
+    val photos = plan.photos?.takeIf { !cancelled }
     PlanBanner(
-        title = if (cancelled) "This plan was cancelled" else "This plan has ended",
-        subtitle = if (cancelled) cancelledBy(plan.hostFirst, plan.cancelNote) else null,
+        title = if (cancelled) "This plan was cancelled" else photos?.banner ?: "This plan has ended",
+        subtitle = if (cancelled) cancelledBy(plan.hostFirst, plan.cancelNote) else photos?.cameText,
         icon = if (cancelled) PantopusIcon.XCircle else PantopusIcon.CheckCircle,
         tone = PlanBannerTone.Neutral,
     )
@@ -651,6 +653,8 @@ internal fun ColumnScope.PlanClosedBody(
     plan.deal?.let { deal -> PlanDealCard(plan, deal) }
     // Business track B6 (C4): a tip after a paid plan, while the server offers it (7 days, once).
     plan.tipLater?.takeIf { !cancelled }?.let { tip -> PlanTipLaterHost(plan, tip) }
+    // The holidays' photos afterwards (extras section 5, board 29), for the people who were in.
+    PlanPhotosIfAny(plan)
     // The chat stays to read for people who were in (the server sends its room only to them), as on iOS.
     onOpenChat?.let { GhostButton(title = "Read the group chat", onClick = it) }
 }

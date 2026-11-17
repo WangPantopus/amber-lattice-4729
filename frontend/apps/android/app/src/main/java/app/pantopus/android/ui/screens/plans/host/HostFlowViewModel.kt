@@ -234,6 +234,8 @@ data class HostUi(
     val posting: Boolean = false,
     val error: String? = null,
     val postedId: String? = null,
+    /** "Plan the next one with the same people" (the holidays' board 29): the posted plan's page opens, not the map. */
+    val postedOpensPlan: Boolean = false,
     /** H7's "Near Camas": the city of the plan's place (or home), looked up when the preview opens (as on iOS). */
     val previewArea: String? = null,
     /** The businesses this person may post for (`GET /api/plans/host-as`); "Host as" shows only when there are any. */
@@ -444,10 +446,15 @@ class HostFlowViewModel
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
 
+        /** "Plan the next one with the same people": the past plan this one copies, whose people are invited next. */
+        private var samePeopleFrom: String? = null
+
         init {
             val kind = PlanKind.from(savedStateHandle.get<String>(PlansRoutes.KIND_KEY))
             val gameId = savedStateHandle.get<String>(PlansRoutes.GAME_KEY)?.takeIf(String::isNotBlank)
             val again = savedStateHandle.get<String>(PlansRoutes.AGAIN_KEY)?.takeIf(String::isNotBlank)
+            // The holidays' board 29: copying a plan to invite the same people opens their list once it's posted.
+            samePeopleFrom = events.takeSamePeopleNext()?.takeIf { it == again }
             viewModelScope.launch {
                 loadContext(gameId)
                 if (again != null) copyFrom(again)
@@ -1194,8 +1201,10 @@ class HostFlowViewModel
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
-                        _ui.update { it.copy(posting = false, postedId = result.data.id) }
+                        // The holidays' board 29: the new plan's page opens, with its invite sheet on the past plan's people.
+                        val same = samePeopleFrom?.takeIf { ui.isPrivate }
+                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data), samePeopleFrom = same)
+                        _ui.update { it.copy(posting = false, postedId = result.data.id, postedOpensPlan = same != null) }
                     }
                     is NetworkResult.Failure -> postFailed(result.error)
                 }

@@ -11,6 +11,7 @@ import app.pantopus.android.data.api.models.plans.PlanGiftResponse
 import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanPhotosResponse
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.PlanExtrasApi
@@ -75,4 +76,13 @@ class PlanExtrasRepository
         suspend fun leaveGift(id: String): NetworkResult<PlanGiftResponse> = safeApiCall { api.leaveGift(id) }
 
         suspend fun drawGift(id: String): NetworkResult<PlanGiftResponse> = safeApiCall { api.drawGift(id) }
+
+        // ---- 5. Photos afterwards (adding is PlanPhotoUploads) ----
+
+        suspend fun photos(id: String): NetworkResult<PlanPhotosResponse> = safeApiCall { api.photos(id) }
+
+        suspend fun removePhoto(
+            id: String,
+            photoId: String,
+        ): NetworkResult<PlanPhotosResponse> = safeApiCall { api.removePhoto(id, photoId) }
     }

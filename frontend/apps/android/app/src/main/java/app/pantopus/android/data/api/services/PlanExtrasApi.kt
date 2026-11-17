@@ -11,12 +11,16 @@ import app.pantopus.android.data.api.models.plans.PlanGiftResponse
 import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanPhotosResponse
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -104,4 +108,27 @@ interface PlanExtrasApi {
     suspend fun drawGift(
         @Path("id") id: String,
     ): PlanGiftResponse
+
+    // ---- 5. Photos afterwards (services/plans/planPhotos.js): signed links for minutes ----
+
+    /** `GET /api/plans/:id/photos`: the grid (403 `not_in`, 409 `not_over`). */
+    @GET("api/plans/{id}/photos")
+    suspend fun photos(
+        @Path("id") id: String,
+    ): PlanPhotosResponse
+
+    /** `POST /api/plans/:id/photos`: one picture a call, field `file`; answers the grid. */
+    @Multipart
+    @POST("api/plans/{id}/photos")
+    suspend fun addPhoto(
+        @Path("id") id: String,
+        @Part file: MultipartBody.Part,
+    ): PlanPhotosResponse
+
+    /** `DELETE /api/plans/:id/photos/:photoId`: whoever added it, or the host; answers the grid. */
+    @DELETE("api/plans/{id}/photos/{photoId}")
+    suspend fun removePhoto(
+        @Path("id") id: String,
+        @Path("photoId") photoId: String,
+    ): PlanPhotosResponse
 }

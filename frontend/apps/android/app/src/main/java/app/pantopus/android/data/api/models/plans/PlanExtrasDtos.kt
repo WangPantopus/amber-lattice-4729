@@ -249,3 +249,44 @@ data class PlanGiftWishBody(
 data class PlanGiftResponse(
     @Json(name = "gift") val gift: PlanGiftDto? = null,
 )
+
+// ---- 5. Photos afterwards (board 29, switch `plans_photos`): pictures only by links signed for minutes ----
+
+/**
+ * The card of a plan that is over (`extras=1`), for the host and the accounts that were in at the end. The pictures
+ * come from `GET /api/plans/:id/photos`; every line here is the server's.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanPhotosCardDto(
+    @Json(name = "count") val count: Int = 0,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "banner") val banner: String? = null,
+    @Json(name = "came_text") val cameText: String? = null,
+    @Json(name = "can_add") val canAdd: Boolean = false,
+    @Json(name = "note") val note: String? = null,
+)
+
+/** `GET`, `POST` and `DELETE` on a plan's photos: the grid, with links signed for [expiresIn] seconds. */
+@JsonClass(generateAdapter = true)
+data class PlanPhotosResponse(
+    @Json(name = "photos") val photos: List<PlanPhotoDto> = emptyList(),
+    @Json(name = "count") val count: Int = 0,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "can_add") val canAdd: Boolean = false,
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "expires_in") val expiresIn: Int = 0,
+)
+
+/** One picture: its signed links (never kept on disk or past their time), who added it, and whether it may go. */
+@JsonClass(generateAdapter = true)
+data class PlanPhotoDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "url") val url: String? = null,
+    @Json(name = "thumb_url") val thumbUrl: String? = null,
+    @Json(name = "w") val w: Int? = null,
+    @Json(name = "h") val h: Int? = null,
+    @Json(name = "by_name") val byName: String? = null,
+    @Json(name = "mine") val mine: Boolean = false,
+    @Json(name = "can_remove") val canRemove: Boolean = false,
+    @Json(name = "at") val at: String? = null,
+)
