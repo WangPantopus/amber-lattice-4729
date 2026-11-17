@@ -34,6 +34,7 @@ import {
   ChevronRight,
   Camera,
   Mail,
+  Smartphone,
 } from 'lucide-react';
 import BottomSheet from '@/components/ui/BottomSheet';
 import { IconTile } from '@/components/archetypes/place';
@@ -322,8 +323,9 @@ export default function VerifyPromptSheet({ open, onClose, homeId, address, veri
 // ── FASTVERIFY: the sheet's rows from the server's verify-options ─────────────
 
 /** The choices the web draws. "I'm at home now" is app-only (APP_ONLY), so it never is. */
-type WebRowId = 'document' | 'mail' | 'landlord';
+type WebRowId = 'phone' | 'document' | 'mail' | 'landlord';
 const WEB_ROWS: { id: WebRowId; icon: LucideIcon; group: 'fastest' | 'mail'; href: (homeId: string) => string }[] = [
+  { id: 'phone', icon: Smartphone, group: 'fastest', href: (h) => `/app/homes/${h}/verify-phone?return=place` },
   { id: 'document', icon: Camera, group: 'fastest', href: (h) => `/app/homes/${h}/verify-residency?return=place` },
   { id: 'mail', icon: Mail, group: 'mail', href: (h) => `/app/homes/${h}/verify-postcard?return=place` },
   { id: 'landlord', icon: ShieldCheck, group: 'mail', href: (h) => `/app/homes/${h}/verify-landlord?return=place` },
