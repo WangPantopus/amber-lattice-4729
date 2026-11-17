@@ -501,11 +501,16 @@ data class HolidayCardPreviewPiece(
 )
 
 /**
- * The email a card to an email address sends: its subject, the heading, two sentences, the button, the footnote and the
- * footer's lines.
+ * The email a card to an email address sends: the picture at its top, its subject, the heading, two sentences, the
+ * button, the footnote and the footer's lines.
  */
 @JsonClass(generateAdapter = true)
 data class HolidayCardPreviewEmail(
+    /**
+     * The picture at the top of the email (launch key `card_table` on the server): the card's front lying on its open
+     * envelope, or the sealed envelope for a card sealed until Christmas. Null from a server without it.
+     */
+    val picture: String? = null,
     val subject: String = "",
     val heading: String = "",
     val lines: List<String> = emptyList(),
