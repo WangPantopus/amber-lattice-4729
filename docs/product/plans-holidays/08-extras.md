@@ -444,6 +444,10 @@ yes to both, told to the founder):
   (`invited`, `already_invited`, `already_in`, `unavailable`, `text_only`),
   `invited`, `text_only` and `text` ("Invited 4. 1 can only be reached by
   text."), which the screen shows as it is.
+- **When nobody new is invited** (settled November 16 after Android's check
+  read "Invited 0."): `text` reads "Nobody new was invited.", with the
+  text-only sentence after it when there is one. The apps show `text` as it
+  comes.
 - **The address stays hidden afterwards too.** One added column,
   `PlanInvite.known_name` (email invitations only, 1 to 100 characters; a
   column, not a table): an email invitation made this way keeps the name the
