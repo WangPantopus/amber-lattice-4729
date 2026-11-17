@@ -926,6 +926,49 @@ const verifyEmailCodeLimiter = rateLimit({
   message: VERIFY_EMAIL_LIMIT,
 });
 
+const mailClaimCode = require('../services/mailClaimCode');
+
+// /mail-code checks the one-time code from a letter's or card's page. Only refused tries count, like /verify-email:
+// 10 in 15 minutes per network (IP, IPv6 by its /64), a link that doesn't work included; then, only for a working link,
+// 6 an hour per letter and 6 an hour per address the code went to. So nobody without the link can use up an address's
+// tries. Supabase Auth's verify limit, shared by everyone on hosted, is spent only on codes that get this far.
+const MAIL_CODE_TRIES_LIMIT = { error: 'Too many wrong codes. Try again later with a new code, or sign in another way.', code: 'CODE_TRIES' };
+const mailCodeAccepted = (_req, res) => res.locals.mailCodeRefused !== true;
+// Per letter and address, a refusal counts only when a code was checked (not a code that had already stopped).
+const mailCodeCheckAccepted = (_req, res) => res.locals.mailCodeRefused !== true || res.locals.mailCodeUnchecked === true;
+const mailCodeTriesLimiter = (windowMs, max, keyGenerator, requestWasSuccessful = mailCodeAccepted) => rateLimit({
+  windowMs, max, keyGenerator, skipSuccessfulRequests: true, requestWasSuccessful, message: MAIL_CODE_TRIES_LIMIT,
+});
+const mailCodeNetworkLimiter = mailCodeTriesLimiter(15 * 60 * 1000, 10, clientIpKey);
+const mailCodeLetterLimiters = [
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (req) => `mail:${String(req.body?.mail_id || '').toLowerCase()}`, mailCodeCheckAccepted),
+  mailCodeTriesLimiter(60 * 60 * 1000, 6, (_req, res) => `to:${res.locals.mailCodeAddress}`, mailCodeCheckAccepted),
+];
+// The letter behind the link and the address its code went to (res.locals.mailCodeAddress), before the per-letter and
+// per-address limits. A link that doesn't work is refused here, counted only per network.
+async function mailCodeLetter(req, res, next) {
+  try {
+    const found = await mailClaimCode.letterAndAddress({ mailId: req.body.mail_id, token: req.body.token, email: req.body.email });
+    if (found.refusal) {
+      res.locals.mailCodeRefused = true;
+      return res.status(found.refusal.status).json({ error: found.refusal.error, code: found.refusal.code });
+    }
+    res.locals.mailCodeAddress = found.address;
+    return next();
+  } catch (err) {
+    logger.error('Mail code letter read failed', { error: err.message });
+    return res.status(500).json({ error: 'Couldn’t sign you in just now. Try again in a moment.' });
+  }
+}
+
+// The code just accepted is what confirmed the address: Supabase Auth set email_confirmed_at in this same sign-in
+// (both times on its own clock, milliseconds apart). An account confirmed earlier has them far apart.
+function codeJustConfirmed(user) {
+  const confirmedAt = Date.parse(user?.email_confirmed_at || '');
+  const signedInAt = Date.parse(user?.last_sign_in_at || '');
+  return Number.isFinite(confirmedAt) && Number.isFinite(signedInAt) && Math.abs(signedInAt - confirmedAt) < 10 * 1000;
+}
+
 const OAUTH_USER_SELECT = 'id, username, name, first_name, last_name, email, verified, role';
 const PASSWORD_MIN_LENGTH = 12;
 const PASSWORD_MAX_LENGTH = 128;
@@ -1152,6 +1195,16 @@ const resetPasswordSchema = Joi.object({
 const resendVerificationSchema = Joi.object({
   redirectTo: Joi.string().max(2048).optional(),
   email: Joi.string().email().required(),
+});
+
+const mailCodeSchema = Joi.object({
+  mail_id: Joi.string().guid().required(),
+  token: Joi.string().max(256).required(),
+  code: Joi.string().trim().pattern(/^\d{6,10}$/).required()
+    .messages({ 'string.pattern.base': 'Enter the code from the email.', 'any.required': 'Enter the code from the email.' }),
+  // A card by link went to no address: the one the person typed when they asked for the code.
+  email: Joi.string().trim().email().max(320).allow('', null),
+  device: deviceDescriptorSchema.optional(),
 });
 
 const verifyEmailSchema = Joi.object({
@@ -1870,6 +1923,13 @@ router.post(
       }
 
       const userId = authData.user.id;
+      // An address sent a letter's one-time code it never used (services/mailClaimCode) already has an Auth user that
+      // isn't confirmed, made with that code; generateLink hands it back without this password. GoTrue's own times say
+      // so (it was made before this sign-up's link): set the password. The User insert below still proves no account
+      // owns the address.
+      const madeAt = Date.parse(authData.user.created_at || '');
+      const linkAt = Date.parse(authData.user.confirmation_sent_at || '');
+      const madeEarlier = Number.isFinite(madeAt) && Number.isFinite(linkAt) && linkAt - madeAt > 5000;
       const normalizedFirst = firstName ? String(firstName).trim() : '';
       const normalizedMiddle = middleName ? String(middleName).trim() : '';
       const normalizedLast = lastName ? String(lastName).trim() : '';
@@ -1940,16 +2000,21 @@ router.post(
           return res.status(201).json(registrationReply(req.body, repeat));
         }
 
-        // Rollback: delete auth user if database insert fails
-        logger.info('Rolling back - deleting auth user', { userId });
-        try {
-          await supabaseAdmin.auth.admin.deleteUser(userId);
-          logger.info('Auth user deleted successfully in rollback', { userId });
-        } catch (rollbackErr) {
-          logger.error('Failed to rollback auth user', {
-            error: rollbackErr.message,
-            userId,
-          });
+        // Rollback: delete auth user if database insert fails. An Auth user a letter's one-time code made before this
+        // sign-up (madeEarlier) stays: deleting it would stop that pending code working.
+        if (madeEarlier) {
+          logger.info('Rollback kept an Auth user a pending code made', { userId });
+        } else {
+          logger.info('Rolling back - deleting auth user', { userId });
+          try {
+            await supabaseAdmin.auth.admin.deleteUser(userId);
+            logger.info('Auth user deleted successfully in rollback', { userId });
+          } catch (rollbackErr) {
+            logger.error('Failed to rollback auth user', {
+              error: rollbackErr.message,
+              userId,
+            });
+          }
         }
 
         if (isUniqueConstraintError(dbError)) {
@@ -1968,6 +2033,22 @@ router.post(
                 }
               : undefined,
         });
+      }
+
+      if (madeEarlier && !authData.user.email_confirmed_at) {
+        // Setting the password clears the confirmation link generateLink just made, so mint the link again after it.
+        const { error: passwordError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+        const relink = passwordError ? null : await signUpWithRetry({ email, password, options: {
+          emailRedirectTo: `${getAuthRedirectBaseUrl(req)}/verify-email`,
+          data: { username: finalUsername, firstName, middleName, lastName },
+        } }).catch(() => null);
+        if (passwordError || !relink?.data?.hashedToken) {
+          logger.error('Registration: setting the password on an earlier Auth user failed', { userId, error: passwordError?.message || relink?.error?.message || 'no link' });
+          await supabaseAdmin.from('User').delete().eq('id', userId);
+          return res.status(503).json({ code: 'REGISTRATION_UNAVAILABLE', error: 'Sign-up is temporarily unavailable. Please try again.' });
+        }
+        authData.hashedToken = relink.data.hashedToken;
+        logger.info('Registration: password set on an Auth user an unused code made', { userId });
       }
 
       logger.info('User registered successfully', {
@@ -4428,6 +4509,134 @@ router.post('/verify-email', verifyEmailNetworkLimiter, validate(verifyEmailSche
   } catch (err) {
     logger.error('Email verification error', { error: err.message });
     return res.status(500).json({ error: 'Failed to verify email' });
+  }
+});
+
+/**
+ * POST /api/users/mail-code  { mail_id, token, code, email?, device? }
+ * Sign in with the one-time code a letter's or card's page asked for (POST /api/mailbox/claim/:mailId/code): the code
+ * proves the address the letter was sent to (by link, the address typed), so the person is signed in with that
+ * address's account, made now when it has none (no password, no name: the app asks for a name, and "Forgot password"
+ * or another code signs them in again). The letter's link must still be good; the claim itself is POST
+ * /api/mailbox/claim/:mailId, which checks the address as for any account. A wrong, used or replaced code answers 400
+ * CODE_WRONG, one older than 10 minutes 400 CODE_EXPIRED, and after 5 tries at one code (the 5th wrong) 400
+ * CODE_STOPPED until a new code is sent. Answers like /login, with `newAccount`.
+ */
+router.post('/mail-code', mailCodeNetworkLimiter, validate(mailCodeSchema), mailCodeLetter, mailCodeLetterLimiters, authRouteDpop(), async (req, res) => {
+  const { mail_id: mailId, code } = req.body;
+  const address = res.locals.mailCodeAddress;
+  const wrongCode = () => {
+    res.locals.mailCodeRefused = true;
+    return res.status(400).json({ error: 'That code didn’t work. Check the newest email from Pantopus, or send a new code.', code: 'CODE_WRONG' });
+  };
+  // A code that has already stopped is refused without asking Supabase Auth: it counts per network, but not toward the
+  // letter's and address's hourly tries, which the person's next code needs.
+  const expiredCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'That code has expired. Send a new one.', code: 'CODE_EXPIRED' });
+  };
+  const stoppedCode = ({ checked }) => {
+    res.locals.mailCodeRefused = true;
+    if (!checked) res.locals.mailCodeUnchecked = true;
+    return res.status(400).json({ error: 'This code has stopped working after too many wrong tries. Send a new code.', code: 'CODE_STOPPED' });
+  };
+  try {
+    // A code takes 5 tries, counted for the address across every link and network (services/mailClaimCode). An
+    // address never sent a code has nothing to try: the same answer as a wrong code. One sent too long ago has expired.
+    const turn = await mailClaimCode.takeTry({ address, mailId, req });
+    if (turn.noCode) return wrongCode();
+    if (turn.expired) return expiredCode({ checked: false });
+    if (turn.stopped) return stoppedCode({ checked: false });
+
+    const authClient = createAuthClient();
+    const { data, error } = await authClient.auth.verifyOtp({ email: address, token: code, type: 'email' });
+    if (authSessionService.isAuthServiceBusy(error)) {
+      logger.error('Mail code check failed - Supabase Auth refused or unreachable', { status: error.status, code: error.code });
+      await mailClaimCode.giveBackTry(turn.tryId);
+      return res.status(503).json({ error: 'Sign-in is busy right now. Your code still works: try again in a minute.', code: 'AUTH_BUSY' });
+    }
+    if (error || !data?.session?.access_token || !data?.user?.id) {
+      // The last try was wrong: the code stops working everywhere, Supabase Auth's own check included.
+      if (turn.tryNumber >= mailClaimCode.TRIES_PER_CODE) {
+        await mailClaimCode.stopCode(address, turn.userId);
+        return stoppedCode({ checked: true });
+      }
+      return wrongCode();
+    }
+    const { session, user } = data;
+    const userId = user.id;
+
+    // An address nobody had proven (an unused code made its account, or a sign-up form nobody confirmed) may carry a
+    // password set by someone who never proved it. This code just proved it, so that password stops working: on every
+    // accepted code, before the expiry check, since verifyOtp has already confirmed the address either way.
+    if (codeJustConfirmed(user)) {
+      let scrubError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        ({ error: scrubError } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: crypto.randomBytes(32).toString('base64url') }));
+        if (!scrubError) break;
+        await wait(300 * (attempt + 1));
+      }
+      if (scrubError) {
+        logger.error('Mail code: clearing an unproven password failed', { userId, error: scrubError.message });
+        await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_scrub_failed', userId });
+        return res.status(503).json({ error: 'Couldn’t sign you in just now. Try again in a moment.', code: 'AUTH_BUSY' });
+      }
+    }
+
+    if (!mailClaimCode.codeIsFresh(user)) {
+      await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_expired', userId });
+      return expiredCode({ checked: true });
+    }
+
+    const existing = await getOAuthProfileById(userId);
+    const userData = await ensureOAuthUserProfile({ userId, email: user.email || address, meta: {}, source: 'mail_code' });
+    if (!userData) {
+      await revokeSessionByAccessToken(session.access_token, { source: 'mail_code_no_profile', userId });
+      return res.status(503).json({ error: 'Couldn’t set up your account just now. Try again in a moment.', code: 'AUTH_BUSY' });
+    }
+    const newAccount = !existing;
+    if (newAccount) {
+      recordFunnelEvent('t1_account_created', { userId, anonId: null, meta: { provided_username: false, account_type: 'individual', source: 'mail_code' } });
+    }
+    logger.info('Mail code sign-in', { userId, mailId, newAccount });
+
+    const bind = await safeHook('mail_code_bind', () => authDeviceService.bindAtIssue({
+      userId,
+      session,
+      device: deviceFromBody(req),
+      dpop: req.dpop || null,
+      req,
+      authMethod: 'email_code',
+      context: 'interactive',
+    }));
+
+    applyAuthTransport(req, res, session.access_token, session.refresh_token, userId);
+    const tokenFields = isCookieTransport(req) ? {} : {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      expiresIn: session.expires_in,
+      expiresAt: session.expires_at,
+    };
+    return res.json({
+      message: 'Login successful',
+      ...tokenFields,
+      ...sessionFields(req, bind),
+      newAccount,
+      user: {
+        id: userData.id,
+        email: userData.email,
+        username: userData.username,
+        name: userData.name,
+        firstName: userData.first_name,
+        lastName: userData.last_name,
+        role: userData.role,
+        verified: true,
+      },
+    });
+  } catch (err) {
+    logger.error('Mail code sign-in error', { error: err.message, mailId });
+    return res.status(500).json({ error: 'Couldn’t sign you in just now. Try again in a moment.' });
   }
 });
 
