@@ -445,15 +445,18 @@ ${words.footer[1]}
 /**
  * The words of a Plans invitation email (services/plans/planInvites.js). The plan's card only: what, when and the
  * area, never an address. A playdate keeps its title in the app and its time a part of the day, as everywhere else.
- * @param {Object} words - { hostFirst, noun, icon, title, when, where, playdate }
+ * While the host picks a date (`picking`) it names none: "Sam invited you to a dinner. Tick the times that work for
+ * you." as the subject and the lead, and `when` reads "Picking a date".
+ * @param {Object} words - { hostFirst, noun, icon, title, when, where, playdate, picking, ask }
  * @param {string} toEmail - the invited address, so the person signs up with it
  */
 function planInviteEmailContent(words, toEmail) {
   const invitedTo = words.noun === 'coffee' ? 'invited you for coffee' : `invited you to a ${words.noun}`;
   return {
-    subject: `${words.hostFirst} ${invitedTo}${words.playdate || !words.when ? '' : ` on ${words.when}`}`,
+    subject: words.picking ? `${words.hostFirst} ${invitedTo}. ${words.ask}`
+      : `${words.hostFirst} ${invitedTo}${words.playdate || !words.when ? '' : ` on ${words.when}`}`,
     heading: 'You’re invited',
-    lead: ` ${invitedTo}.`,
+    lead: words.picking ? ` ${invitedTo}. ${words.ask}` : ` ${invitedTo}.`,
     facts: [
       words.title || (words.playdate ? 'A playdate' : null),
       words.when ? words.when[0].toUpperCase() + words.when.slice(1) : null,

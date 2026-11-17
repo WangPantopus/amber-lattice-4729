@@ -95,8 +95,8 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | The same people again | 4234 | 4284 | 4297 |
 | Chip in | 4235 | 4294 | 4314 (the card on the Change screen: not built) |
 | Find a date | 4237, 4245 | 4300, 4312 (changing the offered times on the Change screen) | **not started** |
-| Gift exchange | 4239 | **not started** | **not started** |
-| Photos afterwards | 4242, 4249 | **not started** | **not started** |
+| Gift exchange | 4239 | 4317 | **not started** |
+| Photos afterwards | 4242, 4249 | 4321 | **not started** |
 | One person pays for the group | 4255, 4259, 4261 | **not started** | **not started** |
 
 Also done:

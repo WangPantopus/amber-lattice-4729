@@ -175,6 +175,8 @@ export type PublicPlan = {
   about?: string;
   starts_at?: string | null;
   ends_at?: string | null;
+  /** "Picking a date" while the host picks one (08-extras section 2): the page shows it in place of the time. */
+  time_text?: string | null;
   starts_on?: string | null;
   day_part?: string | null;
   timezone?: string;

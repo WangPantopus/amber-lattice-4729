@@ -531,9 +531,15 @@ function dateText(plan) {
   return `${weekday}, ${date} at ${time}`;
 }
 
-function emailWords(plan, hostFirst) {
+/**
+ * The invitation email's words. While the host picks a date (08-extras section 2) they name no date: "Picking a date"
+ * where the date shows, and the sentence ends "Tick the times that work for you." (`picking`).
+ */
+async function emailWords(plan, hostFirst) {
   const hideTime = plan.kind === 'playdate';
-  const when = dateText(plan);
+  const planDates = require('./planDates');
+  const picking = await planDates.invitesWhilePicking(plan);
+  const when = picking ? planDates.PICKING_TEXT : dateText(plan);
   const area = planNotify.areaPhrase(plan);
   // "Near Prune Hill, Camas", but "In Camas" when the area is the city.
   const city = plan.city && !String(area || '').toLowerCase().endsWith(plan.city.toLowerCase()) ? plan.city : null;
@@ -545,6 +551,7 @@ function emailWords(plan, hostFirst) {
     // A playdate's title stays in the app, as on its share page.
     title: hideTime ? null : plan.post.title,
     when,
+    ...(picking ? { picking: true, ask: planDates.PICKING_ASK } : {}),
     // An online plan's email says "Online", never the link (it is in the app, for the people in).
     where: plan.place_kind === 'online' ? 'Online'
       : [area ? area[0].toUpperCase() + area.slice(1) : null, city].filter(Boolean).join(', '),
@@ -557,7 +564,7 @@ async function sendInviteEmail(plan, row, token, hostFirst) {
   try {
     const sent = await sendPlanInviteEmail({
       toEmail: row.email,
-      words: emailWords(plan, hostFirst),
+      words: await emailWords(plan, hostFirst),
       link: inviteUrl(plan.post_id, token),
       unsubscribeLink: unsubscribeUrl(token),
       oneClickUnsubscribeLink: oneClickUnsubscribeUrl(token),
@@ -654,7 +661,7 @@ async function resendInviteEmail(plan, row, hostFirst) {
   try {
     const sent = await sendPlanInviteEmail({
       toEmail: row.email,
-      words: emailWords(plan, hostFirst),
+      words: await emailWords(plan, hostFirst),
       link: inviteUrl(plan.post_id, token),
       unsubscribeLink: unsubscribeUrl(token),
       oneClickUnsubscribeLink: oneClickUnsubscribeUrl(token),
@@ -853,13 +860,18 @@ async function createLinkInvite(user, postId, body = {}) {
   return {
     invite_id: data.id,
     url: inviteUrl(postId, token),
-    message: inviteMessage(plan, plan.business_user_id ? 'our' : 'my'),
+    message: inviteMessage(plan, plan.business_user_id ? 'our' : 'my', { picking: await require('./planDates').invitesWhilePicking(plan) }),
   };
 }
 
-/** The words a host sends with a link, from their own phone, so in their voice: "Want to come to my dinner on …?" */
-function inviteMessage(plan, whose = 'my') {
+/**
+ * The words a host sends with a link, from their own phone, so in their voice: "Want to come to my dinner on …?"
+ * While the host picks a date (08-extras section 2) they name none: "Want to come to my dinner? “…”. Tick the times
+ * that work for you:".
+ */
+function inviteMessage(plan, whose = 'my', { picking = false } = {}) {
   const ask = planNotify.noun(plan) === 'coffee' ? 'Want to get coffee' : `Want to come to ${whose} ${planNotify.noun(plan)}`;
+  if (picking) return `${ask}? “${plan.post.title}”. Tick the times that work for you:`;
   return `${ask} on ${dateText(plan)}? “${plan.post.title}”. Tap to say you’re in:`;
 }
 

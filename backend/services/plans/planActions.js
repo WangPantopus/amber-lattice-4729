@@ -808,7 +808,7 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     && (await require('./planChipIn').enabledFor(plan.host_user_id));
   if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
   if (patch.gift && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
-    require('./planGift').checkedInput(patch.gift, patch.starts_at || plan.post.event_date);
+    require('./planGift').checkedChange(plan, patch.gift, patch.starts_at || plan.post.event_date);
   }
   // Find a date: while the date is being picked the times offered change, not the plan's time.
   const planDates = require('./planDates');
