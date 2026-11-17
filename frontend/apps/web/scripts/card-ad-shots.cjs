@@ -60,8 +60,9 @@ const takes = {
   rack: {
     scene: 'rack',
     length: 2.6,
-    // The rack keeps this much room above its card and below its button.
-    insets: { tall: { top: 150, bottom: 141 }, wide: { top: 150, bottom: 150 } },
+    // The rack keeps this much room above its card and below its button; on the wide window also at its left, so the
+    // card stays clear of the words (left third) even as a swipe carries it left.
+    insets: { tall: { top: 150, bottom: 141 }, wide: { top: 150, bottom: 150, left: 560 } },
     clock: 618265,
     speed: [[0, 1]],
     view: [{ at: 0, z: 1 }],

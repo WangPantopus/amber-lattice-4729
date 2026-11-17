@@ -319,6 +319,8 @@ class Take {
       year: String(story.year), from: story.from, to: story.to, note: this.def.write ? '' : story.note, mailed: story.mailed, until: story.until,
       top: String(this.def.insets?.[this.shapeName]?.top ?? shape.top), bottom: String(this.def.insets?.[this.shapeName]?.bottom ?? shape.bottom),
     });
+    const left = this.def.insets?.[this.shapeName]?.left;
+    if (left) query.set('left', String(left));
     if (this.def.scene === 'rack') {
       const rack = story.rack.map((n) => story.cards.get(n)).map(({ id, number, caption, paper, table }) => ({ id, number, caption, paper, table }));
       query.set('rack', JSON.stringify(rack));

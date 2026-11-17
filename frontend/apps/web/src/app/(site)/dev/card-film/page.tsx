@@ -19,8 +19,9 @@
 //   rack    the card rack, its cards (rack, a JSON list) opening at start
 // mailed is the postmark's day. top and bottom (CSS px) lay the table out
 // inside the platforms' safe area: a taller top inset and bottom bar, as the
-// table makes room for a phone's own. The ad's script writes the note and
-// signs it through window.__cardFilm.
+// table makes room for a phone's own; left (CSS px) keeps the rack's card
+// clear of words at the left of a wide window. The ad's script writes the
+// note and signs it through window.__cardFilm.
 // ============================================================
 
 import { useEffect, useState } from 'react';
@@ -43,6 +44,8 @@ type AdSetup = {
   /** The room the table keeps above and below itself, in CSS px (null: the phone's own). */
   top: number | null;
   bottom: number | null;
+  /** The room the rack keeps at its left, in CSS px (null: none), so its card sits clear of words on that side. */
+  left: number | null;
   rack: HolidayCardDesign[];
   start: string;
 };
@@ -65,10 +68,12 @@ function insetStyle(ad: AdSetup): string {
   const top = ad.top ?? 0;
   const bottom = ad.bottom ?? 0;
   if (ad.scene === 'rack') {
+    const left = ad.left ?? 0;
     return [
       `[data-testid="cardRack"] > div:has(> [data-testid="cardRackClose"]) { padding-top: ${Math.max(0, top - 44)}px !important; }`,
       `[data-testid="cardRack"] > div:has(> [data-testid="cardRackWrite"]) { padding-bottom: ${Math.max(0, bottom - 22)}px !important; }`,
-      `[data-testid="cardRackCard"] { width: min(calc(100vw - 32px), 560px, calc((100dvh - ${top + bottom + 68}px) / 1.2)) !important; }`,
+      `[data-testid="cardRackCard"] { width: min(calc(100vw - ${32 + left}px), 560px, calc((100dvh - ${top + bottom + 68}px) / 1.2)) !important; }`,
+      ...(left ? [`[data-testid="cardRack"] { padding-left: ${left}px !important; }`] : []),
     ].join('\n');
   }
   return [`[data-el="safe"] { height: ${top}px !important; }`, `[data-el="bottom"] { min-height: ${bottom}px; }`].join('\n');
@@ -114,6 +119,7 @@ export default function CardFilmPage() {
       mailedOn: query.get('mailed') || POSTMARK_DAY,
       top: px(query.get('top')),
       bottom: px(query.get('bottom')),
+      left: px(query.get('left')),
       rack,
       start: query.get('start') || rack[0]?.id || design,
     });
