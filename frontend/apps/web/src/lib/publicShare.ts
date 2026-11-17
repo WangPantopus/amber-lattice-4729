@@ -52,7 +52,8 @@ async function fetchPublicJson<T>(
 export type PublicCardDesigns = {
   year: number;
   collections?: { id: string; name: string; designs: string[] }[];
-  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null }[];
+  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null }[];  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
+  free_cards?: number;
 };
 
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */

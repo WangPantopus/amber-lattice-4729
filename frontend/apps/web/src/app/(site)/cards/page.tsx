@@ -39,7 +39,7 @@ export default async function AllCardsPage({ searchParams }: { searchParams: Pro
   if (status === 404) notFound();
   if (!data) return <PublicCardsTrouble />;
   const store = await phoneStore('/app/mailbox/cards');
-  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={shareRefFrom((await searchParams).ref)} store={store} />;
+  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={shareRefFrom((await searchParams).ref)} store={store} freeCards={data.free_cards ?? null} />;
 }
 
 /** On a phone, the store button that carries the sending flow (`path`) through the install; null anywhere else. */

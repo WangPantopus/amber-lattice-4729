@@ -2293,7 +2293,7 @@ router.delete('/cards/signature', verifyToken, cardSignatureLimiter, async (req,
  * GET /api/mailbox/cards/designs
  * Public (no sign-in; on with Christmas cards): the season's pictures for the public card pages (/cards, /cards/<slug>),
  * where the Christmas card ads send people (founder, November 13: the pages open without the rest of card_table).
- * Only what's printed on a card anyway, never anyone's card. Cached an hour.
+ * Only what's printed on a card anyway, never anyone's card, and `free_cards` while digital stamps are on. Cached an hour.
  */
 router.get('/cards/designs', (req, res) => {
   if (!cardsOn()) return sendCardsOff(res);
@@ -2303,6 +2303,8 @@ router.get('/cards/designs', (req, res) => {
     collections: holidayCards.COLLECTIONS,
     designs: holidayCards.DESIGNS.map(({ id, number, slug, caption, paper, collection, table, verse }) =>
       ({ id, number, slug, caption, paper, collection, table, ...(verse ? { verse } : {}) })),
+    // With digital stamps on for everyone: the free cards an account starts with, for the pages' "first 3 are free".
+    ...(mailStamps.enabled() ? { free_cards: mailStamps.FREE_CARDS } : {}),
   });
 });
 
@@ -4234,7 +4236,7 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
 
     const { data: mail, error } = await supabaseAdmin
       .from('Mail')
-      .select('id, sender_user_id, recipient_user_id, type, subject, mail_type, display_title, escrow_recipient_contact, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, mail_extracted')
+      .select('id, sender_user_id, recipient_user_id, type, subject, mail_type, display_title, escrow_recipient_contact, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, created_at, mail_extracted')
       .eq('id', mailId)
       .maybeSingle();
     if (error) {
@@ -4350,20 +4352,25 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
 
     logger.info('Escrowed mail claimed', { mailId, claimerId });
 
-    // Notify the sender that their mail was claimed
+    // Tell the sender it was opened (and, for a card that brought someone in, give them their free card)
     (async () => {
       try {
         // The person who opened it, as neighbors see them (their Local Profile).
         const claimerName = (await loadChatPeople([claimerId])).get(String(claimerId))?.displayName || 'Someone';
+        // A card that brought in someone new gives its sender a free card (digital stamps on; services/mailStamps).
+        const rewarded = card
+          ? await mailStamps.rewardJoin({ senderId: mail.sender_user_id, joinerId: claimerId, mailId, sentAt: mail.created_at })
+          : false;
 
         await notificationService.createNotification(card ? {
           userId: mail.sender_user_id,
           type: 'holiday_card_claimed',
           title: 'Your Christmas card arrived',
-          body: byLink ? `${claimerName} opened your link and has your card.` : `${claimerName} joined Pantopus and has your card.`,
+          body: `${byLink ? `${claimerName} opened your link and has your card.` : `${claimerName} joined Pantopus and has your card.`}${
+            rewarded ? ' You have one more free card to send.' : ''}`,
           icon: '✉️',
           link: `/app/mailbox/sent/${mailId}`,
-          metadata: { mail_id: mailId, claimer_id: claimerId },
+          metadata: { mail_id: mailId, claimer_id: claimerId, ...(rewarded ? { free_card: true } : {}) },
         } : {
           userId: mail.sender_user_id,
           type: 'mail_escrow_claimed',
