@@ -14,8 +14,9 @@ test.each([[home,'/:id/ownership-claims/:claimId/review',false],[admin,'/claims/
   const rpc=jest.fn(async()=>({data:{ok:true,homeId:homeId,claimId:claimId,action:'reject',state:'rejected',replayed:false}}));db.setRpcMock(rpc);
   const from=jest.spyOn(db,'from');const res=response();await handler(router,'post',path)(req,res);
   expect(res.statusCode).toBe(200);expect(rpc.mock.calls[0][1]).toMatchObject({p_home_id:platform?null:homeId,p_claim_id:claimId,p_actor_id:actorId,p_review_token:'a'.repeat(64),p_platform_admin:platform});
-  // Authority stays in the RPC; the only table read is the claim's address for the claimant's notice, after the commit.
-  expect(from.mock.calls.map(([table])=>table)).toEqual(['HomeOwnershipClaim']);from.mockRestore();
+  // Authority stays in the RPC; after the commit the only tables read are the claim's address for the claimant's notice
+  // and, on a rejection, the claimant's own occupancy (a bill read's Verified mark comes off: FASTVERIFY).
+  expect(from.mock.calls.map(([table])=>table)).toEqual(['HomeOwnershipClaim','HomeOccupancy']);from.mockRestore();
 });
 test.each([[home,'/:id/ownership-claims/:claimId/evidence',409],[upload,'/ownership-evidence/:homeId/:claimId',400]])('metadata/file gateways cannot persist arbitrary refs or upload public evidence', async (router,path,expectedStatus) => {
   db.setRpcMock(async()=>router===upload ? {data:{ok:true,home_id:homeId,claim_id:claimId,can_verify:false,review_token:'a'.repeat(64)}} : ({data:{ok:false,code:'CLAIM_EVIDENCE_PRIVATE_REUPLOAD_REQUIRED',status:409}}));

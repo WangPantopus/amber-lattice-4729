@@ -86,6 +86,11 @@ async function mutate({ homeId = null, claimId, actorId, action, reviewToken = n
         reason: action === 'reject' ? reviewerNote || undefined : undefined, note: reviewerNote });
     } catch (error) { logger.warn('Claim review notification failed after commit', { claimId, errorCode: error.code }); }
   }
+  // A rejected residency document takes off the Verified mark a bill read gave (FASTVERIFY), and says so.
+  if (action === 'reject' && !result.replayed) {
+    const reviewerNote = platformAdmin && typeof note === 'string' && note.trim() ? note.trim() : null;
+    await require('./fastCheck/billCheck').billRejected({ homeId: result.homeId, userId: result.claimantId, claimId, reason: reviewerNote });
+  }
   return result;
 }
 // The address the claimant entered (their own claim may name it) and the claim's kind, for its notice.
