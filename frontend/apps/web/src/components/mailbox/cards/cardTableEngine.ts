@@ -38,6 +38,8 @@ export type TableCallbacks = {
   onRefused: () => void;
   /** Tapped the table with the card on it: hide or show the controls. */
   onTableTap: () => void;
+  /** Tapped the card lying out (Write back's joined pair): true when that tap did something else, so it doesn't turn. */
+  onCardTap?: () => boolean;
   /** Something other than a control was pressed: close any open menu. */
   onPress: () => void;
   /** Sealing it by hand: the seal is pressed home. The host sends the card and answers with sealResult. */
@@ -63,6 +65,8 @@ type Geometry = {
 const FLAP_OPEN = 0.3;
 /** The table's room at each side of the card for its photo and greeting to lie beside it, rather than under it. */
 const MEDIA_BESIDE = 176;
+// How far a reply sheet reaches below the card, as a share of the card's height (CardTable's .replySheet).
+const REPLY_BELOW = 0.2;
 /** The press that seals it, in milliseconds. */
 const SEAL_HOLD = 600;
 /** The gold seal stays in sight this long before the envelope turns over. */
@@ -169,12 +173,15 @@ export class CardTableEngine {
 
   /** The card brings its own photo or voice greeting (memories plan steps 4 and 7): room is kept for them on the table. */
   private readonly media: boolean;
+  /** A reply lies on the card (Write back, mail-cards-experience Part 3): room is kept under the card for its lower edge. */
+  private readonly reply: boolean;
   /** How much of the card's photo and greeting shows, 0 to 1, as last written to the stage (`--media-seen`). */
   private mediaSeen = -1;
 
-  constructor(root: HTMLElement, options: { sealed: boolean; crackedSrc: string; wholeSrc: string; callbacks: TableCallbacks; sending?: boolean; mood?: CardMood; media?: boolean }) {
+  constructor(root: HTMLElement, options: { sealed: boolean; crackedSrc: string; wholeSrc: string; callbacks: TableCallbacks; sending?: boolean; mood?: CardMood; media?: boolean; reply?: boolean }) {
     this.root = root;
     this.media = Boolean(options.media);
+    this.reply = Boolean(options.reply);
     // Santa's cards land with a little more bounce (design plan Part 7): the same drop, less damped.
     if (options.mood === 'santa') this.v.drop.c = 9.6;
     this.sending = Boolean(options.sending);
@@ -585,7 +592,9 @@ export class CardTableEngine {
         mediaRoom = Math.round(clamp(h - underButtons - bottom - fitted(0) * 1.2, h < 720 ? 110 : 124, 160));
       }
     }
-    const cw = fitted(mediaRoom);
+    // A reply sheet lies over the card's lower part and reaches a fifth of the card's height below it (REPLY_BELOW).
+    const replyRoom = this.reply ? Math.round(fitted(mediaRoom) * 1.2 * REPLY_BELOW) : 0;
+    const cw = fitted(mediaRoom + replyRoom);
     const ew = cw * 1.012;
     const eh = (ew * 1392) / 1200;
     const fd = (ew * 512) / 1200;
@@ -600,8 +609,8 @@ export class CardTableEngine {
       return { top, env: top - Math.max(peek, flapAbove) + fd };
     };
     // With its picture up the card lies under the whole flap; turned over, it lies higher and leaves the room under it.
-    const front = laid(room);
-    const back = laid(room - mediaRoom);
+    const front = laid(room - replyRoom);
+    const back = laid(room - mediaRoom - replyRoom);
     // Shut, it sits a little above the middle of the free space, under the words.
     const free = h - safeTop - bottom;
     // Large text: the words above it may take two lines.
@@ -838,7 +847,7 @@ export class CardTableEngine {
         if (twice && !reducedMotion()) { this.lastTap.t = 0; this.toggleZoom(e.clientX, e.clientY); return; }
         this.lastTap = { t: now, x: e.clientX, y: e.clientY };
         if (this.enlarged) return;
-        this.tapTimer = window.setTimeout(() => this.turnCard(), 300);
+        this.tapTimer = window.setTimeout(() => { if (!this.callbacks.onCardTap?.()) this.turnCard(); }, 300);
       } else this.callbacks.onTableTap();
       return;
     }

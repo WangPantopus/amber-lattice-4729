@@ -26,7 +26,7 @@ import * as api from '@/lib/mailbox-api';
 import { MailboxApiError } from '@/lib/mailbox-api';
 import { businesses as businessesApi, mailboxV2P2 as mailboxV2P2Api } from '@pantopus/api';
 import type { AssetFullDetail } from '@/lib/mailbox-api';
-import type { CardSignature, DeletedMail, HolidayCards, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult } from '@pantopus/api';
+import type { CardExchange, CardReplyBody, CardReplySummary, CardSignature, DeletedMail, HolidayCards, HolidayCardArrivalsFor, HolidayCardList, HolidayCardListPreview, HolidayCardPreview, SentHolidayCard, SentPiece, SentPieceDetail, RecipientSearchResult } from '@pantopus/api';
 
 import type {
   DrawerMeta,
@@ -77,6 +77,8 @@ export const mailboxKeys = {
   // Sent: what you've sent (newest first), and one sent card.
   sent: () => [...mailboxKeys.all, 'sent'] as const,
   sentCard: (id: string) => [...mailboxKeys.all, 'sent', 'card', id] as const,
+  // The card and its reply, joined (Write back).
+  cardExchange: (id: string) => [...mailboxKeys.all, 'card-exchange', id] as const,
   deleted: () => [...mailboxKeys.all, 'deleted'] as const,
 
   // Counter
@@ -247,6 +249,41 @@ export function useTakeBackHolidayCard() {
   return useMutation<{ taken_back: true }, MailboxApiError, string>({
     mutationFn: api.takeBackHolidayCard,
     onSettled: () => invalidateSentCards(qc),
+  });
+}
+
+/** The card and its reply, joined, for this reader (GET /cards/:id/exchange). Off for a sealed card or no id. */
+export function useCardExchange(id: string | null, options?: { enabled?: boolean }) {
+  return useQuery<CardExchange, MailboxApiError>({
+    queryKey: mailboxKeys.cardExchange(id ?? ''),
+    queryFn: () => api.getCardExchange(id as string),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+    staleTime: STALE_30S,
+    retry: (count, error) => count < 2 && error.status !== 404,
+  });
+}
+
+/** Write back: the card's one reply. A retry sends the same request ID, so it can't go twice. */
+export function useSendCardReply(cardId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ reply: CardReplySummary }, MailboxApiError, CardReplyBody>({
+    mutationFn: (body) => api.sendCardReply(cardId, body),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: [...mailboxKeys.all, 'card-exchange'] });
+      invalidateSentCards(qc);
+    },
+  });
+}
+
+/** Take the reply back before the 7 a.m. pickup. */
+export function useTakeBackCardReply(cardId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ taken_back: true; card_id: string }, MailboxApiError, void>({
+    mutationFn: () => api.takeBackCardReply(cardId),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: [...mailboxKeys.all, 'card-exchange'] });
+      invalidateSentCards(qc);
+    },
   });
 }
 

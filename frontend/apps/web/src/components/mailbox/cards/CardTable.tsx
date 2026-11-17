@@ -69,6 +69,15 @@ export type TableCard = {
 
 export type TableMenuItem = { label: string; onSelect: () => void };
 
+/** A reply lying on the card (Write back, mail-cards-experience Part 3): the replier's sheet, drawn as the card's back. */
+export type TableReply = {
+  note: string;
+  fromName: string;
+  signature?: CardSignature | null;
+  /** The day it was written, for Read it in print. */
+  writtenOn?: string | null;
+};
+
 /** Sealing it by hand (design plan Part 2): the sender's own moment on the table, before the card goes. */
 export type SendMoment = {
   /** Who it's for, as the words say it ("Maya"). */
@@ -153,6 +162,8 @@ export default function CardTable({
   closeLabel = 'Back to the Mailbox',
   menu = [],
   sendBack = null,
+  writeBack = null,
+  reply = null,
   nextCard = null,
   sendMoment = null,
   onShare,
@@ -178,6 +189,11 @@ export default function CardTable({
   menu?: TableMenuItem[];
   /** Send one back (design plan Part 3): a quiet button under "Turn it back" once the card is turned over. */
   sendBack?: TableMenuItem | null;
+  /** "Write back to {first name}" or "You wrote back · {day}" (Part 3): the first quiet button once the card is turned
+   *  over; "Share this card" then keeps only its corner button and its line in the ⋯ menu. */
+  writeBack?: TableMenuItem | null;
+  /** The reply on the card (the joined pair): it lands over the card's lower part. The table keeps room for it. */
+  reply?: TableReply | null;
   /** Open the next card (mail-cards-experience Part 4): how many more wait, and the move to the oldest of them. */
   nextCard?: { count: number; onOpen: () => void } | null;
   /** Sealing it by hand instead of opening it. */
@@ -195,6 +211,13 @@ export default function CardTable({
   mediaFrom?: ((fileId: string) => PrintSource) | null;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // The reply on the card (Part 3): in front as it lands; a tap on the card or on the sheet brings either forward.
+  const replyRef = useRef(reply);
+  replyRef.current = reply;
+  const [replyFront, setReplyFront] = useState(true);
+  const replyFrontRef = useRef(replyFront);
+  replyFrontRef.current = replyFront;
+  const [replyLanded, setReplyLanded] = useState(false);
   const engineRef = useRef<CardTableEngine | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -247,12 +270,19 @@ export default function CardTable({
       sending: Boolean(momentRef.current),
       mood: isLetter ? undefined : mood,
       media: hasMedia,
+      reply: Boolean(replyRef.current),
       wholeSrc: waxWhole,
       crackedSrc: waxCracked,
       callbacks: {
         onState: setUi,
         onRefused: () => say(daysWords(card.sealed_until).notYet),
         onTableTap: () => setControlsHidden((hidden) => !hidden),
+        // The joined pair: a tap on the card, with the reply in front, brings the card to the front instead of turning it.
+        onCardTap: () => {
+          if (!replyRef.current || !replyFrontRef.current) return false;
+          setReplyFront(false);
+          return true;
+        },
         onPress: () => setMenuOpen(false),
         // Quiet paper sounds (design plan 8.3), when they're on in Mail Day settings.
         onSound: playCardSound,
@@ -322,11 +352,14 @@ export default function CardTable({
   // Read it in print (mail-cards-experience Part 2): the note in plain type on the same bookmark. The browser's Back
   // closes it too: opening it adds a history entry with the page's own state, which Back (or closing it) takes away.
   const [printOpen, setPrintOpen] = useState(false);
+  // What the bookmark prints: the card's note, or the reply lying on it (Part 3).
+  const [printWhat, setPrintWhat] = useState<'card' | 'reply'>('card');
   const printCloseRef = useRef<HTMLButtonElement | null>(null);
   const printPushed = useRef(false);
   useEffect(() => { if (printOpen) printCloseRef.current?.focus({ preventScroll: true }); }, [printOpen]);
-  const openPrint = useCallback(() => {
+  const openPrint = useCallback((what: 'card' | 'reply' = 'card') => {
     setMenuOpen(false);
+    setPrintWhat(what);
     setPrintOpen(true);
     try { window.history.pushState(window.history.state, ''); printPushed.current = true; } catch { /* no history: Close still works */ }
   }, []);
@@ -340,6 +373,17 @@ export default function CardTable({
     window.addEventListener('popstate', onBack);
     return () => window.removeEventListener('popstate', onBack);
   }, [printOpen]);
+  // The reply lands on the card once it lies out (Part 3): the set-down sound, and one tap you can feel where the phone
+  // lets the page ask for it.
+  useEffect(() => {
+    if (!reply || replyLanded || ui.step !== 'out') return undefined;
+    const timer = window.setTimeout(() => {
+      setReplyLanded(true);
+      playCardSound('card-down');
+      try { navigator.vibrate?.(12); } catch { /* not offered */ }
+    }, 420);
+    return () => window.clearTimeout(timer);
+  }, [reply, replyLanded, ui.step]);
   // Larger text than the browser's default (1.15 times or more, as on Android): "Read it in print" is a full button.
   const [largeText, setLargeText] = useState(false);
   useEffect(() => {
@@ -486,8 +530,12 @@ export default function CardTable({
   }
   // Read it in print (Part 2): note side up, the card not sealed and not enlarged, in place of that side's hint. A verse
   // card keeps "Read the verse" on its picture side.
-  const printable = !sendMoment && !isLetter && !sealed && Boolean(note.trim());
-  const readPrint = printable && step === 'out' && backUp && !ui.enlarged;
+  const cardPrintable = !sendMoment && !isLetter && !sealed && Boolean(note.trim());
+  // A reply in front prints its own words (Part 3).
+  const replyPrintable = !sendMoment && Boolean(reply?.note.trim());
+  const printable = cardPrintable || replyPrintable;
+  const printsReply = replyPrintable && replyLanded && replyFront && step === 'out' && !ui.enlarged;
+  const readPrint = printsReply || (cardPrintable && step === 'out' && backUp && !ui.enlarged);
   const readVerse = !sendMoment && !isLetter && !sealed && step === 'out' && !ui.enlarged && Boolean(card.verse) && !readPrint;
   // With larger text it is a full button beside "Turn it back", and the line under it stays empty.
   const printButton = readPrint && largeText;
@@ -512,7 +560,7 @@ export default function CardTable({
     : sendMoment
     ? [words, send === 'addressed' ? `Addressed to ${toName}.` : '', send === 'sending' ? 'Sealing it.' : ''].filter(Boolean).join(' ')
     : step === 'out' && !sealed
-    ? `Card from ${fromName}: ${captionSentence} On the back: ${note}${mediaSentence}`
+    ? `Card from ${fromName}: ${captionSentence} On the back: ${note}${mediaSentence}${reply ? ` ${reply.fromName} wrote back: ${reply.note}` : ''}`
     : `Christmas card from ${fromName}${sealed ? ', sealed until Christmas morning' : ''}`;
   const day = postmarkDay(mailedOn || new Date().toISOString());
   const [month, date] = day.split(' ');
@@ -587,6 +635,27 @@ export default function CardTable({
               </PaperBack>
               </>)}
             </div>
+            {/* The reply lying on the card (Part 3): over its lower part, turned 2°; a tap on it brings it to the front, a
+                tap on the card takes the card back to the front (the engine's onCardTap). Screen readers hear it in the
+                table's words, and Read it in print prints it. */}
+            {reply ? (
+              <div
+                className={`${styles.replySheet} ${replyLanded ? styles.replyLanded : ''} ${replyFront ? styles.replyFront : ''}`}
+                data-ui
+                data-testid="cardTableReply"
+                onClick={() => setReplyFront(true)}
+              >
+                <PaperBack
+                  number={card.number}
+                  paper={card.paper}
+                  fromName={reply.fromName}
+                  year={card.year}
+                  note={reply.note}
+                  signature={reply.signature ?? null}
+                  style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+                />
+              </div>
+            ) : null}
           </div>
           <div className={`${styles.layer} ${styles.lPocketShadow}`} data-el="lPocketShadow"><Art src={envArt('env-pocket-shadow.webp')} /></div>
           <div className={`${styles.layer} ${styles.lPocket}`} data-el="lPocket"><Art src={envArt('env-pocket.webp')} /></div>
@@ -754,8 +823,10 @@ export default function CardTable({
                 onClick={(event) => event.stopPropagation()}
               >
                 <span className={styles.ribbon} aria-hidden="true" />
-                <p id="cardTablePrintFrom" className={styles.printFrom}>{printFrom(from, mailedOn)}</p>
-                <p className={styles.printWords} dir="auto" data-testid="cardTablePrintWords">{note.trim()}</p>
+                <p id="cardTablePrintFrom" className={styles.printFrom}>
+                  {printWhat === 'reply' && reply ? printFrom(firstNameOf(reply.fromName), reply.writtenOn) : printFrom(from, mailedOn)}
+                </p>
+                <p className={styles.printWords} dir="auto" data-testid="cardTablePrintWords">{printWhat === 'reply' && reply ? reply.note.trim() : note.trim()}</p>
                 <button ref={printCloseRef} type="button" className={styles.bookmarkClose} data-testid="cardTablePrintClose" onClick={closePrint}>Close</button>
               </section>
             </div>
@@ -776,7 +847,7 @@ export default function CardTable({
                   {primary || 'Turn it over'}
                 </button>
                 {printButton ? (
-                  <button type="button" className={styles.primary} data-ui data-testid="cardTableReadInPrint" onClick={openPrint}>Read it in print</button>
+                  <button type="button" className={styles.primary} data-ui data-testid="cardTableReadInPrint" onClick={() => openPrint(printsReply ? 'reply' : 'card')}>Read it in print</button>
                 ) : null}
               </div>
               {/* A verse card: the hint becomes "Read the verse" once the card lies on the table (design plan 6.2); note
@@ -789,7 +860,7 @@ export default function CardTable({
                       Read the verse
                     </button>
                   ) : printLine ? (
-                    <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadInPrint" onClick={openPrint}>
+                    <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadInPrint" onClick={() => openPrint(printsReply ? 'reply' : 'card')}>
                       Read it in print
                     </button>
                   ) : <div className={styles.hint}>{readPrint ? '' : hint}</div>}
@@ -798,8 +869,21 @@ export default function CardTable({
               {/* Its room is kept while it can be offered, so the card never moves when it shows. Once the card is turned
                   over: "Send {first name} a card" and, quietly beside it, "Share this card" (design plan 11.1; the corner
                   icon stays). */}
-              {sendBack || quietShare ? (
+              {writeBack || sendBack || quietShare ? (
                 <div className={`${styles.quietRow} ${turnedOver ? '' : styles.hidden}`} aria-hidden={!turnedOver}>
+                  {/* Write back (Part 3): first, with "Send {first name} a card" beside it. */}
+                  {writeBack ? (
+                    <button
+                      type="button"
+                      className={styles.quiet}
+                      data-ui
+                      data-testid="cardTableWriteBack"
+                      tabIndex={turnedOver ? 0 : -1}
+                      onClick={() => { setMenuOpen(false); writeBack.onSelect(); }}
+                    >
+                      {writeBack.label}
+                    </button>
+                  ) : null}
                   {sendBack ? (
                     <button
                       type="button"
@@ -812,7 +896,7 @@ export default function CardTable({
                       {sendBack.label}
                     </button>
                   ) : null}
-                  {quietShare ? (
+                  {quietShare && !writeBack ? (
                     <button
                       type="button"
                       className={styles.quiet}
