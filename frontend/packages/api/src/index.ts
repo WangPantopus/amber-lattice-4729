@@ -415,6 +415,10 @@ export type { BlockStatus, BlockMeter, BlockInviteRecipient, BlockInviteResult }
 export * as realRent from './endpoints/realRent';
 export type { RentReport } from './endpoints/realRent';
 
+// Faster home verification (FASTVERIFY): the verify sheet's choices and the fast checks, behind database flags.
+export * as homeVerify from './endpoints/homeVerify';
+export type { VerifyOptions, VerifyOption, VerifyOptionId, VerifyLevel, FastCheckKind } from './endpoints/homeVerify';
+
 // Place — Unlisted: the address-removal surface (Wave 4)
 export * as unlisted from './endpoints/unlisted';
 export { UNLISTED_REMOVAL_STATUSES } from './endpoints/unlisted';

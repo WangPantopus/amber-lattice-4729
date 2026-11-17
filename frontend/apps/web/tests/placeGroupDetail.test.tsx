@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import type { PlaceIntelligence, PlaceSection, PlaceSectionId } from '@pantopus/types';
 
-// IdentityDetail now carries the mailbox-check query in its main view,
+// IdentityDetail now carries the mailbox-check query in its main view, Risk the verify-options read (FASTVERIFY),
 // and Today's briefing card reads your notification preferences, so their
 // renders need a QueryClient (queries resolve to loading states here — the
 // card's own behavior is covered in mailboxCheckCard.test).
@@ -105,13 +105,13 @@ describe('Place group-detail — renders from the contract', () => {
   });
 
   it('Risk shows the flood zone and the readiness checklist', () => {
-    render(<RiskDetail intelligence={FULL} homeId="home-1" />);
+    renderWithQueryClient(<RiskDetail intelligence={FULL} homeId="home-1" />);
     expect(screen.getByText('Zone X')).toBeInTheDocument();
     expect(screen.getByText('Your household plan')).toBeInTheDocument();
   });
 
   it('Flood shows the NFIP premium benchmark as a band, never a quote', () => {
-    render(<RiskDetail intelligence={FULL} homeId="home-1" />);
+    renderWithQueryClient(<RiskDetail intelligence={FULL} homeId="home-1" />);
     expect(screen.getByText(/What flood policies near you cost/i)).toBeInTheDocument();
     expect(screen.getByText(/\$480–\$1,240/)).toBeInTheDocument();
     expect(screen.getByText(/median \$760/)).toBeInTheDocument();

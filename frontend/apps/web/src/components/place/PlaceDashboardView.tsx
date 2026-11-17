@@ -19,6 +19,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Clock, Compass, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { PlaceIntelligence } from '@pantopus/types';
+import type { VerifyOptions } from '@pantopus/api';
 import { Group, HeroCard, PlaceHeader, VerifyBanner, type PlaceSwitcherHome } from '@/components/archetypes/place';
 import JustMovedCard from './JustMovedCard';
 import Overline from '@/components/archetypes/primitives/Overline';
@@ -64,6 +65,8 @@ export interface PlaceDashboardViewProps {
   onOpenClaimStatus?: () => void;
   /** Verified neighbors ("Verified homes nearby" and the invite), from the container, which reads the invite link. */
   neighbors?: ReactNode;
+  /** The server's verify-options answer (FASTVERIFY); null while the faster verification is off. */
+  verifyOptions?: VerifyOptions | null;
 }
 
 export default function PlaceDashboardView({
@@ -83,6 +86,7 @@ export default function PlaceDashboardView({
   claim = null,
   onOpenClaimStatus,
   neighbors = null,
+  verifyOptions = null,
 }: PlaceDashboardViewProps) {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const openVerify = () => setVerifyOpen(true);
@@ -230,7 +234,9 @@ export default function PlaceDashboardView({
         {showVerify ? (
           <Group label="Locked until you verify">{renderVerifyLocked(openVerify)}</Group>
         ) : null}
-        {showIdentity ? <IdentityGroup /> : null}
+        {showIdentity ? (
+          <IdentityGroup homeId={homeId} verifyOptions={verifyOptions} />
+        ) : null}
         {/* "Verified homes nearby" and the invite on the person's own home, not a claim still in review. */}
         {claim ? null : neighbors}
 
@@ -267,6 +273,7 @@ export default function PlaceDashboardView({
           onClose={() => setVerifyOpen(false)}
           homeId={homeId}
           address={intelligence.place.label}
+          verifyOptions={verifyOptions}
         />
       ) : null}
 

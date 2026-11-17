@@ -21,6 +21,7 @@ import { Map, HardHat, Calendar, Home, Award, Lock, Loader2, Send, Check, Mail }
 import { SectionCard, DensityCard, DetailHeader, DetailSectionLabel, SourceNote, InfoNote } from '@/components/archetypes/place';
 import { findPlaceSection, detailAddress } from './sections';
 import { usdK, statusToState, apiErrorText } from './format';
+import MailProofCard, { isMailProofRequired } from '../fastVerify/MailProofCard';
 
 function CensusCard({ data }: { data: PlaceCensusContextData }) {
   const stats: { icon: typeof Calendar; label: string; value: string }[] = [];
@@ -271,6 +272,8 @@ function FoundersSection({ homeId, verified, canVerify }: { homeId: string | nul
   if (blockQuery.isLoading) {
     return <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted">Loading your block…</div>;
   }
+  // FASTVERIFY: verified by a fast check, founding ranks need a mailed code.
+  if (blockQuery.isError && isMailProofRequired(blockQuery.error)) return <MailProofCard title="Block founders" homeId={homeId} />;
   if (blockQuery.isError || !blockQuery.data) {
     return <SectionCard icon={Award} title="Block founders" state="error" onRetry={() => blockQuery.refetch()} />;
   }
