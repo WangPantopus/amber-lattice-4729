@@ -47,7 +47,8 @@ struct CardTableMediaLayer: View {
                     covered: covered,
                     fromName: model.content.fromName,
                     onUncover: uncover,
-                    tilt: Self.printTilt
+                    tilt: Self.printTilt,
+                    live: photo.live != nil
                 ) {
                     open(photo, from: from, print: frame)
                 }
@@ -101,6 +102,8 @@ struct CardTableMediaLayer: View {
             aspect: photo.aspect,
             alt: photo.alt,
             fromName: model.content.fromName,
+            live: photo.live.map { from.source($0.fileId) },
+            liveType: photo.live?.mimeType,
             origin: CGRect(x: print.minX + border, y: print.minY + border, width: across, height: across / max(photo.aspect, 0.2)),
             originTilt: Self.printTilt
         )

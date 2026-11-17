@@ -134,6 +134,16 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         LaunchFeatures.holidayCardMemories && media?.photo?.usable == true && mediaStamp != .unavailable
     }
 
+    /// A Live Photo keeps its moving part (the server takes one now).
+    var takesLivePhoto: Bool {
+        takesPhoto && media?.photo?.live?.usable == true
+    }
+
+    /// The most bytes a Live Photo's moving part can be.
+    var livePhotoMaxBytes: Int {
+        media?.photo?.live?.maxBytes ?? 15_728_640
+    }
+
     /// "Record a greeting" shows.
     var takesVoice: Bool {
         LaunchFeatures.holidayCardMemories && media?.voice?.usable == true && mediaStamp != .unavailable
@@ -399,12 +409,15 @@ public struct SendHolidayCardBody: Encodable, Sendable {
     public let photo: String?
     public let photoAlt: String?
     public let voice: String?
+    /// The photo's moving part when it goes as a Live Photo; left out for a still.
+    public let photoLive: String?
 
     private enum CodingKeys: String, CodingKey {
         case design, message, arrival, to, signature, photo, voice
         case requestId = "request_id"
         case useStamp = "use_stamp"
         case photoAlt = "photo_alt"
+        case photoLive = "photo_live"
     }
 
     public enum Recipient: Encodable, Sendable {
@@ -449,6 +462,7 @@ public struct SendHolidayCardBody: Encodable, Sendable {
         photo = media.photo
         photoAlt = media.photo == nil ? nil : media.photoAlt
         voice = media.voice
+        photoLive = media.photo == nil ? nil : media.photoLive
     }
 }
 

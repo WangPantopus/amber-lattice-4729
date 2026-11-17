@@ -18,6 +18,9 @@ struct HolidayCardMediaRow: View {
     @Bindable var attachments: HolidayCardAttachments
     let takesPhoto: Bool
     let takesVoice: Bool
+    /// A picked Live Photo keeps its moving part (the server takes one), up to this many bytes.
+    var takesLive = false
+    var liveMaxBytes = 15_728_640
     /// Who the greeting is for ("For Maya") and the card's mood (a gift tag for Christmas with Jesus Christ).
     let forName: String
     let gift: Bool
@@ -86,13 +89,25 @@ struct HolidayCardMediaRow: View {
             if attachments.photo != nil { describe }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .photosPicker(isPresented: $picking, selection: $picked, matching: .images, preferredItemEncoding: .current)
+        // Asking for Live Photos by name is what makes the picker hand one over with its moving part; `.images` alone
+        // gives the same photos as stills.
+        .photosPicker(
+            isPresented: $picking,
+            selection: $picked,
+            matching: takesLive ? .any(of: [.images, .livePhotos]) : .images,
+            preferredItemEncoding: .current
+        )
         .onChange(of: picked) { _, item in
             guard let item else { return }
             picked = nil
             Task {
-                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                attachments.add(data)
+                // A Live Photo comes with its few seconds of video; anything else, or one that can't be read as one,
+                // is added as the still it is.
+                if takesLive, let live = await HolidayCardLivePhoto.load(item, maxBytes: liveMaxBytes) {
+                    attachments.add(live.still, live: live.clip)
+                } else if let data = try? await item.loadTransferable(type: Data.self) {
+                    attachments.add(data)
+                }
             }
         }
         .onAppear { listen.set(source: listenSource, local: listenBytes) }
@@ -141,10 +156,12 @@ struct HolidayCardMediaRow: View {
                 localImage: photo.preview,
                 aspect: photo.stored?.aspect ?? photo.preview.map { $0.size.width / max($0.size.height, 1) } ?? 4 / 3,
                 alt: attachments.photoAlt.isEmpty ? nil : attachments.photoAlt,
-                uploading: photo.status == .uploading
+                uploading: photo.status == .uploading,
+                live: photo.live.map { $0.sends && $0.status != .failed } ?? false
             )
             .frame(maxWidth: 170)
             status(photo.status, progress: photo.progress, identifier: "sendCardPhotoStatus")
+            if let live = photo.live, photo.status == .ready { liveLines(live) }
             if case .failed = photo.status {
                 HolidayCardPaperButton(title: "Try again", isPressed: false) { attachments.retry() }
                     .accessibilityIdentifier("sendCardPhotoRetry")
@@ -217,6 +234,29 @@ struct HolidayCardMediaRow: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sendCardVoice")
+    }
+
+    /// A Live Photo: what the other person will get, and theirs to send as a still instead, since it carries sound.
+    @ViewBuilder
+    private func liveLines(_ live: HolidayCardAttachments.Live) -> some View {
+        let words = switch live.status {
+        case .uploading: "Live Photo: adding its moving part…"
+        case .failed: "Its moving part couldn’t be added. The photo goes as a still."
+        case .ready: live.sends
+            ? "Live Photo: they can press and hold it to see it move, with its sound."
+            : "Goes as a still photo."
+        }
+        Text(verbatim: words)
+            .font(.system(size: 13))
+            .foregroundStyle(HolidayCardDesk.muted(scheme))
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("sendCardLiveStatus")
+        if live.status != .failed {
+            HolidayCardPaperButton(title: live.sends ? "Send as a still" : "Send as a Live Photo", isPressed: false) {
+                attachments.setSendsLive(!live.sends)
+            }
+            .accessibilityIdentifier("sendCardLiveToggle")
+        }
     }
 
     // MARK: Shared

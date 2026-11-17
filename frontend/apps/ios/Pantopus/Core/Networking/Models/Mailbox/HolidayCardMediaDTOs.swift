@@ -19,9 +19,31 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
         public let maxBytes: Int
         /// The stored photo's long side (1600).
         public let longSide: Int
+        /// A Live Photo's moving part can ride the photo (contract section 13); nil from a server before it.
+        public let live: Live?
+
+        /// The limits of a Live Photo's moving part: 15 MiB and 10 seconds.
+        public struct Live: Decodable, Sendable, Hashable {
+            public let usable: Bool
+            public let maxBytes: Int
+            public let maxSeconds: Int
+
+            private enum CodingKeys: String, CodingKey {
+                case usable
+                case maxBytes = "max_bytes"
+                case maxSeconds = "max_seconds"
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                usable = (try? c.decodeIfPresent(Bool.self, forKey: .usable)) ?? false
+                maxBytes = (try? c.decodeIfPresent(Int.self, forKey: .maxBytes)) ?? 15_728_640
+                maxSeconds = (try? c.decodeIfPresent(Int.self, forKey: .maxSeconds)) ?? 10
+            }
+        }
 
         private enum CodingKeys: String, CodingKey {
-            case usable
+            case usable, live
             case maxBytes = "max_bytes"
             case longSide = "long_side"
         }
@@ -31,6 +53,7 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
             usable = (try? c.decodeIfPresent(Bool.self, forKey: .usable)) ?? false
             maxBytes = (try? c.decodeIfPresent(Int.self, forKey: .maxBytes)) ?? 10_485_760
             longSide = (try? c.decodeIfPresent(Int.self, forKey: .longSide)) ?? 1600
+            live = try? c.decodeIfPresent(Live.self, forKey: .live)
         }
     }
 
@@ -138,18 +161,22 @@ public struct CardPhoto: Codable, Sendable, Hashable {
     /// A photo from someone who isn't the reader's connection: drawn covered, its bytes loaded only after a tap. Look
     /// it over and Sent are never covered.
     public let covered: Bool
+    /// The photo is a Live Photo: its few seconds of video (contract section 13), read from the same routes as the
+    /// photo and covered whenever it is. Nil for a still.
+    public let live: CardLive?
 
     private enum CodingKeys: String, CodingKey {
-        case width, height, alt, covered
+        case width, height, alt, covered, live
         case fileId = "file_id"
     }
 
-    public init(fileId: String, width: Int?, height: Int?, alt: String?, covered: Bool = false) {
+    public init(fileId: String, width: Int?, height: Int?, alt: String?, covered: Bool = false, live: CardLive? = nil) {
         self.fileId = fileId
         self.width = width
         self.height = height
         self.alt = alt
         self.covered = covered
+        self.live = live
     }
 
     public init(from decoder: any Decoder) throws {
@@ -159,12 +186,32 @@ public struct CardPhoto: Codable, Sendable, Hashable {
         height = try? c.decodeIfPresent(Int.self, forKey: .height)
         alt = (try? c.decodeIfPresent(String.self, forKey: .alt)).flatMap { $0.isEmpty ? nil : $0 }
         covered = (try? c.decodeIfPresent(Bool.self, forKey: .covered)) ?? false
+        live = try? c.decodeIfPresent(CardLive.self, forKey: .live)
     }
 
     /// The photo's shape (width over height), 4:3 when the server didn't say.
     var aspect: CGFloat {
         guard let width, let height, width > 0, height > 0 else { return 4 / 3 }
         return CGFloat(width) / CGFloat(height)
+    }
+}
+
+/// `card.photo.live`: a Live Photo's moving part, an MP4 or QuickTime clip of at most 10 seconds.
+public struct CardLive: Codable, Sendable, Hashable {
+    public let fileId: String
+    public let mimeType: String?
+    public let durationMs: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case fileId = "file_id"
+        case mimeType = "mime_type"
+        case durationMs = "duration_ms"
+    }
+
+    public init(fileId: String, mimeType: String? = nil, durationMs: Int? = nil) {
+        self.fileId = fileId
+        self.mimeType = mimeType
+        self.durationMs = durationMs
     }
 }
 
@@ -203,11 +250,14 @@ public struct HolidayCardMediaPick: Sendable, Hashable {
     public var photo: String?
     public var photoAlt: String?
     public var voice: String?
+    /// The photo's moving part when it goes as a Live Photo (a file id of kind `live`).
+    public var photoLive: String?
 
-    public init(photo: String? = nil, photoAlt: String? = nil, voice: String? = nil) {
+    public init(photo: String? = nil, photoAlt: String? = nil, voice: String? = nil, photoLive: String? = nil) {
         self.photo = photo
         self.photoAlt = photoAlt
         self.voice = voice
+        self.photoLive = photoLive
     }
 
     public static let none = HolidayCardMediaPick()

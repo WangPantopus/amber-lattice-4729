@@ -9,6 +9,7 @@
 //  never opens here.
 //
 
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -21,6 +22,9 @@ struct CardPhotoOpened: Equatable {
     var alt: String?
     /// The sender's name, for the spoken label; empty for the reader's own photo.
     var fromName = ""
+    /// A Live Photo: where its moving part is read from, and what it is.
+    var live: CardMediaSource?
+    var liveType: String?
     /// Where the print's photo lies on the screen, and how it's turned: the photo grows from there. Nil fades it in.
     var origin: CGRect?
     var originTilt: Double = 0
@@ -37,6 +41,7 @@ struct CardPhotoViewer: View {
     /// How far it has been pulled down, to close it.
     @State private var pull: CGFloat = 0
     @State private var closing = false
+    @State private var clip = CardLiveClip()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(photo: CardPhotoOpened, onClose: @escaping () -> Void) {
@@ -64,6 +69,13 @@ struct CardPhotoViewer: View {
                     .padding(.top, insets.top + 10)
                     .padding(.leading, max(12, insets.leading))
                     .opacity(open ? Double(1 - pullProgress) : 0)
+                if photo.live != nil, clip.player != nil {
+                    liveButton
+                        .padding(.leading, max(12, insets.leading))
+                        .padding(.bottom, insets.bottom + 14)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .opacity(open ? Double(1 - pullProgress) : 0)
+                }
             }
             .frame(width: screen.width, height: screen.height, alignment: .topLeading)
             .ignoresSafeArea()
@@ -73,9 +85,35 @@ struct CardPhotoViewer: View {
         .accessibilityAction(.escape, close)
         .accessibilityIdentifier("cardPhotoViewer")
         .task { await load() }
+        .task { await prepareLive() }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.12)) { open = true }
         }
+        .onDisappear { clip.close() }
+    }
+
+    /// Plays the Live Photo once more, with its sound. 44 pt to touch.
+    private var liveButton: some View {
+        Button {
+            clip.playOnce(muted: false)
+        } label: {
+            CardLiveMark(size: 12)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play the Live Photo")
+        .accessibilityIdentifier("cardPhotoLive")
+    }
+
+    /// A Live Photo moves once as it opens, without its sound (nothing should startle); holding it, or LIVE, plays it
+    /// with sound. With Reduce Motion it waits to be asked.
+    private func prepareLive() async {
+        guard let live = photo.live else { return }
+        await clip.prepare(live, mimeType: photo.liveType)
+        guard clip.player != nil, !reduceMotion, !Task.isCancelled else { return }
+        try? await Task.sleep(nanoseconds: 550_000_000)
+        if !Task.isCancelled, !closing { clip.playOnce(muted: true) }
     }
 
     /// 0 at rest, 1 once it's pulled well down.
@@ -88,8 +126,11 @@ struct CardPhotoViewer: View {
         if let image {
             CardPhotoZoom(
                 image: image,
+                player: clip.player,
+                moving: clip.showing,
                 onPull: { pull = closing ? pull : $0 },
-                onPulledAway: close
+                onPulledAway: close,
+                onHold: clip.hold
             )
             .accessibilityElement()
             .accessibilityLabel(spokenLabel)
@@ -121,9 +162,10 @@ struct CardPhotoViewer: View {
     }
 
     private var spokenLabel: String {
-        if let alt = photo.alt, !alt.isEmpty { return "Photo: \(alt)" }
+        let kind = photo.live == nil ? "Photo" : "Live Photo"
+        if let alt = photo.alt, !alt.isEmpty { return "\(kind): \(alt)" }
         let first = HolidayCardWords.firstName(photo.fromName)
-        return first.isEmpty ? "Your photo" : "Photo from \(first)"
+        return first.isEmpty ? "\(kind), yours" : "\(kind) from \(first)"
     }
 
     private func load() async {
@@ -143,6 +185,7 @@ struct CardPhotoViewer: View {
     private func close() {
         guard !closing else { return }
         closing = true
+        clip.stop()
         let time = reduceMotion ? 0.18 : 0.3
         withAnimation(reduceMotion ? .easeOut(duration: time) : .spring(duration: time, bounce: 0)) {
             open = false
@@ -187,19 +230,28 @@ private struct GrownFromPrint: ViewModifier {
 /// resting size a pull down on it reports how far, and past a short pull says it was pulled away.
 private struct CardPhotoZoom: UIViewRepresentable {
     let image: UIImage
+    /// A Live Photo's moving part, drawn over the still (so it's enlarged and moved with it) while `moving`.
+    var player: AVPlayer?
+    var moving = false
     let onPull: (CGFloat) -> Void
     let onPulledAway: () -> Void
+    /// A finger holds the photo still, or lets go.
+    var onHold: (Bool) -> Void = { _ in }
 
     func makeUIView(context _: Context) -> CardPhotoScrollView {
         let view = CardPhotoScrollView(image: image)
         view.onPull = onPull
         view.onPulledAway = onPulledAway
+        view.onHold = onHold
+        view.showMoving(player, now: moving)
         return view
     }
 
     func updateUIView(_ view: CardPhotoScrollView, context _: Context) {
         view.onPull = onPull
         view.onPulledAway = onPulledAway
+        view.onHold = onHold
+        view.showMoving(player, now: moving)
         if view.imageView.image !== image { view.show(image) }
     }
 }
@@ -208,6 +260,8 @@ final class CardPhotoScrollView: UIScrollView, UIScrollViewDelegate {
     let imageView = UIImageView()
     var onPull: (CGFloat) -> Void = { _ in }
     var onPulledAway: () -> Void = {}
+    var onHold: (Bool) -> Void = { _ in }
+    private let movingLayer = AVPlayerLayer()
     private var laidOutFor: CGSize = .zero
     private var wasEnlarged = false
 
@@ -237,6 +291,28 @@ final class CardPhotoScrollView: UIScrollView, UIScrollViewDelegate {
         let twice = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
         twice.numberOfTapsRequired = 2
         addGestureRecognizer(twice)
+        // A Live Photo's moving part lies over the still, in the same view, so it is enlarged and moved with it.
+        movingLayer.videoGravity = .resizeAspect
+        movingLayer.opacity = 0
+        imageView.layer.addSublayer(movingLayer)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+        hold.minimumPressDuration = 0.28
+        addGestureRecognizer(hold)
+    }
+
+    /// The moving part to draw, and whether it shows now.
+    func showMoving(_ player: AVPlayer?, now moving: Bool) {
+        if movingLayer.player !== player { movingLayer.player = player }
+        let opacity: Float = moving && player != nil ? 1 : 0
+        if movingLayer.opacity != opacity { movingLayer.opacity = opacity }
+    }
+
+    @objc private func held(_ press: UILongPressGestureRecognizer) {
+        switch press.state {
+        case .began: onHold(true)
+        case .ended, .cancelled, .failed: onHold(false)
+        default: break
+        }
     }
 
     @available(*, unavailable)
@@ -259,6 +335,11 @@ final class CardPhotoScrollView: UIScrollView, UIScrollViewDelegate {
         let fit = min(bounds.width / image.size.width, bounds.height / image.size.height)
         let size = CGSize(width: image.size.width * fit, height: image.size.height * fit)
         imageView.frame = CGRect(origin: .zero, size: size)
+        // Without the layer's own slide: it's the photo's size at once.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        movingLayer.frame = CGRect(origin: .zero, size: size)
+        CATransaction.commit()
         contentSize = size
         minimumZoomScale = 1
         // Up to twice the photo's own size on this screen, and never less than three times the fitted one.
