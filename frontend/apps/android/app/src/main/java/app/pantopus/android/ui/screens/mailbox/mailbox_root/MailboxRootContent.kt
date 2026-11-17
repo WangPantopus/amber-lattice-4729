@@ -48,6 +48,8 @@ import app.pantopus.android.ui.components.CompactButtonSize
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.mailbox.cards.CardButton
 import app.pantopus.android.ui.screens.mailbox.cards.PaintedStamp
 import app.pantopus.android.ui.screens.mailbox.cards.stampsHeldWords
@@ -262,7 +264,14 @@ fun MailboxDrawerRow(
                         .background(if (active) drawer.accent else PantopusColors.appSurface)
                         .then(if (active) Modifier else Modifier.border(1.dp, PantopusColors.appBorder, CircleShape))
                         .clickable { onSelect(drawer) }
-                        .padding(start = Spacing.s3, end = if (count > 0) Spacing.s2 else Spacing.s4)
+                        // Me and Home carry one guidance ring around both (pointer “Me and Home”, card 15).
+                        .then(
+                            if (drawer == MailboxDrawer.Me || drawer == MailboxDrawer.Home) {
+                                Modifier.guidanceAnchor(GuidanceTarget.MailMeHome)
+                            } else {
+                                Modifier
+                            },
+                        ).padding(start = Spacing.s3, end = if (count > 0) Spacing.s2 else Spacing.s4)
                         .clearAndSetSemantics {
                             contentDescription = if (count > 0) "${drawer.label}, $count unopened" else drawer.label
                             role = Role.Tab

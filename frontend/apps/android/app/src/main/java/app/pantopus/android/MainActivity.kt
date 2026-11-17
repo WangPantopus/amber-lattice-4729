@@ -28,6 +28,7 @@ import app.pantopus.android.data.auth.OAuthSessionStore
 import app.pantopus.android.data.auth.TokenStorage
 import app.pantopus.android.data.chats.ActiveChatThread
 import app.pantopus.android.data.chats.ChatOutbox
+import app.pantopus.android.data.guidance.GuidanceRepository
 import app.pantopus.android.data.moments.MomentsDot
 import app.pantopus.android.data.moments.MomentsFeature
 import app.pantopus.android.data.network.NetworkMonitor
@@ -43,6 +44,7 @@ import app.pantopus.android.ui.components.CutoutBand
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.components.closesKeyboardOnTapOrScroll
+import app.pantopus.android.ui.guidance.GuidanceDebug
 import app.pantopus.android.ui.navigation.PantopusNavHost
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasToday
 import app.pantopus.android.ui.theme.PantopusColors
@@ -109,6 +111,9 @@ class MainActivity : FragmentActivity() {
     /** The Moments tab's dot: read with the flag, and every few minutes while the app is open. */
     @Inject lateinit var momentsDot: MomentsDot
 
+    /** The guidance cards' record: app opens (a cold start, or a return after 30 minutes) and the seen cards. */
+    @Inject lateinit var guidance: GuidanceRepository
+
     /**
      * App-wide [ToastController]. Survives configuration changes via the
      * Activity instance. Feature view-models can grab the same instance
@@ -127,11 +132,15 @@ class MainActivity : FragmentActivity() {
         // Debug builds only: `PANTOPUS_DEBUG_AREA_MAX_AGE=<seconds>` shortens the hour after which Today reads the
         // city's fix again (TABCARD §4). A release build never reads it.
         if (BuildConfig.DEBUG) TodayAreaStore.takeDebugMaxAge(intent?.getStringExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA))
+        // Debug builds only: `PANTOPUS_DEBUG_GUIDANCE=<card id>` shows that guidance card at once (spec §8). A release
+        // build never reads it.
+        if (BuildConfig.DEBUG) GuidanceDebug.take(intent?.getStringExtra(GuidanceDebug.EXTRA))
         enableEdgeToEdge()
         secureWindowController.bind(this)
         storeSync.start()
         plansFeature.start()
         momentsFeature.start()
+        guidance.start()
         observeAppLockPrivacyHold()
         lifecycleScope.launch {
             authRepository.state.collect { pilotEvents.authChanged() }
@@ -208,6 +217,7 @@ class MainActivity : FragmentActivity() {
         storeSync.foregrounded()
         plansFeature.foregrounded()
         momentsFeature.foregrounded()
+        guidance.foregrounded()
         launchPushTokenSync()
     }
 
@@ -220,6 +230,7 @@ class MainActivity : FragmentActivity() {
         appLockManager.appDidEnterBackground(isConfigurationChange = isChangingConfigurations)
         if (!isChangingConfigurations) {
             pilotEvents.enterBackground()
+            guidance.backgrounded()
             storeSync.backgrounded()
             chatOutbox.backgrounded()
         }
@@ -232,6 +243,7 @@ class MainActivity : FragmentActivity() {
         if (BuildConfig.DEBUG && intent.hasExtra(ChristmasToday.DEBUG_EXTRA)) {
             ChristmasToday.takeDebugDay(intent.getStringExtra(ChristmasToday.DEBUG_EXTRA))
         }
+        if (BuildConfig.DEBUG && intent.hasExtra(GuidanceDebug.EXTRA)) GuidanceDebug.take(intent.getStringExtra(GuidanceDebug.EXTRA))
         if (BuildConfig.DEBUG && intent.hasExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA)) {
             TodayAreaStore.takeDebugMaxAge(intent.getStringExtra(TodayAreaStore.DEBUG_MAX_AGE_EXTRA))
         }

@@ -91,6 +91,8 @@ import app.pantopus.android.ui.components.MessagesButton
 import app.pantopus.android.ui.components.MessagesEntryHolder
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.moments.components.MOMENT_PIN_ANCHOR_FROM_TOP
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.MomentStripFace
@@ -715,7 +717,12 @@ private fun MomentsTopRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         onOpenMenu?.let {
-            MapRoundButton(icon = PantopusIcon.Menu, label = "Menu", onClick = it, modifier = Modifier.testTag("moments.menu"))
+            MapRoundButton(
+                icon = PantopusIcon.Menu,
+                label = "Menu",
+                onClick = it,
+                modifier = Modifier.guidanceAnchor(GuidanceTarget.Menu).testTag("moments.menu"),
+            )
         }
         val spot = state.spot
         if (spot != null) {

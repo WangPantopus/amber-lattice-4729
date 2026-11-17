@@ -101,6 +101,11 @@ import app.pantopus.android.ui.components.ToastAppearance
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.rememberShareTextWithCompletion
 import app.pantopus.android.ui.components.toastDurationMillis
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.feed.map.FeedMapQuery
 import app.pantopus.android.ui.screens.feed.map.FeedMapSection
 import app.pantopus.android.ui.screens.feed.map.FeedViewMode
@@ -189,6 +194,8 @@ fun FeedScreen(
     app.pantopus.android.ui.components.RefreshOnStoreChange(viewModel::load)
     val newPostCount by viewModel.newPostCount.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // The bar's Pulse tab (the side menu marks it), for the guidance cards: card 5 and pointers 13 and 14.
+    if (onOpenMenu != null) GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Pulse, ready = state !is PulseFeedUiState.Loading))
     app.pantopus.android.core.perf.ReportContentShown(
         "pulse",
         state is PulseFeedUiState.Loaded || state is PulseFeedUiState.Empty,
@@ -668,7 +675,8 @@ fun FeedScreen(
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = Spacing.s4, bottom = Spacing.s10),
+                        .padding(end = Spacing.s4, bottom = Spacing.s10)
+                        .guidanceAnchor(GuidanceTarget.PulsePost),
             )
         }
     }

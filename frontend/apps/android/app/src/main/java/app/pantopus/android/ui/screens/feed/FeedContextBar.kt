@@ -41,6 +41,8 @@ import app.pantopus.android.data.location.ViewingLocationRepository
 import app.pantopus.android.data.saved_places.SavedPlacesRepository
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -371,6 +373,7 @@ fun FeedContextBar(
                 // `horizontal` and `top` belong to different padding overloads
                 // and cannot be mixed in one call.
                 .padding(start = Spacing.s3, end = Spacing.s3, top = Spacing.s2)
+                .guidanceAnchor(GuidanceTarget.PulseArea, cornerRadius = Radii.lg)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(PantopusColors.appSurface)
                 .border(1.dp, PantopusColors.appBorder, RoundedCornerShape(Radii.lg))

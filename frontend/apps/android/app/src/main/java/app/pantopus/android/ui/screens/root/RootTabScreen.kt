@@ -82,6 +82,13 @@ import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.composeEmail
 import app.pantopus.android.ui.components.shareText
+import app.pantopus.android.ui.guidance.GuidanceFlags
+import app.pantopus.android.ui.guidance.GuidancePlaceShows
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
+import app.pantopus.android.ui.guidance.GuidanceTipsScreen
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens._internal.TokenGalleryScreen
 import app.pantopus.android.ui.screens.audience_profile.AudienceProfileScreen
 import app.pantopus.android.ui.screens.audience_profile.AudienceProfileViewModel
@@ -1180,6 +1187,9 @@ private object ChildRoutes {
 
     /** P8 / T6.2c — Settings → Help (static FAQ + contact CTA). */
     const val SETTINGS_HELP = "settings/help"
+
+    /** Help's “Tips for each screen” (guidance cards, spec §4): the tab cards, each shown again on a tap. */
+    const val GUIDANCE_TIPS = "settings/help/tips"
 
     /** P8 / T6.2c — Settings → Legal (TOC). */
     const val SETTINGS_LEGAL = "settings/legal"
@@ -2646,6 +2656,17 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     )
     val briefingNoticeShowing by briefingNotice.preferences.collectAsStateWithLifecycle()
     SuggestionsNotice(waiting = briefingNoticeShowing != null || !noticesMayShow)
+    // Guidance cards (founder 2026-11-16) wait while the side menu is open, and on Place and Today until the briefings
+    // notice has decided and closed, and while the name question is deciding or open.
+    val briefingNoticeChecked by briefingNotice.checked.collectAsStateWithLifecycle()
+    val guidance = LocalGuidance.current
+    val guidanceNoticesBusy =
+        briefingNoticeShowing != null ||
+            (topRoute in NOTICE_ROUTES && !briefingNoticeChecked) ||
+            namePromptDeciding ||
+            namePromptForm != null
+    val drawerBusy = navDrawerState.isOpen || navDrawerState.isAnimationRunning
+    SideEffect { guidance?.reportRoot(drawerOpen = drawerBusy, noticesBusy = guidanceNoticesBusy) }
 
     // Consume pending deep links — when the host activity (or a
     // notification tap) routed a URL or path through DeepLinkRouter,
@@ -3350,6 +3371,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // Moments (the map of what people are posting where they are) is a tab only while the `moments` flag
                     // is on. With it off there is nothing to show here: the switch watch above moves a person to Pulse.
                     if (momentsOn) {
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Moments))
                         MomentsMapScreen(
                             actions =
                                 MomentsMapActions(
@@ -3380,6 +3402,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // redesign on or off (founder, 2026-10-17). With it off there is nothing to show here: the switch
                     // watch above moves a person standing here to Pulse (Nearby with the redesign off).
                     if (plansFlags.plans) {
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Plans))
                         PlansMapScreen(
                             actions =
                                 PlansMapActions(
@@ -6348,6 +6371,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     val feedIntent = PulseIntent.entries.firstOrNull { it.key == raw }
                     PulseComposeFlowScreen(
                         onBack = { navController.popBackStack() },
+                        // A post made here: Pulse's "Post to Pulse" pointer has nothing more to teach.
+                        onPosted = { guidance?.note(GuidanceFlags.POSTED) },
                         prefillFeedIntent = feedIntent,
                         prefillDraft = PulseComposeDraftFields.decode(entry.arguments?.getString(ChildRoutes.COMPOSE_DRAFT_FIELDS_KEY)),
                         // "Before you ask": the post opens on top; back returns to the draft.
@@ -6674,10 +6699,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onEmailSupport = {
                             showsEmailFallback = !context.openMailto("mailto:support@pantopus.com?subject=Help")
                         },
+                        onOpenTips = { navController.navigate(ChildRoutes.GUIDANCE_TIPS) }.takeIf { guidance?.tipsAvailable() == true },
                     )
                     if (showsEmailFallback) {
                         EmailFallbackDialog("support@pantopus.com") { showsEmailFallback = false }
                     }
+                }
+                composable(ChildRoutes.GUIDANCE_TIPS) {
+                    GuidanceTipsScreen(onBack = { navController.popBackStack() })
                 }
                 composable(ChildRoutes.SETTINGS_LEGAL) {
                     LegalIndexScreen(
@@ -8081,6 +8110,20 @@ private fun PlaceTabRoot(
         host.refreshUnread()
     }
     val openNotifications = { navController.navigate(ChildRoutes.NOTIFICATIONS) }
+    // Guidance cards: Place's root, with what it shows (cards 1, 2, 8, 11 and 12). Not ready while it loads, fails or
+    // the arrival step covers it.
+    val guidanceShows =
+        when (root) {
+            HomeLanding.FirstRun -> GuidancePlaceShows.FirstRun
+            is HomeLanding.SavedPlace -> GuidancePlaceShows.SavedPlace
+            is HomeLanding.Home -> GuidancePlaceShows.Home
+            is HomeLanding.Claim -> GuidancePlaceShows.Claim
+            HomeLanding.Homes -> GuidancePlaceShows.Homes
+            else -> null
+        }
+    GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Place, ready = guidanceShows != null && !arrivalOpen, place = guidanceShows))
+    val guidance = LocalGuidance.current
+    LaunchedEffect(guidanceShows) { if (guidanceShows == GuidancePlaceShows.SavedPlace) guidance?.note(GuidanceFlags.SAVED_ADDRESS) }
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,

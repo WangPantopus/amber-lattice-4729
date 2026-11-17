@@ -93,6 +93,8 @@ import app.pantopus.android.ui.components.MessagesButton
 import app.pantopus.android.ui.components.MessagesEntryHolder
 import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.plans.PlansGateViewModel
 import app.pantopus.android.ui.screens.plans.components.PLAN_PRIVATE_SPOKEN
 import app.pantopus.android.ui.screens.plans.components.PlanPinBadge
@@ -739,7 +741,12 @@ private fun PlansTopChrome(
     // button last (founder decision 2026-11-08).
     val menu: @Composable () -> Unit = {
         onOpenMenu?.let {
-            GlassCircleButton(icon = PantopusIcon.Menu, label = "Menu", onClick = it, modifier = Modifier.testTag("plans.menu"))
+            GlassCircleButton(
+                icon = PantopusIcon.Menu,
+                label = "Menu",
+                onClick = it,
+                modifier = Modifier.guidanceAnchor(GuidanceTarget.Menu).testTag("plans.menu"),
+            )
         }
     }
     val chat: @Composable () -> Unit = {
