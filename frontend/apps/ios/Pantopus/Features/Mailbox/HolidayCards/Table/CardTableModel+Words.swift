@@ -122,8 +122,12 @@ extension CardTableModel {
 
     /// Once the card is on the table.
     private var restingHint: String {
-        if fold.isSpread || reduceMotion { return "" }
-        if !turnedOnce { return "or swipe it" }
+        // Enlarging works with Reduce Motion and on the closed Duo too, so its hint comes first.
+        if isZoomed { return "double-tap to bring it back" }
+        if fold.isSpread { return "" }
+        if !turnedOnce { return reduceMotion ? "" : "or swipe it" }
+        if !zoomedOnce { return "double-tap the card to enlarge it" }
+        if reduceMotion { return "" }
         return heldOnce ? "" : "press and hold, then move your finger: the light moves"
     }
 
@@ -135,6 +139,16 @@ extension CardTableModel {
 
     var cardBackIsUp: Bool {
         cos(springs.card.t * .pi / 180) < 0
+    }
+
+    /// How far a card at this angle is turned over: 0 picture side up, 1 note side up, easing through the turn.
+    nonisolated static func turned(_ angle: Double) -> Double {
+        (1 - cos(angle * .pi / 180)) / 2
+    }
+
+    /// How far the card is turned over right now, as the finger or the spring has it.
+    var cardTurned: Double {
+        Self.turned(springs.card.x)
     }
 
     /// "Not yet. 12 days until Christmas morning."
