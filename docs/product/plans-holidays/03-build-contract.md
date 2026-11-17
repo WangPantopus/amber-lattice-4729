@@ -637,7 +637,7 @@ A plan among friends only. A business's plan has no bring list.
   | `condition_text` | "if 12 people are in by Friday at 5:00 PM" | Under the sentence, for a group deal |
   | `group.left_text` | "2 days left", "3 hours left", "Closes at 5:00 PM" | The time left |
   | `if_short_text` | "If it doesn't get to 12, the night still happens, without the deal." | Under the count, while open |
-  | `state_text` | "Unlocked: 14 are in", "It didn't get to 12. The night still happens." | The banner or the card, once settled |
+  | `state_text` | "Unlocked: 14 are in", "It didn't get to 12. The night still happens." | The banner or the card, once settled. The count is the people in now, so it can fall after the unlock: "Unlocked: 1 is in" for one, and "Unlocked" alone when nobody is in (settled November 16 after Android's check read "Unlocked: 1 are in"; the server still says the old words until its next change) |
   | `join_text` | "Free to join. Show your deal there." | Under the join button |
   | `mine.text` | "Show this to your server." | "Your deal" |
   | `mine.name` | "Dana" | "Your deal" for something free, so staff can match the person (K8) |
@@ -727,6 +727,13 @@ captured at once with `payment_type = 'plan_payment'`, the request made
   person gets back if they leave now, worked out by the server (it differs
   from `refund_until` after a group price fell short or a part was refunded).
   `receipt.link` is a link the apps already open, to the receipt in Mail.
+  Once a part has come back and the guest is still in, `text` says both
+  amounts, "Paid $18.00 · $4.00 back" (`cents` stays what was charged and
+  `refunded_cents` what came back), so the row agrees with the card statement
+  and with "You'll get $14.00 back." Settled November 16 after Android's check
+  read "Paid $18.00" beside a $4.00 return; the server still says the old
+  words until its next change. The apps draw `text` as it comes, so neither
+  needs a change.
 - **A quote before joining.** `POST /api/plans/:id/requests/quote` with
   `{ "party_size", "kids_count" }` answers what the sheet shows, with no side
   effect: `{ "spots", "each_text", "total_cents", "total_text", "group":
