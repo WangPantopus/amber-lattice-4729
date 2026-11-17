@@ -206,8 +206,8 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed ||
-            chipIn.changed
+    val changed: Boolean
+        get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed || chipIn.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -535,13 +535,15 @@ class PlanChangeViewModel
             return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
         }
 
-        /** A refusal: the server's sentence, under the chip-in field it names when it names one (and over Save). */
+        /** A refusal: the server's sentence, under the chip-in field it names when it names one, else under the card. */
         private fun saveFailed(error: NetworkError) {
             val field = error.planField
             val message = error.planMessage
             _ui.update {
-                val chipErrors = if (field != null && field in CHIP_IN_FIELDS && it.chipIn.draft != null) mapOf(field to message) else emptyMap()
-                it.copy(saving = false, error = message, chipIn = it.chipIn.copy(errors = chipErrors))
+                val underChip = field != null && field in CHIP_IN_FIELDS && it.chipIn.draft != null
+                val chipErrors = if (underChip && field != null) mapOf(field to message) else emptyMap()
+                // A field's sentence shows under that field only (the screen's own line sits right below the card).
+                it.copy(saving = false, error = message.takeIf { !underChip }, chipIn = it.chipIn.copy(errors = chipErrors))
             }
         }
 

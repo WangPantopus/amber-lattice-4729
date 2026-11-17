@@ -104,7 +104,11 @@ private const val NOTE_MAX = 60
 private const val LINK_MAX = 320
 
 /** "Chip in" as the plan has it: the dollars as the host would type them ("12", "12.50"), what for, and the link. */
-internal fun ChipInDraft.Companion.of(amountCents: Int, note: String?, link: String?): ChipInDraft {
+internal fun ChipInDraft.Companion.of(
+    amountCents: Int,
+    note: String?,
+    link: String?,
+): ChipInDraft {
     val dollars = if (amountCents % CENTS == 0) "${amountCents / CENTS}" else "%d.%02d".format(amountCents / CENTS, amountCents % CENTS)
     return ChipInDraft(amount = dollars, note = note.orEmpty(), link = link.orEmpty())
 }
