@@ -661,24 +661,30 @@ function invitedTitle(plan, hostFirst) {
 
 /**
  * The host invited someone on Pantopus: the push has I'm in / Can't make it (not for a playdate, which asks the
- * kids' ages first). Like every notice, the area only; a playdate's title stays in the app.
+ * kids' ages first). Like every notice, the area only; a playdate's title stays in the app. While the host picks a
+ * date (08-extras section 2) it names no date: "Sam invited you to a dinner. Tick the times that work for you.",
+ * "{title} · Picking a date · {area}", and no buttons (the plan takes ticks, not an answer).
  */
 async function invited({ plan, invite, userId, hostFirst, series = false, reminder = false }) {
   const tz = rules.timezoneForPlan(plan);
   const playdate = plan.kind === 'playdate';
-  const when = whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
+  const planDates = require('./planDates');
+  const picking = !series && (await planDates.invitesWhilePicking(plan));
+  const when = picking ? planDates.PICKING_TEXT
+    : whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
   // The next date of a repeating plan, to someone who came before: "Thursday's walk is posted".
   const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(new Date(plan.post.event_date));
   return notify({
     userId,
     type: 'plan_invite',
-    title: series ? `${weekday}’s ${noun(plan)} is posted` : invitedTitle(plan, hostFirst),
+    title: series ? `${weekday}’s ${noun(plan)} is posted`
+      : picking ? `${invitedTitle(plan, hostFirst)}. ${planDates.PICKING_ASK}` : invitedTitle(plan, hostFirst),
     body: [playdate ? null : plan.post.title, playdate ? capitalized(when) : when, placePhrase(plan, hostFirst)].filter(Boolean).join(' · '),
     link: `/plans/${plan.post_id}`,
     plan,
     metadata: {
       invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(reminder ? { reminder: true } : {}),
-      ...(plan.kind === 'playdate' ? { category: null } : {}),
+      ...(plan.kind === 'playdate' || picking ? { category: null } : {}),
     },
     // The host's "Remind" (H1) sends the same notice once more, once.
     idempotencyKey: reminder ? `plan_invite_reminder:${invite.id}` : `plan_invite:${invite.id}`,

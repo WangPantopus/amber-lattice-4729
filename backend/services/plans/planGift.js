@@ -63,13 +63,19 @@ function drawWhen(iso, tz) {
 
 // ── The host form ────────────────────────────────────────────
 
-/** The host form's gift: { budget_cents, draw_at }, checked against the plan's start. */
-function checkedInput(body, startsAt) {
+/** "Spend up to": $1 to $500, in cents. */
+function checkedBudget(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(422, 'validation', 'Fill in the gift exchange.');
   const cents = body.budget_cents;
   if (!Number.isInteger(cents) || cents < LIMITS.minCents || cents > LIMITS.maxCents) {
     fail(422, 'validation', 'Spend up to $1 to $500.', { field: 'budget_cents' });
   }
+  return cents;
+}
+
+/** The host form's gift: { budget_cents, draw_at }, checked against the plan's start. */
+function checkedInput(body, startsAt) {
+  const cents = checkedBudget(body);
   const drawAt = typeof body.draw_at === 'string' ? Date.parse(body.draw_at) : NaN;
   if (!Number.isFinite(drawAt) || drawAt <= Date.now() || drawAt > new Date(startsAt).getTime()) {
     fail(422, 'validation', 'Draw names between now and the start of the plan.', { field: 'draw_at' });
@@ -82,18 +88,29 @@ function initialValue(body, startsAt) {
   return { rev: 1, ...checkedInput(body, startsAt), state: 'open', people: [] };
 }
 
+/**
+ * The change call's gift, checked: before the draw the budget and the draw time; after it (08-extras section 4) the
+ * budget alone, and a draw time sent along is ignored (the stored one stays).
+ */
+function checkedChange(plan, body, startsAt) {
+  if (plan?.gift?.state === 'drawn') return { budget_cents: checkedBudget(body) };
+  return checkedInput(body, startsAt);
+}
+
 /** The change call's gift: the budget and draw time change before the draw; null takes it away (and its pairs). */
 async function replaceFromForm(plan, body) {
   if (body === null) {
     await removeAll(plan.post_id);
     return;
   }
-  const asked = checkedInput(body, plan.post.event_date);
+  const asked = checkedChange(plan, body, plan.post.event_date);
   await extras.swap(plan.post_id, COLUMN, (current) => {
     if (current?.state === 'drawn') {
       if (current.budget_cents === asked.budget_cents) return undefined;
       return { ...current, budget_cents: asked.budget_cents };
     }
+    // Read as drawn, but taken away since: a new exchange needs its draw time.
+    if (!asked.draw_at) checkedInput(body, plan.post.event_date);
     return { rev: 0, state: 'open', people: [], ...current, ...asked, short_told_at: null };
   });
 }
@@ -389,6 +406,7 @@ module.exports = {
   enabledFor,
   switchByHost,
   checkedInput,
+  checkedChange,
   initialValue,
   replaceFromForm,
   view,

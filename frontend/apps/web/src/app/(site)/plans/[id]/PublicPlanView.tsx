@@ -332,6 +332,8 @@ function whereText(plan: PublicPlan): string {
 }
 
 function whenText(plan: PublicPlan): string | null {
+  // While the host picks a date the page names none: "Picking a date" (08-extras section 2).
+  if (plan.time_text) return plan.time_text;
   if (!plan.starts_at) return null;
   const start = new Date(plan.starts_at);
   if (Number.isNaN(start.getTime())) return null;
@@ -347,7 +349,7 @@ function whenText(plan: PublicPlan): string | null {
  */
 function whenRangeText(plan: PublicPlan): string | null {
   const when = whenText(plan);
-  if (!when || !plan.starts_at || !plan.ends_at) return when;
+  if (!when || plan.time_text || !plan.starts_at || !plan.ends_at) return when;
   const start = new Date(plan.starts_at);
   const end = new Date(plan.ends_at);
   const timeZone = plan.timezone || 'America/Los_Angeles';

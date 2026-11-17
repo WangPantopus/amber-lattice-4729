@@ -45,6 +45,14 @@ const switchByHost = (hostIds) => extras.switchByHost(FLAG, hostIds);
 /** A plan whose date is still being picked. */
 const isPicking = (plan) => Boolean(plan && plan.date_options && Array.isArray(plan.date_options.options) && !plan.date_options.picked);
 
+/**
+ * An invitation while picking (08-extras section 2): while the plan is picking and its host has the switch, no
+ * invitation names a date. Where the date would show it reads PICKING_TEXT; the sentence ends with PICKING_ASK.
+ */
+const PICKING_TEXT = 'Picking a date';
+const PICKING_ASK = 'Tick the times that work for you.';
+const invitesWhilePicking = async (plan) => isPicking(plan) && (await enabledFor(plan.host_user_id));
+
 // ── Words ────────────────────────────────────────────────────
 
 const fmt = (iso, tz, opts) => new Intl.DateTimeFormat('en-US', { timeZone: tz, ...opts }).format(new Date(iso));
@@ -535,6 +543,9 @@ module.exports = {
   enabledFor,
   switchByHost,
   isPicking,
+  PICKING_TEXT,
+  PICKING_ASK,
+  invitesWhilePicking,
   checkedTimes,
   initialValue,
   replaceFromForm,

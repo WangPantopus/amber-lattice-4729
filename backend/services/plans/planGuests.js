@@ -690,7 +690,7 @@ async function sendLinkAgain(plan, row) {
   try {
     const sent = await sendPlanInviteEmail({
       toEmail: row.email,
-      words: invites().emailWords(plan, await actions().hostFirstOf(plan)),
+      words: await invites().emailWords(plan, await actions().hostFirstOf(plan)),
       link: guestUrl(plan.post_id, key),
       unsubscribeLink: invites().unsubscribeUrl(key),
       oneClickUnsubscribeLink: invites().oneClickUnsubscribeUrl(key),
@@ -868,9 +868,9 @@ async function hostPlanWithSwitch(user, postId) {
   return { viewer, plan };
 }
 
-/** The message the host shares with the open link, in the host's voice (as a text invitation's). */
-function openLinkMessage(plan) {
-  return invites().inviteMessage(plan, 'my');
+/** The message the host shares with the open link, in the host's voice (as a text invitation's, picking included). */
+async function openLinkMessage(plan) {
+  return invites().inviteMessage(plan, 'my', { picking: await require('./planDates').invitesWhilePicking(plan) });
 }
 
 function openLinkView(plan) {
@@ -904,7 +904,7 @@ async function makeOpenLink(user, postId, body = {}) {
   // People with an account who opened the link and haven't said they're in follow "I say yes first" as a guest's next
   // answer does (6.9).
   if (yesFirst !== Boolean(plan.open_invite_ok_first)) await setOpenAccountsYesFirst(plan.post_id, yesFirst);
-  return { url: openUrl(plan.post_id, token), message: openLinkMessage(plan), host_says_yes_first: yesFirst };
+  return { url: openUrl(plan.post_id, token), message: await openLinkMessage(plan), host_says_yes_first: yesFirst };
 }
 
 /**

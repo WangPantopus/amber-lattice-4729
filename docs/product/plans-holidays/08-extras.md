@@ -178,6 +178,41 @@ pick, `dates` is gone and the plan is an ordinary plan.
   kept time keeps its ticks, a removed time's ticks go, and nobody is told.
   After the pick the Change screen is any plan's.
 
+### An invitation while picking
+
+Settled November 17, after the Android check found an invitation naming the
+earliest time offered as the plan's date. While `date_options` is set and
+nothing is picked, and the host has the switch, no invitation names a date.
+Where the date would show it reads "Picking a date", and the sentence is
+"{Host} invited you to {a dinner}. Tick the times that work for you." Each
+place keeps its own way of naming the plan ("to dinner" in a notice, "to a
+dinner" in an email, "for coffee"). The words as shipped:
+
+- **The invite notice and its push**, and "Remind"'s again: the title "Sam
+  invited you to dinner. Tick the times that work for you."; the body
+  "{title} · Picking a date · {area}". The push has no "I'm in" / "Can't make
+  it" buttons, since the plan takes ticks, not an answer; it opens the plan.
+- **The invitation email**, to an address that is an account's or a guest's,
+  and "Remind"'s again: the subject and the first line "Sam invited you to a
+  dinner. Tick the times that work for you."; under the title, "Picking a
+  date" where the date shows. The button stays "See the plan".
+- **The text invitation and the open link's message** (sent from the host's
+  own phone): "Want to come to my dinner? “{title}”. Tick the times that work
+  for you:".
+- **The web page** an invitation opens: "Picking a date" where the time shows,
+  in its link preview too ("Dinner · Picking a date · {area}"), from
+  `time_text: "Picking a date"` on `GET /api/public/plans/:id`; the times card
+  as before. No calendar link: nobody is in before the pick.
+- **After the pick** everything is as today, with the date: the people still
+  to answer get the invitation with the time, and a new invitation, text
+  message or page names the date. With the switch off, or in an app without
+  `extras=1`, nothing changes.
+- **A cancellation while picking** names no date either (settled November 17;
+  the server change is owed: as built it names the earliest time offered).
+  The notice and the guest's email say "{Host} cancelled {title}." with
+  nothing where the date would stand; everything else about a cancellation is
+  as today (contract 6.6).
+
 ## 3. Chip in
 
 Boards 26 (`ExtrasForm`), 27 (`ChipIn`).
@@ -324,7 +359,12 @@ change line by line for who can read a pair):
   still change), `409 too_few` with the host's sentence when "Draw names now"
   finds fewer than three, `409 not_joined`, `403 not_in`, `409 ended` on a
   plan that is over or cancelled. After the draw the Change screen can change
-  "Spend up to" only; turning the exchange off forgets the pairs.
+  "Spend up to" only; turning the exchange off forgets the pairs. Such a
+  change takes `budget_cents` alone: the draw time is not asked for or
+  checked again (settled November 17 after the iPhone's build found the
+  server still checking it; the server takes it so since November 17: a
+  `draw_at` sent along after the draw, absent or anything, is ignored and
+  the stored one stays).
 - **Someone who leaves** before the draw leaves the exchange. After it, the
   host's notice "{Name} left after the names were drawn." opens the plan,
   where "Draw again" draws for everyone still in and tells each "Names were
