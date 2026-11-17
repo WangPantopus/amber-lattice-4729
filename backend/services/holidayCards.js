@@ -214,6 +214,19 @@ function emailTrouble(mail, now = new Date()) {
   return Number(email.tries) >= EMAIL_TRIES || old ? 'failed' : 'retrying';
 }
 
+/**
+ * The picture at the top of a card's email and of its look (services/emailService cardWaitingEmailContent), as a path
+ * on the website: the front the sender picked, lying on its open envelope (the picture's link preview, 1200x630 JPEG,
+ * which every mail client draws), or the sealed envelope for a card sealed until Christmas (founder, November 16: the
+ * stock picture may show before they join; never the note, signature, own photo or voice). A design this server doesn't
+ * know gets the sealed envelope too. Answers { path, alt, caption }.
+ */
+function emailPicture({ design, sealed }) {
+  const picked = sealed ? null : designById(design);
+  if (!picked) return { path: '/holiday-cards/share/sealed-link.jpg', alt: 'A sealed red envelope with a gold wax seal', caption: null };
+  return { path: `/holiday-cards/share/${picked.id}-link.jpg`, alt: `A Christmas card: ${picked.caption}`, caption: picked.caption };
+}
+
 /** Whether a card's email went out (or it never kept a record, before this was kept). */
 function emailWent(mail) {
   const email = mail?.mail_extracted?.card?.email;
@@ -619,7 +632,7 @@ async function sentLine(userId, now = new Date()) {
 module.exports = {
   CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
-  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
+  designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,
   personDelivery, emailDelivery, cardView, pickupAt, sentSummary, sentCards, notDeliveredOf, sentStatus, sentPiece, sentTrail, sentLine,
 };

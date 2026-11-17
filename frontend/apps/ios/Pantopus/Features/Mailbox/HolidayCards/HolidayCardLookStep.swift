@@ -134,7 +134,7 @@ struct HolidayCardLookStep: View {
                 return "The first person to open your link keeps the card. "
                     + "The page it opens never shows the card; they open it in Pantopus once they join."
             }
-            return "They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this address."
+            return "They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this address."
         }
         switch arrival {
         case .sealedChristmas:
