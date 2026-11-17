@@ -722,6 +722,8 @@ data class UpdatePlanBody(
     @Json(name = "tips_on") val tipsOn: Boolean? = null,
     /** The holidays' find a date, while picking: the times offered now (a kept time keeps its ticks; a removed one's go). */
     @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
+    /** The holidays' chip in, changed: who paid is kept. Taking it away (`"chip_in": null`) is `updateClearing`. */
+    @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */

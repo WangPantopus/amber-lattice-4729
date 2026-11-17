@@ -181,7 +181,9 @@ data class ChipInDraft(
     val amount: String = "",
     val note: String = "",
     val link: String = "",
-)
+) {
+    companion object
+}
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
 sealed interface HostInvitePeople {
@@ -1661,7 +1663,7 @@ private fun HostDraft.withDateOptions(options: List<DateOptionDraft>): HostDraft
 }
 
 /** The fields a chip-in refusal names (`field`), 08-extras section 3. */
-private val CHIP_IN_FIELDS = setOf(CHIP_IN_AMOUNT, CHIP_IN_NOTE, CHIP_IN_LINK)
+internal val CHIP_IN_FIELDS = setOf(CHIP_IN_AMOUNT, CHIP_IN_NOTE, CHIP_IN_LINK)
 
 /** The chip in as the server takes it: cents each person (null when it isn't an amount: the server says so). */
-private fun ChipInDraft.toInput(): PlanChipInInput = PlanChipInInput(amountCents = centsOf(amount), note = note.trim(), link = link.trim())
+internal fun ChipInDraft.toInput(): PlanChipInInput = PlanChipInInput(amountCents = centsOf(amount), note = note.trim(), link = link.trim())

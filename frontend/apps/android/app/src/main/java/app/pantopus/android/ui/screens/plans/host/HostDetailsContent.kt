@@ -829,7 +829,8 @@ internal fun AddToThisPlan(
         }
         PlanScopeLine("Only what you switch on shows on the plan. Everything else stays out of the way.", icon = PantopusIcon.Info)
     }
-    if (ui.showsChipIn && ui.draft.chipIn != null) ChipInFields(ui, vm)
+    val chip = ui.draft.chipIn
+    if (ui.showsChipIn && chip != null) ChipInFields(chip, ui.chipInErrors, vm::editChipIn)
 }
 
 /** One row of "Add to this plan": a 36 dp tile with its glyph, the name and its line, and a switch (board "rowlink"). */

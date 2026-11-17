@@ -12,6 +12,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanField
 import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
 import app.pantopus.android.ui.screens.plans.host.AddToPlanRow
+import app.pantopus.android.ui.screens.plans.host.ChipInFields
 import app.pantopus.android.ui.screens.plans.host.ROOM_FOR_MAX
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.Spacing
@@ -69,37 +70,57 @@ data class PlanChangeRoom(
     }
 }
 
-/** The two rows, drawn as the host form's: "Room for" with its stepper, then "Kids welcome" in "Add to this plan". */
+/**
+ * The rows drawn as the host form's: "Room for" with its stepper, then "Add to this plan" with the holidays' "Chip in"
+ * (and its three fields while on) and "Kids welcome", each where it shows.
+ */
 @Composable
 internal fun ChangeRoomRows(
-    room: PlanChangeRoom,
-    onSpots: (Int) -> Unit,
-    onKids: (Boolean) -> Unit,
+    ui: PlanChangeUi,
+    viewModel: PlanChangeViewModel,
 ) {
-    if (!room.shows) return
+    val room = ui.room
+    val chip = ui.chipIn
+    if (!room.shows && !chip.shows) return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s5)) {
-        PlanStepperRow(
-            title = "Room for",
-            caption = "Adults and kids, besides your household",
-            value = room.spots,
-            range = room.range,
-            onChange = { onSpots(it.coerceIn(room.range)) },
-            modifier = Modifier.testTag("planChangeRoomFor"),
-            holdStep = ROOM_FOR_HOLD_STEP,
-        )
+        if (room.shows) {
+            PlanStepperRow(
+                title = "Room for",
+                caption = "Adults and kids, besides your household",
+                value = room.spots,
+                range = room.range,
+                onChange = { viewModel.setRoom(it.coerceIn(room.range)) },
+                modifier = Modifier.testTag("planChangeRoomFor"),
+                holdStep = ROOM_FOR_HOLD_STEP,
+            )
+        }
         PlanField(label = "Add to this plan") {
             PlanFormCard {
-                AddToPlanRow(
-                    first = true,
-                    icon = PantopusIcon.AdultChild,
-                    title = "Kids welcome",
-                    caption = "Guests say how many adults and kids",
-                    checked = room.kidsWelcome,
-                    tag = "planChangeKidsWelcome",
-                    onChecked = onKids,
-                )
+                if (chip.shows) {
+                    AddToPlanRow(
+                        first = true,
+                        icon = PantopusIcon.DollarSign,
+                        title = "Chip in",
+                        caption = "Guests pay you, not Pantopus",
+                        checked = chip.draft != null,
+                        tag = "planChangeChipIn",
+                        onChecked = viewModel::setChipIn,
+                    )
+                }
+                if (room.shows) {
+                    AddToPlanRow(
+                        first = !chip.shows,
+                        icon = PantopusIcon.AdultChild,
+                        title = "Kids welcome",
+                        caption = "Guests say how many adults and kids",
+                        checked = room.kidsWelcome,
+                        tag = "planChangeKidsWelcome",
+                        onChecked = viewModel::setKidsWelcome,
+                    )
+                }
             }
         }
+        chip.draft?.let { ChipInFields(it, chip.errors, viewModel::editChipIn) }
     }
 }
 
