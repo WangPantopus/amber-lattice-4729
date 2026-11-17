@@ -159,6 +159,8 @@ final class PlaceBlockFoundersViewModel {
 
 struct PlaceBlockFoundersSection: View {
     let vm: PlaceBlockFoundersViewModel
+    /// Opens the postcard screen for someone verified by a fast check (block invites need a mailed code).
+    var onMailCode: (() -> Void)?
 
     var body: some View {
         switch vm.state {
@@ -172,14 +174,7 @@ struct PlaceBlockFoundersSection: View {
                     Text(message)
                         .font(.system(size: 13.5))
                         .foregroundStyle(Theme.Color.appTextMuted)
-                    Button {
-                        Task { await vm.load() }
-                    } label: {
-                        Text("Try again")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.Color.primaryInk)
+                    PlaceMailCodeRetry(homeId: vm.homeId, onMailCode: onMailCode) { await vm.load() }
                 }
             }
             .accessibilityIdentifier("place.blockFounders.error")
