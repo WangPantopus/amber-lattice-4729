@@ -146,6 +146,8 @@ internal fun ColumnScope.PlanHostBody(
     PlanChipInIfAny(plan)
     // The holidays' gift exchange: the count and "Draw names now"; never a name but the host's own, should they join.
     PlanGiftIfAny(plan, isHost = true)
+    // The holidays' photos afterwards (extras section 5, board 29), on a plan that is over.
+    PlanPhotosIfAny(plan)
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)
@@ -293,7 +295,14 @@ private fun HostClosedBanner(plan: PlanDto) {
             Text(text = "Your note: “$note”", style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
         }
     } else {
-        PlanBanner(title = "This plan has ended", subtitle = null, icon = PantopusIcon.CheckCircle, tone = PlanBannerTone.Neutral)
+        // The holidays' photos afterwards (board 29): "This was Saturday, Nov 21" / "12 people came", when it has them.
+        val photos = plan.photos
+        PlanBanner(
+            title = photos?.banner ?: "This plan has ended",
+            subtitle = photos?.cameText,
+            icon = PantopusIcon.CheckCircle,
+            tone = PlanBannerTone.Neutral,
+        )
     }
 }
 
