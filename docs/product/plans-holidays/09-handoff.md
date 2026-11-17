@@ -97,7 +97,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335, 4344 |
 | Gift exchange | 4239, 4329 | 4317, 4333 | 4347 |
 | Photos afterwards | 4242, 4249 | 4321, 4323, 4333 | 4348 |
-| One person pays for the group | 4255, 4259, 4261, 4359 | 4327 (claiming a spot from the link: **not built**, in progress) | 4351 |
+| One person pays for the group | 4255, 4259, 4261, 4359, 4367, 4370 | 4327, 4366 (claiming a spot from the link) | 4351, 4372 |
 
 Also done:
 
