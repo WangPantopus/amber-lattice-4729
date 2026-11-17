@@ -312,8 +312,11 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
   const planDates = require('./planDates');
   if (planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
     const parts = await planDates.cardParts(plan);
-    answer.dates = planDates.view(plan, { mineKey: mine ? require('./planExtras').guestKey(mine.id) : '-', invited: parts.invited });
-    answer.dates.host_line = `${await actions().hostFirstOf(plan)} is picking a date`;
+    const hostFirst = await actions().hostFirstOf(plan);
+    // Whether this reader will wait for the host's yes at the pick: their own row, or the open link they came by.
+    const mineWaits = mine ? waitsForYesAtPick(plan, mine) : via === 'open' && Boolean(plan.open_invite_ok_first);
+    answer.dates = planDates.view(plan, { mineKey: mine ? require('./planExtras').guestKey(mine.id) : '-', invited: parts.invited, hostFirst, mineWaits });
+    answer.dates.host_line = `${hostFirst} is picking a date`;
   }
   let forGuest = null;
   if (isGuestIn(mine) && plan.status !== 'cancelled') {
@@ -443,8 +446,13 @@ async function answerDates(postId, body = {}, { cookieKey = null } = {}) {
  * never let in by hand), waiting for the host's yes with their seats held. "{title} is {date}. You're in." goes by email
  * with their link, outside the plan's three. Answers 'in', 'waiting' or null.
  */
+/** At the pick, a guest by the open link waits for the host's yes while "I say yes first" is on and nobody let them in. */
+function waitsForYesAtPick(plan, row) {
+  return row.channel === 'open' && Boolean(plan.open_invite_ok_first) && !row.host_ok_at;
+}
+
 async function settlePicked(plan, row) {
-  const needsHostOk = row.channel === 'open' && Boolean(plan.open_invite_ok_first) && !row.host_ok_at;
+  const needsHostOk = waitsForYesAtPick(plan, row);
   const stamp = nowIso();
   const { data, error } = await supabaseAdmin.from('PlanInvite')
     .update({ status: 'accepted', needs_host_ok: needsHostOk, answered_at: stamp, updated_at: stamp })
@@ -1481,6 +1489,7 @@ module.exports = {
   sendGiftEmail,
   answerDates,
   settlePicked,
+  waitsForYesAtPick,
   settleFull,
   sendDateEmail,
   guestRowsFull,

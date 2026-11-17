@@ -214,7 +214,7 @@ function invitedKeys(rows) {
  * The card's `dates` while picking (with `extras=1`): each time with how many can make it and whether the reader
  * ticked it; for the host, first names and the favorite. `names`: key → first name (the host's view only).
  */
-function view(plan, { mineKey = null, host = false, names = null, invited = 0, room = null }) {
+function view(plan, { mineKey = null, host = false, names = null, invited = 0, room = null, hostFirst = null, mineWaits = false }) {
   const value = plan.date_options;
   if (!isPicking(plan)) return null;
   const tz = rules.timezoneForPlan(plan);
@@ -234,8 +234,9 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0, r
       out.who = who.map((k) => names?.get(k)).filter(Boolean);
       out.most = best > 0 && who.length === best;
       out.pick_text = `Pick ${pickDate(o.starts_at, tz)}`;
+      const seen = room ? passedOver(plan, value, o.id, room) : { over: 0, waiting: 0 };
       out.pick_note = pickNote(who.length, answeredKeys.length - who.length, Math.max(0, invited - answeredKeys.length), dayName(o.starts_at, tz),
-        room ? passedOver(plan, value, o.id, room) : 0);
+        seen.over, seen.waiting);
     }
     return out;
   });
@@ -245,6 +246,12 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0, r
     state: 'picking', options, answered, invited,
     answered_text: host ? `${answered} of ${invited} have answered` : `${answered} ${answered === 1 ? 'has' : 'have'} answered`,
   };
+  // The line under "Save my times" (08-extras section 2): someone who will wait for the host's yes at the pick (the
+  // open link with "I say yes first", not yet let in) isn't told they're in.
+  if (mineKey && hostFirst) {
+    out.mine_text = mineWaits ? `When ${hostFirst} picks a time you ticked, ${hostFirst} lets you in.`
+      : `You’re in when ${hostFirst} picks a time you ticked.`;
+  }
   if (mineKey) {
     const mineNumbers = (value.numbers || {})[mineKey] || null;
     out.mine = { answered: Boolean(ticks[mineKey]), ...(mineNumbers ? { party_size: mineNumbers.party_size, kids_count: mineNumbers.kids_count } : {}) };
@@ -256,11 +263,20 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0, r
  * "The 6 who ticked Sunday are in as soon as you pick it. The other 3 are asked if Sunday works. The 5 who haven't
  * answered get the invitation with the date." When the room can't take everyone who ticked (`over`, worked out by the
  * pick's own rule): "2 of the 3 who ticked Sunday are in as soon as you pick it. 1 doesn't fit in the room for now."
+ * When some who ticked will wait for the host's yes (`waiting`): "Of the 3 who ticked Sunday: 1 is in as soon as you
+ * pick it, 1 waits for your yes, 1 doesn't fit in the room for now." (a part that is zero left out).
  */
-function pickNote(ticked, others, silent, day, over = 0) {
+function pickNote(ticked, others, silent, day, over = 0, waiting = 0) {
   const parts = [];
   const fit = ticked - over;
-  if (ticked && over > 0) {
+  if (ticked && waiting > 0) {
+    const inNow = fit - waiting;
+    const pieces = [];
+    if (inNow > 0) pieces.push(`${inNow} ${inNow === 1 ? 'is' : 'are'} in as soon as you pick it`);
+    pieces.push(`${waiting} ${waiting === 1 ? 'waits' : 'wait'} for your yes`);
+    if (over > 0) pieces.push(`${over} ${over === 1 ? 'doesn’t' : 'don’t'} fit in the room for now`);
+    parts.push(`Of the ${ticked} who ticked ${day}: ${pieces.join(', ')}.`);
+  } else if (ticked && over > 0) {
     const tail = `${over} ${over === 1 ? 'doesn’t' : 'don’t'} fit in the room for now.`;
     parts.push(fit > 0 ? `${fit} of the ${ticked} who ticked ${day} ${fit === 1 ? 'is' : 'are'} in as soon as you pick it. ${tail}`
       : ticked === 1 ? `The 1 who ticked ${day} doesn’t fit in the room for now.` : `None of the ${ticked} who ticked ${day} fit in the room for now.`);
@@ -288,15 +304,18 @@ async function roomFor(plan, rows) {
 }
 
 /**
- * How many who ticked this time the pick would pass over for room (settle's rule, changing nothing): in the order they
- * answered, with their numbers; an account in or waiting on the host's yes as settle counts it, a guest's seats taken
- * whether in or waiting; a party larger than the room left is passed over and a later, smaller one may still fit.
+ * Who among those who ticked this time the pick would pass over for room, and who would wait for the host's yes
+ * (settle's rule, changing nothing): in the order they answered, with their numbers; an account whose invitation needs
+ * the host's yes waits and takes no seat yet, a guest by the open link while "I say yes first" is on (not yet let in)
+ * waits and takes a seat, as settle counts them; a party larger than the room left is passed over and a later, smaller
+ * one may still fit. Answers { over, waiting }.
  */
 function passedOver(plan, value, optionId, room) {
   const ticks = value.ticks || {};
   const order = Object.entries(value.answered || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]))).map(([k]) => k);
   let free = room.free;
   let over = 0;
+  let waiting = 0;
   for (const key of order.filter((k) => (ticks[k] || []).includes(optionId))) {
     if (key.startsWith('p:')) {
       const userId = key.slice(2);
@@ -305,16 +324,20 @@ function passedOver(plan, value, optionId, room) {
       const numbers = (value.numbers || {})[key] || { party_size: 1, kids_count: 0 };
       const seats = rules.seatsFor(plan, numbers.party_size, plan.kids_welcome ? numbers.kids_count : 0);
       if (seats > free) over += 1;
-      else if (!invite.needs_host_ok) free -= seats;
+      else if (invite.needs_host_ok) waiting += 1;
+      else free -= seats;
     } else {
       const row = room.rowById.get(key.slice(2));
       if (!row || row.status === 'cancelled' || row.invitee_user_id) continue;
       const seats = (Number(row.guest_adults) || 1) + (plan.kids_welcome ? Number(row.guest_kids) || 0 : 0);
       if (seats > free) over += 1;
-      else free -= seats;
+      else {
+        free -= seats;
+        if (guests().waitsForYesAtPick(plan, row)) waiting += 1;
+      }
     }
   }
-  return over;
+  return { over, waiting };
 }
 
 /** For a card: the invited keys and (for the host) first names and the room the pick would find, read for one plan. */
