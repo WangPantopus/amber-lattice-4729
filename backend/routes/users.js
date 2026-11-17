@@ -18,6 +18,7 @@ const { generateCsrfToken } = require('../utils/csrf');
 const { isConnected, isSearchable, loadUserSearchAccess, isScopedBlocked, isUnpublishedBusiness, unpublishedBusinessIds, canViewProfileField } = require('../utils/visibilityPolicy');
 const affinityService = require('../services/gig/affinityService');
 const inviteRewardService = require('../services/inviteRewardService');
+const creatorLinks = require('../services/creatorLinks');
 const emailService = require('../services/emailService');
 const { recordFunnelEvent } = require('../services/funnelEvents');
 const {
@@ -4186,12 +4187,8 @@ function inviteUrl(code) {
 // Never throws: a missed credit must not fail sign-up.
 async function creditReferralJoin(userId, code) {
   try {
-    const { data: link, error: linkErr } = await supabaseAdmin
-      .from('UserReferral')
-      .select('referrer_id')
-      .eq('invite_code', code)
-      .maybeSingle();
-    if (linkErr) throw linkErr;
+    // A creator's code (services/creatorLinks.js) is found in any letter case; everyone's own codes are exact.
+    const link = await creatorLinks.findReferralLink(code, 'referrer_id, source');
     if (!link || link.referrer_id === userId) return;
 
     const { data: credited, error: creditedErr } = await supabaseAdmin
@@ -4209,7 +4206,8 @@ async function creditReferralJoin(userId, code) {
         invite_code: generateInviteCode(),
         referred_user_id: userId,
         converted_at: new Date().toISOString(),
-        source: 'join_link',
+        // Joined through a creator's code: the founder's creator sales report counts these.
+        source: link.source === creatorLinks.CREATOR_SOURCE ? creatorLinks.CREATOR_JOIN_SOURCE : 'join_link',
       });
       if (!error) {
         inviteRewardService.forgetInviteProgress(link.referrer_id);
@@ -4349,11 +4347,7 @@ router.get('/public/join/:code', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const { data: referral } = await supabaseAdmin
-      .from('UserReferral')
-      .select('id, referrer_id, invite_code')
-      .eq('invite_code', code)
-      .maybeSingle();
+    const referral = await creatorLinks.findReferralLink(code, 'id, referrer_id, invite_code');
 
     if (!referral) {
       return res.json({ valid: false });

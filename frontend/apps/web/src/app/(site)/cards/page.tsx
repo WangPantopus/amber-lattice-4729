@@ -10,7 +10,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { APP_WEB_URL } from '@pantopus/utils';
 import { PublicCardsPage, PublicCardsTrouble } from '@/components/mailbox/cards/PublicCards';
-import { fetchPublicCardDesigns, getStoreDownloadCta, shareRefFrom, storePlatform } from '@/lib/publicShare';
+import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
 
 // Rendered on every request. A build or a first visit that met the server with
@@ -38,14 +38,20 @@ export default async function AllCardsPage({ searchParams }: { searchParams: Pro
   const { data, status } = await fetchPublicCardDesigns();
   if (status === 404) notFound();
   if (!data) return <PublicCardsTrouble />;
-  const store = await phoneStore('/app/mailbox/cards');
-  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={shareRefFrom((await searchParams).ref)} store={store} freeCards={data.free_cards ?? null} />;
+  const inviteCode = shareRefFrom((await searchParams).ref);
+  const store = await phoneStore('/app/mailbox/cards', inviteCode);
+  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null} />;
 }
 
-/** On a phone, the store button that carries the sending flow (`path`) through the install; null anywhere else. */
-async function phoneStore(path: string): Promise<PublicCardsStore | null> {
+/**
+ * On a phone, the store button that carries the sending flow (`path`) through the install, or the join link of the
+ * code in `ref` when it names someone (`cardsStoreLink`); null anywhere else.
+ */
+async function phoneStore(path: string, ref: string | null): Promise<PublicCardsStore | null> {
   const userAgent = (await headers()).get('user-agent') || '';
   const platform = storePlatform(userAgent);
-  const cta = platform ? getStoreDownloadCta(userAgent, path) : null;
-  return platform && cta ? { href: cta.href, copyPath: cta.copyPath ?? null, platform } : null;
+  if (!platform) return null;
+  const carried = await cardsStoreLink(path, ref);
+  const cta = getStoreDownloadCta(userAgent, carried.path);
+  return cta ? { href: cta.href, copyPath: cta.copyPath ?? null, platform, joins: carried.joins } : null;
 }

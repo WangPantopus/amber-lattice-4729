@@ -15,6 +15,7 @@ const homeClaimIdentityService = require('../services/homeClaimIdentityService')
 const { getRequestSessionScope, requireExpectedSessionScope } = require('../utils/requestSessionScope');
 const funnelReport = require('../services/funnelReport');
 const propertyRecordsReport = require('../services/propertyRecords/report');
+const creatorLinks = require('../services/creatorLinks');
 
 // All admin routes require auth + admin role
 router.use(verifyToken, requireAdmin);
@@ -119,6 +120,43 @@ router.get('/property-records/report', async (req, res) => {
   } catch (err) {
     logger.error('admin.property_records.report.error', { error: err.message });
     res.status(500).json({ error: 'Failed to build the property records report' });
+  }
+});
+
+// ── Creator links for Christmas cards (services/creatorLinks.js) ──
+// GET  /creators                 — every creator code, its link, people joined through it and the stamp books they
+//                                  bought by size (refunds apart). Counts and sums only: nothing about any buyer.
+// GET  /creators/accounts?q=     — find the account to give a code: an exact email address or username
+// POST /creators { user_id, code } — give that account its code (6–12 letters and digits, kept in capitals)
+router.get('/creators', async (_req, res) => {
+  try {
+    res.json(await creatorLinks.salesReport());
+  } catch (err) {
+    logger.error('admin.creators.report.error', { error: err.message });
+    res.status(500).json({ error: 'Failed to build the creator sales report' });
+  }
+});
+
+router.get('/creators/accounts', async (req, res) => {
+  try {
+    res.json({ accounts: await creatorLinks.findAccounts(req.query.q) });
+  } catch (err) {
+    logger.error('admin.creators.accounts.error', { error: err.message });
+    res.status(500).json({ error: 'Failed to look up the account' });
+  }
+});
+
+router.post('/creators', async (req, res) => {
+  try {
+    res.status(201).json(await creatorLinks.giveCreatorCode({
+      userId: req.body?.user_id,
+      code: req.body?.code,
+      adminId: req.user.id,
+    }));
+  } catch (err) {
+    if (err instanceof creatorLinks.CreatorCodeRefusal) return res.status(err.status).json({ error: err.message });
+    logger.error('admin.creators.give.error', { error: err.message });
+    res.status(500).json({ error: 'Failed to save the code' });
   }
 });
 
