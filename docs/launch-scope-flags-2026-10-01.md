@@ -135,7 +135,9 @@ Tests run with every feature on (`backend/jest.config.js`, `frontend/apps/web/te
    `mail_claimed` / `mail_escrow_*` notices, go out only with `mailbox` and `mail_extras` both on (a surface of two cut
    features). With either key off, `POST /api/mailbox/send` refuses a letter to an email address or phone number
    (403 `MAIL_EXTRAS_UNAVAILABLE`), and the web page the email's link opens (`/open/<mail id>`, where the person
-   previews the letter and signs in or signs up to claim it) is hidden. A Christmas card to an email address needs
+   previews the letter and opens it with a code emailed to its address, or signs in or signs up, to claim it; the
+   code routes, `POST /api/mailbox/claim/:mailId/code` and `POST /api/users/mail-code`, answer only for a letter whose
+   link still works) is hidden. A Christmas card to an email address needs
    `mailbox` and `holiday_cards` instead, so that page opens with `mailbox` and either `mail_extras` or
    `holiday_cards`.
 15. **What stays while `pulse_redesign` is off (2026-10-15, founder decision):**
