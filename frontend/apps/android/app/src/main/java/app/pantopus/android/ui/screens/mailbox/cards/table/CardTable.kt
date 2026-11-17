@@ -97,9 +97,11 @@ internal fun CardTableDialog(
     goneActions: List<CardTableSendBack> = emptyList(),
     /** A letter (plan Part 10): what opens once its folded sheet is out ("Read the letter"); null for a card. */
     onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" once this one has been turned over (plan Part 4); null with no list in hand. */
+    next: CardTableNext? = null,
 ) {
     FullScreenWindow(onDismissRequest = onClose) {
-        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut)
+        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut, next)
         CardTable(card, firstOpen, onClose, onOpened, menu, message, mine, canShare, sendBack, sender)
     }
 }
@@ -111,6 +113,8 @@ private class TableSending(
     val goneActions: List<CardTableSendBack>,
     /** A letter's sheet out of its envelope opens the letter page (plan Part 10). */
     val onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" for a card being read (plan Part 4). */
+    val next: CardTableNext? = null,
 )
 
 @Composable
@@ -194,6 +198,7 @@ private fun CardTable(
                 density,
                 quietButton = hasQuietLine(sendBack, canShare),
                 sending = calls != null,
+                nextCard = sending.next != null,
             )
         SideEffect { state.geometry = geometry }
         // A new window size (the phone turned, a fold opened) brings an enlarged card back to its size.
@@ -245,6 +250,7 @@ private fun CardTable(
             onShare = { sharing = true },
             sendBack = sendBack,
             gone = gone,
+            next = sending.next.takeIf { calls == null },
         )
         OpenedPhoto(openedPhoto)
     }
@@ -352,6 +358,8 @@ private fun rememberTableGeometry(
     quietButton: Boolean,
     /** The sender's moment: its words stay over the open envelope, so the table starts below them. */
     sending: Boolean = false,
+    /** "Open the next card" with its line under it (plan Part 4). */
+    nextCard: Boolean = false,
 ): TableGeometry {
     val measurer = rememberTextMeasurer()
     val width = constraints.maxWidth
@@ -374,6 +382,7 @@ private fun rememberTableGeometry(
         readsVerse,
         readsInPrint,
         media,
+        nextCard,
     ) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
@@ -415,7 +424,16 @@ private fun rememberTableGeometry(
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + printRow + gap
+            // "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4).
+            val nextHeight =
+                if (nextCard && !sending && !card.sealed) {
+                    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle).size.height
+                    val line = measurer.measure("9 more waiting", tableHintStyle).size.height
+                    max(48.dp.toPx(), words + line + 12.dp.toPx()) + 2.dp.toPx()
+                } else {
+                    0f
+                }
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + nextHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height

@@ -104,6 +104,8 @@ import java.time.ZoneId
 @Composable
 fun MailboxRootScreen(
     onOpenMail: (String) -> Unit,
+    /** A Christmas card from the list, with the other cards waiting, oldest first ("Open the next card", plan Part 4). */
+    onOpenCard: ((mailId: String, next: List<String>) -> Unit)? = null,
     onOpenSearch: () -> Unit = {},
     onOpenVacationHold: () -> Unit = {},
     onOpenStamps: () -> Unit = {},
@@ -148,7 +150,7 @@ fun MailboxRootScreen(
     var confirmTakeBack by remember { mutableStateOf<SentCard?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.configureNavigation(onOpenMail = onOpenMail)
+        viewModel.configureNavigation(onOpenMail = onOpenMail, onOpenCard = onOpenCard)
         viewModel.load()
         Analytics.track(AnalyticsEvent.ScreenMailboxRootViewed)
     }

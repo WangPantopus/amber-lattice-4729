@@ -593,7 +593,10 @@ private object ChildRoutes {
     const val POSTCARD_VERIFICATION =
         "homes/{$POSTCARD_VERIFICATION_HOME_ID_KEY}/verify-postcard"
     const val MAILBOX_SEARCH = "mailbox/search"
-    const val MAILBOX_ITEM_DETAIL = "mailbox/item/{$MAILBOX_ITEM_DETAIL_MAIL_ID_KEY}"
+
+    /** A Christmas card opened from the Mailbox list: the other cards waiting, oldest first, comma-separated (plan Part 4). */
+    const val MAILBOX_NEXT_CARDS_KEY = "nextCards"
+    const val MAILBOX_ITEM_DETAIL = "mailbox/item/{$MAILBOX_ITEM_DETAIL_MAIL_ID_KEY}?$MAILBOX_NEXT_CARDS_KEY={$MAILBOX_NEXT_CARDS_KEY}"
 
     /**
      * Send a Christmas card, or today's card once it's sent (launch keys `holiday_cards` + `mailbox`), with a picture
@@ -1611,8 +1614,14 @@ private object ChildRoutes {
         billId: String,
     ): String = "homes/$homeId/bills/$billId/edit"
 
-    /** Build the concrete path for a mailbox item detail. */
-    fun mailboxItemDetail(id: String): String = "mailbox/item/$id"
+    /** Build the concrete path for a mailbox item detail; a card from the list carries the cards waiting after it. */
+    fun mailboxItemDetail(
+        id: String,
+        nextCards: List<String> = emptyList(),
+    ): String {
+        if (nextCards.isEmpty()) return "mailbox/item/$id"
+        return "mailbox/item/$id?$MAILBOX_NEXT_CARDS_KEY=${Uri.encode(nextCards.joinToString(","))}"
+    }
 
     fun mailboxSentCard(id: String): String = "mailbox/sent/$id"
 
@@ -3525,6 +3534,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             onOpenMail = { mailId ->
                                 navController.navigate(ChildRoutes.mailboxItemDetail(mailId))
                             },
+                            onOpenCard = { mailId, next ->
+                                navController.navigate(ChildRoutes.mailboxItemDetail(mailId, next))
+                            },
                             onOpenSearch = { navController.navigate(ChildRoutes.MAILBOX_SEARCH) },
                             onOpenVacationHold = { navController.navigate(ChildRoutes.MAILBOX_VACATION) },
                             onOpenStamps = { navController.navigate(ChildRoutes.STAMPS) },
@@ -5435,13 +5447,28 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 mailComposable(
                     navController,
                     route = ChildRoutes.MAILBOX_ITEM_DETAIL,
-                    arguments = listOf(navArgument(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY) { type = NavType.StringType }),
+                    arguments =
+                        listOf(
+                            navArgument(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY) { type = NavType.StringType },
+                            navArgument(ChildRoutes.MAILBOX_NEXT_CARDS_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
                 ) { entry ->
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
                     // T6.5b (P20) — generic A17.1 mail detail. P21-P23 will
                     // add package / coupon / booklet / certified variants on
                     // top of the same shared shell.
                     val mailId = entry.arguments?.getString(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY).orEmpty()
+                    // Opened from the Mailbox list: the cards waiting after this one (none from a notice or a link).
+                    val nextCards =
+                        entry.arguments
+                            ?.getString(ChildRoutes.MAILBOX_NEXT_CARDS_KEY)
+                            ?.split(',')
+                            ?.filter { it.isNotBlank() }
+                            .orEmpty()
                     MailDetailScreen(
                         onBack = { navController.popBackStack() },
                         onOpenSenderProfile = { userId ->
@@ -5482,6 +5509,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenPiece = { pieceId -> navController.navigate(ChildRoutes.mailboxItemDetail(pieceId)) },
                         onStartVerify = { homeId, method -> navController.openPlaceVerify(method, homeId) },
                         onOpenVerificationStatus = { homeId -> navController.navigate(ChildRoutes.waitingRoom(homeId)) },
+                        // "Open the next card": this card's page gives way to the next one's (Back still goes to the Mailbox).
+                        nextCards = nextCards,
+                        onOpenNextCard = { id, rest ->
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.mailboxItemDetail(id, rest))
+                        },
                         // A card's "Send Hazel a card": the send flow over the card, at Pick a card; Back returns to it.
                         onSendCard =
                             if (LaunchFeatures.holidayCards) {

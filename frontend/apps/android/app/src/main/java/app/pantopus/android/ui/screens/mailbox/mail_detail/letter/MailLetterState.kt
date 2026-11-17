@@ -55,4 +55,8 @@ data class LetterActions(
     val onOpenCard: () -> Unit = {},
     /** A Christmas card's "Send Hazel a card": the send flow at Pick a card, with the one who sent it chosen. */
     val onSendCard: ((userId: String, name: String) -> Unit)? = null,
+    /** A card opened from the Mailbox list: the other cards waiting, oldest first (plan Part 4). */
+    val nextCards: List<String> = emptyList(),
+    /** "Open the next card": the first of [nextCards], with the rest after it. */
+    val onOpenNextCard: ((id: String, rest: List<String>) -> Unit)? = null,
 )

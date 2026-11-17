@@ -118,6 +118,9 @@ fun MailDetailScreen(
     onOpenVerificationStatus: ((homeId: String) -> Unit)? = null,
     // A Christmas card's "Send Hazel a card": the send flow with that person chosen. Null hides it.
     onSendCard: ((userId: String, name: String) -> Unit)? = null,
+    // A card opened from the Mailbox list: the cards waiting after it, oldest first, and how to open the next (plan Part 4).
+    nextCards: List<String> = emptyList(),
+    onOpenNextCard: ((id: String, rest: List<String>) -> Unit)? = null,
     viewModel: MailDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -168,6 +171,8 @@ fun MailDetailScreen(
             onRetryBundle = viewModel::loadBundle,
             onOpenCard = viewModel::openCard,
             onSendCard = onSendCard,
+            nextCards = nextCards,
+            onOpenNextCard = onOpenNextCard,
         )
     // Back on the page (from paying, say): read the piece again so it shows where it stands.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onLetterResume() }
