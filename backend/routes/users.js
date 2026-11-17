@@ -4348,7 +4348,8 @@ router.get('/public/join/:code', async (req, res) => {
       return res.json({ valid: false });
     }
 
-    const referral = await require('../services/creatorLinks').findReferralLink(code, 'id, referrer_id, invite_code');
+    const creatorLinks = require('../services/creatorLinks');
+    const referral = await creatorLinks.findReferralLink(code, 'id, referrer_id, invite_code, source');
 
     if (!referral) {
       return res.json({ valid: false });
@@ -4372,6 +4373,8 @@ router.get('/public/join/:code', async (req, res) => {
       referrer_name: referrerName,
       referrer_avatar: shownReferrer?.profile_picture_url || null,
       code: referral.invite_code,
+      // A creator's code (the Christmas card pages' store button carries only these through an install).
+      ...(referral.source === creatorLinks.CREATOR_SOURCE ? { creator: true } : {}),
     });
   } catch (err) {
     logger.error('public join lookup error', { error: err.message, code: req.params.code });

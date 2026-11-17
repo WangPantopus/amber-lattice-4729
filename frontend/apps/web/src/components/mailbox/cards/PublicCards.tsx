@@ -29,8 +29,8 @@ export type PublicCollection = { id: string; name: string; designs: string[] };
 /**
  * A phone's store button that carries the sending flow through the install (`getStoreDownloadCta`): Google Play
  * hands it to the Android app on its first launch; on an iPhone the tap copies it for the app's Paste button.
- * `joins`: it carries the join link of the code in `ref` instead (`cardsStoreLink`), so whoever shared the page is
- * credited when the account is made; the cards are then in the side menu's "Send a Christmas card".
+ * `joins`: the page's `ref` is a creator's code, and it carries that code's join link instead (`cardsStoreLink`), so the
+ * creator is credited when the account is made; the cards are then in the side menu's "Send a Christmas card".
  */
 export type PublicCardsStore = { href: string; copyPath: string | null; platform: 'ios' | 'android'; joins?: boolean };
 

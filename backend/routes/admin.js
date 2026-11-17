@@ -126,7 +126,8 @@ router.get('/property-records/report', async (req, res) => {
 // ── Creator links for Christmas cards (services/creatorLinks.js) ──
 // GET  /creators                 — every creator code, its link, people joined through it and the stamp books they
 //                                  bought by size (refunds apart). Counts and sums only: nothing about any buyer.
-// GET  /creators/accounts?q=     — find the account to give a code: an exact email address or username
+// POST /creators/accounts { q }  — find the account to give a code: an exact email address or username (a POST,
+//                                  so a typed email address never sits in a request address or access log)
 // POST /creators { user_id, code } — give that account its code (6–12 letters and digits, kept in capitals)
 router.get('/creators', async (_req, res) => {
   try {
@@ -137,9 +138,9 @@ router.get('/creators', async (_req, res) => {
   }
 });
 
-router.get('/creators/accounts', async (req, res) => {
+router.post('/creators/accounts', async (req, res) => {
   try {
-    res.json({ accounts: await creatorLinks.findAccounts(req.query.q) });
+    res.json({ accounts: await creatorLinks.findAccounts(req.body?.q) });
   } catch (err) {
     logger.error('admin.creators.accounts.error', { error: err.message });
     res.status(500).json({ error: 'Failed to look up the account' });

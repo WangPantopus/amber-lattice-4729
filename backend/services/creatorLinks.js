@@ -95,7 +95,7 @@ const showAccount = (u, code = null) => ({
  * the @). At most five, with the creator code each already has.
  */
 async function findAccounts(query) {
-  const text = String(query || '').trim().replace(/^@+/, '');
+  const text = typeof query === 'string' ? query.trim().replace(/^@+/, '') : '';
   if (text.length < 2 || text.length > 254) return [];
   const { escapeIlike } = require('../utils/escapeIlike');
   const columns = 'id, username, name, first_name, last_name, email';

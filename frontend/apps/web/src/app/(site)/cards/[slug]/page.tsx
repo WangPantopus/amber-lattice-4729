@@ -72,7 +72,7 @@ export default async function OneCardPage({ params, searchParams }: CardPageProp
 
 /**
  * On a phone, the store button that carries the sending flow (`path`) through the install, or the join link of the
- * code in `ref` when it names someone (`cardsStoreLink`); null anywhere else.
+ * code in `ref` when it is a creator's code (`cardsStoreLink`); null anywhere else.
  */
 async function phoneStore(path: string, ref: string | null): Promise<PublicCardsStore | null> {
   const userAgent = (await headers()).get('user-agent') || '';
@@ -80,5 +80,5 @@ async function phoneStore(path: string, ref: string | null): Promise<PublicCards
   if (!platform) return null;
   const carried = await cardsStoreLink(path, ref);
   const cta = getStoreDownloadCta(userAgent, carried.path);
-  return cta ? { href: cta.href, copyPath: cta.copyPath ?? null, platform, joins: carried.joins } : null;
+  return cta ? { href: cta.href, copyPath: cta.copyPath ?? null, platform, ...(carried.joins ? { joins: true } : {}) } : null;
 }

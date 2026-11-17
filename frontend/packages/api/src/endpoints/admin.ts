@@ -273,9 +273,9 @@ export async function getCreatorSales(): Promise<{ creators: CreatorSales[]; boo
   return get('/api/admin/creators');
 }
 
-/** Find the account to give a code: an exact email address or username. */
+/** Find the account to give a code: an exact email address or username, sent in the body (never in the address). */
 export async function findCreatorAccounts(q: string): Promise<{ accounts: CreatorAccount[] }> {
-  return get('/api/admin/creators/accounts', { q });
+  return post('/api/admin/creators/accounts', { q });
 }
 
 /** Give an account its creator code (6–12 letters and digits; kept in capitals). */
