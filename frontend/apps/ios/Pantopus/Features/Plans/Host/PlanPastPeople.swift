@@ -43,9 +43,14 @@ final class PlanPastPeopleModel {
     }
 
     /// The host's past plans; nothing (and no row) when the switch is off or there are none.
-    func loadPlans() async {
+    func loadPlans(opening postId: String? = nil) async {
         let reply: PlanPastPlansResponse? = try? await api.request(PlansEndpoints.pastPlans())
         plans = reply?.plans ?? []
+        // Board 29's "Plan the next one with the same people": straight to that plan's people.
+        if let postId, let plan = plans.first(where: { $0.postId == postId }) {
+            open()
+            choose(plan)
+        }
     }
 
     func open() {
