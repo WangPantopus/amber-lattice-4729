@@ -430,7 +430,7 @@ object DeepLinkRouter {
          * `?invite=` carries an email or text invitation for the plan to open ([invite]); `?open=` the plan's one link
          * for everyone (Plans for the holidays, contract 6.9), which the person answers as themselves ([open]).
          */
-        data class Plan(val id: String, val invite: String? = null, val open: String? = null) : Destination
+        data class Plan(val id: String, val invite: String? = null, val open: String? = null, val spot: String? = null) : Destination
 
         /** Nearby Plans: `/plans/:id/requests` opens the host's requests (H10). */
         data class PlanRequests(val id: String) : Destination
@@ -552,7 +552,7 @@ object DeepLinkRouter {
      * sign-in instead, as plan links are.
      */
     fun opensOnlySignedIn(uri: Uri): Boolean =
-        uri.scheme.equals("https", ignoreCase = true) && (resolve(uri) as? Destination.Plan)?.open != null
+        uri.scheme.equals("https", ignoreCase = true) && (resolve(uri) as? Destination.Plan)?.let { it.open ?: it.spot } != null
 
     /**
      * A Plans notice whose metadata says `opens: whos_coming` (Plans for the holidays: a guest is in, wants to come, or
@@ -1085,8 +1085,10 @@ object DeepLinkRouter {
             "plan-link" -> {
                 val id = segments.getOrNull(1)
                 val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
-                if (segments.size == 2 && !id.isNullOrBlank() && open != null) {
-                    Destination.Plan(id, open = open)
+                // The holidays' one person pays for the group: `?spot=` is a spot someone bought for whoever opens it.
+                val spot = Paths.queryParam(queryPart, "spot")?.takeIf(Paths::isInviteToken)
+                if (segments.size == 2 && !id.isNullOrBlank() && (open != null || spot != null)) {
+                    Destination.Plan(id, open = open, spot = spot.takeIf { open == null })
                 } else {
                     Destination.Unknown(raw)
                 }

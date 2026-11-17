@@ -2,6 +2,7 @@ package app.pantopus.android.data.plans
 
 import app.pantopus.android.data.api.models.plans.PlanChipInResponse
 import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
+import app.pantopus.android.data.api.models.plans.PlanClaimSpotBody
 import app.pantopus.android.data.api.models.plans.PlanDatePickBody
 import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
 import app.pantopus.android.data.api.models.plans.PlanDto
@@ -12,6 +13,7 @@ import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
 import app.pantopus.android.data.api.models.plans.PlanPhotosResponse
+import app.pantopus.android.data.api.models.plans.PlanSpotResponse
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.PlanExtrasApi
@@ -85,4 +87,18 @@ class PlanExtrasRepository
             id: String,
             photoId: String,
         ): NetworkResult<PlanPhotosResponse> = safeApiCall { api.removePhoto(id, photoId) }
+
+        // ---- 6. One person pays for the group ----
+
+        suspend fun spot(
+            id: String,
+            token: String,
+        ): NetworkResult<PlanSpotResponse> = safeApiCall { api.spot(id, token) }
+
+        suspend fun claimSpot(
+            id: String,
+            token: String,
+        ): NetworkResult<PlanDto> = safeApiCall { api.claimSpot(id, PlanClaimSpotBody(token)) }
+
+        suspend fun giveBackSpots(id: String): NetworkResult<PlanDto> = safeApiCall { api.giveBackSpots(id) }
     }

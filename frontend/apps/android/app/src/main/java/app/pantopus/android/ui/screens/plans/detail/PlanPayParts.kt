@@ -51,6 +51,8 @@ import app.pantopus.android.ui.screens.plans.components.PlanDealTag
 import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.PlanScopeLine
+import app.pantopus.android.ui.screens.plans.components.PlanSegmented
+import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTile
 import app.pantopus.android.ui.screens.plans.map.planH3
@@ -109,7 +111,7 @@ internal fun PlanPayHost(
             }
         }
     }
-    PlanPaySheet(plan, ui, onParty = viewModel::setParty, onPay = { viewModel.pay(plan) }, onClose = onClose)
+    PlanPaySheet(plan, ui, viewModel, onClose = onClose)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,8 +119,7 @@ internal fun PlanPayHost(
 private fun PlanPaySheet(
     plan: PlanDto,
     ui: PlanPayUi,
-    onParty: (Int) -> Unit,
-    onPay: () -> Unit,
+    viewModel: PlanPayViewModel,
     onClose: () -> Unit,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -140,11 +141,14 @@ private fun PlanPaySheet(
             verticalArrangement = Arrangement.spacedBy(Spacing.s4),
         ) {
             PayHeader(plan)
-            PayPartyField(plan, ui.partySize, enabled = !ui.paying, onParty = onParty)
+            if (!ui.forLink) PayPartyField(plan, ui.partySize, enabled = !ui.paying, onParty = viewModel::setParty)
+            // The holidays' one person pays for the group (board 31): "Who are they for?" and "How many spots?".
+            if (ui.offersLink) PayForField(ui, onLink = viewModel::setForLink, onSpots = viewModel::setSpots)
             val quote = ui.quote
             if (quote != null) {
                 PayLines(plan, quote)
-                quote.group?.let { PayGroupCard(it) }
+                quote.group?.takeIf { !ui.forLink }?.let { PayGroupCard(it) }
+                quote.note?.takeIf { ui.forLink }?.let { PlanScopeLine(text = it, icon = PantopusIcon.Link) }
                 quote.refundText?.let { PlanScopeLine(text = it, icon = PantopusIcon.ShieldCheck) }
             } else {
                 Text(
@@ -156,7 +160,7 @@ private fun PlanPaySheet(
             ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
             PrimaryButton(
                 title = quote?.totalText?.let { "Pay $it" } ?: "Pay",
-                onClick = onPay,
+                onClick = { viewModel.pay(plan) },
                 isLoading = ui.paying,
                 isEnabled = quote != null && !ui.quoteLoading && !ui.paying,
                 modifier = Modifier.height(50.dp).testTag("planPayButton"),
@@ -210,6 +214,42 @@ private fun PayPartyField(
             isSelected = { it.id == partySize.toString() },
             onSelect = { choice -> onParty(choice.id.toInt()) },
             tagPrefix = "planPayParty",
+        )
+    }
+}
+
+/**
+ * Board 31: "Who are they for?" ("People with me" or "I'll send a link", the server's words) and, for a link, "How many
+ * spots?" from 2 to the room left; each change asks the server for a new quote.
+ */
+@Composable
+private fun PayForField(
+    ui: PlanPayUi,
+    onLink: (Boolean) -> Unit,
+    onSpots: (Int) -> Unit,
+) {
+    val choice = ui.linkChoice ?: return
+    val options =
+        choice.choices.map { it.id to it.label }.ifEmpty { listOf(FOR_PARTY to "People with me", FOR_LINK to "I'll send a link") }
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        PlanOverline(choice.title ?: "Who are they for?")
+        PlanSegmented(
+            options = options,
+            selected = if (ui.forLink) FOR_LINK else FOR_PARTY,
+            onSelect = { onLink(it == FOR_LINK) },
+            modifier = Modifier.testTag("planPayFor"),
+            optionTags = options.map { "planPayFor.${it.first}" },
+        )
+    }
+    if (ui.forLink) {
+        val most = maxOf(LINK_FEWEST, choice.maxSpots)
+        PlanStepperRow(
+            title = "How many spots?",
+            caption = "Yours and the ones you send",
+            value = ui.spots.coerceIn(LINK_FEWEST, most),
+            range = LINK_FEWEST..most,
+            onChange = { if (!ui.paying) onSpots(it) },
+            modifier = Modifier.testTag("planPaySpots"),
         )
     }
 }

@@ -290,3 +290,72 @@ data class PlanPhotoDto(
     @Json(name = "can_remove") val canRemove: Boolean = false,
     @Json(name = "at") val at: String? = null,
 )
+
+// ---- 6. One person pays for the group (board 31, switch `plans_group_pay`, a business's paid plan) ----
+
+/** Any quote's `group_pay` while the switch is on: "Who are they for?" and its two choices; [maxSpots] is the room left. */
+@JsonClass(generateAdapter = true)
+data class PlanGroupPayChoiceDto(
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "for") val choices: List<PlanGroupPayForDto> = emptyList(),
+    @Json(name = "max_spots") val maxSpots: Int = 0,
+)
+
+/** `party` ("People with me") or `link` ("I'll send a link"). */
+@JsonClass(generateAdapter = true)
+data class PlanGroupPayForDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "label") val label: String = "",
+)
+
+/**
+ * The card's `group_pay`: the buyer's "Your 11 spots" / "4 taken" with the link to share and "Give back {n} spots", or
+ * a claimer's "Chris got you a spot". [url] is null once the link stops.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanGroupPayDto(
+    @Json(name = "role") val role: String? = null,
+    @Json(name = "spots") val spots: Int = 0,
+    @Json(name = "taken") val taken: Int = 0,
+    @Json(name = "left") val left: Int = 0,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "taken_text") val takenText: String? = null,
+    @Json(name = "url") val url: String? = null,
+    @Json(name = "open") val open: Boolean = false,
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "give_back") val giveBack: PlanGroupPayGiveBackDto? = null,
+    @Json(name = "from") val from: String? = null,
+) {
+    val isBuyer: Boolean get() = role == "buyer"
+}
+
+/** "Give back 7 spots" and what it does, in the server's words and cents. */
+@JsonClass(generateAdapter = true)
+data class PlanGroupPayGiveBackDto(
+    @Json(name = "left") val left: Int = 0,
+    @Json(name = "back_cents") val backCents: Int = 0,
+    @Json(name = "label") val label: String? = null,
+    @Json(name = "text") val text: String? = null,
+)
+
+/** `GET /api/plans/:id/spot?token=`: who got the reader a spot, and whether the link still takes anyone. */
+@JsonClass(generateAdapter = true)
+data class PlanSpotResponse(
+    @Json(name = "spot") val spot: PlanSpotDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanSpotDto(
+    @Json(name = "from") val from: String? = null,
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "left") val left: Int = 0,
+    @Json(name = "open") val open: Boolean = false,
+    @Json(name = "button") val button: String? = null,
+    @Json(name = "closed_text") val closedText: String? = null,
+)
+
+/** `POST /api/plans/:id/requests/claim-spot`. */
+@JsonClass(generateAdapter = true)
+data class PlanClaimSpotBody(
+    @Json(name = "token") val token: String,
+)

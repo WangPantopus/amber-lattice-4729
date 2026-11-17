@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.payments.PaymentIntentSheetParamsDto
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
 import app.pantopus.android.data.api.models.plans.PlanDto
+import app.pantopus.android.data.api.models.plans.PlanGroupPayChoiceDto
 import app.pantopus.android.data.api.models.plans.PlanQuoteBody
 import app.pantopus.android.data.api.models.plans.PlanQuoteDto
 import app.pantopus.android.data.api.net.NetworkResult
@@ -39,7 +40,22 @@ data class PlanPayUi(
     val paying: Boolean = false,
     /** Under the button: a declined card, "That took a while. Start again.", "This payment hasn't gone through yet." */
     val error: String? = null,
-)
+    /** The holidays' one person pays for the group: "I'll send a link" chosen, for [spots] spots (the buyer's among them). */
+    val forLink: Boolean = false,
+    val spots: Int = LINK_FEWEST,
+    /** The server's "Who are they for?" as last quoted (kept while a quote is refused, so the choice stays). */
+    val linkChoice: PlanGroupPayChoiceDto? = null,
+) {
+    /** "Who are they for?" shows: the server offers it (switch on) and more than one is coming, or a link was chosen. */
+    val offersLink: Boolean get() = linkChoice != null && (partySize > 1 || forLink)
+}
+
+/** The fewest spots a link holds (the buyer's and one more). */
+const val LINK_FEWEST = 2
+
+/** "Who are they for?" choices, as the server names them. */
+const val FOR_PARTY = "party"
+const val FOR_LINK = "link"
 
 /** What the page does next, once. */
 sealed interface PlanPayEvent {
@@ -98,13 +114,33 @@ class PlanPayViewModel
             readQuote(size)
         }
 
+        /** "Who are they for?": "I'll send a link" ([link]) quotes spots to share, starting from the party chosen. */
+        fun setForLink(link: Boolean) {
+            if (link == _ui.value.forLink || _ui.value.paying) return
+            _ui.update { it.copy(forLink = link, spots = maxOf(LINK_FEWEST, it.partySize), error = null) }
+            readQuote(_ui.value.partySize)
+        }
+
+        /** "How many spots?" for the link: the server quotes it again ("12 × $18.00", "$216.00"). */
+        fun setSpots(spots: Int) {
+            if (spots == _ui.value.spots || _ui.value.paying) return
+            _ui.update { it.copy(spots = spots, error = null) }
+            readQuote(_ui.value.partySize)
+        }
+
         private fun readQuote(size: Int) {
             quoteJob?.cancel()
+            val ui = _ui.value
+            val body =
+                if (ui.forLink) PlanQuoteBody(partySize = 1, forWhom = FOR_LINK, spots = ui.spots) else PlanQuoteBody(partySize = size)
             _ui.update { it.copy(quoteLoading = true, quoteError = null) }
             quoteJob =
                 viewModelScope.launch {
-                    when (val result = repository.quote(planId, PlanQuoteBody(partySize = size))) {
-                        is NetworkResult.Success -> _ui.update { it.copy(quote = result.data, quoteLoading = false) }
+                    when (val result = repository.quote(planId, body)) {
+                        is NetworkResult.Success ->
+                            _ui.update {
+                                it.copy(quote = result.data, quoteLoading = false, linkChoice = result.data.groupPay ?: it.linkChoice)
+                            }
                         is NetworkResult.Failure ->
                             _ui.update { it.copy(quote = null, quoteLoading = false, quoteError = result.error.planMessage) }
                     }
@@ -117,7 +153,13 @@ class PlanPayViewModel
             if (ui.paying || ui.quote == null) return
             _ui.update { it.copy(paying = true, error = null) }
             viewModelScope.launch {
-                val body = AskToJoinBody(partySize = ui.partySize, via = via.takeIf { plan.business != null })
+                // The holidays' one person pays for the group: every spot in one payment, the buyer's own among them.
+                val body =
+                    if (ui.forLink) {
+                        AskToJoinBody(partySize = 1, via = via.takeIf { plan.business != null }, forWhom = FOR_LINK, spots = ui.spots)
+                    } else {
+                        AskToJoinBody(partySize = ui.partySize, via = via.takeIf { plan.business != null })
+                    }
                 when (val result = repository.ask(planId, body)) {
                     is NetworkResult.Success -> {
                         val payment = result.data.payment

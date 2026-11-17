@@ -318,6 +318,7 @@ private fun PlanReady(
                             onGiveBack = viewModel::giveBackBring,
                             onAdd = viewModel::addBring,
                         ),
+                    onExtrasChanged = viewModel::load,
                 )
                 PlanFriendInviteRow(
                     plan = plan,
@@ -335,7 +336,8 @@ private fun PlanReady(
             plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
-                PlanBeforeInBody(plan)
+                // The holidays' one person pays for the group: opened from a spot link, "{Chris} got you a spot".
+                PlanBeforeInBody(plan, afterTitle = { PlanSpotOffer(plan, onClaimed = viewModel::load) })
             }
         }
     }
