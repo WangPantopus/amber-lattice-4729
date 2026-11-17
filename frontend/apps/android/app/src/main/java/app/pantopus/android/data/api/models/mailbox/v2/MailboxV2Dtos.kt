@@ -3,6 +3,7 @@ package app.pantopus.android.data.api.models.mailbox.v2
 import app.pantopus.android.data.api.models.common.JsonArrayValue
 import app.pantopus.android.data.api.models.common.JsonValue
 import app.pantopus.android.data.api.models.mailbox.CardPhoto
+import app.pantopus.android.data.api.models.mailbox.CardReplyFace
 import app.pantopus.android.data.api.models.mailbox.CardSignature
 import app.pantopus.android.data.api.models.mailbox.CardVoice
 import com.squareup.moshi.Json
@@ -255,6 +256,8 @@ data class DrawerMail(
     /** When it was opened (the drawer view, the Mail page or the apps); the mantel stands the newest opened first. */
     @Json(name = "opened_at") val openedAt: String? = null,
     @Json(name = "viewed_at") val viewedAt: String? = null,
+    /** A reply to a Christmas card (plan Part 3): a letter whose `card` is null; null for everything else. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
 ) {
     @JsonClass(generateAdapter = true)
     data class SenderRef(
@@ -306,6 +309,8 @@ data class MailboxV2Item(
     val pieces: List<DrawerMail>? = null,
     /** A Christmas card; null for everything else. */
     val card: MailCard? = null,
+    /** A reply to a Christmas card (plan Part 3); null for everything else. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
 )
 
 /** `POST /api/mailbox/v2/item/:id/action` — route `backend/routes/mailboxV2.js:459`. */

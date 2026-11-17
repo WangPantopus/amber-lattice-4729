@@ -22,6 +22,7 @@ import app.pantopus.android.data.network.NetworkMonitor
 import app.pantopus.android.ui.screens.mailbox.components.MailAddressBook
 import app.pantopus.android.ui.screens.mailbox.components.MailKind
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceMapper
+import app.pantopus.android.ui.screens.mailbox.components.MailPieceModel
 import app.pantopus.android.ui.screens.mailbox.components.MailSection
 import app.pantopus.android.ui.screens.mailbox.components.MailboxHeroState
 import app.pantopus.android.ui.screens.mailbox.components.MappedMail
@@ -289,10 +290,12 @@ class MailboxRootViewModel
          */
         fun openMail(mailId: String) {
             val opened = loadedMail.firstOrNull { it.piece.id == mailId }
-            if (opened?.piece?.card == null) return onOpenMail(mailId)
+            // A reply (plan Part 3) opens as its joined card, with no cards in tow.
+            val card = opened?.piece?.card
+            if (card == null || card.replyFrom != null) return onOpenMail(mailId)
             val waiting =
                 loadedMail
-                    .filter { it.piece.id != mailId && it.piece.card?.sealed == false && !it.piece.opened }
+                    .filter { it.piece.id != mailId && it.piece.waitsToBeOpened }
                     .sortedBy { MailPieceMapper.deliveredAt(it.row) ?: Instant.MAX }
                     .map { it.piece.id }
                     .distinct()
@@ -696,3 +699,7 @@ class MailboxRootViewModel
             const val MAX_PAGE = 100
         }
     }
+
+/** A Christmas card that can be opened now (delivered, not opened, not sealed or its seal lifted); a reply is not one. */
+private val MailPieceModel.waitsToBeOpened: Boolean
+    get() = !opened && card?.let { !it.sealed && it.replyFrom == null } == true

@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.mailbox.components
 
+import app.pantopus.android.data.api.models.mailbox.CardReplyFace
 import app.pantopus.android.data.api.models.mailbox.v2.DrawerMail
 import app.pantopus.android.data.api.models.mailbox.v2.MailCard
 import app.pantopus.android.data.api.models.mailbox.v2.MailDelivery
@@ -112,23 +113,54 @@ object MailPieceMapper {
             note = note(kind, row, title),
             meta = meta(row, kind, whenWords, dueWords),
             accessibilityLabel =
-                row.card?.let { cardLabel(it, from, row.viewed, whenWords, cameToday) }
+                cardOrReplyLabel(row, from, whenWords, cameToday)
                     ?: spokenLabel(row, kind, from, sender, dueWords, whenWords, cameToday),
             bundleCount = row.bundleItemCount,
             pageCount = row.pageCount,
-            card =
-                row.card?.let {
-                    MailPieceCard(
-                        design = it.design,
-                        sealed = it.sealed,
-                        caption = it.caption,
-                        paper = it.paper,
-                        number = it.number,
-                        year = it.year,
-                        openedAt = row.openedAt ?: row.viewedAt,
-                    )
-                },
+            card = pieceCard(row, from),
         )
+    }
+
+    /** A Christmas card on its row; a reply (plan Part 3) draws as the card it answers, with "{First} wrote back". */
+    private fun pieceCard(
+        row: DrawerMail,
+        from: String,
+    ): MailPieceCard? =
+        row.card?.let {
+            MailPieceCard(
+                design = it.design,
+                sealed = it.sealed,
+                caption = it.caption,
+                paper = it.paper,
+                number = it.number,
+                year = it.year,
+                openedAt = row.openedAt ?: row.viewedAt,
+            )
+        } ?: row.cardReply?.let { replyCard(it, from) }
+
+    /** A screen reader's sentence for a Christmas card or a reply to one; null for other mail. */
+    private fun cardOrReplyLabel(
+        row: DrawerMail,
+        from: String,
+        whenWords: String?,
+        cameToday: Boolean,
+    ): String? =
+        row.card?.let { cardLabel(it, from, row.viewed, whenWords, cameToday) }
+            ?: row.cardReply?.let { replyLabel(from, whenWords) }
+
+    /** A reply to a Christmas card (plan Part 3), as the row draws it: the card it answers, with who wrote back. */
+    private fun replyCard(
+        reply: CardReplyFace,
+        from: String,
+    ): MailPieceCard = MailPieceCard(design = reply.design, sealed = false, caption = reply.caption, paper = reply.paper, replyFrom = from)
+
+    /** One sentence for a screen reader: "Maya wrote back to your Christmas card, today". */
+    private fun replyLabel(
+        from: String,
+        whenWords: String?,
+    ): String {
+        val first = from.trim().substringBefore(' ').ifEmpty { "Someone" }
+        return listOfNotNull("$first wrote back to your Christmas card", whenWords).joinToString(", ")
     }
 
     /** A Christmas card's stamp goes with its picture, so the one its sender looked over is the one that comes. */

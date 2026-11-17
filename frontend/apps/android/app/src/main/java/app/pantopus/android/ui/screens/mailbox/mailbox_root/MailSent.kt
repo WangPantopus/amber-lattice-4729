@@ -445,7 +445,10 @@ object MailSentWords {
             note = null,
             meta = "",
             accessibilityLabel = "${if (card.kind == "letter") "Letter" else "Christmas card"} from $from to $to, $state.",
-            card = if (card.kind == "letter") null else MailPieceCard(design = design, sealed = card.sealed),
+            // A reply this person wrote (plan Part 3): the card it answers, with "You wrote back" across it.
+            card =
+                card.cardReply?.let { MailPieceCard(it.design, sealed = false, caption = it.caption, paper = it.paper, replyFrom = "You") }
+                    ?: if (card.kind == "letter") null else MailPieceCard(design = design, sealed = card.sealed),
         )
     }
 }
