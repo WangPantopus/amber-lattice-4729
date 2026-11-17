@@ -1,3 +1,5 @@
+@file:Suppress("MatchingDeclarationName")
+
 package app.pantopus.android.ui.screens.plans.host
 
 import androidx.compose.foundation.clickable

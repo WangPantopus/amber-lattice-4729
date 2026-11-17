@@ -728,8 +728,9 @@ class HostFlowViewModel
         /** "Let guests pick the date" on or off (extras section 2): on, the form's own time is the first offered. */
         fun setFindDate(on: Boolean) =
             edit { draft ->
-                val first =
-                    if (draft.start != null && draft.end != null) listOf(DateOptionDraft(key = 1, start = draft.start, end = draft.end)) else emptyList()
+                val start = draft.start
+                val end = draft.end
+                val first = if (start != null && end != null) listOf(DateOptionDraft(key = 1, start = start, end = end)) else emptyList()
                 draft.copy(dateOptions = if (on) draft.dateOptions ?: first else null)
             }
 
@@ -1405,9 +1406,10 @@ class HostFlowViewModel
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
             val tooFar = tooFarAhead(draft, now)
+            val extras = extrasProblem(draft)
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
-                _ui.value.postsFindDate && draft.dateOptions.orEmpty().size < DATE_OPTIONS_FEWEST -> DATE_OPTIONS_TOO_FEW
+                extras != null -> extras
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
                 tooFar != null -> tooFar
@@ -1417,6 +1419,13 @@ class HostFlowViewModel
                 else -> placeProblem(draft)
             }
         }
+
+        /** What the holidays' extras still need: find a date's two times; null when nothing. */
+        private fun extrasProblem(draft: HostDraft): String? =
+            when {
+                _ui.value.postsFindDate && draft.dateOptions.orEmpty().size < DATE_OPTIONS_FEWEST -> DATE_OPTIONS_TOO_FEW
+                else -> null
+            }
 
         /** What Where still needs: an online plan's link (Plans step 3), the host's home, or a place; null when nothing. */
         private fun placeProblem(draft: HostDraft): String? =
