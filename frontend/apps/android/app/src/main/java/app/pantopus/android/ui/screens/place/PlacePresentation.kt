@@ -140,6 +140,20 @@ object PlacePresentation {
             .format(instant)
     }
 
+    /** "November 17" (with the year when it isn't this one): a verification's day, in the place's zone when it is known. */
+    fun fmtMonthDay(
+        iso: String?,
+        zone: ZoneId? = ZoneId.systemDefault(),
+    ): String? {
+        val instant = parseInstant(iso) ?: return null
+        val inZone = zone ?: ZoneId.systemDefault()
+        val sameYear = instant.atZone(inZone).year == Instant.now().atZone(inZone).year
+        return DateTimeFormatter
+            .ofPattern(if (sameYear) "MMMM d" else "MMMM d, yyyy", Locale.US)
+            .withZone(inZone)
+            .format(instant)
+    }
+
     /** "May 2026" — the property as-of stamp, in the place's zone when it is known. */
     fun fmtMonthYear(
         iso: String?,

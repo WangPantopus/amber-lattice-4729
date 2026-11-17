@@ -119,8 +119,12 @@ private fun ResidencySections(
     nonResident: Boolean,
     viewModel: PlaceDetailViewModel,
 ) {
+    // Verified by a fast check: letters and passes need the mailed code, so the page offers the postcard.
+    val mailCode = LocalPlaceDetailMailCode.current
     PlaceDetailSectionLabel("Residency letter")
-    if (isVerified) {
+    if (isVerified && mailCode != null) {
+        PlaceMailCodeCard("Verified residency letter", PantopusIcon.FileText, mailCode)
+    } else if (isVerified) {
         LaunchedEffect(Unit) { viewModel.loadLetters() }
         ResidencyLetterSection(viewModel)
     } else {
@@ -139,7 +143,9 @@ private fun ResidencySections(
     }
 
     PlaceDetailSectionLabel("Residency Pass")
-    if (isVerified) {
+    if (isVerified && mailCode != null) {
+        PlaceMailCodeCard("Prove residency without sharing your address", PantopusIcon.IdCard, mailCode)
+    } else if (isVerified) {
         LaunchedEffect(Unit) { viewModel.loadClaims() }
         PlaceResidencyPassSection(viewModel)
     } else {

@@ -88,12 +88,14 @@ import app.pantopus.android.ui.screens.place.components.PlaceHomeCard
 import app.pantopus.android.ui.screens.place.components.PlaceWorthALook
 import app.pantopus.android.ui.screens.place.components.WorthItem
 import app.pantopus.android.ui.screens.place.components.placeSurface
+import app.pantopus.android.ui.screens.place.components.placeVerifiedMark
 import app.pantopus.android.ui.screens.place.components.rememberGlanceOpen
 import app.pantopus.android.ui.screens.place.detail.RadonToday
 import app.pantopus.android.ui.screens.place.detail.TodayAskEntry
 import app.pantopus.android.ui.screens.place.messaging.PlaceMessagesActionRow
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifySheet
+import app.pantopus.android.ui.screens.place.verify.rememberVerifyOptions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -240,6 +242,10 @@ fun PlaceDashboardScreen(
                     unreadCount = unreadCount,
                     onOpenSwitcher = { showSwitcher = true },
                     onVerify = { showVerify = true },
+                    onMailCode = {
+                        viewModel.reloadOnReturn()
+                        onStartVerify(PlaceVerifyMethod.MAIL, verifyAddress)
+                    },
                     onOpenDetail = { group -> onOpenSection(homeId, group.slug) },
                     onOpenPulse = onOpenPulse,
                     onComposeMessage = onComposeMessage,
@@ -367,8 +373,14 @@ internal fun PlaceDashboardContent(
     onOpenTask: ((taskId: String) -> Unit)? = null,
     /** Today's radon question, when it is this person's next step here (Risk and environment). */
     onOpenRadon: (() -> Unit)? = null,
+    /** "Mail me a code" under a fast check's mark: the postcard. */
+    onMailCode: () -> Unit = {},
 ) {
     val isVerified = intel.tier == PlaceTier.T4
+    // Faster home verification (FASTVERIFY): the server's level here, read again with each fresh dashboard. Null while
+    // `home_fast_verify` is off, and the home card is today's.
+    val verifyOptions = rememberVerifyOptions(homeId.takeIf { it.isNotBlank() && claim == null }, refreshKey = intel.generatedAt)
+    val verifiedMark = placeVerifiedMark(verifyOptions, intel.homeZone)
     // Verifying is the next step for a claimed resident and for a private setup (by mail). Guests and service
     // providers can't verify, so they get no verify prompts; older servers don't say, and claimed decides.
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))
@@ -453,6 +465,9 @@ internal fun PlaceDashboardContent(
                     onOpenHome = { onOpenDetail(PlaceDetailGroup.YOUR_HOME) },
                     onRetry = onRetry,
                     modifier = Modifier.padding(horizontal = 16.dp).padding(top = 8.dp),
+                    verified = verifiedMark,
+                    onMessageHomes = { onComposeMessage(intel.place.label) },
+                    onMailCode = onMailCode,
                 )
             }
             item(key = "worth") {

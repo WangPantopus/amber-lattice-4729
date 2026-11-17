@@ -154,7 +154,11 @@ private fun OwnerTools(
     viewModel: PlaceDetailViewModel,
 ) {
     PlaceDetailSectionLabel("Rate watch")
-    if (intel.tier == PlaceTier.T4) {
+    // Verified by a fast check: only a mail-proven resident can watch a home, so the page offers the postcard.
+    val mailCode = LocalPlaceDetailMailCode.current
+    if (intel.tier == PlaceTier.T4 && mailCode != null) {
+        PlaceMailCodeCard("Rate watch", PantopusIcon.TrendingDown, mailCode)
+    } else if (intel.tier == PlaceTier.T4) {
         LaunchedEffect(Unit) { viewModel.loadRateWatch() }
         RateWatchSection(viewModel)
     } else {

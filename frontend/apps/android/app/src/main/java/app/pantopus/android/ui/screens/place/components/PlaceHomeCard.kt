@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
 import app.pantopus.android.data.api.models.place.PlaceIntelligence
 import app.pantopus.android.data.api.models.place.PlaceSectionAccess
 import app.pantopus.android.data.api.models.place.PlaceSectionEnvelope
@@ -66,6 +69,39 @@ fun placeStanding(
         else -> PlaceStanding("Private setup · only you", PantopusIcon.Home)
     }
 
+/**
+ * Where a verified person stands with faster home verification on (FASTVERIFY SPEC section 6): the "Verified resident"
+ * chip, how and when ("by phone · November 17"; null for a way the words don't name), and whether residency letters and
+ * home Mail still need a mailed code (a fast check).
+ */
+data class PlaceVerifiedMark(
+    val by: String?,
+    val needsMail: Boolean,
+)
+
+/** The mark for [options] at a fast or proven level; null otherwise, and while the server doesn't offer the options. */
+fun placeVerifiedMark(
+    options: HomeVerifyOptions?,
+    zone: ZoneId?,
+): PlaceVerifiedMark? {
+    if (options == null || !(options.isFast || options.isProven)) return null
+    val fast = options.fast?.takeIf { options.isFast }
+    val kind =
+        when (fast?.kind ?: options.verifiedBy) {
+            "phone" -> "phone"
+            "location" -> "location"
+            "bill" -> "bill"
+            "document" -> if (fast != null) "bill" else null
+            "mail" -> "mail"
+            else -> null
+        }
+    val date = PlacePresentation.fmtMonthDay(fast?.at ?: options.verifiedAt, zone)
+    return PlaceVerifiedMark(
+        by = kind?.let { k -> listOfNotNull("by $k", date).joinToString(" · ") },
+        needsMail = options.isFast,
+    )
+}
+
 /** The home's known facts from the property record, never guessed: up to four, each a value over what it is. */
 fun placeHomeFacts(env: PlaceSectionEnvelope?): List<Pair<String, String>> {
     val live = env?.status == PlaceSectionStatus.READY || env?.status == PlaceSectionStatus.STALE
@@ -98,15 +134,25 @@ fun PlaceHomeCard(
     onOpenHome: (() -> Unit)?,
     onRetry: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    /** Faster home verification's mark; null keeps today's standing line. */
+    verified: PlaceVerifiedMark? = null,
+    /** "Message homes near you", with [verified]. */
+    onMessageHomes: (() -> Unit)? = null,
+    /** "Mail me a code", for a fast-verified person. */
+    onMailCode: (() -> Unit)? = null,
 ) {
     val standing = placeStanding(intel, claimInReview)
     val home = intel.groups.flatMap { it.sections }.firstOrNull { it.sectionId == PlaceSectionId.YOUR_HOME }
     val facts = placeHomeFacts(home)
     Column(modifier = modifier.fillMaxWidth().placeSurface().testTag("place.homeCard")) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PantopusIconImage(standing.icon, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appTextSecondary)
-                Text(standing.words, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextSecondary)
+            if (verified != null) {
+                VerifiedResidentLine(verified)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PantopusIconImage(standing.icon, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appTextSecondary)
+                    Text(standing.words, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appTextSecondary)
+                }
             }
             Text(
                 intel.place.line1.ifBlank { intel.place.label },
@@ -145,6 +191,17 @@ fun PlaceHomeCard(
                 // A locked record's verify step is the card's own "Verify address" below (the same sheet).
                 HomeRecordLine(home, onRetry)
             }
+            if (verified != null && onMessageHomes != null) {
+                PlaceTextButton(
+                    "Message homes near you",
+                    modifier =
+                        Modifier
+                            .padding(top = 10.dp)
+                            .heightIn(min = 44.dp)
+                            .clickable(role = Role.Button, onClick = onMessageHomes)
+                            .testTag("place.homeCard.messageHomes"),
+                )
+            }
             if (onVerify != null) {
                 Text(
                     "Verify your address to message neighbors and get your badge.",
@@ -165,9 +222,76 @@ fun PlaceHomeCard(
                 )
             }
         }
+        if (verified?.needsMail == true && onMailCode != null) {
+            PlaceHairline()
+            MailedCodeLine(onMailCode)
+        }
         if (showsTools) {
             PlaceHairline()
             PlaceToolsRow(shortcuts, onOpenHomeTools, onOpenShortcut)
+        }
+    }
+}
+
+/**
+ * "Verified resident" and how: "by phone · November 17" (FASTVERIFY drawing 7). The words go under the chip when they
+ * don't fit beside it (the largest text sizes).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VerifiedResidentLine(mark: PlaceVerifiedMark) {
+    FlowRow(
+        modifier = Modifier.semantics(mergeDescendants = true) {}.testTag("place.homeCard.verifiedResident"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        PlaceChip(PlaceChipModel(PlaceChipTone.SUCCESS, "Verified resident", PantopusIcon.BadgeCheck))
+        mark.by?.let {
+            Text(
+                it,
+                fontSize = 12.5.sp,
+                lineHeight = 17.sp,
+                color = PantopusColors.appTextSecondary,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+        }
+    }
+}
+
+/** A fast check opens most things; residency letters and home Mail still need the mailed code. */
+@Composable
+private fun MailedCodeLine(onMailCode: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClickLabel = "Mail me a code", onClick = onMailCode)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("place.homeCard.mailCode"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PantopusIconImage(
+            PantopusIcon.Lock,
+            null,
+            size = 15.dp,
+            strokeWidth = 2.25f,
+            tint = PantopusColors.appTextMuted,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Residency letters and home Mail need a mailed code.",
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = PantopusColors.appTextSecondary,
+            )
+            Text(
+                "Mail me a code",
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.primary600,
+            )
         }
     }
 }

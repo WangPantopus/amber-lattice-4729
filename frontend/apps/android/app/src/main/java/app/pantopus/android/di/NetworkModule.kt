@@ -53,6 +53,7 @@ import app.pantopus.android.data.api.services.HomeAdminApi
 import app.pantopus.android.data.api.services.HomeClaimReviewApi
 import app.pantopus.android.data.api.services.HomeDashboardApi
 import app.pantopus.android.data.api.services.HomeDiscoveryApi
+import app.pantopus.android.data.api.services.HomeFastVerifyApi
 import app.pantopus.android.data.api.services.HomeGuestPassesApi
 import app.pantopus.android.data.api.services.HomeIssuesApi
 import app.pantopus.android.data.api.services.HomeMembersApi
@@ -505,6 +506,9 @@ object NetworkModule {
 
     @Provides @Singleton
     fun provideHomeVerificationApi(retrofit: Retrofit): HomeVerificationApi = retrofit.create(HomeVerificationApi::class.java)
+
+    @Provides @Singleton
+    fun provideHomeFastVerifyApi(retrofit: Retrofit): HomeFastVerifyApi = retrofit.create(HomeFastVerifyApi::class.java)
 
     @Provides @Singleton
     fun provideHomePrivacyApi(retrofit: Retrofit): HomePrivacyApi = retrofit.create(HomePrivacyApi::class.java)
