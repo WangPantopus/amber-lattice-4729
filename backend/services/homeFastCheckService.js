@@ -268,6 +268,8 @@ async function verifyOptions({ homeId, user, platform = null }) {
     && !nonResident && !(await claimSetAside(homeId, userId).catch(() => true));
 
   const elsewhere = claim ? await fastCheckedElsewhere(userId, homeId) : null;
+  // A card this person asked for here was reported ("This wasn't me"): fast checks and another card wait for Pantopus.
+  const reported = !proven && !nonResident && await reportedHere(homeId, userId);
   const options = [];
   for (const id of OPTION_ORDER) {
     let reason = null;
@@ -276,7 +278,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'location' && platform !== 'ios' && platform !== 'android') reason = 'APP_ONLY';
       else if (!claim) reason = 'NEEDS_CLAIM';
       else if (elsewhere) reason = 'ONE_HOME';
-      else if (await reportedHere(homeId, userId)) reason = 'IN_REVIEW';
+      else if (reported) reason = 'IN_REVIEW';
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
       // eslint-disable-next-line global-require
       else if (id === 'location' && !require('./fastCheck/locationCheck').ready(platform)) reason = 'UNAVAILABLE';
@@ -286,6 +288,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
       // eslint-disable-next-line global-require
       const mailVendorService = require('./addressValidation/mailVendorService');
       if (proven || nonResident || !mailVendorService.canSendPostcards()) reason = 'UNAVAILABLE';
+      else if (reported) reason = 'IN_REVIEW';
     } else if (id === 'landlord') {
       if (proven || nonResident || !(await landlordDoor(homeId, userId))) reason = 'UNAVAILABLE';
     }
