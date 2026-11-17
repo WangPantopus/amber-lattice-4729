@@ -2,6 +2,8 @@
 
 package app.pantopus.android.ui.screens.homes.claim_ownership
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,11 +42,13 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
 import app.pantopus.android.data.homes.readHomeEvidenceBytes
+import app.pantopus.android.data.posts.PostCameraPhotos
 import app.pantopus.android.ui.screens.homes.claim_ownership.components.ClaimDocumentTypePicker
 import app.pantopus.android.ui.screens.homes.claim_ownership.components.ClaimHomeChip
 import app.pantopus.android.ui.screens.homes.claim_ownership.components.UploadSlot
@@ -79,6 +83,8 @@ fun ClaimOwnershipWizardScreen(
     onOpenClaimsList: () -> Unit,
     viewModel: ClaimOwnershipWizardViewModel = hiltViewModel(),
     onOpenFindHome: () -> Unit = {},
+    /** The Bill check read the bill: "You're verified" (FASTVERIFY phase 4). */
+    onBillVerified: () -> Unit = onDismiss,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pendingEvent by viewModel.pendingEvent.collectAsStateWithLifecycle()
@@ -96,6 +102,10 @@ fun ClaimOwnershipWizardScreen(
             ClaimOwnershipOutboundEvent.OpenFindHome -> {
                 viewModel.acknowledgeEvent()
                 onOpenFindHome()
+            }
+            ClaimOwnershipOutboundEvent.BillVerified -> {
+                viewModel.acknowledgeEvent()
+                onBillVerified()
             }
             null -> Unit
         }
@@ -551,6 +561,7 @@ private fun WhyWeAskSection() {
 // MARK: - Step 2
 
 @Composable
+@Suppress("CyclomaticComplexMethod")
 private fun UploadStep(
     state: ClaimOwnershipUiState,
     vm: ClaimOwnershipWizardViewModel,
@@ -577,6 +588,48 @@ private fun UploadStep(
             }
         }
 
+    // The Bill check's "Take a photo": the camera app writes into one of the FileProvider's folders, the bytes are
+    // read at once and the file deleted (as a post's camera photo is).
+    var cameraFile by remember { mutableStateOf<java.io.File?>(null) }
+    val camera =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            val file = cameraFile.also { cameraFile = null }
+            val (slot, ticket) = pickerSlot.also { pickerSlot = null } ?: return@rememberLauncherForActivityResult
+            if (!saved || file == null) {
+                file?.delete()
+                return@rememberLauncherForActivityResult
+            }
+            vm.acceptPick(slot, ticket) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        file.inputStream().use { ClaimPickedFile("bill-photo.jpg", "image/jpeg", readHomeEvidenceBytes(it)) }
+                    } finally {
+                        file.delete()
+                    }
+                }
+            }
+        }
+
+    // CAMERA is declared in the manifest, so the camera app needs the runtime grant (as the Pulse composer's camera).
+    val cameraPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val slot = state.activeSlots.firstOrNull()
+            val ticket = slot?.takeIf { granted }?.let(vm::beginPick)
+            if (slot != null && ticket != null) {
+                val file = PostCameraPhotos.newFile(context.cacheDir)
+                cameraFile = file
+                pickerSlot = slot to ticket
+                // No camera app (or a broken resolver) must not crash the wizard: the capture is just dropped.
+                runCatching { camera.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
+                    .onFailure {
+                        cameraFile = null
+                        pickerSlot = null
+                        file.delete()
+                    }
+            }
+        }
+    val canTakePhoto = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
+
     UploadStepContent(
         homeLabel = state.startContent.homeLabel,
         slots =
@@ -593,7 +646,7 @@ private fun UploadStep(
                     hint = slot.acceptHint,
                     state =
                         (state.slots[slot] ?: ClaimSlotState.Empty)
-                            .toUploadState(),
+                            .toUploadState(billCheck = state.billMode),
                 )
             },
         verificationType = state.verificationType,
@@ -611,6 +664,10 @@ private fun UploadStep(
             vm.remove(slot)
         },
         onSelectDocumentType = vm::selectDocumentType,
+        billMode = state.billMode,
+        billResult = state.billResult,
+        onTakePhoto = { cameraPermission.launch(Manifest.permission.CAMERA) },
+        canTakePhoto = canTakePhoto,
     )
 }
 
@@ -639,7 +696,15 @@ internal fun UploadStepContent(
     documentOptions: List<ClaimDocumentOption> = emptyList(),
     selectedDocumentType: String? = null,
     onSelectDocumentType: (String) -> Unit = {},
+    billMode: Boolean = false,
+    billResult: String? = null,
+    onTakePhoto: () -> Unit = {},
+    canTakePhoto: Boolean = false,
 ) {
+    if (billMode) {
+        BillCheckContent(homeLabel, slots, submitError, billResult, onPick, onRemove, onTakePhoto.takeIf { canTakePhoto })
+        return
+    }
     val attached = slots.count { it.state.isAttached }
     val isResidency = verificationType == ClaimVerificationType.Residency
     Column(
@@ -775,11 +840,13 @@ private fun SuccessStep(outcomeNote: String? = null) {
 
 // MARK: - Helpers
 
-private fun ClaimSlotState.toUploadState(): UploadSlotState =
+/** [billCheck]: the Bill check's button is "Use this photo", so its picked file doesn't point at a Submit. */
+private fun ClaimSlotState.toUploadState(billCheck: Boolean = false): UploadSlotState =
     when (this) {
         ClaimSlotState.Empty -> UploadSlotState.Empty
         is ClaimSlotState.Uploading -> UploadSlotState.Uploading(file.toDisplay(), fraction)
-        is ClaimSlotState.Picked -> UploadSlotState.Pending(file.toDisplay(), "Selected. Submit to save for review.")
+        is ClaimSlotState.Picked ->
+            UploadSlotState.Pending(file.toDisplay(), if (billCheck) "Selected." else "Selected. Submit to save for review.")
         is ClaimSlotState.Uploaded -> UploadSlotState.Pending(file.toDisplay(), "Saved pending review. No access has been granted.")
         is ClaimSlotState.Failed -> UploadSlotState.Pending(file.toDisplay(), message)
     }

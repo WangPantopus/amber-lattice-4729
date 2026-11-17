@@ -36,7 +36,17 @@ data class HomePrivateEvidenceList(
 )
 
 @JsonClass(generateAdapter = true)
-data class HomePrivateEvidenceResponse(val evidence: HomePrivateEvidenceDto)
+data class HomePrivateEvidenceResponse(
+    val evidence: HomePrivateEvidenceDto,
+    /** A bill read at once (FASTVERIFY phase 4): only with `home_fast_verify_document` on and a claim to mark. */
+    @Json(name = "fast_check") val fastCheck: EvidenceFastCheck? = null,
+)
+
+/** `verified` (Verified now), `needs_review` (a person reviews it, as today) or `unreadable` (another photo). */
+@JsonClass(generateAdapter = true)
+data class EvidenceFastCheck(
+    val result: String,
+)
 
 @JsonClass(generateAdapter = true)
 data class HomeEvidenceVerifyRequest(

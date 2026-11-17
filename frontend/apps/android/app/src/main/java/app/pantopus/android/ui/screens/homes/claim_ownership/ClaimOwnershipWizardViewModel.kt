@@ -22,6 +22,7 @@ import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.homediscovery.HomeDiscoveryRepository
 import app.pantopus.android.data.homes.HOME_EVIDENCE_MAX_BYTES
 import app.pantopus.android.data.homes.HOME_EVIDENCE_MIMES
+import app.pantopus.android.data.homes.HomeFastVerifyRepository
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.network.NetworkMonitor
 import app.pantopus.android.ui.screens.homes.claim_evidence.HomePrivateEvidenceAccess
@@ -119,6 +120,13 @@ data class ClaimOwnershipUiState(
      * actually did — a parallel claim, or a challenge that opened.
      */
     val submissionOutcomeNote: String? = null,
+    /**
+     * A bill read at once (FASTVERIFY phase 4): the residency upload as the Bill check, while the server offers the
+     * `document` way (only with `home_fast_verify_document` on).
+     */
+    val billMode: Boolean = false,
+    /** The last bill read: `needs_review` or `unreadable` stay on screen; `verified` opens "You're verified". */
+    val billResult: String? = null,
 ) {
     /**
      * Only render the "ask a verified owner" option when the home has a
@@ -176,6 +184,8 @@ open class ClaimOwnershipWizardViewModel
         private val evidenceFactory: HomePrivateEvidenceAccessFactory,
         private val networkMonitor: NetworkMonitor,
         savedStateHandle: SavedStateHandle,
+        /** Faster home verification: the Bill check. Last, so callers that build the wizard by position still do. */
+        private val fastVerify: HomeFastVerifyRepository? = null,
     ) : ViewModel(),
         WizardModel {
         private val homeId: String =
@@ -334,6 +344,15 @@ open class ClaimOwnershipWizardViewModel
         init {
             viewModelScope.launch { session.invalidated.collect { if (it) sessionExpired() } }
             viewModelScope.launch { loadContext() }
+            // The Bill check: a residency upload while the server offers the bill read. Off: today's upload.
+            if (verificationType == ClaimVerificationType.Residency && fastVerify != null) {
+                viewModelScope.launch {
+                    val offered = fastVerify.refresh(homeId)?.available("document")?.fast == true
+                    if (offered && !_state.value.anySlotHasFile && _state.value.currentStep == ClaimOwnershipStep.Upload) {
+                        _state.update { it.copy(billMode = true, selectedDocumentType = BILL_DOCUMENT_TYPE) }
+                    }
+                }
+            }
         }
 
         fun selectStartMethod(method: ClaimStartMethod) {
@@ -457,6 +476,9 @@ open class ClaimOwnershipWizardViewModel
         override fun onSecondary() {
             if (_state.value.currentStep == ClaimOwnershipStep.Success) {
                 pendingEvent.value = ClaimOwnershipOutboundEvent.Dismiss
+            } else if (_state.value.billMode && _state.value.currentStep == ClaimOwnershipStep.Upload) {
+                // "Retake": the photo goes, the camera opens again from the slot.
+                _state.value.activeSlots.forEach(::remove)
             }
         }
 
@@ -639,16 +661,62 @@ open class ClaimOwnershipWizardViewModel
                 }
             }
             requireOpening()
+            finishSubmit(current.billMode, evidenceAccess.lastFastCheck)
+        }
+
+        /** After every upload: a bill's own answer (verified or a miss) first, else today's "saved pending review". */
+        private suspend fun finishSubmit(
+            billMode: Boolean,
+            fastCheck: String?,
+        ) {
+            if (billMode && finishBill(fastCheck)) return
 
             Analytics.track(AnalyticsEvent.CtaClaimOwnershipSubmit(AnalyticsResult.SUCCESS))
             _state.update {
                 it.copy(
                     isSubmitting = false,
-                    submissionOutcomeNote = "Documents saved pending review. Uploading does not verify identity or grant Home access.",
+                    submissionOutcomeNote =
+                        if (it.billMode) {
+                            BILL_NOT_SURE
+                        } else {
+                            "Documents saved pending review. Uploading does not verify identity or grant Home access."
+                        },
                 )
             }
             transitionTo(ClaimOwnershipStep.Success)
         }
+
+        /**
+         * The bill read's answer (FASTVERIFY phase 4). Verified: "You're verified" opens. Unreadable: the photo goes and
+         * another can be taken (the first stays in review). Needs review (or no read): today's submitted step, with the
+         * Bill check's words. True when the wizard is done here.
+         */
+        private suspend fun finishBill(result: String?): Boolean {
+            when (result) {
+                FAST_VERIFIED -> {
+                    fastVerify?.refresh(homeId)
+                    Analytics.track(AnalyticsEvent.CtaClaimOwnershipSubmit(AnalyticsResult.SUCCESS))
+                    _state.update { it.copy(isSubmitting = false, billResult = result) }
+                    pendingEvent.value = ClaimOwnershipOutboundEvent.BillVerified
+                    return true
+                }
+                FAST_UNREADABLE -> {
+                    current().activeSlots.forEach { slot ->
+                        uploadIds.remove(slot)
+                        current().slots[slot]?.pickedFile?.bytes?.fill(0)
+                        markSlot(slot, ClaimSlotState.Empty)
+                    }
+                    _state.update { it.copy(isSubmitting = false, billResult = result) }
+                    return true
+                }
+                else -> {
+                    _state.update { it.copy(billResult = FAST_NEEDS_REVIEW) }
+                    return false
+                }
+            }
+        }
+
+        private fun current(): ClaimOwnershipUiState = _state.value
 
         /**
          * "Continue" on the routing warning — resume the same submit
@@ -777,7 +845,7 @@ open class ClaimOwnershipWizardViewModel
             val steps = state.verificationType.steps
             val total = steps.size
             val index = steps.indexOf(state.currentStep).coerceAtLeast(0) + 1
-            val title = state.verificationType.wizardTitle
+            val title = if (state.billMode) "Bill check" else state.verificationType.wizardTitle
             return when (state.currentStep) {
                 ClaimOwnershipStep.Start ->
                     WizardChrome(
@@ -815,13 +883,16 @@ open class ClaimOwnershipWizardViewModel
                                 WizardLeadingControl.Back
                             },
                         primaryCtaLabel =
-                            if (state.verificationType == ClaimVerificationType.Residency) {
-                                "Submit"
-                            } else {
-                                "Submit claim"
+                            when {
+                                state.billMode -> "Use this photo"
+                                state.verificationType == ClaimVerificationType.Residency -> "Submit"
+                                else -> "Submit claim"
                             },
                         primaryCtaEnabled = state.canSubmit && !state.isSubmitting,
-                        secondaryCta = null,
+                        secondaryCta =
+                            WizardSecondaryCta("Retake", testTag = "claimOwnershipBillRetake").takeIf {
+                                state.billMode && state.anySlotHasFile && !state.isSubmitting
+                            },
                         isSubmitting = state.isSubmitting,
                         footerHint = if (state.isSubmitting) "Waiting for upload to finish" else null,
                         dirty = state.anySlotHasFile,
@@ -845,6 +916,15 @@ open class ClaimOwnershipWizardViewModel
 
         companion object {
             private const val HTTP_CONFLICT = 409
+
+            /** The Bill check sends a bill as today's residency document kind. */
+            const val BILL_DOCUMENT_TYPE = "utility_bill"
+            private const val FAST_VERIFIED = "verified"
+            private const val FAST_UNREADABLE = "unreadable"
+            private const val FAST_NEEDS_REVIEW = "needs_review"
+
+            /** The Bill check's words when a person reviews the photo instead (SPEC section 6). */
+            const val BILL_NOT_SURE = "We couldn't read this clearly, so a person will review it. You can also verify another way."
 
             /**
              * Pre-upload warning copy per `routing_classification`.

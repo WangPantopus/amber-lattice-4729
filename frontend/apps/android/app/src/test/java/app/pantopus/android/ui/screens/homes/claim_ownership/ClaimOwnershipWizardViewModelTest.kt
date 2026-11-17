@@ -68,6 +68,7 @@ class ClaimOwnershipWizardViewModelTest {
         coEvery { session.requireCurrent() } answers { check(current) { "Session changed" } }
         coEvery { access.list() } returns HomePrivateEvidenceList(emptyList(), scope, false, null)
         coEvery { access.upload(any(), any(), any(), any(), any()) } answers { document.copy(id = firstArg()) }
+        every { access.lastFastCheck } returns null
         coEvery { repo.myOwnershipClaims() } returns
             NetworkResult.Success(MyOwnershipClaimsResponse(emptyList(), HomeClaimUploadSessionDto("actor", scope.sessionScope)))
         coEvery { discovery.publicPreview("home-1") } returns

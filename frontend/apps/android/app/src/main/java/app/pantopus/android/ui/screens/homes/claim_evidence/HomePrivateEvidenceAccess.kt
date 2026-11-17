@@ -43,6 +43,10 @@ class HomePrivateEvidenceAccess(
 ) {
     private var server: HomeEvidenceSessionDto? = null
 
+    /** The last upload's bill read (FASTVERIFY phase 4): `verified`, `needs_review`, `unreadable`, or null without one. */
+    var lastFastCheck: String? = null
+        private set
+
     suspend fun list(): HomePrivateEvidenceList {
         session.requireCurrent()
         val result = repository.list(homeId, claimId, server?.sessionScope, platform).value()
@@ -65,7 +69,10 @@ class HomePrivateEvidenceAccess(
         bytes: ByteArray,
     ): HomePrivateEvidenceDto {
         list()
-        val result = repository.upload(requireNotNull(server), uploadId, type, name, mime, bytes).value().evidence
+        lastFastCheck = null
+        val answer = repository.upload(requireNotNull(server), uploadId, type, name, mime, bytes).value()
+        val result = answer.evidence
+        lastFastCheck = answer.fastCheck?.result
         session.requireCurrent()
         validate(result, uploadId)
         check(
