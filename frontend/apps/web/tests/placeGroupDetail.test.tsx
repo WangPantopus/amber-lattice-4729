@@ -166,9 +166,10 @@ describe('Place group-detail — renders from the contract', () => {
     expect(screen.getByText('Vote by mail · Oregon')).toBeInTheDocument();
   });
 
-  it('Identity shows verified status and the residency-letter generator', () => {
+  it('Identity shows verified status and the residency-letter generator', async () => {
     renderWithQueryClient(<IdentityDetail intelligence={FULL} homeId="home-1" residentName="Riley Chen" />);
-    expect(screen.getByText('Verified resident')).toBeInTheDocument();
+    // The verified block waits for the verify-options answer (FASTVERIFY; null here, as with the switch off).
+    expect(await screen.findByText('Verified resident')).toBeInTheDocument();
     expect(screen.getByText('Generate a verified residency letter')).toBeInTheDocument();
   });
 });

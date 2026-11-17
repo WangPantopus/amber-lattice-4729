@@ -970,7 +970,11 @@ function RateWatchSection({ homeId, verified, canVerify }: { homeId: string; ver
     enabled: verified,
   });
   // FASTVERIFY: verified by a fast check, the home record watch needs a mailed code (null with the flags off).
-  const fastOnly = useVerifyOptions(homeId, { enabled: verified }).data?.level === 'fast';
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const fastOnly = verify.data?.level === 'fast';
+  if (verified && verify.loading) {
+    return <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted">Loading your watch…</div>;
+  }
   if (verified && fastOnly && !watchQuery.data) return <MailProofCard title="Rate watch" homeId={homeId} />;
 
   if (!verified) {

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Lock, Mail, ShieldCheck } from 'lucide-react';
 import { usePostalVerification } from '@/components/homes/postcard/usePostalVerification';
@@ -67,17 +67,21 @@ function VerifyPostcardContent() {
   const { pending, status, progress, busy } = flow;
   // FASTVERIFY: with the faster verification on, a request is one tap on the saved address (null with the flags off).
   const fastVerify = useVerifyOptions(homeId).data;
-  // A scanned card's link (#c=<code>) fills the code in; after a sign-in it comes from this tab's storage.
+  // A scanned card's link (#c=<code>) fills the code in; after a sign-in it comes from this tab's storage. The
+  // code is kept until a code is sent, so a reset of the page (Done on an old panel, a reopen) fills it in again.
   const [scanned, setScanned] = useState<string | null>(null);
+  const linkCode = useRef<string | null>(null);
   useEffect(() => {
     const fromLink = codeFromHash(window.location.hash);
     if (fromLink) wipeHash();
     const code = fromLink ?? takeScannedCard(homeId);
-    if (code) setScanned(code);
+    if (code) { linkCode.current = code; setScanned(code); }
   }, [homeId]);
   useEffect(() => {
-    if (scanned && status?.can_verify) { setCode(scanned); setScanned(null); }
-  }, [scanned, status?.can_verify]);
+    const kept = linkCode.current;
+    // Filled: this person can use the code, so the "Did you ask for this card?" panel (shown on an error) is off.
+    if (kept && status?.can_verify) { setCode((typed) => typed || kept); setScanned(null); }
+  }, [scanned, status?.can_verify, flow.lifetime]);
   // A request must repeat the Home's saved address, so an empty form starts from it.
   const savedAddress = status?.can_request ? status.mailing_address : null;
   useEffect(() => {
@@ -142,7 +146,7 @@ function VerifyPostcardContent() {
           : status.postcard.status === 'cancelled' ? 'Postcard no longer active' : 'Your postcard'}</h2>
         {mailCopy && status.restriction !== 'POSTCARD_RETURNED_LIMIT' && <p className="text-sm text-app-text-secondary">{mailCopy.body}</p>}
         {/* FASTVERIFY: a card stopped by "This wasn't me" (or otherwise cancelled) says so. */}
-        {fastVerify && !mailCopy && status.postcard.status === 'cancelled' && <p className="text-sm text-app-text-secondary">{postalMessage('POSTCARD_NO_LONGER_AVAILABLE')}</p>}
+        {fastVerify && !mailCopy && status.postcard.status === 'cancelled' && status.restriction !== 'POSTCARD_NO_LONGER_AVAILABLE' && <p className="text-sm text-app-text-secondary">{postalMessage('POSTCARD_NO_LONGER_AVAILABLE')}</p>}
         {status.request && <><p className="text-xs font-semibold uppercase tracking-wide text-app-text-secondary">Mailing address</p><Address address={status.request.address} /></>}
         {!mailCopy && !['verified', 'expired', 'cancelled'].includes(status.postcard.status) && <p className="text-sm text-app-text-secondary">{({ not_started: 'This postcard hasn’t been sent yet.',
           accepted: 'Your postcard is on its way.',
@@ -154,7 +158,7 @@ function VerifyPostcardContent() {
       </section>}
       {status.restriction && <p role="status" className="rounded-xl border border-app-border p-4 text-sm">{postalMessage(status.restriction)}</p>}
       {status.restriction === 'POSTCARD_RETURNED_LIMIT' && !mailEnded && <NextSteps homeId={homeId} />}
-      {status.can_verify && <form className={panel} onSubmit={event => { event.preventDefault(); void flow.verify(code); }}>
+      {status.can_verify && <form className={panel} onSubmit={event => { event.preventDefault(); linkCode.current = null; void flow.verify(code); }}>
         <h2 className="text-lg font-semibold">Enter your postcard code</h2>
         <p className="text-sm text-app-text-secondary">Enter the code printed on the postcard.</p>
         <label className="block text-sm font-medium" htmlFor="postal-code">Postcard code</label>

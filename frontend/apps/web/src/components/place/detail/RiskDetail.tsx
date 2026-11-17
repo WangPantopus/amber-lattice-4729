@@ -437,7 +437,8 @@ export default function RiskDetail({ intelligence, homeId }: { intelligence: Pla
   // Guests and service providers can't verify this address (server `verify_available`).
   const canVerify = intelligence.verify_available !== false;
   // FASTVERIFY: verified by a fast check, the Fridge card needs a mailed code (null with the flags off).
-  const fastOnly = useVerifyOptions(homeId, { enabled: verified }).data?.level === 'fast';
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const fastOnly = verify.data?.level === 'fast';
   const heatCold = findPlaceSection(intelligence, 'heat_cold');
   const flood = findPlaceSection(intelligence, 'flood');
   const floodReady = isReady(flood);
@@ -521,7 +522,7 @@ export default function RiskDetail({ intelligence, homeId }: { intelligence: Pla
         <SourceNote name="Recommended items from Ready.gov & American Red Cross" />
 
         <DetailSectionLabel>Fridge card</DetailSectionLabel>
-        {verified && homeId && fastOnly ? (
+        {verified && homeId && verify.loading ? null : verified && homeId && fastOnly ? (
           <MailProofCard title="The 911-ready household card" homeId={homeId} />
         ) : verified && homeId ? (
           <button

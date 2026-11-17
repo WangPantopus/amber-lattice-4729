@@ -351,12 +351,17 @@ function FastVerifySheet({
   onOpenDocumentStatus: () => void;
 }) {
   const option = (id: string) => verifyOptions.options.find((o) => o.id === id);
+  // The document row is a fast check only when the server reads the photo at once (`fast`; older answers had no
+  // hint and meant yes). A document a person reviews, or one already waiting on a reviewer, sits with mail.
+  const documentOption = option('document');
+  const documentFast = documentOption?.available === true && documentOption.fast !== false;
   // A residency document waiting on a reviewer keeps today's row (and its status page). Read from the person's own
   // claims: the server's IN_REVIEW reason also covers a reported card's hold, which is no document.
-  const inReview = documentInReview;
+  const inReview = documentInReview && !documentFast;
+  const groupOf = (row: (typeof WEB_ROWS)[number]) => (row.id === 'document' && !documentFast ? 'mail' : row.group);
   const rows = WEB_ROWS.filter((row) => (row.id === 'document' && inReview) || option(row.id)?.available === true);
-  const fastest = rows.filter((row) => row.group === 'fastest');
-  const byMail = rows.filter((row) => row.group === 'mail');
+  const fastest = rows.filter((row) => groupOf(row) === 'fastest');
+  const byMail = rows.filter((row) => groupOf(row) === 'mail');
 
   const rowButton = (row: (typeof WEB_ROWS)[number], i: number) => {
     if (row.id === 'document' && inReview) {
@@ -382,7 +387,7 @@ function FastVerifySheet({
       );
     }
     // A document that isn't read at once is today's reviewed upload: today's words, no promise of speed.
-    const words = row.id === 'document' && option('document')?.fast === false
+    const words = row.id === 'document' && !documentFast
       ? { label: 'Upload a document', sub: 'A utility bill, lease, or ID. A person reviews it.' }
       : FAST_VERIFY_ROWS[row.id];
     return (
@@ -395,7 +400,7 @@ function FastVerifySheet({
           i > 0 ? 'border-t border-app-border-subtle' : ''
         }`}
       >
-        <IconTile icon={row.icon} tone={row.group === 'fastest' ? 'sky' : 'muted'} size={34} />
+        <IconTile icon={row.icon} tone={groupOf(row) === 'fastest' ? 'sky' : 'muted'} size={34} />
         <span className="flex-1 min-w-0">
           <span className="block text-[14.5px] font-semibold text-app-text -tracking-[0.01em]">{words.label}</span>
           <span className="block text-[12.5px] text-app-text-secondary mt-0.5 leading-[17px]">{words.sub}</span>
@@ -442,7 +447,10 @@ function FastVerifySheet({
           {FAST_VERIFY_WORDS.homeAdded}
         </span>
       ) : null}
-      <p className="text-[14px] text-app-text-secondary leading-[20px] mb-5">{FAST_VERIFY_WORDS.sheetBody}</p>
+      {/* "It takes under a minute" only while a fast check is on offer. */}
+      {fastest.length ? (
+        <p className="text-[14px] text-app-text-secondary leading-[20px] mb-5">{FAST_VERIFY_WORDS.sheetBody}</p>
+      ) : null}
 
       {fastest.length ? (
         <div className="mb-4">
