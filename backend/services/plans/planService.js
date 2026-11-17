@@ -1088,10 +1088,13 @@ function buildDetail(plan, viewer, ctx) {
         entry.distance_band = null;
         entry.plans_joined = 0;
         entry.new_to_pantopus = false;
-        // Who paid, and who brought them (B2), on a priced plan while the business has the switch.
+        // Who paid, and who brought them (B2), on a priced plan while the business has the switch. The apps write
+        // "Paid {text}": "$18.00", or once money came back to a guest still in, "$18.00 · $4.00 back" (the guest's
+        // own words, contract 10.2).
         const money = card.price ? ctx.moneyByRequest?.get(request.id) : null;
         if (money?.paid_cents) {
-          entry.paid = { cents: money.paid_cents, text: require('./planPaid').moneyText(money.paid_cents),
+          entry.paid = { cents: money.paid_cents,
+            text: require('./planPaid').paidAmountText({ status: request.status, paid_cents: money.paid_cents, refunded_cents: money.refunded_cents }),
             refunded_cents: money.refunded_cents || 0, brought_by: money.fee_basis === 'own' ? 'own' : 'pantopus' };
         }
         // "Mark used" on the roster (B1): the guest's free thing, ready or used, while the deal gives one.

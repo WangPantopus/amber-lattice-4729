@@ -188,16 +188,24 @@ function receiptView(mailId) {
 }
 
 /**
+ * What was paid, as the guest's paid row and the business's Going row both say it after "Paid": "$18.00", or once a
+ * part came back and the guest is still in, "$18.00 · $4.00 back" (contract 10.2).
+ */
+function paidAmountText(request) {
+  const returned = request.status === 'accepted' && request.refunded_cents > 0 ? request.refunded_cents : 0;
+  return returned ? `${moneyText(request.paid_cents)} · ${moneyText(returned)} back` : moneyText(request.paid_cents);
+}
+
+/**
  * What a guest who paid reads on the plan: "Paid $18.00" (once a part came back and they are still in, "Paid $18.00 ·
  * $4.00 back", contract 10.2), the receipt, and what leaving gives back.
  */
 function paidView(plan, request, receiptMailId = null, { keep = 0 } = {}) {
   if (!request || !request.payment_id || !request.paid_cents) return null;
   const back = leaveBackCents(request, { plan, keep });
-  const returned = request.status === 'accepted' && request.refunded_cents > 0 ? request.refunded_cents : 0;
   return {
     cents: request.paid_cents,
-    text: returned ? `Paid ${moneyText(request.paid_cents)} · ${moneyText(returned)} back` : `Paid ${moneyText(request.paid_cents)}`,
+    text: `Paid ${paidAmountText(request)}`,
     refunded_cents: request.refunded_cents || 0,
     refund_until: request.refund_until,
     leave_back_cents: back,
@@ -814,7 +822,7 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 }
 
 module.exports = {
-  FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, refundText, refundUntilOf, mayCharge, assertMayCharge,
+  FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, paidAmountText, refundText, refundUntilOf, mayCharge, assertMayCharge,
   checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, groupQuote, unitPriceNow, shortGroupPrice,
   groupRefund, groupRefunds, retryOwedRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
   finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED, captureNow,
