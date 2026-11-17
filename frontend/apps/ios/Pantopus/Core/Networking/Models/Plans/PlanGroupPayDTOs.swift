@@ -41,9 +41,10 @@ public struct PlanBuySpotsBody: Encodable, Sendable {
     public let forWhom = "link"
     public let spots: Int
     public let partySize = 1
+    public var gps: PlanGPSBody?
 
     enum CodingKeys: String, CodingKey {
-        case spots
+        case spots, gps
         case forWhom = "for"
         case partySize = "party_size"
     }

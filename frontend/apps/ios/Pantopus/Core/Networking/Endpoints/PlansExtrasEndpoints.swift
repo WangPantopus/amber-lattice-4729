@@ -109,8 +109,8 @@ public extension PlansEndpoints {
     /// `POST /api/plans/:id/requests` with `{ for: "link", spots }` — every spot in one payment, answered as a paid
     /// join (`request`, `payment`); then the shipped payment sheet and `…/requests/mine/confirm`. 409
     /// `group_pay_not_now`, 409 `full`. Route `backend/routes/plans.js` (`/:id/requests`), `planActions.requestToJoin`.
-    static func buySpots(planId: String, spots: Int) -> Endpoint {
-        Endpoint(method: .post, path: "\(base)/\(planId)/requests", query: biz(), body: PlanBuySpotsBody(spots: spots))
+    static func buySpots(planId: String, _ body: PlanBuySpotsBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests", query: biz(), body: body)
     }
 
     /// `POST /api/plans/:id/requests/mine/give-back-spots` — the buyer gives the spots nobody took back early: one

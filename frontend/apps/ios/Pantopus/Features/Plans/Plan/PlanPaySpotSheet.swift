@@ -238,10 +238,21 @@ extension PlanScreenViewModel {
             payHoldExpires = nil
             return .problem("That took a while. Start again.")
         }
+        // A fresh fix, as "Send request" sends one: without a home on file the server asks for it.
+        let location = DeviceLocationProvider.shared
+        let fix = location.canLocateWithoutAsking ? await location.requestCurrent(timeoutSeconds: 4) : nil
+        let gps = fix.map { PlanGPSBody(latitude: $0.latitude, longitude: $0.longitude, timestamp: Date()) }
         let reply: PlanAskResponse
         do {
-            reply = try await api.request(linkSpots.map { PlansEndpoints.buySpots(planId: planId, spots: $0) }
-                ?? PlansEndpoints.ask(planId: planId, AskToJoinBody(partySize: partySize, note: nil)))
+            if let linkSpots {
+                var body = PlanBuySpotsBody(spots: linkSpots)
+                body.gps = gps
+                reply = try await api.request(PlansEndpoints.buySpots(planId: planId, body))
+            } else {
+                var body = AskToJoinBody(partySize: partySize, note: nil)
+                body.gps = gps
+                reply = try await api.request(PlansEndpoints.ask(planId: planId, body))
+            }
         } catch {
             return .problem(PlanErrors.sentence(for: error))
         }
