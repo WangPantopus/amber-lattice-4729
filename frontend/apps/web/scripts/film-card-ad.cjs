@@ -15,12 +15,14 @@
 //                       from the tall frames (rows 192-1542)
 //   --work <folder>     frames and sounds (default <repo>/test-results/card-ad); --out <folder> the stills and films
 //   --from, --to        with --takes: keep only these seconds' frames (the clock still runs through the take)
+//   --overlays [--alpha 128]  where the words and end card sit; --bars-sheet  the platforms' buttons over a finished tall cut
 //   --keep-picture, --reuse-picture
 //                       keep a cut's silent picture master; later lay a new sound under it without composing again
 //   --card, --rack, --only   another star card or rack (--card 44 --rack 40,45,8,44); only these shots' stills
 //   --art <folder>      envelope and seal art to film with in place of the app's (art drawn larger; never shipped)
 //   --url, --port       as film-card-videos.cjs
 //   AD_DEBUG=1          log the table's state every tenth of a second and where each touch lands
+//   AD_FFMPEG=1         print each ffmpeg command line
 //
 // Everything on screen is the app's own table: its envelope, wax, cloth, light,
 // pen and sounds. The film adds only the words, a fingertip mark, moving in
@@ -891,6 +893,7 @@ async function filmTakes({ browser, server, shapeName, work, art }) {
 
 /** Runs ffmpeg and throws with its words if it fails (`loud`: keep its information lines, for readings like loudness). */
 function ffmpeg(args, loud = false) {
+  if (process.env.AD_FFMPEG) console.error(JSON.stringify(args));
   const run = spawnSync('ffmpeg', ['-hide_banner', '-v', loud ? 'info' : 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (run.status !== 0) throw new Error(`ffmpeg failed: ${run.stderr.slice(-2000)}`);
   return run;
@@ -992,21 +995,28 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
     // the look-ahead; the music is already down when each sound lands, and the finished mix is moved back into place.
     const ahead = (cut.music.lookahead ?? 0.08).toFixed(3);
     const ms = Math.round(Number(ahead) * 1000);
-    graph.push(`[sfx]asplit=3[sfxlate][key][sfxcheck]`, `[sfxlate]adelay=${ms}|${ms}[sfx1]`);
-    graph[graph.findIndex((line) => line.endsWith('[bed]'))] = graph[graph.findIndex((line) => line.endsWith('[bed]'))].replace(/\[bed\]$/, `,adelay=${ms}|${ms}[bed]`);
-    graph.push(`[bed][key]sidechaincompress=threshold=${cut.music.duckThreshold ?? 0.02}:ratio=${cut.music.duckRatio ?? 8}:attack=5:release=${cut.music.duckRelease ?? 350}:knee=4[ducked]`);
-    graph.push(`[ducked]asplit=2[ducked1][bedlate]`, `[bedlate]atrim=start=${ahead},asetpts=PTS-STARTPTS,apad,atrim=0:${seconds}[bedcheck]`);
-    graph.push(`[ducked1][sfx1]amix=inputs=2:normalize=0:duration=first,atrim=start=${ahead},asetpts=PTS-STARTPTS,apad,atrim=0:${seconds}[mix]`);
-    // For the check: the sounds alone and the ducked music alone, before the mix is set to its loudness.
-    const sinks = '[sfxcheck]anullsink;[bedcheck]anullsink';
-    ffmpeg([...inputs, '-filter_complex', `${graph.join(';')};[mix]anullsink`, '-map', '[sfxcheck]', '-c:a', 'pcm_f32le', `${base}-check-sounds.wav`, '-map', '[bedcheck]', '-c:a', 'pcm_f32le', `${base}-check-music.wav`]);
-    // Two passes of loudnorm: measure, then a straight gain to the target (it limits only if the peaks need it).
-    const target = `I=${cut.music.loudness ?? -14}:TP=${cut.music.truePeak ?? -1}:LRA=11`;
-    const first = ffmpeg(['-nostats', ...inputs, '-filter_complex', `${graph.join(';')};${sinks};[mix]loudnorm=${target}:print_format=json[out]`, '-map', '[out]', '-f', 'null', '-'], true).stderr;
-    const stats = JSON.parse(first.slice(first.lastIndexOf('{'), first.lastIndexOf('}') + 1));
-    graph.push(`[mix]loudnorm=${target}:measured_I=${stats.input_i}:measured_TP=${stats.input_tp}:measured_LRA=${stats.input_lra}:measured_thresh=${stats.input_thresh}:offset=${stats.target_offset}:linear=true,aresample=48000[final]`, sinks);
+    const bedLine = graph.findIndex((line) => line.endsWith('[bed]'));
+    graph[bedLine] = graph[bedLine].replace(/\[bed\]$/, `,adelay=${ms}|${ms}[bed]`);
+    const duck = `sidechaincompress=threshold=${cut.music.duckThreshold ?? 0.02}:ratio=${cut.music.duckRatio ?? 8}:attack=5:release=${cut.music.duckRelease ?? 350}:knee=4`;
+    const back = `atrim=start=${ahead},asetpts=PTS-STARTPTS,apad,atrim=0:${seconds}`;
+    const mixOf = (ducked) => `[${ducked}][sfx1]amix=inputs=2:normalize=0:duration=first,${back}[mix]`;
+    // The check pass writes every branch to a file: the sounds alone, the ducked music alone, and the mix before its
+    // loudness is set. Every branch must reach a real output: a split branch sent to anullsink let ffmpeg run the
+    // split's input to its end and cut the mix off where the last of the table's sounds ended.
+    ffmpeg([...inputs, '-filter_complex', [...graph, '[sfx]asplit=3[sfxlate][key][sfxcheck]', `[sfxlate]adelay=${ms}|${ms}[sfx1]`, `[bed][key]${duck}[ducked]`,
+      '[ducked]asplit=2[ducked1][bedlate]', `[bedlate]${back}[bedcheck]`, mixOf('ducked1')].join(';'),
+    '-map', '[sfxcheck]', '-c:a', 'pcm_f32le', `${base}-check-sounds.wav`, '-map', '[bedcheck]', '-c:a', 'pcm_f32le', `${base}-check-music.wav`,
+    '-map', '[mix]', '-c:a', 'pcm_f32le', `${base}-check-mix.wav`]);
+    // The mix's loudness and true peak, measured on that file; one straight gain takes it to the cut's loudness, held
+    // back if its peaks would pass the true-peak ceiling.
+    const mixMeasure = ffmpeg(['-nostats', '-i', `${base}-check-mix.wav`, '-af', 'ebur128=peak=true', '-f', 'null', '-'], true).stderr;
+    const summary = mixMeasure.slice(mixMeasure.lastIndexOf('Summary:'));
+    const mixLoudness = Number(summary.match(/I:\s+(-?[\d.]+) LUFS/)[1]);
+    const mixPeak = Number(summary.match(/Peak:\s+(-?[\d.]+) dBFS/)[1]);
+    const gain = Math.min((cut.music.loudness ?? -14) - mixLoudness, (cut.music.truePeak ?? -1) - mixPeak);
+    graph.push('[sfx]asplit=2[sfxlate][key]', `[sfxlate]adelay=${ms}|${ms}[sfx1]`, `[bed][key]${duck}[ducked]`, mixOf('ducked'), `[mix]volume=${gain.toFixed(2)}dB[final]`);
     audioLabel = '[final]';
-    fs.writeFileSync(`${base}-mix.json`, JSON.stringify({ music: path.basename(musicFile), musicLength, offset, musicLoudness, bedGain, soundGain: cut.soundGain, loudnorm: stats }, null, 1));
+    fs.writeFileSync(`${base}-mix.json`, JSON.stringify({ music: path.basename(musicFile), musicLength, offset, musicLoudness, bedGain, soundGain: cut.soundGain, mixLoudness, mixPeak, gain }, null, 1));
   } else {
     graph.push('[sfx]anull[final]');
     audioLabel = '[final]';
