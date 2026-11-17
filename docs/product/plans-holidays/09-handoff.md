@@ -166,7 +166,8 @@ In the order it should be done. Each item is its own small pull request into
 
 **Both phones together**
 
-7. A two-phone check of the business track in the payment company's test mode,
+7. Done November 17, both ways round, every step and the payout passed (`NEXT_STEPS.md` has what was seen and
+   what was not). A two-phone check of the business track in the payment company's test mode,
    a guest on one phone and the business on the other, both ways round, after
    a relaunch of each app: a deal that unlocks and one that falls short; paying
    for a spot; the group price coming back and then leaving; the bill with a
