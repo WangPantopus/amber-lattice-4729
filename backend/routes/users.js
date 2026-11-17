@@ -3030,7 +3030,7 @@ function isGuidanceCardId(id, seen) {
 // With the switch off the routes are not there: the same 404 as any unknown path (app.js).
 function requireGuidanceCards(req, res, next) {
   if (guidanceCardsEnabled()) return next();
-  return res.status(404).json({ error: 'Route not found', path: req.path, method: req.method });
+  return res.status(404).json({ error: 'Route not found', path: req.baseUrl + req.path, method: req.method });
 }
 
 async function loadGuidanceUser(userId) {
