@@ -31,7 +31,7 @@ struct CardTableScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .title3) private var wordsSize: CGFloat = 18
     @ScaledMetric(relativeTo: .subheadline) private var primarySize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 12.5
+    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 15
 
     var body: some View {
         GeometryReader { geo in
