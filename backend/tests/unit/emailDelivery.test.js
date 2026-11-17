@@ -70,17 +70,17 @@ test('SMTP readiness authenticates without sending a message', async () => {
   expect(await service.sendGuestReservationConfirmationEmail(guestSlot))
     .toEqual({ success: true, messageId: 'smtp-id' });
   expect(mockSendMail).toHaveBeenLastCalledWith(expect.objectContaining({
-    to: 'test@example.com', subject: "You're signed up to help: Meals & help",
+    to: 'test@example.com', subject: "You're signed up to help with a Support Train",
     html: expect.stringContaining("You're Signed Up!"),
   }));
   expect(await service.sendGuestReservationConfirmationEmail({ ...guestSlot, isReminder: true }))
     .toEqual({ success: true, messageId: 'smtp-id' });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
-  expect(reminder.subject).toBe('Reminder: Meals & help');
+  expect(reminder.subject).toBe('Reminder: your Support Train sign-up');
   expect(reminder.html).toContain('Your Slot Reminder');
-  expect(reminder.html).toContain('Helper &lt;one&gt;');
-  expect(reminder.html).toContain('Meals &amp; help');
-  expect(reminder.text).toContain('Dinner · Mon, Oct 5\nTime: 14:00');
+  // Fixed wording: nothing a person typed (the helper's name, the train's title, the slot's label) is in it.
+  expect(`${reminder.subject}${reminder.html}${reminder.text}`).not.toMatch(/Helper|Meals|Dinner/);
+  expect(reminder.text).toContain('Mon, Oct 5\nTime: 14:00');
   expect(reminder.text).toContain('Type: Home-cooked meal');
   expect(reminder.text).not.toMatch(/private_note|delivery_address/);
   expect(mockSendMail).toHaveBeenCalledTimes(3);
@@ -113,22 +113,23 @@ test('a transport that accepts no recipients is not successful', async () => {
     .toEqual({ success: false, error: 'EMAIL_REJECTED' });
 });
 
-test.each(['tomorrow', 'today'])('guest reminder %s reuses the receipt with full safe context', async reminderDay => {
+test.each(['tomorrow', 'today'])('guest reminder %s reuses the receipt in fixed wording', async reminderDay => {
   const service = loadService(smtp);
   expect(await service.sendGuestReservationReminderEmail({
     ...guestSlot, reminderDay, slotTime: '14:00 - 15:00', dishTitle: 'Pasta <bake>',
   })).toEqual({ success: true, messageId: 'smtp-id' });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
-  expect(reminder.subject).toBe(`Reminder: Meals & help ${reminderDay}`);
+  expect(reminder.subject).toBe(`Reminder: your Support Train sign-up ${reminderDay}`);
   expect(reminder.html).toContain('Your Slot Reminder');
-  expect(reminder.html).toContain('Pasta &lt;bake&gt;');
+  // The address is not confirmed as the helper's own: what people typed (dish, title, name) stays on the page.
+  expect(`${reminder.html}\n${reminder.text}`).not.toMatch(/Pasta|Meals|Helper/);
   expect(reminder.text).toContain('Time: 14:00 - 15:00');
-  expect(reminder.text).toContain('Type: Home-cooked meal\nBring: Pasta <bake>');
+  expect(reminder.text).toContain('Type: Home-cooked meal');
   expect(reminder.text).toContain('View Support Train:');
   expect(reminder.html).toContain('/support-trains/train');
 });
 
-test('takeout reminder names the restaurant and includes an already shared address', async () => {
+test('takeout reminder includes an already shared address and no typed text', async () => {
   const service = loadService(smtp);
   await service.sendGuestReservationReminderEmail({
     ...guestSlot, reminderDay: 'today', contributionMode: 'takeout', dishTitle: 'unused dish',
@@ -136,7 +137,7 @@ test('takeout reminder names the restaurant and includes an already shared addre
     addressLabel: '123 <Shared> St\nCamas, WA',
   });
   const reminder = mockSendMail.mock.calls.at(-1)[0];
-  expect(reminder.html).toContain('Noodles &amp; more');
+  expect(`${reminder.html}\n${reminder.text}`).not.toContain('Noodles');
   expect(reminder.html).toContain('123 &lt;Shared&gt; St<br>Camas, WA');
   expect(reminder.text).toContain('Drop-off address:\n123 <Shared> St\nCamas, WA');
   expect(reminder.text).not.toContain('unused dish');

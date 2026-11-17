@@ -479,6 +479,19 @@ const supportTrainWriteLimiter = rateLimit({
 });
 
 /**
+ * Signups one caller makes on one Support Train through the page anyone with the link can open
+ * (POST /api/activities/support-trains/:id/slots/:slotId/guest-reserve): eight a day.
+ */
+const supportTrainGuestSignupLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `train-guest:${req.params.id}:${req.user?.id || clientIpKey(req)}`,
+  message: { error: 'TOO_MANY_SIGNUPS', message: 'That is a lot of signups for one day. Please try again tomorrow.' },
+});
+
+/**
  * Limiter for Support Train AI draft-from-story endpoint.
  * 10 requests per 5 minutes per user — drafting is expensive.
  */
@@ -607,6 +620,7 @@ module.exports = {
   placeLookupLimiter,
   shareCardRenderLimiter,
   supportTrainWriteLimiter,
+  supportTrainGuestSignupLimiter,
   supportTrainDraftLimiter,
   personaFollowLimiter,
   broadcastPublishLimiter,

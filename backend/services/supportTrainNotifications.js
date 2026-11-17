@@ -602,7 +602,10 @@ async function trainForLetters(supportTrainId) {
   };
 }
 
-/** 1. Invited to help: a letter to each invitee with an account, once per Train. Never throws. */
+/**
+ * 1. Invited to help: a letter to each invitee with an account, once per Train. It is the organizer's own letter
+ * (from them, not from Pantopus): the words about the train are theirs. Never throws.
+ */
 async function inviteLetters(supportTrainId, inviteeIds) {
   const ids = [...new Set((inviteeIds || []).filter(Boolean))];
   if (!ids.length || !isLaunchFeatureEnabled('mailbox')) return;
@@ -611,6 +614,7 @@ async function inviteLetters(supportTrainId, inviteeIds) {
     const needs = t.needs.length ? listText(t.needs) : null;
     for (const userId of ids) {
       await pantopusLetters.sendSafe(`st-invite:${supportTrainId}:${userId}`, {
+        from_user: { id: t.train.organizer_user_id, name: t.organizerName },
         recipient_user_id: userId,
         subject: t.recipientName ? `You're invited to help ${t.recipientName}` : `You're invited to help: ${t.title}`,
         content: [
@@ -621,7 +625,7 @@ async function inviteLetters(supportTrainId, inviteeIds) {
           ...(needs || t.dates ? [''] : []),
           'Open the Support Train in Pantopus to see the open days and sign up for one.',
           '',
-          'Your Pantopus carrier',
+          t.organizerName,
         ].join('\n'),
         summary: sentence(`${t.organizerName} invited you to help ${t.forWhom}${needs ? ` with ${needs}` : ''}${t.dates ? `, ${t.dates}` : ''}`),
         key_facts: [
