@@ -4,7 +4,10 @@
 // Signed out, it shows who the letter is from and a short preview,
 // never the letter itself; a Christmas card shows its front (the stock
 // picture the sender picked) unless it's sealed until Christmas, never
-// its note. Signing in or creating an account with the
+// its note. Sent by email (or a card by link), one tap emails a code to
+// that address (by link: the address they type); entering it signs them
+// in, with a new account if the address has none, and opens it. Signing
+// in another way (password, Apple, Google) or creating an account with the
 // address it was sent to comes back here, and "Read the letter" puts
 // it in that person's own mailbox, where they read it. A letter sent
 // as a business names only the business. Plain state, not react-query,
@@ -15,7 +18,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as api from '@pantopus/api';
@@ -159,11 +162,185 @@ export function LinkPageSummary({ letter }: { letter: LinkPageLetter }) {
   );
 }
 
+/** Sent by email, or a card by link: the page opens it with a code to that address. A letter by text keeps signing in. */
+export const opensWithCode = (letter: LinkPageLetter): boolean => Boolean(letter.card?.by_link) || letter.sentTo.includes('@');
+
+const RESEND_SECONDS = 30;
+
+type CodeLook = { primary: string; secondary: string; field: string; codeField: string; line: string; small: string; alert: string; link: string };
+const PANEL_LOOK: CodeLook = {
+  primary: primaryButton,
+  secondary: secondaryButton,
+  field: 'w-full h-12 rounded-xl border-[1.5px] border-app-border bg-app-surface px-3.5 text-[15px] text-app-text placeholder:text-app-text-muted focus:outline-none focus:border-app-text',
+  codeField: 'w-full h-14 rounded-xl border-[1.5px] border-app-border bg-app-surface px-3.5 text-center text-[24px] font-semibold tracking-[0.35em] text-app-text placeholder:text-app-text-muted placeholder:tracking-[0.2em] focus:outline-none focus:border-app-text',
+  line: 'text-[14px] text-app-text-secondary leading-[20px] text-center break-words',
+  small: 'text-[12px] text-app-text-muted leading-[17px] text-center [&_a]:font-semibold [&_a]:text-app-text-secondary [&_a]:underline',
+  alert: 'rounded-xl border border-app-border bg-app-surface-sunken p-3.5 text-[13px] text-app-text leading-[19px]',
+  link: 'text-[14px] font-semibold text-app-text underline underline-offset-2 disabled:opacity-50 disabled:no-underline',
+};
+const TABLE_LOOK: CodeLook = {
+  primary: table.primary, secondary: table.secondary, field: table.field, codeField: `${table.field} ${table.codeField}`,
+  line: table.line, small: table.small, alert: table.alert, link: table.textButton,
+};
+
+/**
+ * Opening it with a code: one tap emails a 6-digit code to the address it was sent to (a card by link: the address they
+ * type), they enter it, and they're signed in (with a new account if the address has none); `onSignedIn` then puts it in
+ * their mailbox. Signing in another way stays below. Without a mail id (Look it over) it's drawn as the page first
+ * shows it, and does nothing.
+ */
+function CodeSignIn({ letter, look, mailId, token, loginHref, onSignedIn }: {
+  letter: LinkPageLetter;
+  look: CodeLook;
+  mailId?: string;
+  token?: string;
+  loginHref?: string;
+  onSignedIn?: () => void;
+}) {
+  const card = letter.card ?? null;
+  const byLink = Boolean(card?.by_link);
+  const noun = card ? 'card' : 'letter';
+  const live = Boolean(mailId && token);
+  const [email, setEmail] = useState('');
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState<'send' | 'check' | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [wait, setWait] = useState(0);
+  const codeInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (wait <= 0) return undefined;
+    const tick = setTimeout(() => setWait((n) => n - 1), 1000);
+    return () => clearTimeout(tick);
+  }, [wait]);
+
+  const send = async () => {
+    if (!live || busy) return;
+    const typed = email.trim();
+    if (byLink && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed)) { setSaid('Enter your email address.'); return; }
+    setBusy('send');
+    setSaid(null);
+    try {
+      const res = await api.mailCompose.sendEscrowCode(mailId as string, token as string, byLink ? typed : undefined);
+      setSentTo(res.sent_to);
+      setCode('');
+      setWait(RESEND_SECONDS);
+      setTimeout(() => codeInput.current?.focus(), 0);
+    } catch (err: unknown) {
+      setSaid(serverWords(err) ?? 'Couldn’t send your code. Check your connection and try again.');
+    }
+    setBusy(null);
+  };
+
+  const check = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if (!live || busy) return;
+    const digits = code.replace(/\D/g, '');
+    if (digits.length < 6) { setSaid('Enter the 6-digit code from the email.'); return; }
+    setBusy('check');
+    setSaid(null);
+    try {
+      await api.auth.signInWithMailCode({ mailId: mailId as string, token: token as string, code: digits, ...(byLink ? { email: email.trim() } : {}) });
+      onSignedIn?.();
+    } catch (err: unknown) {
+      setSaid(serverWords(err) ?? 'Couldn’t check your code. Check your connection and try again.');
+      setBusy(null);
+    }
+  };
+
+  const terms = (
+    <p className={look.small}>
+      By continuing you agree to Pantopus’s <Link href="/terms">Terms of Service</Link> and <Link href="/privacy">Privacy Policy</Link>.
+      {' '}New to Pantopus? This makes your free account.
+    </p>
+  );
+  const otherWay = loginHref
+    ? <Link href={loginHref} className={look.secondary}>Sign in another way</Link>
+    : <span className={look.secondary}>Sign in another way</span>;
+
+  if (sentTo) {
+    return (
+      <form className="flex w-full flex-col gap-2.5" onSubmit={(event) => void check(event)} data-testid="cardLinkCodeStep">
+        <p className={look.line}>Enter the code we emailed to {sentTo}. It works for 10 minutes.</p>
+        <input
+          ref={codeInput}
+          className={look.codeField}
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 10))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="••••••"
+          aria-label="Code from the email"
+          data-testid="cardLinkCode"
+        />
+        <button type="submit" className={look.primary} disabled={busy !== null} data-testid="cardLinkCodeOpen">
+          {busy === 'check' ? <Loader2 size={18} className="animate-spin" /> : null}
+          {card ? 'Open your card' : 'Read the letter'}
+        </button>
+        {said ? <div role="alert" className={look.alert}>{said}</div> : null}
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+          <button type="button" className={look.link} disabled={busy !== null || wait > 0} onClick={() => void send()}>
+            {wait > 0 ? `Send a new code in ${wait}s` : 'Send a new code'}
+          </button>
+          {byLink ? (
+            <button type="button" className={look.link} disabled={busy !== null} onClick={() => { setSentTo(null); setCode(''); setSaid(null); }}>
+              Use a different email
+            </button>
+          ) : null}
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex w-full flex-col gap-2.5">
+      {byLink ? (
+        <>
+          <p className={look.line}>Enter your email and we’ll send you a code. The first person to open it keeps the {noun}.</p>
+          <input
+            className={look.field}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') void send(); }}
+            autoComplete="email"
+            placeholder="you@example.com"
+            aria-label="Your email"
+            readOnly={!live}
+            data-testid="cardLinkEmail"
+          />
+        </>
+      ) : (
+        <p className={look.line}>We’ll email a code to {letter.sentTo}, the address this {noun} was sent to.</p>
+      )}
+      {live ? (
+        <button type="button" className={look.primary} disabled={busy !== null} onClick={() => void send()} data-testid="cardLinkSendCode">
+          {busy === 'send' ? <Loader2 size={18} className="animate-spin" /> : null}
+          Email me a code
+        </button>
+      ) : <span className={look.primary}>Email me a code</span>}
+      {said ? <div role="alert" className={look.alert}>{said}</div> : null}
+      {terms}
+      {otherWay}
+    </div>
+  );
+}
+
 /**
  * Signed out: sign in or create an account with the address it was sent to. Without links (Look it over) it's drawn
  * as the page shows it, and does nothing.
  */
-export function LinkPageSignIn({ letter, loginHref, registerHref }: { letter: LinkPageLetter; loginHref?: string; registerHref?: string }) {
+export function LinkPageSignIn({ letter, loginHref, registerHref, mailId, token, onSignedIn }: {
+  letter: LinkPageLetter; loginHref?: string; registerHref?: string; mailId?: string; token?: string; onSignedIn?: () => void;
+}) {
+  if (opensWithCode(letter)) {
+    return (
+      <div className="mt-5">
+        <CodeSignIn letter={letter} look={PANEL_LOOK} mailId={mailId} token={token} loginHref={loginHref} onSignedIn={onSignedIn} />
+      </div>
+    );
+  }
   const card = letter.card ?? null;
   const byLink = Boolean(card?.by_link);
   const byNumber = !letter.sentTo.includes('@');
@@ -196,10 +373,20 @@ export function CardLinkWords({ letter }: { letter: LinkPageLetter }) {
   );
 }
 
-/** Signed out, on the table: sign in or join. By email with the address it was sent to, by link with any account. */
-export function CardLinkSignIn({ letter, loginHref, registerHref }: { letter: LinkPageLetter; loginHref?: string; registerHref?: string }) {
+/** Signed out, on the table: a code to the address it was sent to (by link, to theirs), or signing in another way. */
+export function CardLinkSignIn({ letter, loginHref, registerHref, mailId, token, onSignedIn }: {
+  letter: LinkPageLetter; loginHref?: string; registerHref?: string; mailId?: string; token?: string; onSignedIn?: () => void;
+}) {
   const byLink = Boolean(letter.card?.by_link);
   const byNumber = !letter.sentTo.includes('@');
+  if (opensWithCode(letter)) {
+    return (
+      <div className={table.actions}>
+        <h2>Open your card</h2>
+        <CodeSignIn letter={letter} look={TABLE_LOOK} mailId={mailId} token={token} loginHref={loginHref} onSignedIn={onSignedIn} />
+      </div>
+    );
+  }
   return (
     <div className={table.actions}>
       <h2>Open your card</h2>
@@ -415,7 +602,8 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
         <CardLinkWords letter={letter} />
 
         {signedIn === false && (
-          <CardLinkSignIn letter={letter} loginHref={loginHref} registerHref={`/register?redirectTo=${encodeURIComponent(here)}`} />
+          <CardLinkSignIn letter={letter} loginHref={loginHref} registerHref={`/register?redirectTo=${encodeURIComponent(here)}`}
+            mailId={mailId} token={token} onSignedIn={() => void claim()} />
         )}
 
         {signedIn === true && wrongAccount && (
@@ -459,7 +647,8 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
       <LinkPageSummary letter={letter} />
 
       {signedIn === false && (
-        <LinkPageSignIn letter={letter} loginHref={loginHref} registerHref={`/register?redirectTo=${encodeURIComponent(here)}`} />
+        <LinkPageSignIn letter={letter} loginHref={loginHref} registerHref={`/register?redirectTo=${encodeURIComponent(here)}`}
+          mailId={mailId} token={token} onSignedIn={() => void claim()} />
       )}
 
       {signedIn === true && wrongAccount && (
