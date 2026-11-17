@@ -1087,7 +1087,8 @@ object DeepLinkRouter {
                 val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
                 // The holidays' one person pays for the group: `?spot=` is a spot someone bought for whoever opens it.
                 val spot = Paths.queryParam(queryPart, "spot")?.takeIf(Paths::isInviteToken)
-                if (segments.size == 2 && !id.isNullOrBlank() && (open != null || spot != null)) {
+                val token = open ?: spot
+                if (segments.size == 2 && !id.isNullOrBlank() && token != null) {
                     Destination.Plan(id, open = open, spot = spot.takeIf { open == null })
                 } else {
                     Destination.Unknown(raw)

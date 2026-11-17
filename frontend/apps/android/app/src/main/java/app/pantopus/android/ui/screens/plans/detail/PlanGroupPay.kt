@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGroupPayDto
+import app.pantopus.android.data.api.models.plans.PlanGroupPayGiveBackDto
 import app.pantopus.android.data.api.models.plans.PlanSpotDto
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanExtrasRepository
@@ -157,7 +158,7 @@ internal fun PlanGroupPayIfAny(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
             ) {
-                PlanIconTile(PantopusIcon.Gift, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+                GroupPayTile(PantopusIcon.Gift)
                 Text(text = text, style = SEMIBOLD, color = PantopusColors.appText, modifier = Modifier.weight(1f))
             }
         }
@@ -184,7 +185,7 @@ private fun BuyerCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            PlanIconTile(PantopusIcon.Users, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+            GroupPayTile(PantopusIcon.Users)
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = card.text.orEmpty(), style = SEMIBOLD, color = PantopusColors.appText)
                 card.takenText?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
@@ -234,21 +235,35 @@ private fun BuyerCard(
             )
         }
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
-        if (asks && giveBack != null) {
-            AlertDialog(
-                onDismissRequest = { asks = false },
-                title = { Text(giveBack.label ?: "Give back the spots?") },
-                text = { giveBack.text?.let { Text(it) } },
-                confirmButton = {
-                    TextButton(onClick = {
-                        asks = false
-                        onGiveBack()
-                    }) { Text("Give back") }
-                },
-                dismissButton = { TextButton(onClick = { asks = false }) { Text("Keep them") } },
-            )
-        }
+        if (asks && giveBack != null) GiveBackDialog(giveBack, onDismiss = { asks = false }, onConfirm = onGiveBack)
     }
+}
+
+/** "Give back {n} spots?" with the server's sentence ("$126.00 goes back to your card and the link stops."). */
+@Composable
+private fun GiveBackDialog(
+    giveBack: PlanGroupPayGiveBackDto,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(giveBack.label ?: "Give back the spots?") },
+        text = { giveBack.text?.let { Text(it) } },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                onConfirm()
+            }) { Text("Give back") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Keep them") } },
+    )
+}
+
+/** The card's 40 dp tile. */
+@Composable
+private fun GroupPayTile(icon: PantopusIcon) {
+    PlanIconTile(icon, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
 }
 
 /**
@@ -273,7 +288,7 @@ internal fun PlanSpotOffer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            PlanIconTile(PantopusIcon.Gift, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+            GroupPayTile(PantopusIcon.Gift)
             Text(text = offer.text.orEmpty(), style = SEMIBOLD, color = PantopusColors.appText, modifier = Modifier.weight(1f))
         }
         if (offer.open) {
