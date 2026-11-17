@@ -152,9 +152,11 @@ struct HolidayCardMantel: View {
         .accessibilityIdentifier("mailMantelCard")
     }
 
-    /// Between −2.4° and +2.4°, from the card's number with the seeded numbers the note's words use.
+    /// Between −2.4° and +2.4°, from the card's number with the seeded numbers the note's words use: the second draw
+    /// (the one the note's first word turns by), as the web and Android take it. The first barely moves for small seeds.
     static func turn(_ number: Int?) -> Double {
         var random = CardTableRandom(seed: (number ?? 1) * 7 + 3)
+        _ = random.next()
         return Double((random.next() - 0.5) * 4.8)
     }
 }
