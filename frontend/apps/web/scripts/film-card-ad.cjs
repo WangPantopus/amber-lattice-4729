@@ -610,7 +610,7 @@ function wordsHtml(shape, lines) {
   const tall = shape.mobile;
   const box = tall
     ? 'left: 20px; right: 20px; top: 96px; height: 51px; justify-content: center; align-items: center; text-align: center; font-size: 23px;'
-    : 'left: 96px; width: 500px; top: 330px; height: 170px; justify-content: center; align-items: flex-start; text-align: left; font-size: 58px;';
+    : 'left: 88px; width: 520px; top: 330px; height: 170px; justify-content: center; align-items: flex-start; text-align: left; font-size: 54px;';
   return `<!doctype html><html><head><style>
     html, body { margin: 0; background: transparent; }
     .w { position: absolute; display: flex; flex-direction: column; ${box} font-family: ${SERIF}; font-style: italic; line-height: 1.1;
