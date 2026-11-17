@@ -835,6 +835,8 @@ internal fun WriteStep(
                     fromName = fromName,
                     year = year,
                     modifier = Modifier.shadow(10.dp, shape).clip(shape),
+                    // The note as it's typed sizes the pen and its rules (plan Part 1); the writing box draws the words.
+                    message = message,
                     design = design.id,
                     signature = signature,
                     writing = { style ->
