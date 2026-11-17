@@ -3,11 +3,13 @@ package app.pantopus.android.ui.screens.plans.guests
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.plans.PlanChipInMarkDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanInviteRowDto
 import app.pantopus.android.data.api.models.plans.PlanPersonDto
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.plans.PlanExtrasRepository
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.planCode
@@ -45,6 +47,8 @@ data class PlanGuestRow(
     /** How many come with this row: adults (or people) and kids. */
     val adults: Int = 1,
     val kids: Int = 0,
+    /** The holidays' chip in (extras section 3): whether they said they paid, and `who` for "Mark paid". */
+    val chipIn: PlanChipInMarkDto? = null,
 )
 
 /** The counts at the top: "{9} coming · {6 adults, 3 kids}", "{2} maybe", "{3} haven't answered". */
@@ -132,6 +136,7 @@ data class PlanGuestsUi(
                             removal = PlanGuestRemoval.Request.takeIf { person.requestId != null },
                             adults = person.partySize,
                             kids = person.kidsCount ?: 0,
+                            chipIn = person.chipIn,
                         )
                     }
             return invited + others
@@ -246,6 +251,7 @@ data class PlanGuestsUi(
             removal = removalFor(row, match),
             adults = guest?.adults ?: match?.partySize ?: row.party?.adults ?: 1,
             kids = guest?.kids ?: match?.kidsCount ?: row.party?.kids ?: 0,
+            chipIn = row.chipIn ?: match?.chipIn,
         )
     }
 
@@ -340,6 +346,7 @@ class PlanGuestsViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val repository: PlansRepository,
+        private val extras: PlanExtrasRepository,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val _ui = MutableStateFlow(PlanGuestsUi(plan = repository.card(planId)))
@@ -430,6 +437,25 @@ class PlanGuestsViewModel
                         is NetworkResult.Failure -> it.copy(working = it.working - key, notice = result.error.planMessage)
                         else -> it.copy(working = it.working - key, notice = "${PlanFormat.firstName(row.name)} is off the list.")
                     }
+                }
+                repository.changed(planId)
+                load()
+            }
+        }
+
+        /** The holidays' chip in: the host's "Mark paid" for someone who paid another way, or taking it off. */
+        fun markPaid(
+            row: PlanGuestRow,
+            paid: Boolean,
+        ) {
+            val who = row.chipIn?.who ?: return
+            if (who in _ui.value.working) return
+            _ui.update { it.copy(working = it.working + who) }
+            viewModelScope.launch {
+                val result = extras.markChipIn(planId, who = who, paid = paid)
+                _ui.update {
+                    val notice = (result as? NetworkResult.Failure)?.error?.planMessage
+                    it.copy(working = it.working - who, notice = notice ?: it.notice)
                 }
                 repository.changed(planId)
                 load()

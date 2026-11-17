@@ -1,5 +1,7 @@
 package app.pantopus.android.data.plans
 
+import app.pantopus.android.data.api.models.plans.PlanChipInResponse
+import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
@@ -30,4 +32,14 @@ class PlanExtrasRepository
             id: String,
             body: PlanFromPlanBody,
         ): NetworkResult<PlanFromPlanResponse> = safeApiCall { api.inviteFromPlan(id, body) }
+
+        // ---- 2. Chip in ----
+
+        /** "I've paid" ([who] null), "Undo" ([paid] false), or the host's "Mark paid" for [who]. */
+        suspend fun markChipIn(
+            id: String,
+            who: String?,
+            paid: Boolean,
+        ): NetworkResult<PlanChipInResponse> =
+            safeApiCall { if (paid) api.markChipIn(id, PlanChipInWhoBody(who)) else api.unmarkChipIn(id, who) }
     }

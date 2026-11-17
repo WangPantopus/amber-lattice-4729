@@ -53,6 +53,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanDivider
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanOverline
 import app.pantopus.android.ui.screens.plans.components.planCard
+import app.pantopus.android.ui.screens.plans.detail.ChipInTextButton
 import app.pantopus.android.ui.screens.plans.detail.PlanInviteSheet
 import app.pantopus.android.ui.screens.plans.detail.PlanPlainScaffold
 import app.pantopus.android.ui.screens.plans.detail.PlanRoundButton
@@ -266,7 +267,15 @@ private fun GuestSection(
         Column(modifier = Modifier.fillMaxWidth().planCard().padding(horizontal = 14.dp, vertical = Spacing.s1)) {
             rows.forEachIndexed { index, row ->
                 if (index > 0) PlanDivider()
-                GuestRow(row, working = (row.inviteId ?: row.requestId) in ui.working, onRemove = { vm.askRemove(row) })
+                GuestRow(
+                    row,
+                    working = (row.inviteId ?: row.requestId) in ui.working,
+                    onRemove = { vm.askRemove(row) },
+                    // The holidays' chip in: "paid" on the row and "Mark paid" (extras section 3), while the plan has it.
+                    chipIn = ui.plan?.chipIn != null,
+                    chipWorking = row.chipIn?.who in ui.working,
+                    onMarkPaid = { paid -> vm.markPaid(row, paid) },
+                )
             }
         }
     }
@@ -278,10 +287,14 @@ private fun GuestSection(
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@Suppress("LongParameterList")
 private fun GuestRow(
     row: PlanGuestRow,
     working: Boolean,
     onRemove: () -> Unit,
+    chipIn: Boolean = false,
+    chipWorking: Boolean = false,
+    onMarkPaid: (Boolean) -> Unit = {},
 ) {
     val removable = row.removal != null && !working
     Row(
@@ -323,6 +336,41 @@ private fun GuestRow(
             Text(text = row.name, style = semibold, color = PantopusColors.appText, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(text = row.line, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
         }
+        val mark = row.chipIn
+        if (chipIn && mark?.who != null) ChipInMark(row.name, paid = mark.paid, working = chipWorking, onMarkPaid = onMarkPaid)
+    }
+}
+
+/** "Paid" with "Undo", or "Mark paid" for someone who paid the host another way (no notice is sent). */
+@Composable
+private fun ChipInMark(
+    name: String,
+    paid: Boolean,
+    working: Boolean,
+    onMarkPaid: (Boolean) -> Unit,
+) {
+    if (paid) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+            Text(
+                text = "Paid",
+                style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.success,
+                modifier = Modifier.testTag("planGuestPaid"),
+            )
+            ChipInTextButton(
+                title = "Undo",
+                spoken = "Undo, $name paid",
+                onClick = { if (!working) onMarkPaid(false) },
+                tag = "planGuestUnpaid",
+            )
+        }
+    } else {
+        ChipInTextButton(
+            title = "Mark paid",
+            spoken = "Mark $name paid",
+            onClick = { if (!working) onMarkPaid(true) },
+            tag = "planGuestMarkPaid",
+        )
     }
 }
 

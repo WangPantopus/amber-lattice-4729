@@ -1,13 +1,17 @@
 package app.pantopus.android.data.api.services
 
+import app.pantopus.android.data.api.models.plans.PlanChipInResponse
+import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * Plans for the holidays, the six extras (08-extras.md): routes under `/api/plans`, so PlansBizInterceptor adds the
@@ -32,4 +36,20 @@ interface PlanExtrasApi {
         @Path("id") id: String,
         @Body body: PlanFromPlanBody,
     ): PlanFromPlanResponse
+
+    // ---- 2. Chip in (services/plans/planChipIn.js) ----
+
+    /** `POST /api/plans/:id/chip-in/paid`: "I've paid", or the host's "Mark paid" with `who`. No notice is sent. */
+    @POST("api/plans/{id}/chip-in/paid")
+    suspend fun markChipIn(
+        @Path("id") id: String,
+        @Body body: PlanChipInWhoBody,
+    ): PlanChipInResponse
+
+    /** `DELETE /api/plans/:id/chip-in/paid[?who=]`: "Undo", or the host taking someone's mark off. */
+    @DELETE("api/plans/{id}/chip-in/paid")
+    suspend fun unmarkChipIn(
+        @Path("id") id: String,
+        @Query("who") who: String?,
+    ): PlanChipInResponse
 }

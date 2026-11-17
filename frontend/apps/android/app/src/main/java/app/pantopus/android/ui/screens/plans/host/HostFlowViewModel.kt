@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.HostAsLabelDto
 import app.pantopus.android.data.api.models.plans.HostAsLocationDto
+import app.pantopus.android.data.api.models.plans.PlanChipInInput
 import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
@@ -169,6 +170,15 @@ data class HostDraft(
     /** Business track B5: "Guests can pay their bill here", and "Take tips" (null: the kind's start, as the server's). */
     val payHere: Boolean = false,
     val tipsOn: Boolean? = null,
+    /** The holidays' chip in (extras section 3): the amount each person, what for, and the payment link; null while off. */
+    val chipIn: ChipInDraft? = null,
+)
+
+/** "Chip in" as typed: dollars each person, what for, and the host's own Venmo, PayPal or Cash App link. */
+data class ChipInDraft(
+    val amount: String = "",
+    val note: String = "",
+    val link: String = "",
 )
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
@@ -252,6 +262,10 @@ data class HostUi(
     val dealPreview: DealPreviewState = DealPreviewState(),
     /** The deal step's "Preview" is asking the server about the deal. */
     val dealChecking: Boolean = false,
+    /** `plans_chip_in` is on for this person (the holidays' extras, section 3): the "Chip in" row. */
+    val chipInOn: Boolean = false,
+    /** The server's sentence under a chip-in field it refused (`amount_cents`, `note` or `link`). */
+    val chipInErrors: Map<String, String> = emptyMap(),
 ) {
     /** A business that takes deals gets the deal step (business track B1, D3); a person's own plan never does. */
     val showsDealStep: Boolean get() = business?.takesDeals == true
@@ -291,7 +305,13 @@ data class HostUi(
     val showsBringRow: Boolean get() = bringOn && isPrivate && draft.kind?.countsPeople == true
 
     /** The "Add to this plan" card shows (Plans for the holidays, board 3) while any of its rows does. */
-    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow
+    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn
+
+    /** "Chip in" shows in the card (extras section 3): a private plan of a person's, never a playdate. */
+    val showsChipIn: Boolean get() = chipInOn && isPrivate && business == null && draft.kind != PlanKind.PLAYDATE
+
+    /** The plan is posted with chip in: the row shows and is on. */
+    val postsChipIn: Boolean get() = showsChipIn && draft.chipIn != null
 
     /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
     val showsRepeats: Boolean get() = repeatOn && business == null
@@ -389,6 +409,7 @@ class HostFlowViewModel
                     guestAnswersOn = feature.flags.value.guestAnswersOn,
                     bringOn = feature.flags.value.bringOn,
                     occasionsOn = feature.flags.value.occasionsOn,
+                    chipInOn = feature.flags.value.chipInOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -680,6 +701,25 @@ class HostFlowViewModel
 
         /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1). */
         fun setKidsWelcome(on: Boolean) = edit { it.copy(kidsWelcome = on) }
+
+        /** "Chip in" on or off (extras section 3); off forgets what was typed. */
+        fun setChipIn(on: Boolean) {
+            _ui.update {
+                val chip = if (on) it.draft.chipIn ?: ChipInDraft() else null
+                it.copy(draft = it.draft.copy(chipIn = chip), chipInErrors = emptyMap())
+            }
+        }
+
+        /** A chip-in field typed into; its refusal goes. */
+        fun editChipIn(
+            field: String,
+            transform: (ChipInDraft) -> ChipInDraft,
+        ) {
+            _ui.update { ui ->
+                val chip = ui.draft.chipIn ?: return@update ui
+                ui.copy(draft = ui.draft.copy(chipIn = transform(chip)), chipInErrors = ui.chipInErrors - field, error = null)
+            }
+        }
 
         /**
          * An occasion on the kind picker (Plans for the holidays, A2): its kind's form, with what it fills in (title,
@@ -1097,6 +1137,12 @@ class HostFlowViewModel
         /** Posting refused: a deal's field goes back to the deal step with the server's sentence under it (D3). */
         private fun postFailed(error: NetworkError) {
             val field = error.planField
+            // A chip-in field: back to the form with the server's sentence under it (and over Post, should it be another).
+            if (field != null && field in CHIP_IN_FIELDS && _ui.value.postsChipIn) {
+                val message = error.planMessage
+                _ui.update { it.copy(posting = false, step = HostStep.Details, chipInErrors = mapOf(field to message), error = message) }
+                return
+            }
             if (field != null && field in DEAL_FIELDS && _ui.value.showsDealStep) {
                 val errors = mapOf(field to error.planMessage)
                 _ui.update {
@@ -1294,6 +1340,8 @@ class HostFlowViewModel
                 bring = draft.bring?.takeIf { ui.showsBringRow && it.items.isNotEmpty() }?.toInput(),
                 // H3: the occasion it was started from.
                 occasion = draft.occasion,
+                // Extras section 3: chip in; the server checks the amount, the note and the link, and says why in words.
+                chipIn = draft.chipIn?.takeIf { ui.showsChipIn }?.toInput(),
             )
         }
 
@@ -1561,3 +1609,9 @@ private fun copiedBring(
     val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
     return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
 }
+
+/** The fields a chip-in refusal names (`field`), 08-extras section 3. */
+private val CHIP_IN_FIELDS = setOf(CHIP_IN_AMOUNT, CHIP_IN_NOTE, CHIP_IN_LINK)
+
+/** The chip in as the server takes it: cents each person (null when it isn't an amount: the server says so). */
+private fun ChipInDraft.toInput(): PlanChipInInput = PlanChipInInput(amountCents = centsOf(amount), note = note.trim(), link = link.trim())

@@ -887,7 +887,7 @@ guest's Receipts as a paid invoice is today.
 - **The line under the tip choices**, `tip_base_text`: "Percent of {$48.00},
   before the deal" on a check with a discount, and "Percent of {$25.00}" on
   one without (settled November 16 after the iPhone's check read "before the
-  deal" on a check with no deal; the server change is owed).
+  deal" on a check with no deal; on the server since 4309).
 - **Pay shows what will be charged** (settled November 16 after the
   coordinator's read of the iPhone's build): the pay button is enabled only
   while the amount on it is the server's quote for the tip that `…/pay` will

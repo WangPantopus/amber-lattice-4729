@@ -437,6 +437,8 @@ struct PlanClosedSection: View {
         }
         if showsTitle { PlanTitleBlock(card: card) }
         if let photos { PlanPhotosCard(planId: card.id, photos: photos) }
+        // B6 (07-screens C4): a guest who paid, once, for 7 days after the end (the server sends it only then).
+        if card.state == .ended, let tipLater = card.tipLater { PlanTipLaterCard(card: card, tipLater: tipLater) }
         if let onOpenChat {
             Button(action: onOpenChat) { PlanButtonLabel(title: "Read the group chat", icon: .messageCircle, kind: .secondary) }
                 .planButton(.secondary, size: .small)

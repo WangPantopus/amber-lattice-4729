@@ -91,10 +91,10 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Deals without money (B1) | 4209, 4212, 4214 | 4243 | 4240 |
 | Paying to join, the group price (B2 to B4) | 4215, 4216, 4221, 4252 | 4254 | 4258 |
 | The bill at the place, tips (B5) | 4222 | 4289 | 4267 |
-| A tip after a paid plan (B6) | 4223 | **not started** | 4268 |
+| A tip after a paid plan (B6) | 4223 | 4307 | 4268 |
 | The same people again | 4234 | 4284 | 4297 |
-| Chip in | 4235 | 4294 | **not started** |
-| Find a date | 4237, 4245 | 4300 (changing the offered times on the Change screen: not built) | **not started** |
+| Chip in | 4235 | 4294 | 4314 (the card on the Change screen: not built) |
+| Find a date | 4237, 4245 | 4300, 4312 (changing the offered times on the Change screen) | **not started** |
 | Gift exchange | 4239 | **not started** | **not started** |
 | Photos afterwards | 4242, 4249 | **not started** | **not started** |
 | One person pays for the group | 4255, 4259, 4261 | **not started** | **not started** |
@@ -161,7 +161,7 @@ In the order it should be done. Each item is its own small pull request into
 4. Done November 16 (4289). The bill at the place with tips, and the business's guest list with money
    (B5): screens C1, C2, C3 of `07-screens-business.md`, worked examples 3 and
    4 of `02-payments.md` to the cent.
-5. The tip after a paid plan (B6): screen C4.
+5. Done November 16 (4307). The tip after a paid plan (B6): screen C4.
 6. The six extras, in the same order as Android's.
 
 **Both phones together**
