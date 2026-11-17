@@ -926,10 +926,13 @@ function addBusinessFields(card, plan, viewer, ctx) {
     const money = myRequest ? ctx.moneyByRequest?.get(myRequest.id) : null;
     if (money && myRequest.status === 'paying' && card.my_request) card.my_request.hold_expires_at = iso(money.hold_expires_at);
     // One person pays for the group (the extras, `extras=1`): the buyer's spots and link, or "{Chris} got you a spot".
+    // A purchase already made settles by its own rules whatever the switch says (08-extras section 7, "When the switch
+    // goes off"): the buyer's leave line and amount count the claimers' spots as kept in every app; only the spots'
+    // card and the claimer's line follow the switch.
     const groupOn = Boolean(viewer?.extras && ctx.groupPayByHost?.get(String(plan.host_user_id)));
-    const planRequests = groupOn ? ctx.requestsByPlan.get(plan.post_id) || [] : [];
-    const groupPay = groupOn ? require('./planGroupPay') : null;
-    const buyer = groupOn && money && myRequest.spots_bought ? { ...myRequest, ...money, status: myRequest.status } : null;
+    const planRequests = ctx.requestsByPlan.get(plan.post_id) || [];
+    const groupPay = require('./planGroupPay');
+    const buyer = money && myRequest.spots_bought ? { ...myRequest, ...money, status: myRequest.status } : null;
     const paid = money ? require('./planPaid').paidView(plan, { ...money, status: myRequest.status,
       reconfirm_requested_at: myRequest.reconfirm_requested_at, reconfirmed: myRequest.reconfirmed }, money.payment?.metadata?.receipt_mail_id || null,
     { keep: buyer ? groupPay.keptCents(plan, buyer, planRequests) : 0 }) : null;
@@ -937,7 +940,7 @@ function addBusinessFields(card, plan, viewer, ctx) {
     // The buyer's leave line names the spots coming back and the people staying in (08-extras section 7).
     const groupLeave = buyer && paid ? groupPay.leaveText(plan, buyer, planRequests, paid.leave_back_cents) : null;
     if (groupLeave && card.paid) card.paid = { ...card.paid, leave_text: groupLeave };
-    if (buyer) {
+    if (buyer && groupOn) {
       const spots = groupPay.buyerView(plan, buyer, planRequests);
       if (spots) card.group_pay = spots;
     } else if (groupOn && myRequest?.status === 'accepted' && myRequest.paid_by_request_id) {

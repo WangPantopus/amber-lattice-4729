@@ -304,10 +304,16 @@ async function settle(plan, buyer, { reason }) {
   return back;
 }
 
-/** POST /api/plans/:id/requests/mine/give-back-spots: the buyer gives back the spots nobody took, now. */
+/**
+ * POST /api/plans/:id/requests/mine/give-back-spots: the buyer gives back the spots nobody took, now. It settles a
+ * purchase already made, so it works whatever the switch says (08-extras section 7, "When the switch goes off"); paid
+ * spots must still be on for the business.
+ */
 async function giveBack(user, postId) {
   const viewer = await require('./planViewer').loadViewer(user);
-  const plan = await linkPlan(postId);
+  if (!planService().isUuid(postId)) fail(404, 'not_found', "This plan isn't available.");
+  const plan = await planService().loadPlanRow(postId);
+  if (!plan || !takes(plan) || !(await planPaid().enabledFor(plan.host_user_id))) fail(404, 'not_found', "This plan isn't available.");
   const { data: buyer, error } = await supabaseAdmin.from('PlanRequest')
     .select(`${planService().REQUEST_COLUMNS}, refund_until, unit_price_cents, payment_id, paid_cents, refunded_cents, deal_used_at`)
     .eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
