@@ -23,6 +23,13 @@ struct PlaceHomeCard: View {
     let showsVerify: Bool
     let onOpenTools: () -> Void
     let onShortcut: (PlaceHomeShortcut) -> Void
+    /// Faster verification (FASTVERIFY): the person's level here. Nil while the switch is off, and the card stays
+    /// as it was.
+    var verifyOptions: HomeVerifyOptions?
+    /// "Message homes near you", for a verified resident while the switch is on.
+    var onMessageHomes: (() -> Void)?
+    /// "Mail me a code", after a fast check: residency letters and home Mail still need the mailed code.
+    var onMailCode: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var yourHome: PlaceSectionEnvelope? {
@@ -31,8 +38,13 @@ struct PlaceHomeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            standing
-                .padding(.bottom, 10)
+            if let verifiedBy = Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) {
+                verifiedResident(by: verifiedBy)
+                    .padding(.bottom, 10)
+            } else {
+                standing
+                    .padding(.bottom, 10)
+            }
             if showsVerify, let onUnlock {
                 verifyLine(onUnlock)
                     .padding(.bottom, 12)
@@ -49,8 +61,17 @@ struct PlaceHomeCard: View {
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .padding(.top, 2)
             }
+            if let onMessageHomes, Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) != nil {
+                PlaceTextButton(title: "Message homes near you", minHeight: 44, action: onMessageHomes)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("place.homeCard.messageHomes")
+            }
             record
                 .padding(.top, 14)
+            if let onMailCode, verifyOptions?.needsMail == true, !claimInReview {
+                PlaceRowDivider().padding(.top, 14)
+                mailCodeLine(onMailCode).padding(.top, 10)
+            }
             if !claimInReview {
                 PlaceRowDivider().padding(.top, 14)
                 tools.padding(.top, 10)
