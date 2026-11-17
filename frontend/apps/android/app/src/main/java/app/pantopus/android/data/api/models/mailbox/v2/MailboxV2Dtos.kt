@@ -252,6 +252,9 @@ data class DrawerMail(
     @Json(name = "acknowledged_at") val acknowledgedAt: String? = null,
     /** A Christmas card; null for everything else. */
     val card: MailCard? = null,
+    /** When it was opened (the drawer view, the Mail page or the apps); the mantel stands the newest opened first. */
+    @Json(name = "opened_at") val openedAt: String? = null,
+    @Json(name = "viewed_at") val viewedAt: String? = null,
 ) {
     @JsonClass(generateAdapter = true)
     data class SenderRef(
