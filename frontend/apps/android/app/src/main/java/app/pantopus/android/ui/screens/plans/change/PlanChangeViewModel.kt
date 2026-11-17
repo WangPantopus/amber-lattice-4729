@@ -513,7 +513,7 @@ class PlanChangeViewModel
                         // The holidays' chip in: a new value (who paid is kept); taking it away is `"chip_in": null`, below.
                         chipIn = ui.chipIn.toSend,
                         // The gift exchange: a new budget (or draw time before the draw); calling it off is `"gift": null`.
-                        gift = ui.gift.toSend(ui.zone, start, LocalDateTime.now(ui.zone)),
+                        gift = ui.gift.toSend(ui.zone),
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }

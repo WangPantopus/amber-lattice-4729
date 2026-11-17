@@ -228,11 +228,14 @@ data class PlanGiftReceiverDto(
     override fun toString(): String = "PlanGiftReceiverDto(…)"
 }
 
-/** The host form's `gift`: $1 to $500 each, and when names are drawn (between now and the plan's start). */
+/**
+ * The host form's `gift`: $1 to $500 each, and when names are drawn (between now and the plan's start). After the draw
+ * a change takes the budget alone ([drawAt] left out; the server keeps its own, #4329).
+ */
 @JsonClass(generateAdapter = true)
 data class PlanGiftInput(
     @Json(name = "budget_cents") val budgetCents: Int?,
-    @Json(name = "draw_at") val drawAt: String,
+    @Json(name = "draw_at") val drawAt: String?,
 )
 
 /** "Join" and "Change": a wish of 0 to 120 characters. */

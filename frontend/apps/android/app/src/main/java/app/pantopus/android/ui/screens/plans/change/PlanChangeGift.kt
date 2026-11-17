@@ -8,13 +8,12 @@ import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.ui.screens.plans.host.GIFT_INCOMPLETE
 import app.pantopus.android.ui.screens.plans.host.GiftDraft
 import app.pantopus.android.ui.screens.plans.host.centsOf
-import java.time.LocalDateTime
 import java.time.ZoneId
 
 /*
  * The holidays' gift exchange on the Change screen (08-extras section 4): the host form's card, while
  * `plans_gift_exchange` is on for the host. Before the draw both values may change; after it only "Spend up to" (the
- * draw time is hidden). Off sends `"gift": null`, which calls it off and forgets the pairs. As iPhone #4317.
+ * draw time is hidden and not sent, server #4329). Off sends `"gift": null`, which calls it off and forgets the pairs.
  */
 
 /** The gift exchange as the plan has it ([original]) and as changed here ([draft], null: off). */
@@ -31,25 +30,18 @@ data class PlanChangeGift(
     /** Save calls it off (`"gift": null`). */
     val removes: Boolean get() = changed && draft == null && original != null
 
-    /** What Save can't send: "Spend up to" isn't an amount, or no draw time. */
+    /** What Save can't send: "Spend up to" isn't an amount, or (before the draw) no draw time. */
     val problem: String?
         get() {
             val gift = draft?.takeIf { changed } ?: return null
-            return GIFT_INCOMPLETE.takeIf { centsOf(gift.amount) == null || gift.drawAt == null }
+            return GIFT_INCOMPLETE.takeIf { centsOf(gift.amount) == null || (!drawn && gift.drawAt == null) }
         }
 
-    /**
-     * The new value, only when it changed. After the draw the server still checks the draw time, so one gone by goes
-     * as the plan's [start] (only the budget is used).
-     */
-    fun toSend(
-        zone: ZoneId,
-        start: LocalDateTime?,
-        now: LocalDateTime,
-    ): PlanGiftInput? {
+    /** The new value, only when it changed. After the draw the budget goes alone: the server keeps its draw time. */
+    fun toSend(zone: ZoneId): PlanGiftInput? {
         val gift = draft?.takeIf { changed } ?: return null
-        val at = gift.drawAt?.takeIf { !drawn || it.isAfter(now) } ?: start
-        return gift.copy(drawAt = at).toInput(zone)
+        if (drawn) return PlanGiftInput(budgetCents = centsOf(gift.amount), drawAt = null)
+        return gift.toInput(zone)
     }
 
     companion object {
