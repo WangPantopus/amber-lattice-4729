@@ -695,7 +695,7 @@ private fun LinkPagePicture(
                             tint = PantopusColors.success,
                         )
                         Text(
-                            "Verified neighbor",
+                            "Verified resident",
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
                             fontWeight = FontWeight.SemiBold,
