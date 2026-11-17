@@ -70,6 +70,8 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.ballot.BallotGovernmentsSheet
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
@@ -810,7 +812,10 @@ internal fun PlaceBellAndChat(
 ) {
     Row {
         if (onAsk != null) {
-            IconButton(onClick = onAsk, modifier = Modifier.size(Spacing.s12).testTag("place.askPantopus")) {
+            IconButton(
+                onClick = onAsk,
+                modifier = Modifier.size(Spacing.s12).guidanceAnchor(GuidanceTarget.Ask).testTag("place.askPantopus"),
+            ) {
                 PantopusIconImage(
                     icon = PantopusIcon.Sparkles,
                     contentDescription = "Ask Pantopus",

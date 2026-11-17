@@ -31,6 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -93,6 +95,8 @@ fun PlaceGlanceGroupRow(
     onToggle: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
+    /** The first row's + carries the guidance pointer "See more" (card 12). */
+    guidancePlus: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Column(modifier = modifier.fillMaxWidth().animateContentSize().testTag(testTag)) {
@@ -121,7 +125,13 @@ fun PlaceGlanceGroupRow(
                     )
                 }
             }
-            PantopusIconImage(if (open) PantopusIcon.Minus else PantopusIcon.Plus, null, size = 18.dp, tint = PantopusColors.appTextMuted)
+            PantopusIconImage(
+                if (open) PantopusIcon.Minus else PantopusIcon.Plus,
+                null,
+                modifier = if (guidancePlus && !open) Modifier.guidanceAnchor(GuidanceTarget.PlaceRow) else Modifier,
+                size = 18.dp,
+                tint = PantopusColors.appTextMuted,
+            )
         }
         if (open) {
             // The group's existing rows, lighter: on this surface they draw no card, border or shadow of their own.

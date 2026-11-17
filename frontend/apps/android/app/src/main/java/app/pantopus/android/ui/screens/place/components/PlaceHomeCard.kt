@@ -33,12 +33,15 @@ import app.pantopus.android.data.api.models.place.PlaceSectionId
 import app.pantopus.android.data.api.models.place.PlaceSectionStatus
 import app.pantopus.android.data.api.models.place.PlaceTier
 import app.pantopus.android.ui.components.GhostButton
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.place.PlaceHomeShortcut
 import app.pantopus.android.ui.screens.place.PlacePresentation
 import app.pantopus.android.ui.screens.place.messaging.PlaceActionRowLabel
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
+import app.pantopus.android.ui.theme.Radii
 import java.time.ZoneId
 import java.util.Locale
 
@@ -153,7 +156,12 @@ fun PlaceHomeCard(
                 GhostButton(
                     "Verify address",
                     onClick = onVerify,
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("place.homeCard.verify"),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp)
+                            .guidanceAnchor(GuidanceTarget.Verify, cornerRadius = Radii.lg)
+                            .testTag("place.homeCard.verify"),
                 )
             }
         }

@@ -64,6 +64,9 @@ import app.pantopus.android.data.mailbox.HolidayCardsRepository
 import app.pantopus.android.data.mailbox.MailboxRepository
 import app.pantopus.android.ui.components.NavigationMenuButton
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
 import app.pantopus.android.ui.screens.ceremonial_mail_open.MailWelcomePorch
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardRow
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
@@ -156,6 +159,8 @@ fun MailboxRootScreen(
     SentReads(selectedDrawer, zone, sentList)
     // Back on the Mailbox after a while (or the next morning, or from paying a bill): today's mail, not what was read before.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshIfStale() }
+    // The Mail tab's first screen (the side menu marks it), for the guidance cards: card 4 and pointer 15.
+    if (onOpenMenu != null) GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Mail, ready = state !is MailboxUiState.Loading))
 
     Box(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailboxRoot")) {
         // The mailbox and the mail scroll under the header, which slides away while they scroll down and comes back
