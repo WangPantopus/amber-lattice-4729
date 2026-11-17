@@ -2,6 +2,10 @@ package app.pantopus.android.data.homes
 
 import android.content.Context
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartResponse
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyResponse
 import app.pantopus.android.data.api.models.homes.PostcardReportRequest
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
@@ -72,6 +76,27 @@ class HomeFastVerifyRepository
             val result = safeApiCall { api.reportPostcard(PostcardReportRequest(homeId, code)) }
             return (result as? NetworkResult.Success)?.data?.recorded == true
         }
+
+        /** Texts a code to [phone] for the phone check at [homeId]. */
+        suspend fun startPhoneCheck(
+            homeId: String,
+            phone: String,
+            firstName: String?,
+            lastName: String?,
+        ): NetworkResult<PhoneCheckStartResponse> =
+            safeApiCall(surfaceForbiddenBody = true) { api.startPhoneCheck(homeId, PhoneCheckStartRequest(phone, firstName, lastName)) }
+
+        /** The texted [code] for [phone]: verified, no match or a wrong code. */
+        suspend fun verifyPhoneCheck(
+            homeId: String,
+            phone: String,
+            code: String,
+            firstName: String?,
+            lastName: String?,
+        ): NetworkResult<PhoneCheckVerifyResponse> =
+            safeApiCall(surfaceForbiddenBody = true) {
+                api.verifyPhoneCheck(homeId, PhoneCheckVerifyRequest(phone, code, firstName, lastName))
+            }
 
         private fun account(): String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
 

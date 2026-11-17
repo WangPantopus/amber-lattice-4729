@@ -86,13 +86,27 @@ enum class PlaceVerifyMethod(val slug: String, val icon: PantopusIcon, val label
     ),
     MAIL("mail", PantopusIcon.Send, "Mail a code to my address", "A postcard with a code, usually within a week."),
     LANDLORD("landlord", PantopusIcon.Home, "Ask my landlord", "Your landlord or property manager confirms you live here."),
+
+    /** Faster home verification: a texted code, then the phone company's records (`home_fast_verify_phone`). */
+    PHONE("phone", PantopusIcon.Smartphone, "Use my phone number", "We text a code, then match the number to this address."),
+
+    /** Faster home verification: the phone's location once, at home (`home_fast_verify_location`). */
+    LOCATION("location", PantopusIcon.MapPin, "I'm at home now", "One tap. We check your phone's location once."),
     ;
 
     companion object {
+        /** Today's three doors, the ones the sheet offers while faster home verification is off. */
+        val TODAY: List<PlaceVerifyMethod> = listOf(DOCUMENT, MAIL, LANDLORD)
+
+        /** The ways this build can open. */
+        private val READY = setOf(DOCUMENT, MAIL, LANDLORD, PHONE)
+
         fun fromSlug(slug: String?): PlaceVerifyMethod = entries.firstOrNull { it.slug == slug } ?: DOCUMENT
 
         /** The method for a `verify-options` way this build can open; null for one it can't (yet). */
-        fun fromOption(id: String): PlaceVerifyMethod? = entries.firstOrNull { it.slug == id }
+        fun fromOption(id: String): PlaceVerifyMethod? = entries.firstOrNull { it.slug == id && it in READY }
+
+        fun isFastFlowReady(method: PlaceVerifyMethod): Boolean = method in READY
     }
 }
 
@@ -455,7 +469,7 @@ private fun Pending(
         when (method) {
             PlaceVerifyMethod.MAIL -> "Your code is on the way"
             PlaceVerifyMethod.LANDLORD -> "Waiting on your landlord"
-            PlaceVerifyMethod.DOCUMENT -> "Reviewing your document"
+            else -> "Reviewing your document"
         },
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
@@ -466,7 +480,7 @@ private fun Pending(
         when (method) {
             PlaceVerifyMethod.MAIL -> "We've mailed a postcard to your address. Enter the code when it arrives — usually within a week."
             PlaceVerifyMethod.LANDLORD -> "We've asked your landlord or property manager to confirm you live here."
-            PlaceVerifyMethod.DOCUMENT -> "A person will review the document you uploaded. You'll get a notification when it's decided."
+            else -> "A person will review the document you uploaded. You'll get a notification when it's decided."
         },
         fontSize = 14.sp,
         lineHeight = 20.sp,
@@ -562,7 +576,7 @@ private fun Failed(
     Column(modifier = Modifier.fillMaxWidth()) {
         PlaceDetailSectionLabel("Other ways to verify")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlaceVerifyMethod.entries.filter { it != method }.forEach { m ->
+            PlaceVerifyMethod.TODAY.filter { it != method }.forEach { m ->
                 Box(modifier = Modifier.clickable(onClick = onRetry)) {
                     PlaceDetailCard(padding = 14.dp) {
                         Row(horizontalArrangement = Arrangement.spacedBy(11.dp), verticalAlignment = Alignment.CenterVertically) {

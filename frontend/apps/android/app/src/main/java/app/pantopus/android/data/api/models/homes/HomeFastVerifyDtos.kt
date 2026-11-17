@@ -76,3 +76,41 @@ data class PostcardReportRequest(
 data class PostcardReportResponse(
     val recorded: Boolean = false,
 )
+
+/** `POST /api/homes/:id/fast-check/phone/start`: text a code to [phone]; the records are asked for the account's name or the one given. */
+@JsonClass(generateAdapter = true)
+data class PhoneCheckStartRequest(
+    val phone: String,
+    @Json(name = "account_first_name") val accountFirstName: String? = null,
+    @Json(name = "account_last_name") val accountLastName: String? = null,
+) {
+    /** Never prints the number or the names. */
+    override fun toString(): String = "PhoneCheckStartRequest(hidden)"
+}
+
+/** The code went out; [resendAfterS] seconds until another may be sent. */
+@JsonClass(generateAdapter = true)
+data class PhoneCheckStartResponse(
+    val sent: Boolean = false,
+    @Json(name = "resend_after_s") val resendAfterS: Int? = null,
+)
+
+/** `POST /api/homes/:id/fast-check/phone/verify`: the texted [code] for [phone]. */
+@JsonClass(generateAdapter = true)
+data class PhoneCheckVerifyRequest(
+    val phone: String,
+    val code: String,
+    @Json(name = "account_first_name") val accountFirstName: String? = null,
+    @Json(name = "account_last_name") val accountLastName: String? = null,
+) {
+    /** Never prints the number or the code. */
+    override fun toString(): String = "PhoneCheckVerifyRequest(hidden)"
+}
+
+/** `verified`, `no_match` or `wrong_code`, the person's level after it, and the code tries left. */
+@JsonClass(generateAdapter = true)
+data class PhoneCheckVerifyResponse(
+    val result: String,
+    val level: String? = null,
+    @Json(name = "tries_left") val triesLeft: Int? = null,
+)

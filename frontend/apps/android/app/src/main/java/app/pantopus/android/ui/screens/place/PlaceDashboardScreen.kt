@@ -200,6 +200,8 @@ fun PlaceDashboardScreen(
         }
     }
     val verifyAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.label.orEmpty()
+    // A fast check names the home by its street line, as the drawings do ("billed to 5207 Example Trust Lane?").
+    val checkAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.line1?.ifBlank { null } ?: verifyAddress
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
 
@@ -292,7 +294,7 @@ fun PlaceDashboardScreen(
             onStart = { method ->
                 showVerify = false
                 viewModel.reloadOnReturn()
-                onStartVerify(method, verifyAddress)
+                onStartVerify(method, checkAddress)
             },
             onDismiss = { showVerify = false },
             onOpenDocumentStatus = {
