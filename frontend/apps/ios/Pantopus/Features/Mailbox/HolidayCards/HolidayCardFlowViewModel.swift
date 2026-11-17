@@ -266,16 +266,26 @@ final class HolidayCardFlowViewModel {
     @ObservationIgnored private var chosenAtStart: HolidayCardRecipient?
     /// Opened for someone or for a picture on purpose (send one back, a card's link): no draft comes back.
     @ObservationIgnored private let openedOnPurpose: Bool
+    /// "Send this card to someone else" (experience plan Part 6): the picture is kept, so Who it's for goes straight on
+    /// to Write on the back.
+    @ObservationIgnored private var keepsPicture: Bool
     /// The kept draft was looked for once the cards loaded; only then is the card kept as it changes.
     @ObservationIgnored private var draftRead = false
 
-    init(api: APIClient = .shared, fromName: String, designId: String? = nil, to person: (id: String, name: String)? = nil) {
+    init(
+        api: APIClient = .shared,
+        fromName: String,
+        designId: String? = nil,
+        to person: (id: String, name: String)? = nil,
+        keepsPicture: Bool = false
+    ) {
         self.api = api
         noteHelp = HolidayCardNoteHelp(api: api)
         self.fromName = fromName
         self.designId = designId
         chosenAtStart = person.map { .person(userId: $0.id, name: $0.name) }
         openedOnPurpose = designId != nil || person != nil
+        self.keepsPicture = keepsPicture && designId != nil
     }
 
     // MARK: - Reading
@@ -386,7 +396,7 @@ final class HolidayCardFlowViewModel {
         readTheirs()
         // The arrival choices depend on who it's for: the first that's open.
         if arrival.map({ !arrivals.contains($0) }) ?? true { arrival = arrivals.first }
-        step = .pick
+        step = keepsPicture && design != nil ? .write : .pick
     }
 
     func chooseEmail() {
@@ -626,9 +636,26 @@ final class HolidayCardFlowViewModel {
         }
     }
 
+    /// "Send this card to someone else" (experience plan Part 6): a new card on step 1 with the same picture and the
+    /// saved signature; the note starts empty and when it comes is asked again.
+    func sendThisCardAgain() {
+        let picture = designId
+        startOver()
+        designId = picture
+        keepsPicture = picture != nil
+    }
+
+    /// Another card can go now: a stamp left, or without stamps, today's card not used (experience plan Part 6).
+    var canSendAnother: Bool {
+        guard let cards, cards.open else { return false }
+        guard cards.postageEnabled else { return today == nil }
+        return (stamps.balance?.available ?? cards.stamps?.available ?? 0) > 0
+    }
+
     /// Everything written goes, and the next card starts on step 1 with a
     /// request ID of its own.
     func startOver() {
+        keepsPicture = false
         HolidayCardDraftStore.clear()
         requestId = nil
         listIds = [:]

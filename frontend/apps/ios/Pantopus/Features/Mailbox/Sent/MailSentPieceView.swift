@@ -18,13 +18,16 @@ struct MailSentPieceView: View {
     @Environment(\.mailPieceShowsBack) private var showsBack
     /// Back to Sent.
     private let onBack: () -> Void
+    /// "Send this card to someone else": the send flow with this card's picture (experience plan Part 6).
+    private let onSendThisCard: ((String) -> Void)?
     @State private var showBack = false
     /// "See it the way they did": the real moment, full screen.
     @State private var tableContent: CardTableContent?
     @State private var tableSharesSealed = false
 
-    init(viewModel: MailSentPieceViewModel, onBack: @escaping () -> Void) {
+    init(viewModel: MailSentPieceViewModel, onSendThisCard: ((String) -> Void)? = nil, onBack: @escaping () -> Void) {
         _viewModel = State(initialValue: viewModel)
+        self.onSendThisCard = onSendThisCard
         self.onBack = onBack
     }
 
@@ -160,6 +163,7 @@ struct MailSentPieceView: View {
                     CardTableSentShareButton(content: content, sharesSealed: piece.sealed)
                 }
             }
+            sendAgain(piece)
             trail(piece)
             if piece.canTakeBack {
                 takeBack(piece)
@@ -422,6 +426,19 @@ private extension MailSentPieceView {
             )
             .padding(.top, -Spacing.s6)
             .accessibilityIdentifier("mailSentPhoto")
+        }
+    }
+}
+
+private extension MailSentPieceView {
+    /// "Send this card to someone else" (experience plan Part 6), when another card can go now.
+    @ViewBuilder
+    func sendAgain(_ piece: MailSentPiece) -> some View {
+        if !piece.isLetter, viewModel.canSendAnother, let onSendThisCard {
+            HolidayCardPaperButton(title: "Send this card to someone else", fullWidth: true) {
+                onSendThisCard(piece.card.design)
+            }
+            .accessibilityIdentifier("mailSentSendAgain")
         }
     }
 }
