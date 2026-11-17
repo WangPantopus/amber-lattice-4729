@@ -438,6 +438,27 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [ ] Not built, and it needs your approval because it needs a new table: finding a time together and keeping a group between plans (the fifth idea on the list).
 - [ ] Yours: all of it is on `dev` and staging, behind four switches that are on (`plans_private`, `plans_repeat`, `plans_online`, `plans_kinds`). Phones show it once a staging build carries it. It reaches production when you promote `dev` to `master`.
 
+**Made by the founder on November 16 (guidance cards for new accounts).** You said the app is too much for someone who has just signed up. You asked for cards in the middle of the screen, like Uber's "Introducing profiles", and small boxes beside the controls, shown on first use and after an action, in "simple but also clear terms". The words and drawings are on [the design page](https://claude.ai/artifact/DtfFKNGLUZqqzQhmfKHk2s). What was built and checked is in the section "Guidance cards for new accounts" below.
+
+- [x] Two shapes:
+  - a card in the middle of the screen: the screen behind dimmed, a title with an X, up to three short lines with icons, and one button;
+  - a blue box pointing at one control, with "Got it".
+- [x] Card 1 says your words exactly: "Pantopus starts with your home." and "Only you see the address you type, others see your first name, never your address." No card says "neighbor" or "neighborhood", and none says "home address".
+- [x] 28 cards:
+  - 1–7: a card the first time each tab opens;
+  - 8–15: a box pointing at a control, one per app open from the second open;
+  - 16–23: a card right after doing something for the first time;
+  - 24–27: a reminder of the next step, at most once a week and at most twice each;
+  - 28: an "Introducing …" card for something new, which ships switched off.
+- [x] Your six picks, accepted with "Yes, plan the build":
+  1. What a person has seen is kept on their account (one new field on the users table, no new table), so a card closed on the phone stays closed on the web.
+  2. Help & Support has "Tips for each screen" to see a tab's card again.
+  3. Cards 1–27 go only to accounts under 14 days old.
+  4. The web's seven old pop-ups are gone.
+  5. The pointer is blue.
+  6. The reminders are kept.
+- [x] One backend switch, `GUIDANCE_CARDS`: on for staging, off in production until you set it.
+
 **Still open. The brief builds the default until you decide.**
 
 - [ ] Confirm the September 26 promise and pilot shape: "Know what matters for your home, and stay on top of it"; first-time homeowners in Vancouver, Camas and Washougal; five households, then 30 to 50, for eight weeks each. Default: as written.
@@ -1273,3 +1294,37 @@ Decided November 14 (section 0). Drawn first ([the boards](https://claude.ai/art
 - Small things seen, not changed: the type picker's one-line descriptions of the five older kinds differ between the iPhone and Android (as before this work); hosting as a business says "five kinds" over four cards.
 - [ ] Not checked anywhere: the hosted staging site with a staging phone build, real phones, real push and email delivery, a screen reader speaking aloud, large text sizes, the iPhone Duo layout.
 - [ ] Not built: finding a time together and keeping a group between plans. It needs a new table, so it needs your approval first.
+
+## Guidance cards for new accounts (added November 17)
+
+Decided November 16 (section 0). Drawn first ([the design page](https://claude.ai/artifact/DtfFKNGLUZqqzQhmfKHk2s)), then built November 17 by one coordinating session and one session each for the server, the web, the iPhone and Android. Each app was checked against a local backend and database: the web in a browser, the iPhone in the simulator, Android in the emulator.
+
+- [x] Server ([#4315](https://github.com/WangPantopus/skinny-pantopus/pull/4315), into `dev`):
+  - one new field on the users table, `User.guidance_seen`: which cards a person has closed, how many times and when;
+  - the profile answers `guidance` (switch on or off, whether the account is under 14 days old, and what it has seen);
+  - `POST /api/users/guidance/shown` records a closed card, and `/reset` clears them for testing;
+  - one switch, `GUIDANCE_CARDS`;
+  - no new table.
+- [x] Web: cards 1–5, 8–15 and Tips ([#4320](https://github.com/WangPantopus/skinny-pantopus/pull/4320)), with the seven old pop-ups removed; cards 16–28 ([#4343](https://github.com/WangPantopus/skinny-pantopus/pull/4343)). Moments and Plans cards are phone-only, because the web has neither tab.
+- [x] iPhone: cards 1–15 and Tips ([#4325](https://github.com/WangPantopus/skinny-pantopus/pull/4325)); cards 16–28 ([#4377](https://github.com/WangPantopus/skinny-pantopus/pull/4377)).
+- [x] Android: cards 1–15 and Tips ([#4340](https://github.com/WangPantopus/skinny-pantopus/pull/4340)); the status bar's clock and icons stay visible over a card ([#4374](https://github.com/WangPantopus/skinny-pantopus/pull/4374)); cards 16–28 ([#4381](https://github.com/WangPantopus/skinny-pantopus/pull/4381)).
+- [x] When a card may show, on every app:
+  - only while the server's switch is on, and only on a person's own account (never a business);
+  - one card at a time, half a second after the screen has loaded;
+  - never over the daily briefings sheet, the phone's own questions, Face ID, a link that is opening, a sheet, the keyboard or the side menu;
+  - a tab's card the first time that tab opens; any other card at most one per app open;
+  - the pointers from the second app open;
+  - the reminders on Place only, at most one a week, never on a day another card showed, and at most twice each.
+- [x] A closed card is kept on the phone at once and sent to the server, and the server's record wins when the app reads the profile. So a card closed on one app doesn't show on another.
+- [x] The words are the same on all three apps. The only differences are where a control differs:
+  - the web on a computer has no tabs, so card 1 says "The list on the left opens each part of the app.";
+  - the web's buttons say “Set up this home” and “My posts”;
+  - the web's Mail writes a letter from its ••• menu.
+- What the checks showed: see the GUIDE rig notes for each app's own checks, and the three-app check below.
+- Seen only through the test switch, because the local rig can't reach them: "It's on its way" (needs a real letter sent); "Introducing Plans" (none is switched on); on some apps, "Your household" and the verify reminder.
+- [ ] Not checked anywhere: the hosted staging site with a staging phone build, real phones, a screen reader speaking aloud (the reading order was checked), and the iPhone Duo.
+- [ ] Yours:
+  - staging has all of it once the phones' staging builds carry it;
+  - it reaches production when you promote `dev` to `master`;
+  - production shows nothing until you set `GUIDANCE_CARDS=1` on the production API (see [the production checklist](docs/release/prod-config-checklist.md));
+  - the store apps show it once new store builds carry it.
