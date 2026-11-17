@@ -168,6 +168,7 @@ private struct PlanPhotoTile: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
             .task(id: photo.id) {
                 guard let url = URL(string: photo.thumbUrl ?? photo.url) else { return }
                 image = await PantopusImagePipeline.shared.image(for: url, keepsOnDisk: false, maxPixelSize: 300)
@@ -187,10 +188,11 @@ private struct PlanPhotoViewer: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Button(action: onClose) { Icon(.x, size: 22, color: Theme.Color.appText) }
-                    .frame(width: 44, height: 44)
-                    .accessibilityLabel("Close")
-                    .accessibilityIdentifier("planPhotoClose")
+                Button(action: onClose) {
+                    Icon(.x, size: 22, color: Theme.Color.appText).frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .accessibilityLabel("Close")
+                .accessibilityIdentifier("planPhotoClose")
                 Spacer()
                 if onRemove != nil {
                     Button("Remove") { asksRemove = true }
@@ -227,6 +229,7 @@ private struct PlanPhotoViewer: View {
             Button("Remove", role: .destructive) { onRemove?() }
             Button("Cancel", role: .cancel) {}
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPhotoViewer")
     }
 }
