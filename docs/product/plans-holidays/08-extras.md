@@ -324,7 +324,11 @@ change line by line for who can read a pair):
   still change), `409 too_few` with the host's sentence when "Draw names now"
   finds fewer than three, `409 not_joined`, `403 not_in`, `409 ended` on a
   plan that is over or cancelled. After the draw the Change screen can change
-  "Spend up to" only; turning the exchange off forgets the pairs.
+  "Spend up to" only; turning the exchange off forgets the pairs. Such a
+  change takes `budget_cents` alone: the draw time is not asked for or
+  checked again (settled November 17 after the iPhone's build found the
+  server still checking it; the server change is owed, and until then the
+  iPhone sends the plan's start as the draw time).
 - **Someone who leaves** before the draw leaves the exchange. After it, the
   host's notice "{Name} left after the names were drawn." opens the plan,
   where "Draw again" draws for everyone still in and tells each "Names were
