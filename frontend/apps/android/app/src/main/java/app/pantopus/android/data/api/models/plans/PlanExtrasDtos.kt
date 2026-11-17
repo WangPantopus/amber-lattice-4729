@@ -167,6 +167,16 @@ data class PlanDatesMineBody(
     @Json(name = "kids_count") val kidsCount: Int,
 )
 
+/**
+ * One time the host offers, as creating and changing a plan take them (`date_options`, 2 to 5). On the Change screen a
+ * kept time goes back exactly as the server sent it, so it keeps its ticks.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanDateOptionInput(
+    @Json(name = "starts_at") val startsAt: String,
+    @Json(name = "ends_at") val endsAt: String,
+)
+
 /** `POST /api/plans/:id/dates/pick`. */
 @JsonClass(generateAdapter = true)
 data class PlanDatePickBody(

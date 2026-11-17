@@ -502,6 +502,11 @@ internal fun WhenField(
     ui: HostUi,
     vm: HostFlowViewModel,
 ) {
+    // The holidays' find a date: the times the host offers take the place of the one time (and of Repeats).
+    if (ui.postsFindDate) {
+        OfferedTimesField(ui, vm)
+        return
+    }
     PlanField(label = "When") {
         // The Repeats row (Plans step 2) on a person's own plan; never on a business's.
         PlanWhenCard(
@@ -763,12 +768,24 @@ internal fun AddToThisPlan(
     if (!ui.showsAddToPlan) return
     PlanField(label = "Add to this plan", modifier = Modifier.testTag("planAddToPlan")) {
         PlanFormCard {
+            // The holidays' find a date (extras section 2, board 26): on, "When" above becomes the times offered.
+            if (ui.showsFindDate) {
+                AddToPlanRow(
+                    first = true,
+                    icon = PantopusIcon.CalendarCheck,
+                    title = "Let guests pick the date",
+                    caption = "They tick what works; you choose",
+                    checked = ui.draft.dateOptions != null,
+                    tag = "planFindDate",
+                    onChecked = vm::setFindDate,
+                )
+            }
             if (ui.showsBringRow) {
                 val bring = ui.draft.bring
                 val count = bring?.items?.size ?: 0
                 val colors = ui.draft.kind?.colors
                 AddToPlanRow(
-                    first = true,
+                    first = !ui.showsFindDate,
                     icon = PantopusIcon.List,
                     title = "Bring list",
                     caption =
@@ -789,7 +806,7 @@ internal fun AddToThisPlan(
             if (ui.showsChipIn) {
                 // The holidays' chip in (extras section 3, board 26).
                 AddToPlanRow(
-                    first = !ui.showsBringRow,
+                    first = !ui.showsFindDate && !ui.showsBringRow,
                     icon = PantopusIcon.DollarSign,
                     title = "Chip in",
                     caption = "Guests pay you, not Pantopus",
@@ -800,7 +817,7 @@ internal fun AddToThisPlan(
             }
             if (ui.showsKidsWelcome) {
                 AddToPlanRow(
-                    first = !ui.showsBringRow && !ui.showsChipIn,
+                    first = !ui.showsFindDate && !ui.showsBringRow && !ui.showsChipIn,
                     icon = PantopusIcon.AdultChild,
                     title = "Kids welcome",
                     caption = "Guests say how many adults and kids",

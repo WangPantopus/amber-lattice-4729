@@ -132,6 +132,8 @@ private fun InvitedCard(
     val whenText =
         when {
             start == null -> ""
+            // The holidays' find a date: guests tick the times offered, so the card says it is picking, as posted.
+            ui.postsFindDate -> "Picking a date"
             // A playdate's guests see the part of the day until they're in, as on the public preview.
             kind == PlanKind.PLAYDATE -> PlanFormat.dayPartPhrase(start.atZone(ui.zone))
             else -> PlanFormat.whenLine(start.atZone(ui.zone), draft.end?.atZone(ui.zone), long = true)

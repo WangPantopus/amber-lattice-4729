@@ -43,6 +43,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTile
 import app.pantopus.android.ui.screens.plans.components.PlanWhenCard
 import app.pantopus.android.ui.screens.plans.detail.PlanPlainScaffold
+import app.pantopus.android.ui.screens.plans.host.ChangeOfferedTimes
 import app.pantopus.android.ui.screens.plans.host.PlacePickerState
 import app.pantopus.android.ui.screens.plans.host.PublicPlacePicker
 import app.pantopus.android.ui.screens.plans.host.placeCaption
@@ -95,7 +96,8 @@ fun PlanChangeScreen(
                 isEnabled = ui.changed && !ui.saving,
                 modifier = Modifier.height(50.dp),
             )
-            if (was != null) PlanTextButton(title = "Keep $was", onClick = onDone)
+            // While a plan is picking its date it has no one time to keep.
+            if (was != null && !ui.times.isPicking) PlanTextButton(title = "Keep $was", onClick = onDone)
         },
     ) {
         if (ui.plan == null) {
@@ -131,6 +133,11 @@ private fun ChangeWhenField(
     viewModel: PlanChangeViewModel,
     was: String?,
 ) {
+    // The holidays' find a date: while picking, the times offered take the place of the one time.
+    if (ui.times.isPicking) {
+        ChangeOfferedTimes(ui.times.options, ui.zone, onAdd = viewModel::addTime, onRemove = viewModel::removeTime)
+        return
+    }
     PlanField(label = "When") {
         PlanWhenCard(
             start = ui.start,

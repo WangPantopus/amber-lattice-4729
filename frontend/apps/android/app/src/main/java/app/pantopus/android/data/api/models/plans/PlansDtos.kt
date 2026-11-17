@@ -674,6 +674,8 @@ data class CreatePlanBody(
     @Json(name = "occasion") val occasion: String? = null,
     /** The holidays' chip in: the amount each person, what for, and the host's own payment link. */
     @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
+    /** The holidays' find a date: two to five times guests tick; the plan's own time is the earliest. No repeat. */
+    @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
     /** Business track B1: a business's deal (D3); none leaves it out. */
     @Json(name = "deal") val deal: PlanDealInput? = null,
     /** Business track B2: a spot's price in cents ($1 to $500); none is free. */
@@ -718,6 +720,8 @@ data class UpdatePlanBody(
     /** Business track B5: the bill here and tips, at any time. */
     @Json(name = "pay_here") val payHere: Boolean? = null,
     @Json(name = "tips_on") val tipsOn: Boolean? = null,
+    /** The holidays' find a date, while picking: the times offered now (a kept time keeps its ticks; a removed one's go). */
+    @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */
