@@ -55,6 +55,8 @@ internal data class CardFaceWords(
     val signature: CardSignature? = null,
     /** A letter folded in three (plan Part 10), its heading; both sides are the sheet. Null for a card. */
     val letterTitle: String? = null,
+    /** The writing box draws [note] itself: the back draws only the rules it's sized for (plan Part 1). */
+    val writing: Boolean = false,
 )
 
 /** The picture on a card, and how much of its edges to leave out (an older copy has its own border baked in). */
@@ -186,7 +188,7 @@ internal class CardFacePainter(
         val restore = canvas.save()
         clipCard(canvas, width, u)
         canvas.drawColor(face.paper)
-        drawRules(canvas, u)
+        drawRules(canvas, u, face)
         drawNote(canvas, u, face)
         drawFrom(canvas, u, face.from, face.signature?.takeIf { it.drawable })
         drawFoot(canvas, u, face.year)
@@ -332,14 +334,17 @@ internal class CardFacePainter(
         canvas.restoreToCount(restore)
     }
 
+    /** The ruled lines at the pen's line height (plan Part 1): still from 9u down, still filling 83.6u. */
     private fun drawRules(
         canvas: Canvas,
         u: Float,
+        face: CardFaceWords,
     ) {
+        val note = penNote(face, u)
         fill.reset()
         fill.color = PantopusColors.tableRule.toArgb()
-        for (rule in 1..RULES) {
-            val bottom = u * 9f + u * PITCH * rule
+        for (rule in 1..note.rules) {
+            val bottom = u * 9f + note.rulePitch * rule
             canvas.drawRect(u * 8f, bottom - dp, u * 92f, bottom, fill)
         }
     }
@@ -349,7 +354,7 @@ internal class CardFacePainter(
         u: Float,
         face: CardFaceWords,
     ) {
-        if (face.note.isBlank()) return
+        if (face.note.isBlank() || face.writing) return
         val note = penNote(face, u)
         textStyle(art.pen, note.size, PantopusColors.tablePen)
         multiplyInk()
@@ -368,7 +373,8 @@ internal class CardFacePainter(
         }
     }
 
-    private fun penNote(
+    /** How [face]'s note sits in the pen on a card [u] wide: the one place its size is chosen (plan Part 1). */
+    fun penNote(
         face: CardFaceWords,
         u: Float,
     ): PenNote {
@@ -517,9 +523,6 @@ internal class CardFacePainter(
     }
 
     private companion object {
-        const val RULES = 11
-        const val PITCH = 7.6f
-
         /** The picture's small lift: contrast 1.03, then saturation 1.04. */
         fun pictureColors(): ColorMatrix {
             val contrast = 1.03f
@@ -565,9 +568,10 @@ internal class CardSeed(
 }
 
 /**
- * The note laid out in the pen: 6u on a 7.6u line in a block 85u wide, every word with its own small shift, turn and
- * pressure. A word too long for a line breaks between letters. A line in a right-to-left script runs from the right.
- * Notes too long for the 11 rules get smaller, so they never run into FROM.
+ * The note laid out in the pen in a block 85u wide, every word with its own small shift, turn and pressure. The pen is
+ * the largest of three sizes that holds the note (plan Part 1): 7.8u on 9 rules, 7u on 10, 6u on 11, the rules always
+ * filling 83.6u. A word too long for a line breaks between letters. A line in a right-to-left script runs from the
+ * right. Notes too long for the 11 rules get smaller, as before, so they never run into FROM.
  */
 internal class PenNote private constructor(
     val note: String,
@@ -576,6 +580,9 @@ internal class PenNote private constructor(
     val size: Float,
     val pitch: Float,
     val words: List<PenWord>,
+    /** The ruled lines drawn under it, and their spacing. */
+    val rules: Int,
+    val rulePitch: Float,
 ) {
     class PenWord(
         val text: String,
@@ -591,26 +598,39 @@ internal class PenNote private constructor(
         private const val RULES = 11
         private const val RULED = 83.6f
 
+        /** The pen's three sizes (plan Part 1, D7): rules on the card, and the pen in u. 30, 27 and 23 pt on an iPhone 17. */
+        private val SIZES = listOf(9 to 7.8f, 10 to 7f, RULES to 6f)
+
+        /** [note]'s lines and words at the largest size that holds it; every row counts, an empty last one too. */
         fun lay(
             note: String,
             number: Int,
             u: Float,
             paint: Paint,
         ): PenNote {
+            var placed = Placed(emptyList(), 0)
+            for ((rules, pen) in SIZES) {
+                placed = place(note, number, u * pen, u * 85f, paint)
+                val pitch = u * RULED / rules
+                if (placed.lines <= rules) return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch)
+            }
+            // Longer than the 11 rules: smaller and closer, as before, on the 11 rules.
             var size = u * 6f
             var pitch = u * 7.6f
-            var words = place(note, number, size, u * 85f, paint)
-            var lines = (words.maxOfOrNull { it.line } ?: 0) + 1
             var tries = 0
-            while (lines > RULES && tries < 6) {
-                pitch = u * RULED / lines
+            while (placed.lines > RULES && tries < 6) {
+                pitch = u * RULED / placed.lines
                 size = pitch * 6f / 7.6f
-                words = place(note, number, size, u * 85f, paint)
-                lines = (words.maxOfOrNull { it.line } ?: 0) + 1
+                placed = place(note, number, size, u * 85f, paint)
                 tries += 1
             }
-            return PenNote(note, number, u, size, pitch, words)
+            return PenNote(note, number, u, size, pitch, placed.words, RULES, u * RULED / RULES)
         }
+
+        private class Placed(
+            val words: List<PenWord>,
+            val lines: Int,
+        )
 
         private fun place(
             note: String,
@@ -618,7 +638,7 @@ internal class PenNote private constructor(
             size: Float,
             width: Float,
             paint: Paint,
-        ): List<PenWord> {
+        ): Placed {
             paint.textSize = size
             val space = paint.measureText(" ")
             val seed = CardSeed(number * 7 + 3)
@@ -635,7 +655,8 @@ internal class PenNote private constructor(
                     }
                     val shift = (seed.next() - 0.5f) * 0.34f
                     val turn = (seed.next() - 0.5f) * 1.5f
-                    val opacity = 0.86f + seed.next() * 0.14f
+                    // The ink a little stronger (plan Part 1): 93–100%, from the same seed.
+                    val opacity = 0.93f + seed.next() * 0.07f
                     fits(token, width, paint).forEach { piece ->
                         val pieceWidth = paint.measureText(piece)
                         if (gap && x > 0f) x += space
@@ -651,7 +672,7 @@ internal class PenNote private constructor(
                 }
                 line += 1
             }
-            return out
+            return Placed(out, line)
         }
 
         /** A line's words and the spaces between them, in order (a run of spaces counts each, as the web's split does). */
