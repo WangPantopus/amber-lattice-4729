@@ -2559,7 +2559,25 @@ public struct HubTabRoot: View {
                         return false
                     }
                     path.append(.findHome)
-                }
+                },
+                billVerified: BillVerifiedActions(
+                    address: Self.homeStreet(homeId),
+                    isRenter: Self.isRenter(homeId),
+                    onMailCode: {
+                        path.removeAll { route in
+                            if case .verifyResidency = route { return true }
+                            return false
+                        }
+                        path.append(.postcardVerification(homeId: homeId))
+                    },
+                    onGoToPlace: {
+                        HomeVerifyOptionsStore.shared.forget(homeId: homeId)
+                        path.removeAll { route in
+                            if case .verifyResidency = route { return true }
+                            return false
+                        }
+                    }
+                )
             )
         case let .verifyLandlord(homeId):
             VerifyLandlordWizardView(
