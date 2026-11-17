@@ -649,6 +649,8 @@ internal fun ColumnScope.PlanClosedBody(
     PlanTitleBlock(plan)
     // Business track B1 (D1 states): the deal card stays as it was last.
     plan.deal?.let { deal -> PlanDealCard(plan, deal) }
+    // Business track B6 (C4): a tip after a paid plan, while the server offers it (7 days, once).
+    plan.tipLater?.takeIf { !cancelled }?.let { tip -> PlanTipLaterHost(plan, tip) }
     // The chat stays to read for people who were in (the server sends its room only to them), as on iOS.
     onOpenChat?.let { GhostButton(title = "Read the group chat", onClick = it) }
 }
