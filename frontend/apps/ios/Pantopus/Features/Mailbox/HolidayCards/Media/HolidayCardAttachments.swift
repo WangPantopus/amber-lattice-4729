@@ -6,7 +6,7 @@
 //  drawings 1 and 2): its own photo, uploaded as soon as it's chosen with its own progress, and the photo's optional
 //  description. Seal it waits until the photo is uploaded; a failed upload keeps the note and the chosen photo and
 //  offers Try again or Remove, so a card never goes silently without it. The upload is a JPEG made here (upright, no
-//  location or other metadata); the server keeps its own copy at most 1600 px on its long side.
+//  location or other metadata); the server keeps its own copy at most 2400 px on its long side.
 //
 
 import ImageIO
