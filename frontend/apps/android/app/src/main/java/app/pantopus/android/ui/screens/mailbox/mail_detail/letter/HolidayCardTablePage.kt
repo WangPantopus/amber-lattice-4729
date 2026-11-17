@@ -22,6 +22,7 @@ import app.pantopus.android.ui.screens.mailbox.cards.table.CardSenderActionsView
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardSenderSheets
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableDialog
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableMenuItem
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableNext
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableSendBack
 import app.pantopus.android.ui.screens.mailbox.components.MailSender
 import app.pantopus.android.ui.theme.PantopusColors
@@ -75,6 +76,13 @@ internal fun HolidayCardTablePage(
             add(CardTableMenuItem("Shred", "cardTableShred") { if (!busy) actions.onShred() })
             if (person != null) addAll(personItems(letter.fromName, onReport = { reporting = true }, onBlock = { confirmBlock = true }))
         }
+    // "Open the next card" (plan Part 4): only with the Mailbox list's waiting cards in hand.
+    val next =
+        actions.onOpenNextCard?.let { open ->
+            actions.nextCards.firstOrNull()?.let { first ->
+                CardTableNext(waiting = actions.nextCards.size) { open(first, actions.nextCards.drop(1)) }
+            }
+        }
     CardTableDialog(
         card = card.onTable(letter),
         firstOpen = card.firstOpen,
@@ -83,6 +91,7 @@ internal fun HolidayCardTablePage(
         menu = menu,
         message = message ?: said,
         sendBack = sendBack,
+        next = next,
     )
     if (person != null) {
         CardSenderSheets(

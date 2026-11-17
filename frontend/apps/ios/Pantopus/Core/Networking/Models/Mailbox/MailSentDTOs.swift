@@ -91,6 +91,8 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
     public let emailTo: String?
     public let envelope: Envelope
     public let card: Card
+    /// A reply to a Christmas card in its writer's Sent (experience plan Part 3): the card it answers. Nil otherwise.
+    public let cardReply: CardReplyCard?
     /// The sender's own words (the card's page only), also while it's sealed for them.
     public let note: String?
     /// The card's page only: where it has been, in order.
@@ -184,6 +186,7 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, kind, subject, arrival, status, sealed, envelope, card, note, trail
+        case cardReply = "card_reply"
         case sentAt = "sent_at"
         case toName = "to_name"
         case toHousehold = "to_household"
@@ -223,6 +226,7 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         emailTo = try? c.decodeIfPresent(String.self, forKey: .emailTo)
         envelope = try c.decode(Envelope.self, forKey: .envelope)
         card = try c.decode(Card.self, forKey: .card)
+        cardReply = try? c.decodeIfPresent(CardReplyCard.self, forKey: .cardReply)
         note = try? c.decodeIfPresent(String.self, forKey: .note)
         trail = (try? c.decodeIfPresent([TrailStep].self, forKey: .trail)) ?? []
     }

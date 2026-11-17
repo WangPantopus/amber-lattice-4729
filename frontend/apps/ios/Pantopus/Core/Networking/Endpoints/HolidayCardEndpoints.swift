@@ -127,6 +127,26 @@ public enum HolidayCardEndpoints {
         Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/take-back")
     }
 
+    /// `GET /api/mailbox/cards/:id/exchange` — route `backend/routes/mailbox.js` (the joined card, PR #4394). The card
+    /// and its reply for either of the two people (`:id` is the card or the reply); 404 `CARD_NOT_FOUND` for anyone
+    /// else. Needs `mailbox` only.
+    public static func exchange(cardId: String) -> Endpoint {
+        Endpoint(method: .get, path: "/api/mailbox/cards/\(cardId)/exchange")
+    }
+
+    /// `POST /api/mailbox/cards/:id/reply` — route `backend/routes/mailbox.js` (PR #4394). Writes back to the card's
+    /// sender with their next 7 a.m. mail: free, one per card. Needs `mailbox`, `holiday_card_memories` and
+    /// `card_replies` (404 when off).
+    public static func reply(cardId: String, _ body: CardReplyBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/reply", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/reply/take-back` — route `backend/routes/mailbox.js` (PR #4394). Takes the
+    /// writer's reply back before the pickup (409 `CARD_ALREADY_SENT` after it).
+    public static func takeBackReply(cardId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/reply/take-back")
+    }
+
     /// `POST /api/mailbox/cards/:id/email-again` — route
     /// `backend/routes/mailbox.js:2978`. "Email it again" on a card by email
     /// whose email didn't go out (Sent's `email_status`), for its sender. A

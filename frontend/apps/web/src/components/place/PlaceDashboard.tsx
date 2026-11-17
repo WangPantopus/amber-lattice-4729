@@ -31,6 +31,7 @@ import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { usePrimaryHome } from '@/lib/primaryHome';
 import { claimsInReview, myClaimsQuery, myHomesQuery as sharedMyHomesQuery } from '@/lib/myHomes';
 import { PLACE_FRESH_MS, gatedStaleTime, placeCopyGate, useAfterRecheck } from '@/lib/householdCopy';
+import { useVerifyOptions } from './fastVerify/useVerifyOptions';
 
 // Only an account without a home shows its saved addresses here, and they bring the address
 // preview from the start funnel with them: loaded on demand, so a home's dashboard leaves both
@@ -52,7 +53,10 @@ function Shell({ hidden, children }: { hidden?: string[]; children: React.ReactN
   );
 }
 
-export default function PlaceDashboard() {
+export default function PlaceDashboard({ openVerify = false }: {
+  /** `?verify=1` (Add Home in two steps): open the verify sheet once the place is shown. */
+  openVerify?: boolean;
+} = {}) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   // The place the dashboard is showing — null until the resident picks
@@ -118,25 +122,6 @@ export default function PlaceDashboard() {
   // Links carry the place only when it isn't the primary home.
   const linkHomeId = homeId !== homeQuery.data?.home?.id ? homeId : null;
 
-  // Places for the switcher. Verified mirrors the dashboard tier (T4):
-  // an address-verified occupancy or a verified owner; everything else is
-  // claimed, including household consent and an instant claim.
-  const switchHomes = useMemo<PlaceSwitcherHome[]>(
-    () =>
-      (myHomesQuery.data?.homes ?? []).filter(h => h.has_home_access === true).map((h) => {
-        const unit = h.unit_number?.replace(/^#/, '').trim();
-        const verified = (h.occupancy?.verification_status === 'verified'
-          && !['household', 'claim'].includes(h.occupancy?.verification_source ?? '')) || h.ownership_status === 'verified';
-        return {
-          id: h.id,
-          line1: unit && h.address ? `${h.address} #${unit}` : h.address || h.name || 'Home',
-          city: [h.city, h.state].filter(Boolean).join(', '),
-          status: verified ? 'verified' : 'claimed',
-        };
-      }),
-    [myHomesQuery.data],
-  );
-
   // 2) Fetch its PlaceIntelligence (dependent on the active home id).
   // Switching homes changes the key, which re-queries the contract.
   const showsCopy = placeCopyGate(myHomesQuery.data?.homes.find((home) => home.id === shownHomeId));
@@ -148,6 +133,34 @@ export default function PlaceDashboard() {
   });
   // A guest's or service provider's copy shows only once the re-check answers (decision 3).
   const { data: intelligence, waiting: intelWaiting } = useAfterRecheck(intelQuery, showsCopy);
+  // FASTVERIFY: the verify sheet's choices and the fast-check mark, for a claimed or verified place
+  // of your own (null while the faster verification is off, which keeps today's sheet and group).
+  const verify = useVerifyOptions(shownHomeId, {
+    enabled: authed && !claim && (intelligence?.tier === 'T3' || intelligence?.tier === 'T4'),
+  });
+  const verifyOptions = verify.data;
+
+  // Places for the switcher. Verified mirrors the dashboard tier (T4):
+  // an address-verified occupancy or a verified owner; everything else is
+  // claimed, including household consent and an instant claim.
+  const fastVerifiedHomeId = verifyOptions?.level === 'fast' ? shownHomeId : null;
+  const switchHomes = useMemo<PlaceSwitcherHome[]>(
+    () =>
+      (myHomesQuery.data?.homes ?? []).filter(h => h.has_home_access === true).map((h) => {
+        const unit = h.unit_number?.replace(/^#/, '').trim();
+        const verified = (h.occupancy?.verification_status === 'verified'
+          && !['household', 'claim'].includes(h.occupancy?.verification_source ?? '')) || h.ownership_status === 'verified'
+          // FASTVERIFY: a claim with a standing fast check is verified, as the dashboard's tier says.
+          || (h.id === fastVerifiedHomeId);
+        return {
+          id: h.id,
+          line1: unit && h.address ? `${h.address} #${unit}` : h.address || h.name || 'Home',
+          city: [h.city, h.state].filter(Boolean).join(', '),
+          status: verified ? 'verified' : 'claimed',
+        };
+      }),
+    [myHomesQuery.data, fastVerifiedHomeId],
+  );
 
   // ── States ───────────────────────────────────────────────
   // Coming back to Place shows what this tab already loaded in the first frame; the skeleton is
@@ -248,6 +261,9 @@ export default function PlaceDashboard() {
         onAddPlace={() => router.push('/app/homes/new')}
         onVerifyByMail={() => router.push(`/app/homes/${homeId}/verify-postcard?return=place`)}
         neighbors={<VerifiedNeighborsGroup />}
+        verifyOptions={verifyOptions}
+        autoOpenVerify={openVerify && !verify.loading}
+        onAutoOpened={() => router.replace(`/app/place${placeHomeQuery(switchedHome)}`)}
       />
     </Shell>
   );

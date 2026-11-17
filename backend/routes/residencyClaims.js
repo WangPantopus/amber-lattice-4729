@@ -27,7 +27,7 @@ const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
 const { residencyClaimIssueLimiter } = require('../middleware/rateLimiter');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerifiedResident, mailLevelRefusal } = require('../utils/homePermissions');
 const residencyClaimService = require('../services/residencyClaimService');
 const { NON_RESIDENT_ROLES } = require('../utils/homeAccessPolicy');
 const logger = require('../utils/logger');
@@ -43,10 +43,10 @@ router.post('/:id/residency-claims', verifyToken, residencyClaimIssueLimiter, as
       return res.status(403).json({ error: 'You do not have access to this place.', ...(access.verificationRequired && { code: 'VERIFICATION_REQUIRED' }) });
     }
     if (!isVerifiedResident(access)) {
-      return res.status(403).json({
+      return res.status(403).json(await mailLevelRefusal(access, {
         error: 'Verify your address to issue a residency claim.',
         code: 'VERIFICATION_REQUIRED',
-      });
+      }));
     }
     // A claim states "<name> is a verified resident of …". Guest and
     // service-provider access is not residency (same rule as letters).

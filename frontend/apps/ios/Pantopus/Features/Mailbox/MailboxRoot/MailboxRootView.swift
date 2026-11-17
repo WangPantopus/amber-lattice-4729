@@ -253,6 +253,12 @@ private struct MailboxPieceList: View {
             .padding(.top, Spacing.s5)
         } else {
             VStack(alignment: .leading, spacing: Spacing.s0) {
+                // The mantel (experience plan Part 7): this season's opened cards, first in your own mail.
+                let mantel = viewModel.mantelCards
+                if !mantel.isEmpty {
+                    HolidayCardMantel(cards: mantel) { viewModel.openMail($0) }
+                        .padding(.bottom, Spacing.s1)
+                }
                 // Christmas cards (holiday_cards): the way in, at the top of your own mail.
                 if viewModel.showsChristmasCardRow, let cards = viewModel.christmasCards {
                     HolidayCardRow(cards: cards) { viewModel.openChristmasCards() }

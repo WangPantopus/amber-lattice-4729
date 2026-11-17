@@ -132,6 +132,8 @@ final class CardTableModel {
     var zoomedOnce = false
     /// "Send {first name} a card" (plan Part 3), set by the reader's page once the server says a card can go to them.
     var sendBack: CardTableMenuItem?
+    /// "Write back to {first name}", or "You wrote back · {day}" (experience plan Part 3), set by the reader's page.
+    var writeBack: CardTableMenuItem?
     /// "Open the next card" (experience plan Part 4), set by the reader's page when the Mailbox list it came from has
     /// other cards waiting; `reservesNext` keeps its room from the start.
     var nextCard: CardTableMenuItem?

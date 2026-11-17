@@ -15,10 +15,11 @@
 
 'use client';
 
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Clock, Compass, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { PlaceIntelligence } from '@pantopus/types';
+import type { VerifyOptions } from '@pantopus/api';
 import { Group, HeroCard, PlaceHeader, VerifyBanner, type PlaceSwitcherHome } from '@/components/archetypes/place';
 import JustMovedCard from './JustMovedCard';
 import Overline from '@/components/archetypes/primitives/Overline';
@@ -64,6 +65,11 @@ export interface PlaceDashboardViewProps {
   onOpenClaimStatus?: () => void;
   /** Verified neighbors ("Verified homes nearby" and the invite), from the container, which reads the invite link. */
   neighbors?: ReactNode;
+  /** The server's verify-options answer (FASTVERIFY); null while the faster verification is off. */
+  verifyOptions?: VerifyOptions | null;
+  /** Open the verify sheet once (Add Home in two steps lands here); then `onAutoOpened` drops the request. */
+  autoOpenVerify?: boolean;
+  onAutoOpened?: () => void;
 }
 
 export default function PlaceDashboardView({
@@ -83,6 +89,9 @@ export default function PlaceDashboardView({
   claim = null,
   onOpenClaimStatus,
   neighbors = null,
+  verifyOptions = null,
+  autoOpenVerify = false,
+  onAutoOpened,
 }: PlaceDashboardViewProps) {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const openVerify = () => setVerifyOpen(true);
@@ -121,6 +130,14 @@ export default function PlaceDashboardView({
   const setupStage = tier === 'T1';
   const hasServerIdentity = intelligence.groups.some((g) => g.group === 'identity');
   const showIdentity = tier === 'T4' && !hasServerIdentity;
+
+  // Add Home in two steps ends here with the verify sheet open (only where it would show at all).
+  useEffect(() => {
+    if (!autoOpenVerify) return;
+    if (showVerify) setVerifyOpen(true);
+    onAutoOpened?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenVerify]);
 
   return (
     <div className="flex flex-col">
@@ -230,7 +247,9 @@ export default function PlaceDashboardView({
         {showVerify ? (
           <Group label="Locked until you verify">{renderVerifyLocked(openVerify)}</Group>
         ) : null}
-        {showIdentity ? <IdentityGroup /> : null}
+        {showIdentity ? (
+          <IdentityGroup homeId={homeId} verifyOptions={verifyOptions} />
+        ) : null}
         {/* "Verified homes nearby" and the invite on the person's own home, not a claim still in review. */}
         {claim ? null : neighbors}
 
@@ -267,6 +286,7 @@ export default function PlaceDashboardView({
           onClose={() => setVerifyOpen(false)}
           homeId={homeId}
           address={intelligence.place.label}
+          verifyOptions={verifyOptions}
         />
       ) : null}
 

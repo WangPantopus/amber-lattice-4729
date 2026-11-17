@@ -451,7 +451,8 @@ public enum HubRoute: Hashable {
     /// the row at the top of Me in the Mailbox, or a public card page's link
     /// with that picture chosen.
     /// The send flow; `design` chosen (from a public card page), or a person chosen (`toUserId`, from a card's table).
-    case christmasCards(design: String? = nil, toUserId: String? = nil, toName: String? = nil)
+    /// `samePicture`: "Send this card to someone else" (experience plan Part 6), Who it's for goes on to Write on the back.
+    case christmasCards(design: String? = nil, toUserId: String? = nil, toName: String? = nil, samePicture: Bool = false)
     /// A card in Sent (`mailbox`): what they got, its trail, and Take it back.
     case mailSentCard(id: String)
     /// Family Mail Party — household co-opening (discover / join / start /
@@ -3693,13 +3694,14 @@ public struct HubTabRoot: View {
             .hidesTabBar()
         case .mailRoutingQueue:
             MailRoutingQueueView { Task { @MainActor in pop() } }
-        case let .christmasCards(design, toUserId, toName):
+        case let .christmasCards(design, toUserId, toName, samePicture):
             HolidayCardFlowView(
                 viewModel: mailScreenModels.model(for: route) {
                     HolidayCardFlowViewModel(
                         fromName: MailPieceRecipient.personName,
                         designId: design,
-                        to: toUserId.map { ($0, toName ?? "") }
+                        to: toUserId.map { ($0, toName ?? "") },
+                        keepsPicture: samePicture
                     )
                 },
                 onSeeInSent: { cardId in
@@ -3729,9 +3731,13 @@ public struct HubTabRoot: View {
                 onClose: { Task { @MainActor in pop() } }
             )
         case let .mailSentCard(id):
-            MailSentPieceView(viewModel: mailScreenModels.model(for: route) { MailSentPieceViewModel(id: id) }) {
-                Task { @MainActor in pop() }
-            }
+            MailSentPieceView(
+                viewModel: mailScreenModels.model(for: route) { MailSentPieceViewModel(id: id) },
+                onSendThisCard: { design in
+                    Task { @MainActor in push(.christmasCards(design: design, samePicture: true)) }
+                },
+                onBack: { Task { @MainActor in pop() } }
+            )
             // A notice that swaps one open Sent page for another gets a fresh page,
             // not the first piece's view model.
             .id(id)

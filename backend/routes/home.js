@@ -1445,6 +1445,9 @@ router.post('/', verifyToken, (req, res, next) => {
         await addressReviewService.flagRecordProblem({ homeId: result.home_id, userId: actorId, reason: {
           kind: 'floor_plan_no', sheet: niche.floor_plan.sheet, release: niche.floor_plan.release, plan: niche.floor_plan.plan.id, at: new Date().toISOString() } });
       }
+      // Add Home in two steps (home_short_add): the type and details the short form left out come from the county
+      // record, in the background, so creation never waits on it.
+      void require('../services/homeShortAdd').fillFromRecord({ homeId: result.home_id, body: req.body, user: req.user });
       // A home outside every content region starts one, as a new viewing area
       // does (location.js); in the background, so the response doesn't wait.
       if (Number.isFinite(prepared.home.map_center_lat)) {

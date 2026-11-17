@@ -24,22 +24,57 @@ import {
   Mailbox,
   FileText,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import * as api from '@pantopus/api';
 import { launchFeatures } from '@/lib/featureFlags';
 import { IconTile } from '@/components/archetypes/place';
 import { usePrimaryHome } from '@/lib/primaryHome';
+import { myHomesQuery } from '@/lib/myHomes';
+import { queryKeys } from '@/lib/query-keys';
+import { useVerifyOptions } from './fastVerify/useVerifyOptions';
+import FastVerified from './fastVerify/FastVerified';
 
 export interface VerifiedSuccessProps {
   /** "Go to your place" — clears the flag and shows the verified dashboard. */
   onContinue: () => void;
+  /** The Home just verified, when it isn't the primary one (`?home=`). */
+  homeId?: string | null;
 }
 
-export default function VerifiedSuccess({ onContinue }: VerifiedSuccessProps) {
+export default function VerifiedSuccess({ onContinue, homeId: verifiedHomeId = null }: VerifiedSuccessProps) {
+  const router = useRouter();
   // Reuse the dashboard's primary-home query (cached) for the address line.
   const homeQuery = usePrimaryHome();
+  const homes = useQuery({ ...myHomesQuery(), enabled: !!verifiedHomeId });
 
-  const home = homeQuery.data?.home ?? null;
-  const homeId = home?.id ?? null;
+  const primary = homeQuery.data?.home ?? null;
+  const picked = verifiedHomeId ? homes.data?.homes.find((h) => h.id === verifiedHomeId) ?? null : null;
+  const home = picked ?? (verifiedHomeId ? null : primary);
+  const homeId = verifiedHomeId ?? home?.id ?? null;
   const addressLine = home ? [home.address, home.city].filter(Boolean).join(', ') : 'your home';
+
+  // FASTVERIFY: verified by a fast check, B3 says how and what still needs a mailed code (null with the flags off).
+  const verify = useVerifyOptions(homeId);
+  const fast = verify.data?.level === 'fast' ? verify.data.fast : null;
+  const access = useQuery({
+    queryKey: queryKeys.placeAccess(homeId ?? ''),
+    queryFn: () => api.homeIam.getMyHomeAccess(homeId as string),
+    enabled: !!homeId && !!fast,
+  });
+  // Wait for the answer, so a fast check's B3 doesn't open as today's first.
+  if ((!verifiedHomeId && homeQuery.isLoading) || (homeId && verify.loading)) return null;
+  if (fast && homeId) {
+    return (
+      <FastVerified
+        kind={fast.kind}
+        address={home?.address || 'your home'}
+        renter={access.data?.hasAccess === true && access.data.role_base === 'lease_resident'}
+        onMailCode={() => router.push(`/app/homes/${homeId}/verify-postcard?return=place`)}
+        onContinue={onContinue}
+      />
+    );
+  }
 
   // The prize, as it actually exists after PR 353 (Wedge v2 D4): proof
   // you live here, your permanent rank on the block, and the mailbox.

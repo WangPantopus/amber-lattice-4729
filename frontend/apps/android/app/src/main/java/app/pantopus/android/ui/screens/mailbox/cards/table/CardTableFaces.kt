@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.LineHeightStyle
 import app.pantopus.android.R
 import app.pantopus.android.data.api.models.mailbox.CardSignature
@@ -74,7 +75,9 @@ internal fun CardTableFront(
 
 /**
  * The back at the card's own shape: its rules, who it's from and the foot, with the note in the pen, or [writing] (the
- * writing box) on the same rules, in the same pen and at the same size, so what's written is what arrives.
+ * writing box) on the same rules, in the same pen and at the same size, so what's written is what arrives. While
+ * writing, the pen's size follows [message] as it's typed (plan Part 1): it starts large and steps down a size when
+ * the next line wouldn't fit.
  */
 @Composable
 internal fun CardTableBack(
@@ -99,9 +102,10 @@ internal fun CardTableBack(
                 paper = cardPaperColor(paper),
                 year = year,
                 postmarkDay = "",
-                note = if (writing == null) message.orEmpty() else "",
+                note = message.orEmpty(),
                 from = first,
                 signature = signature,
+                writing = writing != null,
             )
         }
     BoxWithConstraints(
@@ -117,13 +121,16 @@ internal fun CardTableBack(
                 },
     ) {
         if (writing != null) {
-            val u = with(density) { constraints.maxWidth.toFloat() / 100f }
+            val u = constraints.maxWidth.toFloat() / 100f
+            // The painter's own choice, so the box and the rules behind it agree; greedy lines, as the painter lays them.
+            val pen = painter?.penNote(words, u)
             val style =
                 TextStyle(
                     fontFamily = cardPen,
-                    fontSize = with(density) { (u * 6f).toSp() },
-                    lineHeight = with(density) { (u * 7.6f).toSp() },
+                    fontSize = with(density) { (pen?.size ?: (u * 6f)).toSp() },
+                    lineHeight = with(density) { (pen?.pitch ?: (u * 7.6f)).toSp() },
                     lineHeightStyle = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None),
+                    lineBreak = LineBreak.Simple,
                     color = PantopusColors.tablePen,
                 )
             Box(
@@ -133,8 +140,14 @@ internal fun CardTableBack(
                             start = with(density) { (u * 8f).toDp() },
                             end = with(density) { (u * 7f).toDp() },
                             top = with(density) { (u * 9f).toDp() },
-                        ).height(with(density) { (u * 83.6f).toDp() }),
+                        ).height(with(density) { (u * (83.6f + UNDER_THE_RULES)).toDp() }),
             ) { writing(style) }
         }
     }
 }
+
+/**
+ * Room under the writing box's last rule, above FROM: the pen's last line, its descenders and the cursor run just past
+ * the rules when the note fills them, and the box mustn't scroll then (plan Part 1).
+ */
+private const val UNDER_THE_RULES = 4f

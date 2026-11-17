@@ -149,6 +149,8 @@ fun SendCardScreen(
     val pinsOver = onSteps && form.step == SendCardStep.Look && (listLook != null || form.preview != null)
     val lookGround = lookGround(season, form)
     val density = LocalDensity.current
+    // "Send this card to someone else" (plan Part 6): the same picture and signature, from Who it's for.
+    val sendAgain = { viewModel.startAnotherCard(samePicture = true) }
     // Above the keyboard: the steps and what's pinned under them (step 1's button on with a list).
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.cardDesk).imePadding().testTag("sendCard")) {
         StepHeader(
@@ -212,6 +214,7 @@ fun SendCardScreen(
                                     viewModel.look()
                                 },
                                 endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver } ?: 0.dp,
+                                onSendAgain = sendAgain.takeIf { season.canSendAnother(stamps?.balance) },
                             )
                         }
                 }
@@ -296,6 +299,11 @@ fun SendCardScreen(
                 sealing = false
                 confirmTakeBack = true
             },
+            onSendAgain =
+                {
+                    sealing = false
+                    sendAgain()
+                }.takeIf { season.canSendAnother(stamps?.balance) },
         )
     }
     if (stamps != null && showsStampBooks) {
@@ -335,6 +343,38 @@ fun SendCardScreen(
             onKeep = { confirmTakeBack = false },
         )
     }
+}
+
+/** Under a card just sent: "Send another card", and "Send this card to someone else" while another can go (Part 6). */
+@Composable
+private fun AnotherCardButtons(
+    onAnother: () -> Unit,
+    onSendAgain: (() -> Unit)?,
+) {
+    CardButton(
+        "Send another card",
+        onClick = onAnother,
+        kind = CardButtonKind.Paper,
+        modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4).testTag("sendAnotherCard"),
+    )
+    if (onSendAgain != null) {
+        CardButton(
+            SEND_THIS_CARD_AGAIN,
+            onClick = onSendAgain,
+            kind = CardButtonKind.Paper,
+            modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s2).testTag("sendThisCardAgain"),
+        )
+    }
+}
+
+/** "Send this card to someone else" (plan Part 6). */
+internal const val SEND_THIS_CARD_AGAIN = "Send this card to someone else"
+
+/** Another card can go now (plan Part 6): a stamp left with digital stamps on, else today's card not used yet. */
+internal fun HolidayCardsResponse?.canSendAnother(stamps: StampBalance?): Boolean {
+    val season = this ?: return false
+    if (!season.open) return false
+    return if (season.postageEnabled) (stamps?.available ?: season.stamps?.available ?: 0) > 0 else season.todaysCard == null
 }
 
 /** What Look it over lies on under its pinned button: the card's cloth at the table, else the desk. */
@@ -404,6 +444,8 @@ private fun Steps(
     onLook: () -> Unit = viewModel::look,
     /** Room at the end of Look it over for its pinned button. */
     endRoom: Dp = 0.dp,
+    /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val backNote = form.backNote(postage = cards.postageEnabled)
     if (backNote != null && form.step == SendCardStep.To) {
@@ -421,7 +463,8 @@ private fun Steps(
             onSendRest = viewModel::sendList,
             onClose = onClose,
             onSeeInSent = { onSeeInSent(null) },
-            onAnother = viewModel::startAnotherCard,
+            onAnother = { viewModel.startAnotherCard() },
+            onSendAgain = onSendAgain,
         )
         return
     }
@@ -514,17 +557,7 @@ private fun Steps(
                     onSeeInSent = { onSeeInSent(card.id) },
                 )
                 // With digital stamps there's no card a day: another card starts here, under the one just sent.
-                if (cards.postageEnabled) {
-                    CardButton(
-                        "Send another card",
-                        onClick = viewModel::startAnotherCard,
-                        kind = CardButtonKind.Paper,
-                        modifier =
-                            Modifier
-                                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s4)
-                                .testTag("sendAnotherCard"),
-                    )
-                }
+                if (cards.postageEnabled) AnotherCardButtons(onAnother = { viewModel.startAnotherCard() }, onSendAgain = onSendAgain)
             }
     }
 }

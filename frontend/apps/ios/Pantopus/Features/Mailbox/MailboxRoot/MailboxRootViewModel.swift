@@ -489,6 +489,13 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
         onOpenVacationHoldHandler()
     }
 
+    /// The mantel at the top of the personal list (experience plan Part 7): this season's opened Christmas cards the
+    /// list has loaded; none on other drawers and tabs, in Sent, and after January 6.
+    var mantelCards: [HolidayCardMantel.Card] {
+        guard LaunchFeatures.cardTable, isLive, selectedDrawer == .me, currentTab == .incoming, !showsSent else { return [] }
+        return HolidayCardMantel.cards(in: loadedMail, viewed: viewedMailIds)
+    }
+
     /// A piece tapped in the list. A Christmas card takes the list's other waiting cards with it, for "Open the next
     /// card" (experience plan Part 4).
     public func openMail(_ mailId: String) {

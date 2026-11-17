@@ -39,7 +39,7 @@ struct CardTableControls: View {
 
     @ScaledMetric(relativeTo: .title3) private var wordsSize: CGFloat = 18
     @ScaledMetric(relativeTo: .subheadline) private var primarySize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 12.5
+    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 15
     @ScaledMetric(relativeTo: .footnote) private var toastSize: CGFloat = 13.5
     @ScaledMetric(relativeTo: .subheadline) private var menuSize: CGFloat = 14.5
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -340,9 +340,9 @@ private extension CardTableAct {
         Text(hint.isEmpty ? " " : hint)
             .font(.system(size: hintSize))
             .multilineTextAlignment(.center)
-            // White at 70%, so it reads on every cloth (plan 1.8); a link in cream.
+            // 15 pt in white at 85%, so it reads on every cloth (plan 1.8, experience plan 8.2); a link in cream.
             .foregroundStyle(
-                dynamicTypeSize.isAccessibilitySize || hintLink != nil ? MailPaper.tableCream : Color.white.opacity(0.7)
+                dynamicTypeSize.isAccessibilitySize || hintLink != nil ? MailPaper.tableCream : Color.white.opacity(0.85)
             )
             // At the largest sizes it runs over the mail, so it gets its own glass.
             .padding(.horizontal, onGlass && !hint.isEmpty ? 12 : 0)

@@ -84,7 +84,8 @@ class PostgridMailProvider {
       size: POSTCARD_SIZE,
       mailingClass: 'first_class',
       frontHTML: buildFrontHtml(),
-      backHTML: buildBackHtml(code, qrUrl),
+      // eslint-disable-next-line global-require
+      backHTML: options.scan ? await require('../postcardScan').buildScanBackHtml(code, options.scan) : buildBackHtml(code, qrUrl),
       ...(options.jobId && { metadata: { pantopus_verification_job_id: options.jobId } }),
       ...(options.homePostcardId && { metadata: { pantopus_home_postcard_id: options.homePostcardId } }),
     }, key);

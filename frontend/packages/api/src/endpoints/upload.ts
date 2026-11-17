@@ -394,6 +394,8 @@ export async function uploadOwnershipEvidence(
     available: boolean;
     file_name: string;
   };
+  /** FASTVERIFY: the bill read at once (home_fast_verify_document, for someone holding a claim). */
+  fast_check?: { result: 'verified' | 'needs_review' | 'unreadable' };
 }> {
   const formData = new FormData();
 

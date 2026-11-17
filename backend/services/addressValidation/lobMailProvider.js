@@ -58,10 +58,11 @@ function buildFrontHtml(recipientName) {
 </html>`.trim();
 }
 
-// NOTE: deliberately no <img> QR code. Rendering one through a third-party
+// NOTE: deliberately no <img> QR code here. Rendering one through a third-party
 // service (api.qrserver.com) would put the live verification code in a URL
-// query string sent to a vendor we have no contract with. If a QR code is
-// wanted, encode it locally and inline it as a data: URI.
+// query string sent to a vendor we have no contract with. The scan side
+// (services/postcardScan.js, behind home_postcard_scan) encodes it locally and
+// inlines it as a data: URI.
 function buildBackHtml(code, qrUrl) {
   return `
 <html>
@@ -183,7 +184,10 @@ class LobMailProvider {
         });
       }
       body.front = buildFrontHtml();
-      body.back = buildBackHtml(code, qrUrl);
+      // With home_postcard_scan on for the person who asked (FASTVERIFY), the scan side: a QR picture made in our
+      // own process and the "This wasn't me" line (services/postcardScan.js).
+      // eslint-disable-next-line global-require
+      body.back = options.scan ? await require('../postcardScan').buildScanBackHtml(code, options.scan) : buildBackHtml(code, qrUrl);
     }
 
     if (this.env === 'test' && process.env.NODE_ENV !== 'production') {

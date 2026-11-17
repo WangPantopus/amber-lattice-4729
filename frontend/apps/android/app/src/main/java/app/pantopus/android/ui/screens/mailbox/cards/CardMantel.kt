@@ -296,8 +296,15 @@ private fun TextStyle.copyFixed(
     }
 }
 
-/** A card's turn on the shelf, −2.4° to +2.4°, from its number with the seeded numbers the note's words use. */
-private fun mantelTurn(number: Int): Float = (CardSeed(number * 13 + 5).next() - 0.5f) * 4.8f
+/**
+ * A card's turn on the shelf, −2.4° to +2.4°: the second draw of the note's own seed (number × 7 + 3), the draw its first
+ * word's turn takes, as on the web. The first draw barely moves for small seeds and would lean every card the same way.
+ */
+private fun mantelTurn(number: Int): Float {
+    val seed = CardSeed(number * 7 + 3)
+    seed.next()
+    return (seed.next() - 0.5f) * 4.8f
+}
 
 private const val STRIP_HEIGHT = 182
 private const val CARD_WIDTH = 88f
