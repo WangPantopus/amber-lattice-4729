@@ -10,6 +10,7 @@ import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanChecksRepository
 import app.pantopus.android.data.plans.PlanFormat
@@ -23,9 +24,12 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isAtHome
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
+import app.pantopus.android.data.plans.planField
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.host.CHIP_IN_FIELDS
+import app.pantopus.android.ui.screens.plans.host.ChipInDraft
 import app.pantopus.android.ui.screens.plans.host.DATE_OPTIONS_FEWEST
 import app.pantopus.android.ui.screens.plans.host.DEAL_PREVIEW_DEBOUNCE_MS
 import app.pantopus.android.ui.screens.plans.host.DealDraft
@@ -104,6 +108,8 @@ data class PlanChangeUi(
     val room: PlanChangeRoom = PlanChangeRoom(),
     /** The holidays' find a date: the times offered while the plan is picking (PlanChangeTimes.kt). */
     val times: PlanChangeTimes = PlanChangeTimes(),
+    /** The holidays' chip in (PlanChangeChipIn.kt). */
+    val chipIn: PlanChangeChipIn = PlanChangeChipIn(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -200,7 +206,8 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed ||
+            chipIn.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -266,6 +273,7 @@ class PlanChangeViewModel
                                 money = PlanChangeMoney.of(plan),
                                 room = PlanChangeRoom.of(plan, feature.flags.value.guestAnswersOn),
                                 times = PlanChangeTimes.of(plan, zone),
+                                chipIn = PlanChangeChipIn.of(plan, feature.flags.value.chipInOn),
                             )
                         }
                         lookForOrigin()
@@ -495,10 +503,12 @@ class PlanChangeViewModel
                         kidsWelcome = ui.room.kidsWelcome.takeIf { ui.room.kidsChanged },
                         // The holidays' find a date, while picking: the times offered now (kept ones as the server sent them).
                         dateOptions = ui.times.toInput(ui.zone).takeIf { ui.times.changed },
+                        // The holidays' chip in: a new value (who paid is kept); taking it away is `"chip_in": null`, below.
+                        chipIn = ui.chipIn.toSend,
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
-                    is NetworkResult.Failure -> _ui.update { it.copy(saving = false, error = result.error.planMessage) }
+                    is NetworkResult.Failure -> saveFailed(result.error)
                 }
             }
         }
@@ -516,13 +526,45 @@ class PlanChangeViewModel
                 when {
                     !others && ui.removesDeal -> repository.removeDeal(planId)
                     !others && ui.money.removesPrice -> checksRepository.removePrice(planId)
-                    ui.stopsRepeating -> repository.updateStoppingRepeat(planId, body)
+                    ui.stopsRepeating || ui.chipIn.removes -> repository.updateClearing(planId, body, ui.clears)
                     else -> repository.update(planId, body)
                 }
             if (first !is NetworkResult.Success) return first
             val second = if (others && ui.removesDeal) repository.removeDeal(planId) else first
             if (second !is NetworkResult.Success) return second
             return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
+        }
+
+        /** A refusal: the server's sentence, under the chip-in field it names when it names one (and over Save). */
+        private fun saveFailed(error: NetworkError) {
+            val field = error.planField
+            val message = error.planMessage
+            _ui.update {
+                val chipErrors = if (field != null && field in CHIP_IN_FIELDS && it.chipIn.draft != null) mapOf(field to message) else emptyMap()
+                it.copy(saving = false, error = message, chipIn = it.chipIn.copy(errors = chipErrors))
+            }
+        }
+
+        // ---- Plans for the holidays: chip in ----
+
+        /** "Chip in" on (the plan's own value, else empty fields) or off (Save takes it away). */
+        fun setChipIn(on: Boolean) {
+            _ui.update {
+                val chip = it.chipIn
+                val draft = if (on) chip.draft ?: chip.original ?: ChipInDraft() else null
+                it.copy(chipIn = chip.copy(draft = draft, errors = emptyMap()), error = null)
+            }
+        }
+
+        /** A chip-in field typed into; its refusal goes. */
+        fun editChipIn(
+            field: String,
+            transform: (ChipInDraft) -> ChipInDraft,
+        ) {
+            _ui.update { ui ->
+                val draft = ui.chipIn.draft ?: return@update ui
+                ui.copy(chipIn = ui.chipIn.copy(draft = transform(draft), errors = ui.chipIn.errors - field), error = null)
+            }
         }
 
         // ---- Plans for the holidays: the times offered while picking ----

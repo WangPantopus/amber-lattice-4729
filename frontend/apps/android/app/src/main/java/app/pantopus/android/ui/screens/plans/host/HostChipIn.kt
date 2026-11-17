@@ -33,13 +33,16 @@ internal const val CHIP_IN_AMOUNT = "amount_cents"
 internal const val CHIP_IN_NOTE = "note"
 internal const val CHIP_IN_LINK = "link"
 
-/** The three fields and the line under them. */
+/**
+ * The three fields and the line under them, on the host form and on the Change screen: [errors] holds the server's
+ * sentence under the field it refused, and [onEdit] changes one field (its refusal goes).
+ */
 @Composable
 internal fun ChipInFields(
-    ui: HostUi,
-    vm: HostFlowViewModel,
+    chip: ChipInDraft,
+    errors: Map<String, String>,
+    onEdit: (String, (ChipInDraft) -> ChipInDraft) -> Unit,
 ) {
-    val chip = ui.draft.chipIn ?: return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3), modifier = Modifier.testTag("planChipInFields")) {
         PlanField(label = "Each person") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -47,7 +50,7 @@ internal fun ChipInFields(
                 Box(modifier = Modifier.width(AMOUNT_WIDTH).testTag("planChipInAmount")) {
                     PlanTextArea(
                         value = chip.amount,
-                        onValue = { text -> vm.editChipIn(CHIP_IN_AMOUNT) { it.copy(amount = amountTyped(text, AMOUNT_MAX)) } },
+                        onValue = { text -> onEdit(CHIP_IN_AMOUNT) { it.copy(amount = amountTyped(text, AMOUNT_MAX)) } },
                         placeholder = "12",
                         label = "Each person, in dollars",
                         singleLine = true,
@@ -55,33 +58,33 @@ internal fun ChipInFields(
                     )
                 }
             }
-            FieldError(ui.chipInErrors[CHIP_IN_AMOUNT])
+            FieldError(errors[CHIP_IN_AMOUNT])
         }
         PlanField(label = "What for") {
             Box(modifier = Modifier.testTag("planChipInNote")) {
                 PlanTextArea(
                     value = chip.note,
-                    onValue = { text -> vm.editChipIn(CHIP_IN_NOTE) { it.copy(note = text.take(NOTE_MAX)) } },
+                    onValue = { text -> onEdit(CHIP_IN_NOTE) { it.copy(note = text.take(NOTE_MAX)) } },
                     placeholder = "The turkey and the drinks",
                     label = "What for",
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 )
             }
-            FieldError(ui.chipInErrors[CHIP_IN_NOTE])
+            FieldError(errors[CHIP_IN_NOTE])
         }
         PlanField(label = "Payment link") {
             Box(modifier = Modifier.testTag("planChipInLink")) {
                 PlanTextArea(
                     value = chip.link,
-                    onValue = { text -> vm.editChipIn(CHIP_IN_LINK) { it.copy(link = text.trim().take(LINK_MAX)) } },
+                    onValue = { text -> onEdit(CHIP_IN_LINK) { it.copy(link = text.trim().take(LINK_MAX)) } },
                     placeholder = "venmo.com/u/your-name",
                     label = "Payment link",
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                 )
             }
-            FieldError(ui.chipInErrors[CHIP_IN_LINK])
+            FieldError(errors[CHIP_IN_LINK])
         }
         PlanScopeLine("A Venmo, PayPal or Cash App link. Only people who are in see it.", icon = PantopusIcon.Info)
     }
@@ -99,3 +102,11 @@ private const val NOTE_MAX = 60
 
 /** The server takes up to 300 characters; a little more may be typed so its own sentence says so. */
 private const val LINK_MAX = 320
+
+/** "Chip in" as the plan has it: the dollars as the host would type them ("12", "12.50"), what for, and the link. */
+internal fun ChipInDraft.Companion.of(amountCents: Int, note: String?, link: String?): ChipInDraft {
+    val dollars = if (amountCents % CENTS == 0) "${amountCents / CENTS}" else "%d.%02d".format(amountCents / CENTS, amountCents % CENTS)
+    return ChipInDraft(amount = dollars, note = note.orEmpty(), link = link.orEmpty())
+}
+
+private const val CENTS = 100

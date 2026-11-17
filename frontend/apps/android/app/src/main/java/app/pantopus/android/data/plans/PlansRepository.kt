@@ -404,18 +404,21 @@ class PlansRepository
         }
 
         /** Stops a repeating plan (Plans step 2): `PATCH` with `"repeat": null`; this date stays and none follows. */
-        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateStoppingRepeat(id, UpdatePlanBody())
+        suspend fun stopRepeating(id: String): NetworkResult<PlanDto> = updateClearing(id, UpdatePlanBody(), listOf(REPEAT_FIELD))
 
         /**
-         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and `"repeat": null`: the change screen's
-         * other changes and "Doesn't repeat" together, so either both go through or neither does.
+         * One `PATCH` with [body]'s fields (serialized as [update] sends them) and each of [clears] as `null` ("Doesn't
+         * repeat" is `repeat`; the holidays' chip in taken away is `chip_in`): the change screen's other changes and
+         * these together, so either all go through or none does.
          */
-        suspend fun updateStoppingRepeat(
+        suspend fun updateClearing(
             id: String,
             body: UpdatePlanBody,
+            clears: List<String>,
         ): NetworkResult<PlanDto> {
             val session = cacheSession()
-            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body)).put(REPEAT_FIELD, JSONObject.NULL)
+            val fields = JSONObject(moshi.adapter(UpdatePlanBody::class.java).toJson(body))
+            clears.forEach { fields.put(it, JSONObject.NULL) }
             val raw = fields.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
             return write(id) { api.stopRepeating(id, raw) }.also { rememberResult(it, session) }
         }

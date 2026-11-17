@@ -113,7 +113,8 @@ fun PlanChangeScreen(
         // A business's plan: one of its own locations (board B2) and its deal (business track B1).
         ChangeBusinessFields(ui, viewModel)
         // Plans for the holidays: a private plan's room and "Kids welcome", as the host form draws them.
-        ChangeRoomRows(ui.room, onSpots = viewModel::setRoom, onKids = viewModel::setKidsWelcome)
+        // The holidays' chip in sits in its "Add to this plan" card (PlanChangeChipIn.kt).
+        ChangeRoomRows(ui, viewModel)
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
         if (ui.asksStillComing) {
             StillComingWarning(
