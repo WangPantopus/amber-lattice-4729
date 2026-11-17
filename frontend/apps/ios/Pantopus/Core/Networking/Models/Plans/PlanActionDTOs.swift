@@ -159,9 +159,10 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var chipIn: PlanChipInBody?
     /// Find a date: 2 to 5 times guests tick (`plans_find_date`); `starts_at` is then the earliest.
     public var dateOptions: [PlanDateOptionBody]?
+    public var gift: PlanGiftBody? // The gift exchange (`plans_gift_exchange`): the budget and when names are drawn.
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
+        case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal, gift
         case priceCents = "price_cents"
         case payHere = "pay_here"
         case tipsOn = "tips_on"
@@ -241,9 +242,10 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var chipIn: PlanChipInChange?
     /// Find a date: the offered times while picking (a kept time keeps its ticks).
     public var dateOptions: [PlanDateOptionBody]?
+    public var gift: PlanGiftChange? // The gift exchange: a new budget or draw time, or `.remove` (sent as `null`).
 
     enum CodingKeys: String, CodingKey {
-        case title, about, place, spots, gps, label, deal
+        case title, about, place, spots, gps, label, deal, gift
         case dateOptions = "date_options"
         case priceCents = "price_cents"
         case payHere = "pay_here"

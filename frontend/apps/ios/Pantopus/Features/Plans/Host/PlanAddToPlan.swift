@@ -8,7 +8,7 @@
 //  them; only what is switched on shows on the plan. H1 adds "Kids welcome",
 //  H2 "Bring list". The extras (board 26) each add a card of their own under
 //  it: "Let guests pick the date" (PlanFindDateForm.swift) and "Chip in"
-//  (PlanChipInForm.swift), each behind its own switch.
+//  (PlanChipInForm.swift) and "Gift exchange" (PlanGiftForm.swift), each behind its own switch.
 //
 
 import SwiftUI
@@ -24,6 +24,7 @@ struct PlanAddToPlanCard: View {
             // Board 26: each extra its own card, with its line under it.
             if model.offersFindDate { PlanFindDateFormCard(model: model) }
             if model.offersChipIn { PlanChipInFormCard(draft: Bindable(model.privacy).chipIn) }
+            if model.offersGift { PlanGiftFormCard(draft: Bindable(model.privacy).gift, start: model.earliestStart) }
             PlanScopeLine(text: "Only what you switch on shows on the plan. Everything else stays out of the way.", icon: .info)
         }
         .accessibilityElement(children: .contain)

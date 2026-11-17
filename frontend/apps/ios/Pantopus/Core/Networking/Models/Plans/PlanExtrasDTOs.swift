@@ -235,19 +235,22 @@ public struct PlanCardExtrasPart: Decodable, Sendable, Hashable {
     public let dates: PlanDatesDTO?
     /// "Picking a date" while it is, where a list shows the time.
     public let timeText: String?
+    /// The gift exchange; `mine.giving_to` only in the reader's own card.
+    public let gift: PlanGiftDTO?
 
-    static let none = PlanCardExtrasPart(chipIn: nil, dates: nil, timeText: nil)
+    static let none = PlanCardExtrasPart(chipIn: nil, dates: nil, timeText: nil, gift: nil)
 
     enum CodingKeys: String, CodingKey {
-        case dates
+        case dates, gift
         case chipIn = "chip_in"
         case timeText = "time_text"
     }
 
-    init(chipIn: PlanChipInDTO?, dates: PlanDatesDTO?, timeText: String?) {
+    init(chipIn: PlanChipInDTO?, dates: PlanDatesDTO?, timeText: String?, gift: PlanGiftDTO?) {
         self.chipIn = chipIn
         self.dates = dates
         self.timeText = timeText
+        self.gift = gift
     }
 
     public init(from decoder: any Decoder) throws {
@@ -255,6 +258,7 @@ public struct PlanCardExtrasPart: Decodable, Sendable, Hashable {
         chipIn = try? container.decodeIfPresent(PlanChipInDTO.self, forKey: .chipIn)
         dates = try? container.decodeIfPresent(PlanDatesDTO.self, forKey: .dates)
         timeText = try? container.decodeIfPresent(String.self, forKey: .timeText)
+        gift = try? container.decodeIfPresent(PlanGiftDTO.self, forKey: .gift)
     }
 }
 
