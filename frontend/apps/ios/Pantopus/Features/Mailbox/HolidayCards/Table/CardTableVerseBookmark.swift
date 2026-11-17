@@ -44,6 +44,18 @@ struct CardTableVerseBookmark: View {
     }
 
     let words: Words
+
+    init(words: Words, bottomInset: CGFloat, onClose: @escaping () -> Void) {
+        // A card not yet postmarked carries an empty day: it reads as none.
+        if case let .print(note, from, day) = words, day?.trimmingCharacters(in: .whitespaces).isEmpty == true {
+            self.words = .print(note: note, from: from, mailedOn: nil)
+        } else {
+            self.words = words
+        }
+        self.bottomInset = bottomInset
+        self.onClose = onClose
+    }
+
     /// The home indicator's room (the table draws under the safe area).
     let bottomInset: CGFloat
     let onClose: () -> Void
