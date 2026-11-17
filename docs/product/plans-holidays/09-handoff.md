@@ -173,7 +173,7 @@ In the order it should be done. Each item is its own small pull request into
    for a spot; the group price coming back and then leaving; the bill with a
    deal and a tip; the tip afterwards. Written into `NEXT_STEPS.md` the way the
    people track's check is.
-8. Under way since November 17 (done so far: the same people again, chip in, find a date, gift exchange; `NEXT_STEPS.md` lists each as it
+8. Under way since November 17 (done so far: the same people again, chip in, find a date, gift exchange, photos afterwards; `NEXT_STEPS.md` lists each as it
    finishes). A two-phone check of each extra, with a browser guest where the extra has
    one, written into `NEXT_STEPS.md`.
 
