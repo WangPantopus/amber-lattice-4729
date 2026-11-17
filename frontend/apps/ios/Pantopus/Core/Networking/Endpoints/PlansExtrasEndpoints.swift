@@ -63,4 +63,30 @@ public extension PlansEndpoints {
     static func pickDate(planId: String, optionId: String) -> Endpoint {
         Endpoint(method: .post, path: "\(base)/\(planId)/dates/pick", query: biz(), body: PlanDatePickBody(optionId: optionId))
     }
+
+    // MARK: - Gift exchange (`plans_gift_exchange`)
+
+    /// `POST /api/plans/:id/gift/join` — "Join" with a wish (0 to 120 characters; again changes it); answers `{ gift }`.
+    /// 403 `not_in`, 409 `drawn` / `ended`. Route `backend/routes/plans.js` (`/:id/gift/join`), `planGift.join`.
+    static func joinGift(planId: String, wish: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/gift/join", query: biz(), body: PlanGiftWishBody(wish: wish))
+    }
+
+    /// `PATCH /api/plans/:id/gift/mine` — "Change" the wish, also after the draw; answers `{ gift }`. 409 `not_joined`.
+    /// Route `backend/routes/plans.js` (`/:id/gift/mine`), `planGift.setWish`.
+    static func changeGiftWish(planId: String, wish: String) -> Endpoint {
+        Endpoint(method: .patch, path: "\(base)/\(planId)/gift/mine", query: biz(), body: PlanGiftWishBody(wish: wish))
+    }
+
+    /// `DELETE /api/plans/:id/gift/mine` — "Leave", before the draw; answers `{ gift }`. 409 `drawn`.
+    /// Route `backend/routes/plans.js` (`/:id/gift/mine`), `planGift.leave`.
+    static func leaveGift(planId: String) -> Endpoint {
+        Endpoint(method: .delete, path: "\(base)/\(planId)/gift/mine", query: biz())
+    }
+
+    /// `POST /api/plans/:id/gift/draw` (host) — "Draw names now", or "Draw again"; answers `{ gift }`. 409 `too_few`
+    /// with the host's sentence. Route `backend/routes/plans.js` (`/:id/gift/draw`), `planGift.drawNow`.
+    static func drawGift(planId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/gift/draw", query: biz())
+    }
 }

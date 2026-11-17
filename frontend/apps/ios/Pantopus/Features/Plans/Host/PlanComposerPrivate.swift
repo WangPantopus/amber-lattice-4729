@@ -37,6 +37,8 @@ final class PlanPrivateDraft {
     var chipIn: PlanChipInDraft?
     /// Find a date: the times offered, in the order added; nil while "Let guests pick the date" is off.
     var dateOptions: [PlanDateOptionDraft]?
+    /// The gift exchange being drafted; nil while "Gift exchange" is off.
+    var gift: PlanGiftDraft?
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
@@ -105,6 +107,7 @@ final class PlanPrivateDraft {
         if guestAnswers { body.kidsWelcome = kidsWelcome }
         if bringList, let bring, !bring.items.isEmpty { body.bring = bring.body }
         if chipInOn { body.chipIn = chipIn?.body }
+        if model.offersGift { body.gift = gift?.body }
         if findDateOn, let options = dateOptions?.sorted(by: { $0.start < $1.start }), let first = options.first {
             // The plan's own time is the earliest offered, so lists can order it while guests tick.
             body.dateOptions = options.map { PlanDateOptionBody(startsAt: PlanTime.string($0.start), endsAt: PlanTime.string($0.end)) }
@@ -156,6 +159,17 @@ extension PlanComposerModel {
         PlansFlags.shared.findDate && isPrivate && kind != .playdate && !repeating.isOn
     }
 
+    /// The gift exchange (08-extras section 4, board 26) on a private plan of a host with `plans_gift_exchange`,
+    /// never a playdate.
+    var offersGift: Bool {
+        PlansFlags.shared.giftExchange && isPrivate && kind != .playdate
+    }
+
+    /// When the plan starts: the earliest time offered while guests pick one. Names are drawn before it.
+    var earliestStart: Date {
+        picksDate ? (privacy.dateOptions?.map(\.start).min() ?? start) : start
+    }
+
     /// The host offers times instead of one: the "When" card gives way to them.
     var picksDate: Bool {
         offersFindDate && privacy.dateOptions != nil
@@ -165,12 +179,13 @@ extension PlanComposerModel {
     var extrasProblem: String? {
         if offersChipIn, let chipIn = privacy.chipIn, chipIn.body == nil { return PlanChipInDraft.incomplete }
         if picksDate, (privacy.dateOptions?.count ?? 0) < 2 { return PlanDateOptionDraft.tooFew }
+        if offersGift, let gift = privacy.gift, gift.body == nil { return PlanGiftDraft.incomplete }
         return nil
     }
 
     /// The "Add to this plan" card shows while it has a row to hold.
     var offersAddToPlan: Bool {
-        offersGuestAnswers || offersBringList || offersChipIn || offersFindDate
+        offersGuestAnswers || offersBringList || offersChipIn || offersFindDate || offersGift
     }
 
     /// The most the spots stepper goes to: 100 for a private plan with guest answers, otherwise 30.
