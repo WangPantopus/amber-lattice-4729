@@ -200,6 +200,9 @@ object PlanAudience {
 /** A private plan (Plans step 1): only its host, the people invited and the people in see it. */
 val PlanDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
 
+/** The holidays' find a date: the host is still picking from the times offered (extras section 2). */
+val PlanDto.isPicking: Boolean get() = dates?.state == "picking"
+
 /** A private plan's pin. */
 val PlanPinDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
 

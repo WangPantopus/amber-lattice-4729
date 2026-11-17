@@ -39,6 +39,7 @@ import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPicking
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
@@ -283,6 +284,7 @@ private fun PlanReady(
                     onOpenGuests = onOpenGuests,
                     onOpenBring = onOpenBring,
                     checks = PlanChecksEntry(ui.checks, onOpenChecks),
+                    onExtrasChanged = viewModel::load,
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -316,6 +318,8 @@ private fun PlanReady(
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
             // A private plan's invitation goes under its title (board Invited, Plans step 1).
             // Plans for the holidays (A8): someone who said maybe sees a quiet "You said maybe" with "Change".
+            // The holidays' find a date (board 24): the times to tick take the answer's place while the host is picking.
+            plan.isPicking -> PlanBeforeInBody(plan, afterTitle = { PlanDatesGuest(plan) })
             plan.isPrivate && plan.saidMaybe ->
                 PlanBeforeInBody(plan, afterTitle = { PlanMaybeBanner(plan, onChange = viewModel::openAsk) })
             plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
@@ -478,12 +482,20 @@ private fun footerFor(
                 waitlistCaption(plan)?.let { PlanFooterCaption(it) }
             }
         }
+        // The holidays' find a date (board 24): "Save my times" in place of the answer buttons while the host is picking.
+        plan.isPicking -> datesFooter(plan, viewModel::load)
         plan.openInvite != null &&
             (plan.viewer?.canAsk == true || plan.viewer?.cannotAskReason == PlanCannotAsk.FULL_USE_WAITLIST) ->
             inviteFooterContent(plan, requireNotNull(plan.openInvite), busy, viewModel)
         else -> askFooterContent(askFooter(plan), viewModel, onVerify, onLocation, ready)
     }
 }
+
+/** Board 24's footer, read again after saving. */
+private fun datesFooter(
+    plan: PlanDto,
+    onSaved: () -> Unit,
+): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = { PlanDatesFooter(plan, onSaved) }
 
 /**
  * The host's reminder (Plans for the holidays, board 4): "Remind the {3} who haven't answered" and "One reminder each,

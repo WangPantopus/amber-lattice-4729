@@ -310,6 +310,10 @@ data class PlanDto(
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
     /** The holidays' chip in (extras section 3, `extras=1`): for the host and people who are in only. */
     @Json(name = "chip_in") val chipIn: PlanChipInDto? = null,
+    /** The holidays' find a date (extras section 2, `extras=1`): the times offered while the host is picking. */
+    @Json(name = "dates") val dates: PlanDatesDto? = null,
+    /** "Picking a date" where lists show the time, while the host is picking. */
+    @Json(name = "time_text") val timeText: String? = null,
     /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */

@@ -2,6 +2,9 @@ package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.plans.PlanChipInResponse
 import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
+import app.pantopus.android.data.api.models.plans.PlanDatePickBody
+import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
+import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
@@ -10,6 +13,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -52,4 +56,20 @@ interface PlanExtrasApi {
         @Path("id") id: String,
         @Query("who") who: String?,
     ): PlanChipInResponse
+
+    // ---- 3. Find a date (services/plans/planDates.js) ----
+
+    /** `PUT /api/plans/:id/dates/mine`: an invited person's ticks and numbers; answers the plan. */
+    @PUT("api/plans/{id}/dates/mine")
+    suspend fun saveDates(
+        @Path("id") id: String,
+        @Body body: PlanDatesMineBody,
+    ): PlanDto
+
+    /** `POST /api/plans/:id/dates/pick`: the host picks a time; answers the plan, now ordinary. */
+    @POST("api/plans/{id}/dates/pick")
+    suspend fun pickDate(
+        @Path("id") id: String,
+        @Body body: PlanDatePickBody,
+    ): PlanDto
 }

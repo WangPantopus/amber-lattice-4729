@@ -30,6 +30,9 @@ object PlanFormat {
 
     private const val ONE_WEEK_DAYS = 6L
 
+    /** The server's `time_text` while a plan's date is being picked, should a reply lack it. */
+    private const val PICKING_A_DATE = "Picking a date"
+
     /** Parses an ISO-8601 instant (with `Z` or an offset); null when absent or unreadable. */
     fun instant(raw: String?): Instant? {
         if (raw.isNullOrBlank()) return null
@@ -157,6 +160,8 @@ object PlanFormat {
         plan: PlanDto,
         now: Instant = Instant.now(),
     ): String? {
+        // The holidays' find a date: while the host is picking, the server's "Picking a date" where the time shows.
+        if (plan.isPicking) return plan.timeText ?: PICKING_A_DATE
         val zone = zone(plan.timezone)
         if (plan.planState == PlanState.LIVE) return happeningNow(instant(plan.endsAt)?.atZone(zone))
         val start = instant(plan.startsAt)?.atZone(zone) ?: return null
@@ -243,6 +248,7 @@ object PlanFormat {
         long: Boolean = false,
         now: Instant = Instant.now(),
     ): String {
+        if (plan.isPicking) return plan.timeText ?: PICKING_A_DATE
         val zone = zone(plan.timezone)
         val end = instant(plan.endsAt)?.atZone(zone)
         if (plan.planState == PlanState.LIVE) return happeningNow(end)
