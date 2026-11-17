@@ -174,7 +174,12 @@ private fun PlanGiftCard(
             }
             if (isHost) {
                 if (gift.isDrawn) {
-                    ChipInTextButton(title = "Draw again", spoken = "Draw names again", onClick = { asksDrawAgain = true }, tag = "planGiftDraw")
+                    ChipInTextButton(
+                        title = "Draw again",
+                        spoken = "Draw names again",
+                        onClick = { asksDrawAgain = true },
+                        tag = "planGiftDraw",
+                    )
                 } else {
                     GhostButton(
                         title = "Draw names now",
@@ -215,7 +220,14 @@ private fun GiftHeader(gift: PlanGiftDto) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        PlanIconTile(PantopusIcon.Gift, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+        PlanIconTile(
+            PantopusIcon.Gift,
+            PantopusColors.appSurfaceSunken,
+            PantopusColors.appTextStrong,
+            size = 40.dp,
+            glyph = 20.dp,
+            corner = 12.dp,
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(text = "Gift exchange", style = SEMIBOLD, color = PantopusColors.appText)
             Text(text = gift.budgetText, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)

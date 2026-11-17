@@ -24,6 +24,7 @@ import retrofit2.http.Query
  * Plans for the holidays, the six extras (08-extras.md): routes under `/api/plans`, so PlansBizInterceptor adds the
  * markers, `extras=1` among them. Kept apart from [PlansApi]. Routes: `backend/routes/plans.js`.
  */
+@Suppress("TooManyFunctions")
 interface PlanExtrasApi {
     // ---- 1. The same people again (services/plans/planSamePeople.js) ----
 
