@@ -177,10 +177,14 @@ public struct PlanDatesDTO: Decodable, Sendable, Hashable {
     public let answeredText: String
     /// Nil for the host.
     public let mine: PlanDatesMineDTO?
+    /// The line under "Save my times" for an invited person: "You're in when Maya picks a time you ticked.", or for
+    /// someone who waits for the host's yes "When Maya picks a time you ticked, Maya lets you in." (gap 13).
+    public let mineText: String?
 
     enum CodingKeys: String, CodingKey {
         case options, answered, invited, mine
         case answeredText = "answered_text"
+        case mineText = "mine_text"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -190,6 +194,7 @@ public struct PlanDatesDTO: Decodable, Sendable, Hashable {
         invited = try container.decodeIfPresent(Int.self, forKey: .invited) ?? 0
         answeredText = try container.decodeIfPresent(String.self, forKey: .answeredText) ?? ""
         mine = try? container.decodeIfPresent(PlanDatesMineDTO.self, forKey: .mine)
+        mineText = try? container.decodeIfPresent(String.self, forKey: .mineText)
     }
 }
 
