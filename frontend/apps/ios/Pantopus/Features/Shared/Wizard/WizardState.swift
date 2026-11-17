@@ -24,7 +24,17 @@ public enum WizardLeadingControl: Sendable, Equatable {
 /// Right-hand readout in the top bar. Disappears on the success step.
 public enum WizardProgressLabel: Sendable, Equatable {
     case stepOf(current: Int, total: Int)
+    /// "1 of 2": the same readout in words (the two-step Add Home, FASTVERIFY).
+    case stepOfWords(current: Int, total: Int)
     case hidden
+
+    /// The step and the count, however they are read out.
+    var steps: (current: Int, total: Int)? {
+        switch self {
+        case let .stepOf(current, total), let .stepOfWords(current, total): (current, total)
+        case .hidden: nil
+        }
+    }
 }
 
 /// All wizard-shell-relevant state for the current step. Feature view

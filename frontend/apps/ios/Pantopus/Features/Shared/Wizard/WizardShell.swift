@@ -87,7 +87,7 @@ public struct WizardShell<Content: View>: View {
 
     @ViewBuilder
     private func progressBar(fraction: Double) -> some View {
-        let segmentCount: Int = if case let .stepOf(_, total) = model.chrome.progressLabel {
+        let segmentCount: Int = if let total = model.chrome.progressLabel.steps?.total {
             max(1, total)
         } else {
             1
@@ -215,8 +215,9 @@ private struct WizardTopBar: View {
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .accessibilityShowsLargeContentViewer()
                 .accessibilityAddTraits(.isHeader)
-            if case let .stepOf(current, total) = progressLabel {
-                Text("\(current)/\(total)")
+            if let steps = progressLabel.steps {
+                Text(progressLabel == .stepOfWords(current: steps.current, total: steps.total)
+                    ? "\(steps.current) of \(steps.total)" : "\(steps.current)/\(steps.total)")
                     .scaledFont(PantopusTextStyle.caption.size)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize()
