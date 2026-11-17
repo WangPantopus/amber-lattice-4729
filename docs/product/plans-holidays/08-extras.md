@@ -207,6 +207,11 @@ dinner" in an email, "for coffee"). The words as shipped:
   to answer get the invitation with the time, and a new invitation, text
   message or page names the date. With the switch off, or in an app without
   `extras=1`, nothing changes.
+- **A cancellation while picking** names no date either (settled November 17;
+  the server change is owed: as built it names the earliest time offered).
+  The notice and the guest's email say "{Host} cancelled {title}." with
+  nothing where the date would stand; everything else about a cancellation is
+  as today (contract 6.6).
 
 ## 3. Chip in
 
