@@ -135,9 +135,8 @@ export default function PlaceDashboard({ openVerify = false }: {
   const { data: intelligence, waiting: intelWaiting } = useAfterRecheck(intelQuery, showsCopy);
   // FASTVERIFY: the verify sheet's choices and the fast-check mark, for a claimed or verified place
   // of your own (null while the faster verification is off, which keeps today's sheet and group).
-  const verify = useVerifyOptions(shownHomeId, {
-    enabled: authed && !claim && (intelligence?.tier === 'T3' || intelligence?.tier === 'T4'),
-  });
+  // Asked beside the Place answer, not after it, so a verified place doesn't wait a round trip to know how.
+  const verify = useVerifyOptions(shownHomeId, { enabled: authed && !claim });
   const verifyOptions = verify.data;
 
   // Places for the switcher. Verified mirrors the dashboard tier (T4):
@@ -262,6 +261,7 @@ export default function PlaceDashboard({ openVerify = false }: {
         onVerifyByMail={() => router.push(`/app/homes/${homeId}/verify-postcard?return=place`)}
         neighbors={<VerifiedNeighborsGroup />}
         verifyOptions={verifyOptions}
+        verifyLoading={verify.loading}
         autoOpenVerify={openVerify && !verify.loading}
         onAutoOpened={() => router.replace(`/app/place${placeHomeQuery(switchedHome)}`)}
       />

@@ -907,7 +907,8 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
   const roleBase = access?.hasAccess ? access.role_base : null;
   const nonResident = roleBase === 'guest' || roleBase === 'service_provider';
   // FASTVERIFY: verified by a fast check, residency letters and passes need a mailed code (null with the flags off).
-  const verifyOptions = useVerifyOptions(homeId, { enabled: verified }).data;
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const verifyOptions = verify.data;
   const fast = verified && verifyOptions?.level === 'fast' ? { byLine: verifiedByFromOptions(verifyOptions) } : null;
   const address = detailAddress(intelligence.place);
   const place = intelligence.place;
@@ -944,7 +945,10 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
       <DetailHeader title="Identity" address={address} />
       <div className="px-4 sm:px-5 pt-1 pb-16">
         <DetailSectionLabel>Verification</DetailSectionLabel>
-        {verified ? (
+        {verified && verify.loading ? (
+          // Until we know how this person was verified, offer no residency letter or pass (mail-level).
+          <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted" role="status">Loading…</div>
+        ) : verified ? (
           <>
             <VerifiedStatus name={residentName} address={place.line1 || place.label} roleBase={roleBase} nonResident={nonResident}
               fast={fast} onMailCode={homeId ? () => router.push(`/app/homes/${homeId}/verify-postcard?return=place`) : undefined} />
