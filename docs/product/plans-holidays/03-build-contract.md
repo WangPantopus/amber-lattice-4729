@@ -732,7 +732,9 @@ captured at once with `payment_type = 'plan_payment'`, the request made
   `refunded_cents` what came back), so the row agrees with the card statement
   and with "You'll get $14.00 back." Settled November 16 after Android's check
   read "Paid $18.00" beside a $4.00 return; the server says it since #4283.
-  The apps draw `text` as it comes, so neither needs a change.
+  The apps draw `text` as it comes, so neither needs a change. A guest of a
+  plan the business cancelled, with everything returned, reads "Paid $25.00 ·
+  $25.00 back"; that stays (the designer's call, November 16).
 - **A quote before joining.** `POST /api/plans/:id/requests/quote` with
   `{ "party_size", "kids_count" }` answers what the sheet shows, with no side
   effect: `{ "spots", "each_text", "total_cents", "total_text", "group":
