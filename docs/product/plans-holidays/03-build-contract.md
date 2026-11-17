@@ -194,6 +194,19 @@ family.
 - **All of a guest's keys stop working together** when the host removes the
   guest, the invitation is cancelled, or the plan is deleted. Nothing else ends
   one. At most 6 a guest; a seventh drops the oldest.
+- **An invitation's own link says who is answering** (settled November 17,
+  after the two-phone check found a second invitee's link showing the first
+  guest's answer in one browser). When a request carries an email or text
+  invitation's token and a guest's key (sent, or the browser's cookie) that
+  belongs to a different invitation row of the plan, the key is not used for
+  that read or that answer: the page's `answer.mine` and `for_guest` are that
+  invitation's own (empty until it answers), the answer and the times are
+  saved on that invitation, and when it answers away from a home the
+  browser's cookie becomes that invitation's key. The open link names nobody,
+  so with it the cookie's guest stays, as before; a key of the token's own
+  row works as before. The routes that take only a key (the bring list's,
+  chip in's, the gift exchange's, the photos', and a change of answer) carry
+  no token and read the key's own row as before.
 
 ### 6.2 Reading
 

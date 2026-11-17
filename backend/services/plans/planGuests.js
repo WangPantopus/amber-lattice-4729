@@ -256,6 +256,19 @@ async function goingNames(plan, exceptInviteId) {
 }
 
 /**
+ * An invitation's own link says who is answering (contract 6.1): with an email or text invitation's token, a guest's
+ * key (sent, or the browser's cookie for the plan) that belongs to another invitation row of the plan is not used, so
+ * a second invitee opening their own link in a browser where someone else answered never reads that answer. The open
+ * link names nobody: with it the key stays, as does a key of the token's own row.
+ */
+async function keyRowFor(plan, key, inviteToken) {
+  const row = key ? await rowByKey(plan.post_id, key) : null;
+  if (!row || !isKey(inviteToken)) return row;
+  const linkRow = await rowByToken(plan.post_id, inviteToken);
+  return linkRow && String(linkRow.id) !== String(row.id) ? null : row;
+}
+
+/**
  * What the page reads beside the plan's card, for a plan whose host has the switch: `answer` (a live way in, or the
  * guest's own key) and `for_guest` (the key, while the guest is in). `live` says the private card may be shown.
  * `removed`: the key is a guest's the host removed; the page says the invitation is no longer open, and nothing else.
@@ -264,7 +277,7 @@ async function goingNames(plan, exceptInviteId) {
 async function forPage(plan, { inviteToken = null, openToken = null, guestKey = null } = {}) {
   const none = { live: false, answer: null, for_guest: null, removed: false };
   if (!takesAnswers(plan)) return none;
-  const mine = guestKey ? await rowByKey(plan.post_id, guestKey) : null;
+  const mine = await keyRowFor(plan, guestKey, inviteToken);
   if (mine && mine.status === 'cancelled') return { ...none, removed: true };
   const openLive = Boolean(openToken) && isOpenToken(plan, openToken);
   let via = mine ? mine.channel : null;
@@ -556,7 +569,12 @@ function checkedFields(plan, body, current, { via }) {
  */
 async function resolveAnswerRow(plan, body, { cookieKey = null, patch = false } = {}) {
   // A change (PATCH) is made with a guest's key: sent as `guest`, else the web's cookie for this plan.
-  const key = isKey(body.guest) ? body.guest : (patch ? cookieKey : null);
+  let key = isKey(body.guest) ? body.guest : (patch ? cookieKey : null);
+  // An answer that carries an email or text invitation's token is that invitation's: another row's key is not used.
+  if (key && !patch && isKey(body.invite)) {
+    const [keyRow, linkRow] = await Promise.all([rowByKey(plan.post_id, key), rowByToken(plan.post_id, body.invite)]);
+    if (keyRow && linkRow && String(keyRow.id) !== String(linkRow.id)) key = null;
+  }
   if (key) {
     const row = await rowByKey(plan.post_id, key);
     if (!row) fail(404, 'not_found', "This invitation isn't available.");
