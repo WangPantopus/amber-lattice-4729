@@ -1,4 +1,4 @@
-@file:Suppress("PackageNaming", "MagicNumber")
+@file:Suppress("PackageNaming", "MagicNumber", "MatchingDeclarationName")
 
 package app.pantopus.android.ui.screens.mailbox.cards
 
@@ -90,7 +90,9 @@ fun mantelCards(
     return pieces
         .mapNotNull { piece ->
             val card = piece.card ?: return@mapNotNull null
-            if (!piece.opened || card.sealed || card.sentTo != null || (card.year ?: season) != season) return@mapNotNull null
+            // Opened and open, and one that came to this person, not one they sent.
+            if (!piece.opened || card.sealed || card.sentTo != null) return@mapNotNull null
+            if ((card.year ?: season) != season) return@mapNotNull null
             MantelCard(
                 id = piece.id,
                 design = card.design,
