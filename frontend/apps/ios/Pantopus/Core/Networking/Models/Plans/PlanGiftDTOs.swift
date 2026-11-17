@@ -97,10 +97,10 @@ public struct PlanGiftWishBody: Encodable, Sendable {
     public let wish: String
 }
 
-/// The host form's value: `{ budget_cents, draw_at }`.
+/// The host form's value: `{ budget_cents, draw_at }`; after the draw a change sends the budget alone.
 public struct PlanGiftBody: Encodable, Sendable, Hashable {
     public let budgetCents: Int
-    public let drawAt: String
+    public let drawAt: String?
 
     enum CodingKeys: String, CodingKey {
         case budgetCents = "budget_cents"
