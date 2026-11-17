@@ -31,7 +31,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
 import PayToJoin from './PayToJoin';
-import ClaimSpot, { type SpotView } from './ClaimSpot';
+import ClaimSpot, { SpotUnread, type SpotView } from './ClaimSpot';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
 // place, the host's note and the people going are only in the app, for people
@@ -169,19 +169,24 @@ async function spotFrom(searchParams: PageProps['searchParams']): Promise<string
   return typeof value === 'string' && /^[A-Za-z0-9_-]{20,200}$/.test(value) ? value : null;
 }
 
-/** What the buyer's link shows ("{Chris} got you a spot"); null while the business doesn't take it (404) or on failure. */
-async function fetchSpot(id: string, token: string): Promise<SpotView | null> {
+/**
+ * What the buyer's link shows ("{Chris} got you a spot"). `spot` null and `failed` false only for the server's clear
+ * "not available" (404: the business doesn't take it); any other failure (no answer, a 5xx, a body without the offer)
+ * is `failed`, and the page never falls back to the paid join then (08-extras section 7).
+ */
+async function fetchSpot(id: string, token: string): Promise<{ spot: SpotView | null; failed: boolean }> {
   try {
     const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/public/plans/${encodeURIComponent(id)}/spot?token=${encodeURIComponent(token)}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(1500),
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) return null;
+    if (response.status === 404) return { spot: null, failed: false };
+    if (!response.ok) return { spot: null, failed: true };
     const body = await response.json();
-    return body?.spot && typeof body.spot.button === 'string' ? (body.spot as SpotView) : null;
+    return body?.spot && typeof body.spot.button === 'string' ? { spot: body.spot as SpotView, failed: false } : { spot: null, failed: true };
   } catch {
-    return null;
+    return { spot: null, failed: true };
   }
 }
 
@@ -699,8 +704,9 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   const open = await openFrom(searchParams);
   const guestKey = await guestKeyFor(id);
   const spotToken = at === 'plan-link' ? await spotFrom(searchParams) : null;
-  const [result, viewer, spot] = await Promise.all([fetchPublicPlan(id, token, open, guestKey), fetchPlanViewer(id),
-    spotToken ? fetchSpot(id, spotToken) : Promise.resolve(null)]);
+  const [result, viewer, spotRead] = await Promise.all([fetchPublicPlan(id, token, open, guestKey), fetchPlanViewer(id),
+    spotToken ? fetchSpot(id, spotToken) : Promise.resolve({ spot: null, failed: false })]);
+  const spot = spotRead.spot;
   const plan = result.data;
   const userAgent = (await headers()).get('user-agent') || '';
   const invite = plan?.invite ?? null;
@@ -714,7 +720,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   // Opened with a buyer's link (one person pays for the group): "Open app" and the install carry the spot in the same
   // form, pantopus:///plans/<id>?spot=<token>, so the app offers the spot already bought instead of a paid join. Only
   // while the business takes it (the server's spot read answered).
-  const spotQuery = spotToken && spot ? `?spot=${encodeURIComponent(spotToken)}` : '';
+  const spotQuery = spotToken && (spot || spotRead.failed) ? `?spot=${encodeURIComponent(spotToken)}` : '';
   const appQuery = openQuery || spotQuery || query;
   const universal = !linkPage && !openQuery;
   const appUrl = `${buildPlanAppUrl(id)}${spotQuery || query}`;
@@ -722,7 +728,8 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   // Getting the app from this page carries the same link through the install.
   const path = `${buildPlanPath(id)}${appQuery}`;
   // "Try again" reloads this page as it was opened.
-  const retryPath = `${linkPage ? `/plan-link/${id}` : buildPlanPath(id)}${open ? `?open=${encodeURIComponent(open)}` : query}`;
+  // A buyer's link keeps its spot through a failed read, so trying again never lands on the paid join (08-extras 7).
+  const retryPath = `${linkPage ? `/plan-link/${id}` : buildPlanPath(id)}${open ? `?open=${encodeURIComponent(open)}` : spotQuery || query}`;
   const storeCta = getStoreDownloadCta(userAgent, path);
   const fallbackUrl = storeCta?.href ?? null;
   const copyPath = storeCta?.copyPath ?? null;
@@ -734,7 +741,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
     return (
       <main className="min-h-screen bg-app text-app-text">
         <div className="mx-auto w-full max-w-md">
-          <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={query} universal={!linkPage} />
+          <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={spotQuery || query} universal={!linkPage} />
           <div className="flex flex-col gap-4 px-4 pt-10 text-center">
             <h1 className="text-xl font-semibold">Couldn&apos;t load this plan</h1>
             <p className="text-sm text-app-text-secondary">Something went wrong. Please try again.</p>
@@ -908,7 +915,9 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   // "Open app" carries the spot), free, instead of paying. A link that has stopped or is used up says so in the server's
   // words and then shows the ordinary page, unless this person already took a spot.
   const spotShown = Boolean(business && spot && spotToken) && !over && viewer?.role !== 'host';
-  const claimsSpot = spotShown && Boolean(spot?.open || viewer?.role === 'guest');
+  // The offer couldn't be read (not the server's "not available"): keep the token, offer no paid join, read it again.
+  const spotUnread = Boolean(business && spotRead.failed && spotToken) && !over && viewer?.role !== 'host';
+  const claimsSpot = (spotShown && Boolean(spot?.open || viewer?.role === 'guest')) || spotUnread;
   const paysHere = Boolean(business && plan.price?.text) && !over && viewer?.role !== 'host' && !claimsSpot;
   const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined && !paysHere && !claimsSpot;
   const joinNow = [(await searchParams).join].flat()[0] === '1';
@@ -979,6 +988,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           </section>
 
+          {spotUnread && spotToken ? <SpotUnread retryHref={`/plan-link/${id}?spot=${encodeURIComponent(spotToken)}`} /> : null}
           {spotShown && spot && spotToken ? (
             <ClaimSpot
               planId={id}
