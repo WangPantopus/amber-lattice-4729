@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -424,15 +425,7 @@ private fun rememberTableGeometry(
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            // "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4).
-            val nextHeight =
-                if (nextCard && !sending && !card.sealed) {
-                    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle).size.height
-                    val line = measurer.measure("9 more waiting", tableHintStyle).size.height
-                    max(48.dp.toPx(), words + line + 12.dp.toPx()) + 2.dp.toPx()
-                } else {
-                    0f
-                }
+            val nextHeight = if (nextCard && !sending && !card.sealed) nextCardRoom(measurer) else 0f
             val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + nextHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
@@ -453,6 +446,13 @@ private fun rememberTableGeometry(
             )
         }
     }
+}
+
+/** "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4). */
+private fun Density.nextCardRoom(measurer: TextMeasurer): Float {
+    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle).size.height
+    val line = measurer.measure("9 more waiting", tableHintStyle).size.height
+    return max(48.dp.toPx(), words + line + 12.dp.toPx()) + 2.dp.toPx()
 }
 
 /** How far the card's lowest edge can move: the light moves it 5.5 dp, and its 1° turn lowers a corner about 3.5. */
