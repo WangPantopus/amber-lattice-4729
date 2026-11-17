@@ -711,9 +711,13 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   // Opened with the plan's live open link (contract 6.9): "Open app" opens the app with it, and the app claims it and
   // answers as the person. Always the app's own link then, never this site's /plans/ address.
   const openQuery = open && plan?.answer?.open_live ? `?open=${encodeURIComponent(open)}` : '';
-  const appQuery = openQuery || query;
+  // Opened with a buyer's link (one person pays for the group): "Open app" and the install carry the spot in the same
+  // form, pantopus:///plans/<id>?spot=<token>, so the app offers the spot already bought instead of a paid join. Only
+  // while the business takes it (the server's spot read answered).
+  const spotQuery = spotToken && spot ? `?spot=${encodeURIComponent(spotToken)}` : '';
+  const appQuery = openQuery || spotQuery || query;
   const universal = !linkPage && !openQuery;
-  const appUrl = `${buildPlanAppUrl(id)}${query}`;
+  const appUrl = `${buildPlanAppUrl(id)}${spotQuery || query}`;
   const linkHref = universal ? `${buildPlanShareUrl(id)}${query}` : null;
   // Getting the app from this page carries the same link through the install.
   const path = `${buildPlanPath(id)}${appQuery}`;
@@ -900,8 +904,11 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   const invited = Boolean(invite?.available) && !over && !joined;
   // A business's paid plan: paid on this page after signing in (B3) when the server sends the price's words, which it
   // does while the business takes payment here; otherwise in the app.
-  // Opened with a buyer's link (one person pays for the group): the spot is taken here, free, instead of paying.
-  const claimsSpot = Boolean(business && spot && spotToken) && !over && viewer?.role !== 'host';
+  // Opened with a buyer's link (one person pays for the group): "{Chris} got you a spot", taken here (or in the app,
+  // "Open app" carries the spot), free, instead of paying. A link that has stopped or is used up says so in the server's
+  // words and then shows the ordinary page, unless this person already took a spot.
+  const spotShown = Boolean(business && spot && spotToken) && !over && viewer?.role !== 'host';
+  const claimsSpot = spotShown && Boolean(spot?.open || viewer?.role === 'guest');
   const paysHere = Boolean(business && plan.price?.text) && !over && viewer?.role !== 'host' && !claimsSpot;
   const paysInApp = Boolean(business && priceText(plan.price)) && !over && !joined && !paysHere && !claimsSpot;
   const joinNow = [(await searchParams).join].flat()[0] === '1';
@@ -909,7 +916,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
   return (
     <main className="min-h-screen bg-app text-app-text">
       <div className="mx-auto w-full max-w-md pb-10">
-        <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={query} universal={!linkPage} />
+        <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={spotQuery || query} universal={!linkPage} />
         <div className="flex flex-col gap-4 px-4 pt-[18px]">
           <p className="text-sm leading-5 text-app-text-secondary">{introText(plan, hostName, viewer, over, invite)}</p>
           {invite && !invite.available && !over ? (
@@ -972,7 +979,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           </section>
 
-          {claimsSpot && spot && spotToken ? (
+          {spotShown && spot && spotToken ? (
             <ClaimSpot
               planId={id}
               token={spotToken}
