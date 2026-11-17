@@ -16,12 +16,16 @@ export type GuidanceIconName =
 
 export type GuidanceLine = readonly [GuidanceIconName, string];
 
+/** What a reminder's button opens besides closing it (spec §5, cards 24-27). */
+export type GuidanceAction = 'add_address' | 'setup_home' | 'verify' | 'invite';
+
 /** A centre card as it shows: a title, up to three rows, one button. */
 export interface CentreCardContent {
   id: string;
   title: string;
   button: string;
   lines: GuidanceLine[];
+  action?: GuidanceAction;
 }
 
 /** A pointer bubble: a bold title and one sentence, ringed around one control. */
@@ -102,6 +106,178 @@ export function pulseCard(): CentreCardContent {
   };
 }
 
+// ── Right after doing something for the first time (16–23; 19 and 20 are phones only) ──
+
+/** 16. Place, right after “Set up this home” finishes. */
+export function homeSetUpCard(): CentreCardContent {
+  return {
+    id: 'done_home_setup',
+    title: 'Your home is set up',
+    button: 'Got it',
+    lines: [
+      ['circle-check', '“Tasks” is a shared to-do list for your home.'],
+      ['users', '“Members” is where you invite the people you live with.'],
+      ['bell', 'Tell Pantopus your pickup day and it will remind you the night before.'],
+    ],
+  };
+}
+
+/** 17. Place, first open after the address becomes verified. The Mail line only while the Mailbox is on. */
+export function verifiedCard({ mailbox }: { mailbox: boolean }): CentreCardContent {
+  const lines: GuidanceLine[] = [
+    ['shield-check', 'Your profile now shows a Verified badge.'],
+    ['message-circle', 'You can now send a message to homes near you.'],
+  ];
+  if (mailbox) lines.push(['mail', '“Home” in Mail is now open, for mail to everyone at your address.']);
+  return { id: 'done_verified', title: "You're verified", button: 'Got it', lines };
+}
+
+/** 18. Pulse, right after the person's first post is up. The web's menu row is “My posts”. */
+export function firstPostCard(): CentreCardContent {
+  return {
+    id: 'done_first_post',
+    title: 'Your post is up',
+    button: 'Got it',
+    lines: [
+      ['users', 'People near you can see it and reply.'],
+      ['bell', 'The bell at the top tells you when someone replies.'],
+      ['list', 'Find your posts again in the menu, under “My posts”.'],
+    ],
+  };
+}
+
+/** 21. Messages, the first time a connection request is accepted either way. */
+export function connectedCard(): CentreCardContent {
+  return {
+    id: 'done_connected',
+    title: "You're connected",
+    button: 'Got it',
+    lines: [
+      ['message-circle', 'You two can now message each other.'],
+      ['activity', 'Their posts show in Pulse under “Connections”.'],
+    ],
+  };
+}
+
+/** 22. Mail, right after the first letter or card is sent. */
+export function firstLetterCard(): CentreCardContent {
+  return {
+    id: 'done_first_letter',
+    title: "It's on its way",
+    button: 'Got it',
+    lines: [
+      ['mail', 'It arrives with the morning mail.'],
+      ['send', 'See everything you have sent under “Sent”.'],
+    ],
+  };
+}
+
+/** 23. Place, right after the first other person joins the household. */
+export function householdCard(): CentreCardContent {
+  return {
+    id: 'done_household',
+    title: 'Your household',
+    button: 'Got it',
+    lines: [
+      ['users', 'Everyone in your household sees the same tasks and reminders.'],
+      ['lock', 'Each person still has their own private mail and messages.'],
+    ],
+  };
+}
+
+export const AFTER_ACTION_IDS = ['done_home_setup', 'done_verified', 'done_first_post', 'done_connected', 'done_first_letter', 'done_household'] as const;
+
+// ── Reminders of the next step (24–27): at most one a week, each at most twice ──
+
+/** 24. Place, two days after sign-up, no saved address or home. The web's Place has no address box: “Preview an address”. */
+export function addAddressCard(): CentreCardContent {
+  return {
+    id: 'next_add_address',
+    title: 'Add your address',
+    button: 'Add my address',
+    action: 'add_address',
+    lines: [
+      ['house', 'Type your address to see flood risk, air quality and pickup days for your home.'],
+      ['lock', 'Only you see it.'],
+    ],
+  };
+}
+
+/** 25. Place, three days after saving an address, no home set up. The web's button reads “Set up this home”. */
+export function setUpHomeCard(): CentreCardContent {
+  return {
+    id: 'next_setup_home',
+    title: 'Set up your home',
+    button: 'Set up this home',
+    action: 'setup_home',
+    lines: [
+      ['bell', 'Get reminders for pickup day and for testing your home for radon.'],
+      ['circle-check', 'Keep a to-do list for your home and share it with the people you live with.'],
+    ],
+  };
+}
+
+/** 26. Place, seven days after the home is set up, not verified. */
+export function verifyReminderCard(): CentreCardContent {
+  return {
+    id: 'next_verify',
+    title: 'Verify your address',
+    button: 'Verify address',
+    action: 'verify',
+    lines: [
+      ['shield-check', 'Prove you live here to get your Verified badge.'],
+      ['message-circle', 'Verified people can send a message to homes near them.'],
+    ],
+  };
+}
+
+/** 27. Place, seven days after the home is set up, the person is its only member. */
+export function inviteCard(): CentreCardContent {
+  return {
+    id: 'next_invite',
+    title: 'Invite your household',
+    button: 'Invite someone',
+    action: 'invite',
+    lines: [
+      ['users', 'Add the people you live with.'],
+      ['circle-check', 'You will all see the same tasks and reminders for your home.'],
+    ],
+  };
+}
+
+export const REMINDER_IDS = ['next_add_address', 'next_setup_home', 'next_verify', 'next_invite'] as const;
+
+// ── Introducing something new (28's pattern; older accounts too) ──
+
+/**
+ * 28. The first app open after an introduction is switched on, on whichever tab is open. The web has no Plans tab,
+ * so the line about its tab at the bottom is left out here.
+ */
+export function introducingPlansCard(): CentreCardContent {
+  return {
+    id: 'new_plans',
+    title: 'Introducing Plans',
+    button: 'Continue',
+    lines: [['calendar', 'Plans are get-togethers near you: a walk, a game night, a dinner.']],
+  };
+}
+
+const INTRODUCTIONS: Record<string, () => CentreCardContent> = { new_plans: introducingPlansCard };
+
+/** The introductions switched on. Ships empty: the founder picks the first one later. */
+export const ACTIVE_INTRODUCTIONS: readonly string[] = [];
+
+export function introductionCard(id: string): CentreCardContent | null {
+  return INTRODUCTIONS[id]?.() ?? null;
+}
+
+/** Every centre card (for "never on a day another centre card showed"). */
+export const CENTRE_CARD_IDS: readonly string[] = [
+  'welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments', 'tab_plans',
+  'done_home_setup', 'done_verified', 'done_first_post', 'done_first_moment', 'done_first_plan', 'done_connected',
+  'done_first_letter', 'done_household', ...Object.keys(INTRODUCTIONS),
+];
+
 // ── Pointers (8–15): new accounts, from the second app open, one per app open, in this order ──
 // The web has no Ask Pantopus sparkle on Place (8) and no “Your home at a glance” rows (12), so
 // those two never find their control here. On a computer there is no ☰, so 10 never shows there.
@@ -123,4 +299,6 @@ export function pointerById(id: string): PointerContent | undefined {
 }
 
 /** Every card id the web knows (for the force switch). */
-export const KNOWN_CARD_IDS: readonly string[] = [...TAB_CARD_IDS, ...POINTERS.map((p) => p.id)];
+export const KNOWN_CARD_IDS: readonly string[] = [
+  ...TAB_CARD_IDS, ...POINTERS.map((p) => p.id), ...AFTER_ACTION_IDS, ...REMINDER_IDS, ...Object.keys(INTRODUCTIONS),
+];

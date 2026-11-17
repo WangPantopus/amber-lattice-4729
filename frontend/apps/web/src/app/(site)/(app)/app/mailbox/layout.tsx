@@ -168,7 +168,7 @@ function MailboxLayoutInner({ children }: { children: React.ReactNode }) {
 
       {composeOpen && <ComposeLetter onClose={() => setComposeOpen(false)} />}
       {/* Mail's first screen has loaded (and today's delivery has finished opening): its guidance card may show. */}
-      {view.kind === 'main' && !view.pushed && drawers && !deliveryOpening ? <GuidanceScreen name="mail" /> : null}
+      {view.kind === 'main' && !view.pushed && drawers && !deliveryOpening ? <GuidanceScreen name="mail" facts={{ sentAny: Boolean(drawers.sent?.any) }} /> : null}
     </div>
   );
 }
