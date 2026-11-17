@@ -311,14 +311,19 @@ If you don't know the sender, you can safely ignore this email.
  * @param {Object} opts
  * @param {string} opts.senderName - who the card is from, as the recipient sees it
  * @param {string} opts.expiresAt - when the card stops waiting (ISO)
- * @param {boolean} opts.sealed - sealed until Christmas morning
+ * @param {boolean} opts.sealed - sealed until Christmas morning (its picture stays the sealed envelope)
+ * @param {boolean} [opts.stillSealed] - false once Christmas morning has passed where the sender lives: the words no
+ *   longer say it's sealed, since it opens as soon as they join
  * @param {string} [opts.design] - the picture the sender picked (holidayCards DESIGNS id)
- * @param {boolean} [opts.reminder] - the one reminder, a few days after the first email (services/cardEmail)
+ * @param {boolean} [opts.reminder] - the one reminder, a few days after the first email (services/cardEmail); it says
+ *   it is the only one
  * @param {string} [opts.timeZone] - the sender's clock: its day is the one the card's page shows a reader near them
  * @returns {{ picture?: string, pictureAlt?: string, subject: string, heading: string, lines: string[], button: string,
  *   footnote: string, footer: string[] }}
  */
-function cardWaitingEmailContent({ senderName, expiresAt, sealed, design = null, reminder = false, timeZone = 'UTC' }) {
+function cardWaitingEmailContent({
+  senderName, expiresAt, sealed, stillSealed = true, design = null, reminder = false, timeZone = 'UTC',
+}) {
   const until = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone });
   const web = (process.env.PUBLIC_WEB_URL || APP_URL).trim().replace(/\/+$/, '');
   // Required here, not at the top: holidayCards reads the database client, which this service never needs otherwise.
@@ -335,12 +340,13 @@ function cardWaitingEmailContent({ senderName, expiresAt, sealed, design = null,
     subject: reminder ? `${senderName}’s Christmas card is still waiting for you` : `${senderName} sent you a Christmas card on Pantopus`,
     heading: reminder ? 'Your Christmas card is still waiting' : 'You have a Christmas card',
     lines: sealed
-      ? [`${first} It’s sealed until Christmas morning.`,
+      ? [stillSealed ? `${first} It’s sealed until Christmas morning.` : first,
         'Join Pantopus with this email address to open it and keep it in your own Pantopus mailbox. A Pantopus account is free.']
       : [`${first.slice(0, -1)}, with a note on the back just for you.`,
         `Join Pantopus with this email address to ${front ? 'turn it over' : 'open it'}, read their note and keep the card in your own Pantopus mailbox. A Pantopus account is free.`],
     button: 'Open your card',
-    footnote: `The card waits for you until ${until}. Sign in or create your account with this email address.`,
+    footnote: `The card waits for you until ${until}. Sign in or create your account with this email address.${
+      reminder ? ' This is the only reminder we’ll send.' : ''}`,
     footer: ['Pantopus — Your household, organized.', 'If you don’t know the sender, you can safely ignore this email.'],
   };
 }
@@ -355,12 +361,15 @@ function cardWaitingEmailContent({ senderName, expiresAt, sealed, design = null,
  * @param {string} opts.claimLink - the card's link
  * @param {string} opts.expiresAt - when the card stops waiting (ISO)
  * @param {boolean} opts.sealed - sealed until Christmas morning
+ * @param {boolean} [opts.stillSealed] - false once Christmas morning has passed (cardWaitingEmailContent)
  * @param {string} [opts.design] - the picture the sender picked
  * @param {boolean} [opts.reminder] - the one reminder
  * @param {string} [opts.timeZone] - the sender's clock (cardWaitingEmailContent)
  */
-async function sendCardWaitingEmail({ toEmail, senderName, claimLink, expiresAt, sealed, design, reminder, timeZone }) {
-  const words = cardWaitingEmailContent({ senderName, expiresAt, sealed, design, reminder, timeZone });
+async function sendCardWaitingEmail({
+  toEmail, senderName, claimLink, expiresAt, sealed, stillSealed, design, reminder, timeZone,
+}) {
+  const words = cardWaitingEmailContent({ senderName, expiresAt, sealed, stillSealed, design, reminder, timeZone });
   const safeLink = escapeHtml(claimLink);
   const nameFirst = `<strong>${escapeHtml(senderName)}</strong>${escapeHtml(words.lines[0].slice(senderName.length))}`;
 
