@@ -22,11 +22,14 @@ struct PlanSpotState: Equatable {
     static let unreachable = "Couldn't check your spot. Try again."
 }
 
-/// A clear answer from the server (a refusal or "not available"), as opposed to not reaching it.
+/// A clear answer from the server (a refusal or "not available"), as opposed to not reaching it: 404, 403, 409, 410,
+/// 422 and 401 as the app handles it. A 408, 425 or 429 (or any other) means the server couldn't be asked: keep the
+/// token and offer to try again.
 private func isClearAnswer(_ error: any Error) -> Bool {
     guard let error = error as? APIError else { return false }
     switch error {
-    case .clientError, .forbidden, .notFound, .unauthorized: return true
+    case .forbidden, .notFound, .unauthorized: return true
+    case let .clientError(status, _): return [403, 404, 409, 410, 422].contains(status)
     default: return false
     }
 }
