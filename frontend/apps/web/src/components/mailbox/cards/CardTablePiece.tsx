@@ -25,6 +25,7 @@ import CardShareSheet from './CardShareSheet';
 import CardTable, { type TableMenuItem } from './CardTable';
 import { firstNameOf } from './cardArt';
 import { sendOneBackPath } from './sendOneBack';
+import { moveToNextCard, nextCards } from './cardRun';
 import { launchFeatures } from '@/lib/featureFlags';
 
 const DONE_WORDS: Partial<Record<MailActionName, string>> = {
@@ -105,6 +106,17 @@ export default function CardTablePiece({
     ? { label: `Send ${firstNameOf(from)} a card`, onSelect: () => router.push(sendOneBackPath({ userId: senderId, name: from })) }
     : null;
 
+  // Open the next card (mail-cards-experience Part 4): only when the Mailbox list opened this card and handed it the
+  // others waiting. It replaces this card's page, so ✕ and Back still go to the Mailbox.
+  const [waiting] = useState(() => nextCards(piece.id));
+  const nextCard = waiting.length ? {
+    count: waiting.length,
+    onOpen: () => {
+      const next = moveToNextCard(piece.id);
+      if (next) router.replace(`/app/mailbox/${piece.drawer || 'personal'}/${next}`);
+    },
+  } : null;
+
   const run = (name: MailActionName, folderId?: string, then?: () => void) => {
     action.mutate({ action: name, folderId }, {
       onSuccess: () => {
@@ -182,6 +194,7 @@ export default function CardTablePiece({
       paused={sheet !== null || asking}
       menu={menu}
       sendBack={sendBack}
+      nextCard={nextCard}
       onShare={() => setSheet('share')}
       onClose={onClose}
       overlay={(

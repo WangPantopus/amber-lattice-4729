@@ -18,6 +18,11 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const CARD_TAG = 'holiday_card';
 const MESSAGE_LIMIT = 300;
 const SUBJECT = 'A Christmas card';
+// A reply to a card ("Write back", memories contract section 2; launch key card_replies): its own category and tag, never
+// the card's, so it never uses the day's card or a stamp and never counts as a card. Its subject is what builds that
+// don't know replies show (a plain letter with its note).
+const REPLY_TAG = 'holiday_card_reply';
+const REPLY_SUBJECT = 'A reply to a Christmas card';
 const SEALED_NOTE = 'This Christmas card is sealed until Christmas morning.';
 
 // The season: Christmas 2026. Sending closes when December 31 ends where the sender lives.
@@ -163,15 +168,39 @@ function isCard(mail) {
   return Boolean(mail?.mail_extracted?.card?.design);
 }
 
+/** Whether this piece is a reply to a card (its server-written `card_reply` names the card). */
+function isReply(mail) {
+  return Boolean(mail?.mail_extracted?.card_reply?.card_id);
+}
+
+/** A UUID (version 5, variant 8, as the gig-completion File ids) from these parts, the same parts always the same. */
+function uuidOf(parts) {
+  const digest = crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+}
+
+/**
+ * The row id of the one reply a card can have (memories contract section 6): made from the card's id alone, so the
+ * database refuses a second reply to the same card, whatever request it came from.
+ */
+function replyRowId(cardId) {
+  return uuidOf(['holiday_card_reply_v1', String(cardId).toLowerCase()]);
+}
+
+/** What a reply asked for, as one digest: the card it answers, its note and its signature. */
+function replyDigest({ cardId, message, signature = null }) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify(['holiday_card_reply_v1', String(cardId).toLowerCase(), message, ...(signature ? [signature] : [])]))
+    .digest('hex');
+}
+
 /**
  * The row id of the card one send stores (POST /api/mailbox/cards with a `request_id`): the same sender and request ID
  * always give the same id, so the database refuses a second card for one send, however it's repeated. Formatted as the
  * gig-completion File ids are (services/s3Service).
  */
 function requestRowId(senderId, requestId) {
-  const digest = crypto.createHash('sha256')
-    .update(JSON.stringify(['holiday_card_v1', String(senderId), String(requestId).toLowerCase()])).digest('hex');
-  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+  return uuidOf(['holiday_card_v1', String(senderId), String(requestId).toLowerCase()]);
 }
 
 /**
@@ -405,6 +434,32 @@ function cardView(mail, now = new Date()) {
 }
 
 /**
+ * A reply as the apps read it on a piece (`piece.card_reply`, memories contract section 5; `piece.card` stays null, so a
+ * build that knows cards but not replies shows a plain letter with its note): the card it answers and that card's
+ * picture, so it draws on the same paper, and the replier's signature when the reader read its stored copy. Note only
+ * in this build: no photo or voice. Null when the piece isn't a reply.
+ */
+function replyView(mail) {
+  if (!isReply(mail)) return null;
+  const reply = mail.mail_extracted.card_reply;
+  const design = designById(reply.design);
+  return {
+    card_id: reply.card_id,
+    design: reply.design || null,
+    number: design?.number ?? null,
+    caption: design?.caption || null,
+    paper: design?.paper || '#f7f0e2',
+    height: design?.height ?? null,
+    slug: design?.slug || null,
+    table: design?.table || null,
+    year: reply.year || SEASON.year,
+    signature: mail.card_signature || signatureOf(mail.object_payload) || null,
+    photo: null,
+    voice: null,
+  };
+}
+
+/**
  * A card's photo and voice on a piece (contract section 5), when the reader read its stored copy (v2's object_payload,
  * or the card_media GET /api/mailbox/:id sets): like the note, nothing of them before a seal lifts. A photo is covered
  * for the reader unless the route found them the sender's connection (card_photo_covered false; section 10).
@@ -574,7 +629,18 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
       year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null,
       // The whole verse on a Christmas with Jesus Christ picture ("Read the verse"), not while it's sealed (cardView).
       verse: view.verse || null },
+    // A reply they wrote (card_replies): the card it answers, and its own take-back, which goes through
+    // POST /cards/:card_id/reply/take-back (the piece stays a letter, with can_take_back false, for builds that don't know
+    // replies).
+    ...(isReply(mail) ? { card_reply: { ...replyOnSent(mail), can_take_back: status === 'waiting',
+      take_back_until: status === 'waiting' ? instant(pickupAt(mail)) : null } } : {}),
   };
+}
+
+/** A reply's card on its writer's Sent: replyView without the signature (Sent's detail reads it from the stored copy). */
+function replyOnSent(mail) {
+  const { signature: _signature, ...view } = replyView(mail);
+  return view;
 }
 
 /**
@@ -633,6 +699,7 @@ async function sentLine(userId, now = new Date()) {
 }
 
 module.exports = {
+  REPLY_TAG, REPLY_SUBJECT, isReply, replyRowId, replyDigest, replyView,
   CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
   designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,

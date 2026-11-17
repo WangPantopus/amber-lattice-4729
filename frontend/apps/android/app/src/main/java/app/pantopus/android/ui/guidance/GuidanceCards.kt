@@ -23,8 +23,42 @@ object GuidanceIds {
     const val TIP_PULSE_AREA = "tip_pulse_area"
     const val TIP_MAIL_ME_HOME = "tip_mail_me_home"
 
+    const val DONE_HOME_SETUP = "done_home_setup"
+    const val DONE_VERIFIED = "done_verified"
+    const val DONE_FIRST_POST = "done_first_post"
+    const val DONE_FIRST_MOMENT = "done_first_moment"
+    const val DONE_FIRST_PLAN = "done_first_plan"
+    const val DONE_CONNECTED = "done_connected"
+    const val DONE_FIRST_LETTER = "done_first_letter"
+    const val DONE_HOUSEHOLD = "done_household"
+
+    const val NEXT_ADD_ADDRESS = "next_add_address"
+    const val NEXT_SETUP_HOME = "next_setup_home"
+    const val NEXT_VERIFY = "next_verify"
+    const val NEXT_INVITE = "next_invite"
+
+    const val NEW_PLANS = "new_plans"
+
     /** The tab cards (1–7): each shows the first time its tab opens, limited only by one on screen. */
     val tabCards = setOf(WELCOME, PLACE_SAVED, TAB_TODAY, TAB_MAIL, TAB_PULSE, TAB_MOMENTS, TAB_PLANS)
+
+    /** The reminders of the next step (24–27): one a week across all four, each at most twice. */
+    val reminders = listOf(NEXT_ADD_ADDRESS, NEXT_SETUP_HOME, NEXT_VERIFY, NEXT_INVITE)
+
+    /** Every centre card (1–7, 16–28): a reminder never shows on a day one of them showed. */
+    val centreCards =
+        tabCards +
+            setOf(
+                DONE_HOME_SETUP,
+                DONE_VERIFIED,
+                DONE_FIRST_POST,
+                DONE_FIRST_MOMENT,
+                DONE_FIRST_PLAN,
+                DONE_CONNECTED,
+                DONE_FIRST_LETTER,
+                DONE_HOUSEHOLD,
+                NEW_PLANS,
+            ) + reminders
 }
 
 /** One icon row of a centre card. */
@@ -82,6 +116,7 @@ data class GuidancePointer(
 ) : GuidanceCard
 
 /** The cards' words, with the variants spec §5 names. */
+@Suppress("TooManyFunctions")
 object GuidanceCatalog {
     private const val GOT_IT = "Got it"
 
@@ -215,6 +250,187 @@ object GuidanceCatalog {
                     ),
                 ),
             button = GOT_IT,
+        )
+
+    // ── 16–23: right after doing something for the first time (new accounts only) ──
+
+    /** 16. Place, right after “Set up this Home” finishes. */
+    fun doneHomeSetup(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_HOME_SETUP,
+            title = "Your home is set up",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.CircleCheck, "“Tasks” is a shared to-do list for your home."),
+                    GuidanceLine(GuidanceIcon.Users, "“Members” is where you invite the people you live with."),
+                    GuidanceLine(GuidanceIcon.Bell, "Tell Pantopus your pickup day and it will remind you the night before."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 17. Place, first open after the address becomes verified. The mail line only where the Mailbox is on. */
+    fun doneVerified(mailbox: Boolean): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_VERIFIED,
+            title = "You're verified",
+            lines =
+                listOfNotNull(
+                    GuidanceLine(GuidanceIcon.ShieldCheck, "Your profile now shows a Verified badge."),
+                    GuidanceLine(GuidanceIcon.MessageCircle, "You can now send a message to homes near you."),
+                    GuidanceLine(GuidanceIcon.Mail, "“Home” in Mail is now open, for mail to everyone at your address.").takeIf { mailbox },
+                ),
+            button = GOT_IT,
+        )
+
+    /** 18. Pulse, right after the person's first post is up. */
+    fun doneFirstPost(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_FIRST_POST,
+            title = "Your post is up",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Users, "People near you can see it and reply."),
+                    GuidanceLine(GuidanceIcon.Bell, "The bell at the top tells you when someone replies."),
+                    GuidanceLine(GuidanceIcon.ListIcon, "Find your posts again in the menu, under “My Pulse”."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 19. Moments, right after the first Moment posts. */
+    fun doneFirstMoment(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_FIRST_MOMENT,
+            title = "Your Moment is up",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.MapPin, "It shows on the map where you posted it."),
+                    GuidanceLine(GuidanceIcon.Clock, "It goes away by itself when its time is up."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 20. Plans, right after the person posts their first plan. */
+    fun doneFirstPlan(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_FIRST_PLAN,
+            title = "Your plan is posted",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Link, "Share its link to invite people."),
+                    GuidanceLine(GuidanceIcon.Bell, "You'll get a notice when someone says they are coming."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 21. Messages, the first time a connection request is accepted either way. */
+    fun doneConnected(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_CONNECTED,
+            title = "You're connected",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.MessageCircle, "You two can now message each other."),
+                    GuidanceLine(GuidanceIcon.Activity, "Their posts show in Pulse under “Connections”."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 22. Mail, right after the first letter or card is sent. */
+    fun doneFirstLetter(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_FIRST_LETTER,
+            title = "It's on its way",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Mail, "It arrives with the morning mail."),
+                    GuidanceLine(GuidanceIcon.Send, "See everything you have sent under “Sent”."),
+                ),
+            button = GOT_IT,
+        )
+
+    /** 23. Place, right after the first other person joins the household. */
+    fun doneHousehold(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.DONE_HOUSEHOLD,
+            title = "Your household",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Users, "Everyone in your household sees the same tasks and reminders."),
+                    GuidanceLine(GuidanceIcon.Lock, "Each person still has their own private mail and messages."),
+                ),
+            button = GOT_IT,
+        )
+
+    // ── 24–27: reminders of the next step (new accounts only; Place) ──
+
+    /** 24. Two days after sign-up, no saved address or home. The button focuses Place's address box. */
+    fun nextAddAddress(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.NEXT_ADD_ADDRESS,
+            title = "Add your address",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.House, "Type your address to see flood risk, air quality and pickup days for your home."),
+                    GuidanceLine(GuidanceIcon.Lock, "Only you see it."),
+                ),
+            button = "Add my address",
+        )
+
+    /** 25. Three days after saving an address, no home set up. The button opens the set-up flow. */
+    fun nextSetupHome(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.NEXT_SETUP_HOME,
+            title = "Set up your home",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Bell, "Get reminders for pickup day and for testing your home for radon."),
+                    GuidanceLine(
+                        GuidanceIcon.CircleCheck,
+                        "Keep a to-do list for your home and share it with the people you live with.",
+                    ),
+                ),
+            button = "Set up this Home",
+        )
+
+    /** 26. Seven days after the home is set up, not verified. The button opens the verify flow. */
+    fun nextVerify(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.NEXT_VERIFY,
+            title = "Verify your address",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.ShieldCheck, "Prove you live here to get your Verified badge."),
+                    GuidanceLine(GuidanceIcon.MessageCircle, "Verified people can send a message to homes near them."),
+                ),
+            button = "Verify address",
+        )
+
+    /** 27. Seven days after the home is set up, the person its only member. The button opens the Members invite. */
+    fun nextInvite(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.NEXT_INVITE,
+            title = "Invite your household",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Users, "Add the people you live with."),
+                    GuidanceLine(GuidanceIcon.CircleCheck, "You will all see the same tasks and reminders for your home."),
+                ),
+            button = "Invite someone",
+        )
+
+    // ── 28: introducing something new (older accounts too) ──
+
+    /** 28. Whichever tab is open, the first app open after the introduction is switched on. */
+    fun newPlans(): GuidanceCentre =
+        GuidanceCentre(
+            id = GuidanceIds.NEW_PLANS,
+            title = "Introducing Plans",
+            lines =
+                listOf(
+                    GuidanceLine(GuidanceIcon.Calendar, "Plans are get-togethers near you: a walk, a game night, a dinner."),
+                    GuidanceLine(GuidanceIcon.PanelBottom, "They have their own tab at the bottom of the screen."),
+                ),
+            button = "Continue",
         )
 
     /** Pointers 8–15, in their order of preference. */

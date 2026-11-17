@@ -27,6 +27,8 @@ public struct MembersListView: View {
     @State private var declineTarget: RequestTarget?
 
     private let homeId: String
+    /// Opens the invite once the list says this person may invite (the guidance reminder "Invite your household").
+    @State private var opensInvite: Bool
     private let onAddGuest: () -> Void
     /// A member's or requester's row: their profile.
     private let onOpenProfile: (String) -> Void
@@ -36,10 +38,12 @@ public struct MembersListView: View {
     public init(
         homeId: String,
         initialTab: String = MembersTab.members,
+        opensInvite: Bool = false,
         onOpenProfile: @escaping (String) -> Void = { _ in },
         onAddGuest: @escaping () -> Void = {}
     ) {
         self.homeId = homeId
+        _opensInvite = State(initialValue: opensInvite)
         self.onOpenProfile = onOpenProfile
         self.onAddGuest = onAddGuest
         let model = MembersListViewModel(homeId: homeId)
@@ -84,6 +88,11 @@ public struct MembersListView: View {
         }
         .onChange(of: viewModel.pendingEvent) { _, event in
             handle(event)
+        }
+        .onChange(of: viewModel.canManageMembers, initial: true) { _, canInvite in
+            guard opensInvite, canInvite else { return }
+            opensInvite = false
+            invitationTarget = .init(action: .create, invitationId: nil)
         }
         .onChange(of: invitationTarget?.id) { _, id in
             if id == nil {

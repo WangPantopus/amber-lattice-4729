@@ -13,6 +13,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import app.pantopus.android.data.ai.AIScreenContext
+import app.pantopus.android.ui.guidance.GuidanceFlags
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.bring.PlanBringScreen
 import app.pantopus.android.ui.screens.plans.change.PlanChangeScreen
@@ -295,13 +297,17 @@ fun NavGraphBuilder.plansRoutes(
                 },
             ),
     ) {
+        val guidance = LocalGuidance.current
         HostFlowScreen(
             onClose = { nav.popBackStack() },
             onDoneToMap = {
+                // The plan is posted: Plans then has guidance card 20.
+                guidance?.note(GuidanceFlags.PLAN_POSTED)
                 nav.popBackStack()
                 external.openNearby()
             },
             onPostedOpenPlan = { id ->
+                guidance?.note(GuidanceFlags.PLAN_POSTED)
                 nav.popBackStack()
                 nav.navigate(PlansRoutes.plan(id))
             },

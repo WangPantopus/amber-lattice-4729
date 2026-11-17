@@ -159,8 +159,10 @@ fun MailboxRootScreen(
     SentReads(selectedDrawer, zone, sentList)
     // Back on the Mailbox after a while (or the next morning, or from paying a bill): today's mail, not what was read before.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshIfStale() }
-    // The Mail tab's first screen (the side menu marks it), for the guidance cards: card 4 and pointer 15.
-    if (onOpenMenu != null) GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Mail, ready = state !is MailboxUiState.Loading))
+    // The Mail tab's first screen (the side menu marks it), for the guidance cards: card 4, pointer 15 and card 22.
+    if (onOpenMenu != null) {
+        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Mail, ready = state !is MailboxUiState.Loading, sentAny = sent?.any == true))
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailboxRoot")) {
         // The mailbox and the mail scroll under the header, which slides away while they scroll down and comes back

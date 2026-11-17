@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -246,7 +248,12 @@ private fun Hero(
                 Text(it, color = PantopusColors.appTextSecondary, modifier = Modifier.testTag("place.launch.error"))
                 TextButton(onClick = viewModel::retryPreview, modifier = Modifier.testTag("place.launch.retry")) { Text("Try again") }
             }
-            AddressField(query = query, onChange = viewModel::onQueryChange, onClear = { viewModel.onQueryChange("") })
+            AddressField(
+                query = query,
+                onChange = viewModel::onQueryChange,
+                onClear = { viewModel.onQueryChange("") },
+                focus = embedded?.addressFocus,
+            )
 
             if (query.isNotBlank() && suggestions.isNotEmpty()) {
                 // While typing the address, the first tap on a suggestion only puts the keyboard away.
@@ -408,6 +415,7 @@ private fun AddressField(
     query: String,
     onChange: (String) -> Unit,
     onClear: () -> Unit,
+    focus: FocusRequester? = null,
 ) {
     Row(
         modifier =
@@ -426,7 +434,7 @@ private fun AddressField(
                 onValueChange = onChange,
                 singleLine = true,
                 textStyle = TextStyle(fontSize = 16.sp, color = PantopusColors.appText),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier),
                 // The placeholder sits inside the field, so a screen reader reads it as the field's name.
                 decorationBox = { inner ->
                     if (query.isEmpty()) {

@@ -89,6 +89,9 @@ object MembersTab {
     const val GUESTS = "guests"
     const val PENDING = "pending"
 
+    /** Not a tab: a link (guidance card 27's “Invite someone”) that opens Members with the invite on top. */
+    const val INVITE = "invite"
+
     /**
      * Household-access requests raised via the claim flow's "ask a
      * verified owner" path. Only rendered for viewers who can review
@@ -233,7 +236,10 @@ class MembersListViewModel
         private val _tabs = MutableStateFlow(makeTabs())
         val tabs: StateFlow<List<ListOfRowsTab>> = _tabs.asStateFlow()
 
-        private val _pendingEvent = MutableStateFlow<MembersListEvent?>(null)
+        private val _pendingEvent =
+            MutableStateFlow<MembersListEvent?>(
+                MembersListEvent.OpenInvite.takeIf { savedStateHandle.get<String>(MEMBERS_LIST_TAB_KEY) == MembersTab.INVITE },
+            )
         val pendingEvent: StateFlow<MembersListEvent?> = _pendingEvent.asStateFlow()
 
         /** Non-null when the last mutation failed (403 rank, network, …). */

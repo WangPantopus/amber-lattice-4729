@@ -4,7 +4,8 @@
 // The Christmas card on real paper (launch key card_table): the picture side
 // and the back, drawn the same at any size. The note is in the pen, with each
 // word a little off the line (seeded from the card, so it looks the same every
-// time) and shrinks only when a long note wouldn't fit the rules.
+// time). The pen is as large as the note allows (mail-cards-experience Part 1):
+// three sizes on the rules, then today's shrinking for a longer note.
 // ============================================================
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
@@ -21,7 +22,16 @@ const PEN_STACK = `${cardPen.style.fontFamily}, ui-serif, Georgia, serif`;
 export type NoteFit = { size: number; line: number; rules: boolean };
 const NOTE_FIT: NoteFit = { size: 6, line: 7.6, rules: true };
 const NOTE_WIDTH = 85;
-const NOTE_HEIGHT = 83.6;
+export const NOTE_HEIGHT = 83.6;
+/**
+ * The pen's three sizes, largest first (mail-cards-experience Part 1): 9, 10 or 11 ruled lines, each set filling the same
+ * 83.6u from 9u down, so FROM and the foot never move. The largest at which the note fits its lines is used.
+ */
+const PEN_SIZES: NoteFit[] = [
+  { size: 7.8, line: NOTE_HEIGHT / 9, rules: true },
+  { size: 7.0, line: NOTE_HEIGHT / 10, rules: true },
+  NOTE_FIT,
+];
 
 /** The note's lines and words, with the small shift and turn each word gets. Shared with the share pictures. */
 export function penWords(note: string, number: number | null | undefined) {
@@ -30,11 +40,14 @@ export function penWords(note: string, number: number | null | undefined) {
     if (word === ' ' || word === '') return { word, shift: 0, turn: 0, ink: 1 };
     const shift = (random() - 0.5) * 0.34;
     const turn = (random() - 0.5) * 1.5;
-    return { word, shift, turn, ink: 0.86 + random() * 0.14 };
+    return { word, shift, turn, ink: 0.93 + random() * 0.07 };
   }));
 }
 
-/** Largest size at which `note` fits: rules first, then tighter lines for a note of many short lines. */
+/**
+ * Largest size at which `note` fits: the pen's three sizes on their rules, then (as before November 17) smaller pens on the
+ * 11 rules, then tighter lines for a note of many short lines. Every place the back is drawn asks this one function.
+ */
 export function measureNote(note: string): NoteFit {
   const box = document.createElement('div');
   box.style.cssText = `position:fixed;left:-9999px;top:0;visibility:hidden;width:${NOTE_WIDTH * 8}px;font-family:${PEN_STACK}`;
@@ -51,14 +64,19 @@ export function measureNote(note: string): NoteFit {
     box.append(row);
   }
   document.body.append(box);
-  const fits = (size: number, line: number) => {
+  // `byLines`: the words take no more lines than the rules hold (the rows' own height). Each word is an inline box as
+  // tall as a line that hangs a little below its row, so the box's scroll height counts that overhang once more; the
+  // smaller pens past 11 lines keep measuring that way, as they always have.
+  const fits = (size: number, line: number, byLines = false) => {
     box.style.fontSize = `${size * 8}px`;
     box.style.lineHeight = `${line * 8}px`;
-    return box.scrollHeight <= (NOTE_HEIGHT * 8) + 2;
+    return (byLines ? box.offsetHeight : box.scrollHeight) <= (NOTE_HEIGHT * 8) + 2;
   };
-  let answer: NoteFit | null = null;
-  for (const size of [6, 5.6, 5.2, 4.8, 4.4]) {
-    if (fits(size, 7.6)) { answer = { size, line: 7.6, rules: true }; break; }
+  let answer: NoteFit | null = PEN_SIZES.find((pen) => fits(pen.size, pen.line, true)) ?? null;
+  if (!answer) {
+    for (const size of [5.6, 5.2, 4.8, 4.4]) {
+      if (fits(size, 7.6)) { answer = { size, line: 7.6, rules: true }; break; }
+    }
   }
   if (!answer) {
     // More lines than the rules hold: tighter lines, off the rules.
@@ -171,7 +189,7 @@ export function PaperBack({
       <div className={styles.inner} style={{ backgroundColor: paper }}>
         {writing ? <div className={styles.writing}>{writing}</div> : (
           <>
-            {fit.rules ? <div className={styles.rules} /> : null}
+            {fit.rules ? <div className={styles.rules} style={{ '--rule': `${fit.line}cqw` } as CSSProperties} /> : null}
             <div className={styles.note} style={{ fontFamily: PEN_STACK, fontSize: `${fit.size}cqw`, lineHeight: `${fit.line}cqw` }}>
               {lines.map((line, i) => (
                 <p key={i} dir="auto">

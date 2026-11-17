@@ -108,6 +108,13 @@ function daysWords(until: string | null | undefined) {
   };
 }
 
+/** The print's first line: "FROM MAYA · NOVEMBER 15", the day it was mailed (just "FROM MAYA" without one). */
+function printFrom(first: string, mailedOn: string | null | undefined): string {
+  const date = mailedOn ? new Date(mailedOn.length === 10 ? `${mailedOn}T12:00:00` : mailedOn) : null;
+  const day = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
+  return `FROM ${first}${day ? ` · ${day}` : ''}`.toUpperCase();
+}
+
 function Art({ src, ...rest }: { src: string; alt?: string } & React.ImgHTMLAttributes<HTMLImageElement>) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={src} alt="" {...rest} />;
@@ -146,6 +153,7 @@ export default function CardTable({
   closeLabel = 'Back to the Mailbox',
   menu = [],
   sendBack = null,
+  nextCard = null,
   sendMoment = null,
   onShare,
   onClose,
@@ -170,6 +178,8 @@ export default function CardTable({
   menu?: TableMenuItem[];
   /** Send one back (design plan Part 3): a quiet button under "Turn it back" once the card is turned over. */
   sendBack?: TableMenuItem | null;
+  /** Open the next card (mail-cards-experience Part 4): how many more wait, and the move to the oldest of them. */
+  nextCard?: { count: number; onOpen: () => void } | null;
   /** Sealing it by hand instead of opening it. */
   sendMoment?: SendMoment | null;
   onShare?: () => void;
@@ -309,12 +319,39 @@ export default function CardTable({
   const [verseOpen, setVerseOpen] = useState(false);
   const verseCloseRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => { if (verseOpen) verseCloseRef.current?.focus(); }, [verseOpen]);
+  // Read it in print (mail-cards-experience Part 2): the note in plain type on the same bookmark. The browser's Back
+  // closes it too: opening it adds a history entry with the page's own state, which Back (or closing it) takes away.
+  const [printOpen, setPrintOpen] = useState(false);
+  const printCloseRef = useRef<HTMLButtonElement | null>(null);
+  const printPushed = useRef(false);
+  useEffect(() => { if (printOpen) printCloseRef.current?.focus({ preventScroll: true }); }, [printOpen]);
+  const openPrint = useCallback(() => {
+    setMenuOpen(false);
+    setPrintOpen(true);
+    try { window.history.pushState(window.history.state, ''); printPushed.current = true; } catch { /* no history: Close still works */ }
+  }, []);
+  const closePrint = useCallback(() => {
+    setPrintOpen(false);
+    if (printPushed.current) { printPushed.current = false; window.history.back(); }
+  }, []);
+  useEffect(() => {
+    if (!printOpen) return undefined;
+    const onBack = () => { printPushed.current = false; setPrintOpen(false); };
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, [printOpen]);
+  // Larger text than the browser's default (1.15 times or more, as on Android): "Read it in print" is a full button.
+  const [largeText, setLargeText] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    setLargeText(parseFloat(getComputedStyle(document.documentElement).fontSize) >= 16 * 1.15);
+  }, [mounted]);
   // The card has been enlarged once, so the hint that says how has done its job.
   const [enlargedOnce, setEnlargedOnce] = useState(false);
   if (ui.enlarged && !enlargedOnce) setEnlargedOnce(true);
   // The card's own photo, opened over the window from its print: the table rests under it, and its keys are the photo's.
   const [photoOpen, setPhotoOpen] = useState(false);
-  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen || photoOpen); }, [paused, verseOpen, photoOpen]);
+  useEffect(() => { engineRef.current?.setPaused(paused || verseOpen || photoOpen || printOpen); }, [paused, verseOpen, photoOpen, printOpen]);
 
   // "Open it again".
   const playedRef = useRef(replay);
@@ -347,6 +384,9 @@ export default function CardTable({
       if (event.key === 'Escape' && verseOpen) {
         event.preventDefault();
         setVerseOpen(false);
+      } else if (event.key === 'Escape' && printOpen) {
+        event.preventDefault();
+        closePrint();
       } else if (event.key === 'Escape' && ui.enlarged) {
         // An enlarged card comes back to its size first.
         event.preventDefault();
@@ -373,7 +413,7 @@ export default function CardTable({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [mounted, paused, photoOpen, menuOpen, onClose, ui.step, ui.enlarged, verseOpen]);
+  }, [mounted, paused, photoOpen, menuOpen, onClose, ui.step, ui.enlarged, verseOpen, printOpen, closePrint]);
 
   // Focus comes to the table as it opens, and goes back where it was when it closes.
   useEffect(() => {
@@ -444,8 +484,17 @@ export default function CardTable({
   if (!sendMoment && step === 'out' && ui.enlarged) {
     hint = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches ? 'double-tap to bring it back' : 'double-click to bring it back';
   }
-  const readVerse = !sendMoment && !isLetter && !sealed && step === 'out' && !ui.enlarged && Boolean(card.verse);
+  // Read it in print (Part 2): note side up, the card not sealed and not enlarged, in place of that side's hint. A verse
+  // card keeps "Read the verse" on its picture side.
+  const printable = !sendMoment && !isLetter && !sealed && Boolean(note.trim());
+  const readPrint = printable && step === 'out' && backUp && !ui.enlarged;
+  const readVerse = !sendMoment && !isLetter && !sealed && step === 'out' && !ui.enlarged && Boolean(card.verse) && !readPrint;
+  // With larger text it is a full button beside "Turn it back", and the line under it stays empty.
+  const printButton = readPrint && largeText;
+  const printLine = readPrint && !largeText;
   const turnedOver = step === 'out' && backUp;
+  // Once the card has been turned over (and after it's turned back), while it lies on the table, not enlarged.
+  const nextShown = Boolean(nextCard) && !sendMoment && !isLetter && step === 'out' && turnedOnce && !ui.enlarged;
   const quietShare = Boolean(onShare) && !sendMoment && !isLetter && !sealed;
   const showTopRight = !sendMoment && !isLetter && (step === 'out' || (sealed && (step === 'back' || step === 'front')));
   // The button is there only when there's something to press: never while things move by themselves.
@@ -682,6 +731,7 @@ export default function CardTable({
                 aria-modal="true"
                 aria-labelledby="cardTableVerseRef"
                 className={styles.bookmark}
+                data-scroll
                 data-testid="cardTableVerse"
                 onClick={(event) => event.stopPropagation()}
               >
@@ -692,29 +742,57 @@ export default function CardTable({
               </section>
             </div>
           ) : null}
+          {printOpen && printable ? (
+            <div className={styles.bookmarkShade} data-ui onClick={closePrint}>
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cardTablePrintFrom"
+                className={`${styles.bookmark} ${styles.printSheet}`}
+                data-scroll
+                data-testid="cardTableInPrint"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span className={styles.ribbon} aria-hidden="true" />
+                <p id="cardTablePrintFrom" className={styles.printFrom}>{printFrom(from, mailedOn)}</p>
+                <p className={styles.printWords} dir="auto" data-testid="cardTablePrintWords">{note.trim()}</p>
+                <button ref={printCloseRef} type="button" className={styles.bookmarkClose} data-testid="cardTablePrintClose" onClick={closePrint}>Close</button>
+              </section>
+            </div>
+          ) : null}
           <div className={styles.bottom} data-el="bottom">
             {sendMoment && send === 'gone' ? <div className={styles.gone} data-ui data-testid="cardTableGone">{sendMoment.gone}</div> : null}
             <div className={`${styles.act} ${controlsHidden || (sendMoment && send === 'gone') ? styles.hidden : ''}`} data-el="act" style={sendMoment && send === 'gone' ? { display: 'none' } : undefined}>
-              <button
-                type="button"
-                className={`${styles.primary} ${sendButton ? '' : styles.hidden}`}
-                data-ui
-                data-testid={sendMoment ? 'cardTableSendStep' : undefined}
-                aria-hidden={!sendButton}
-                tabIndex={sendButton ? 0 : -1}
-                onClick={() => { setRefusal(null); if (isLetter && step === 'out') { letter?.onOut(); return; } engineRef.current?.primary(); }}
-              >
-                {primary || 'Turn it over'}
-              </button>
-              {/* A verse card: the hint becomes "Read the verse" once the card lies on the table (design plan 6.2). */}
-              {card.verse && !sendMoment ? (
-                // One slot for both, so the card doesn't move when one replaces the other.
+              <div className={styles.primaryRow}>
+                <button
+                  type="button"
+                  className={`${styles.primary} ${sendButton ? '' : styles.hidden}`}
+                  data-ui
+                  data-testid={sendMoment ? 'cardTableSendStep' : undefined}
+                  aria-hidden={!sendButton}
+                  tabIndex={sendButton ? 0 : -1}
+                  onClick={() => { setRefusal(null); if (isLetter && step === 'out') { letter?.onOut(); return; } engineRef.current?.primary(); }}
+                >
+                  {primary || 'Turn it over'}
+                </button>
+                {printButton ? (
+                  <button type="button" className={styles.primary} data-ui data-testid="cardTableReadInPrint" onClick={openPrint}>Read it in print</button>
+                ) : null}
+              </div>
+              {/* A verse card: the hint becomes "Read the verse" once the card lies on the table (design plan 6.2); note
+                  side up, any card's hint becomes "Read it in print" (Part 2). */}
+              {(card.verse || printable) && !sendMoment ? (
+                // One slot for all three, so the card doesn't move when one replaces another.
                 <div className={styles.hintSlot}>
                   {readVerse ? (
                     <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadVerse" onClick={() => { setMenuOpen(false); setVerseOpen(true); }}>
                       Read the verse
                     </button>
-                  ) : <div className={styles.hint}>{hint}</div>}
+                  ) : printLine ? (
+                    <button type="button" className={styles.verseLink} data-ui data-testid="cardTableReadInPrint" onClick={openPrint}>
+                      Read it in print
+                    </button>
+                  ) : <div className={styles.hint}>{readPrint ? '' : hint}</div>}
                 </div>
               ) : <div className={styles.hint}>{hint}</div>}
               {/* Its room is kept while it can be offered, so the card never moves when it shows. Once the card is turned
@@ -746,6 +824,22 @@ export default function CardTable({
                       Share this card
                     </button>
                   ) : null}
+                </div>
+              ) : null}
+              {/* Its room is kept from the start, so the card never moves when it shows. */}
+              {nextCard ? (
+                <div className={`${styles.nextRow} ${nextShown ? '' : styles.hidden}`} aria-hidden={!nextShown}>
+                  <button
+                    type="button"
+                    className={styles.quiet}
+                    data-ui
+                    data-testid="cardTableNextCard"
+                    tabIndex={nextShown ? 0 : -1}
+                    onClick={() => { setMenuOpen(false); nextCard.onOpen(); }}
+                  >
+                    Open the next card
+                  </button>
+                  <div className={styles.nextLine} data-testid="cardTableNextCount">{nextCard.count} more waiting</div>
                 </div>
               ) : null}
             </div>

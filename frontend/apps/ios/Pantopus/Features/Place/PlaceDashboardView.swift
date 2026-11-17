@@ -74,7 +74,21 @@ struct PlaceDashboardView: View {
             return GuidanceVariants(placeHasAddress: true)
         }
         let invited = intel.viewer?.role == "member" || intel.viewer?.role == "nonresident"
-        return GuidanceVariants(joinedByInvite: invited, placeHasAddress: true)
+        return GuidanceVariants(joinedByInvite: invited, placeHasAddress: true, home: guidanceHome(intel, invited: invited))
+    }
+
+    /// The home, for the cards after setting it up (16, 17, 23) and the reminders to verify and invite (26, 27).
+    /// It was set up when the person's place in it started (the kept list of their homes), else when it was made.
+    private func guidanceHome(_ intel: PlaceIntelligence, invited: Bool) -> GuidanceHomeFacts {
+        let mine = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id == viewModel.homeId }
+        let verified = intel.tier == .t4
+        return GuidanceHomeFacts(
+            id: viewModel.homeId,
+            verified: verified,
+            verifiable: !verified && (intel.verifyAvailable ?? (intel.tier == .t3)),
+            setUpAt: mine?.occupancy?.startAt ?? mine?.home.createdAt,
+            invited: invited
+        )
     }
 
     private var verifyAddress: String {
@@ -142,6 +156,8 @@ struct PlaceDashboardView: View {
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         // The Place tab's first screen for the guidance cards (card 1, and the pointers here).
         .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
+        // The guidance reminder "Verify your address": its button opens the verify step, as "Verify address" does.
+        .guidanceAction(.nextVerify, active: isRoot) { showVerify = true }
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return

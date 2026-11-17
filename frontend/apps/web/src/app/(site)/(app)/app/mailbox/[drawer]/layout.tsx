@@ -22,6 +22,7 @@ import { useMailboxContext } from '@/contexts/MailboxContext';
 import ErrorState from '@/components/ui/ErrorState';
 import SendCardRow from '@/components/mailbox/cards/SendCardRow';
 import SentList from '@/components/mailbox/sent/SentList';
+import { startCardRun } from '@/components/mailbox/cards/cardRun';
 
 // ── Types ────────────────────────────────────────────────────
 type DrawerParam = MailboxDrawer;
@@ -208,6 +209,8 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
     if (!item.opened_at) {
       markOpened.mutate(item.id);
     }
+    // A card takes the cards waiting beside it, so its table can open the next one (mail-cards-experience Part 4).
+    startCardRun(item, allItems);
 
     // Desktop: update URL without full navigation (keeps list in place)
     // Mobile: navigate to detail page
@@ -218,7 +221,7 @@ function DrawerList({ drawerParam, children }: { drawerParam: string; children: 
     } else {
       router.push(href);
     }
-  }, [drawer, markOpened, router]);
+  }, [drawer, markOpened, router, allItems]);
 
   // Incoming lists a bundle once and leaves out its pieces (the server's rule, SRV-5).
   const rows = allItems;

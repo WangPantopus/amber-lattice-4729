@@ -546,6 +546,21 @@ object DeepLinkRouter {
     suspend fun momentsAnswer(): Boolean = momentsAnswerProvider()
 
     /**
+     * `/plans/:id` with its tokens: an email or text invitation (`invite`), the plan's one link (`open`), or, from the web
+     * page's "Open app" (web #4367), a spot someone bought for whoever opens it (`spot`, read as on `/plan-link/:id`, so
+     * the page offers the free "I'm in" and never the paid "Join" for it).
+     */
+    private fun planLink(
+        id: String,
+        queryPart: String,
+    ): Destination.Plan {
+        val invite = Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken)
+        val open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken)
+        val spot = Paths.queryParam(queryPart, "spot")?.takeIf(Paths::isInviteToken)
+        return Destination.Plan(id, invite = invite, open = open, spot = spot.takeIf { invite == null && open == null })
+    }
+
+    /**
      * A pantopus.com address of a plan's one link for everyone (`/plan-link/:id?open=`, `/plans/:id?open=`, contract 6.9):
      * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
      * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
@@ -1108,12 +1123,7 @@ object DeepLinkRouter {
                     segments.size == 1 -> Destination.PlansTab
                     id == "new" && segments.size == 2 -> Destination.NewPlan
                     id.isNullOrBlank() -> Destination.Unknown(raw)
-                    segments.size == 2 ->
-                        Destination.Plan(
-                            id,
-                            invite = Paths.queryParam(queryPart, "invite")?.takeIf(Paths::isInviteToken),
-                            open = Paths.queryParam(queryPart, "open")?.takeIf(Paths::isInviteToken),
-                        )
+                    segments.size == 2 -> planLink(id, queryPart)
                     trailing == "requests" && segments.size == 3 -> Destination.PlanRequests(id)
                     trailing == "guests" && segments.size == 3 -> Destination.PlanGuests(id)
                     trailing == "check" && segments.size == 3 -> Destination.PlanCheck(id)

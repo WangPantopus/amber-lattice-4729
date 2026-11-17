@@ -416,6 +416,13 @@ private extension InboxTabRoot {
             onOpenSearch: { path.openSearch(sideBySide: isSideBySide) },
             onEmptyChange: onEmptyChange
         )
+        // The guidance card "You're connected", on the chat list once it has loaded and nothing is open on it.
+        .guidanceScreen(.messages, ready: chatListLoaded, active: path.isEmpty)
+    }
+
+    private var chatListLoaded: Bool {
+        if case .loading = chatListModel.state { return false }
+        return true
     }
 }
 

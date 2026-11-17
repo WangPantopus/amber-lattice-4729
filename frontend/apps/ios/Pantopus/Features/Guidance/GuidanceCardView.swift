@@ -21,6 +21,9 @@ struct GuidanceOverlayView: View {
         case let .centre(card, replay)?:
             GuidanceCardView(card: card, isShown: model.isShown) {
                 GuidanceCenter.shared.close(.centre(card, replay: replay))
+            } onPrimary: {
+                // The button: a reminder also opens its next step (cards 24 to 27).
+                GuidanceCenter.shared.close(.centre(card, replay: replay), primary: true)
             }
         case let .pointer(card)?:
             GuidancePointerView(card: card, model: model)
@@ -34,6 +37,8 @@ struct GuidanceCardView: View {
     let card: GuidanceCentreCard
     let isShown: Bool
     let onClose: () -> Void
+    /// The button; nil closes the card like the X.
+    var onPrimary: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -161,7 +166,7 @@ struct GuidanceCardView: View {
     }
 
     private var primaryButton: some View {
-        Button(action: onClose) {
+        Button(action: onPrimary ?? onClose) {
             Text(card.button)
                 .scaledFont(17, weight: .semibold)
                 .foregroundStyle(Theme.Color.appTextInverse)
