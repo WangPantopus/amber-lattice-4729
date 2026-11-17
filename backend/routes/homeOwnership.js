@@ -563,7 +563,7 @@ router.get('/:id/ownership-claims/compare', verifyToken, async (req, res) => {
       }
     }
 
-    const comparison = await homeClaimComparisonService.buildHomeClaimComparison(homeId);
+    const comparison = await homeClaimComparisonService.buildHomeClaimComparison(homeId, { forAdmin: isAdmin });
     if (!comparison) {
       return res.status(404).json({ error: 'Home not found' });
     }
@@ -773,7 +773,7 @@ router.post('/:id/ownership-claims/:claimId/accept-merge', verifyToken, validate
  * POST /:id/ownership-claims/:claimId/challenge
  * Claimant explicitly challenges a verified household with strong ownership proof.
  */
-router.post('/:id/ownership-claims/:claimId/challenge', verifyToken, validate(challengeClaimSchema), async (req, res) => {
+router.post('/:id/ownership-claims/:claimId/challenge', verifyToken, ownershipClaimLimiter, validate(challengeClaimSchema), async (req, res) => {
   try {
     if (!householdClaimConfig.flags.challengeFlow) {
       return res.status(404).json({ error: 'Claim challenge flow not enabled' });
@@ -818,7 +818,8 @@ router.post('/:id/ownership-claims/:claimId/challenge', verifyToken, validate(ch
       return res.status(400).json({ error: 'This home does not currently have a verified household to challenge' });
     }
 
-    const challengeStrength = await homeClaimRoutingService.deriveClaimStrength(claimId, { includeUnverified: true });
+    // Proof still waiting for review counts toward a challenge only when its document was uploaded to the claim.
+    const challengeStrength = await homeClaimRoutingService.deriveClaimStrength(claimId, { includeUnverified: true, uploadedOnly: true });
     if (!homeClaimRoutingService.isChallengeStrengthEligible(challengeStrength)) {
       return res.status(409).json({
         error: 'A stronger ownership document is required before this claim can challenge the household',

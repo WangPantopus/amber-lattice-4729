@@ -125,10 +125,7 @@ describe('requestAuthority', () => {
 
   test('creates claim + evidence when evidence provided', async () => {
     seedHome();
-    const result = await service.requestAuthority('user', 'landlord-1', 'home-1', 'deed', {
-      storage_ref: 's3://bucket/deed.pdf',
-      metadata: { pages: 3 },
-    });
+    const result = await service.requestAuthority('user', 'landlord-1', 'home-1', 'deed', true);
 
     expect(result.success).toBe(true);
     expect(result.claim).toBeDefined();
@@ -143,7 +140,9 @@ describe('requestAuthority', () => {
     const evidence = getTable('HomeVerificationEvidence');
     expect(evidence).toHaveLength(1);
     expect(evidence[0].evidence_type).toBe('deed');
-    expect(evidence[0].storage_ref).toBe('s3://bucket/deed.pdf');
+    // The request names the kind of proof; the document is uploaded to the claim afterwards.
+    expect(evidence[0].storage_ref).toBeNull();
+    expect(evidence[0].metadata).toEqual({});
     expect(getTable('Home')[0].household_resolution_state).toBe('pending_single_claim');
   });
 
