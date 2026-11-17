@@ -224,12 +224,12 @@ const cuts = {
     music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [[13.25, 13.6, 14.3, 14.85, 4], [19.35, 19.75, 20.5, 21.05, 9]], fade: 1.8, loudness: -14, truePeak: -1 },
     end: { at: 30.35, full: 31.15, ...END },
   },
-  // 15 seconds: the seal cracking close up, the seal pressed and the envelope addressed, a quick dip, then on Christmas
-  // morning the card turned to the note and spun, its last half turn slowed, and the end card.
+  // 15 seconds: the seal cracking close up, the seal pressed and the envelope addressed and marked, a quick dip, then on
+  // Christmas morning Sam's note, flicked: the spin's last half turn slowed, and the end card.
   15: {
-    pieces: [['open1', 0, 4.0], ['send', 6.1, 10.35], ['open', 5.3, 12.05]],
-    words: [[0, 2.6, W.open, { tall: { to: 2.45, at: 'seal' } }], [2.9, 4.0, W.phone], [4.1, 5.35, W.seal], [6.3, 8.0, W.sealed], [8.6, 10.2, W.mail]],
-    dips: [[7.95, 8.25, 8.25, 8.65, 0.06]],
+    pieces: [['open1', 0, 4.0], ['send', 6.1, 10.85], ['open', 5.8, 12.05]],
+    words: [[0, 2.6, W.open, { tall: { to: 2.45, at: 'seal' } }], [2.9, 4.0, W.phone], [4.1, 5.35, W.seal], [6.3, 8.4, W.sealed], [8.6, 10.2, W.mail]],
+    dips: [[8.45, 8.75, 8.75, 9.15, 0.06]],
     soundGain: 15,
     music: { bed: -16, lookahead: 0.08, duckThreshold: 0.03, duckRatio: 5, duckRelease: 380, breaths: [[3.95, 4.25, 5.0, 5.5, 4]], fade: 1.2, loudness: -14, truePeak: -1 },
     end: { at: 12.55, full: 13.35, ...END },
