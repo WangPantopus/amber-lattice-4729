@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { launchFeatures } from '@/lib/featureFlags';
 import { INK, paperStyle, SERIF } from './cardArt';
 import { cardPen } from './cardFont';
-import { PaperBack } from './CardPaper';
+import { PaperBack, type NoteFit } from './CardPaper';
 import type { CardSignature } from '@pantopus/api';
 
 export const BACK_TEXT: CSSProperties = launchFeatures.cardTable ? {
@@ -26,13 +26,31 @@ export const BACK_TEXT: CSSProperties = launchFeatures.cardTable ? {
   color: INK,
 };
 
-/** Faint ruled lines under the writing, one per line of text. */
-export const RULED: CSSProperties = {
+/** Faint ruled lines under the writing, one per line of text (`line` in cqw). */
+const ruledAt = (line: number): CSSProperties => ({
   backgroundImage: launchFeatures.cardTable
-    ? 'repeating-linear-gradient(180deg, transparent 0 calc(7.6cqw - 1px), rgba(74, 84, 118, 0.2) calc(7.6cqw - 1px) 7.6cqw)'
-    : 'repeating-linear-gradient(180deg, transparent 0 calc(7.6cqw - 1px), rgba(120, 100, 70, 0.22) calc(7.6cqw - 1px) 7.6cqw)',
+    ? `repeating-linear-gradient(180deg, transparent 0 calc(${line}cqw - 1px), rgba(74, 84, 118, 0.2) calc(${line}cqw - 1px) ${line}cqw)`
+    : `repeating-linear-gradient(180deg, transparent 0 calc(${line}cqw - 1px), rgba(120, 100, 70, 0.22) calc(${line}cqw - 1px) ${line}cqw)`,
   backgroundAttachment: 'local',
-};
+});
+export const RULED: CSSProperties = ruledAt(7.6);
+
+/**
+ * The writing box's pen (mail-cards-experience Part 1): on the card table it follows the same fit as the finished card,
+ * so the pen starts large and steps down as the note needs more lines (and back up as words are deleted), on rules at
+ * that line height. Without the card table, the old card's fixed type.
+ */
+export function writingStyle(fit: NoteFit): CSSProperties {
+  if (!launchFeatures.cardTable) return { ...BACK_TEXT, ...RULED };
+  return {
+    ...BACK_TEXT,
+    fontSize: `${fit.size}cqw`,
+    lineHeight: `${fit.line}cqw`,
+    ...(fit.rules ? ruledAt(fit.line) : {}),
+    // The pen's tall letters overhang the last line by a few pixels; a scrollbar for that would narrow the lines.
+    scrollbarWidth: 'none',
+  };
+}
 
 export default function CardBack({
   number,

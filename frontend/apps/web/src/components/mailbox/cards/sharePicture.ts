@@ -7,7 +7,7 @@
 
 import { firstNameOf, isVerseReference, PAPER_SERIF, postmarkDay, TABLE_ART, tableTint, cardTrimmedPicture } from './cardArt';
 import { cardHand, cardPen } from './cardFont';
-import { measureNote, penWords, type NoteFit } from './CardPaper';
+import { measureNote, NOTE_HEIGHT, penWords, type NoteFit } from './CardPaper';
 import { drawableSignature, signaturePath, SIGNATURE_INK, SIGNATURE_LINE, SIGNATURE_ON_CARD, SIGNATURE_STROKE, SIGNATURE_W } from './cardSignature';
 import type { CardSignature } from '@pantopus/api';
 
@@ -295,8 +295,10 @@ function cardBack(ctx: Ctx, details: ShareDetails, art: Art, fit: NoteFit, width
   const { card, note } = details;
   cardSheet(ctx, card.paper, width, x, y, turn, (u, h) => {
     if (fit.rules) {
+      // Ruled at the pen's line height: 9, 10 or 11 lines in the same 83.6u (Part 1).
       ctx.fillStyle = 'rgba(74, 84, 118, 0.2)';
-      for (let i = 1; i <= 11; i += 1) ctx.fillRect(u * 8, (u * (9 + (7.6 * i))) - 1, u * 84, 1);
+      const count = Math.round(NOTE_HEIGHT / fit.line);
+      for (let i = 1; i <= count; i += 1) ctx.fillRect(u * 8, (u * (9 + (fit.line * i))) - 1, u * 84, 1);
     }
 
     // The note, each word a little off the line.

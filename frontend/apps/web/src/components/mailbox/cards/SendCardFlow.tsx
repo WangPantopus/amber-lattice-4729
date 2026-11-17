@@ -27,7 +27,8 @@ import { launchFeatures } from '@/lib/featureFlags';
 import MailPiece from '../MailPiece';
 import { mailLoadMessage } from '../mailLoadMessage';
 import CardFront from './CardFront';
-import CardBack, { BACK_TEXT, RULED } from './CardBack';
+import CardBack, { writingStyle } from './CardBack';
+import { useNoteFit } from './CardPaper';
 import { SignaturePad, sameSignature } from './cardSignature';
 import CardPrint from './CardPrint';
 import { canRecordGreeting, GreetingObject, greetingLength, recordingClock, useGreetingPlayer, useGreetingRecorder } from './CardGreeting';
@@ -843,6 +844,8 @@ function WriteStep({
   });
   const photoInput = useRef<HTMLInputElement>(null);
   const count = letters(message);
+  // The pen fits the note as it's typed (Part 1): the same measure the finished card uses.
+  const noteStyle = writingStyle(useNoteFit(message));
   // Seal it waits until the photo is uploaded; a failed one is tried again or removed, never dropped.
   const photoWait = photo && photo.status !== 'ready'
     ? (photo.status === 'failed' ? 'The photo didn’t upload. Try again, or remove it.' : 'Waiting for the photo to finish uploading.')
@@ -881,7 +884,7 @@ function WriteStep({
               onChange={(event) => onMessage([...event.target.value].slice(0, limit).join(''))}
               placeholder={`Dear ${toFirstName || 'friend'},`}
               className="h-full w-full resize-none border-0 bg-transparent p-0 placeholder:text-[#2c4a8a]/45 focus:outline-none focus:ring-0"
-              style={{ ...BACK_TEXT, ...RULED }}
+              style={noteStyle}
               tabIndex={showBack ? 0 : -1}
             />
           </CardBack>
