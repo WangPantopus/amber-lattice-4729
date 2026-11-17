@@ -16,7 +16,7 @@ import { Mail } from 'lucide-react';
 import type { MailItemV2 } from '@/types/mailbox';
 import MailPiece, { pieceSentence } from '../MailPiece';
 import { PieceLine, pieceLineBits } from '../MailRow';
-import { CardLinkSignIn, CardLinkWords, LINK_PAGE_PANEL, LinkPageSignIn, LinkPageSummary, type LinkPageLetter } from '../OpenLetterView';
+import { CardLinkSignIn, CardLinkWords, LINK_PAGE_PANEL, LinkPageSignIn, LinkPageSummary, linkPageFront, type LinkPageLetter } from '../OpenLetterView';
 import CardLinkScene from './CardLinkScene';
 import CardFront from './CardFront';
 import CardBack from './CardBack';
@@ -160,7 +160,7 @@ export default function LookItOver({
   ) : null;
 
   const intro = byLink
-    ? 'The first person to open your link keeps the card. The page it opens never shows the card; they open it in Pantopus once they join.'
+    ? `The first person to open your link keeps the card. The page it opens shows ${sealed ? 'the sealed envelope' : 'its picture'}, never your note; they open it in Pantopus once they join.`
     : byEmail
     ? 'They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this address.'
     : sealed
@@ -178,7 +178,7 @@ export default function LookItOver({
     outcomeDescription: null,
     sentTo: preview.link_page.sent_to,
     createdAt: preview.link_page.sent_on,
-    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, by_link: preview.link_page.by_link },
+    card: { holiday: card.holiday, year: card.year, sealed: preview.link_page.sealed, front: preview.link_page.front ?? null, by_link: preview.link_page.by_link },
   } : null;
 
   return (
@@ -230,7 +230,7 @@ export default function LookItOver({
               <h3 className={`${sectionLabel} px-1`}>The page its link opens</h3>
               {launchFeatures.cardTable ? (
                 <div className="mt-2">
-                  <CardLinkScene framed>
+                  <CardLinkScene framed front={linkPageFront(linkPage)}>
                     <CardLinkWords letter={linkPage} />
                     <CardLinkSignIn letter={linkPage} />
                   </CardLinkScene>

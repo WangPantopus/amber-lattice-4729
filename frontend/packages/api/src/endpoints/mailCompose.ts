@@ -12,6 +12,9 @@ import type { StructuredMailSendPayload } from './mailbox';
 
 // ─── Escrow types ──────────────────────────────────────────
 
+/** A card's front on its link's page: the stock picture, its printed caption, its paper and the cloth it lies on. */
+export interface CardLinkFront { design: string; caption: string; paper: string; table: string | null }
+
 /**
  * The public preview of a letter sent to someone who isn't on Pantopus: who it is from and a short preview,
  * never the letter itself (GET /api/mailbox/claim/:mailId).
@@ -31,8 +34,11 @@ export interface EscrowedMailView {
     sentTo: string;
     createdAt: string;
     expiresAt: string | null;
-    /** A Christmas card: the page says only that it is one (no picture, no note), and whether it's sealed. */
-    card?: { holiday: string; year: number; sealed: boolean; by_link?: boolean } | null;
+    /**
+     * A Christmas card: whether it's sealed, and its front (the stock picture the sender picked, as the public
+     * /cards/<slug> page draws it), null while it's sealed until Christmas. Never its note, signature, photo or voice.
+     */
+    card?: { holiday: string; year: number; sealed: boolean; front?: CardLinkFront | null; by_link?: boolean } | null;
   };
 }
 
