@@ -122,7 +122,25 @@ export function PublicCardPage({ design, year, inviteCode, store = null }: { des
   );
 }
 
-export function PublicCardsPage({ designs, collections, inviteCode, store = null }: { designs: PublicDesign[]; collections: PublicCollection[]; inviteCode: string | null; store?: PublicCardsStore | null }) {
+/**
+ * What sending costs and how the card gets there, which the page didn't say. `freeCards`: with digital stamps on, the
+ * free cards an account starts with (the server's `free_cards`); a sender also gets one for each person their card
+ * brings in. Without stamps a card is simply free.
+ */
+function HowSendingWorks({ freeCards }: { freeCards: number | null }) {
+  return (
+    <ul className={styles.how} data-testid="publicCardsHow">
+      <li>
+        {freeCards
+          ? `Your first ${freeCards} cards are free, plus one more each time someone joins from your card.`
+          : 'Sending a card is free.'}
+      </li>
+      <li>It arrives in their Pantopus mailbox. If they aren’t on Pantopus yet, they get an email from you.</li>
+    </ul>
+  );
+}
+
+export function PublicCardsPage({ designs, collections, inviteCode, store = null, freeCards = null }: { designs: PublicDesign[]; collections: PublicCollection[]; inviteCode: string | null; store?: PublicCardsStore | null; freeCards?: number | null }) {
   const byId = new Map(designs.map((design) => [design.id, design]));
   // A server with no collections shows them as one shelf.
   const shelves = collections.length
@@ -134,6 +152,7 @@ export function PublicCardsPage({ designs, collections, inviteCode, store = null
         <header className={styles.allHead}>
           <h1>Christmas cards</h1>
           <p>Pick one and send it to someone. It arrives with their morning mail, and they open it like real mail.</p>
+          <HowSendingWorks freeCards={freeCards} />
           {store ? (
             <div className={styles.allApp}>
               <GetTheApp store={store} label="Send a card with the Pantopus app" testId="publicCardsGetApp" />

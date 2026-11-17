@@ -184,6 +184,7 @@ private struct StampsRealWalletBody: View {
         case "send": ("Christmas card sent", "1 stamp")
         case "return": ("Card came back", "+1 stamp")
         case "revoke": ("Book refunded", "−\(count) stamps")
+        case "join": ("Your card brought someone in", "+\(count) free")
         default: ("Stamps", "\(move.delta)")
         }
         return StampUsage(
