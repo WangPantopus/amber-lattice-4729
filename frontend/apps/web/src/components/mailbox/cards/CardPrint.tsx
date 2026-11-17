@@ -5,11 +5,13 @@
  * white-bordered print lying a little askew, its bytes loaded only through the card's reader-checked routes (never a
  * storage link) into an object URL that is dropped when the print goes. A nostalgia card's print has the 1990s orange
  * date; a covered one (a photo from someone who isn't the reader's connection) shows "Photo from {name}. Tap to show."
- * and loads nothing until the tap.
+ * and loads nothing until the tap. Where it `opens`, a tap on the photo opens it over the whole window
+ * (CardPhotoViewer), from the same object URL.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mailbox } from '@pantopus/api';
 import { SERIF } from './cardArt';
+import CardPhotoViewer, { type PhotoOrigin } from './CardPhotoViewer';
 
 export type PrintSource = { own: string } | { sent: string; fileId: string } | { piece: string; fileId: string };
 
@@ -53,6 +55,8 @@ export default function CardPrint({
   uploading = false,
   tilt = -3,
   className = '',
+  opens = false,
+  onViewing,
 }: {
   /** Where its bytes come from; null while it uploads (the chosen file shows from `localUrl`). */
   source: PrintSource | null;
@@ -70,9 +74,27 @@ export default function CardPrint({
   uploading?: boolean;
   tilt?: number;
   className?: string;
+  /** A tap on the photo opens it over the whole window. */
+  opens?: boolean;
+  /** Told when the photo opens over the window and when it's put back, so what is under it can rest. */
+  onViewing?: (viewing: boolean) => void;
 }) {
   const { url, failed } = useCardMediaUrl(covered ? null : source);
   const shown = url || localUrl;
+  const photoRef = useRef<HTMLImageElement | null>(null);
+  const [origin, setOrigin] = useState<PhotoOrigin | null | undefined>(undefined);
+  const viewing = origin !== undefined && Boolean(shown);
+  const view = (next: boolean) => {
+    if (next) {
+      // Where the print's photo lies now, as it would lie unturned: the photo grows from there.
+      const image = photoRef.current;
+      const box = image?.getBoundingClientRect();
+      const wide = image?.offsetWidth || 0;
+      const high = image?.offsetHeight || 0;
+      setOrigin(box && wide ? { left: box.left + (box.width - wide) / 2, top: box.top + (box.height - high) / 2, width: wide, height: high, tilt } : null);
+    } else setOrigin(undefined);
+    onViewing?.(next);
+  };
   const ratio = width && height ? `${width} / ${height}` : '4 / 3';
   const date = printedDate(datedOn);
   const first = fromName.split(/\s+/)[0] || 'them';
@@ -98,7 +120,7 @@ export default function CardPrint({
           {shown ? (
             // An object URL from the card's own route: next/image can't load it.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={shown} alt={alt || `Photo from ${first}`} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+            <img ref={photoRef} src={shown} alt={alt || `Photo from ${first}`} className="absolute inset-0 h-full w-full object-cover" draggable={false} />
           ) : (
             <span className="absolute inset-0 flex items-center justify-center px-3 text-center text-[12px] text-[#5b5346]">
               {failed ? 'This photo couldn’t be loaded.' : ''}
@@ -115,8 +137,23 @@ export default function CardPrint({
               {date}
             </span>
           ) : null}
+          {opens && shown ? (
+            // Over the whole print's photo, so a tap anywhere on it opens it.
+            <button
+              type="button"
+              onClick={() => view(true)}
+              aria-label={`Open the photo${alt ? `: ${alt}` : ''}`}
+              data-testid="cardPrintOpen"
+              className="absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8b1d1d]"
+              // Inline, so a surface's own button styles (the table's) never draw over the photo.
+              style={{ background: 'transparent', opacity: 1 }}
+            />
+          ) : null}
         </div>
       )}
+      {viewing && shown ? (
+        <CardPhotoViewer src={shown} alt={alt || `Photo from ${first}`} origin={origin ?? null} onClose={() => view(false)} />
+      ) : null}
       {uploading ? (
         <span aria-hidden className="absolute bottom-0 left-0 h-[5px] w-full animate-pulse bg-[#8b1d1d] motion-reduce:animate-none" />
       ) : null}

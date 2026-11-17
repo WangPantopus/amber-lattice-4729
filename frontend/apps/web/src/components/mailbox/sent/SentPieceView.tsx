@@ -251,6 +251,7 @@ export default function SentPieceView({ id }: { id: string }) {
                             alt={card.photo.alt}
                             datedOn={cardMood(card.number, card.design) === 'nostalgia' ? (piece.envelope.postmarked_on ?? piece.sent_at) : null}
                             className="w-full"
+                            opens
                           />
                         </div>
                       ) : null}
