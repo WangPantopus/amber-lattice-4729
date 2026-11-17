@@ -234,3 +234,51 @@ export async function reviewVerificationEvidence(
 ): Promise<Record<string, unknown>> {
   return post(`/api/admin/verification/${evidenceId}/${decision}`, notes ? { notes } : {});
 }
+
+// ── Creator links for Christmas cards (platform admins) ───────
+
+/** A creator's account as the founder sees it on the creators page. */
+export interface CreatorAccount {
+  id: string;
+  username: string | null;
+  name: string | null;
+  email: string | null;
+  /** The creator code this account already has, if any. */
+  creator_code: string | null;
+}
+
+/** Book sizes (5, 20, 50) to how many. */
+export type CreatorBookCounts = Record<string, number>;
+
+/** One creator code and what it brought in. Counts and sums only: nothing about any buyer. */
+export interface CreatorSales {
+  code: string;
+  /** The link to give the creator: the Christmas cards page carrying the code. */
+  link: string;
+  since: string;
+  account: CreatorAccount | null;
+  /** People who created an account through this code. */
+  joined: number;
+  /** Of those, how many bought at least one book that wasn't refunded. */
+  buyers: number;
+  books: CreatorBookCounts;
+  refunded: CreatorBookCounts;
+  books_total: number;
+  refunded_total: number;
+  /** Books not refunded, at list price, in cents. */
+  sales_cents: number;
+}
+
+export async function getCreatorSales(): Promise<{ creators: CreatorSales[]; books: { credits: number; price_cents: number }[] }> {
+  return get('/api/admin/creators');
+}
+
+/** Find the account to give a code: an exact email address or username, sent in the body (never in the address). */
+export async function findCreatorAccounts(q: string): Promise<{ accounts: CreatorAccount[] }> {
+  return post('/api/admin/creators/accounts', { q });
+}
+
+/** Give an account its creator code (6–12 letters and digits; kept in capitals). */
+export async function giveCreatorCode(userId: string, code: string): Promise<{ account: CreatorAccount; code: string; link: string }> {
+  return post('/api/admin/creators', { user_id: userId, code });
+}
