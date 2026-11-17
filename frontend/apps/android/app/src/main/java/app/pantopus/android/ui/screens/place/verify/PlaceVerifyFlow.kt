@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.homes.HomeFastVerifyRepository
+import app.pantopus.android.data.homes.HomeLocationRecheck
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.tenant.TenantRepository
 import app.pantopus.android.ui.components.PrimaryButton
@@ -99,7 +100,7 @@ enum class PlaceVerifyMethod(val slug: String, val icon: PantopusIcon, val label
         val TODAY: List<PlaceVerifyMethod> = listOf(DOCUMENT, MAIL, LANDLORD)
 
         /** The ways this build can open. */
-        private val READY = setOf(DOCUMENT, MAIL, LANDLORD, PHONE)
+        private val READY = setOf(DOCUMENT, MAIL, LANDLORD, PHONE, LOCATION)
 
         fun fromSlug(slug: String?): PlaceVerifyMethod = entries.firstOrNull { it.slug == slug } ?: DOCUMENT
 
@@ -151,6 +152,8 @@ interface PlaceVerifySheetDeps {
     fun homesRepository(): HomesRepository
 
     fun homeFastVerifyRepository(): HomeFastVerifyRepository
+
+    fun homeLocationRecheck(): HomeLocationRecheck
 }
 
 /**

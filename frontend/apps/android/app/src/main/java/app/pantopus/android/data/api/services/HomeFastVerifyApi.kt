@@ -1,6 +1,9 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.LocationChallengeResponse
+import app.pantopus.android.data.api.models.homes.LocationCheckRequest
+import app.pantopus.android.data.api.models.homes.LocationCheckResponse
 import app.pantopus.android.data.api.models.homes.PhoneCheckStartRequest
 import app.pantopus.android.data.api.models.homes.PhoneCheckStartResponse
 import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyRequest
@@ -59,4 +62,19 @@ interface HomeFastVerifyApi {
         @Path("id") homeId: String,
         @Body body: PhoneCheckVerifyRequest,
     ): PhoneCheckVerifyResponse
+
+    /** `POST /api/homes/:id/fast-check/location/challenge` (`home_fast_verify_location`, apps only). */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/location/challenge")
+    suspend fun locationChallenge(
+        @Path("id") homeId: String,
+    ): LocationChallengeResponse
+
+    /** `POST /api/homes/:id/fast-check/location`: one reading and its device proof. */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/location")
+    suspend fun checkLocation(
+        @Path("id") homeId: String,
+        @Body body: LocationCheckRequest,
+    ): LocationCheckResponse
 }

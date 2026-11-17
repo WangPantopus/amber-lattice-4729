@@ -412,6 +412,7 @@ import app.pantopus.android.ui.screens.place.pulse.PLACE_PULSE_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.pulse.PlacePulseScreen
 import app.pantopus.android.ui.screens.place.today.TodayTabScreen
 import app.pantopus.android.ui.screens.place.verify.BillVerifiedScreen
+import app.pantopus.android.ui.screens.place.verify.LocationCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_ADDRESS_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
@@ -3840,6 +3841,20 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         PlaceVerifyMethod.DOCUMENT ->
                             BillVerifiedScreen(
                                 onDone = { navController.popBackStack() },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        // The location check (FASTVERIFY phase 5), apps only.
+                        PlaceVerifyMethod.LOCATION ->
+                            LocationCheckScreen(
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                                onOpenMethod = { other ->
+                                    navController.popBackStack()
+                                    navController.openPlaceVerify(other, verifyHomeId, verifyAddress)
+                                },
                                 onMailCode = {
                                     navController.popBackStack()
                                     navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))

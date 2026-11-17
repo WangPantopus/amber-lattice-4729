@@ -2,6 +2,10 @@ package app.pantopus.android.data.homes
 
 import android.content.Context
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.LocationChallengeResponse
+import app.pantopus.android.data.api.models.homes.LocationCheckRequest
+import app.pantopus.android.data.api.models.homes.LocationCheckResponse
+import app.pantopus.android.data.api.models.homes.LocationProofDto
 import app.pantopus.android.data.api.models.homes.PhoneCheckStartRequest
 import app.pantopus.android.data.api.models.homes.PhoneCheckStartResponse
 import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyRequest
@@ -96,6 +100,32 @@ class HomeFastVerifyRepository
         ): NetworkResult<PhoneCheckVerifyResponse> =
             safeApiCall(surfaceForbiddenBody = true) {
                 api.verifyPhoneCheck(homeId, PhoneCheckVerifyRequest(phone, code, firstName, lastName))
+            }
+
+        /** A one-time challenge for the location check at [homeId]. */
+        suspend fun locationChallenge(homeId: String): NetworkResult<LocationChallengeResponse> =
+            safeApiCall(surfaceForbiddenBody = true) { api.locationChallenge(homeId) }
+
+        /** One [reading] with its Play Integrity [token] (null when Google Play gave none). */
+        suspend fun checkLocation(
+            homeId: String,
+            challenge: String,
+            reading: HomeLocationReading,
+            token: String?,
+        ): NetworkResult<LocationCheckResponse> =
+            safeApiCall(surfaceForbiddenBody = true) {
+                api.checkLocation(
+                    homeId,
+                    LocationCheckRequest(
+                        challenge = challenge,
+                        latitude = reading.latitudeSent,
+                        longitude = reading.longitudeSent,
+                        accuracyM = reading.accuracySent,
+                        mocked = reading.mocked,
+                        platform = "android",
+                        proof = token?.let { LocationProofDto(type = "play_integrity", token = it, reading = reading.bindingJson()) },
+                    ),
+                )
             }
 
         private fun account(): String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
