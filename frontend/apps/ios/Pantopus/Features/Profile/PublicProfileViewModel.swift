@@ -755,6 +755,8 @@ public final class PublicProfileViewModel {
             connection = .connected
             profileChanged()
             toastMessage = "Connected"
+            // The guidance card "You're connected" follows in Messages.
+            GuidanceCenter.shared.pend(.doneConnected)
             await reloadAfterConnectionChange()
         } catch let error as APIError {
             let message = friendlyMessage(for: error)

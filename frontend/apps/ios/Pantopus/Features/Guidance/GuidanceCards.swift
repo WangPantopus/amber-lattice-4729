@@ -31,6 +31,22 @@ enum GuidanceCardID: String, CaseIterable {
     case tipPulsePost = "tip_pulse_post"
     case tipPulseArea = "tip_pulse_area"
     case tipMailMeHome = "tip_mail_me_home"
+    // Right after doing something for the first time (centre cards).
+    case doneHomeSetup = "done_home_setup"
+    case doneVerified = "done_verified"
+    case doneFirstPost = "done_first_post"
+    case doneFirstMoment = "done_first_moment"
+    case doneFirstPlan = "done_first_plan"
+    case doneConnected = "done_connected"
+    case doneFirstLetter = "done_first_letter"
+    case doneHousehold = "done_household"
+    // Reminders of the next step (centre cards on Place).
+    case nextAddAddress = "next_add_address"
+    case nextSetupHome = "next_setup_home"
+    case nextVerify = "next_verify"
+    case nextInvite = "next_invite"
+    /// Introducing something new (older accounts too).
+    case newPlans = "new_plans"
 
     /// A tab's own card (cards 1 to 7): it shows the first time its tab opens,
     /// limited only by one card on screen at a time.
@@ -42,6 +58,30 @@ enum GuidanceCardID: String, CaseIterable {
     static let pointers: [GuidanceCardID] = [
         .tipAsk, .tipMessages, .tipMenu, .tipVerify, .tipPlaceRow, .tipPulsePost, .tipPulseArea, .tipMailMeHome
     ]
+    static let reminders: [GuidanceCardID] = [.nextAddAddress, .nextSetupHome, .nextVerify, .nextInvite]
+    static let introductions: [GuidanceCardID] = [.newPlans]
+
+    /// A centre card (everything but the pointers).
+    var isCentre: Bool {
+        !GuidanceCardID.pointers.contains(self)
+    }
+
+    var isIntroduction: Bool {
+        GuidanceCardID.introductions.contains(self)
+    }
+
+    /// The screen a centre card that isn't a tab's own shows on; nil for an introduction (whichever tab is open).
+    var centreScreen: GuidanceScreen? {
+        switch self {
+        case .doneHomeSetup, .doneVerified, .doneHousehold, .nextAddAddress, .nextSetupHome, .nextVerify, .nextInvite: .place
+        case .doneFirstPost: .pulse
+        case .doneFirstMoment: .moments
+        case .doneFirstPlan: .plans
+        case .doneConnected: .messages
+        case .doneFirstLetter: .mail
+        default: nil
+        }
+    }
 }
 
 /// The screens a card belongs to: each tab's first screen.
@@ -52,6 +92,8 @@ enum GuidanceScreen: String {
     case pulse
     case moments
     case plans
+    /// Messages' chat list: no card of its own, only "You're connected".
+    case messages
 }
 
 /// One line of a centre card: an outlined icon beside its text.
@@ -87,6 +129,29 @@ struct GuidanceVariants: Equatable {
     var savedAddress = false
     /// Place shows an address or a home (card 2 joins the tips list).
     var placeHasAddress = false
+    /// Card 17: the mail line shows while the Mailbox is on.
+    var mailbox = LaunchFeatures.mailbox
+    /// Place is the first-run screen: no saved address and no home (card 24).
+    var firstRun = false
+    /// When the address Place shows was saved (ISO 8601; card 25).
+    var savedPlaceAt: String?
+    /// The home Place shows, not a claim still in review (cards 16, 17, 23, 26, 27).
+    var home: GuidanceHomeFacts?
+    /// Mail: this person has sent a letter or a card (card 22).
+    var sentAny = false
+}
+
+/// What the Place dashboard knows about its home for the cards that follow setting it up.
+struct GuidanceHomeFacts: Equatable {
+    let id: String
+    /// The address is verified (tier 4).
+    let verified: Bool
+    /// "Verify address" is offered here.
+    let verifiable: Bool
+    /// When the person's place in the home started (ISO 8601): the occupancy's start, else the home's creation.
+    let setUpAt: String?
+    /// The person joined by a household invitation (they didn't set it up).
+    let invited: Bool
 }
 
 /// The words of every card (GUIDE spec §5), exactly as approved.
@@ -94,15 +159,23 @@ enum GuidanceCatalog {
     static func centre(_ id: GuidanceCardID, variants: GuidanceVariants = GuidanceVariants()) -> GuidanceCentreCard? {
         switch id {
         case .welcome: welcome(variants)
-        case .placeSaved: placeSaved
         case .tabToday: tabToday(variants)
         case .tabMail: tabMail(variants)
-        case .tabPulse: tabPulse
-        case .tabMoments: tabMoments
-        case .tabPlans: tabPlans
-        default: nil
+        case .doneVerified: doneVerified(variants)
+        default: fixedCards[id]
         }
     }
+
+    /// The centre cards whose words never change.
+    private static let fixedCards = Dictionary(uniqueKeysWithValues: [
+        placeSaved, tabPulse, tabMoments, tabPlans,
+        doneHomeSetup, doneFirstPost, doneFirstMoment, doneFirstPlan, doneConnected, doneFirstLetter, doneHousehold,
+        nextAddAddress, nextSetupHome, nextVerify, nextInvite,
+        newPlans
+    ].map { ($0.id, $0) })
+
+    /// The introductions switched on (GUIDE spec §2 "Introducing"). Ships empty: the founder picks the first one.
+    static let activeIntroductions: [GuidanceCardID] = []
 
     static func pointer(_ id: GuidanceCardID) -> GuidancePointerCard? {
         switch id {
@@ -143,8 +216,8 @@ enum GuidanceCatalog {
         }
     }
 
-    /// The tab card a screen shows the first time it opens.
-    static func tabCard(for screen: GuidanceScreen) -> GuidanceCardID {
+    /// The tab card a screen shows the first time it opens (Messages has none).
+    static func tabCard(for screen: GuidanceScreen) -> GuidanceCardID? {
         switch screen {
         case .place: .welcome
         case .today: .tabToday
@@ -152,6 +225,7 @@ enum GuidanceCatalog {
         case .pulse: .tabPulse
         case .moments: .tabMoments
         case .plans: .tabPlans
+        case .messages: nil
         }
     }
 
@@ -252,6 +326,145 @@ enum GuidanceCatalog {
             GuidanceRow(icon: .link, text: "To host one, slide the list down and tap “Host”. Then share its link to invite people.")
         ],
         button: "Got it"
+    )
+
+    // MARK: - Right after doing something for the first time
+
+    private static let doneHomeSetup = GuidanceCentreCard(
+        id: .doneHomeSetup,
+        title: "Your home is set up",
+        rows: [
+            GuidanceRow(icon: .circleCheck, text: "“Tasks” is a shared to-do list for your home."),
+            GuidanceRow(icon: .users, text: "“Members” is where you invite the people you live with."),
+            GuidanceRow(icon: .bell, text: "Tell Pantopus your pickup day and it will remind you the night before.")
+        ],
+        button: "Got it"
+    )
+
+    private static func doneVerified(_ variants: GuidanceVariants) -> GuidanceCentreCard {
+        var rows = [
+            GuidanceRow(icon: .shieldCheck, text: "Your profile now shows a Verified badge."),
+            GuidanceRow(icon: .messageCircle, text: "You can now send a message to homes near you.")
+        ]
+        if variants.mailbox {
+            rows.append(GuidanceRow(icon: .mail, text: "“Home” in Mail is now open, for mail to everyone at your address."))
+        }
+        return GuidanceCentreCard(id: .doneVerified, title: "You're verified", rows: rows, button: "Got it")
+    }
+
+    private static let doneFirstPost = GuidanceCentreCard(
+        id: .doneFirstPost,
+        title: "Your post is up",
+        rows: [
+            GuidanceRow(icon: .users, text: "People near you can see it and reply."),
+            GuidanceRow(icon: .bell, text: "The bell at the top tells you when someone replies."),
+            GuidanceRow(icon: .list, text: "Find your posts again in the menu, under “My Pulse”.")
+        ],
+        button: "Got it"
+    )
+
+    private static let doneFirstMoment = GuidanceCentreCard(
+        id: .doneFirstMoment,
+        title: "Your Moment is up",
+        rows: [
+            GuidanceRow(icon: .mapPin, text: "It shows on the map where you posted it."),
+            GuidanceRow(icon: .clock, text: "It goes away by itself when its time is up.")
+        ],
+        button: "Got it"
+    )
+
+    private static let doneFirstPlan = GuidanceCentreCard(
+        id: .doneFirstPlan,
+        title: "Your plan is posted",
+        rows: [
+            GuidanceRow(icon: .link, text: "Share its link to invite people."),
+            GuidanceRow(icon: .bell, text: "You'll get a notice when someone says they are coming.")
+        ],
+        button: "Got it"
+    )
+
+    private static let doneConnected = GuidanceCentreCard(
+        id: .doneConnected,
+        title: "You're connected",
+        rows: [
+            GuidanceRow(icon: .messageCircle, text: "You two can now message each other."),
+            GuidanceRow(icon: .activity, text: "Their posts show in Pulse under “Connections”.")
+        ],
+        button: "Got it"
+    )
+
+    private static let doneFirstLetter = GuidanceCentreCard(
+        id: .doneFirstLetter,
+        title: "It's on its way",
+        rows: [
+            GuidanceRow(icon: .mail, text: "It arrives with the morning mail."),
+            GuidanceRow(icon: .send, text: "See everything you have sent under “Sent”.")
+        ],
+        button: "Got it"
+    )
+
+    private static let doneHousehold = GuidanceCentreCard(
+        id: .doneHousehold,
+        title: "Your household",
+        rows: [
+            GuidanceRow(icon: .users, text: "Everyone in your household sees the same tasks and reminders."),
+            GuidanceRow(icon: .lock, text: "Each person still has their own private mail and messages.")
+        ],
+        button: "Got it"
+    )
+
+    // MARK: - Reminders of the next step
+
+    private static let nextAddAddress = GuidanceCentreCard(
+        id: .nextAddAddress,
+        title: "Add your address",
+        rows: [
+            GuidanceRow(icon: .house, text: "Type your address to see flood risk, air quality and pickup days for your home."),
+            GuidanceRow(icon: .lock, text: "Only you see it.")
+        ],
+        button: "Add my address"
+    )
+
+    private static let nextSetupHome = GuidanceCentreCard(
+        id: .nextSetupHome,
+        title: "Set up your home",
+        rows: [
+            GuidanceRow(icon: .bell, text: "Get reminders for pickup day and for testing your home for radon."),
+            GuidanceRow(icon: .circleCheck, text: "Keep a to-do list for your home and share it with the people you live with.")
+        ],
+        button: "Set up this Home"
+    )
+
+    private static let nextVerify = GuidanceCentreCard(
+        id: .nextVerify,
+        title: "Verify your address",
+        rows: [
+            GuidanceRow(icon: .shieldCheck, text: "Prove you live here to get your Verified badge."),
+            GuidanceRow(icon: .messageCircle, text: "Verified people can send a message to homes near them.")
+        ],
+        button: "Verify address"
+    )
+
+    private static let nextInvite = GuidanceCentreCard(
+        id: .nextInvite,
+        title: "Invite your household",
+        rows: [
+            GuidanceRow(icon: .users, text: "Add the people you live with."),
+            GuidanceRow(icon: .circleCheck, text: "You will all see the same tasks and reminders for your home.")
+        ],
+        button: "Invite someone"
+    )
+
+    // MARK: - Introducing something new
+
+    private static let newPlans = GuidanceCentreCard(
+        id: .newPlans,
+        title: "Introducing Plans",
+        rows: [
+            GuidanceRow(icon: .calendar, text: "Plans are get-togethers near you: a walk, a game night, a dinner."),
+            GuidanceRow(icon: .panelBottom, text: "They have their own tab at the bottom of the screen.")
+        ],
+        button: "Continue"
     )
 }
 

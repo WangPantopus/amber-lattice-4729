@@ -149,6 +149,8 @@ struct MomentsMapView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: note) {
                         try? await Task.sleep(for: .seconds(4))
+                        // After "Your Moment is live": the guidance card "Your Moment is up", after the first one.
+                        if uploads.liveNote != nil { GuidanceCenter.shared.pend(.doneFirstMoment) }
                         uploads.liveNote = nil
                         uploads.plainNote = nil
                     }

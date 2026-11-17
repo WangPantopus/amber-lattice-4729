@@ -62,6 +62,8 @@ final class GuidanceCenter {
     @ObservationIgnored private var keyboardUp = false
     @ObservationIgnored private var linkQuietUntil: Date?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    /// The cards that follow what the person does (16 to 28) and the screens' buttons for them.
+    @ObservationIgnored private let steps = GuidanceSteps()
     private let logger = Logger(label: "app.pantopus.ios.Guidance")
     /// The daily briefings sheet is loading or up (`BriefingNoticeView`).
     @ObservationIgnored var briefingNoticeBusy = false {
@@ -96,6 +98,7 @@ final class GuidanceCenter {
 
     private init() {
         observe()
+        steps.onAnswer = { GuidanceCenter.shared.scheduleEvaluation() }
     }
 
     // MARK: - The account
@@ -107,6 +110,7 @@ final class GuidanceCenter {
         dismissPresentation()
         account = newAccount
         isBusinessAccount = false
+        steps.reset()
         guard let newAccount else {
             record = GuidanceRecord()
             tipsAvailable = false
@@ -127,6 +131,7 @@ final class GuidanceCenter {
                 let response: ProfileResponse = try await APIClient.shared.request(UsersEndpoints.profile())
                 guard account == self.account else { return }
                 isBusinessAccount = response.user.accountType == AccountType.business.backendValue
+                record.createdAt = response.user.createdAt
                 if let guidance = response.guidance {
                     record.merge(guidance)
                 } else {
@@ -205,6 +210,20 @@ final class GuidanceCenter {
         guard account != nil, !record.has(fact) else { return }
         record.facts.insert(fact.rawValue)
         save()
+    }
+
+    /// An after-action card's action just succeeded here (a post, a Moment, a plan, a letter, an accepted request):
+    /// the card shows on its screen, right away when that screen is showing, else on the next visit.
+    func pend(_ id: GuidanceCardID) {
+        guard account != nil, !record.hasSeen(id), !record.pending.contains(id.rawValue) else { return }
+        record.pending.insert(id.rawValue)
+        save()
+        scheduleEvaluation()
+    }
+
+    /// What a card's button does on the screen showing (`guidanceAction`); nil takes it away.
+    func setAction(_ token: UUID, id: GuidanceCardID, run: (() -> Void)?) {
+        if let run { steps.setAction(token, id: id, run: run) } else { steps.removeAction(token) }
     }
 
     /// A link or notification is opening: no card for a moment, whatever screen it lands on.
@@ -325,16 +344,28 @@ final class GuidanceCenter {
             self.forced = nil
             return card
         }
-        guard record.enabled, record.newAccount, !isBusinessAccount else { return nil }
-        // A tab's own card: the first time its tab opens.
-        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)]
-        if entry.screen == .place, entry.variants.savedAddress { tabCards.append(.placeSaved) }
-        for id in tabCards where !record.hasSeen(id) {
+        guard record.enabled, !isBusinessAccount, let account else { return nil }
+        if record.newAccount, let tab = tabCard(on: entry) { return tab }
+        // Everything else: one per app open.
+        guard !otherCardThisOpen else { return nil }
+        switch steps.next(on: entry, record: record, account: account) {
+        case let .card(id): return card(id, on: entry, ignoringRules: false)
+        case .wait: return nil
+        case .nothing: break
+        }
+        // Pointers from the account's second open on this phone (none on Messages).
+        guard record.newAccount, record.opens >= 2, entry.screen != .messages else { return nil }
+        for id in GuidanceCardID.pointers where !record.hasSeen(id) {
             if let card = card(id, on: entry, ignoringRules: false) { return card }
         }
-        // Everything else: one per app open. Pointers from the account's second open on this phone.
-        guard !otherCardThisOpen, record.opens >= 2 else { return nil }
-        for id in GuidanceCardID.pointers where !record.hasSeen(id) {
+        return nil
+    }
+
+    /// A tab's own card: the first time its tab opens.
+    private func tabCard(on entry: GuidanceScreenEntry) -> GuidancePresentation? {
+        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)].compactMap(\.self)
+        if entry.screen == .place, entry.variants.savedAddress { tabCards.append(.placeSaved) }
+        for id in tabCards where !record.hasSeen(id) {
             if let card = card(id, on: entry, ignoringRules: false) { return card }
         }
         return nil
@@ -347,17 +378,25 @@ final class GuidanceCenter {
             guard onScreen, let card = GuidanceCatalog.centre(id, variants: entry.variants) else { return nil }
             return .centre(card, replay: false)
         }
+        if id.isCentre {
+            // After-action cards and reminders on their own screen; an introduction on any.
+            if let screen = id.centreScreen, screen != entry.screen { return nil }
+            return GuidanceCatalog.centre(id, variants: entry.variants).map { .centre($0, replay: false) }
+        }
         guard let pointer = GuidanceCatalog.pointer(id), anchorFrame(for: id) != nil else { return nil }
-        guard !ignoringRules else { return .pointer(pointer) }
+        return ignoringRules || pointerMayShow(id, on: entry) ? .pointer(pointer) : nil
+    }
+
+    /// A pointer's own visit count and condition.
+    private func pointerMayShow(_ id: GuidanceCardID, on entry: GuidanceScreenEntry) -> Bool {
         if let visit = id.pointerVisit {
-            guard visit.screen == entry.screen, record.visits[visit.screen.rawValue, default: 0] >= visit.from else { return nil }
+            guard visit.screen == entry.screen, record.visits[visit.screen.rawValue, default: 0] >= visit.from else { return false }
         }
         switch id {
-        case .tipPlaceRow: guard !record.has(.placeRowOpened) else { return nil }
-        case .tipPulsePost: guard !record.has(.posted) else { return nil }
-        default: break
+        case .tipPlaceRow: return !record.has(.placeRowOpened)
+        case .tipPulsePost: return !record.has(.posted) && !steps.hasPosted
+        default: return true
         }
-        return .pointer(pointer)
     }
 }
 
@@ -369,6 +408,7 @@ extension GuidanceCenter {
         if !next.id.isTabCard { otherCardThisOpen = true }
         if case let .centre(card, _) = next {
             record.lastCentreDay = GuidanceRecord.day(Date())
+            if card.id.isIntroduction { record.lastIntroVersion = GuidanceSteps.appVersion }
             if card.id == .welcome,
                !card.rows.contains(where: { $0.icon == .lock }) { record.facts.insert(GuidanceFact.joinedByInvite.rawValue) }
             save()
@@ -388,14 +428,23 @@ extension GuidanceCenter {
         GuidanceWindowPresenter.shared.show(.centre(card, replay: true))
     }
 
-    /// The card closed (its button, X, a tap outside, a tap anywhere for a pointer): seen, at once.
-    func close(_ closed: GuidancePresentation) {
+    /// The card closed (its button, X, a tap outside, a tap anywhere for a pointer): seen, at once. `primary`: by
+    /// its button, which for a reminder also opens the next step on the screen showing (cards 24 to 27).
+    func close(_ closed: GuidancePresentation, primary: Bool = false) {
         guard presentation == closed else { return }
         presentation = nil
         GuidanceWindowPresenter.shared.hide()
         guard !closed.isReplay, account != nil else { return }
         record.markSeen(closed.id, at: Date())
+        record.pending.remove(closed.id.rawValue)
         save()
+        if primary, let action = steps.action(for: closed.id) {
+            // Once the card has faded, so a sheet or the keyboard comes up over the plain screen.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                action()
+            }
+        }
         Task { await flush() }
         scheduleEvaluation()
     }

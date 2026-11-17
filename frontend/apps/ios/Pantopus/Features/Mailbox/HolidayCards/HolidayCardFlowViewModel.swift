@@ -570,6 +570,8 @@ final class HolidayCardFlowViewModel {
             step = .sent
             tookBack = false
             HolidayCardDraftStore.clear()
+            // The guidance card "It's on its way" follows in Mail, after the first letter or card.
+            GuidanceCenter.shared.pend(.doneFirstLetter)
         } catch {
             if await wentEarlier(error) { return }
             // The stamps ran out meanwhile (another device sent a card): the stamp books open; the card stays as it is.

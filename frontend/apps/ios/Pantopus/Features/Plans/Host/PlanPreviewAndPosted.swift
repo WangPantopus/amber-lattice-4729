@@ -220,6 +220,8 @@ struct PlanPostedScreen: View {
         }
         .sensoryFeedback(.success, trigger: landed)
         .onAppear(perform: drop)
+        // The guidance card "Your plan is posted" follows on Plans once this closes, after the first plan.
+        .onAppear { GuidanceCenter.shared.pend(.doneFirstPlan) }
         .task { if opensInvite || samePeopleFrom != nil, plan.card.invites?.canInvite == true { showsInvite = true } }
         .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card, samePeopleFrom: samePeopleFrom) }
         .accessibilityElement(children: .contain)

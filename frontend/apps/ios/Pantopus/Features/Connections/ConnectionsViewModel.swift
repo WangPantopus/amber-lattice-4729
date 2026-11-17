@@ -318,6 +318,8 @@ public final class ConnectionsViewModel: ListOfRowsDataSource {
             failure: "Couldn't accept the request.",
             RelationshipsEndpoints.accept(id: requestId)
         ) {
+            // The guidance card "You're connected" follows in Messages.
+            GuidanceCenter.shared.pend(.doneConnected)
             let acceptedAt = Self.iso8601String(from: now())
             pending.removeAll { $0.id == requestId }
             accepted.removeAll { $0.id == requestId }

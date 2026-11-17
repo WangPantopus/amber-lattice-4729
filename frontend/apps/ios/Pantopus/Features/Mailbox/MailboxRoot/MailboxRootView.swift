@@ -133,7 +133,7 @@ public struct MailboxRootView: View {
         .guidanceScreen(
             .mail,
             ready: viewModel.state.showsContent,
-            variants: GuidanceVariants(writesLetters: viewModel.fab != nil),
+            variants: GuidanceVariants(writesLetters: viewModel.fab != nil, sentAny: viewModel.sentSummary?.any == true),
             active: showsMenuButton
         )
     }
