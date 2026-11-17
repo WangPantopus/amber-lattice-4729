@@ -581,6 +581,8 @@ struct HolidayCardWriteStep: View {
                     attachments: attachments,
                     takesPhoto: onePerson && cards.takesPhoto,
                     takesVoice: onePerson && cards.takesVoice,
+                    takesLive: onePerson && cards.takesLivePhoto,
+                    liveMaxBytes: cards.livePhotoMaxBytes,
                     forName: viewModel.greetingFor,
                     gift: CardTableMood(number: design.number) == .reverence,
                     needsStamp: cards.mediaStamp == .buy
