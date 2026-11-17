@@ -20,13 +20,20 @@
  * Census housing counts by block): one byte a base cell, the step, 0 for no count. The answer depends on the place only,
  * never on the person, the post or the time, so many posts from one spot show one area and never narrow it down.
  *
- * The file is read from AREA_CELLS_URL (s3://bucket/prefix, with the property index's read-only key, or file:///dir):
- * manifest.json, and one gzip'd tile of 200 × 200 cells a 1° square. Tiles load on first use and the newest 64 stay in
- * memory. A tile that can't be read within 2.5 seconds, one the manifest doesn't list and an empty AREA_CELLS_URL all
- * answer step 5. A failed read is tried again on the next request and logged once a minute at most.
+ * The file ships with the server (backend/data/area-cells: the whole US, 1,381 tiles, 5.5 MB), so every server reads the
+ * same areas with nothing to publish or set. AREA_CELLS_URL points elsewhere when set (s3://bucket/prefix, with the
+ * property index's read-only key, or file:///dir): manifest.json, and one gzip'd tile of 200 × 200 cells a 1° square.
+ * Tiles load on first use and the newest 64 stay in memory. A tile that can't be read within 2.5 seconds and one the
+ * manifest doesn't list (abroad, the open sea) answer step 5. A failed read is tried again on the next request and
+ * logged once a minute at most.
+ *
+ * The same steps say how built-up a spot is (knownStepAt: 1 downtown to 5 in open country, null where the file can't
+ * say): a Moment's "Pin it at a place" reaches less far downtown than in open country (services/moments/momentPlace.js).
  */
 
+const path = require('path');
 const zlib = require('zlib');
+const { pathToFileURL } = require('url');
 
 // Loaded on first use, so the build script (scripts/area-cells/build.cjs) runs with no packages installed.
 const logger = () => require('./logger');
@@ -46,6 +53,8 @@ const MANIFEST_FRESH_MS = 60 * 60 * 1000;
 const LOG_EVERY_MS = 60 * 1000;
 // Metres in a degree of latitude, and of longitude at the equator (the radius is rounded up to 10 m, so this is plenty).
 const M_PER_DEGREE = 111320;
+// The file in the repository, read unless AREA_CELLS_URL points elsewhere (scripts/area-cells/build.cjs writes it).
+const BUNDLED_URL = pathToFileURL(path.join(__dirname, '..', 'data', 'area-cells')).href;
 
 /** The base cell a coordinate is in (an integer; the build and every read use this same function). */
 function baseCell(value) {
@@ -169,11 +178,17 @@ function tileCells(src, manifest, name) {
   return job;
 }
 
-/** The step for a point from the file: 1 to 5, and 5 whenever the file can't say. Never throws. */
-async function stepAt(latitude, longitude) {
-  const src = sourceFor((process.env.AREA_CELLS_URL || '').trim());
-  if (!src.storage) return LARGEST_STEP;
-  const { name, index } = tileOf(baseCell(latitude), baseCell(longitude));
+/**
+ * The step the file gives a point, 1 to 5, or null when it can't say: no tile for the place (abroad, the open sea) or a
+ * read that failed. Never throws.
+ */
+async function knownStepAt(latitude, longitude) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (latitude == null || longitude == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const src = sourceFor((process.env.AREA_CELLS_URL || '').trim() || BUNDLED_URL);
+  if (!src.storage) return null;
+  const { name, index } = tileOf(baseCell(lat), baseCell(lng));
   let timer = null;
   try {
     const deadline = new Promise((_, reject) => {
@@ -181,16 +196,21 @@ async function stepAt(latitude, longitude) {
     });
     const step = await Promise.race([deadline, (async () => {
       const manifest = await currentManifest(src);
-      if (!manifest || !manifest.tiles.has(name)) return LARGEST_STEP;
+      if (!manifest || !manifest.tiles.has(name)) return null;
       return (await tileCells(src, manifest, name))[index];
     })()]);
-    return step >= 1 && step <= LARGEST_STEP ? step : LARGEST_STEP;
+    return step >= 1 && step <= LARGEST_STEP ? step : null;
   } catch (error) {
     logFailure(src, 'tile', error);
-    return LARGEST_STEP;
+    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** The step for a point from the file: 1 to 5, and 5 whenever the file can't say. Never throws. */
+async function stepAt(latitude, longitude) {
+  return (await knownStepAt(latitude, longitude)) ?? LARGEST_STEP;
 }
 
 /**
@@ -211,6 +231,7 @@ function areaMetadata(area) {
 
 module.exports = {
   areaPoint,
+  knownStepAt,
   pointAt,
   areaMetadata,
   baseCell,

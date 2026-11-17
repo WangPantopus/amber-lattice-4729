@@ -16,13 +16,14 @@ Adds, with the flag on for the caller:
 | Field | Meaning |
 | --- | --- |
 | `sky: true` | Draw the new Post sheet. |
-| `area: { label, latitude, longitude, radius_m } \| null` | The area this point floats over: the town's name (read at the area's own point, so the words depend on the area only), the area point and the disc's radius in metres. `null` with no point. |
+| `area: { label, latitude, longitude, radius_m } \| null` | The area this point is in, which a Moment at home shows: the town's name (read at the area's own point, so the words depend on the area only), the area point and the disc's radius in metres. `null` with no point. |
 | `place: { key, label } \| null` | The public place that names the spot and may take a pin (never a school or preschool): what "Pin it at a place" starts with. Its `key` is one of `places`' keys. |
 | `can_pin: bool` | False at home and with no point. |
 | `share_later: [{ key, label, at }]` | The "Share later" choices on offer now: `1h` ("In 1 hour"), `3h` ("In 3 hours"), and `tonight` ("Tonight at 8") only before 7 pm in the author's time zone (the point's; with no point, a home's; else Pacific). `at` is when each would share. Given with no point too. |
 
-Unchanged: `place_label`, `area_label`, `places`, `at_home`, `can_show_height` (true for any point not at home while
-heights are on), `pick_within_m`, `adult_confirmed`, `has_connections`.
+Unchanged: `area_label`, `at_home`, `can_show_height` (true for any point not at home while heights are on),
+`adult_confirmed`, `has_connections`. `place_label` and `places` leave out schools and preschools, and
+`pick_within_m` follows how built-up the spot is (below).
 
 ## `POST /api/moments`
 
@@ -33,22 +34,35 @@ New optional field:
 | `pin: "place"` | Pin at a public place: the one `venue_id` names (place picker), else the venue a `place_key` names, else the preview's `place`. With none of them and no place at the spot: `422 NO_PLACE_HERE`. |
 | `share_later: "1h" \| "3h" \| "tonight"` | Hold the Moment until then (below). `tonight` at or after 7 pm local: `422 SHARE_TIME_PASSED`. Any Moment, a Moment with no place included. |
 
-Where the Moment goes, with the flag on for the author, in this order:
+Where the Moment goes, with the flag on for the author, in this order (changed 2026-11-17 on the founder's word:
+a Moment is where it was taken, not at the middle of an area):
 
 1. `location.source: "none"`: no place, as in v3.9.
-2. **Floating**, when any of: the point is within 60 m of a home the author lives at; no place was picked; `show_area:
-   true` was sent (older apps); the picked place isn't found near the point, is a school or preschool, or is itself
-   within 60 m of the author's home. At home it floats whatever was asked, with no error.
-3. **On the ground** otherwise: the pin is the place's own point, the label its name, `label_kind: "place"`.
+2. **Only its area**, when the point is within 60 m of a home the author lives at, whatever was asked and with no
+   error; and when `show_area: true` was sent (the "Show the area instead" of a v3.9 app, and a Post sheet built
+   between November 16 and 17, which showed the area unless a place was picked).
+3. **At a public place close by**, when one was picked: the pin is the place's own point, the label its name,
+   `label_kind: "place"`. A place whose own point is farther from the Moment's than `pick_within_m` (the middle of a
+   big park the photo was taken in) gives its name and the pin stays at the Moment's own point.
+4. **Where it was taken** otherwise: the exact point, with the label a v3.9 Moment gets (a named place, else the
+   street's name, else the town; a `place_key` of `street` or `town` picks one), except that a school or a preschool
+   never names it.
 
-"Picked a place" is `pin: "place"`, or a `venue_id`, or a `place_key` that names a venue (`v_…`): so a v3.9 app's
-place-picker pick still counts, and its "Exact spot" with no pick floats.
+"Picked a place" is `pin: "place"`, or a `venue_id`, or a `place_key` that names a venue (`v_…`). A picked place
+that is a school or preschool, or is itself within 60 m of the author's home, takes no pin: the Moment is where it
+was taken (rule 4).
 
-A floating Moment stores only its area's point (`latitude`, `longitude` and the effective pair), `location_precision:
-approx_area`, `post_metadata.moment.show_area: true`, and `post_metadata.area = { v: 1, step, radius_m }`. Its label
-is the area's town and its `label_kind` `town`. The phone's or photo's point is not written anywhere.
+`pick_within_m` (on the preview) is how far from the Moment's point a picked place may be, by how built-up the spot
+is: 400 m (a quarter mile) where a quarter-mile cell holds 100 homes, then 800, 1600 (a mile), 2400 and 3200 (two
+miles, open country); 1600 where the homes file can't say (abroad). A place whose outline holds the point is 0 m
+away. With the flag off it is 1500, as in v3.9.
 
-`PLACE_NOT_NEARBY` is not returned with the flag on: a `venue_id` that isn't found floats instead.
+A Moment over its area stores only the area's point (`latitude`, `longitude` and the effective pair),
+`location_precision: approx_area`, `post_metadata.moment.show_area: true`, and `post_metadata.area = { v: 1, step,
+radius_m }`. Its label is the area's town and its `label_kind` `town`. The phone's or photo's point is not written
+anywhere.
+
+`PLACE_NOT_NEARBY` is returned with the flag on too: a `venue_id` farther than `pick_within_m`, or one nobody finds.
 
 ## Share later
 
