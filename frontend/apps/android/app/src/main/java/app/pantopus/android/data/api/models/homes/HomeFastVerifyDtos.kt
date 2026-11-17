@@ -63,3 +63,16 @@ data class HomeVerifyOption(
     val available: Boolean,
     val reason: String? = null,
 )
+
+/** `POST /api/public/postcard-report` body ("This wasn't me" for a scanned card, FASTVERIFY). */
+@JsonClass(generateAdapter = true)
+data class PostcardReportRequest(
+    @Json(name = "home_id") val homeId: String,
+    val code: String,
+)
+
+/** The report's answer: always `{ recorded: true }`, whatever the input, so it says nothing about the home or code. */
+@JsonClass(generateAdapter = true)
+data class PostcardReportResponse(
+    val recorded: Boolean = false,
+)

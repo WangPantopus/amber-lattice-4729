@@ -259,6 +259,7 @@ import app.pantopus.android.ui.screens.homes.polls.START_POLL_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.polls.StartPollFormScreen
 import app.pantopus.android.ui.screens.homes.postal.HomePostalNavigation
 import app.pantopus.android.ui.screens.homes.postal.HomePostalScreen
+import app.pantopus.android.ui.screens.homes.postal.ScannedPostcardCode
 import app.pantopus.android.ui.screens.homes.property_correction.PROPERTY_CORRECTION_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.property_correction.PropertyCorrectionScreen
 import app.pantopus.android.ui.screens.homes.property_details.PropertyDetailsScreen
@@ -2948,6 +2949,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.PostcardVerification -> {
+                // A scanned card's code (FASTVERIFY) reaches the screen in memory, never in the route.
+                pending.code?.let { ScannedPostcardCode.put(pending.id, it) }
                 navController.navigate(ChildRoutes.postcardVerification(pending.id))
                 DeepLinkRouter.consume()
             }

@@ -2,6 +2,7 @@ package app.pantopus.android.data.homes
 
 import android.content.Context
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.PostcardReportRequest
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.safeApiCall
@@ -61,6 +62,15 @@ class HomeFastVerifyRepository
                     if (result.error is NetworkError.NotFound && key(homeId) == key) answers.update { it + (key to null) }
             }
             return cached(homeId)
+        }
+
+        /** "This wasn't me" for a scanned card's [code] at [homeId]; true once the server recorded it. */
+        suspend fun reportPostcard(
+            homeId: String,
+            code: String,
+        ): Boolean {
+            val result = safeApiCall { api.reportPostcard(PostcardReportRequest(homeId, code)) }
+            return (result as? NetworkResult.Success)?.data?.recorded == true
         }
 
         private fun account(): String? = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.id
