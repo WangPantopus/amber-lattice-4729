@@ -87,7 +87,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | The bring list (H2) | 4185 | 4199 | 4197 |
 | Occasions (H3) | 4186, 4227 | 4204 | 4200 |
 | The open link for someone with the app | 4196 | 4211 | 4203 |
-| "Room for" and "Kids welcome" on a private plan's Change screen | 4227 (the room an occasion starts with) | 4236 | **not built** |
+| "Room for" and "Kids welcome" on a private plan's Change screen | 4227 (the room an occasion starts with) | 4236 | 4292 |
 | Deals without money (B1) | 4209, 4212, 4214 | 4243 | 4240 |
 | Paying to join, the group price (B2 to B4) | 4215, 4216, 4221, 4252 | 4254 | 4258 |
 | The bill at the place, tips (B5) | 4222 | **not started** | 4267 |
@@ -148,7 +148,7 @@ In the order it should be done. Each item is its own small pull request into
 1. Done November 16, about 8:15 PM Pacific: the merged build smoke-checked
    on the emulator in test mode (deals, paying for a spot, the bill with a
    tip, the tip afterwards), nothing broken.
-2. One small fix from the people track's two-phone check: on a private plan's
+2. Done November 16 (4292). One small fix from the people track's two-phone check: on a private plan's
    Change screen, "Room for" (from the people already in up to 100) and "Kids
    welcome"; the occasion's tag on the page of a person who is in; an
    occasion's form starting at the server's room. The iPhone's is 4236.
