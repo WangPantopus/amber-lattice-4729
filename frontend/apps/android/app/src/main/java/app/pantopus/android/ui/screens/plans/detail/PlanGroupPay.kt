@@ -289,7 +289,13 @@ internal fun PlanSpotOffer(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
             GroupPayTile(PantopusIcon.Gift)
-            Text(text = offer.text.orEmpty(), style = SEMIBOLD, color = PantopusColors.appText, modifier = Modifier.weight(1f))
+            // A link that stopped names nobody: its own sentence is the card's line ("This link isn't taking anyone now.").
+            Text(
+                text = offer.text ?: offer.closedText.orEmpty(),
+                style = SEMIBOLD,
+                color = PantopusColors.appText,
+                modifier = Modifier.weight(1f),
+            )
         }
         if (offer.open) {
             PrimaryButton(
@@ -299,7 +305,7 @@ internal fun PlanSpotOffer(
                 isEnabled = !ui.busy,
                 modifier = Modifier.fillMaxWidth().testTag("planSpotClaim"),
             )
-        } else {
+        } else if (offer.text != null) {
             offer.closedText?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
         }
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
