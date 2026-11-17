@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -777,54 +779,100 @@ private fun PageButton(
 }
 
 /**
- * The footer under step 5: until when it can be taken back, what it costs with digital stamps on, why sending failed,
- * and "Seal and send" ("Get stamps to send", opening the stamp books, once none are left).
+ * Step 5's one pinned button (plan 5.2): "Seal and send" ("Get stamps to send", opening the stamp books, once none are
+ * left), on a soft fade over the page with no panel behind it, so the card shows down to the button. Why sending failed
+ * shows as one line right above it; the take-back and postage lines are at the end of the page ([LookEndLines]).
  */
 @Composable
 internal fun LookFooter(
-    byEmail: Boolean,
     form: SendCardForm,
     onSend: () -> Unit,
     byLink: Boolean = false,
     /** Digital stamps left (postage on, once read). */
     stamps: StampBalance? = null,
     onGetStamps: () -> Unit = {},
+    /** What the page lies on under the button: the cloth's colour at the table, else the desk's. */
+    ground: Color = PantopusColors.cardDesk,
+    modifier: Modifier = Modifier,
 ) {
     val needsStamps = stamps?.available == 0
-    Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk)) {
-        HorizontalDivider(color = PantopusColors.cardNoteEdge)
-        Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)) {
-            DeskNote(
-                if (byEmail || byLink) {
-                    "You can take it back until they open it."
-                } else {
-                    "You can take it back until the carrier picks it up at 7 a.m. their time."
-                },
-            )
-            StampPostageLine(stamps, design = form.design, modifier = Modifier.padding(top = 10.dp))
-            form.sendError?.let {
-                Text(
-                    it,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PantopusColors.cardTextProblem,
-                    modifier = Modifier.padding(top = 10.dp).semantics { liveRegion = LiveRegionMode.Assertive }.testTag("sendCardError"),
-                )
-            }
-            CardButton(
-                when {
-                    needsStamps -> "Get stamps to send"
-                    byLink -> "Seal it and get the link"
-                    else -> "Seal and send"
-                },
-                onClick = if (needsStamps) onGetStamps else onSend,
-                busy = form.sending,
-                modifier = Modifier.padding(top = 10.dp).testTag("sendCardLookSend"),
-            )
-        }
+    PinnedLookButton(ground, form.sendError, modifier) {
+        CardButton(
+            when {
+                needsStamps -> "Get stamps to send"
+                byLink -> "Seal it and get the link"
+                else -> "Seal and send"
+            },
+            onClick = if (needsStamps) onGetStamps else onSend,
+            busy = form.sending,
+            modifier = Modifier.heightIn(min = 52.dp).testTag("sendCardLookSend"),
+        )
     }
 }
+
+/** Look it over's pinned button on its fade, with [problem] (why it didn't go) as one line above it. */
+@Composable
+internal fun PinnedLookButton(
+    ground: Color,
+    problem: String?,
+    modifier: Modifier = Modifier,
+    button: @Composable () -> Unit,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(0f to ground.copy(alpha = 0f), 0.4f to ground.copy(alpha = 0.78f), 1f to ground.copy(alpha = 0.9f)),
+                )
+                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
+                .testTag("sendCardLookPinned"),
+    ) {
+        problem?.let {
+            Text(
+                it,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
+                color = PantopusColors.cardTextProblem,
+                modifier =
+                    Modifier
+                        .padding(bottom = Spacing.s2)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radii.md))
+                        .background(PantopusColors.cardNotePaper)
+                        .padding(horizontal = Spacing.s3, vertical = 6.dp)
+                        .semantics { liveRegion = LiveRegionMode.Assertive }
+                        .testTag("sendCardError"),
+            )
+        }
+        button()
+    }
+}
+
+/**
+ * The end of Look it over (plan 5.2): until when it can be taken back and what it costs, scrolling with the page (they're
+ * on "Seal it for the day" too).
+ */
+@Composable
+internal fun LookEndLines(
+    takeBack: String,
+    modifier: Modifier = Modifier,
+    postage: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth().padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s6).testTag("sendCardLookEnd")) {
+        DeskNote(takeBack)
+        postage()
+    }
+}
+
+/** Step 5's take-back line for one card. */
+internal fun lookTakeBackLine(to: CardRecipient?): String =
+    if (to is CardRecipient.Email || to is CardRecipient.Link) {
+        "You can take it back until they open it."
+    } else {
+        "You can take it back until the carrier picks it up at 7 a.m. their time."
+    }
 
 /** Sealed until Christmas morning once it's in their mailbox. */
 internal val HolidayCardPreview.sealed: Boolean
