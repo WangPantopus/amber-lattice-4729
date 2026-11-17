@@ -97,7 +97,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335, 4344 |
 | Gift exchange | 4239, 4329 | 4317, 4333 | 4347 |
 | Photos afterwards | 4242, 4249 | 4321, 4323, 4333 | 4348 |
-| One person pays for the group | 4255, 4259, 4261 | 4327 | 4351 |
+| One person pays for the group | 4255, 4259, 4261, 4359 | 4327 (claiming a spot from the link: **not built**, in progress) | 4351 |
 
 Also done:
 
@@ -173,7 +173,7 @@ In the order it should be done. Each item is its own small pull request into
    for a spot; the group price coming back and then leaving; the bill with a
    deal and a tip; the tip afterwards. Written into `NEXT_STEPS.md` the way the
    people track's check is.
-8. Under way since November 17 (done so far: the same people again, chip in, find a date, gift exchange, photos afterwards; `NEXT_STEPS.md` lists each as it
+8. Under way since November 17 (done so far: the same people again, chip in, find a date, gift exchange, photos afterwards; one person pays for the group passed on the money and found the iPhone's spot claim missing, which is being built and re-checked; `NEXT_STEPS.md` lists each as it
    finishes). A two-phone check of each extra, with a browser guest where the extra has
    one, written into `NEXT_STEPS.md`.
 
