@@ -13,6 +13,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanFormCard
 import app.pantopus.android.ui.screens.plans.components.PlanStepperRow
 import app.pantopus.android.ui.screens.plans.host.AddToPlanRow
 import app.pantopus.android.ui.screens.plans.host.ChipInFields
+import app.pantopus.android.ui.screens.plans.host.GiftFields
 import app.pantopus.android.ui.screens.plans.host.ROOM_FOR_MAX
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.Spacing
@@ -81,7 +82,8 @@ internal fun ChangeRoomRows(
 ) {
     val room = ui.room
     val chip = ui.chipIn
-    if (!room.shows && !chip.shows) return
+    val gift = ui.gift
+    if (!room.shows && !chip.shows && !gift.shows) return
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s5)) {
         if (room.shows) {
             PlanStepperRow(
@@ -107,9 +109,20 @@ internal fun ChangeRoomRows(
                         onChecked = viewModel::setChipIn,
                     )
                 }
-                if (room.shows) {
+                if (gift.shows) {
                     AddToPlanRow(
                         first = !chip.shows,
+                        icon = PantopusIcon.Gift,
+                        title = "Gift exchange",
+                        caption = "Everyone who joins draws one name",
+                        checked = gift.draft != null,
+                        tag = "planChangeGift",
+                        onChecked = viewModel::setGift,
+                    )
+                }
+                if (room.shows) {
+                    AddToPlanRow(
+                        first = !chip.shows && !gift.shows,
                         icon = PantopusIcon.AdultChild,
                         title = "Kids welcome",
                         caption = "Guests say how many adults and kids",
@@ -121,6 +134,7 @@ internal fun ChangeRoomRows(
             }
         }
         chip.draft?.let { ChipInFields(it, chip.errors, viewModel::editChipIn) }
+        gift.draft?.let { GiftFields(it, gift.errors, drawn = gift.drawn, onEdit = viewModel::editGift) }
     }
 }
 

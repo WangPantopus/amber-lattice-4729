@@ -7,11 +7,14 @@ import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
+import app.pantopus.android.data.api.models.plans.PlanGiftResponse
+import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -72,4 +75,32 @@ interface PlanExtrasApi {
         @Path("id") id: String,
         @Body body: PlanDatePickBody,
     ): PlanDto
+
+    // ---- 4. Gift exchange (services/plans/planGift.js): nobody sees who drew whom ----
+
+    /** `POST /api/plans/:id/gift/join`: "Join" with a wish (again changes it). */
+    @POST("api/plans/{id}/gift/join")
+    suspend fun joinGift(
+        @Path("id") id: String,
+        @Body body: PlanGiftWishBody,
+    ): PlanGiftResponse
+
+    /** `PATCH /api/plans/:id/gift/mine`: "Change" the wish, also after the draw. */
+    @PATCH("api/plans/{id}/gift/mine")
+    suspend fun changeGiftWish(
+        @Path("id") id: String,
+        @Body body: PlanGiftWishBody,
+    ): PlanGiftResponse
+
+    /** `DELETE /api/plans/:id/gift/mine`: "Leave", before the draw (`409 drawn` after). */
+    @DELETE("api/plans/{id}/gift/mine")
+    suspend fun leaveGift(
+        @Path("id") id: String,
+    ): PlanGiftResponse
+
+    /** `POST /api/plans/:id/gift/draw`: the host's "Draw names now", or "Draw again" (`409 too_few` under three). */
+    @POST("api/plans/{id}/gift/draw")
+    suspend fun drawGift(
+        @Path("id") id: String,
+    ): PlanGiftResponse
 }

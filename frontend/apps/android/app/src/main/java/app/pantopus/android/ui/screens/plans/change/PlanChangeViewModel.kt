@@ -36,6 +36,8 @@ import app.pantopus.android.ui.screens.plans.host.DealDraft
 import app.pantopus.android.ui.screens.plans.host.DealPlanFacts
 import app.pantopus.android.ui.screens.plans.host.DealPreviewState
 import app.pantopus.android.ui.screens.plans.host.DealScope
+import app.pantopus.android.ui.screens.plans.host.GIFT_FIELDS
+import app.pantopus.android.ui.screens.plans.host.GiftDraft
 import app.pantopus.android.ui.screens.plans.host.LINK_INPUT_MAX
 import app.pantopus.android.ui.screens.plans.host.PLACES_SLOW
 import app.pantopus.android.ui.screens.plans.host.PickedPlace
@@ -110,6 +112,8 @@ data class PlanChangeUi(
     val times: PlanChangeTimes = PlanChangeTimes(),
     /** The holidays' chip in (PlanChangeChipIn.kt). */
     val chipIn: PlanChangeChipIn = PlanChangeChipIn(),
+    /** The holidays' gift exchange (PlanChangeGift.kt). */
+    val gift: PlanChangeGift = PlanChangeGift(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -207,7 +211,9 @@ data class PlanChangeUi(
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
     val changed: Boolean
-        get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed || chipIn.changed
+        get() =
+            changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed || times.changed || chipIn.changed ||
+                gift.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -274,6 +280,7 @@ class PlanChangeViewModel
                                 room = PlanChangeRoom.of(plan, feature.flags.value.guestAnswersOn),
                                 times = PlanChangeTimes.of(plan, zone),
                                 chipIn = PlanChangeChipIn.of(plan, feature.flags.value.chipInOn),
+                                gift = PlanChangeGift.of(plan, feature.flags.value.giftOn, zone),
                             )
                         }
                         lookForOrigin()
@@ -473,7 +480,7 @@ class PlanChangeViewModel
             // posted up to 62 days ahead): the times are checked, and sent, only when they moved. Where (an online plan's
             // link, or the place it moves to) is checked whatever moved (Plans step 3).
             val timesProblem = if (ui.timesMoved) validate(start, end, startMoved = start != ui.originalStart) else null
-            val problem = timesProblem ?: ui.times.problem ?: ui.whereProblem()
+            val problem = timesProblem ?: ui.times.problem ?: ui.gift.problem ?: ui.whereProblem()
             if (problem != null) {
                 _ui.update { it.copy(error = problem) }
                 return
@@ -505,6 +512,8 @@ class PlanChangeViewModel
                         dateOptions = ui.times.toInput(ui.zone).takeIf { ui.times.changed },
                         // The holidays' chip in: a new value (who paid is kept); taking it away is `"chip_in": null`, below.
                         chipIn = ui.chipIn.toSend,
+                        // The gift exchange: a new budget (or draw time before the draw); calling it off is `"gift": null`.
+                        gift = ui.gift.toSend(ui.zone, start, LocalDateTime.now(ui.zone)),
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
@@ -526,7 +535,7 @@ class PlanChangeViewModel
                 when {
                     !others && ui.removesDeal -> repository.removeDeal(planId)
                     !others && ui.money.removesPrice -> checksRepository.removePrice(planId)
-                    ui.stopsRepeating || ui.chipIn.removes -> repository.updateClearing(planId, body, ui.clears)
+                    ui.clears.isNotEmpty() -> repository.updateClearing(planId, body, ui.clears)
                     else -> repository.update(planId, body)
                 }
             if (first !is NetworkResult.Success) return first
@@ -541,9 +550,16 @@ class PlanChangeViewModel
             val message = error.planMessage
             _ui.update {
                 val underChip = field != null && field in CHIP_IN_FIELDS && it.chipIn.draft != null
+                val underGift = field != null && field in GIFT_FIELDS && it.gift.draft != null
                 val chipErrors = if (underChip && field != null) mapOf(field to message) else emptyMap()
+                val giftErrors = if (underGift && field != null) mapOf(field to message) else emptyMap()
                 // A field's sentence shows under that field only (the screen's own line sits right below the card).
-                it.copy(saving = false, error = message.takeIf { !underChip }, chipIn = it.chipIn.copy(errors = chipErrors))
+                it.copy(
+                    saving = false,
+                    error = message.takeIf { !underChip && !underGift },
+                    chipIn = it.chipIn.copy(errors = chipErrors),
+                    gift = it.gift.copy(errors = giftErrors),
+                )
             }
         }
 
@@ -566,6 +582,29 @@ class PlanChangeViewModel
             _ui.update { ui ->
                 val draft = ui.chipIn.draft ?: return@update ui
                 ui.copy(chipIn = ui.chipIn.copy(draft = transform(draft), errors = ui.chipIn.errors - field), error = null)
+            }
+        }
+
+        // ---- Plans for the holidays: the gift exchange ----
+
+        /** "Gift exchange" on (the plan's own, else names drawn the day before at noon) or off (Save calls it off). */
+        fun setGift(on: Boolean) {
+            _ui.update {
+                val gift = it.gift
+                val fresh = { GiftDraft.startingFor(it.start, LocalDateTime.now(it.zone)) }
+                val draft = if (on) gift.draft ?: gift.original ?: fresh() else null
+                it.copy(gift = gift.copy(draft = draft, errors = emptyMap()), error = null)
+            }
+        }
+
+        /** A gift field changed; its refusal goes. */
+        fun editGift(
+            field: String,
+            transform: (GiftDraft) -> GiftDraft,
+        ) {
+            _ui.update { ui ->
+                val draft = ui.gift.draft ?: return@update ui
+                ui.copy(gift = ui.gift.copy(draft = transform(draft), errors = ui.gift.errors - field), error = null)
             }
         }
 

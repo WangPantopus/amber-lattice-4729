@@ -768,10 +768,12 @@ internal fun AddToThisPlan(
     if (!ui.showsAddToPlan) return
     PlanField(label = "Add to this plan", modifier = Modifier.testTag("planAddToPlan")) {
         PlanFormCard {
+            // Each row after the first draws a divider above it.
+            var rows = 0
             // The holidays' find a date (extras section 2, board 26): on, "When" above becomes the times offered.
             if (ui.showsFindDate) {
                 AddToPlanRow(
-                    first = true,
+                    first = rows++ == 0,
                     icon = PantopusIcon.CalendarCheck,
                     title = "Let guests pick the date",
                     caption = "They tick what works; you choose",
@@ -780,33 +782,11 @@ internal fun AddToThisPlan(
                     onChecked = vm::setFindDate,
                 )
             }
-            if (ui.showsBringRow) {
-                val bring = ui.draft.bring
-                val count = bring?.items?.size ?: 0
-                val colors = ui.draft.kind?.colors
-                AddToPlanRow(
-                    first = !ui.showsFindDate,
-                    icon = PantopusIcon.List,
-                    title = "Bring list",
-                    caption =
-                        when (count) {
-                            0 -> "Guests pick what they'll bring"
-                            1 -> "1 thing · guests pick what they'll bring"
-                            else -> "$count things · guests pick what they'll bring"
-                        },
-                    checked = bring != null,
-                    tag = "planBringList",
-                    onChecked = vm::setBringList,
-                    // The plan's kind color, as board 3 draws it.
-                    tileBackground = colors?.tint ?: PantopusColors.appSurfaceSunken,
-                    tileTint = colors?.accent ?: PantopusColors.appTextStrong,
-                    onOpen = vm::openBringList,
-                )
-            }
+            if (ui.showsBringRow) BringListRow(ui, vm, first = rows++ == 0)
             if (ui.showsChipIn) {
                 // The holidays' chip in (extras section 3, board 26).
                 AddToPlanRow(
-                    first = !ui.showsFindDate && !ui.showsBringRow,
+                    first = rows++ == 0,
                     icon = PantopusIcon.DollarSign,
                     title = "Chip in",
                     caption = "Guests pay you, not Pantopus",
@@ -815,9 +795,21 @@ internal fun AddToThisPlan(
                     onChecked = vm::setChipIn,
                 )
             }
+            if (ui.showsGift) {
+                // The holidays' gift exchange (extras section 4, board 26).
+                AddToPlanRow(
+                    first = rows++ == 0,
+                    icon = PantopusIcon.Gift,
+                    title = "Gift exchange",
+                    caption = "Everyone who joins draws one name",
+                    checked = ui.draft.gift != null,
+                    tag = "planGift",
+                    onChecked = vm::setGift,
+                )
+            }
             if (ui.showsKidsWelcome) {
                 AddToPlanRow(
-                    first = !ui.showsFindDate && !ui.showsBringRow && !ui.showsChipIn,
+                    first = rows == 0,
                     icon = PantopusIcon.AdultChild,
                     title = "Kids welcome",
                     caption = "Guests say how many adults and kids",
@@ -831,6 +823,37 @@ internal fun AddToThisPlan(
     }
     val chip = ui.draft.chipIn
     if (ui.showsChipIn && chip != null) ChipInFields(chip, ui.chipInErrors, vm::editChipIn)
+    val gift = ui.draft.gift
+    if (ui.showsGift && gift != null) GiftFields(gift, ui.giftErrors, drawn = false, onEdit = vm::editGift)
+}
+
+/** H2's "Bring list" row: "{n} things · guests pick what they'll bring", in the plan's kind color (board 3). */
+@Composable
+private fun BringListRow(
+    ui: HostUi,
+    vm: HostFlowViewModel,
+    first: Boolean,
+) {
+    val bring = ui.draft.bring
+    val count = bring?.items?.size ?: 0
+    val colors = ui.draft.kind?.colors
+    AddToPlanRow(
+        first = first,
+        icon = PantopusIcon.List,
+        title = "Bring list",
+        caption =
+            when (count) {
+                0 -> "Guests pick what they'll bring"
+                1 -> "1 thing · guests pick what they'll bring"
+                else -> "$count things · guests pick what they'll bring"
+            },
+        checked = bring != null,
+        tag = "planBringList",
+        onChecked = vm::setBringList,
+        tileBackground = colors?.tint ?: PantopusColors.appSurfaceSunken,
+        tileTint = colors?.accent ?: PantopusColors.appTextStrong,
+        onOpen = vm::openBringList,
+    )
 }
 
 /** One row of "Add to this plan": a 36 dp tile with its glyph, the name and its line, and a switch (board "rowlink"). */

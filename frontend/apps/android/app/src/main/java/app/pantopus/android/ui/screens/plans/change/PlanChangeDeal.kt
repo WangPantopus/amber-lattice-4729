@@ -51,11 +51,11 @@ val PlanChangeUi.dealChanged: Boolean get() = deal.chosen != null && deal.chosen
 
 /** Save sends a PATCH body with something in it (anything but taking the deal or the price off, which are raw PATCHes). */
 val PlanChangeUi.patchesFields: Boolean
-    get() = changedBesidesRepeat || repeatChanged || money.sendsFields || room.changed || times.changed || chipIn.changed
+    get() = changedBesidesRepeat || repeatChanged || money.sendsFields || room.changed || times.changed || chipIn.changed || gift.changed
 
 /** The fields Save sends as `null`: "Doesn't repeat", and chip in taken away. */
 val PlanChangeUi.clears: List<String>
-    get() = listOfNotNull("repeat".takeIf { stopsRepeating }, "chip_in".takeIf { chipIn.removes })
+    get() = listOfNotNull("repeat".takeIf { stopsRepeating }, "chip_in".takeIf { chipIn.removes }, "gift".takeIf { gift.removes })
 
 /** Save takes the deal off ("No deal" chosen for a plan that has one). */
 val PlanChangeUi.removesDeal: Boolean get() = dealChanged && deal.chosen?.scope == DealScope.NONE && plan?.deal != null
