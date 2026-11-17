@@ -14,6 +14,14 @@ import SwiftUI
 
 public struct MailDetailView: View {
     @State private var viewModel: MailDetailViewModel
+    /// The joined card was closed: the page goes back to the Mailbox under it.
+    @State private var replyClosed = false
+
+    /// The card's table or a reply's joined card covers this page: its sheets and dialogs come up from there.
+    private var coversPage: Bool {
+        viewModel.cardTable != nil || viewModel.replyPair != nil
+    }
+
     /// A laid-open booklet's Back puts the Mailbox back beside it instead of closing it.
     @Environment(\.mailPieceBack) private var backOverride
     private let mailId: String
@@ -101,7 +109,7 @@ public struct MailDetailView: View {
                 LoadingLayout(onBack: back)
             case let .loaded(content):
                 // Under the card on the table: its colour, so closing it shows no other screen.
-                if viewModel.cardTable != nil {
+                if viewModel.cardTable != nil || viewModel.replyPair != nil {
                     MailPaper.tableNight.ignoresSafeArea()
                 } else {
                     loaded(content)
@@ -146,7 +154,7 @@ public struct MailDetailView: View {
         }
         .pantopusAnimation(.componentState, value: viewModel.toast)
         .sheet(isPresented: Binding(
-            get: { viewModel.showsSenderSheet && viewModel.cardTable == nil },
+            get: { viewModel.showsSenderSheet && !coversPage },
             set: { viewModel.showsSenderSheet = $0 }
         )) {
             if case let .loaded(content) = viewModel.state, let letter = content.letter {
@@ -155,7 +163,17 @@ public struct MailDetailView: View {
                     .presentationDragIndicator(.visible)
             }
         }
-        .modifier(MailVaultFolderPickers(viewModel: viewModel, isShown: viewModel.cardTable == nil))
+        .modifier(MailVaultFolderPickers(viewModel: viewModel, isShown: !coversPage))
+        // A reply opens as the joined card: the card they sent with the reply lying on it (experience plan Part 3).
+        .fullScreenCover(item: Binding(
+            get: { replyClosed ? nil : viewModel.replyPair },
+            set: { if $0 == nil { replyClosed = true } }
+        )) { pair in
+            MailReplyPage(viewModel: viewModel, pair: pair) {
+                replyClosed = true
+                back()
+            }
+        }
         .modifier(MailCardTableCover(
             viewModel: viewModel,
             senderLink: { senderLink($0) },
@@ -176,7 +194,7 @@ public struct MailDetailView: View {
         }
         .confirmationDialog(
             "Shred this?",
-            isPresented: Binding(get: { viewModel.confirmsShred && viewModel.cardTable == nil }, set: { viewModel.confirmsShred = $0 }),
+            isPresented: Binding(get: { viewModel.confirmsShred && !coversPage }, set: { viewModel.confirmsShred = $0 }),
             titleVisibility: .visible
         ) {
             Button("Shred", role: .destructive) { Task { await viewModel.act(.shred) } }

@@ -104,6 +104,8 @@ public struct MailItem: Decodable, Sendable, Hashable, Identifiable {
     /// A Christmas card (`holiday_cards`): its picture, caption and year, and
     /// whether it's still sealed until Christmas morning. Nil for anything else.
     public let card: MailCard?
+    /// A reply to a Christmas card (experience plan Part 3): the card it answers; nil for anything else.
+    public let cardReply: CardReplyCard?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -158,6 +160,7 @@ public struct MailItem: Decodable, Sendable, Hashable, Identifiable {
         case drawer
         case lifecycle
         case card
+        case cardReply = "card_reply"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -221,6 +224,7 @@ public struct MailItem: Decodable, Sendable, Hashable, Identifiable {
         drawer = try? c.decodeIfPresent(String.self, forKey: .drawer)
         lifecycle = try? c.decodeIfPresent(String.self, forKey: .lifecycle)
         card = try? c.decodeIfPresent(MailCard.self, forKey: .card)
+        cardReply = try? c.decodeIfPresent(CardReplyCard.self, forKey: .cardReply)
     }
 }
 

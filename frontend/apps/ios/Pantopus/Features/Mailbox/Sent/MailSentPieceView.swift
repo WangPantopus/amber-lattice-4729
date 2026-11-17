@@ -164,8 +164,9 @@ struct MailSentPieceView: View {
                 }
             }
             sendAgain(piece)
+            joinedButton(piece)
             trail(piece)
-            if piece.canTakeBack {
+            if piece.canTakeBack || piece.cardReply?.canTakeBack == true {
                 takeBack(piece)
             } else if let error = viewModel.takeBackError {
                 errorLine(error)
@@ -284,56 +285,6 @@ struct MailSentPieceView: View {
         }
         .accessibilityElement(children: .combine)
     }
-
-    /// "Changed your mind?" while it can still come back.
-    private func takeBack(_ piece: MailSentPiece) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s2) {
-            HStack(alignment: .center, spacing: Spacing.s3) {
-                Icon(.calendarClock, size: 20, color: MailPaper.cardLink)
-                VStack(alignment: .leading, spacing: Spacing.s0) {
-                    Text("Changed your mind?")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(MailPaper.cardText)
-                    Text(verbatim: MailSentWords.takeBackLine(piece))
-                        .font(.system(size: 13))
-                        .foregroundStyle(MailPaper.cardTextMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    viewModel.confirmsTakeBack = true
-                } label: {
-                    ZStack {
-                        Text("Take it back").opacity(viewModel.takingBack ? 0 : 1)
-                        if viewModel.takingBack { ProgressView().tint(MailPaper.wax) }
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(MailPaper.wax)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 1.5))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.takingBack)
-                .accessibilityIdentifier("mailSentPieceTakeBack")
-                .confirmationDialog("Take your card back?", isPresented: $viewModel.confirmsTakeBack, titleVisibility: .visible) {
-                    Button("Take it back", role: .destructive, action: confirmTakeBack)
-                        .accessibilityIdentifier("mailSentTakeBackConfirm")
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text(MailSentWords.takeBackConfirm(piece, postage: HolidayCardWords.postageOn))
-                }
-            }
-            if let error = viewModel.takeBackError {
-                errorLine(error)
-            }
-        }
-        .padding(.horizontal, Spacing.s4)
-        .padding(.vertical, 14)
-        .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.xl, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
-    }
 }
 
 private extension MailSentPieceView {
@@ -431,6 +382,74 @@ private extension MailSentPieceView {
 }
 
 private extension MailSentPieceView {
+    /// "Changed your mind?" while it can still come back.
+    func takeBack(_ piece: MailSentPiece) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s2) {
+            HStack(alignment: .center, spacing: Spacing.s3) {
+                Icon(.calendarClock, size: 20, color: MailPaper.cardLink)
+                VStack(alignment: .leading, spacing: Spacing.s0) {
+                    Text("Changed your mind?")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(MailPaper.cardText)
+                    Text(verbatim: MailSentWords.takeBackLine(piece))
+                        .font(.system(size: 13))
+                        .foregroundStyle(MailPaper.cardTextMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    viewModel.confirmsTakeBack = true
+                } label: {
+                    ZStack {
+                        Text("Take it back").opacity(viewModel.takingBack ? 0 : 1)
+                        if viewModel.takingBack { ProgressView().tint(MailPaper.wax) }
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(MailPaper.wax)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 1.5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.takingBack)
+                .accessibilityIdentifier("mailSentPieceTakeBack")
+                .confirmationDialog(
+                    piece.cardReply == nil ? "Take your card back?" : "Take your reply back?",
+                    isPresented: $viewModel.confirmsTakeBack,
+                    titleVisibility: .visible
+                ) {
+                    Button("Take it back", role: .destructive, action: confirmTakeBack)
+                        .accessibilityIdentifier("mailSentTakeBackConfirm")
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(MailSentWords.takeBackConfirm(piece, postage: HolidayCardWords.postageOn))
+                }
+            }
+            if let error = viewModel.takeBackError {
+                errorLine(error)
+            }
+        }
+        .padding(.horizontal, Spacing.s4)
+        .padding(.vertical, 14)
+        .background(MailPaper.cardNote, in: RoundedRectangle(cornerRadius: Radii.xl, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).strokeBorder(MailPaper.cardRowLine, lineWidth: 1))
+    }
+
+    /// The card and its reply as one joined card (experience plan Part 3): your reply ("See it the way they did"), or
+    /// the reply to your card ("Nora wrote back").
+    @ViewBuilder
+    func joinedButton(_ piece: MailSentPiece) -> some View {
+        if let pair = viewModel.replyPair {
+            let title = piece.cardReply != nil ? "See it the way they did" : CardReplyWords.slip(pair.reply.fromName)
+            HolidayCardPaperButton(title: title, fullWidth: true) { viewModel.joined = pair }
+                .accessibilityIdentifier("mailSentJoined")
+                .fullScreenCover(item: $viewModel.joined) { pair in
+                    CardTableJoinedPage(pair: pair, closeLabel: "Back to your card") { viewModel.joined = nil }
+                }
+        }
+    }
+
     /// "Send this card to someone else" (experience plan Part 6), when another card can go now.
     @ViewBuilder
     func sendAgain(_ piece: MailSentPiece) -> some View {

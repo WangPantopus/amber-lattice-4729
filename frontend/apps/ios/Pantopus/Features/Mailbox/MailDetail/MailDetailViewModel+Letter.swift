@@ -30,6 +30,12 @@ extension MailDetailViewModel {
         }
     }
 
+    /// The card this reply answers, and the reply, for the joined card. Without the read the reply opens as a letter.
+    func readReplyPair() async {
+        let exchange: HolidayCardExchange? = try? await api.request(HolidayCardEndpoints.exchange(cardId: mailId))
+        replyPair = exchange.flatMap(CardReplyPair.init)
+    }
+
     // MARK: - Actions
 
     /// A tap on the letter page's actions. Pay is the view's (it opens the

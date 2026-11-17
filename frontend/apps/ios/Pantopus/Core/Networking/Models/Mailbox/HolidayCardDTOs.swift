@@ -782,6 +782,26 @@ public struct MailCard: Decodable, Sendable, Hashable {
         case sealedUntil = "sealed_until"
     }
 
+    /// The card a reply answers (experience plan Part 3), drawn with that card's picture in the reply's row.
+    init(reply: CardReplyCard) {
+        design = reply.design
+        number = reply.number
+        caption = reply.caption
+        paper = reply.paper
+        height = reply.height
+        holiday = "christmas"
+        year = reply.year
+        arrival = nil
+        sealedUntil = nil
+        sealed = false
+        slug = reply.slug
+        table = reply.table
+        verse = nil
+        signature = reply.signature
+        photo = nil
+        voice = nil
+    }
+
     /// A card not sent yet, as its envelope is drawn while it's being sealed.
     init(design: HolidayCardDesign, year: Int, sealed: Bool) {
         self.design = design.id

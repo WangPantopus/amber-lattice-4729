@@ -101,10 +101,12 @@ enum MailSentWords {
     /// Until when it can be taken back.
     static func takeBackLine(_ piece: MailSentPiece, calendar: Calendar = .current) -> String {
         if piece.byLink { return "You can take it back until someone opens it." }
-        guard !piece.byEmail, let until = MailDates.parse(piece.takeBackUntil) else {
+        // A reply (experience plan Part 3) says until when in its own fields.
+        let untilISO = piece.cardReply?.takeBackUntil ?? piece.takeBackUntil
+        guard !piece.byEmail, let until = MailDates.parse(untilISO) else {
             return "You can take it back until they open it."
         }
-        let when = "\(MailDates.time(until, calendar: calendar)) \(HolidayCardWords.shortDay(piece.takeBackUntil, calendar: calendar))"
+        let when = "\(MailDates.time(until, calendar: calendar)) \(HolidayCardWords.shortDay(untilISO, calendar: calendar))"
         return "It waits for the carrier until \(when) (your clock)."
     }
 
@@ -118,6 +120,8 @@ enum MailSentWords {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> String {
+        // A reply is free: nothing comes back but the slot to write again.
+        if piece.cardReply != nil { return "It won’t go out with the morning mail." }
         let first = piece.byLink
             ? "Your link will say you took it back."
             : piece.emailSendAt != nil || piece.emailStatus != nil
