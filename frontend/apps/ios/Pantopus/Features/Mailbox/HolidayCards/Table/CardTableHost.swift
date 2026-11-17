@@ -230,6 +230,9 @@ private struct MailCardTablePage: View {
     @State private var reportsSender = false
     @State private var confirmsBlock = false
     @State private var blockInFlight = false
+    /// Write back (experience plan Part 3): the sheet to write on, and the joined card once written.
+    @State private var writingBack = false
+    @State private var joined: CardReplyPair?
 
     private var letter: MailLetter? {
         if case let .loaded(content) = viewModel.state { return content.letter }
@@ -316,6 +319,39 @@ private struct MailCardTablePage: View {
             .onAppear { model.reservesSecondary = sendBackPerson != nil || !model.content.sealed }
             .task(id: sendBackPerson?.id) { await checkSendBack() }
             .onAppear(perform: offerNextCard)
+            .task(id: model.content.sealed) { await readExchange() }
+            .fullScreenCover(isPresented: $writingBack) {
+                CardTableReplySheet(cardId: viewModel.mailId, content: model.content) { sent in
+                    writingBack = false
+                    if sent { Task { await readExchange() } }
+                }
+            }
+            .fullScreenCover(item: $joined) { pair in
+                CardTableJoinedPage(pair: pair, closeLabel: "Back to the card") { joined = nil }
+            }
+    }
+
+    /// The card and its reply (experience plan Part 3): "Write back to {first name}" when the server says this reader
+    /// can, "You wrote back · {day}" once they have, nothing otherwise (replies off, a sealed card, a block).
+    private func readExchange() async {
+        guard LaunchFeatures.holidayCardMemories, !model.content.sealed, !model.content.isLetter else {
+            model.writeBack = nil
+            return
+        }
+        let exchange: HolidayCardExchange? = try? await APIClient.shared.request(HolidayCardEndpoints.exchange(cardId: viewModel.mailId))
+        guard let exchange, !Task.isCancelled else { return }
+        let first = model.content.firstName
+        if exchange.canReply {
+            model.writeBack = CardTableMenuItem(title: CardReplyWords.writeBack(first), identifier: "cardTableWriteBack") {
+                writingBack = true
+            }
+        } else if let reply = exchange.reply, let pair = CardReplyPair(exchange) {
+            model.writeBack = CardTableMenuItem(title: CardReplyWords.wroteBack(on: reply.sentOn), identifier: "cardTableWroteBack") {
+                joined = pair
+            }
+        } else {
+            model.writeBack = nil
+        }
     }
 
     /// "Open the next card" with "{n} more waiting" under it, when this card came from the Mailbox list and others

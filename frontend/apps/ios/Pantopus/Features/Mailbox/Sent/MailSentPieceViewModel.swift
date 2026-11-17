@@ -43,6 +43,9 @@ final class MailSentPieceViewModel {
     /// Another card can go now (a stamp left, or without stamps today's card not used): "Send this card to someone
     /// else" shows (experience plan Part 6).
     private(set) var canSendAnother = false
+    /// The card and its reply, once a reply has come or been written (experience plan Part 3), and the joined card up.
+    private(set) var replyPair: CardReplyPair?
+    var joined: CardReplyPair?
 
     private let api: APIClient
 
@@ -73,6 +76,7 @@ final class MailSentPieceViewModel {
             state = .loaded(detail.item)
             if detail.item.emailStatus == .failed { await readPostageOnce() }
             if !detail.item.isLetter { await readCanSendAnother() }
+            if LaunchFeatures.holidayCardMemories, !detail.item.isLetter || detail.item.cardReply != nil { await readReplyPair() }
         } catch {
             let sentence = HolidayCardFlowViewModel.refusal(
                 error,
@@ -86,6 +90,12 @@ final class MailSentPieceViewModel {
             guard piece == nil else { return }
             state = .error(message: sentence)
         }
+    }
+
+    /// The joined card for this card or reply; none without a reply (or when it can't be read).
+    private func readReplyPair() async {
+        let exchange: HolidayCardExchange? = try? await api.request(HolidayCardEndpoints.exchange(cardId: id))
+        replyPair = exchange.flatMap(CardReplyPair.init)
     }
 
     /// Whether another card can go now; a failure hides the button.
@@ -107,6 +117,14 @@ final class MailSentPieceViewModel {
         takeBackError = nil
         defer { takingBack = false }
         do {
+            if piece?.cardReply != nil {
+                // A reply (experience plan Part 3) comes back through its own route.
+                let _: CardReplyTakeBack = try await HolidayCardFlowViewModel.answer(
+                    HolidayCardEndpoints.takeBackReply(cardId: id),
+                    api: api
+                )
+                return true
+            }
             let _: TakeBackHolidayCardResponse = try await HolidayCardFlowViewModel.answer(
                 HolidayCardEndpoints.takeBack(cardId: id),
                 api: api

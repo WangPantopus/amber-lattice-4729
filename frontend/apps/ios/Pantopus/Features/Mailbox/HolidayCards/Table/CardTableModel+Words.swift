@@ -97,8 +97,10 @@ extension CardTableModel {
         if let sending { return sending == .gone ? goneButtons : [] }
         guard step == .out, !content.sealed, turnedOnce || fold.isSpread else { return [] }
         var items: [CardTableMenuItem] = []
+        // Write back comes first, with Send {first name} a card beside it; Share keeps its corner and its ⋯ line.
+        if let writeBack { items.append(writeBack) }
         if let sendBack { items.append(sendBack) }
-        if offersShare {
+        if offersShare, writeBack == nil {
             items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableShareQuiet") { [weak self] in
                 self?.isSharing = true
             })
