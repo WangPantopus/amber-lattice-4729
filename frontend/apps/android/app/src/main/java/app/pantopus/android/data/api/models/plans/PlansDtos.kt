@@ -318,6 +318,8 @@ data class PlanDto(
     @Json(name = "gift") val gift: PlanGiftDto? = null,
     /** The holidays' photos afterwards (extras section 5, `extras=1`): on a plan that is over, for those who were in. */
     @Json(name = "photos") val photos: PlanPhotosCardDto? = null,
+    /** The holidays' one person pays for the group (`extras=1`, `biz=1`): the buyer's spots, or who paid a claimer's. */
+    @Json(name = "group_pay") val groupPay: PlanGroupPayDto? = null,
     /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */
@@ -754,6 +756,9 @@ data class AskToJoinBody(
     @Json(name = "gps") val gps: PlanGpsInput? = null,
     /** How the person found a business's plan, when the app knows (`business_page`). Left out otherwise. */
     @Json(name = "via") val via: String? = null,
+    /** The holidays' one person pays for the group: `link` buys [spots] in one payment, the buyer's own among them. */
+    @Json(name = "for") val forWhom: String? = null,
+    @Json(name = "spots") val spots: Int? = null,
 )
 
 /** `POST /api/plans/:id/report` body: reason is spam, harassment, inappropriate, misinformation, safety or other. */

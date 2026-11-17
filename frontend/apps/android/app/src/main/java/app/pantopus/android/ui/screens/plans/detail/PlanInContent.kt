@@ -84,6 +84,8 @@ internal fun ColumnScope.PlanInBody(
     bring: PlanBringActions? = null,
     /** Business track B5: "Pay at {business}" and the guest's check. */
     payHere: PlanPayHereEntry? = null,
+    /** An extra changed the plan (the holidays' spots given back): read it again. */
+    onExtrasChanged: () -> Unit = {},
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -99,6 +101,8 @@ internal fun ColumnScope.PlanInBody(
     }
     // Business track B2: "Paid $18.00" and "Receipt" under the title, once the guest paid for the spot.
     PlanPaidRow(plan)
+    // The holidays' one person pays for the group (board 31): the buyer's spots and link, or who paid a claimer's.
+    PlanGroupPayIfAny(plan, onChanged = onExtrasChanged)
     // Business track B1 (D2): before a group deal settles (or after it fell short) D1's card; then "Your deal".
     plan.deal?.let { deal ->
         if (deal.isGroup && !deal.isUnlocked) PlanDealCard(plan, deal, onShare = rememberDealShare(plan))

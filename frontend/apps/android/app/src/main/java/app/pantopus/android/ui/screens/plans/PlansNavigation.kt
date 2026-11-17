@@ -30,6 +30,9 @@ object PlansRoutes {
     const val REVEAL_KEY = "reveal"
     const val INVITE_KEY = "invite"
     const val OPEN_KEY = "open"
+
+    /** The holidays' one person pays for the group: a spot someone paid for, from `/plan-link/:id?spot=`. */
+    const val SPOT_KEY = "spot"
     const val KIND_KEY = "kind"
     const val GAME_KEY = "game"
     const val AGAIN_KEY = "again"
@@ -46,7 +49,7 @@ object PlansRoutes {
      */
     const val PLAN =
         "plans/{$PLAN_ID_KEY}?$ASK_KEY={$ASK_KEY}&$REVEAL_KEY={$REVEAL_KEY}&$INVITE_KEY={$INVITE_KEY}&$VIA_KEY={$VIA_KEY}" +
-            "&$OPEN_KEY={$OPEN_KEY}"
+            "&$OPEN_KEY={$OPEN_KEY}&$SPOT_KEY={$SPOT_KEY}"
 
     /** The host's requests (H10). */
     const val REQUESTS = "plans/{$PLAN_ID_KEY}/requests"
@@ -80,9 +83,11 @@ object PlansRoutes {
         invite: String? = null,
         via: String? = null,
         open: String? = null,
+        spot: String? = null,
     ): String =
         "plans/${Uri.encode(id)}?$ASK_KEY=$ask&$REVEAL_KEY=$reveal" + invite?.let { "&$INVITE_KEY=${Uri.encode(it)}" }.orEmpty() +
-            via?.let { "&$VIA_KEY=${Uri.encode(it)}" }.orEmpty() + open?.let { "&$OPEN_KEY=${Uri.encode(it)}" }.orEmpty()
+            via?.let { "&$VIA_KEY=${Uri.encode(it)}" }.orEmpty() + open?.let { "&$OPEN_KEY=${Uri.encode(it)}" }.orEmpty() +
+            spot?.let { "&$SPOT_KEY=${Uri.encode(it)}" }.orEmpty()
 
     fun requests(id: String): String = "plans/${Uri.encode(id)}/requests"
 
@@ -186,6 +191,11 @@ private fun planArguments() =
             defaultValue = null
         },
         navArgument(PlansRoutes.OPEN_KEY) {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+        },
+        navArgument(PlansRoutes.SPOT_KEY) {
             type = NavType.StringType
             nullable = true
             defaultValue = null

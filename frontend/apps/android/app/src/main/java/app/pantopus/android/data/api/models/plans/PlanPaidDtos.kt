@@ -48,6 +48,9 @@ data class PlanPersonPaidDto(
 data class PlanQuoteBody(
     @Json(name = "party_size") val partySize: Int,
     @Json(name = "kids_count") val kidsCount: Int? = null,
+    /** The holidays' one person pays for the group: `link` with [spots] (2 up to the room) quotes spots to share. */
+    @Json(name = "for") val forWhom: String? = null,
+    @Json(name = "spots") val spots: Int? = null,
 )
 
 /** P1's amounts for a party, worked out by the server: "2 spots", "$18 each", "$36.00", the group price, the refund line. */
@@ -62,6 +65,11 @@ data class PlanQuoteDto(
     /** B4: a group price's card; null without one, or once it fell short. */
     @Json(name = "group") val group: PlanQuoteGroupDto? = null,
     @Json(name = "refund_text") val refundText: String? = null,
+    /** The holidays' one person pays for the group, while it is on: "Who are they for?" and the room left. */
+    @Json(name = "group_pay") val groupPay: PlanGroupPayChoiceDto? = null,
+    /** A link's quote: how many the link holds and the server's note ("After you pay you get one link. …"). */
+    @Json(name = "link_spots") val linkSpots: Int? = null,
+    @Json(name = "note") val note: String? = null,
 )
 
 /** P1's group price card: open ("If 10 are in by …, everyone pays $14 and $4.00 comes back to your card.") or unlocked. */

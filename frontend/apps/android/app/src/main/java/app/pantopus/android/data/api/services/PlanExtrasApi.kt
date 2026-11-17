@@ -2,6 +2,7 @@ package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.plans.PlanChipInResponse
 import app.pantopus.android.data.api.models.plans.PlanChipInWhoBody
+import app.pantopus.android.data.api.models.plans.PlanClaimSpotBody
 import app.pantopus.android.data.api.models.plans.PlanDatePickBody
 import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
 import app.pantopus.android.data.api.models.plans.PlanDto
@@ -12,6 +13,7 @@ import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
 import app.pantopus.android.data.api.models.plans.PlanPhotosResponse
+import app.pantopus.android.data.api.models.plans.PlanSpotResponse
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -131,4 +133,26 @@ interface PlanExtrasApi {
         @Path("id") id: String,
         @Path("photoId") photoId: String,
     ): PlanPhotosResponse
+
+    // ---- 6. One person pays for the group (services/plans/planGroupPay.js); buying is the shipped join ----
+
+    /** `GET /api/plans/:id/spot?token=`: "Chris got you a spot", or why the link takes nobody now. */
+    @GET("api/plans/{id}/spot")
+    suspend fun spot(
+        @Path("id") id: String,
+        @Query("token") token: String,
+    ): PlanSpotResponse
+
+    /** `POST /api/plans/:id/requests/claim-spot`: in, free to the reader; answers the plan. */
+    @POST("api/plans/{id}/requests/claim-spot")
+    suspend fun claimSpot(
+        @Path("id") id: String,
+        @Body body: PlanClaimSpotBody,
+    ): PlanDto
+
+    /** `POST /api/plans/:id/requests/mine/give-back-spots`: the spots nobody took go back to the buyer's card; the plan. */
+    @POST("api/plans/{id}/requests/mine/give-back-spots")
+    suspend fun giveBackSpots(
+        @Path("id") id: String,
+    ): PlanDto
 }
