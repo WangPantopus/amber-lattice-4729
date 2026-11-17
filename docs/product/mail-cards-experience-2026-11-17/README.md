@@ -177,15 +177,45 @@ Done when: the second card goes out with the same picture in three pages on each
 
 ## Part 7. The mantel
 
-**What changes:** this season's opened cards stand on a shelf at the top of the Mailbox, as cards stand on a mantel at home. Design first: nothing is built until the founder approves one sample picture (D6).
+**What changes:** this season's opened cards stand on a shelf at the top of the Mailbox, as cards stand on a mantel at home. The founder approved the look on November 17 from this sample:
 
-- **Where:** the top of the Mailbox's personal list, on web, iPhone and Android, when the person has at least one opened Christmas card this season.
-- **What shows:** a wooden shelf about 150 pt tall. The opened cards stand on it, newest at the left, each the real card face about 84 pt wide, leaning back a little, with a soft shadow on the wall and a sprig of fir at one end. Three and a half show; the rest scroll sideways.
-- **Tapping a card** opens it on its table, already out of its envelope.
-- **Not on the shelf:** unopened cards, sealed cards and cards the person sent. Their rows stay as they are. Opened cards also keep their rows, so nothing moves out of the list.
-- **Season:** from the first opened card until January 6. After that the shelf goes and the cards stay where they are today.
-- **New art:** one shelf picture for light mode and one for dark, made with the art scripts in the launch kit's `streams/CARDTABLE`.
-- No server change: the personal list already carries each opened card's picture.
+![The mantel at the top of Mail, light and dark](mantel/mantel-sample.jpg)
+
+The sample's source is [mantel/mantel.html](mantel/mantel.html); open it from the repository. It is the source of truth for anything not spelled out here. The grey rows and the tab bar in it are stand-ins: the real Mailbox list and tab bar stay as they are.
+
+**Where and when**
+
+- The first thing in the Mailbox's personal list, on web, iPhone and Android, when that list holds at least one opened Christmas card from this season. It scrolls away with the list; it is not pinned.
+- On the shelf: opened Christmas cards the person received. Not on it: unopened cards, sealed cards, replies, and cards the person sent.
+- Opened cards also keep their rows in the list, so nothing moves out of it.
+- From the first opened card through January 6 by the person's own clock. After that the shelf goes and the cards stay where they are today.
+- No server change: the personal list already carries each opened card's picture. The shelf shows the opened cards the list has loaded, newest opened at the left, 30 at most.
+
+**The drawing** (points; the strip is as wide as the list)
+
+| Piece | How |
+|---|---|
+| The strip | 182 tall, the page's own colour behind it. No box and no edge. |
+| The light | A warm pool behind the cards: a radial fade centred 46% across and 62% down, 62% of the strip wide and 70% tall, to nothing at 72%. Light mode `rgba(255, 226, 170, 0.55)`, dark mode `rgba(255, 196, 120, 0.16)`. |
+| The shelf | Art, `mantel-shelf-light.webp` and `mantel-shelf-dark.webp` (1200 × 50 at 3×, its shadow included). Its left end is 12 from the strip's left edge, its top 143 from the strip's top. It runs off the right edge. It does not move when the cards scroll. |
+| A card | The app's own small card face with its caption strip, 88 wide and 105.6 tall. Its lower edge is 38 above the strip's bottom, on the shelf's top surface. |
+| Its lean | Tipped back 11° about its lower edge, with a perspective of 520. Turned between −2.4° and +2.4°, taken from the card's number with the same seeded numbers the note's words use, so a card stands the same way every time. |
+| Its shadows | On the wall: 7 right, 2 down, 5 soft, `rgba(60, 40, 10, 0.26)` in light mode and `rgba(0, 0, 0, 0.6)` in dark. On the shelf: an ellipse 88 × 7 under the card, 38% black at its middle fading to nothing. |
+| The row | The first card's left edge is 74 from the strip's left edge, 13 between cards, 16 after the last. About three and a half show on a phone; the row scrolls sideways under the finger. |
+| The fir sprig | Art, `mantel-sprig.webp` (104 × 68 at 3×, its shadow included), at the strip's left edge, its top 90 from the strip's top. It lies on the shelf's top surface, drawn in front of the cards, and scrolls with them. |
+
+**Using it**
+
+- Tapping a card opens it on its table, already out of its envelope, as its row does.
+- Screen readers: the shelf is a list named "Your Christmas cards, {n}". Each card reads "Card from {first name}: {caption}".
+- Nothing on it moves by itself, so Reduce Motion changes nothing.
+- The iPhone Duo, open or closed, and the web at desktop width show the same strip across the list's column.
+
+**The art** is in [mantel/art](mantel/art), rendered from the approved sample. Each app ships its own copy: the web under `frontend/apps/web/public/holiday-cards/table/`, the iPhone as loose WebP resources beside the table's art, Android in `res/drawable-nodpi`. Do not redraw the wood or the sprig in code.
+
+Files. Web: the personal list's page under `app/(site)/(app)/app/mailbox/`, `MailRow`, the card face in `mailbox/cards/CardPaper.tsx`. iPhone: the Mailbox list screen, `HolidayCardListViews.swift`, `HolidayCardView.swift`. Android: the Mailbox list screen, `HolidayCardRow.kt`, `table/CardFacePainter.kt`. Confirm each before editing.
+
+Done when, on each app: with no opened card there is no strip; with one, it stands on the shelf; with five, the row scrolls and the shelf stays still; light and dark match the sample; a tap opens that card on its table; an unopened, a sealed and a sent card are not on the shelf; the strip scrolls away with the list; a relaunch shows the same cards at the same angles; with the phone's clock on January 7 the strip is gone and the rows remain.
 
 ---
 
@@ -213,7 +243,7 @@ Done when: the second card goes out with the same picture in three pages on each
 |---|---|---|
 | A | Part 1, Part 2, Part 8, Part 5, Part 4, Part 6, in that order | Apps and web only. The wave to get into the next store builds. |
 | B | Part 3 | Server first, then the three apps. One new server switch. The server work starts alongside wave A. |
-| C | Part 7 | After the founder approves its sample picture. |
+| C | Part 7 | The founder approved its sample on November 17. New art, already made. |
 
 Each line is a small set of pull requests into `dev`: web (with the server where there is one), iPhone with the Duo, Android.
 
@@ -226,6 +256,7 @@ November 17, 2026. The plan offered seven decisions with defaults. The founder's
 - On Look it over's bottom panel: "at the current "Seal and send" screen, this part is always floating on top of the screen to block a big part view of the screen, which is what "Look it over" for, users want to view the mail card that they are about to send, now we block part of the screen using this, which is not a very nice experience. We can still use this but maybe change to a different way of doing it."
 - On who builds: "when building this, let's use Opus 5.5 model at Extra High instead of Fable 5.2."
 - On everything else: "These are all the things to change or add, otherwise please use your proposed points on all other things."
+- On the mantel's sample picture, asked "Do you approve the mantel's look in the sample picture?": "Yes, build it"
 
 So:
 
@@ -236,13 +267,13 @@ So:
 | D3 | The reply button reads "Write back to {first name}", not November 2's "Add your memory" | Yes |
 | D4 | Replies get their own server switch, `card_replies`, on in staging and off in production until the founder sets it | Yes |
 | D5 | Was: a card to one person skips Look it over. | **No.** Replaced by Part 5: "Seal and send" above "Look it over" on "Seal it for the day", and Look it over keeps only its button at the bottom. How the panel changes (5.2) is the design session's reading of "a different way of doing it". |
-| D6 | The mantel is built only after the founder approves one sample picture, which the design session makes | Yes |
+| D6 | The mantel is built only after the founder approves one sample picture, which the design session makes | Yes. The sample was approved the same day (Part 7). |
 | D7 | The three pen sizes as in the picture above (30, 27 and 23 pt on an iPhone 17) and the slightly stronger ink | Yes |
 
 ## How the build runs
 
 - Three build sessions on Opus 5.5 at Extra High, each in its own worktree and branch from `origin/dev`: server and web (label CARDUX-WEB), iPhone with the Duo (CARDUX-IOS), Android (CARDUX-AND). Each owns its own area and asks the owning session for a change in another.
-- The design session that wrote this plan writes no app code and reviews none. It answers design questions left in the notes file and draws the mantel's sample.
+- The design session that wrote this plan writes no app code and reviews none. It answers design questions left in the notes file. It drew the mantel's sample and its art.
 - One shared notes file, `~/pantopus-plans/card-ux-notes/NOTES.md`: the rig's addresses, choices a session made, the reply's answer shapes, and one status line per pull request. Every session reads it before each part and appends to it.
 - Every pull request goes into `dev` (`--base dev`), never master. Each session merges its own after green CI and a real-app check. Only the founder promotes staging to production.
 - A session never ends a turn with a question to the founder. It picks the choice, writes it in the shared notes file, and carries on. It keeps working through the condensing of its context and writes must-keep facts to the notes file first.
@@ -253,7 +284,7 @@ So:
 - File names above were read on `dev` at `203707f4bf`. Confirm each before editing.
 - The card table runs with no backend at `/dev/card-film` on a web dev server with the card switches on (`?scene=open`, `sealed`, `send` or `rack`). It is the quickest place to see Parts 1, 2 and 8.
 
-The founder's own steps: approving the mantel's sample, switching `card_replies` on in production, promoting staging to production, and the next iPhone and Android store builds.
+The founder's own steps: switching `card_replies` on in production, promoting staging to production, and the next iPhone and Android store builds.
 
 ## Not verified in this review
 
