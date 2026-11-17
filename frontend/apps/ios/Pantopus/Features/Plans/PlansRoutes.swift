@@ -27,6 +27,23 @@ enum PlansRoute: Hashable {
     case editPost(postId: String)
     /// A DM opened from a profile's Message button.
     case chat(InboxConversationDestination)
+    /// Plans for the holidays B5: the guest's check (C1, C2 once paid).
+    case check(planId: String)
+    /// B5: the business's guest list with money (C3).
+    case checks(planId: String)
+    /// B5: the conversation with the business about a payment, its first line typed (C2).
+    case chatAbout(InboxConversationDestination, firstLine: String)
+}
+
+extension PlansRoute {
+    /// A screen a link opens over its plan: "Who's coming" (`/plans/:id/guests`) or the check (`/plans/:id/check`).
+    static func screen(over link: DeepLinkRouter.Destination) -> PlansRoute? {
+        switch link {
+        case let .planGuests(id): .whosComing(planId: id)
+        case let .planCheck(id): .check(planId: id)
+        default: nil
+        }
+    }
 }
 
 /// Hand-off into the Plans tab's stack from outside it: a deep link, a push,

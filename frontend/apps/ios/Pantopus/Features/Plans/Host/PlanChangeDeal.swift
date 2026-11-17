@@ -180,6 +180,6 @@ extension PlanCardDTO {
 
     /// Guests pay their bill here (B5), for a deal on the bill.
     var dealOnBill: Bool {
-        false
+        payHere != nil
     }
 }

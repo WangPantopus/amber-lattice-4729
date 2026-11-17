@@ -152,10 +152,15 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var deal: PlanDealInput?
     /// B2: a business's price a spot, in cents (100 to 50000). Left out for a free plan.
     public var priceCents: Int?
+    /// B5: guests pay their bill here, and take tips (left out: the server's start for the kind).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
         case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
@@ -223,10 +228,15 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var priceCents: PlanPriceChange?
     /// Plans for the holidays (the Change screen of a private plan): guests say how many adults and kids.
     public var kidsWelcome: Bool?
+    /// B5: guests pay their bill here, and take tips; any time (contract 10.2).
+    public var payHere: Bool?
+    public var tipsOn: Bool?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
         case priceCents = "price_cents"
+        case payHere = "pay_here"
+        case tipsOn = "tips_on"
         case kidsWelcome = "kids_welcome"
         case repeatChange = "repeat"
         case startsAt = "starts_at"

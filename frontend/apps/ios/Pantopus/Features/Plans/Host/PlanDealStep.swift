@@ -117,6 +117,6 @@ extension PlanComposerModel {
 
     /// Guests pay their bill here (B5), for a deal on the bill.
     var dealOnBill: Bool {
-        false
+        offersPayHere && money.payHere && hostAs?.payoutsReady == true
     }
 }
