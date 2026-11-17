@@ -87,7 +87,7 @@ internal fun NoteBookmark(
     val heading = remember(card.fromFirst, card.mailedOn) { printHeading(card) }
     TableBookmark(pane = "The note", tag = "cardTablePrint", closeTag = "cardTablePrintClose", bottom = bottom, onClose = onClose) {
         Text(heading, style = bookmarkFromStyle, modifier = Modifier.fillMaxWidth().testTag("cardTablePrintFrom"))
-        Text(card.note, style = bookmarkNoteStyle, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).testTag("cardTablePrintNote"))
+        Text(card.note, style = bookmarkNoteStyle, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).testTag("cardTablePrintWords"))
     }
 }
 
