@@ -314,6 +314,8 @@ data class PlanDto(
     @Json(name = "dates") val dates: PlanDatesDto? = null,
     /** "Picking a date" where lists show the time, while the host is picking. */
     @Json(name = "time_text") val timeText: String? = null,
+    /** The holidays' gift exchange (extras section 4, `extras=1`): for the host and people who are in only. */
+    @Json(name = "gift") val gift: PlanGiftDto? = null,
     /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */
@@ -676,6 +678,8 @@ data class CreatePlanBody(
     @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
     /** The holidays' find a date: two to five times guests tick; the plan's own time is the earliest. No repeat. */
     @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
+    /** The holidays' gift exchange: how much each spends and when names are drawn. */
+    @Json(name = "gift") val gift: PlanGiftInput? = null,
     /** Business track B1: a business's deal (D3); none leaves it out. */
     @Json(name = "deal") val deal: PlanDealInput? = null,
     /** Business track B2: a spot's price in cents ($1 to $500); none is free. */
@@ -724,6 +728,8 @@ data class UpdatePlanBody(
     @Json(name = "date_options") val dateOptions: List<PlanDateOptionInput>? = null,
     /** The holidays' chip in, changed: who paid is kept. Taking it away (`"chip_in": null`) is `updateClearing`. */
     @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
+    /** The holidays' gift exchange, changed (after the draw only the budget counts). Calling it off is `"gift": null`. */
+    @Json(name = "gift") val gift: PlanGiftInput? = null,
 )
 
 /** `POST /api/plans/:id/cancel` body. */

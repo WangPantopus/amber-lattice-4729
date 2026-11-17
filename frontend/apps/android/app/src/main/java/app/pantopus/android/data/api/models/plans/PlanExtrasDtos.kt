@@ -182,3 +182,70 @@ data class PlanDateOptionInput(
 data class PlanDatePickBody(
     @Json(name = "option_id") val optionId: String,
 )
+
+// ---- 4. Gift exchange (boards 26 and 28, switch `plans_gift_exchange`): nobody sees who drew whom ----
+
+/**
+ * The card's `gift`, for the host and people who are in. Every word naming money or a date is the server's
+ * ([budgetText], [drawText], [joinedText]). [mine] carries the reader's own name drawn, and nobody else's.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanGiftDto(
+    @Json(name = "budget_cents") val budgetCents: Int = 0,
+    @Json(name = "budget_text") val budgetText: String = "",
+    @Json(name = "draw_at") val drawAt: String? = null,
+    @Json(name = "draw_text") val drawText: String = "",
+    @Json(name = "state") val state: String = "open",
+    @Json(name = "joined") val joined: Int = 0,
+    @Json(name = "joined_text") val joinedText: String = "",
+    @Json(name = "can_join") val canJoin: Boolean = false,
+    @Json(name = "mine") val mine: PlanGiftMineDto? = null,
+) {
+    val isDrawn: Boolean get() = state == "drawn"
+
+    // Never print the name drawn into a log line or a crash report.
+    override fun toString(): String = "PlanGiftDto(state=$state, joined=$joined)"
+}
+
+/** The reader's own part: joined or not, their wish, and after the draw who they give to with the server's lines. */
+@JsonClass(generateAdapter = true)
+data class PlanGiftMineDto(
+    @Json(name = "in") val joined: Boolean = false,
+    @Json(name = "wish") val wish: String? = null,
+    @Json(name = "giving_to") val givingTo: PlanGiftReceiverDto? = null,
+    @Json(name = "wish_text") val wishText: String? = null,
+    @Json(name = "secret_text") val secretText: String? = null,
+) {
+    override fun toString(): String = "PlanGiftMineDto(joined=$joined)"
+}
+
+/** The person the reader drew: in the reader's own card only, read with the plan's page and kept in memory only. */
+@JsonClass(generateAdapter = true)
+data class PlanGiftReceiverDto(
+    @Json(name = "name") val name: String = "",
+    @Json(name = "wish") val wish: String? = null,
+) {
+    override fun toString(): String = "PlanGiftReceiverDto(…)"
+}
+
+/**
+ * The host form's `gift`: $1 to $500 each, and when names are drawn (between now and the plan's start). After the draw
+ * a change takes the budget alone ([drawAt] left out; the server keeps its own, #4329).
+ */
+@JsonClass(generateAdapter = true)
+data class PlanGiftInput(
+    @Json(name = "budget_cents") val budgetCents: Int?,
+    @Json(name = "draw_at") val drawAt: String?,
+)
+
+/** "Join" and "Change": a wish of 0 to 120 characters. */
+@JsonClass(generateAdapter = true)
+data class PlanGiftWishBody(
+    @Json(name = "wish") val wish: String,
+)
+
+/** What the gift routes answer. */
+@JsonClass(generateAdapter = true)
+data class PlanGiftResponse(
+    @Json(name = "gift") val gift: PlanGiftDto? = null,
+)

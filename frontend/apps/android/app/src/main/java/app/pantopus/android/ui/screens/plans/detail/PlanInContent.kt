@@ -107,6 +107,8 @@ internal fun ColumnScope.PlanInBody(
     if (payHere != null) PlanPayHereRow(plan, payHere)
     // The holidays' chip in (extras section 3, board 27).
     PlanChipInIfAny(plan)
+    // The holidays' gift exchange (extras section 4, board 28).
+    PlanGiftIfAny(plan, isHost = false)
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
     val list = plan.bring
     if (list != null && bring != null) {

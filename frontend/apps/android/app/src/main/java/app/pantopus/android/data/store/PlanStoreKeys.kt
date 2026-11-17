@@ -91,7 +91,8 @@ object PlanStoreKeys {
 
 /**
  * True when a reply carries a plan's private part, which never goes on the phone: the place, the people, the chat, and
- * the holidays' chip-in payment link (only the host and people who are in may read it, 08-extras section 3).
+ * the holidays' chip-in payment link (only the host and people who are in may read it, 08-extras section 3), and the gift
+ * exchange, whose card may name who the reader drew (section 4): never on disk, where another account could read it.
  */
 private fun PlanDto.carriesPrivatePart(): Boolean =
-    (place != null && business == null) || people != null || chatRoomId != null || chipIn != null
+    (place != null && business == null) || people != null || chatRoomId != null || chipIn != null || gift != null

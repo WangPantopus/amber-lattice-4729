@@ -7,6 +7,8 @@ import app.pantopus.android.data.api.models.plans.PlanDatesMineBody
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFromPlanBody
 import app.pantopus.android.data.api.models.plans.PlanFromPlanResponse
+import app.pantopus.android.data.api.models.plans.PlanGiftResponse
+import app.pantopus.android.data.api.models.plans.PlanGiftWishBody
 import app.pantopus.android.data.api.models.plans.PlanPastPeopleDto
 import app.pantopus.android.data.api.models.plans.PlanPastPlansResponse
 import app.pantopus.android.data.api.net.NetworkResult
@@ -57,4 +59,20 @@ class PlanExtrasRepository
             id: String,
             optionId: String,
         ): NetworkResult<PlanDto> = safeApiCall { api.pickDate(id, PlanDatePickBody(optionId)) }
+
+        // ---- 4. Gift exchange (the name drawn is never logged or kept: the answer goes back to the card only) ----
+
+        /** "Join" (or "Save" once joined, [joined]) with [wish]. */
+        suspend fun saveGiftWish(
+            id: String,
+            wish: String,
+            joined: Boolean,
+        ): NetworkResult<PlanGiftResponse> =
+            safeApiCall {
+                if (joined) api.changeGiftWish(id, PlanGiftWishBody(wish)) else api.joinGift(id, PlanGiftWishBody(wish))
+            }
+
+        suspend fun leaveGift(id: String): NetworkResult<PlanGiftResponse> = safeApiCall { api.leaveGift(id) }
+
+        suspend fun drawGift(id: String): NetworkResult<PlanGiftResponse> = safeApiCall { api.drawGift(id) }
     }
