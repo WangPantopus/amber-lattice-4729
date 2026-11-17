@@ -454,7 +454,7 @@ yes to both, told to the founder):
 - **When nobody new is invited** (settled November 16 after Android's check
   read "Invited 0."): `text` reads "Nobody new was invited.", with the
   text-only sentence after it when there is one. The apps show `text` as it
-  comes.
+  comes. On the server since 4304.
 - **The address stays hidden afterwards too.** One added column,
   `PlanInvite.known_name` (email invitations only, 1 to 100 characters; a
   column, not a table): an email invitation made this way keeps the name the
