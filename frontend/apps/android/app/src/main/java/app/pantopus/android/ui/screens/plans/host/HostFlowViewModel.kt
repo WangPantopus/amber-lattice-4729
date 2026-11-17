@@ -1501,10 +1501,16 @@ private fun filledFrom(
     val fills = occasion.fills
     val (start, end) = occasionTimes(draft, fills, ui.zone)
     val title = fills?.title?.takeIf(String::isNotBlank)
+    val isPrivate = occasionIsPrivate(ui, occasion) || draft.isPrivate
+    // The occasion's room (server #4227), within what this form allows once who it's for is set.
+    val privateHere = isPrivate && ui.showsAudience
+    val roomMax = if (ui.guestAnswersOn && privateHere && draft.kind?.countsPeople == true) ROOM_FOR_MAX else MAX_SPOTS
+    val spots = fills?.spots?.takeIf { it > 0 }?.coerceAtMost(roomMax) ?: draft.spots
     return draft.copy(
         title = title ?: draft.title,
         titleEdited = title != null || draft.titleEdited,
-        isPrivate = occasionIsPrivate(ui, occasion) || draft.isPrivate,
+        isPrivate = isPrivate,
+        spots = spots,
         atHome = (fills?.placeKind == "home" && ui.home != null) || draft.atHome,
         start = start,
         end = end,

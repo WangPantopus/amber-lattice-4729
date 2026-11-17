@@ -34,10 +34,17 @@ struct CardMediaBeside: View {
                     aspect: photo.aspect,
                     alt: photo.alt,
                     datedOn: mood == .nostalgia ? day : nil,
-                    fromName: fromName
+                    fromName: fromName,
+                    live: photo.live != nil
                 ) {
-                    // Their own photo: "Your photo" to a screen reader.
-                    opened = CardPhotoOpened(source: from.source(photo.fileId), aspect: photo.aspect, alt: photo.alt)
+                    // Their own photo: "yours" to a screen reader.
+                    opened = CardPhotoOpened(
+                        source: from.source(photo.fileId),
+                        aspect: photo.aspect,
+                        alt: photo.alt,
+                        live: photo.live.map { from.source($0.fileId) },
+                        liveType: photo.live?.mimeType
+                    )
                 }
                 .frame(maxWidth: 190)
             }

@@ -91,9 +91,9 @@ struct PlanCheckScreen: View {
         }
         .refreshable { await model.load() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let check = model.check {
+            if model.check != nil {
                 Button { Task { await model.pay() } } label: {
-                    PlanButtonLabel(title: "Pay \((model.shown ?? check).totalText)", kind: .primary, isLoading: model.isWorking)
+                    PlanButtonLabel(title: model.payTitle, kind: .primary, isLoading: model.isWorking || model.isQuoting)
                 }
                 .planButton(.primary)
                 .disabled(!model.canPay)

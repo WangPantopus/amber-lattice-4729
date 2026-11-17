@@ -38,6 +38,9 @@ final class PlanCheckModel {
     private(set) var shown: PlanCheckDTO?
     private(set) var canStart = false
     private(set) var tip: Tip?
+    /// The tip `shown` is the server's quote for; Pay waits until it is the chosen tip.
+    private(set) var quotedTip: Tip?
+    private(set) var isQuoting = false
     private(set) var isWorking = false
     var problem: String?
 
@@ -53,10 +56,21 @@ final class PlanCheckModel {
         card?.business?.name ?? "the business"
     }
 
-    /// Paying is open once a tip is chosen ("No tip" counts), or at once on a check that takes no tip.
+    /// Paying is open at once on a check that takes no tip; with tips, once a tip is chosen ("No tip" counts) and the
+    /// total on the button is the server's quote for that tip, the one `…/pay` will send (contract 11.2).
     var canPay: Bool {
-        guard let check, check.isOpen, !isWorking else { return false }
-        return !check.tipsOn || tip != nil
+        guard let check, check.isOpen, !isWorking, !isQuoting else { return false }
+        guard check.tipsOn else { return true }
+        guard let tip, quotedTip == tip, shown != nil else { return false }
+        return true
+    }
+
+    /// The button's words: the server's total for what Pay sends, and no amount while a tip is being quoted.
+    var payTitle: String {
+        guard let check else { return "Pay" }
+        guard check.tipsOn, tip != nil else { return "Pay \(check.totalText)" }
+        guard let shown, quotedTip == tip else { return "Pay" }
+        return "Pay \(shown.totalText)"
     }
 
     func load() async {
@@ -68,6 +82,7 @@ final class PlanCheckModel {
             canStart = answer.canStart
             if answer.check?.id != check?.id || answer.check?.state != check?.state {
                 tip = nil
+                quotedTip = nil
                 shown = nil
             }
             check = answer.check
@@ -92,6 +107,7 @@ final class PlanCheckModel {
             self.check = answer.check
             self.shown = nil
             self.tip = nil
+            self.quotedTip = nil
         }
     }
 
@@ -106,6 +122,7 @@ final class PlanCheckModel {
 
     func choose(_ choice: Tip) async {
         tip = choice
+        quotedTip = nil
         problem = nil
         await quote(choice)
     }
@@ -123,31 +140,37 @@ final class PlanCheckModel {
         guard let check else { return }
         quoteToken += 1
         let token = quoteToken
+        isQuoting = true
+        defer { if token == quoteToken { isQuoting = false } }
         do {
             let answer: PlanCheckResponse = try await api.request(
                 PlansEndpoints.quoteCheck(planId: planId, checkId: check.id, PlanCheckTipBody(tipCents: cents(for: choice)))
             )
             guard token == quoteToken else { return }
             shown = answer.check
-        } catch is CancellationError {
+            quotedTip = choice
         } catch {
             guard token == quoteToken else { return }
-            if case .other = choice { tip = nil }
+            // No quote, no amount to stand behind: the guest chooses again.
+            tip = nil
+            quotedTip = nil
             shown = nil
-            problem = PlanErrors.sentence(for: error)
+            if !(error is CancellationError) { problem = PlanErrors.sentence(for: error) }
         }
     }
 
     /// C1 "Pay": the server's payment for its total, the shipped sheet, then confirm. Answers whether it was paid.
     func pay(presenter: PaymentSheetPresenting = StripePaymentSheetPresenter()) async {
         guard let check, canPay else { return }
+        // The tip the button's total was quoted for (none on a check that takes no tip).
+        let tipCents = check.tipsOn ? quotedTip.map(cents(for:)) ?? 0 : 0
         isWorking = true
         problem = nil
         defer { isWorking = false }
         let reply: PlanCheckPayResponse
         do {
             reply = try await api.request(
-                PlansEndpoints.payCheck(planId: planId, checkId: check.id, PlanCheckTipBody(tipCents: tip.map(cents(for:)) ?? 0))
+                PlansEndpoints.payCheck(planId: planId, checkId: check.id, PlanCheckTipBody(tipCents: tipCents))
             )
         } catch {
             problem = PlanErrors.sentence(for: error)
@@ -180,6 +203,7 @@ final class PlanCheckModel {
                 check = answer.check
                 shown = nil
                 tip = nil
+                quotedTip = nil
                 PlansStoreReads.changed(planId: planId)
                 return
             } catch let APIError.clientError(_, body) where PlanErrors.code(in: body) == "payment_not_complete" && attempt < 2 {

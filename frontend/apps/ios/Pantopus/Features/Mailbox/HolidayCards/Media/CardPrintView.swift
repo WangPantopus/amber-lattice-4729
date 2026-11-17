@@ -42,6 +42,8 @@ struct CardPrintView: View {
     /// Uploading: a red bar runs along the print's foot until it's stored.
     var uploading = false
     var tilt: Double = -3
+    /// The photo is a Live Photo: a small LIVE mark in its corner (its moving part plays in the opened photo).
+    var live = false
     /// A tap on the photo opens it over the whole screen; nil where it only shows (while it's being added).
     var onOpen: (() -> Void)?
 
@@ -137,6 +139,12 @@ struct CardPrintView: View {
                 endPoint: .bottomTrailing
             )
             .allowsHitTesting(false)
+            if shown != nil, live {
+                CardLiveMark(size: min(11, max(7, width * 0.055)))
+                    .padding(width * 0.035)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .allowsHitTesting(false)
+            }
             if shown != nil, let date = Self.printedDate(datedOn) {
                 Text(verbatim: date)
                     .font(.system(size: min(15, max(10, width * 0.04)), weight: .bold, design: .monospaced))
@@ -152,7 +160,9 @@ struct CardPrintView: View {
         .clipped()
         .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: shown != nil)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(alt.map { "Photo: \($0)" } ?? (fromName.isEmpty ? "Your photo" : "Photo from \(first)"))
+        .accessibilityLabel(
+            (live ? "Live Photo" : "Photo") + (alt.map { ": \($0)" } ?? (fromName.isEmpty ? ", yours" : " from \(first)"))
+        )
         .accessibilityAddTraits(.isImage)
     }
 
