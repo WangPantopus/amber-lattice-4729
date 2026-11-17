@@ -164,6 +164,8 @@ final class GigComposeViewModel: WizardModel, WizardDraftSaving {
 
     /// "A place" — address suggestions under Street (`GET /api/geo/autocomplete`).
     private(set) var placeSuggestions: [GeoSuggestion] = []
+    /// The person's own home's point, for nearby address suggestions.
+    private var placeSearchArea: (latitude: Double, longitude: Double)?
     private(set) var isFindingPlace = false
     private(set) var placeSearchError: String?
 
@@ -1492,7 +1494,11 @@ extension GigComposeViewModel {
             defer { if placeRevision == revision { isFindingPlace = false } }
             do {
                 try await Task.sleep(for: .milliseconds(300))
-                let response: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: query))
+                // Nearby first: the person's own home's area (founder 2026-11-17).
+                if placeSearchArea == nil { placeSearchArea = await AddressSuggestions.anyHomePoint() }
+                let response: GeoAutocompleteResponse = try await api.request(
+                    GeoEndpoints.autocomplete(query: query, near: placeSearchArea)
+                )
                 guard placeRevision == revision else { return }
                 placeSuggestions = response.suggestions
                 if response.suggestions.isEmpty {

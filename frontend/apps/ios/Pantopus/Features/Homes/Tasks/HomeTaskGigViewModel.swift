@@ -65,6 +65,9 @@ final class HomeTaskGigViewModel {
     private var reloadQueued = false
     private var addressRevision = 0
     private static var active = Set<String>()
+    /// Address suggestions favor this task's Home's area (founder 2026-11-17).
+    private let searchHomeId: String
+    private var searchArea: (latitude: Double, longitude: Double)?
 
     init(
         homeId: String,
@@ -73,6 +76,7 @@ final class HomeTaskGigViewModel {
         access: HomeTaskAccess? = nil,
         store: any PendingHomeTaskGigStoring = PendingHomeTaskGigStore()
     ) {
+        searchHomeId = homeId
         let access = access ?? HomeTaskAccess(homeId: homeId, api: api)
         self.api = api
         self.access = access
@@ -351,7 +355,8 @@ extension HomeTaskGigViewModel {
         suggestions = []
         defer { if revision == activationRevision { findingAddress = false } }
         do {
-            let result: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: addressText))
+            if searchArea == nil { searchArea = await AddressSuggestions.homePoint(homeId: searchHomeId) }
+            let result: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: addressText, near: searchArea))
             try current(revision)
             guard queryRevision == addressRevision else { return }
             suggestions = result.suggestions

@@ -240,6 +240,13 @@ struct EventTypeEditorView: View {
                         .accessibilityLabel(field.label)
                         .accessibilityIdentifier("scheduling.eventType.locationDetail")
                 }
+                // In person, the detail is an address: suggestions as it's typed (founder 2026-11-17).
+                if viewModel.location == .inPerson {
+                    LocationSuggestionList(
+                        text: viewModel.locationDetail,
+                        identifier: "scheduling.eventType.locationSuggestion"
+                    ) { viewModel.locationDetail = $0 }
+                }
             }
         }
     }

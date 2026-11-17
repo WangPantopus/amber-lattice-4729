@@ -17,15 +17,17 @@ struct BusinessAddressField: View {
     let state: BizFieldState
     let onFieldChange: @MainActor (EditBusinessPageFieldKey, String) -> Void
     @State private var suggestions = AddressSuggestions()
-    private static let listId = "editBusinessPage.addressSuggestions"
+    private static let fieldId = "editBusinessPage.addressWithSuggestions"
 
     var body: some View {
-        // The list sits low on the page: it scrolls up above the keyboard when it appears.
+        // The field sits low on the page: when suggestions appear it moves to the top of what the
+        // keyboard leaves, with the first suggestions under it.
         ScrollViewReader { proxy in
             fieldAndList
+                .id(Self.fieldId)
                 .onChange(of: suggestions.suggestions.isEmpty) { _, empty in
                     guard !empty else { return }
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.listId, anchor: .bottom) }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.fieldId, anchor: .top) }
                 }
         }
         // Nearby first: the owner's own home's area (founder 2026-11-17).
@@ -60,7 +62,6 @@ struct BusinessAddressField: View {
                     if let zip = picked.zipcode, !zip.isEmpty { onFieldChange(.zip, zip) }
                 }
             }
-            .id(Self.listId)
         }
     }
 
