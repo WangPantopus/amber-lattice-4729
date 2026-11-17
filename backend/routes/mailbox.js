@@ -42,6 +42,8 @@ const cardEmail = require('../services/cardEmail');
 const cardMedia = require('../services/holidayCardMedia');
 const cardVoice = require('../services/cardVoice');
 const mailStamps = require('../services/mailStamps');
+const mailClaimCode = require('../services/mailClaimCode');
+const { clientIpKey } = require('../utils/clientIpKey');
 const { getPublicUrl } = require('../services/s3Service');
 const { personFindableBy } = require('./mailCompose');
 // A letter sent as a business names the business to everyone it reaches, never the person who sent it.
@@ -374,30 +376,9 @@ const ESCROW_MAX_SENDS_PER_CONTACT_DAYS = 30;
 // The link emailed or texted to someone not on Pantopus (services/cardEmail).
 const { escrowClaimLink } = cardEmail;
 
-/**
- * Constant-time comparison for claim tokens.
- * Prevents timing side-channel attacks on token validation.
- */
-function timingSafeTokenCompare(stored, provided) {
-  if (typeof stored !== 'string' || typeof provided !== 'string') return false;
-  const storedBuf = Buffer.from(stored, 'utf8');
-  const providedBuf = Buffer.from(provided, 'utf8');
-  if (storedBuf.length !== providedBuf.length) return false;
-  return crypto.timingSafeEqual(storedBuf, providedBuf);
-}
-
-// The claim token travels only in the link. The letter keeps its SHA-256 (escrow_claim_token_hash), so a Mail row
-// read back by a route (most select '*') or a copy of the database never holds a working link.
-function hashClaimToken(token) {
-  return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
-}
-
-// Letters stored before the hash kept the token itself.
-function claimTokenMatches(mail, provided) {
-  if (typeof provided !== 'string' || !provided) return false;
-  if (mail.escrow_claim_token_hash) return timingSafeTokenCompare(mail.escrow_claim_token_hash, hashClaimToken(provided));
-  return timingSafeTokenCompare(mail.escrow_claim_token, provided);
-}
+// The claim token travels only in the link; the letter keeps its SHA-256 (services/mailClaimCode, shared with the
+// one-time code that opens it).
+const { hashClaimToken, claimTokenMatches } = mailClaimCode;
 
 // A wrong id or token, and a letter that was never escrowed, get the same answer: the link doesn't work.
 const sendClaimLinkInvalid = (res) =>
@@ -425,6 +406,17 @@ function closedEscrowReason(mail) {
     return closed(410, `This ${thing} waited 90 days for you and has expired.`, 'MAIL_EXPIRED');
   }
   return null;
+}
+
+// The front of a card on its link's page (GET /claim/:mailId) and on Look it over's picture of that page: the stock
+// picture the sender picked, as the public /cards/<slug> page draws it, from the season's list alone (never the
+// stored caption). Nothing of the note, the signature, the sender's own photo or voice. A card sealed until Christmas
+// shows no front (null), and neither does a picture that isn't on the list.
+function cardLinkFront(card) {
+  if (!card || card.arrival === 'sealed_christmas') return null;
+  const design = holidayCards.designById(card.design);
+  if (!design) return null;
+  return { design: design.id, caption: design.caption, paper: design.paper, table: design.table || null };
 }
 
 // Who a letter a person sent in their own name is from on its link's page (GET /claim/:mailId), and on a card's look
@@ -2212,7 +2204,7 @@ router.get('/cards', verifyToken, async (req, res) => {
  * GET /api/mailbox/cards/designs
  * Public (no sign-in; on with Christmas cards): the season's pictures for the public card pages (/cards, /cards/<slug>),
  * where the Christmas card ads send people (founder, November 13: the pages open without the rest of card_table).
- * Only what's printed on a card anyway, never anyone's card. Cached an hour.
+ * Only what's printed on a card anyway, never anyone's card, and `free_cards` while digital stamps are on. Cached an hour.
  */
 router.get('/cards/designs', (req, res) => {
   if (!cardsOn()) return sendCardsOff(res);
@@ -2222,6 +2214,8 @@ router.get('/cards/designs', (req, res) => {
     collections: holidayCards.COLLECTIONS,
     designs: holidayCards.DESIGNS.map(({ id, number, slug, caption, paper, collection, table, verse }) =>
       ({ id, number, slug, caption, paper, collection, table, ...(verse ? { verse } : {}) })),
+    // With digital stamps on for everyone: the free cards an account starts with, for the pages' "first 3 are free".
+    ...(mailStamps.enabled() ? { free_cards: mailStamps.FREE_CARDS } : {}),
   });
 });
 
@@ -2654,7 +2648,7 @@ async function cardLook(senderId, checked, now) {
   if (toEmail || byLink) {
     const { senderName, senderVerified } = await claimPagePerson(senderId, senderDisplay);
     linkPage = { sender_name: senderName, sender_verified: senderVerified, sealed, sent_to: byLink ? '' : maskContact(toEmail),
-      sent_on: now.toISOString(), ...(byLink ? { by_link: true } : {}) };
+      sent_on: now.toISOString(), front: cardLinkFront({ ...card, arrival }), ...(byLink ? { by_link: true } : {}) };
   }
   return {
     piece: {
@@ -3088,8 +3082,14 @@ async function sentContexts(rows, userId) {
     [String(id), (await mailDelivery.personTimeZone(id)) || mailDelivery.FALLBACK_TIME_ZONE])));
   const toHousehold = (mail) => !mail.recipient_user_id && Boolean(mail.recipient_home_id);
   const ownHomes = new Set(rows.some(toHousehold) ? (await getAccessibleHomeIds(userId)).map(String) : []);
+  // Someone who opened it with a code may have no name yet: their stand-in ("Pantopus member") isn't one, so the
+  // address it went to stays.
+  const claimerName = (mail) => {
+    const shown = people.get(String(mail.recipient_user_id))?.displayName;
+    return shown && shown !== 'Pantopus member' ? shown : null;
+  };
   return rows.map((mail) => ({
-    toName: (mail.escrow_status === 'claimed' && people.get(String(mail.recipient_user_id))?.displayName)
+    toName: (mail.escrow_status === 'claimed' && claimerName(mail))
       || mail.mail_extracted?.card?.to_name
       || mail.mail_extracted?.card?.withdrawn?.to_name
       || (mail.escrow_recipient_contact ? maskContact(mail.escrow_recipient_contact) : null)
@@ -4065,7 +4065,9 @@ router.post('/send', verifyToken, validate(sendMailSchema), async (req, res) => 
  * GET /api/mailbox/claim/:mailId?token=…
  * Public (no sign-in): what the link in a letter's email or text opens (the web app's /open/:mailId page). It shows
  * who the letter is from and its preview, never the letter itself, which the person reads once it is in their
- * mailbox (POST /claim/:mailId). A letter sent as a business shows the business, never the person who sent it.
+ * mailbox (POST /claim/:mailId). A Christmas card shows its front, the stock picture the sender picked (`card.front`,
+ * null while it's sealed until Christmas), never its note, signature, photo or voice. A letter sent as a business
+ * shows the business, never the person who sent it.
  */
 router.get('/claim/:mailId', async (req, res) => {
   try {
@@ -4108,7 +4110,7 @@ router.get('/claim/:mailId', async (req, res) => {
     if (previewText && (mail.content_excerpt || '').length > previewText.length) {
       previewText = `${previewText.replace(/\s+\S*$/, '')}…`;
     }
-    // A Christmas card says only that it is one: no picture, no note, until it's in their mailbox.
+    // A Christmas card shows its front (the stock picture, unless it's sealed until Christmas), never its note.
     const card = holidayCards.isCard(mail) ? mail.mail_extracted.card : null;
     if (card) previewText = null;
 
@@ -4123,7 +4125,7 @@ router.get('/claim/:mailId', async (req, res) => {
         mailType: mail.mail_type || mail.type || null,
         outcomeDescription,
         card: card ? { holiday: card.holiday || holidayCards.SEASON.holiday, year: card.year || holidayCards.SEASON.year,
-          sealed: card.arrival === 'sealed_christmas', ...(card.by_link ? { by_link: true } : {}) } : null,
+          sealed: card.arrival === 'sealed_christmas', front: cardLinkFront(card), ...(card.by_link ? { by_link: true } : {}) } : null,
         // The address or number to sign in with, masked as in the sender's expiry notice. A card by link went to none.
         sentTo: card?.by_link ? '' : maskContact(mail.escrow_recipient_contact || ''),
         createdAt: mail.created_at,
@@ -4133,6 +4135,73 @@ router.get('/claim/:mailId', async (req, res) => {
   } catch (err) {
     logger.error('Escrow claim preview error', { error: err.message, mailId: req.params.mailId });
     return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// The one-time code from a letter's page: 10 asks every 15 minutes per network (IP, IPv6 by its /64), links that don't
+// work included. Then, only for a link that works (checked first, so nobody without it can use up someone's codes):
+// 5 an hour per letter, 5 an hour per address the code goes to, and one every 30 seconds per letter and address while
+// the last one is on its way. Each code replaces the one before it.
+const MAIL_CODE_LIMIT = { error: 'Too many codes asked for. Try again later, or sign in another way.', code: 'CODE_LIMIT' };
+const mailCodeNetworkLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, keyGenerator: clientIpKey, message: MAIL_CODE_LIMIT });
+// The 30-second one first, so asking again too soon doesn't use up the hour's codes.
+const mailCodeLetterLimiters = [
+  rateLimit({ windowMs: 30 * 1000, max: 1, skipFailedRequests: true, keyGenerator: (req, res) => `just:${req.params.mailId}:${res.locals.codeAddress}`,
+    message: { error: 'A code is on its way. Check your email, or ask for a new one in a moment.', code: 'CODE_JUST_SENT' } }),
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (req) => `mail:${req.params.mailId}`, message: MAIL_CODE_LIMIT }),
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 5, keyGenerator: (_req, res) => `to:${res.locals.codeAddress}`, message: MAIL_CODE_LIMIT }),
+];
+const mailCodeSchema = Joi.object({
+  token: Joi.string().max(256).required(),
+  // A card by link went to no address: the address the person types.
+  email: Joi.string().trim().email().max(320).allow('', null),
+});
+
+// The letter behind a working link that can still be opened, and the address its code goes to (res.locals), before the
+// per-letter and per-address limits.
+async function codeLetter(req, res, next) {
+  try {
+    const { mailId } = req.params;
+    if (!UUID_REGEX.test(mailId)) return sendClaimLinkInvalid(res);
+    const found = await mailClaimCode.letterAndAddress({ mailId, token: req.body.token, email: req.body.email });
+    if (found.refusal) return res.status(found.refusal.status).json({ error: found.refusal.error, code: found.refusal.code });
+    const closed = closedEscrowReason(found.mail);
+    if (closed) return res.status(closed.status).json({ error: closed.error, code: closed.code, card: closed.card });
+    res.locals.codeMail = found.mail;
+    res.locals.codeAddress = found.address;
+    return next();
+  } catch (err) {
+    logger.error('Mail code letter read failed', { error: err.message, mailId: req.params.mailId });
+    return res.status(500).json({ error: 'Couldn’t send your code. Try again in a moment.', code: 'CODE_UNAVAILABLE' });
+  }
+}
+
+/**
+ * POST /api/mailbox/claim/:mailId/code  { token, email? }
+ * Public (no sign-in): a one-time code to the address a letter or card waiting on its link was sent to (by link, the
+ * address the person types), so they can open it without a password: POST /api/users/mail-code signs them in with it,
+ * and POST /claim/:mailId puts it in their mailbox. Answers { sent_to (masked), minutes } whether or not the address has
+ * an account. A letter sent by text answers 400 CODE_BY_TEXT (its page keeps signing in and creating an account).
+ */
+router.post('/claim/:mailId/code', mailCodeNetworkLimiter, validate(mailCodeSchema), codeLetter, mailCodeLetterLimiters, async (req, res) => {
+  try {
+    const { mailId } = req.params;
+    const { codeMail: mail, codeAddress: address } = res.locals;
+
+    const card = holidayCards.isCard(mail);
+    const { senderName } = sentAsBusiness(mail) ? claimPageSender(mail) : await claimPagePerson(mail.sender_user_id, mail.sender_display);
+    const sent = await mailClaimCode.sendCode({ address, senderName, card, mailId, req });
+    if (sent !== 'sent') {
+      return res.status(503).json({
+        error: sent === 'unavailable' ? 'Email can’t be sent just now. Try again in a few minutes.' : 'Couldn’t send your code. Try again in a moment.',
+        code: 'CODE_UNAVAILABLE',
+      });
+    }
+    logger.info('Mail code sent', { mailId });
+    return res.json({ sent_to: maskContact(address), minutes: mailClaimCode.CODE_MINUTES });
+  } catch (err) {
+    logger.error('Mail code error', { error: err.message, mailId: req.params.mailId });
+    return res.status(500).json({ error: 'Couldn’t send your code. Try again in a moment.', code: 'CODE_UNAVAILABLE' });
   }
 });
 
@@ -4151,7 +4220,7 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
 
     const { data: mail, error } = await supabaseAdmin
       .from('Mail')
-      .select('id, sender_user_id, recipient_user_id, type, subject, mail_type, display_title, escrow_recipient_contact, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, mail_extracted')
+      .select('id, sender_user_id, recipient_user_id, type, subject, mail_type, display_title, escrow_recipient_contact, escrow_status, escrow_claim_token, escrow_claim_token_hash, escrow_expires_at, created_at, mail_extracted')
       .eq('id', mailId)
       .maybeSingle();
     if (error) {
@@ -4267,25 +4336,33 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
 
     logger.info('Escrowed mail claimed', { mailId, claimerId });
 
-    // Notify the sender that their mail was claimed
+    // Tell the sender it was opened (and, for a card that brought someone in, give them their free card)
     (async () => {
       try {
         // The person who opened it, as neighbors see them (their Local Profile).
-        const claimerName = (await loadChatPeople([claimerId])).get(String(claimerId))?.displayName || 'Someone';
+        // An account made with a letter's code has no name yet (the app asks for one): its stand-in isn't a name to print.
+        const shownName = (await loadChatPeople([claimerId])).get(String(claimerId))?.displayName;
+        const claimerName = shownName && shownName !== 'Pantopus member' ? shownName : null;
+        // A card that brought in someone new gives its sender a free card (digital stamps on; services/mailStamps).
+        const rewarded = card
+          ? await mailStamps.rewardJoin({ senderId: mail.sender_user_id, joinerId: claimerId, mailId, sentAt: mail.created_at })
+          : false;
 
         await notificationService.createNotification(card ? {
           userId: mail.sender_user_id,
           type: 'holiday_card_claimed',
           title: 'Your Christmas card arrived',
-          body: byLink ? `${claimerName} opened your link and has your card.` : `${claimerName} joined Pantopus and has your card.`,
+          body: `${byLink ? `${claimerName || 'Someone'} opened your link and has your card.`
+            : (claimerName ? `${claimerName} joined Pantopus and has your card.` : 'They joined Pantopus and have your card.')}${
+            rewarded ? ' You have one more free card to send.' : ''}`,
           icon: '✉️',
           link: `/app/mailbox/sent/${mailId}`,
-          metadata: { mail_id: mailId, claimer_id: claimerId },
+          metadata: { mail_id: mailId, claimer_id: claimerId, ...(rewarded ? { free_card: true } : {}) },
         } : {
           userId: mail.sender_user_id,
           type: 'mail_escrow_claimed',
           title: 'Your mail arrived',
-          body: `${claimerName} claimed your letter. It's been delivered to their mailbox.`,
+          body: claimerName ? `${claimerName} claimed your letter. It's been delivered to their mailbox.` : 'They opened your letter. It\'s been delivered to their mailbox.',
           icon: '✉️',
           link: `/app/mailbox/sent/${mailId}`,
           metadata: { mail_id: mailId, claimer_id: claimerId },

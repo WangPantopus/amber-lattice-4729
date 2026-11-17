@@ -429,6 +429,7 @@ app.use('/api/reviews', contentCreationLimiter);
 app.use('/api/homes', homeCreationLimiter);
 app.use('/api/users/login', authEndpointLimiter);
 app.use('/api/users/register', authEndpointLimiter);
+app.use('/api/users/mail-code', authEndpointLimiter);
 
 // ============ REQUEST BODIES ============
 // Read only once a write is through the limiters above: 1 MB of JSON by default,
