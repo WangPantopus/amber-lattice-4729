@@ -823,7 +823,11 @@ internal fun PinnedLookButton(
             modifier
                 .fillMaxWidth()
                 .background(
-                    Brush.verticalGradient(0f to ground.copy(alpha = 0f), 0.4f to ground.copy(alpha = 0.78f), 1f to ground.copy(alpha = 0.9f)),
+                    Brush.verticalGradient(
+                        0f to ground.copy(alpha = 0f),
+                        0.4f to ground.copy(alpha = 0.78f),
+                        1f to ground.copy(alpha = 0.9f),
+                    ),
                 )
                 .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
                 .testTag("sendCardLookPinned"),
