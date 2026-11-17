@@ -347,6 +347,15 @@ function joinText(deal, paid) {
 }
 
 /**
+ * The unlocked banner (contract 9.2). The count is the people in now, so it can fall after the unlock: "Unlocked: 14
+ * are in", "Unlocked: 1 is in", and "Unlocked" alone when nobody is in.
+ */
+function unlockedText(going) {
+  if (going >= 2) return `Unlocked: ${going} are in`;
+  return going === 1 ? 'Unlocked: 1 is in' : 'Unlocked';
+}
+
+/**
  * The card's `deal` (contract 9.2), for an app that sent `biz=1`, while the plan's host has the switch.
  * @param {{ role: string, request: object|null, going: number, paid?: boolean }} opts  paid: the card carries a price
  */
@@ -367,7 +376,7 @@ function cardView(deal, { role, request = null, going = 0, plan = null, firstNam
     // Under the count while a group deal is open.
     if_short_text: deal.scope === 'group' && deal.state === 'open' ? ifShortText(deal) : null,
     // The banner or the card once a group deal settled.
-    state_text: deal.state === 'unlocked' ? `Unlocked: ${going} are in` : deal.state === 'short' ? shortText(deal, paid ? plan : null) : null,
+    state_text: deal.state === 'unlocked' ? unlockedText(going) : deal.state === 'short' ? shortText(deal, paid ? plan : null) : null,
     // The line under "I'm in" (D1 item 5); on a priced plan (B2) the price's join_text says what joining costs.
     join_text: joinText(deal, paid),
   };
