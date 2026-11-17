@@ -60,11 +60,14 @@ async function publicPlan(postId, { inviteToken = null, openToken = null, guestK
     : null;
   // A removed guest's key: on a private plan nothing about it; a public plan's card is everyone's anyway.
   if (guests?.removed && plan.audience === 'invited') return { private: true, removed: true };
+  // An invitation while picking (08-extras section 2): the page names no date, "Picking a date" where it shows.
+  const planDates = require('./planDates');
+  const picking = (await planDates.invitesWhilePicking(plan)) ? { time_text: planDates.PICKING_TEXT } : {};
   if (plan.audience === 'invited' && guests?.live) {
     // The card even once the plan is over or cancelled, so the page can say so.
     const viewer = anonymousViewer();
     const ctx = await planService.loadCardContext([plan], viewer);
-    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), private: true, answer: guests.answer, for_guest: guests.for_guest };
+    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), ...picking, private: true, answer: guests.answer, for_guest: guests.for_guest };
   }
   if (plan.audience === 'invited') {
     if (plan.status !== 'open' || !(await isFeatureEnabled('plans', plan.host_user_id))) return null;
@@ -72,7 +75,7 @@ async function publicPlan(postId, { inviteToken = null, openToken = null, guestK
     if (plan.kind === 'playdate') return { kind: 'playdate', city: plan.city || null, private: true };
     const viewer = anonymousViewer();
     const ctx = await planService.loadCardContext([plan], viewer);
-    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), private: true };
+    return { ...publicCard(planService.buildCard(plan, viewer, ctx)), ...picking, private: true };
   }
   if (plan.post.read_scope != null
     && (plan.post.read_scope !== 'public' || plan.post.allow_external_share === false)) return null;
