@@ -247,6 +247,8 @@ struct FastCheckDock<Content: View>: View {
 
     var body: some View {
         VStack(spacing: Spacing.s2) { content }
+            // At the largest text sizes the bar would take half the screen; the page above it scrolls instead.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s3)
             .padding(.bottom, Spacing.s4)

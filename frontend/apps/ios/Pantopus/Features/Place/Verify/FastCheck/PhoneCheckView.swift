@@ -306,9 +306,14 @@ struct FastCheckTopBar: View {
 
     var body: some View {
         ZStack {
+            // Capped like the wizard's bar: the title stays clear of the back button at the largest sizes.
             Text(title)
                 .scaledFont(17, weight: .semibold)
                 .foregroundStyle(Theme.Color.appText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 52)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .accessibilityAddTraits(.isHeader)
             HStack {
                 Button(action: onBack) {
