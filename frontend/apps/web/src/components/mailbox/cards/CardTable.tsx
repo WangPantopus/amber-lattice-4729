@@ -153,6 +153,7 @@ export default function CardTable({
   closeLabel = 'Back to the Mailbox',
   menu = [],
   sendBack = null,
+  nextCard = null,
   sendMoment = null,
   onShare,
   onClose,
@@ -177,6 +178,8 @@ export default function CardTable({
   menu?: TableMenuItem[];
   /** Send one back (design plan Part 3): a quiet button under "Turn it back" once the card is turned over. */
   sendBack?: TableMenuItem | null;
+  /** Open the next card (mail-cards-experience Part 4): how many more wait, and the move to the oldest of them. */
+  nextCard?: { count: number; onOpen: () => void } | null;
   /** Sealing it by hand instead of opening it. */
   sendMoment?: SendMoment | null;
   onShare?: () => void;
@@ -490,6 +493,8 @@ export default function CardTable({
   const printButton = readPrint && largeText;
   const printLine = readPrint && !largeText;
   const turnedOver = step === 'out' && backUp;
+  // Once the card has been turned over (and after it's turned back), while it lies on the table, not enlarged.
+  const nextShown = Boolean(nextCard) && !sendMoment && !isLetter && step === 'out' && turnedOnce && !ui.enlarged;
   const quietShare = Boolean(onShare) && !sendMoment && !isLetter && !sealed;
   const showTopRight = !sendMoment && !isLetter && (step === 'out' || (sealed && (step === 'back' || step === 'front')));
   // The button is there only when there's something to press: never while things move by themselves.
@@ -819,6 +824,22 @@ export default function CardTable({
                       Share this card
                     </button>
                   ) : null}
+                </div>
+              ) : null}
+              {/* Its room is kept from the start, so the card never moves when it shows. */}
+              {nextCard ? (
+                <div className={`${styles.nextRow} ${nextShown ? '' : styles.hidden}`} aria-hidden={!nextShown}>
+                  <button
+                    type="button"
+                    className={styles.quiet}
+                    data-ui
+                    data-testid="cardTableNextCard"
+                    tabIndex={nextShown ? 0 : -1}
+                    onClick={() => { setMenuOpen(false); nextCard.onOpen(); }}
+                  >
+                    Open the next card
+                  </button>
+                  <div className={styles.nextLine} data-testid="cardTableNextCount">{nextCard.count} more waiting</div>
                 </div>
               ) : null}
             </div>
