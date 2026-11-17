@@ -63,6 +63,10 @@ struct AddressStep: View {
             ManualAddressButton(action: viewModel.addManuallyTapped)
             if viewModel.isManualEntry {
                 manualField("Street address", .street, viewModel.form.address.street)
+                AddressSuggestionList(suggestions: viewModel.manualStreetSuggestions, identifier: "addHome_streetSuggestion") { item in
+                    endTyping()
+                    Task { await viewModel.chooseManualStreet(item) }
+                }
                 manualField("Unit or apartment (optional)", .unit, viewModel.form.address.unit)
                 manualField("City", .city, viewModel.form.address.city)
                 manualField("State", .state, viewModel.form.address.state)

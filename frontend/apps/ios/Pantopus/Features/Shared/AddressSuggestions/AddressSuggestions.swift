@@ -77,6 +77,16 @@ final class AddressSuggestions {
         suggestions = []
     }
 
+    /// Your default Home's map point (else any of your homes'), for `near` on a screen that has no address of its
+    /// own yet; nil when none is known.
+    static func anyHomePoint() async -> (latitude: Double, longitude: Double)? {
+        guard let response = try? await HomesStoreReads.myHomes().value else { return nil }
+        let homes = response.homes
+        let preferred = response.defaultHomeId.flatMap { id in homes.first { $0.home.id == id } }
+        guard let point = preferred?.location ?? homes.compactMap(\.location).first else { return nil }
+        return (point.latitude, point.longitude)
+    }
+
     /// One of your homes' map point, for `near`; nil when it isn't known.
     static func homePoint(homeId: String) async -> (latitude: Double, longitude: Double)? {
         guard let homes = try? await HomesStoreReads.myHomes().value.homes,
