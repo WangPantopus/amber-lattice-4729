@@ -320,10 +320,11 @@
   .bookmark { animation: shadeIn 0.25s ease both; }
 }
 
-/* Write back (mail-cards-experience Part 3): the reply lies over the card's lower part, turned 2°, reaching a fifth of the
-   card's height below it (the engine keeps that room, REPLY_BELOW). It lands from above; behind the card, it peeks out. */
+/* Write back (mail-cards-experience Part 3): the reply lies over the card's printed strip only, its top at 86% of the card's
+   height (the picture ends at 87%), so the whole picture shows (founder, November 17); turned 2°, it reaches 76% of the
+   card's height below it (the engine keeps that room, REPLY_BELOW). It lands from above. */
 .replySheet {
-  position: absolute; left: 5%; top: 30%; width: 90%; aspect-ratio: 5 / 6; pointer-events: auto; cursor: pointer; z-index: -1;
+  position: absolute; left: 5%; top: 86%; width: 90%; aspect-ratio: 5 / 6; pointer-events: auto; cursor: pointer; z-index: -1;
   transform: translateY(-90%) rotate(-4deg); opacity: 0;
   transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
   filter: drop-shadow(0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2.2) rgba(0, 0, 0, 0.45));
