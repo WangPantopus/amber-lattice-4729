@@ -41,11 +41,15 @@ const locationSchema = Joi.object({
   accuracy_m: Joi.number().min(0).max(100000).required(),
   mocked: Joi.boolean().required(),
   platform: Joi.string().valid('ios', 'android').required(),
+  // The names in the rig README, and the ones the apps proposed (kind, client_data, data) for the same fields.
   proof: Joi.object({
     type: Joi.string().valid('app_attest', 'play_integrity'),
+    kind: Joi.string().valid('app_attest', 'play_integrity', 'attestation', 'assertion'),
     reading: Joi.string().max(1024),
+    client_data: Joi.string().max(1024),
     key_id: Joi.string().max(128),
     attestation: Joi.string().max(20000),
+    data: Joi.string().max(20000),
     token: Joi.string().max(20000),
   }).allow(null),
 });

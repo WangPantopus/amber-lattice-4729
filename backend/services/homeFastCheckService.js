@@ -142,25 +142,32 @@ async function fastCheckedElsewhere(userId, homeId) {
 }
 
 /**
- * How a proven occupancy was proven, for "by mail · {date}": a postcard code, a landlord, or a document a person
- * reviewed. Read for many homes at once. Unknown (legacy) reads as mail.
+ * How and when a proven occupancy was proven, for "by mail · {date}": a postcard code (when it was entered), a
+ * landlord (the lease), or a document a person reviewed (when it was approved). The latest proof wins. Read for many
+ * homes at once: Map homeId → { by, at }. A home with none of them (legacy proof) is left out; callers fall back to
+ * 'mail' and the occupancy's verified_at.
  */
 async function provenBy(userId, homeIds) {
   const ids = [...new Set((homeIds || []).filter((id) => UUID.test(id || '')))];
   const by = new Map();
   if (!ids.length) return by;
   const [cards, leases, claims] = await Promise.all([
-    db.from('HomePostcardCode').select('home_id').eq('user_id', userId).eq('status', 'verified').in('home_id', ids),
-    db.from('HomeLease').select('home_id').eq('primary_resident_user_id', userId).eq('state', 'active').in('home_id', ids),
-    db.from('HomeOwnershipClaim').select('home_id, state, claim_phase_v2').eq('claimant_user_id', userId)
+    db.from('HomePostcardCode').select('home_id, verified_at, updated_at').eq('user_id', userId).eq('status', 'verified').in('home_id', ids),
+    db.from('HomeLease').select('home_id, start_at, updated_at, created_at').eq('primary_resident_user_id', userId).eq('state', 'active').in('home_id', ids),
+    db.from('HomeOwnershipClaim').select('home_id, state, claim_phase_v2, reviewed_at, updated_at').eq('claimant_user_id', userId)
       .eq('claim_type', 'resident').in('home_id', ids),
   ]);
-  const homesOf = (read, keep = () => true) => new Set((read && !read.error ? read.data || [] : []).filter(keep).map((r) => r.home_id));
-  const mail = homesOf(cards);
-  const landlord = homesOf(leases);
-  const document = homesOf(claims, (row) => row.state === 'approved' || row.claim_phase_v2 === 'verified');
-  for (const id of ids) {
-    by.set(id, mail.has(id) ? 'mail' : landlord.has(id) ? 'landlord' : document.has(id) ? 'document' : 'mail');
+  const rows = (read) => (read && !read.error ? read.data || [] : []);
+  const offer = (homeId, kind, at) => {
+    const time = Date.parse(at);
+    if (!Number.isFinite(time)) return;
+    const current = by.get(homeId);
+    if (!current || time > Date.parse(current.at)) by.set(homeId, { by: kind, at: new Date(time).toISOString() });
+  };
+  for (const row of rows(cards)) offer(row.home_id, 'mail', row.verified_at || row.updated_at);
+  for (const row of rows(leases)) offer(row.home_id, 'landlord', row.start_at || row.updated_at || row.created_at);
+  for (const row of rows(claims)) {
+    if (row.state === 'approved' || row.claim_phase_v2 === 'verified') offer(row.home_id, 'document', row.reviewed_at || row.updated_at);
   }
   return by;
 }
@@ -273,7 +280,6 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
       // eslint-disable-next-line global-require
       else if (id === 'location' && !require('./fastCheck/locationCheck').ready(platform)) reason = 'UNAVAILABLE';
-      else if (id === 'document' && await documentInReview(homeId, userId)) reason = 'IN_REVIEW';
       else if (await overLimit(userId, id)) reason = 'LIMIT';
       else if (id === 'phone' && await phoneDailyCeilingReached()) reason = 'UNAVAILABLE';
     } else if (id === 'mail') {
@@ -283,14 +289,24 @@ async function verifyOptions({ homeId, user, platform = null }) {
     } else if (id === 'landlord') {
       if (proven || nonResident || !(await landlordDoor(homeId, userId))) reason = 'UNAVAILABLE';
     }
+    if (id === 'document') {
+      // Today's document upload stays a way to verify whatever the fast read says; `fast` says whether a photo is
+      // read at once (FASTVERIFY) or goes to a person only. A document already in review closes the row only when
+      // nothing is read at once (today's "Document under review"); with the fast read a person can take another photo.
+      const fast = reason === null;
+      reason = proven || nonResident ? 'UNAVAILABLE' : !fast && await documentInReview(homeId, userId) ? 'IN_REVIEW' : null;
+      options.push({ id, available: reason === null, reason, fast });
+      continue;
+    }
     options.push({ id, available: reason === null, reason });
   }
 
   let verifiedBy = null;
   let verifiedAt = null;
   if (proven) {
-    verifiedBy = (await provenBy(userId, [homeId])).get(homeId) || 'mail';
-    verifiedAt = occupancy?.verified_at || null;
+    const how = (await provenBy(userId, [homeId])).get(homeId);
+    verifiedBy = how ? how.by : 'mail';
+    verifiedAt = how ? how.at : occupancy?.verified_at || null;
   } else if (fast) {
     verifiedBy = FAST_BY[occupancy.fast_check_kind];
     verifiedAt = occupancy.fast_check_at;

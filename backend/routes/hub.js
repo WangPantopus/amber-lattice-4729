@@ -177,7 +177,10 @@ router.get('/', verifyToken, async (req, res) => {
       if (fastRows.has(o)) {
         return { verified_by: homeFastCheckService.FAST_BY[o.fast_check_kind], verified_at: o.fast_check_at, needs_mail: true };
       }
-      if (provenRows.includes(o)) return { verified_by: provenHow.get(o.home_id) || 'mail', verified_at: o.verified_at || null, needs_mail: false };
+      if (provenRows.includes(o)) {
+        const how = provenHow.get(o.home_id);
+        return { verified_by: how ? how.by : 'mail', verified_at: how ? how.at : o.verified_at || null, needs_mail: false };
+      }
       return { verified_by: null, verified_at: null, needs_mail: false };
     };
     const homes = occupancyRows
