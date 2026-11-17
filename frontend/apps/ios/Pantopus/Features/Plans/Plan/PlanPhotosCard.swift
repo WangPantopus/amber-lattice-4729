@@ -24,6 +24,7 @@ struct PlanPhotosCard: View {
     @State private var adding: (done: Int, of: Int)?
     @State private var open: PlanPhotoDTO?
     @State private var line: String?
+    @State private var isReading = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Spacing.s2), count: 4)
 
@@ -45,8 +46,10 @@ struct PlanPhotosCard: View {
                 if let pictures = grid?.photos, !pictures.isEmpty {
                     LazyVGrid(columns: columns, spacing: Spacing.s2) {
                         ForEach(pictures) { photo in
-                            Button { open = photo } label: { PlanPhotoTile(photo: photo) }
+                            Button { openFresh(photo) } label: { PlanPhotoTile(photo: photo) }
                                 .buttonStyle(.plain)
+                                // A page left open past the links' time reads the grid again as tiles come on screen.
+                                .onAppear { Task { await loadIfNeeded() } }
                                 .accessibilityLabel(photo.byName.map { "Photo from \($0)" } ?? "Photo")
                                 .accessibilityHint("Opens it")
                                 .accessibilityIdentifier("planPhoto")
@@ -100,13 +103,27 @@ struct PlanPhotosCard: View {
 
     /// Reads the grid when there is none yet or its links have run out.
     private func loadIfNeeded() async {
-        guard grid == nil || Date() >= linksEnd else { return }
+        guard grid == nil || Date() >= linksEnd, !isReading else { return }
+        isReading = true
+        defer { isReading = false }
         do {
             let answer: PlanPhotosGridDTO = try await api.request(PlansEndpoints.planPhotos(planId: planId))
             show(answer)
         } catch is CancellationError {
         } catch {
             line = PlanErrors.sentence(for: error)
+        }
+    }
+
+    /// Opens a picture by a link that still works: past the links' time, the grid is read again first.
+    private func openFresh(_ photo: PlanPhotoDTO) {
+        guard Date() >= linksEnd else {
+            open = photo
+            return
+        }
+        Task {
+            await loadIfNeeded()
+            open = grid?.photos.first { $0.id == photo.id }
         }
     }
 
@@ -169,7 +186,7 @@ private struct PlanPhotoTile: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
-            .task(id: photo.id) {
+            .task(id: photo.thumbUrl ?? photo.url) {
                 guard let url = URL(string: photo.thumbUrl ?? photo.url) else { return }
                 image = await PantopusImagePipeline.shared.image(for: url, keepsOnDisk: false, maxPixelSize: 300)
             }
