@@ -24,6 +24,7 @@ import { releaseShellReads } from '@/lib/shellReads';
 import { useOnlineStatus } from '@/components/map/OfflineIndicator';
 import { navigateChatPath, useChatOfflineShell } from '@/hooks/useChatOfflineShell';
 import { useHydrated } from '@/hooks/useHydrated';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 
 type NewChatPerson = { id: string; name: string; handle: string; avatar?: string | null };
 
@@ -318,6 +319,8 @@ export default function ChatListPage() {
 
   return (
     <div className="min-h-[calc(100vh-64px)]">
+      {/* Messages has loaded: its guidance card ("You're connected") may show. */}
+      {!loading ? <GuidanceScreen name="messages" /> : null}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         <PageHeader
           title="Messages"

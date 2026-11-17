@@ -96,7 +96,8 @@ function MembersContent() {
   const [auditError, setAuditError] = useState('');
   const [roleMenuFor, setRoleMenuFor] = useState<string | null>(null);
   // Invite opens the Home's existing Invite Member panel, as on the dashboard.
-  const [inviteOpen, setInviteOpen] = useState(false);
+  // ?invite=1 opens the invite at once (the guidance card "Invite your household").
+  const [inviteOpen, setInviteOpen] = useState(() => searchParams.get('invite') === '1');
   const roleMenuRef = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
   const lastAttempt = useRef(0);

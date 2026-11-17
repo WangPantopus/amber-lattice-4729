@@ -210,10 +210,18 @@ export default function PlaceDashboard() {
   const homes = myHomesQuery.data?.homes ?? [];
   const invited = homes.length > 0 && homes.every((h) => h.occupancy?.verification_source === 'household');
   const verifiable = !claim && intelligence.tier === 'T3' && intelligence.verify_available !== false;
+  const shownHome = homes.find((h) => h.id === shownHomeId);
+  const home = !claim && shownHomeId ? {
+    id: shownHomeId,
+    tier: intelligence.tier,
+    verified: intelligence.tier === 'T4',
+    setUpAt: shownHome?.occupancy?.start_at ?? shownHome?.created_at ?? null,
+    privateSetup: shownHome?.access_kind === 'private_setup',
+  } : undefined;
 
   return (
     <Shell hidden={placeSlugsNotForViewer(intelligence)}>
-      <GuidanceScreen name="place" facts={{ verifiable, invited }} />
+      <GuidanceScreen name="place" facts={{ verifiable, invited, home }} />
       {/* Hub absorption (Phase 1 follow-up): the setup checklist lives on the
           place page now, in wedge order (claim → verify → profile). A claim in
           review has its own status instead. */}
