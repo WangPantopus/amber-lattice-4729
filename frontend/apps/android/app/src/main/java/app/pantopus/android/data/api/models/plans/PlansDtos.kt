@@ -354,6 +354,8 @@ data class PlanOccasionFillsDto(
     @Json(name = "audience") val audience: String? = null,
     @Json(name = "place_kind") val placeKind: String? = null,
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** The room the occasion starts with (server #4227): 12, or 20 for a holiday party or New Year's Eve. */
+    @Json(name = "spots") val spots: Int? = null,
     @Json(name = "bring") val bring: PlanOccasionBringDto? = null,
     @Json(name = "starts_at") val startsAt: String? = null,
     @Json(name = "ends_at") val endsAt: String? = null,
