@@ -3,10 +3,13 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Mail, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, ShieldCheck } from 'lucide-react';
 import { usePostalVerification } from '@/components/homes/postcard/usePostalVerification';
 import { MAIL_STATE_COPY, postalMessage, triesLeft, validMailingAddress, type MailingAddress } from '@/components/homes/postcard/postcardModel';
 import { residencyRequestLabel } from '@/components/homes/residencyProgressModel';
+import { useVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
+import ScannedCardPanel from '@/components/homes/postcard/ScannedCardPanel';
+import { codeFromHash, takeScannedCard, wipeHash } from '@/components/homes/postcard/scannedCard';
 
 const emptyAddress = (): MailingAddress => ({ line1: '', line2: '', city: '', state: '', postal_code: '', country: 'US' });
 const isBlank = (a: MailingAddress) => [a.line1, a.line2, a.city, a.state, a.postal_code].every(v => !v.trim());
@@ -27,6 +30,33 @@ function Address({ address }: { address: MailingAddress }) {
     <p>{address.city}, {address.state} {address.postal_code}</p><p>{address.country}</p>
   </div>;
 }
+/** FASTVERIFY drawing M1: one tap mails the card to the Home's saved address (the status route's mailing_address). */
+function MailCheck({ homeId, address, busy, onMail }: { homeId: string; address: MailingAddress; busy: boolean; onMail: () => void }) {
+  const steps = [
+    { title: 'Today', sub: 'We print your card.' },
+    { title: 'In about a week', sub: 'It arrives in your mailbox.' },
+    { title: 'You scan it', sub: 'Verified by mail. Residency letters and home Mail open.' },
+  ];
+  return <section className="space-y-4" aria-labelledby="mail-check-title" data-testid="mail-check">
+    <div className={panel}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-app-text-secondary">Mailing to</p>
+      <div className="break-words">
+        <p className="text-lg font-semibold text-app-text">{address.line1}{address.line2 ? `, ${address.line2}` : ''}</p>
+        <p className="text-sm text-app-text-secondary">{address.city}, {address.state} {address.postal_code}</p>
+      </div>
+      <Link className="inline-block min-h-11 py-2 text-sm font-semibold text-app-text underline-offset-2 hover:underline" href={`/app/homes/new?joinHome=${homeId}`}>This address is wrong</Link>
+    </div>
+    <ol className={panel}>
+      {steps.map((step, i) => <li key={step.title} className="flex items-start gap-3">
+        <span aria-hidden className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-200">{i + 1}</span>
+        <span><span className="block text-[15px] text-app-text">{step.title}</span><span className="block text-sm text-app-text-secondary">{step.sub}</span></span>
+      </li>)}
+    </ol>
+    <p className="flex items-start gap-2 text-sm text-app-text-secondary"><Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />The code works only from your account, for 30 days.</p>
+    <button className={primary} disabled={busy} onClick={onMail}>Mail my postcard</button>
+    <p className="text-center text-xs text-app-text-secondary">Free. One card at a time.</p>
+  </section>;
+}
 function VerifyPostcardContent() {
   const { id: homeId } = useParams<{ id: string }>();
   const search = useSearchParams();
@@ -35,6 +65,19 @@ function VerifyPostcardContent() {
   const [code, setCode] = useState(''), [cancel, setCancel] = useState(false);
   useEffect(() => { setAddress(emptyAddress()); setConfirmed(false); setCode(''); setCancel(false); }, [flow.lifetime]);
   const { pending, status, progress, busy } = flow;
+  // FASTVERIFY: with the faster verification on, a request is one tap on the saved address (null with the flags off).
+  const fastVerify = useVerifyOptions(homeId).data;
+  // A scanned card's link (#c=<code>) fills the code in; after a sign-in it comes from this tab's storage.
+  const [scanned, setScanned] = useState<string | null>(null);
+  useEffect(() => {
+    const fromLink = codeFromHash(window.location.hash);
+    if (fromLink) wipeHash();
+    const code = fromLink ?? takeScannedCard(homeId);
+    if (code) setScanned(code);
+  }, [homeId]);
+  useEffect(() => {
+    if (scanned && status?.can_verify) { setCode(scanned); setScanned(null); }
+  }, [scanned, status?.can_verify]);
   // A request must repeat the Home's saved address, so an empty form starts from it.
   const savedAddress = status?.can_request ? status.mailing_address : null;
   useEffect(() => {
@@ -47,13 +90,19 @@ function VerifyPostcardContent() {
   const mailState = status?.postcard?.mail_state;
   const mailCopy = mailState ? MAIL_STATE_COPY[mailState] : undefined;
   const mailEnded = mailState === 'returned' || mailState === 'rerouted' || mailState === 'failed';
+  const oneTap = !!fastVerify && !unavailable && !pending && !!status?.can_request && !!savedAddress && validMailingAddress(savedAddress);
   return <main className="mx-auto max-w-lg space-y-6 px-4 py-6 pb-28 text-app-text" aria-busy={busy}>
     <Link href={`/app/homes/${homeId}/residency`} className="inline-block min-h-11 py-2 text-sm font-semibold text-app-text-secondary">← Residency status</Link>
-    <header className="flex items-start gap-3">
+    {oneTap ? <header>
+      <p className="text-sm font-semibold text-app-text-secondary">Mail check</p>
+      <h1 id="mail-check-title" className="mt-1 text-2xl font-semibold">Mail me a code</h1>
+      <p className="mt-2 text-sm text-app-text-secondary">We mail a postcard to this home. Scan it when it arrives and you&apos;re done.</p>
+    </header> : <header className="flex items-start gap-3">
       <Mail className="mt-1 h-7 w-7 shrink-0 text-emerald-700" aria-hidden="true" />
       <div><h1 className="text-2xl font-semibold">Verify by mail</h1>
         <p className="mt-2 text-sm text-app-text-secondary">We’ll mail a postcard with a code to this Home’s address. Enter the code when it arrives to verify that you live here.</p></div>
-    </header>
+    </header>}
+    {scanned && flow.error && !pending ? <section className={panel}><ScannedCardPanel card={{ homeId, code: scanned }} /></section> : null}
     {flow.error && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">{flow.error}</p>}
     {busy && <p role="status">Checking…</p>}
     {unavailable ? <section className={panel}>
@@ -92,6 +141,8 @@ function VerifyPostcardContent() {
         <h2 className="text-lg font-semibold">{mailCopy ? mailCopy.heading : status.postcard.status === 'verified' ? 'Address verified by mail' : status.postcard.status === 'expired' ? status.postcard.attempts_remaining === 0 ? 'No tries left for this postcard' : 'Postcard code expired'
           : status.postcard.status === 'cancelled' ? 'Postcard no longer active' : 'Your postcard'}</h2>
         {mailCopy && status.restriction !== 'POSTCARD_RETURNED_LIMIT' && <p className="text-sm text-app-text-secondary">{mailCopy.body}</p>}
+        {/* FASTVERIFY: a card stopped by "This wasn't me" (or otherwise cancelled) says so. */}
+        {fastVerify && !mailCopy && status.postcard.status === 'cancelled' && <p className="text-sm text-app-text-secondary">{postalMessage('POSTCARD_NO_LONGER_AVAILABLE')}</p>}
         {status.request && <><p className="text-xs font-semibold uppercase tracking-wide text-app-text-secondary">Mailing address</p><Address address={status.request.address} /></>}
         {!mailCopy && !['verified', 'expired', 'cancelled'].includes(status.postcard.status) && <p className="text-sm text-app-text-secondary">{({ not_started: 'This postcard hasn’t been sent yet.',
           accepted: 'Your postcard is on its way.',
@@ -113,7 +164,8 @@ function VerifyPostcardContent() {
         <p className="text-sm text-app-text-secondary">{triesLeft(status.postcard?.attempts_remaining ?? 0)}</p>
         <button className={primary} disabled={busy || !/^[a-z0-9]{6,8}$/i.test(code)}>Verify code</button>
       </form>}
-      {status.can_request && <form className={panel} onSubmit={event => { event.preventDefault(); if (confirmed) void flow.requestMail(address); }}>
+      {oneTap && savedAddress && <MailCheck homeId={homeId} address={savedAddress} busy={busy} onMail={() => void flow.requestMail(savedAddress)} />}
+      {status.can_request && !oneTap && <form className={panel} onSubmit={event => { event.preventDefault(); if (confirmed) void flow.requestMail(address); }}>
         <h2 className="text-lg font-semibold">Confirm your mailing address</h2>
         <p className="text-sm text-app-text-secondary">Enter the street and apartment exactly as they are for this Home. We check the address before mailing.</p>
         {status.request && <button type="button" className={button} onClick={() => { setAddress({ ...status.request!.address }); setConfirmed(false); }}>Use the saved address</button>}

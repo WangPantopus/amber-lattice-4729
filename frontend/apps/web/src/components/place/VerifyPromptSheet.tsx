@@ -349,8 +349,9 @@ function FastVerifySheet({
   onOpenDocumentStatus: () => void;
 }) {
   const option = (id: string) => verifyOptions.options.find((o) => o.id === id);
-  // A residency document waiting on a reviewer keeps today's row (and its status page).
-  const inReview = documentInReview || option('document')?.reason === 'IN_REVIEW';
+  // A residency document waiting on a reviewer keeps today's row (and its status page). Read from the person's own
+  // claims: the server's IN_REVIEW reason also covers a reported card's hold, which is no document.
+  const inReview = documentInReview;
   const rows = WEB_ROWS.filter((row) => (row.id === 'document' && inReview) || option(row.id)?.available === true);
   const fastest = rows.filter((row) => row.group === 'fastest');
   const byMail = rows.filter((row) => row.group === 'mail');
