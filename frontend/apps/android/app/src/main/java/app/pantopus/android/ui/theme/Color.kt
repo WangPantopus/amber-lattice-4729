@@ -366,8 +366,8 @@ object PantopusColors {
     val tableCreamSoft = Color(0xBDF6ECD9)
     val tableCreamFaint = Color(0x80F6ECD9)
 
-    /** The hint under the table's button: white at 70%. */
-    val tableHint = Color(0xB3FFFFFF)
+    /** The hint under the table's button: white at 85% (plan 8.2; was 70%). */
+    val tableHint = Color(0xD9FFFFFF)
 
     /** The round and pill buttons' glass: `rgb(24 18 16 / 36%)`, edged cream at 16%. */
     val tableGlass = Color(0x5C181210)

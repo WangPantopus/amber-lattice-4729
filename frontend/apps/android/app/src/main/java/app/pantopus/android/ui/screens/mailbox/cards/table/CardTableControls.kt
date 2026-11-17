@@ -99,10 +99,10 @@ internal val tableWordsStyle =
         shadow = Shadow(PantopusColors.tableNight.copy(alpha = 0.35f), Offset(0f, 3f), blurRadius = 16f),
     )
 
-/** The hint under the button, in white at 70% so it reads on the dark cloth. */
+/** The hint under the button, 15 in white at 85% so it reads on the dark cloth (plan 8.2). */
 internal val tableHintStyle =
     TextStyle(
-        fontSize = 12.5.sp,
+        fontSize = 15.sp,
         lineHeight = 1.35.em,
         color = PantopusColors.tableHint,
         textAlign = TextAlign.Center,
