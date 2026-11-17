@@ -24,6 +24,15 @@
  *
  * AI_ASSISTANT=off stops them too. A count that can't be read skips the call:
  * nobody is waiting for it, and the job sends its plain-text version or nothing.
+ *
+ * Drafts (a post, a listing, a task, a card note, a mail summary and the others in DRAFT_ENDPOINTS) are one model
+ * call each, asked for by a person. They have their own ceilings, counted from their own endpoint names, so a day of
+ * drafting never uses up chat's turns and chat never uses up drafts:
+ *
+ *   AI_PERSON_DAILY_DRAFTS=100    drafts one person may ask for in 24 hours
+ *   AI_GLOBAL_DAILY_DRAFTS=3000   drafts everyone together may ask for since midnight UTC
+ *
+ * AI_ASSISTANT=off stops them too. A count that can't be read lets the draft through, as for chat.
  */
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
@@ -136,12 +145,68 @@ async function checkBackgroundBudget(userId) {
   return null;
 }
 
+// ─── Drafts ─────────────────────────────────────────────────────────────
+
+// The endpoint names drafts log under (agentService.js, supportTrainDraftService.js, routes/magicTask.js).
+const DRAFT_ENDPOINTS = [
+  'draft/gig', 'draft/listing', 'draft/listing-vision', 'draft/post', 'draft/post-suggestion', 'draft/pickup-schedule',
+  'draft/radon-result', 'draft/mail-opening', 'draft/card-note', 'draft/support_train', 'draft/open_slots_nudge',
+  'draft/magic-task', 'summarize/mail', 'place-brief',
+];
+
+let draftMemo = { count: 0, until: 0 };
+
+// An answer served from a cache made no model call and isn't counted.
+async function personDrafts(userId) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count, error } = await supabaseAdmin.from('AIRequestLog')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .in('endpoint', DRAFT_ENDPOINTS)
+    .eq('cache_hit', false)
+    .gte('created_at', since);
+  if (error) throw new Error(error.message);
+  return count || 0;
+}
+
+async function globalDrafts() {
+  if (draftMemo.until > Date.now()) return draftMemo.count;
+  const midnight = new Date();
+  midnight.setUTCHours(0, 0, 0, 0);
+  const { count, error } = await supabaseAdmin.from('AIRequestLog')
+    .select('id', { count: 'exact', head: true })
+    .in('endpoint', DRAFT_ENDPOINTS)
+    .eq('cache_hit', false)
+    .gte('created_at', midnight.toISOString());
+  if (error) throw new Error(error.message);
+  draftMemo = { count: count || 0, until: Date.now() + GLOBAL_MEMO_MS };
+  return draftMemo.count;
+}
+
+/**
+ * Whether this person may ask for a draft now.
+ * @returns {Promise<null|{error: string, message: string}>} null to go ahead, else the error to send.
+ */
+async function checkDraftBudget(userId) {
+  if (isDisabled()) return DISABLED;
+  try {
+    const [mine, everyone] = await Promise.all([personDrafts(userId), globalDrafts()]);
+    if (mine >= positiveInt(process.env.AI_PERSON_DAILY_DRAFTS, 100)) return PERSON_LIMIT;
+    if (everyone >= positiveInt(process.env.AI_GLOBAL_DAILY_DRAFTS, 3000)) return GLOBAL_LIMIT;
+  } catch (err) {
+    logger.warn('AI draft budget check failed; letting the draft through', { userId, error: err.message });
+  }
+  return null;
+}
+
 /** For tests: forget the cached global counts. */
 function resetBudgetMemo() {
   globalMemo = { count: 0, until: 0 };
   backgroundMemo = { count: 0, until: 0 };
+  draftMemo = { count: 0, until: 0 };
 }
 
 module.exports = {
-  checkChatBudget, checkBackgroundBudget, isAssistantOff: isDisabled, resetBudgetMemo, BACKGROUND_ENDPOINTS,
+  checkChatBudget, checkBackgroundBudget, checkDraftBudget, isAssistantOff: isDisabled, resetBudgetMemo,
+  BACKGROUND_ENDPOINTS, DRAFT_ENDPOINTS,
 };
