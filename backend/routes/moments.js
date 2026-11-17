@@ -26,7 +26,6 @@ const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
-const { areaPoint } = require('../utils/areaCells');
 const { haversineMeters } = require('../utils/trustState');
 
 const router = express.Router();
@@ -102,7 +101,8 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * (`can_show_height`), the 18+ state, and whether the author has a connection (`has_connections`: a Moment with no
  * location needs one). With no point (location off) it answers only the last two (and `can_show_height: false`).
  * With the Sky on for the caller (`sky_places`) it adds `sky: true`, the area a Moment at home shows (`area`: its town,
- * point and disc), the public place that may take a pin there (`place`), whether one may be pinned (`can_pin`) and
+ * the street spot it stands over and its disc), the public place that may take a pin there (`place`), whether one may
+ * be pinned (`can_pin`) and
  * the "Share later" times on offer now (`share_later`); the names leave out schools and preschools, and
  * `pick_within_m` is shorter where the spot is built up (momentPlace.pickWithinM).
  */
@@ -144,15 +144,18 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
 });
 
 /**
- * The Sky's part of the preview: the area the point is in, which a Moment at home shows (its town, read at the area's
- * own point so the words depend on the area only; its point; its disc), the place "Pin it at a place" starts with,
- * and whether a pin is possible (never at home), and the "Share later" choices on offer now in the author's time zone
- * (`tonight` only before 7 pm), each with the time it would share.
+ * The Sky's part of the preview: the area the point is in, which a Moment at home shows (momentPlace.closeArea: its
+ * town, read at the area's own point so the words depend on the area only; the spot it stands over; its disc), the
+ * place "Pin it at a place" starts with, and whether a pin is possible (never at home), and the "Share later" choices
+ * on offer now in the author's time zone (`tonight` only before 7 pm), each with the time it would share. Away from
+ * home the area is asked for briefly (only a sheet from before November 17 draws it there), so the sheet never waits
+ * on the streets.
  */
+const PREVIEW_AREA_WAIT_MS = 600;
 async function skyPreview(userId, at, atHome) {
   const shareLater = momentSchedule.choices(Date.now(), await momentSchedule.zoneFor(userId, at.latitude, at.longitude));
   if (at.latitude == null) return { sky: true, area: null, place: null, can_pin: false, share_later: shareLater };
-  const area = await areaPoint(at.latitude, at.longitude);
+  const area = await momentPlace.closeArea(at.latitude, at.longitude, atHome ? {} : { waitMs: PREVIEW_AREA_WAIT_MS });
   const [label, place] = await Promise.all([
     momentPlace.townAt(area.latitude, area.longitude),
     momentPlace.namingPlace(at.latitude, at.longitude),
@@ -169,10 +172,10 @@ async function skyPreview(userId, at, atHome) {
 /**
  * Where a new Moment goes with the Sky on for its author (founder 2026-11-17): where it was taken, unless its author
  * pins it at a public place close by, picked by name ("Pin it at a place"). `venue` ({ latitude, longitude, label })
- * for a pin at a place, `area` (areaPoint of the Moment's own point) for one that shows only its area, neither for one
- * where it was taken. A Moment at the author's home shows only its area whatever was asked, and so does one sent with
- * `show_area` (the "Show the area instead" of an app from before the Sky, and a Post sheet from before November 17,
- * which showed the area unless a place was picked).
+ * for a pin at a place, `area` (momentPlace.closeArea of the Moment's own point: over a street close by) for one that
+ * shows only its area, neither for one where it was taken. A Moment at the author's home shows only its area whatever
+ * was asked, and so does one sent with `show_area` (the "Show the area instead" of an app from before the Sky, and a
+ * Post sheet from before November 17, which showed the area unless a place was picked).
  *
  * A place is picked with `pin: "place"`, a `venue_id` or a venue's `place_key`. It may be no farther from the spot
  * than momentPlace.pickWithinM says (422 PLACE_NOT_NEARBY for a `venue_id` that is, or that nobody finds), and
@@ -184,7 +187,7 @@ async function skyPreview(userId, at, atHome) {
 async function skyPlacement(userId, body) {
   const { latitude, longitude } = body.location;
   const atHome = await momentPlace.isAtHome(userId, latitude, longitude);
-  if (atHome || body.show_area) return { atHome, venue: null, area: await areaPoint(latitude, longitude) };
+  if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
   const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
   if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
   const within = await momentPlace.pickWithinM(latitude, longitude);

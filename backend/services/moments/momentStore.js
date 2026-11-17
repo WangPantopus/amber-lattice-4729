@@ -631,6 +631,9 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
       place_label: newest.row.location_name || null,
       altitude_ft: high ? high.altitude_ft : null,
       flying: Boolean(high?.flying),
+      // The Sky: the newest Moment shows only its area (made at home), so apps draw the pin floating over its spot
+      // with no pointer, never as an exact pin.
+      floating: isFloating(newest.row),
       moments,
       unseen_count: moments.filter((m) => !m.seen).length,
       newest_at: shownAt(newest.row),

@@ -16,7 +16,7 @@ Adds, with the flag on for the caller:
 | Field | Meaning |
 | --- | --- |
 | `sky: true` | Draw the new Post sheet. |
-| `area: { label, latitude, longitude, radius_m } \| null` | The area this point is in, which a Moment at home shows: the town's name (read at the area's own point, so the words depend on the area only), the area point and the disc's radius in metres. `null` with no point. |
+| `area: { label, latitude, longitude, radius_m } \| null` | The area this point is in, which a Moment at home shows: the town's name (read at the area's own spot, so the words depend on the area only), the spot (a street close to the middle of the point's quarter-mile cell) and the disc's radius in metres. `null` with no point. |
 | `place: { key, label } \| null` | The public place that names the spot and may take a pin (never a school or preschool): what "Pin it at a place" starts with. Its `key` is one of `places`' keys. |
 | `can_pin: bool` | False at home and with no point. |
 | `share_later: [{ key, label, at }]` | The "Share later" choices on offer now: `1h` ("In 1 hour"), `3h` ("In 3 hours"), and `tonight` ("Tonight at 8") only before 7 pm in the author's time zone (the point's; with no point, a home's; else Pacific). `at` is when each would share. Given with no point too. |
@@ -40,7 +40,10 @@ a Moment is where it was taken, not at the middle of an area):
 1. `location.source: "none"`: no place, as in v3.9.
 2. **Only its area**, when the point is within 60 m of a home the author lives at, whatever was asked and with no
    error; and when `show_area: true` was sent (the "Show the area instead" of a v3.9 app, and a Post sheet built
-   between November 16 and 17, which showed the area unless a place was picked).
+   between November 16 and 17, which showed the area unless a place was picked). It floats over a public street
+   close to the middle of the quarter-mile (0.005°) cell the point is in, or over that middle when no street is
+   found within 200 m of it: at most about a third of a mile from the point, the same spot for every point in the
+   cell.
 3. **At a public place close by**, when one was picked: the pin is the place's own point, the label its name,
    `label_kind: "place"`. A place whose own point is farther from the Moment's than `pick_within_m` (the middle of a
    big park the photo was taken in) gives its name and the pin stays at the Moment's own point.
@@ -57,10 +60,10 @@ is: 400 m (a quarter mile) where a quarter-mile cell holds 100 homes, then 800, 
 miles, open country); 1600 where the homes file can't say (abroad). A place whose outline holds the point is 0 m
 away. With the flag off it is 1500, as in v3.9.
 
-A Moment over its area stores only the area's point (`latitude`, `longitude` and the effective pair),
-`location_precision: approx_area`, `post_metadata.moment.show_area: true`, and `post_metadata.area = { v: 1, step,
-radius_m }`. Its label is the area's town and its `label_kind` `town`. The phone's or photo's point is not written
-anywhere.
+A Moment over its area stores only that spot (`latitude`, `longitude` and the effective pair),
+`location_precision: approx_area`, `post_metadata.moment.show_area: true`, and `post_metadata.area = { v: 1, step: 1,
+radius_m }`. Its label is the town at the spot and its `label_kind` `town`. The phone's or photo's point is not
+written anywhere.
 
 `PLACE_NOT_NEARBY` is returned with the flag on too: a `venue_id` farther than `pick_within_m`, or one nobody finds.
 
@@ -79,6 +82,9 @@ anywhere.
 - The stored upload state is unchanged ('uploading', 'checking', 'live'); "scheduled" is worked out from `share_at`.
 
 ## `GET /api/moments/map`
+
+Every ring adds `floating: bool`: its newest Moment shows only its area, so apps draw its pin floating over its spot
+with no pointer (added 2026-11-17).
 
 Adds, with the flag on for the caller, `scheduled`: the caller's own Moments waiting to share later (each a Moment
 with `state: "scheduled"` and `share_at`), soonest first, for their own row ("Shares at 6:40 pm", with Delete). Never

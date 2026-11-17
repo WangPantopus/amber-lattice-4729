@@ -244,7 +244,7 @@ area), the server decides, whatever an app's sheet says:
 |--------|-----------------------------------------|-------------|
 | Where it was taken (the default) | the exact point | a named place, else the street's name without a number, else the town; never a school's or a preschool's name |
 | "Pin it at a place": a public place close by, picked by name | the place's own point (from the venues index); the photo's own point when the place's is farther off than a place may be picked (the middle of a big park) | the place's name |
-| Within ~60 m of the author's own home, always | only the area's point: the centre of the smallest square of 0.005°–0.1° whose places hold at least 100 homes ([Areas of at least 100 homes](#areas-of-at-least-100-homes)) | the town at the area's point |
+| Within ~60 m of the author's own home, always | only its area's spot: a public street close to the middle of the quarter-mile cell the home is in (below), never the home | the town at that spot |
 | "Don't show where" | none | none |
 
 - **How close a picked place must be** depends on how built-up the spot is, from the same homes file as the areas
@@ -256,17 +256,27 @@ area), the server decides, whatever an app's sheet says:
 - **A place is picked** with `pin: "place"`, a `venue_id` from the place picker, or a venue's `place_key`. A school
   or a preschool never takes a pin, and neither does a place within ~60 m of the author's home: the Moment stays
   where it was taken.
-- **At home the phone's point is never written:** `latitude`, `longitude` and the effective pair hold the area
-  point, with `location_precision` `approx_area`, `show_area` true (so apps from before draw an area) and
-  `post_metadata.area = { v: 1, step, radius_m }`. The exact point is used only while the request is handled (the
-  home check). The same goes for a Moment sent with `show_area: true`: the "Show the area instead" of an app from
-  before the Sky, and a Post sheet built between November 16 and 17, which showed the area unless a place was
-  picked.
+- **A Moment at home floats over a street close by** (founder 2026-11-17: at home it stays an area, but a very
+  close one, never miles off). Its spot is worked out from the cell only (`momentPlace.closeArea`): the 0.005° cell
+  holding the home (about 0.35 by 0.25 mile), then the point on a public street (OpenStreetMap: residential to
+  primary roads, no driveways or footpaths) closest to the cell's middle and within 200 m of it; with no street
+  there, or none found in time, the cell's middle. Every home in the cell shows the same spot, so many Moments never
+  narrow it down, and it is at most about a third of a mile from the home. This is closer than the 100-homes areas
+  Pulse posts use: in the countryside a cell holds few homes. The street spot is looked up once per cell and kept
+  for a month (`services/geo/streets.js`).
+- **At home the phone's point is never written:** `latitude`, `longitude` and the effective pair hold that spot,
+  with `location_precision` `approx_area`, `show_area` true (so apps from before draw an area) and
+  `post_metadata.area = { v: 1, step: 1, radius_m }` (`radius_m` reaches the whole cell from the spot). The exact
+  point is used only while the request is handled (the home check). The same goes for a Moment sent with
+  `show_area: true`: the "Show the area instead" of an app from before the Sky, and a Post sheet built between
+  November 16 and 17, which showed the area unless a place was picked.
+- **On the map a Moment over its area floats:** its ring says `floating: true` and the apps draw the disc with no
+  pointer, low over its spot with a soft shadow under it, by day and by night, so it never reads as an exact pin.
 - **Height:** a Moment over its area away from home (one sent with `show_area`) keeps feet rounded to 100; a pin
   keeps 10; at home, none.
-- **The preview** (`POST /api/moments/place-preview`) adds `sky`, `area` (the town, the area point and `radius_m`:
-  what a Moment at home shows), `place` (the public place a pin would use) and `can_pin` (false at home) for a
-  caller with the flag on; its names leave out schools and preschools.
+- **The preview** (`POST /api/moments/place-preview`) adds `sky`, `area` (the town, the street spot and
+  `radius_m`: what a Moment at home shows), `place` (the public place a pin would use) and `can_pin` (false at home)
+  for a caller with the flag on; its names leave out schools and preschools.
 - **Share later** (`share_later: "1h" | "3h" | "tonight"`): the Moment is made at once but until its time only its
   author can read it (`state: "scheduled"`, `share_at`); it is on no map, in no ring and in no push. At its time its
   `created_at` becomes the time it went live, so nobody reads when its author was there; new apps say "Earlier today"

@@ -8,17 +8,18 @@
 // stadium the photo was taken in: the app sends only the venue's id, and venueNear finds it again near the pin.
 // With the Sky's places on for the author (`sky_places`), a Moment is where it was taken unless its author pins it at a
 // public place close by, picked by name (namingPlace, venueForKey, venueNear; never a school or a preschool, and no
-// farther than pickWithinM, which is shorter where the spot is built up); at home it shows only its area, named by the
-// town at the area's own point (townAt).
+// farther than pickWithinM, which is shorter where the spot is built up); at home it shows only its area: it stands
+// over a street close by (closeArea), named by the town there (townAt).
 
 const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const geoProvider = require('../geo');
 const venues = require('../geo/venues');
+const streets = require('../geo/streets');
 const parsePostGISPoint = require('../../utils/parsePostGISPoint');
 const { haversineMeters } = require('../../utils/trustState');
-const { knownStepAt } = require('../../utils/areaCells');
+const { knownStepAt, pointAt } = require('../../utils/areaCells');
 
 // The place whose outline holds the point names the spot (the park, the stadium; the smallest one when several do),
 // unless the pin is right at a venue mapped as a point; with no outline, a venue this close does.
@@ -37,6 +38,11 @@ const PICK_PLACE_M = 1500;
 // homes (abroad).
 const PICK_PLACE_BY_STEP_M = [400, 800, 1600, 2400, 3200];
 const PICK_PLACE_UNKNOWN_M = 1600;
+// A Moment that shows only its area (at home, always) stands over a public street this close to the middle of its
+// quarter-mile cell (founder 2026-11-17: at home it floats over a very close street, never miles off); with no street
+// there, or none found in time, at the middle itself.
+const AREA_STREET_M = 200;
+const AREA_STREET_WAIT_MS = 3500;
 // The Post sheet's home notice: a pin this close to a home the person lives at.
 const AT_HOME_M = 60;
 const VENUE_WAIT_MS = 2500;
@@ -173,6 +179,33 @@ async function venueNear(venueId, latitude, longitude, maxDistance = PICK_PLACE_
   };
 }
 
+// ─── The Sky: a Moment that shows only its area ────────────────────────────
+
+/**
+ * The area a Moment that shows only its area is drawn over: { latitude, longitude, step, radius_m }, or null for a
+ * point that isn't a number. It is the quarter-mile cell holding the point (the smallest of utils/areaCells.js: about
+ * 0.35 by 0.25 mile), shown at the spot on a public street closest to the cell's middle, within AREA_STREET_M of it;
+ * with no street there (or none found within `waitMs`) at the middle. The answer depends on the cell only, never on
+ * where in it the point is, so every home in the cell shows the same spot and many Moments never narrow it down.
+ * `radius_m` reaches every point of the cell from the spot shown. Never throws.
+ */
+async function closeArea(latitude, longitude, { waitMs = AREA_STREET_WAIT_MS } = {}) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (latitude == null || longitude == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const cell = pointAt(lat, lng, 1);
+  const street = await settle(streets.streetPointNear({
+    latitude: cell.latitude, longitude: cell.longitude, radiusM: AREA_STREET_M, waitMs,
+  }), 'street');
+  if (!street) return cell;
+  return {
+    latitude: Math.round(street.latitude * 1e5) / 1e5,
+    longitude: Math.round(street.longitude * 1e5) / 1e5,
+    step: cell.step,
+    radius_m: Math.ceil((cell.radius_m + street.distance_m) / 10) * 10,
+  };
+}
+
 // ─── The Sky (phase A): a pin only at a public place picked by name ─────────
 
 /**
@@ -227,6 +260,6 @@ function labelKind(labels, label) {
 }
 
 module.exports = {
-  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM,
+  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
   FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
 };
