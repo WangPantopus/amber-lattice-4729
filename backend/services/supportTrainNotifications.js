@@ -355,6 +355,8 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
             restaurantName: payload.restaurant_name,
             reminderDay: event.includes('24h') ? 'tomorrow' : 'today',
             guestAddressSharedAt: payload.guest_address_shared_at,
+            // Only a helper who opened the link in their signup email gets their name, the title and the dish back.
+            confirmed: payload.guest_email_confirmed === true,
             ...(addressLabel ? { addressLabel } : {}),
             supportTrainId,
           });

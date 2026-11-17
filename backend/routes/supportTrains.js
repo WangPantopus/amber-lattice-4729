@@ -7,7 +7,7 @@ const router = express.Router();
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
-const { supportTrainDraftLimiter, supportTrainWriteLimiter, supportTrainGuestSignupLimiter } = require('../middleware/rateLimiter');
+const { supportTrainDraftLimiter, supportTrainWriteLimiter, supportTrainGuestSignupLimiter, previewLimiter } = require('../middleware/rateLimiter');
 const { asyncHandler } = require('../errorHandler');
 const {
   draftSupportTrain,
@@ -58,6 +58,8 @@ const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
 const { applyLocationPrecision } = require('../utils/locationPrivacy');
 const { householdHomeIds } = require('../utils/homeMailAccess');
 const blockService = require('../services/blockService');
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const { isPublicStorageUrl } = require('../services/s3Service');
 const {
   countActiveReservationsForSlot,
@@ -746,6 +748,34 @@ router.get(
     }
 
     res.json({ support_trains: data || [] });
+  })
+);
+
+// The link in a guest's signup email. Opening it records that the address is the helper's own (for every signup that
+// address holds on the train), then shows the train's page. An unknown link just shows the site.
+const guestConfirmHash = (token) => createHash('sha256').update(`pantopus:st-guest-confirm:v1:${token}`).digest('hex');
+router.get(
+  '/guest-confirm/:token',
+  previewLimiter,
+  asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return res.redirect(302, APP_URL);
+    const { data: reservation, error } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .select('id, support_train_id, guest_email, user_id')
+      .eq('guest_confirm_token_hash', guestConfirmHash(token))
+      .maybeSingle();
+    if (error) return supportTrainUnavailable(res);
+    if (!reservation || reservation.user_id || !reservation.guest_email) return res.redirect(302, APP_URL);
+    const { error: markError } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .update({ guest_email_confirmed_at: new Date().toISOString() })
+      .eq('support_train_id', reservation.support_train_id)
+      .eq('guest_email', reservation.guest_email)
+      .is('user_id', null)
+      .is('guest_email_confirmed_at', null);
+    if (markError) logger.warn('Guest signup confirmation not recorded', { reservationId: reservation.id, error: markError.message });
+    return res.redirect(302, `${APP_URL}/support-trains/${reservation.support_train_id}`);
   })
 );
 
@@ -3286,19 +3316,24 @@ router.post(
     // The answer is the same whether or not this email has an account. One address takes a few signups on a train and
     // a few a day in all: nothing here shows the address is the caller's own, and each signup writes to it.
     const [onThisTrain, today] = await Promise.all([
-      supabaseAdmin.from('SupportTrainReservation').select('id', { count: 'exact', head: true })
-        .eq('support_train_id', st.id).eq('guest_email', guestEmail).is('user_id', null).eq('status', 'reserved'),
+      supabaseAdmin.from('SupportTrainReservation').select('id, guest_email_confirmed_at')
+        .eq('support_train_id', st.id).eq('guest_email', guestEmail).is('user_id', null).eq('status', 'reserved')
+        .limit(GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN + 1),
       supabaseAdmin.from('SupportTrainReservation').select('id', { count: 'exact', head: true })
         .eq('guest_email', guestEmail).is('user_id', null)
         .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
     ]);
     if (onThisTrain.error || today.error) return supportTrainUnavailable(res);
-    if ((onThisTrain.count || 0) >= GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN || (today.count || 0) >= GUEST_SIGNUPS_PER_EMAIL_PER_DAY) {
+    if ((onThisTrain.data || []).length >= GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN || (today.count || 0) >= GUEST_SIGNUPS_PER_EMAIL_PER_DAY) {
       return res.status(429).json({
         error: 'TOO_MANY_SIGNUPS',
         message: 'This email already has several signups. Sign in to Pantopus to help with more.',
       });
     }
+    // The link in the signup email records that the address was opened (GET /guest-confirm/:token). An address
+    // already confirmed on this train stays confirmed for its next signup.
+    const confirmToken = require('crypto').randomBytes(24).toString('base64url');
+    const confirmedBefore = (onThisTrain.data || []).map((row) => row.guest_email_confirmed_at).find(Boolean) || null;
 
     // Insert guest reservation (user_id is null)
     const { data: reservation, error: resErr } = await supabaseAdmin
@@ -3309,6 +3344,8 @@ router.post(
         user_id: null,
         guest_name: body.guest_name,
         guest_email: guestEmail,
+        guest_confirm_token_hash: guestConfirmHash(confirmToken),
+        guest_email_confirmed_at: confirmedBefore,
         status: 'reserved',
         contribution_mode: body.contribution_mode,
         dish_title: body.dish_title || null,
@@ -3382,6 +3419,7 @@ router.post(
       slotTime: formatSupportTrainSlotTime(slot),
       contributionMode: body.contribution_mode,
       supportTrainId: st.id,
+      confirmUrl: `${APP_URL}/api/activities/support-trains/guest-confirm/${confirmToken}`,
     }).catch((err) => {
       logger.error('Guest confirmation email failed (non-fatal)', {
         guestEmail,
@@ -3389,6 +3427,7 @@ router.post(
       });
     });
 
+    delete reservation.guest_confirm_token_hash;
     res.status(201).json(reservation);
   })
 );

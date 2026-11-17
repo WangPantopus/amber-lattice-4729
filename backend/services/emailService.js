@@ -1145,8 +1145,10 @@ Unsubscribe: ${unsubUrl}
  * @param {string} opts.supportTrainId
  * @param {boolean} [opts.isReminder=false] - reuse this receipt for an upcoming-slot reminder
  */
-// Wording is fixed: the address these go to has not been confirmed as the helper's own, so nothing a person typed (a
-// name, the train's title, a slot's label, a dish) is put in them. The page behind the link has the details.
+// The address a signup gives is the helper's own only once they have opened the link in their signup email
+// (`confirmed`). Until then these emails use fixed wording: nothing a person typed (a name, the train's title, a
+// dish) is put in them, and the page behind the link has the details. `confirmUrl`: the signup email's link, which
+// records that the address was opened and then shows the train.
 async function sendGuestReservationConfirmationEmail({
   toEmail,
   guestName,
@@ -1162,13 +1164,25 @@ async function sendGuestReservationConfirmationEmail({
   restaurantName,
   guestAddressSharedAt,
   addressLabel,
+  confirmed = false,
+  confirmUrl = null,
 }) {
   const modeLabels = { cook: 'Home-cooked meal', takeout: 'Takeout', groceries: 'Groceries' };
   const modeLabel = modeLabels[contributionMode] || contributionMode;
-  const appUrl = `${APP_URL}/support-trains/${supportTrainId}`;
+  const appUrl = (!isReminder && confirmUrl) || `${APP_URL}/support-trains/${supportTrainId}`;
+  // A reminder to a confirmed address reads as it always has; everything else is fixed wording.
+  const typed = isReminder && confirmed === true;
 
   const daySuffix = ['tomorrow', 'today'].includes(reminderDay) ? ` ${reminderDay}` : '';
-  const subject = isReminder ? `Reminder: your Support Train sign-up${daySuffix}` : "You're signed up to help with a Support Train";
+  const subject = typed ? `Reminder: ${trainTitle}${daySuffix}`
+    : isReminder ? `Reminder: your Support Train sign-up${daySuffix}` : "You're signed up to help with a Support Train";
+  const contributionDetail = typed ? (contributionMode === 'takeout' ? restaurantName : dishTitle) : null;
+  const greetingHtml = typed
+    ? `Hi <strong>${escapeHtml(guestName)}</strong>, this is a reminder about your upcoming help with <strong>${escapeHtml(trainTitle)}</strong>.`
+    : `Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up on Pantopus.' : 'thank you for signing up to help with a Support Train on Pantopus.'}`;
+  const greetingText = typed ? `Hi ${guestName}, this is a reminder about your upcoming slot.`
+    : `Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up.' : 'thank you for signing up to help with a Support Train!'}`;
+  const slotLine = typed ? `${slotLabel} · ${slotDate}` : slotDate;
   // A reminder can repeat an address only after this reservation's share receipt.
   const sharedAddress = isReminder && guestAddressSharedAt ? addressLabel : null;
 
@@ -1189,13 +1203,13 @@ async function sendGuestReservationConfirmationEmail({
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up on Pantopus.' : 'thank you for signing up to help with a Support Train on Pantopus.'}
+        ${greetingHtml}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
-        <div style="font-size:15px; font-weight:600; color:#111827;">📅 ${escapeHtml(slotDate)}</div>
+        <div style="font-size:15px; font-weight:600; color:#111827;">📅 ${escapeHtml(slotLine)}</div>
         ${slotTime ? `<div style="font-size:13px; color:#6b7280; margin-top:4px;">⏰ ${escapeHtml(slotTime)}</div>` : ''}
-        <div style="font-size:13px; color:#6b7280; margin-top:4px;">🍽 ${escapeHtml(modeLabel)}</div>
+        <div style="font-size:13px; color:#6b7280; margin-top:4px;">🍽 ${escapeHtml(modeLabel)}</div>${contributionDetail ? `\n        <div style="font-size:13px; color:#6b7280; margin-top:4px;">${escapeHtml(contributionDetail)}</div>` : ''}
       </div>
 
       <p style="color:#374151; font-size:14px; line-height:1.6; margin:0 0 16px;">
@@ -1229,10 +1243,10 @@ async function sendGuestReservationConfirmationEmail({
   const text = `
 ${subject}
 
-Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up.' : 'thank you for signing up to help with a Support Train!'}
+${greetingText}
 
-${slotDate}${slotTime ? `\nTime: ${slotTime}` : ''}
-Type: ${modeLabel}
+${slotLine}${slotTime ? `\nTime: ${slotTime}` : ''}
+Type: ${modeLabel}${contributionDetail ? `\nBring: ${contributionDetail}` : ''}
 
 ${sharedAddress ? `Drop-off address:\n${sharedAddress}` : 'The organizer will share exact delivery details with you closer to the date.'}
 
