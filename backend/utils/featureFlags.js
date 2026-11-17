@@ -30,6 +30,16 @@ function aroundYouEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// Guidance cards (founder approval 2026-11-16): the centre cards and pointer bubbles that explain the app to a new
+// account. The apps show nothing unless the profile's `guidance.enabled` is true (routes/users.js). GUIDANCE_CARDS is
+// '1' (on) or '0' (off); unset, it is on for hosted staging and off everywhere else.
+function guidanceCardsEnabled(env = process.env) {
+  const value = String(env.GUIDANCE_CARDS || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // A Christmas card by email's one reminder, three days after its email (founder, November 16; services/cardEmail).
 // CARD_EMAIL_REMINDERS is '0' (off) or '1' (on); unset, it is on where the server runs as staging or production
 // (NODE_ENV=production) and off on a laptop or in tests, so a local run never emails a reminder to a real address.
@@ -225,6 +235,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 
 module.exports = {
   aroundYouEnabled,
+  guidanceCardsEnabled,
   cardEmailRemindersEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,
