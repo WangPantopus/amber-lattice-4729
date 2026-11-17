@@ -27,7 +27,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -54,10 +53,8 @@ import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
-import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanStackButton
 import app.pantopus.android.ui.screens.plans.components.planCard
-import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -144,8 +141,8 @@ internal fun ColumnScope.PlanInBody(
 @Composable
 private fun InPlaceTitle(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (plan.isPrivate) PlanPrivateChip()
-        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        // The occasion's or kind's tag, as before answering (Plans for the holidays, 06-screens A3), then the title.
+        PlanHeading(plan)
         plan.place?.let { place ->
             Row(
                 modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},

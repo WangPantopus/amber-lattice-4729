@@ -98,6 +98,8 @@ data class PlanChangeUi(
     val deal: PlanChangeDeal = PlanChangeDeal(),
     /** A business's price and the bill here (business track B2, B5, PlanChangeMoney.kt). */
     val money: PlanChangeMoney = PlanChangeMoney(),
+    /** A private plan's "Room for" and "Kids welcome" (Plans for the holidays, PlanChangeRoom.kt). */
+    val room: PlanChangeRoom = PlanChangeRoom(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -194,7 +196,7 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed || room.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -258,6 +260,7 @@ class PlanChangeViewModel
                                     ),
                                 deal = DealDraft.from(plan.deal?.form, zone).let { PlanChangeDeal(original = it, draft = it) },
                                 money = PlanChangeMoney.of(plan),
+                                room = PlanChangeRoom.of(plan, feature.flags.value.guestAnswersOn),
                             )
                         }
                         lookForOrigin()
@@ -482,6 +485,9 @@ class PlanChangeViewModel
                         priceCents = ui.money.priceCents?.takeIf { ui.money.priceChanged },
                         payHere = ui.money.payHere.takeIf { ui.money.payChanged },
                         tipsOn = (ui.money.payHere && ui.money.tipsOn).takeIf { ui.money.payChanged },
+                        // Plans for the holidays: a private plan's room and "Kids welcome", each only when changed.
+                        spots = ui.room.spots.takeIf { ui.room.spotsChanged },
+                        kidsWelcome = ui.room.kidsWelcome.takeIf { ui.room.kidsChanged },
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
@@ -510,6 +516,16 @@ class PlanChangeViewModel
             val second = if (others && ui.removesDeal) repository.removeDeal(planId) else first
             if (second !is NetworkResult.Success) return second
             return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
+        }
+
+        // ---- Plans for the holidays: a private plan's room and "Kids welcome" ----
+
+        fun setRoom(spots: Int) {
+            _ui.update { it.copy(room = it.room.copy(spots = spots.coerceIn(it.room.range)), error = null) }
+        }
+
+        fun setKidsWelcome(on: Boolean) {
+            _ui.update { it.copy(room = it.room.copy(kidsWelcome = on), error = null) }
         }
 
         // ---- Business track B2 and B5: the price and the bill here ----
