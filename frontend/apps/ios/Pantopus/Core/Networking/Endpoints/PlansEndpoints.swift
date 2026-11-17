@@ -75,8 +75,11 @@ public enum PlansEndpoints {
     /// Plans for the holidays (contract section 4, K10): `guests=1` says this
     /// build draws guests without an account, Maybe, adults and kids, and room
     /// over 30. Without it the server answers as before H1.
+    ///
+    /// The extras (08-extras section 1): `extras=1` says this build draws the six extras. Without it a plan still
+    /// picking its date doesn't exist and every other plan reads without the extras' fields.
     static func biz(_ query: [String: String] = [:]) -> [String: String] {
-        query.merging(["biz": "1", "more": "1", "guests": "1"]) { _, marker in marker }
+        query.merging(["biz": "1", "more": "1", "guests": "1", "extras": "1"]) { _, marker in marker }
     }
 
     // MARK: - Flags

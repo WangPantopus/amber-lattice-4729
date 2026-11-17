@@ -17,6 +17,8 @@ struct PlanInviteSheet: View {
     @State private var viewModel: PlanInviteViewModel
     /// Plans for the holidays (board 16): one link for everyone, where the plan takes it.
     @State private var openLink: PlanOpenLinkModel?
+    /// The same people again (board 30): the row shows only when the host has a past plan to offer.
+    @State private var pastPeople: PlanPastPeopleModel
     @State private var toast: String?
     @Environment(\.dismiss) private var dismiss
     @FocusState private var searchFocused: Bool
@@ -25,6 +27,7 @@ struct PlanInviteSheet: View {
         self.card = card
         _viewModel = State(initialValue: PlanInviteViewModel(planId: card.id, atHome: card.placeKind == .home))
         _openLink = State(initialValue: card.takesOpenLink ? PlanOpenLinkModel(planId: card.id, atHome: card.placeKind == .home) : nil)
+        _pastPeople = State(initialValue: PlanPastPeopleModel(planId: card.id))
     }
 
     var body: some View {
@@ -54,6 +57,7 @@ struct PlanInviteSheet: View {
         .presentationCornerRadius(26)
         .presentationBackground(Theme.Color.appSurface)
         .task { await viewModel.load() }
+        .task { await pastPeople.loadPlans() }
         .task(id: viewModel.searchText) {
             // A short pause while typing, then the people list for the name.
             try? await Task.sleep(for: .milliseconds(250))
@@ -233,6 +237,7 @@ extension PlanInviteSheet {
         case .loaded:
             peopleSection
             textInviteCard
+            PlanPastPeopleEntry(model: pastPeople) { sent in Task { await viewModel.invitedFromPlan(sent) } }
             if let openLink { PlanOpenLinkCard(model: openLink) { toast = $0 } }
             sentSection
             Text("Each invitation is for one person. Emails and texts show the plan's card and area, never your address.")
