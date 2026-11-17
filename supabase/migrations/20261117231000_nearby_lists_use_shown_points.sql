@@ -16,7 +16,8 @@
 --    without show_exact_location) at its display point, and at no point when it has none
 --    (businessAddressService.toPublicBusinessLocation). The map and the search now place, filter and measure such a
 --    business by that display point, leave it out when it has none, give its distance to the nearest 100 m and no
---    street line. Every other business is as before.
+--    street line. Every other business is as before. Both still pre-filter on the stored point through its index
+--    (idx_bloc_geo), a kilometre wider than asked, so the lists cost what they did.
 --
 -- 3. find_nearest_activity_center, 'business' branch (the empty-map hint of GET /api/businesses/map). It now
 --    answers with the nearest business the map would show (published, primary, active), at the point the map shows.
@@ -190,6 +191,10 @@ BEGIN
   ) pt
   WHERE u.account_type = 'business'
     AND bp.is_published = true
+    AND bl.location IS NOT NULL
+    -- Index-assisted pre-filter (idx_bloc_geo): a display point sits a few hundred metres from the stored point, so
+    -- everything shown inside the box is stored within a kilometre of it. The stored point itself is not returned.
+    AND ST_DWithin(bl.location, v_bounds, 1000)
     AND pt.shown IS NOT NULL
     -- Bounding box filter, on the shown point
     AND ST_Intersects(pt.shown, v_bounds)
@@ -333,6 +338,10 @@ BEGIN
   ) pt
   WHERE u.account_type = 'business'
     AND bp.is_published = true
+    AND bl.location IS NOT NULL
+    -- Index-assisted pre-filter (idx_bloc_geo), a kilometre wider than the radius; the radius itself is applied to
+    -- the shown point.
+    AND ST_DWithin(bl.location, v_center, p_radius_meters + 1000)
     AND pt.shown IS NOT NULL
     AND ST_DWithin(pt.shown, v_center, p_radius_meters)
     -- Category filter (optional): a saved category matches a wanted one however
@@ -372,21 +381,25 @@ BEGIN
 
   ELSIF p_content_type = 'business' THEN
     RETURN QUERY
-      -- The nearest business the map would show (find_businesses_in_bounds), at the point it shows.
+      -- The nearest business the map would show (find_businesses_in_bounds), at the point it shows. The nearest few
+      -- by stored point come from the index (idx_bloc_geo); the answer is the nearest of them by shown point.
       SELECT
-        ST_Y(pt.shown::geometry)::double precision AS latitude,
-        ST_X(pt.shown::geometry)::double precision AS longitude
-      FROM "BusinessLocation" bl
-      JOIN "User" u ON u.id = bl.business_user_id AND u.account_type = 'business'
-      JOIN "BusinessProfile" bp ON bp.business_user_id = bl.business_user_id AND bp.is_published = true
-      CROSS JOIN LATERAL (
+        ST_Y(c.shown::geometry)::double precision AS latitude,
+        ST_X(c.shown::geometry)::double precision AS longitude
+      FROM (
         SELECT CASE WHEN bl.location_type = 'home_based_private' AND bl.show_exact_location IS NOT TRUE
           THEN bl.display_location ELSE bl.location END AS shown
-      ) pt
-      WHERE pt.shown IS NOT NULL
-        AND bl.is_primary = true
-        AND bl.is_active = true
-      ORDER BY pt.shown <-> ST_SetSRID(ST_MakePoint(p_center_lon, p_center_lat), 4326)::geography
+        FROM "BusinessLocation" bl
+        JOIN "User" u ON u.id = bl.business_user_id AND u.account_type = 'business'
+        JOIN "BusinessProfile" bp ON bp.business_user_id = bl.business_user_id AND bp.is_published = true
+        WHERE bl.location IS NOT NULL
+          AND bl.is_primary = true
+          AND bl.is_active = true
+        ORDER BY bl.location <-> ST_SetSRID(ST_MakePoint(p_center_lon, p_center_lat), 4326)::geography
+        LIMIT 25
+      ) c
+      WHERE c.shown IS NOT NULL
+      ORDER BY c.shown <-> ST_SetSRID(ST_MakePoint(p_center_lon, p_center_lat), 4326)::geography
       LIMIT 1;
 
   ELSIF p_content_type = 'listing' THEN
