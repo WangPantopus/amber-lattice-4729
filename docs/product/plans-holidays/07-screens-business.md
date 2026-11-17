@@ -334,6 +334,12 @@ business graph's own work and are drawn there.
 
 - One tag a row, in this order: the deal's tag, then the price, then "Free";
   never in place of "You're in", "Requested" or "Invited".
+- Two sentences the server writes, settled the evening of November 16 after
+  Android's check of the merged build (the designer's calls; a server change
+  is owed for both, the apps draw what comes): an unlocked deal's banner
+  counts the people in now and reads "Unlocked: 1 is in" for one and
+  "Unlocked" alone for none; a guest's paid row reads "Paid {$18.00} ·
+  {$4.00} back" once a part has come back (contract 9.2, 10.2).
 - The step count reads "of 4" only with deals on and a business chosen.
 - With a price, the shipped line "Free, and for adults" reads the server's
   `price.line` in place of "Free".

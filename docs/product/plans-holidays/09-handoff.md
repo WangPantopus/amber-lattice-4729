@@ -113,9 +113,11 @@ Also done:
   which ran out of room before merging. A server session then merged all four
   pull requests (4240, 4258, 4267, 4268) on those checks, each after green
   checks on a head that contained `dev`, without changing Android code; the
-  last went in at 6:33 PM Pacific on November 16. Nobody has run the merged
-  build on an emulator since: the first Android session's first job is to
-  build `dev` and smoke-check the four steps.
+  last went in at 6:33 PM Pacific on November 16. The merged build was then
+  run by the next Android session at about 8:15 PM (`dev` 2492118e8d, an
+  emulator, test mode): deals, paying for a spot, the group price coming back
+  and a guest leaving after it, the bill with a tip and the tip afterwards
+  all worked, to the cent (`NEXT_STEPS.md` has what it saw).
 
 **Switches** (all `FeatureFlag` rows, all off everywhere but a session's own
 rig, except one): `plans_guest_answers` (on in staging only, at the founder's
@@ -143,10 +145,9 @@ In the order it should be done. Each item is its own small pull request into
 
 **Android**
 
-1. Build current `dev` and smoke-check the business track on the emulator in
-   test mode (deals, paying for a spot, the bill with a tip, the tip
-   afterwards): the four pull requests were merged on the earlier session's
-   checks, and the merged build has not been run.
+1. Done November 16, about 8:15 PM Pacific: the merged build smoke-checked
+   on the emulator in test mode (deals, paying for a spot, the bill with a
+   tip, the tip afterwards), nothing broken.
 2. One small fix from the people track's two-phone check: on a private plan's
    Change screen, "Room for" (from the people already in up to 100) and "Kids
    welcome"; the occasion's tag on the page of a person who is in; an
@@ -176,8 +177,11 @@ In the order it should be done. Each item is its own small pull request into
 
 **Server and web**
 
-9. Nothing is known to be open. A server session is needed when a phone
-   session finds a gap. Staging carries 4259 and 4261 since 4:08 PM Pacific on
+9. Two sentences to change, found by Android's smoke check and settled in
+   contract 9.2 and 10.2: "Unlocked: 1 are in" and "Paid $18.00" after $4.00
+   came back. The list a server session works from, with its brief, is
+   `~/pantopus-plans/holidays-notes/HOLSRV-gaps.md`. Otherwise a server
+   session is needed when a phone session finds a gap. Staging carries 4259 and 4261 since 4:08 PM Pacific on
    November 16 (section 3).
 
 **Documents**
