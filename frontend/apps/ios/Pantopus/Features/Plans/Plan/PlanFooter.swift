@@ -41,7 +41,12 @@ struct PlanFooter: View {
     }
 
     private func content(_ card: PlanCardDTO) -> AnyView? {
-        switch viewModel.mode {
+        // A buyer's link with spots left (one person pays for the group): its free "I'm in", never the paid "Join".
+        if let spot = viewModel.spot, viewModel.mode != .hosting {
+            if let offer = spot.offer { return AnyView(PlanSpotClaimButton(viewModel: viewModel, offer: offer)) }
+            return AnyView(PlanSpotRetry(viewModel: viewModel, token: spot.token)) // couldn't check: no paid "Join"
+        }
+        return switch viewModel.mode {
         case .browsing:
             AnyView(browsing(card))
         case .requested:

@@ -118,4 +118,17 @@ public extension PlansEndpoints {
     static func giveBackSpots(planId: String) -> Endpoint {
         Endpoint(method: .post, path: "\(base)/\(planId)/requests/mine/give-back-spots", query: biz())
     }
+
+    /// `GET /api/plans/:id/spot?token=` — what a buyer's link offers whoever opens it (`{ spot }`); 404 while the
+    /// business doesn't take it or the plan isn't shown to the reader. Route `backend/routes/plans.js` (`/:id/spot`).
+    static func spotOffer(planId: String, token: String) -> Endpoint {
+        Endpoint(method: .get, path: "\(base)/\(planId)/spot", query: biz(["token": token]))
+    }
+
+    /// `POST /api/plans/:id/requests/claim-spot` `{ token }` — in, free, while bought spots are left; answers the plan.
+    /// 409 `already_in` / `host` / `link_stopped` / `spots_taken` / `ended`, 403 `removed`, 404. Route
+    /// `backend/routes/plans.js` (`/:id/requests/claim-spot`), `planGroupPay.claim`.
+    static func claimSpot(planId: String, token: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/claim-spot", query: biz(), body: PlanClaimSpotBody(token: token))
+    }
 }

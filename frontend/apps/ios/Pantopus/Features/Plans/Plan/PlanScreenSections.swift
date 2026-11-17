@@ -41,6 +41,7 @@ struct PlanScreenSections: View {
                         PlanBanner(tone: .success, icon: .partyPopper, title: words.title, message: words.message)
                             .accessibilityIdentifier("planInviteBanner")
                     }
+                    if let offer = viewModel.spot?.offer, offer.open { PlanSpotOfferCard(offer: offer) }
                     PlanBrowsingSection(card: card, onOpenHost: onOpenHost)
                     if let dates = card.extrasPart.dates, card.viewer?.isHost != true {
                         PlanDatesGuestCard(card: card, dates: dates, draft: PlanDatesDraft.of(card.id))

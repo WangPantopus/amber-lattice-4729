@@ -64,6 +64,7 @@ struct PlanScreen: View {
             // An email or text invitation becomes this account's before the plan is read.
             if case let .invite(token) = intent, !askedOnOpen { await viewModel.claimInvite(token: token) }
             if case let .openLink(token) = intent, !askedOnOpen { await viewModel.claimOpenLink(token: token) }
+            if case let .spot(token) = intent, !askedOnOpen { await viewModel.readSpot(token: token) }
             await viewModel.resume()
             if let notice = PlansNavigator.shared.notice {
                 PlansNavigator.shared.notice = nil
@@ -215,7 +216,7 @@ struct PlanScreen: View {
             )
             PlanSamePeopleFooter(viewModel: viewModel, onHost: onHost)
         }
-        .refreshableUnlessZoomed { await viewModel.load() }
+        .refreshableUnlessZoomed { await viewModel.refreshWithSpot() }
     }
 
     private func topButtons(_ card: PlanCardDTO) -> some View {
