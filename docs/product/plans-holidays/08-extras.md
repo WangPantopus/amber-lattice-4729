@@ -123,6 +123,18 @@ server session asked, told to the founder):
   time that has started cannot be picked: `409 past`, "That time has passed.
   Choose another." The pick answers the plan with `settled: { in, waiting,
   waitlisted, asked, full }`.
+  `pick_note` says what the pick will do (settled November 17, after the
+  two-phone check read "The 3 who ticked Wednesday are in" with room for
+  two of them): the server works out who would be in with the pick's own
+  rule (below), changing nothing. When everyone who ticked fits, the
+  sentence is as before. When some do not: "2 of the 3 who ticked Wednesday
+  are in as soon as you pick it. 1 doesn't fit in the room for now." ("1 of
+  the 3 … is in", "2 don't fit"), and when none fits: "None of the 2 who
+  ticked Wednesday fit in the room for now." ("The 1 who ticked Wednesday
+  doesn't fit in the room for now." for one). An account that does not fit
+  goes on the waitlist and a guest becomes Maybe, and the note does not tell
+  them apart. "The other {3} are asked …" and "The {5} who haven't answered
+  …" stay; `pick_text` and the pick do not change.
 - **A party that does not fit is passed over, not a wall.** At the pick, the
   people who ticked are taken in the order they answered; one whose party is
   larger than the room left goes to the waitlist (or Maybe, for a guest), and
