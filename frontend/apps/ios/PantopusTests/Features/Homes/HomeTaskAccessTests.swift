@@ -114,8 +114,11 @@ final class HomeTaskAccessTests: XCTestCase {
         XCTAssertEqual(SequencedURLProtocol.capturedRequests.count, 1)
     }
 
+    /// Polls for up to 10 seconds: a busy CI simulator can take longer than half a second to start a request.
+    private static let waitPolls = 2000
+
     private func waitForRequest(count: Int = 1) async throws {
-        for _ in 0..<100 {
+        for _ in 0..<Self.waitPolls {
             if SequencedURLProtocol.capturedRequests.count >= count { return }
             try await Task.sleep(for: .milliseconds(5))
         }
@@ -467,7 +470,7 @@ extension HomeTaskAccessTests {
             await vm.toggleDone()
             XCTAssertEqual(SequencedURLProtocol.capturedRequests.count, requestCount)
             if boundary != "lost-response" { vm.suspend() }
-            for _ in 0..<100 {
+            for _ in 0..<Self.waitPolls {
                 if SequencedURLProtocol.release(boundary) { break }
                 try await Task.sleep(for: .milliseconds(5))
             }
