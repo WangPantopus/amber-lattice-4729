@@ -6,14 +6,36 @@
  * (double-click) enlarges it, up to twice the photo's own size; a drag moves around it; pulling it down, a click beside
  * it, the close button or Escape puts it back. It draws the print's own object URL, so nothing is fetched again and a
  * photo that is still covered never opens here.
+ *
+ * A Live Photo (contract section 13) moves once as it opens and again while it's held or after its LIVE button. Its few
+ * seconds of video come from the card's own reader-checked route into an object URL that goes when the photo closes.
+ * It plays without sound, as browsers require of anything that starts by itself.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import type { CSSProperties } from 'react';
+import { useCardMediaUrl, type PrintSource } from './CardPrint';
 
 export type PhotoOrigin = { left: number; top: number; width: number; height: number; tilt: number };
 
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+
+/** The small LIVE mark: on a print whose photo is a Live Photo, and on the button that plays it in the opened photo. */
+export function LiveMark({ className = '', style }: { className?: string; style?: CSSProperties }) {
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none inline-flex items-center gap-[0.36em] rounded-full bg-black/50 px-[0.7em] font-bold leading-none tracking-[0.06em] text-white ${className}`}
+      style={{ height: '2.1em', ...style }}
+    >
+      <span className="relative inline-block h-[0.9em] w-[0.9em] rounded-full border-[0.13em] border-white">
+        <span className="absolute left-1/2 top-1/2 h-[0.3em] w-[0.3em] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white" />
+      </span>
+      LIVE
+    </span>
+  );
+}
 
 type View = { scale: number; x: number; y: number; pull: number };
 const AT_REST: View = { scale: 1, x: 0, y: 0, pull: 0 };
@@ -22,6 +44,7 @@ export default function CardPhotoViewer({
   src,
   alt,
   origin,
+  live = null,
   onClose,
 }: {
   /** The photo, as the print drew it. */
@@ -29,6 +52,8 @@ export default function CardPhotoViewer({
   alt: string;
   /** Where the print's photo lies in the window and how it's turned; null fades the photo in. */
   origin: PhotoOrigin | null;
+  /** A Live Photo: where its moving part loads from. */
+  live?: PrintSource | null;
   onClose: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -39,6 +64,27 @@ export default function CardPhotoViewer({
   const [shown, setShown] = useState(false);
   const closingRef = useRef(false);
   const setView = useCallback((next: View) => { viewRef.current = next; setViewState(next); }, []);
+
+  // A Live Photo's moving part, over the still and moved with it.
+  const { url: clipUrl } = useCardMediaUrl(live);
+  const clipRef = useRef<HTMLVideoElement | null>(null);
+  const [moving, setMoving] = useState(false);
+  const heldRef = useRef(false);
+  const holdTimer = useRef(0);
+  const playClip = useCallback(() => {
+    const clip = clipRef.current;
+    if (!clip) return;
+    clip.muted = true;
+    clip.currentTime = 0;
+    clip.play().then(() => setMoving(true)).catch(() => setMoving(false));
+  }, []);
+  const stopClip = useCallback(() => { clipRef.current?.pause(); setMoving(false); }, []);
+  // It moves once as it opens; with reduced motion it waits to be asked.
+  useEffect(() => {
+    if (!clipUrl || reducedMotion()) return undefined;
+    const timer = window.setTimeout(() => { if (!closingRef.current) playClip(); }, 550);
+    return () => window.clearTimeout(timer);
+  }, [clipUrl, playClip]);
 
   /** The photo's box at its resting size, and the most it can be enlarged: twice its own size, at least three times. */
   const fitted = useCallback(() => {
@@ -73,6 +119,8 @@ export default function CardPhotoViewer({
   const close = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
+    window.clearTimeout(holdTimer.current);
+    stopClip();
     const image = imageRef.current;
     const box = boxRef.current;
     const time = reducedMotion() ? 120 : 260;
@@ -84,7 +132,7 @@ export default function CardPhotoViewer({
       { duration: time, fill: 'forwards', easing: 'cubic-bezier(0.3, 0, 0.2, 1)' },
     );
     if (done) done.onfinish = onClose; else onClose();
-  }, [fromPrint, onClose, setView]);
+  }, [fromPrint, onClose, setView, stopClip]);
 
   // It grows out of its print (or fades in), and the close button takes the keyboard.
   useLayoutEffect(() => {
@@ -113,7 +161,13 @@ export default function CardPhotoViewer({
     const onKey = (event: KeyboardEvent) => {
       event.stopImmediatePropagation();
       if (event.key === 'Escape') { event.preventDefault(); close(); }
-      else if (event.key === 'Tab') { event.preventDefault(); closeRef.current?.focus(); }
+      else if (event.key === 'Tab') {
+        // Focus stays on the photo's own buttons: close, and LIVE when there is one.
+        event.preventDefault();
+        const buttons = [...(boxRef.current?.querySelectorAll<HTMLElement>('button') ?? [])];
+        const at = buttons.indexOf(document.activeElement as HTMLElement);
+        buttons[(at + (event.shiftKey ? buttons.length - 1 : 1)) % Math.max(1, buttons.length)]?.focus();
+      }
       else if (event.key === '+' || event.key === '=') setView(kept({ ...viewRef.current, scale: viewRef.current.scale * 1.5 }));
       else if (event.key === '-') setView(kept({ ...viewRef.current, scale: viewRef.current.scale / 1.5 }));
     };
@@ -153,7 +207,16 @@ export default function CardPhotoViewer({
     if ((event.target as HTMLElement).closest('button')) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (pointers.current.size === 1) gesture.current = { ...gesture.current, moved: 0, speed: 0, at: event.timeStamp, onPhoto: event.target === imageRef.current };
+    if (pointers.current.size === 1) {
+      gesture.current = { ...gesture.current, moved: 0, speed: 0, at: event.timeStamp, onPhoto: event.target === imageRef.current };
+      // Held still on a Live Photo, it plays for as long as it's held.
+      window.clearTimeout(holdTimer.current);
+      if (clipUrl && gesture.current.onPhoto) {
+        holdTimer.current = window.setTimeout(() => {
+          if (pointers.current.size === 1 && gesture.current.moved <= 6) { heldRef.current = true; playClip(); }
+        }, 280);
+      }
+    }
   };
   const onPointerMove = (event: React.PointerEvent) => {
     const before = pointers.current.get(event.pointerId);
@@ -182,6 +245,13 @@ export default function CardPhotoViewer({
   const onPointerUp = (event: React.PointerEvent) => {
     if (!pointers.current.delete(event.pointerId) || pointers.current.size) return;
     const now = viewRef.current;
+    window.clearTimeout(holdTimer.current);
+    if (heldRef.current) {
+      // The hold is over: back to the still, and it wasn't a tap.
+      heldRef.current = false;
+      stopClip();
+      return;
+    }
     if (gesture.current.moved <= 6) {
       // A tap: beside the photo it closes; twice on the photo enlarges it about that spot, or brings it back.
       if (!gesture.current.onPhoto) { close(); return; }
@@ -201,7 +271,8 @@ export default function CardPhotoViewer({
   if (typeof document === 'undefined') return null;
   const tall = boxRef.current?.clientHeight || 800;
   const pulled = clamp(view.pull / (tall * 0.3), 0, 1);
-  const moving = pointers.current.size > 0;
+  // Under a finger, or with reduced motion, nothing eases: it follows at once.
+  const still = pointers.current.size > 0 || reducedMotion();
   return createPortal(
     <div
       ref={boxRef}
@@ -227,11 +298,48 @@ export default function CardPhotoViewer({
         className="max-h-full max-w-full object-contain"
         style={{
           transform: `translate(${view.x}px, ${view.y + view.pull}px) scale(${view.scale})`,
-          transition: moving || reducedMotion() ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          transition: still ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
           cursor: view.scale > 1.01 ? 'grab' : 'zoom-in',
           visibility: shown ? 'visible' : 'hidden',
         }}
       />
+      {clipUrl ? (
+        <>
+          <video
+            ref={clipRef}
+            src={clipUrl}
+            muted
+            playsInline
+            preload="auto"
+            aria-hidden
+            onEnded={() => { if (!heldRef.current) setMoving(false); }}
+            className="pointer-events-none absolute object-contain"
+            style={{
+              // Over the still, the same size, and moved and enlarged with it.
+              width: imageRef.current?.clientWidth,
+              height: imageRef.current?.clientHeight,
+              transform: `translate(${view.x}px, ${view.y + view.pull}px) scale(${view.scale})`,
+              transition: still ? 'opacity 0.25s ease' : 'opacity 0.25s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)',
+              opacity: moving && shown ? 1 : 0,
+            }}
+          />
+          <button
+            type="button"
+            onClick={playClip}
+            aria-label="Play the Live Photo"
+            data-testid="cardPhotoLive"
+            className="absolute flex min-h-[44px] min-w-[44px] items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f6ecd9]"
+            style={{
+              left: 'max(12px, env(safe-area-inset-left, 0px))',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)',
+              background: 'transparent',
+              opacity: 1 - pulled,
+            }}
+          >
+            <LiveMark style={{ fontSize: 12 }} />
+          </button>
+        </>
+      ) : null}
       <button
         ref={closeRef}
         type="button"
