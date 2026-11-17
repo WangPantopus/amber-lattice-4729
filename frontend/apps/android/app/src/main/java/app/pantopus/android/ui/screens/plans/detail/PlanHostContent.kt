@@ -110,6 +110,8 @@ internal fun ColumnScope.PlanHostBody(
     checks: PlanChecksEntry? = null,
     /** The holidays' extras changed the plan (a date picked): read it again. */
     onExtrasChanged: () -> Unit = {},
+    /** The holidays' board 29: "Plan the next one with the same people" on a plan that is over; null leaves it out. */
+    onPlanNext: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
@@ -148,6 +150,7 @@ internal fun ColumnScope.PlanHostBody(
     PlanGiftIfAny(plan, isHost = true)
     // The holidays' photos afterwards (extras section 5, board 29), on a plan that is over.
     PlanPhotosIfAny(plan)
+    PlanNextWithSamePeople(onPlanNext)
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)

@@ -260,6 +260,17 @@ private fun PlanPhotosCard(
     }
 }
 
+/** Board 29's footer: "Plan the next one with the same people" (Host again, then the past plan's people to invite). */
+@Composable
+internal fun PlanNextWithSamePeople(onPlanNext: (() -> Unit)?) {
+    onPlanNext ?: return
+    GhostButton(
+        title = "Plan the next one with the same people",
+        onClick = onPlanNext,
+        modifier = Modifier.fillMaxWidth().testTag("planNextSamePeople"),
+    )
+}
+
 /** Four across, square thumbnails. */
 @Composable
 private fun PhotoGrid(

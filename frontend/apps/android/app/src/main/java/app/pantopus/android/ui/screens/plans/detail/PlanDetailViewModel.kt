@@ -24,14 +24,18 @@ import app.pantopus.android.data.plans.PlanOrigin
 import app.pantopus.android.data.plans.PlanRead
 import app.pantopus.android.data.plans.PlanRepeatWords
 import app.pantopus.android.data.plans.PlanRequestStatus
+import app.pantopus.android.data.plans.PlanState
 import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.PlansEvents
 import app.pantopus.android.data.plans.PlansFeature
 import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isDrawable
+import app.pantopus.android.data.plans.isPlaydate
+import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
 import app.pantopus.android.data.plans.planMessage
+import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
@@ -138,7 +142,7 @@ class PlanDetailViewModel
         private val homes: HomesRepository,
         private val locations: PlanLocationResolver,
         private val checksRepository: PlanChecksRepository,
-        feature: PlansFeature,
+        private val feature: PlansFeature,
     ) : ViewModel() {
         val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val askOnOpen: Boolean = savedStateHandle.get<Boolean>(PlansRoutes.ASK_KEY) ?: false
@@ -754,6 +758,17 @@ class PlanDetailViewModel
                 read()
             }
         }
+
+        /**
+         * "Plan the next one with the same people" shows (the holidays' board 29): the host's own private plan that is
+         * over with people in at the end, while `plans_same_people` is on (the server's past plans are the same).
+         */
+        fun offersSamePeopleNext(plan: PlanDto): Boolean =
+            feature.flags.value.samePeopleOn && plan.planState == PlanState.ENDED && plan.isPrivate && plan.business == null &&
+                !plan.isPlaydate && plan.goingCount > 0
+
+        /** The host flow that copies this plan opens its people to invite once the new one is posted. */
+        fun planNextWithSamePeople() = events.planNextWithSamePeople(planId)
 
         private companion object {
             const val CANCEL_NOTE_MAX = 280

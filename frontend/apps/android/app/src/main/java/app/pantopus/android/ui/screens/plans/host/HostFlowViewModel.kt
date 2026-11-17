@@ -444,10 +444,15 @@ class HostFlowViewModel
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
 
+        /** "Plan the next one with the same people": the past plan this one copies, whose people are invited next. */
+        private var samePeopleFrom: String? = null
+
         init {
             val kind = PlanKind.from(savedStateHandle.get<String>(PlansRoutes.KIND_KEY))
             val gameId = savedStateHandle.get<String>(PlansRoutes.GAME_KEY)?.takeIf(String::isNotBlank)
             val again = savedStateHandle.get<String>(PlansRoutes.AGAIN_KEY)?.takeIf(String::isNotBlank)
+            // The holidays' board 29: copying a plan to invite the same people opens their list once it's posted.
+            samePeopleFrom = events.takeSamePeopleNext()?.takeIf { it == again }
             viewModelScope.launch {
                 loadContext(gameId)
                 if (again != null) copyFrom(again)
@@ -1194,7 +1199,10 @@ class HostFlowViewModel
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
+                        // The holidays' board 29: the invite sheet opens on the past plan's people (board 30's list).
+                        val same = samePeopleFrom?.takeIf { ui.isPrivate }
+                        val next = if (same != null) PlanPostedInvite.SamePeople else then.takeIf { ui.isPrivate }
+                        events.posted(result.data.id, next, inviteNote(result.data), samePeopleFrom = same)
                         _ui.update { it.copy(posting = false, postedId = result.data.id) }
                     }
                     is NetworkResult.Failure -> postFailed(result.error)

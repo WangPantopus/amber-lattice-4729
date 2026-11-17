@@ -91,6 +91,11 @@ class PlanPastPeopleViewModel
         }
 
         /** "Invite all" on a plan: its people, every one checked who can be invited, before anything goes. */
+        /** Straight to [postId]'s people, for "Plan the next one with the same people" (board 29). */
+        fun openPeopleOf(postId: String) {
+            if (_ui.value.on) choosePlan(PlanPastPlanDto(postId = postId))
+        }
+
         fun choosePlan(plan: PlanPastPlanDto) {
             if (_ui.value.loadingPeople) return
             _ui.update { it.copy(loadingPeople = true, error = null) }

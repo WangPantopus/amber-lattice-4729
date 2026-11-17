@@ -285,6 +285,16 @@ private fun PlanReady(
                     onOpenBring = onOpenBring,
                     checks = PlanChecksEntry(ui.checks, onOpenChecks),
                     onExtrasChanged = viewModel::load,
+                    // The holidays' board 29: Host again, then the invite sheet on this plan's people.
+                    onPlanNext =
+                        if (viewModel.offersSamePeopleNext(plan)) {
+                            {
+                                viewModel.planNextWithSamePeople()
+                                onHost(null, plan.id)
+                            }
+                        } else {
+                            null
+                        },
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
