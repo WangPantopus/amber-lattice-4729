@@ -1,6 +1,8 @@
 // ============================================================
 // Calendarly — public booking flow (no auth required). Mounted at /api/public.
 //   GET  /book/:slug                          -> page + visible event types (is_live gate)
+//   While `public_scheduling` is off (schedulingShared.requireSchedulingOn) the slots, one-off link, booking and
+//   waitlist routes answer 403; GET /book/:slug stays, because the package page the launch scope keeps reads it.
 //   GET  /book/:slug/:eventTypeSlug/slots      -> computed free slots
 //   POST /book/:slug/:eventTypeSlug            -> create a booking (write-limited, email-bound)
 //   GET  /booking/:token                       -> manage view via token
@@ -27,7 +29,7 @@ const availabilityService = require('../services/scheduling/availabilityService'
 const bookingService = require('../services/scheduling/bookingService');
 const payments = require('../services/scheduling/schedulingPaymentsService');
 const { buildIcs } = require('../services/scheduling/icsService');
-const { hashToken, normalizeEmail, hashEmail } = require('../services/scheduling/schedulingShared');
+const { hashToken, normalizeEmail, hashEmail, requireSchedulingOn } = require('../services/scheduling/schedulingShared');
 const { isUnpublishedBusiness } = require('../utils/visibilityPolicy');
 
 // ---------- page lookup helpers ----------
@@ -177,7 +179,7 @@ async function loadPageEventType(slug, eventTypeSlug) {
 
 // ---------- GET /book/:slug/:eventTypeSlug/slots ----------
 
-router.get('/book/:slug/:eventTypeSlug/slots', previewLimiter, asyncHandler(async (req, res) => {
+router.get('/book/:slug/:eventTypeSlug/slots', requireSchedulingOn, previewLimiter, asyncHandler(async (req, res) => {
   const { page, eventType } = await loadPageEventType(req.params.slug, req.params.eventTypeSlug);
   if (!page || !eventType) return res.status(404).json({ error: 'NOT_FOUND' });
   const from = req.query.from;
@@ -252,7 +254,7 @@ async function loadByOneOffToken(rawToken) {
   return { tok, eventType: et };
 }
 
-router.get('/book/o/:token', previewLimiter, asyncHandler(async (req, res) => {
+router.get('/book/o/:token', requireSchedulingOn, previewLimiter, asyncHandler(async (req, res) => {
   const ctx = await loadByOneOffToken(req.params.token);
   if (!ctx) return res.status(404).json({ error: 'NOT_FOUND', status: 'expired', message: 'This link is invalid, already used, or expired.' });
   const { tok, eventType } = ctx;
@@ -276,7 +278,7 @@ router.get('/book/o/:token', previewLimiter, asyncHandler(async (req, res) => {
 // req.user?.id || req.ip, so with the old order a signed-in caller was always keyed by IP —
 // one NAT'd office shared a single 20-writes/10-min bucket and one abuser could exhaust it
 // for every neighbor. (Token-manage routes have no auth and stay IP-keyed by design.)
-router.post('/book/o/:token', optionalAuth, bookingWriteLimiter, validate(createSchema), asyncHandler(async (req, res) => {
+router.post('/book/o/:token', requireSchedulingOn, optionalAuth, bookingWriteLimiter, validate(createSchema), asyncHandler(async (req, res) => {
   const ctx = await loadByOneOffToken(req.params.token);
   if (!ctx) return res.status(404).json({ error: 'NOT_FOUND', message: 'This link is invalid, already used, or expired.' });
   const { tok, eventType } = ctx;
@@ -323,7 +325,7 @@ router.post('/book/o/:token', optionalAuth, bookingWriteLimiter, validate(create
   }
 }));
 
-router.post('/book/:slug/:eventTypeSlug', optionalAuth, bookingWriteLimiter, validate(createSchema), asyncHandler(async (req, res) => {
+router.post('/book/:slug/:eventTypeSlug', requireSchedulingOn, optionalAuth, bookingWriteLimiter, validate(createSchema), asyncHandler(async (req, res) => {
   const { page, eventType } = await loadPageEventType(req.params.slug, req.params.eventTypeSlug);
   if (!page || !eventType) return res.status(404).json({ error: 'NOT_FOUND' });
   if (page.is_paused) return res.status(409).json({ error: 'PAGE_PAUSED', message: 'This page is not accepting bookings right now.' });
@@ -527,7 +529,7 @@ const waitlistSchema = Joi.object({
   desired_from: Joi.string().isoDate().allow(null),
   desired_to: Joi.string().isoDate().allow(null),
 });
-router.post('/book/:slug/:eventTypeSlug/waitlist', optionalAuth, bookingWriteLimiter, validate(waitlistSchema), asyncHandler(async (req, res) => {
+router.post('/book/:slug/:eventTypeSlug/waitlist', requireSchedulingOn, optionalAuth, bookingWriteLimiter, validate(waitlistSchema), asyncHandler(async (req, res) => {
   const { page, eventType } = await loadPageEventType(req.params.slug, req.params.eventTypeSlug);
   if (!page || !eventType) return res.status(404).json({ error: 'NOT_FOUND' });
   const email = normalizeEmail(req.body.email);
