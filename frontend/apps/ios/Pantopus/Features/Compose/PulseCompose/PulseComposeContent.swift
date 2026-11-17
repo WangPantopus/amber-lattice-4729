@@ -30,7 +30,7 @@ public struct PulseComposeContentState: Equatable {
     /// The draft may post to its tagged place because an attachment was
     /// taken there (the Place check's `photo` basis).
     public var isPhotoPlaced: Bool
-    /// The Sky (phase A): the town the post floats over ("Floating over Camas, WA"); nil draws "Posting to …".
+    /// The Sky (phase A): the town the post floats over ("Around Camas, WA"); nil draws "Posting to …".
     public var skyArea: String?
     /// The Sky: the venue the post pins at ("At Esther Short Park"); nil while it floats.
     public var skyPinnedAt: String?
@@ -367,7 +367,7 @@ public struct PulseComposeContent: View {
             .accessibilityIdentifier("composePulsePurposeBadge")
         }
         if let area = state.skyArea {
-            // The Sky: "Floating over Camas, WA" and "Pin it at a place" in place of "Posting to …".
+            // The Sky: "Around Camas, WA" and "Pin it at a place" in place of "Posting to …".
             PulseSkyPlaceLine(area: area, pinnedAt: state.skyPinnedAt, onPin: actions.onAddLocation, onChangeTarget: actions.onChangeTarget)
         } else if let label = state.postingTargetLabel {
             HStack(spacing: Spacing.s2) {

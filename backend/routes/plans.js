@@ -400,6 +400,35 @@ router.post('/:id/requests/mine/confirm', async (req, res) => {
   }
 });
 
+// ── One person pays for the group (the extras, 08-extras section 7; services/plans/planGroupPay.js): 404 while
+// plans_group_pay is off for the plan's business. Buying is POST …/requests with { for: "link", spots }.
+// POST /api/plans/:id/requests/claim-spot { token }: in, free, while the buyer's link has spots left. Answers the plan.
+router.post('/:id/requests/claim-spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').claim(req.user, req.params.id, req.body || {}, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_claim', req);
+  }
+});
+
+// POST /api/plans/:id/requests/mine/give-back-spots: the buyer gives back the spots nobody took now. Answers the plan.
+router.post('/:id/requests/mine/give-back-spots', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').giveBack(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_give_back', req);
+  }
+});
+
+// GET /api/plans/:id/spot?token=: what the link shows ("{Chris} got you a spot", spots left), signed in.
+router.get('/:id/spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').readLink(req.params.id, req.query.token));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_link', req);
+  }
+});
+
 // The bill at the place (B5, contract 11.2), behind plans_pay_here. Every amount is the server's.
 const planChecks = () => require('../services/plans/planChecks');
 const checkRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
@@ -591,6 +620,57 @@ router.post('/:id/dates/pick', async (req, res) => {
     return serverError(res, err, 'dates_pick', req);
   }
 });
+
+// ── Photos afterwards (the extras, 08-extras section 5; services/plans/planPhotos.js): 404 while plans_photos is off
+// or no private bucket is set. Each answers the grid: { photos: [{ id, url, thumb_url, w, h, by_name, mine,
+// can_remove }], count, text, can_add, note, expires_in } with links signed for minutes.
+const photoUpload = require('multer')({
+  storage: require('multer').memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, parts: 6, fieldSize: 1024, fieldNameSize: 100 },
+}).single('file');
+function receivePhoto(req, res, next) {
+  photoUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return fail(res, 413, 'too_large', 'This photo is too large to add.');
+    return fail(res, 400, 'validation', 'Send one picture as "file".');
+  });
+}
+router.get('/:id/photos', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').list(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'photos', req);
+  }
+});
+router.post('/:id/photos', contentCreationLimiter, receivePhoto, async (req, res) => {
+  try {
+    return res.status(201).json(await require('../services/plans/planPhotos').add(req.user, req.params.id, req.file || null));
+  } catch (err) {
+    return serverError(res, err, 'photos_add', req);
+  }
+});
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').remove(req.user, req.params.id, req.params.photoId));
+  } catch (err) {
+    return serverError(res, err, 'photos_remove', req);
+  }
+});
+
+// ── The gift exchange (the extras, 08-extras section 4; services/plans/planGift.js): 404 while plans_gift_exchange is
+// off. Each answers { gift }; whom someone drew is in their own answer only.
+const giftRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+giftRoute('post', '/:id/gift/join', 'gift_join', (req) => require('../services/plans/planGift').join(req.user, req.params.id, body(req)));
+giftRoute('patch', '/:id/gift/mine', 'gift_wish', (req) => require('../services/plans/planGift').setWish(req.user, req.params.id, body(req)));
+giftRoute('delete', '/:id/gift/mine', 'gift_leave', (req) => require('../services/plans/planGift').leave(req.user, req.params.id));
+// The host: "Draw names now", or "Draw again" after someone who drew left. 409 too_few with fewer than three.
+giftRoute('post', '/:id/gift/draw', 'gift_draw', (req) => require('../services/plans/planGift').drawNow(req.user, req.params.id));
 
 // ── Chip in (the extras, 08-extras section 3; services/plans/planChipIn.js): 404 while plans_chip_in is off ──
 

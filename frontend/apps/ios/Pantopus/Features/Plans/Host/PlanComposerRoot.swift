@@ -16,6 +16,8 @@ enum PlanComposerStep: Hashable {
     case repeats
     /// Plans for the holidays H2: the bring list, from "Add to this plan".
     case bringList
+    /// Plans for the holidays B1: a business's deal, after the details (board 09).
+    case deal
 }
 
 struct PlanComposerRoot: View {
@@ -58,9 +60,9 @@ struct PlanComposerRoot: View {
                             // The type is already chosen (F4, "Host again"): still step 2 of 3, as the boards and Android count.
                             PlanDetailsForm(
                                 model: model,
-                                step: "2 of 3",
+                                step: "2 of \(model.stepCount)",
                                 onBack: { onFinish(nil) },
-                                onPreview: { openPreview() },
+                                onPreview: { afterDetails() },
                                 onRepeats: { path.append(.repeats) },
                                 onBringList: { path.append(.bringList) }
                             )
@@ -91,9 +93,9 @@ struct PlanComposerRoot: View {
                         case .details:
                             PlanDetailsForm(
                                 model: model,
-                                step: "2 of 3",
+                                step: "2 of \(model.stepCount)",
                                 onBack: { path.removeLast() },
-                                onPreview: { openPreview() },
+                                onPreview: { afterDetails() },
                                 onRepeats: { path.append(.repeats) },
                                 onBringList: { path.append(.bringList) }
                             )
@@ -104,6 +106,10 @@ struct PlanComposerRoot: View {
                                 PlanBringListScreen(editor: bring, onDone: { path.removeLast() }, onBack: { path.removeLast() })
                                     .readableColumn()
                             }
+                        case .deal:
+                            PlanDealStepScreen(model: model, step: "3 of 4", onBack: { path.removeLast() }, onPreview: { openPreview() })
+                                .readableColumn()
+                                .toolbar(.hidden, for: .navigationBar)
                         case .repeats:
                             PlanRepeatsScreen(
                                 draft: model.repeating,
@@ -117,7 +123,7 @@ struct PlanComposerRoot: View {
                                 if model.isPrivate {
                                     PlanPrivatePreviewScreen(model: model, step: "3 of 3") { path.removeLast() }
                                 } else {
-                                    PlanPreviewScreen(model: model, step: "3 of 3") { path.removeLast() }
+                                    PlanPreviewScreen(model: model, step: "\(model.stepCount) of \(model.stepCount)") { path.removeLast() }
                                 }
                             }
                             .readableColumn()
@@ -132,6 +138,11 @@ struct PlanComposerRoot: View {
             // The places around the host start loading now, so H6 usually opens on a full list.
             await PlanPlacesWarmup.start(home: model.home)
         }
+    }
+
+    /// A business that may carry a deal goes to "A deal for this plan" first (board 09); everyone else to H7.
+    private func afterDetails() {
+        if model.offersDeal { path.append(.deal) } else { openPreview() }
     }
 
     /// H7 opens without the last attempt's refusal (as on Android): the host may have fixed it.
@@ -160,7 +171,7 @@ struct PlanTypePicker: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlanNavBar(title: "Host a plan", leading: .close, trailing: "1 of 3", onLeading: onClose)
+            PlanNavBar(title: "Host a plan", leading: .close, trailing: "1 of \(model?.stepCount ?? 3)", onLeading: onClose)
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     if let model, !model.hostAsOptions.isEmpty { PlanHostAsSection(model: model) }

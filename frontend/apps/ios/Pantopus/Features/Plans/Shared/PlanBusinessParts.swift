@@ -101,14 +101,17 @@ struct PlanVerifiedBusinessLabel: View {
 /// The price chip. In step 2 every business's plan is free: "Free" in plain
 /// weight (a price, from step 3, is bold).
 struct PlanPriceChip: View {
+    /// "Free", or a business's price ("$18", the server's words).
+    var text = "Free"
+
     var body: some View {
-        Text("Free")
+        Text(text)
             .planFont(.footnote)
             .foregroundStyle(Theme.Color.appTextStrong)
             .padding(.horizontal, 10)
             .frame(minHeight: 26)
             .background(Capsule().fill(Theme.Color.appSurfaceSunken))
-            .accessibilityLabel("Free")
+            .accessibilityLabel(text)
             .accessibilityIdentifier("planPriceChip")
     }
 }
@@ -335,7 +338,7 @@ struct PlanCardTag: View {
                 } else {
                     PlanTypeTag(kind: card.kind)
                 }
-                PlanPriceChip()
+                PlanPriceChip(text: card.price?.text ?? "Free")
             }
         } else {
             PlanTagRow {

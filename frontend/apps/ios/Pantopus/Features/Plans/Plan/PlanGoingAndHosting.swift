@@ -32,6 +32,8 @@ struct PlanGoingSection: View {
         Group {
             if card.answersWithNumbers {
                 PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), onChange: onAnswer)
+            } else if let unlocked = card.dealUnlockedBanner {
+                PlanDealUnlockedBanner(text: unlocked)
             } else {
                 PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine)
             }
@@ -59,6 +61,7 @@ struct PlanGoingSection: View {
             if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) } // board Online
+        PlanGoingDealCards(card: card)
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 HStack(spacing: Spacing.s2) {
@@ -422,7 +425,7 @@ struct PlanHostingSection: View {
                                 .planFont(.rowTitle)
                                 .foregroundStyle(Theme.Color.appText)
                                 .lineLimit(1)
-                            Text(guestFacts(person))
+                            Text(PlanPersonMoney.facts(person, guestFacts(person)))
                                 .planFont(.footnote)
                                 .foregroundStyle(Theme.Color.appTextSecondary)
                                 .lineLimit(1)
@@ -435,6 +438,7 @@ struct PlanHostingSection: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Opens their profile")
                 .accessibilityIdentifier("planGuest_\(person.userId)")
+                PlanMarkUsedControl(card: card, person: person, onConfirm: onConfirm)
                 Menu {
                     if let requestId = viewModel.requestId(for: person) {
                         Button("Remove from plan", role: .destructive) {

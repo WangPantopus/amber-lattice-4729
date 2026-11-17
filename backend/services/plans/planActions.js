@@ -621,6 +621,10 @@ async function createPlan(user, input, internal = {}) {
   const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
     ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
     : null;
+  // The gift exchange (the extras), while the host has its switch: a private plan of a person's, not a playdate.
+  const gift = !hostAs && input.gift != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planGift').enabledFor(viewer.id))
+    ? require('./planGift').initialValue(input.gift, input.starts_at) : null;
   if (dateOptions && (audience !== 'invited' || kind === 'playdate')) {
     fail(422, 'validation', 'Only a private plan can let guests pick the date.', { field: 'date_options' });
   }
@@ -722,6 +726,7 @@ async function createPlan(user, input, internal = {}) {
     ...(bringList ? { bring_list: bringList } : {}),
     ...(chipIn ? { chip_in: chipIn } : {}),
     ...(dateOptions ? { date_options: dateOptions } : {}),
+    ...(gift ? { gift } : {}),
     ...(occasion ? { occasion } : {}),
     ...(deal ? { deal } : {}),
     ...(priceCents ? { price_cents: priceCents } : {}),
@@ -802,6 +807,9 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
     && (await require('./planChipIn').enabledFor(plan.host_user_id));
   if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
+  if (patch.gift && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    require('./planGift').checkedInput(patch.gift, patch.starts_at || plan.post.event_date);
+  }
   // Find a date: while the date is being picked the times offered change, not the plan's time.
   const planDates = require('./planDates');
   if (planDates.isPicking(plan)) {
@@ -1038,6 +1046,10 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
   if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
     await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
+  // The gift exchange: the budget and the draw time, or null to call it off.
+  if (patch.gift !== undefined && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    await require('./planGift').replaceFromForm(await planService.loadPlanRow(postId), patch.gift);
   }
   // Find a date: the times offered (a removed time's ticks go, and nobody is told).
   if (patch.date_options !== undefined && planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
@@ -1397,7 +1409,16 @@ async function quoteToJoin(user, postId, body = {}) {
   const dealsOn = Boolean(plan.deal) && (await require('./planDeals').enabledFor(plan.host_user_id));
   const going = dealsOn && plan.deal?.scope === 'group'
     ? planService.seatsTaken(plan, (await activeRequests(postId)).filter((r) => r.status === 'accepted')) : 0;
-  return planPaid().quoteFor(plan, ask, { unitCents: await planPaid().unitPriceNow(plan), dealsOn, going });
+  const unitCents = await planPaid().unitPriceNow(plan);
+  // One person pays for the group (the extras, `extras=1`, while the business has the switch): "I'll send a link"
+  // quotes every spot bought; any quote carries the sheet's "Who are they for?" choices.
+  const groupPay = require('./planGroupPay');
+  if (viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id))) {
+    const free = plan.spots - (await seatsNow(plan, await activeRequests(postId)));
+    if (body.for === 'link') return groupPay.quoteView(plan, groupPay.checkedSpots(body.spots, free), unitCents, free);
+    return { ...planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going }), group_pay: groupPay.choicesView(free) };
+  }
+  return planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going });
 }
 
 async function askToJoin(user, postId, body, { io = null } = {}) {
@@ -1460,7 +1481,13 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // The host's invitation is their yes: in at once (the waitlist when it's full), or, for an email invite opened by
   // an account the address isn't verified for, an ordinary ask the host answers.
   const invite = ctx.myInviteByPlan.get(postId) || null;
-  const seats = rules.seatsFor(plan, ask.party_size, ask.kids_count);
+  // One person pays for the group (the extras): "I'll send a link" buys `spots` (the buyer's own among them) in one
+  // payment. Only where the plan lets people in at once; never onto the waitlist.
+  const groupPay = require('./planGroupPay');
+  const linkBuy = body.for === 'link' && viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id));
+  const spotsBought = linkBuy ? groupPay.checkedSpots(body.spots, spotsLeft) : null;
+  if (linkBuy) Object.assign(ask, { party_size: 1, kids_count: null });
+  const seats = linkBuy ? spotsBought : rules.seatsFor(plan, ask.party_size, ask.kids_count);
   let status = 'waitlisted';
   let decidedBy = null;
   let rule = null;
@@ -1479,6 +1506,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     status = 'paying';
     decidedBy = null;
   }
+  if (linkBuy && status !== 'paying') fail(409, 'group_pay_not_now', 'Buying spots for a group works when the plan lets people in right away.');
   const row = {
     ...ask,
     status,
@@ -1497,6 +1525,8 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     updated_at: stamp,
   };
   if (status === 'paying') Object.assign(row, await planPaid().payingFields(plan, viewer.id, row.way_in || null), { payment_id: null });
+  if (linkBuy) Object.assign(row, { spots_bought: spotsBought, spots_token: require('crypto').randomBytes(32).toString('base64url'), paid_by_request_id: null });
+  else if (mine && (mine.spots_bought || mine.paid_by_request_id)) Object.assign(row, { spots_bought: null, spots_token: null, paid_by_request_id: null });
 
   let request;
   if (mine) {
@@ -1528,7 +1558,7 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   } });
   if (request.status === 'paying') {
     const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis,
-      hold_expires_at: row.hold_expires_at, payment_id: null }, viewer.id);
+      hold_expires_at: row.hold_expires_at, payment_id: null, spots_bought: row.spots_bought || null }, viewer.id);
     return { status: mine ? 200 : 201, body: { ...(await requestResult(postId, viewer, request.id)), payment } };
   }
   if (invite) await planInvites.markAccepted(plan, viewer.id, request);
@@ -1610,6 +1640,7 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   if (changed && changed.length > 0 && leaving) {
     // What they were bringing goes back on the list (H2).
     await require('./planBring').clearClaims(postId, 'user', mine.id);
+    await require('./planGift').onLeave(postId, require('./planExtras').personKey(viewer.id));
     const names = await userNames([viewer.id]);
     const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
@@ -1744,6 +1775,7 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
         await require('./planBring').clearClaims(postId, 'user', request.id);
+        await require('./planGift').onLeave(postId, require('./planExtras').personKey(request.user_id));
         // The business removed a guest who paid (B2): all of it back.
         if (plan.price_cents) await planPaid().onBusinessEnds(plan, [request.id], 'removed');
         await planNotify.declined({ plan, request, hostFirst });

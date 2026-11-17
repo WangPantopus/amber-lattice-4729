@@ -578,6 +578,19 @@ function planGuestEmailContent(kind, words) {
       footer,
     };
   }
+  // The gift exchange (the extras): never the name, only that it is on their invitation.
+  if (kind === 'gift_drawn' || kind === 'gift_redrawn') {
+    const again = kind === 'gift_redrawn';
+    return {
+      subject: again ? `Names were drawn again for ${title}` : `Names are drawn for ${title}`,
+      heading: again ? 'Names were drawn again' : 'Names are drawn',
+      lines: [`${again ? 'Names were drawn again' : 'Names are drawn'} for ${title}. Open your invitation to see who you’re giving to.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
   if (kind === 'date_full') {
     return {
       subject: `${title} is ${words.when}`,

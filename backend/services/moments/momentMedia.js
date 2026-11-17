@@ -74,6 +74,14 @@ function isMomentKey(key) {
   return typeof key === 'string' && key.startsWith(PREFIX) && !key.includes('..');
 }
 
+// A plan's photos afterwards (Plans for the holidays, the extras: services/plans/planPhotos.js) live in the same private
+// bucket under plan-photos/, signed and removed by the same calls; nothing else here touches them.
+const PLAN_PHOTO_PREFIX = 'plan-photos/';
+function isPlanPhotoKey(key) {
+  return typeof key === 'string' && key.startsWith(PLAN_PHOTO_PREFIX) && !key.includes('..');
+}
+const isStoredKey = (key) => isMomentKey(key) || isPlanPhotoKey(key);
+
 function tooLarge(bytes, limit) {
   logger.warn('moments.file_over_storage_limit', { bytes, bucket_limit: limit || null });
   return failure('This file is too large to post.', 413, 'MEDIA_TOO_LARGE');
@@ -104,7 +112,7 @@ async function put(bucket, key, buffer, contentType) {
 
 /** Short-lived links for these keys, by key; a key that can't be signed gets none. */
 async function signedLinks(bucket, keys) {
-  const wanted = [...new Set((keys || []).filter(isMomentKey))];
+  const wanted = [...new Set((keys || []).filter(isStoredKey))];
   const links = new Map();
   if (!wanted.length) return links;
   let name;
@@ -124,7 +132,7 @@ async function signedLinks(bucket, keys) {
 
 /** Deletes the keys (already-gone keys are fine). Returns true when storage confirmed it. */
 async function removeKeys(bucket, keys) {
-  const doomed = [...new Set((keys || []).filter(isMomentKey))];
+  const doomed = [...new Set((keys || []).filter(isStoredKey))];
   if (!doomed.length) return true;
   const name = await privateBucket(bucket);
   const { error } = await db.storage.from(name).remove(doomed);
@@ -305,7 +313,7 @@ async function download(bucket, key) {
 module.exports = {
   LINK_SECONDS, STORAGE_CONTRACT, MAX_PHOTO_BYTES, MAX_VIDEO_BYTES, MAX_STILL_BYTES, MAX_VIDEO_MS, VIDEO_MS_TOLERANCE,
   PHOTO_TYPES, VIDEO_TYPES,
-  failure, privateBucket, maxVideoBytes, sha256, keyFor, isMomentKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
+  failure, privateBucket, maxVideoBytes, sha256, keyFor, isMomentKey, isPlanPhotoKey, put, signedLinks, removeKeys, mediaKeys, folderKeys,
   removeAccountFiles, download,
   videoFacts, jpegFacts, photoFacts, thumbnail, checkImage,
 };

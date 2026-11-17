@@ -107,6 +107,44 @@ server session asked, told to the founder):
   from your invitation.", and the button "Open your invitation". If room
   opens later, "I'm in" from their link works as on any plan.
 
+- **What the build added** (server PR 4237, November 16). The value also
+  keeps `numbers` (an account's adults and kids, by key) and `answered` (when
+  each first answered, which is the order the pick lets people in). The card's
+  `dates` carries the words: each option's `can_text` ("4 can make it") and,
+  for the host, `pick_text` ("Pick Sunday, Nov 22 · 4:00 PM") and `pick_note`
+  (what picking does, in numbers); `answered_text` ("9 of 14 have answered"
+  for the host, "9 have answered" for a guest); `mine: { answered,
+  party_size, kids_count }`; and the card's `time_text` is "Picking a date".
+  The web page's `dates` adds `host_line` ("{Host} is picking a date"). While
+  a plan is picking, the ordinary ask and a guest's ordinary answer are
+  refused `409 picking`, "Tick the times that work for you.", and a change of
+  the plan's own time is refused `422 picking`, "Pick a date first, or change
+  the times you offered." After the pick, ticking is refused `409 picked`. A
+  time that has started cannot be picked: `409 past`, "That time has passed.
+  Choose another." The pick answers the plan with `settled: { in, waiting,
+  waitlisted, asked, full }`.
+- **A party that does not fit is passed over, not a wall.** At the pick, the
+  people who ticked are taken in the order they answered; one whose party is
+  larger than the room left goes to the waitlist (or Maybe, for a guest), and
+  a later, smaller party may still get in.
+- **A person with an account who waits for the host's yes** at the pick
+  (they came by the open link with "I say yes first" on) is told "{title} is
+  {Sunday, Nov 22 at 4:00 PM}. You'll hear when {Host} says yes." and the
+  host gets the ordinary "wants to come" notice.
+- **When offered times go by** (decided November 16, after the build's
+  report named it as not checked). A time that has started leaves everyone's
+  list: it can no longer be ticked or picked, and it is not counted in
+  "Most". The plan's place in lists follows the earliest time still ahead,
+  moved on the Plans tick, and ticking stays open while any time is ahead.
+  Once, 24 hours before the earliest time still ahead (never in the first
+  hour after posting), the host is told "Pick a date for {title}. {9} of
+  {14} have answered.", which opens the plan. When the last time goes by
+  with no pick, the plan ends on the tick as a plan whose time passed; the
+  host is told once "No date was picked for {title}, and its times have
+  passed."; the invited are told nothing. A plan that ended this way has
+  nobody in, so it has no photos and is not offered under "People from a
+  past plan".
+
 **The card** (with `extras=1`): `"dates": { "state": "picking", "options":
 [{ "id", "text": "Sat, Nov 21 · 6:00 PM", "can": 4, "mine": true }],
 "answered": 9, "invited": 14 }`. The host also gets, for each option, `"who":
@@ -245,6 +283,45 @@ you drew. Bring it on {Saturday}.", and "Your wish" with "Change". The host
 sees the count and "Draw names now"; never a name. Notices: "Names are drawn
 for {title}. See who you're giving to.", once.
 
+**Settled while it was built** (server PR 4239, November 16; the designer's
+yes to both choices, told to the founder; the coordinator read the merged
+change line by line for who can read a pair):
+
+- **The host may join** as anyone who is in does, and then reads their own
+  "giving to" and nobody else's. A host who has not joined sees the count and
+  "Draw names now" only.
+- **A guest's emails about the draw are outside the plan's three** ("Names
+  are drawn for {title}", "Names were drawn again for {title}"); the day's
+  five an address and "don't send me invitations" hold. Neither carries a
+  name.
+- **How the pairs are kept.** `gift_pairs` is written only by the draw, in
+  the same write as `gift` (`plan_gift_draw`). It is in no list of columns the
+  server selects, and it is not one of the values `plan_extra_swap` may
+  write. One function, `plan_gift_mine(post, key)`, answers a single key's
+  receiver, and the server calls it only with the reader's own key for the
+  reader's own card or web page. All three functions run for the service role
+  only, and `Plan` gives nothing to a signed-in or anonymous database role.
+  No log line or funnel event carries a pair.
+- **The draw is one circle through everyone**, in a random order, so nobody
+  draws themselves and nobody is left out. Two things follow that no rule can
+  remove: with exactly three people each can work out the other two pairs,
+  and in any draw a person knows the one they give to is not giving to them.
+- **The card** also carries `joined_text` ("8 joined"), `can_join`, and, in
+  the reader's own card after the draw, `wish_text` ("Sam's wish") and
+  `secret_text` ("Only you can see who you drew. Bring it on Saturday.").
+  `draw_text` reads "Names are drawn Friday at noon" (with the date when it
+  is six days or more away) and "Names are drawn" afterwards.
+- **Refusals**: `409 drawn` (joining or leaving after the draw; a wish can
+  still change), `409 too_few` with the host's sentence when "Draw names now"
+  finds fewer than three, `409 not_joined`, `403 not_in`, `409 ended` on a
+  plan that is over or cancelled. After the draw the Change screen can change
+  "Spend up to" only; turning the exchange off forgets the pairs.
+- **Someone who leaves** before the draw leaves the exchange. After it, the
+  host's notice "{Name} left after the names were drawn." opens the plan,
+  where "Draw again" draws for everyone still in and tells each "Names were
+  drawn again." The host may also draw again at any time until the plan is
+  over.
+
 ## 5. Photos afterwards
 
 Board 29 (`Photos`).
@@ -281,6 +358,53 @@ its owner and the host. "Plan the next one with the same people" starts the
 host flow with section 6's invitations chosen. Notice, once, the day after:
 "Photos from {title}" / "{Host} added {14}. Add yours and keep them together."
 (to people who came, only if someone added any).
+
+**Settled while it was built** (server PR 4242, November 16; the coordinator
+read the merged change for where a picture is stored and who can read it):
+
+- **Where a picture lives.** In the private bucket Moments use, under
+  `plan-photos/<plan>/<person>/`, cleaned of its metadata, with a thumbnail.
+  Nothing answers a picture's address: the grid carries links signed for 15
+  minutes (`expires_in`), made only for the host, an account that was in at
+  the end, and a guest who was in, by their key. With no private bucket set,
+  or a public one, the card and every route are gone whatever the switch
+  says.
+- **The grid** is `GET /api/plans/:id/photos`: `{ "photos": [{ "id", "url",
+  "thumb_url", "w", "h", "by_name", "mine", "can_remove", "at" }], "count",
+  "text", "can_add", "note", "expires_in" }`; the public read adds `add_text`
+  ("Add yours in the app."). The card of a plan that is over carries
+  `photos: { "count", "text", "banner", "came_text", "can_add", "note" }`
+  and the pictures come from the grid. Adding and removing answer the grid.
+- **Limits and refusals.** JPEG, HEIC or PNG, one a call; `415 unreadable`,
+  `413 too_large`, `409 too_many` (200 a plan, 30 a person), `409 closed`
+  after 60 days, `409 not_over` before the plan ends, `403 not_in`, `422
+  held` ("This picture can't be added to the plan.") when the check holds
+  it.
+- **The day-after notice names whoever added the most**, the host on a tie:
+  "{Name} added {14}. Add yours and keep them together."
+
+**Decided after the build's report** (November 16, the designer's calls; both
+make it stricter; built the same day in server PR 4249, which the coordinator
+read):
+
+- **A picture the check could not look at is not kept.** As first built, a
+  picture was stored unchecked when the check could not run, and nothing
+  looked at it again. Now it is refused, `503 check_unavailable`, "This
+  picture couldn't be checked right now. Try again in a little while.", and
+  nothing is stored. Where an environment has no picture check set up at
+  all, photos are off there, as they are with no private bucket.
+- **Deleting an account takes its pictures.** When a person deletes their
+  account, every picture they added to anyone's plan goes, its files and its
+  entry, and so do the files of every plan they hosted, before the account's
+  rows go. It runs whatever the switch says, so nothing is left behind after
+  the switch was on once; trouble with storage is logged and does not stop
+  the deletion, as with Moments' files.
+- The day-after notice also waits for the picture check, since photos count
+  as off without it.
+- **Not seen anywhere yet: the real picture check.** The build's setup has no
+  key for it, so it was tried against a stand-in (down: refused, nothing
+  stored; held: refused; passed: added). Before `plans_photos` is turned on
+  in an environment, add one picture there and see it pass.
 
 ## 6. The same people again
 
@@ -365,6 +489,79 @@ plan's limit), `spots_token text` (kept as given, as the open link's is) and
 - The fee, the payout and a group price work on what was paid in the end, as
   any partly refunded plan payment (contract 10.4).
 
+**Settled while it was being built** (November 16; the designer's answers to
+the server session, told to the founder). The rule behind all of it: before
+`refund_until`, every bought spot that ends up empty is refunded to the buyer;
+after it, none.
+
+- **The buyer leaves before `refund_until` while claimers are in.** The
+  claimers stay in, paid for. The buyer gets back their own spot and the
+  spots nobody took, in one refund, and the link stops. The leave dialog says
+  it in the server's numbers, for 12 spots at $18.00 with 3 taken: "You'll
+  get $162.00 back: your spot and the 8 nobody took. The 3 people you paid
+  for stay in." After `refund_until` the buyer gets nothing back, as any paid
+  guest, and the claimers stay.
+- **A claimer leaves.** While the link is live, the spot goes back to the
+  link. Once the link has stopped (the buyer gave spots back early, or left)
+  and it is still before `refund_until`, that spot's price goes back to the
+  buyer at once, one more refund in part, and the spot is an ordinary open
+  spot; the link does not reopen. After `refund_until` nothing is refunded
+  and the spot is an ordinary open spot.
+- **Notices.** The buyer gets the ordinary "{$144.00} is on its way back to
+  your card" each time money comes back, and nothing else when a claimer
+  leaves.
+- These lean on several refunds in part on one payment, which the build's
+  first check found broken and which is fixed first (contract 10.4).
+- **The business removes someone** (added November 16 after the coordinator
+  read server PR 4255; a removal always refunds, whenever it happens).
+  Removing the buyer works as the buyer's own leave: the buyer gets back
+  their own spot and the spots nobody took, the link stops, and the claimers
+  stay in, paid for. Removing a claimer: while the link is live the spot goes
+  back to the link; once the link has stopped, that spot's price goes back to
+  the buyer at once.
+
+**Built, and what is still open** (server PR 4255, November 16). On `dev`
+behind `plans_group_pay`: the buy in one payment with the buyer's own spot
+among them, the link at `/plan-link/<id>?spot=<token>`, the claim, the
+give-back, the refund at `refund_until`, and the buyer's leave. A claim is
+refused for someone the plan is not shown to; the web page buys one spot and
+buying for a group is in the apps; no funnel event was added. The
+coordinator's read found five gaps, sent to the server session as one
+follow-up; until it is merged this extra is not done:
+
+1. A claimer who leaves after the link stopped and before `refund_until`
+   sends nothing back to the buyer.
+2. The business removing the buyer returns the whole payment while the
+   claimers stay in, unpaid.
+3. The business removing a claimer after the link stopped sends nothing back
+   to the buyer.
+4. An owed refund is kept one a payment, so a second owed refund of a part
+   would replace the first.
+5. A refund's request key is built from its reason, so two refunds for the
+   same reason on one payment (two claimers leaving) would be taken for one.
+
+Server PR 4259 (the same day, read by the coordinator) closed 1 and 5: a
+claimer's spot goes back to the buyer with a request key of its own, seen on
+the build's setup to the cent (8 given back, $144.00; a claimer leaving
+before the time, $18.00 more as a second refund, the business paid out on
+what stayed; a claimer leaving after it, nothing). It also made an owed
+refund loud: an error line when a refund first becomes owed, and
+`plans.paid.refund_owed_stuck` at error level on every tick once it has been
+owed an hour.
+
+Server PR 4261 (the same day, read by the coordinator before it merged)
+closed 2, 3 and 4, so all five are closed on `dev`: a buyer the business
+removes is treated as a buyer who leaves, at any time (seen: 5 bought, 2
+claimed, $54.00 back, both claimers still in); a claimer the business removes
+after the link stopped sends that spot's price back to the buyer at any time
+(seen after `refund_until`: $18.00), and cannot rejoin; owed refunds are kept
+one entry a request key in `Payment.metadata.plan_refunds_owed` (seen: two
+refunds of a part both failing at the payment company, both sent by the next
+tick, once each, one notice each). Every case was seen on the build's setup
+in test mode to the cent, with the payout after it. What this extra still
+lacks: the phones' screen (board 31), the payment company's call-back, and
+live mode.
+
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
 get one link. The first {11} people who open it are in, paid by you. Spots
@@ -407,5 +604,9 @@ Each row: the server and web first, then both apps.
   bucket the card does not show.
 - **The same people again**: the host's screen never shows a guest's email; an
   address that opted out gets nothing.
-- **Paying for a group**: 12 spots bought, 4 claimed, 8 refunded at the
-  time, to the cent; a claimer who leaves returns the spot.
+- **Paying for a group**: 12 spots bought; the buyer and 3 people from the
+  link are in; the 8 nobody took are refunded at the time, to the cent; a
+  claimer who leaves while the link is live returns the spot. And: 12 bought,
+  3 claim, the buyer gives back 8 early, one claimer leaves before the time
+  (one more spot back to the buyer, the payout re-priced) and another after
+  it (nothing back).

@@ -209,6 +209,8 @@ struct PlanBrowsingSection: View {
     var body: some View {
         PlanTitleBlock(card: card)
         PlanHostCard(card: card, onOpenHost: onOpenHost)
+        // Plans for the holidays B1 (D1): the deal under the business's name.
+        if let deal = card.deal { PlanDealCard(card: card, deal: deal) }
         PlanSpotsBlock(card: card, trailing: card.kind == .playdate ? nil : "Names show once you're in")
         if card.kind == .playdate {
             PlanNote(
