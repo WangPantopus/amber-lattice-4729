@@ -578,7 +578,21 @@ const bookingWriteLimiter = rateLimit({
   message: { error: 'Too many booking requests. Please try again shortly.' },
 });
 
+/**
+ * A host's notes about one booking (POST /api/scheduling/bookings/:id/nudge): three a day for a booking, whoever on
+ * the host's side sends them.
+ */
+const bookingNudgeLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `booking-nudge:${req.params.id}`,
+  message: { error: 'This booking has had its notes for today. Try again tomorrow.' },
+});
+
 module.exports = {
+  bookingNudgeLimiter,
   clientIpKey,
   userWriteLimits,
   geocodeLimiter,
