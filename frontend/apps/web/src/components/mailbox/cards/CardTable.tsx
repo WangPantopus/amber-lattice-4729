@@ -612,6 +612,7 @@ export default function CardTable({
                   className="w-full"
                   opens
                   onViewing={setPhotoOpen}
+                  live={photo.live && mediaSeen && !(photo.covered && !uncovered) ? mediaFrom!(photo.live.file_id) : null}
                 />
               </div>
             ) : null}

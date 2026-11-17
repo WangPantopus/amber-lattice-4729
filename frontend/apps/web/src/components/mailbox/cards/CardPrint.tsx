@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { mailbox } from '@pantopus/api';
 import { SERIF } from './cardArt';
-import CardPhotoViewer, { type PhotoOrigin } from './CardPhotoViewer';
+import CardPhotoViewer, { LiveMark, type PhotoOrigin } from './CardPhotoViewer';
 
 export type PrintSource = { own: string } | { sent: string; fileId: string } | { piece: string; fileId: string };
 
@@ -57,6 +57,7 @@ export default function CardPrint({
   className = '',
   opens = false,
   onViewing,
+  live = null,
 }: {
   /** Where its bytes come from; null while it uploads (the chosen file shows from `localUrl`). */
   source: PrintSource | null;
@@ -78,6 +79,8 @@ export default function CardPrint({
   opens?: boolean;
   /** Told when the photo opens over the window and when it's put back, so what is under it can rest. */
   onViewing?: (viewing: boolean) => void;
+  /** A Live Photo: where its moving part loads from. The print wears a small LIVE mark, and the opened photo plays it. */
+  live?: PrintSource | null;
 }) {
   const { url, failed } = useCardMediaUrl(covered ? null : source);
   const shown = url || localUrl;
@@ -137,12 +140,13 @@ export default function CardPrint({
               {date}
             </span>
           ) : null}
+          {live && shown ? <LiveMark className="absolute left-[4%] top-[4%]" style={{ fontSize: 'clamp(7px, 5.5cqi, 11px)' }} /> : null}
           {opens && shown ? (
             // Over the whole print's photo, so a tap anywhere on it opens it.
             <button
               type="button"
               onClick={() => view(true)}
-              aria-label={`Open the photo${alt ? `: ${alt}` : ''}`}
+              aria-label={`Open the ${live ? 'Live Photo' : 'photo'}${alt ? `: ${alt}` : ''}`}
               data-testid="cardPrintOpen"
               className="absolute inset-0 cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8b1d1d]"
               // Inline, so a surface's own button styles (the table's) never draw over the photo.
@@ -152,7 +156,7 @@ export default function CardPrint({
         </div>
       )}
       {viewing && shown ? (
-        <CardPhotoViewer src={shown} alt={alt || `Photo from ${first}`} origin={origin ?? null} onClose={() => view(false)} />
+        <CardPhotoViewer src={shown} alt={alt || `Photo from ${first}`} origin={origin ?? null} live={live} onClose={() => view(false)} />
       ) : null}
       {uploading ? (
         <span aria-hidden className="absolute bottom-0 left-0 h-[5px] w-full animate-pulse bg-[#8b1d1d] motion-reduce:animate-none" />

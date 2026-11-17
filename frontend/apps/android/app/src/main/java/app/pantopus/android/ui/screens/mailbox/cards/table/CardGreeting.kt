@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -523,18 +524,23 @@ private fun GiftTag(
                 modifier = Modifier.align(Alignment.TopStart).padding(start = width * 0.24f, end = width * 0.06f, top = width * 0.06f),
             )
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = width * 0.24f, bottom = width * 0.06f)) {
-                val small = with(density) { (width * 0.066f).toSp() }
+                // Their own line height: the theme's fixed one is taller than a small tag has room for, and the two
+                // lines ran up into the name.
+                val small =
+                    TextStyle(
+                        fontSize = with(density) { (width * 0.066f).toSp() },
+                        lineHeight = 1.35.em,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PantopusColors.cardTagWords,
+                    )
                 val doing =
                     when {
                         recording -> "● RECORDING"
                         turning -> "❚❚ PLAYING"
                         else -> "▶ PRESS TO PLAY"
                     }
-                val words = PantopusColors.cardTagWords
-                Text(doing, fontSize = small, fontWeight = FontWeight.SemiBold, letterSpacing = 0.05.em, color = words)
-                if (durationMs != null && !recording) {
-                    Text(greetingLength(durationMs), fontSize = small, fontWeight = FontWeight.SemiBold, color = words)
-                }
+                Text(doing, style = small.copy(letterSpacing = 0.05.em))
+                if (durationMs != null && !recording) Text(greetingLength(durationMs), style = small)
             }
         }
     }

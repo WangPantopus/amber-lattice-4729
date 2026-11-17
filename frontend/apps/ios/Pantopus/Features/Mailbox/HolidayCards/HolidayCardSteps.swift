@@ -318,7 +318,7 @@ struct HolidayCardToStep: View {
                 .accessibilityIdentifier("sendCardEmail")
             Text(
                 "They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. "
-                    + "The email doesn’t show the card."
+                    + "The email never shows your note."
             )
             .font(.system(size: 14))
             .foregroundStyle(HolidayCardDesk.muted(scheme))
@@ -581,6 +581,8 @@ struct HolidayCardWriteStep: View {
                     attachments: attachments,
                     takesPhoto: onePerson && cards.takesPhoto,
                     takesVoice: onePerson && cards.takesVoice,
+                    takesLive: onePerson && cards.takesLivePhoto,
+                    liveMaxBytes: cards.livePhotoMaxBytes,
                     forName: viewModel.greetingFor,
                     gift: CardTableMood(number: design.number) == .reverence,
                     needsStamp: cards.mediaStamp == .buy

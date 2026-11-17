@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -77,6 +78,7 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 import app.pantopus.android.ui.theme.rememberReduceMotion
+import coil.compose.AsyncImage
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -141,7 +143,7 @@ private fun lookIntro(
         to is CardRecipient.Link ->
             "The page your link opens never shows the card. Whoever opens it first joins Pantopus to read it, and it’s theirs."
         to is CardRecipient.Email ->
-            "They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this " +
+            "They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this " +
                 "address."
         preview.sealed -> "It comes sealed and stays shut until Christmas morning. Use Back to change anything."
         preview.piece.card?.arrival == "christmas_morning" ->
@@ -483,7 +485,13 @@ private fun LookSection(
     }
 }
 
-/** The email a card to an email address sends, as their inbox shows it: never the card, only who it's from. */
+/** The shape of the picture at the top of a card's email (1200 × 630). */
+private const val EMAIL_PICTURE_RATIO = 1200f / 630f
+
+/**
+ * The email a card to an email address sends, as their inbox shows it: who it's from and the picture at its top (the
+ * card's front, or the sealed envelope), never the note.
+ */
 @Composable
 private fun EmailPicture(
     email: HolidayCardPreviewEmail,
@@ -521,15 +529,31 @@ private fun EmailPicture(
             )
         }
         HorizontalDivider(color = PantopusColors.appBorderSubtle)
+        email.picture?.let { picture ->
+            // The real email's picture across its width, in its 1200 × 630 shape so it keeps its place while it loads.
+            AsyncImage(
+                model = picture,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(EMAIL_PICTURE_RATIO).background(PantopusColors.cardWax),
+            )
+        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .background(PantopusColors.cardWax)
-                    .padding(start = Spacing.s4, end = Spacing.s4, top = 20.dp, bottom = Spacing.s4),
+                    .padding(
+                        start = Spacing.s4,
+                        end = Spacing.s4,
+                        top = if (email.picture == null) 20.dp else Spacing.s3,
+                        bottom = Spacing.s4,
+                    ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            PantopusIconImage(icon = PantopusIcon.Mail, contentDescription = null, size = 30.dp, tint = PantopusColors.cardWaxText)
+            if (email.picture == null) {
+                PantopusIconImage(icon = PantopusIcon.Mail, contentDescription = null, size = 30.dp, tint = PantopusColors.cardWaxText)
+            }
             Text(
                 email.heading,
                 fontSize = 17.sp,

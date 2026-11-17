@@ -128,6 +128,8 @@ final class CardTableModel {
     var turnedOnce = false
     var envelopeTurnedOnce = false
     var heldOnce = false
+    /// The card has been enlarged once, so its hint has done its job.
+    var zoomedOnce = false
     /// "Send {first name} a card" (plan Part 3), set by the reader's page once the server says a card can go to them.
     var sendBack: CardTableMenuItem?
     /// The quiet buttons may come (Send {first name} a card, or step 5's): the buttons keep room for them from the
@@ -282,8 +284,14 @@ final class CardTableModel {
         didSet { refreshRunning() }
     }
 
+    /// The card's own photo, opened over the whole screen from its print. Kept here for the same reason; the mail
+    /// holds still under it too.
+    var openedPhoto: CardPhotoOpened? {
+        didSet { if (openedPhoto == nil) != (oldValue == nil) { refreshRunning() } }
+    }
+
     func refreshRunning() {
-        guard isShowing, !isPaused, !isSharing else {
+        guard isShowing, !isPaused, !isSharing, openedPhoto == nil else {
             ticker.stop()
             motion.stop()
             return
@@ -347,7 +355,7 @@ final class CardTableModel {
 
     /// Tells the clock something moved.
     func wake() {
-        guard isShowing, !isPaused, !isSharing else { return }
+        guard isShowing, !isPaused, !isSharing, openedPhoto == nil else { return }
         if !ticker.isRunning { lastFrame = CACurrentMediaTime() }
         ticker.start()
     }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -146,10 +147,10 @@ private fun CardTable(
 
     // The sheet stands over the table, and the table rests under it.
     var sharing by rememberSaveable(card.id) { mutableStateOf(false) }
-    LaunchedEffect(state, sharing) {
-        state.paused = sharing
-        if (!sharing) state.wake()
-    }
+    // The card's own photo, opened over the whole screen from its print: the table rests under it too, and Back closes
+    // it first.
+    val openedPhoto = remember(card.id) { mutableStateOf<CardPhotoOpened?>(null) }
+    TableRests(state, sharing, openedPhoto)
 
     val art = rememberCardTableArt(letter = card.letter)
     val faceArt = rememberCardFaceArt()
@@ -224,7 +225,7 @@ private fun CardTable(
             )
         }
         PictureProblem(state, picture)
-        TableMedia(state, card, geometry, reduceMotion)
+        TableMedia(state, card, geometry, reduceMotion, onOpenPhoto = { openedPhoto.value = it })
         val insets =
             with(density) {
                 PaddingValues(top = safeTop.toDp(), bottom = safeBottom.toDp())
@@ -244,8 +245,31 @@ private fun CardTable(
             sendBack = sendBack,
             gone = gone,
         )
+        OpenedPhoto(openedPhoto)
     }
     if (sharing) CardShareSheet(card, mine || calls != null, onClose = { sharing = false })
+}
+
+/** The table rests under the share sheet and under its opened photo; Back closes the photo first. */
+@Composable
+private fun TableRests(
+    state: CardTableState,
+    sharing: Boolean,
+    openedPhoto: MutableState<CardPhotoOpened?>,
+) {
+    BackHandler(enabled = openedPhoto.value != null) { openedPhoto.value = null }
+    val covered = sharing || openedPhoto.value != null
+    LaunchedEffect(state, covered) {
+        state.paused = covered
+        if (!covered) state.wake()
+    }
+}
+
+/** The card's own photo over the whole screen, opened from its print on the table. */
+@Composable
+private fun OpenedPhoto(openedPhoto: MutableState<CardPhotoOpened?>) {
+    val photo = openedPhoto.value ?: return
+    CardPhotoViewer(photo, onClose = { openedPhoto.value = null })
 }
 
 /** The table's state: a reader's is kept across a turn of the phone; the sender's moment starts afresh each time. */
@@ -332,7 +356,7 @@ private fun rememberTableGeometry(
     val width = constraints.maxWidth
     val height = constraints.maxHeight
     val readsVerse = card.verse != null && !sending
-    // The card's own photo lies under it once it's turned over (wave 4 drawing 3): the table keeps room for it.
+    // The card's own photo and greeting lie under it once it's turned over (wave 4 drawing 3): the table keeps them room.
     val media = card.hasMedia && !sending
     return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, media) {
         with(density) {
@@ -363,9 +387,7 @@ private fun rememberTableGeometry(
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            // As the web keeps it: a third of the width, 112 to 176 dp.
-            val mediaRoom = if (media) (width * 0.34f).coerceIn(112.dp.toPx(), 176.dp.toPx()) else 0f
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + gap + mediaRoom
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height
@@ -380,7 +402,8 @@ private fun rememberTableGeometry(
                 bottomRoom = bottomRoom,
                 density = this.density,
                 wordsBottom = wordsBottom,
-                mediaRoom = mediaRoom,
+                // The geometry keeps what a full-size card leaves under it, once it's turned over.
+                keepsMediaRoom = media,
             )
         }
     }

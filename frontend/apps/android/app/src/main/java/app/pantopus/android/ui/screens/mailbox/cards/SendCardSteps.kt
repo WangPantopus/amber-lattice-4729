@@ -334,7 +334,7 @@ private fun EmailForm(
         )
         Text(
             "They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. " +
-                "The email doesn’t show the card.",
+                "The email never shows your note.",
             fontSize = 14.sp,
             lineHeight = 20.sp,
             color = PantopusColors.cardTextQuiet,

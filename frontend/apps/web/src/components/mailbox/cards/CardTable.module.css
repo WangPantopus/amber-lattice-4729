@@ -160,7 +160,11 @@
   width: min(calc(var(--card-w) * 0.45), max(5rem, calc((var(--media-room) * 0.95 - 1.9rem) / 0.62)));
 }
 /* A cassette is 0.62 of its width tall with a pill under it; a gift tag 0.53 with none, so it can lie wider. */
-.stage[data-media='below'] .mediaVoiceGift { width: min(calc(var(--card-w) * 0.45), max(5rem, calc(var(--media-room) * 0.95 / 0.53))); }
+.stage[data-media='below'] .mediaVoiceGift {
+  width: min(calc(var(--card-w) * 0.45), max(5rem, calc(var(--media-room) * 0.95 / 0.53)));
+  /* It is turned twice as far as a cassette, which lifts its far corner: it starts that much lower. */
+  top: calc(var(--card-top) + var(--card-h) - var(--card-w) * 0.004 + var(--media-room) * 0.04 + var(--card-w) * 0.027);
+}
 .stage[data-media='below'] .mediaVoiceAlone { right: auto; left: calc(var(--card-x) + var(--card-w) * 0.5); transform: translateX(-50%); }
 .stage[data-media='beside'] .mediaPrint {
   right: calc(100% - var(--card-x) - 1.25rem); top: calc(var(--card-top) + var(--card-h) * 0.5);
