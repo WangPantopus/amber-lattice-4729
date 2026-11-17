@@ -93,10 +93,10 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | The bill at the place, tips (B5) | 4222 | 4289 | 4267 |
 | A tip after a paid plan (B6) | 4223 | 4307 | 4268 |
 | The same people again | 4234 | 4284 | 4297 |
-| Chip in | 4235 | 4294 | 4314 (the card on the Change screen: not built) |
+| Chip in | 4235 | 4294 | 4314, 4346 |
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335, 4344 |
-| Gift exchange | 4239 | 4317 | **not started** |
-| Photos afterwards | 4242, 4249 | 4321 | **not started** |
+| Gift exchange | 4239, 4329 | 4317, 4333 | 4347 |
+| Photos afterwards | 4242, 4249 | 4321, 4323, 4333 | 4348 |
 | One person pays for the group | 4255, 4259, 4261 | 4327 | **not started** |
 
 Also done:
