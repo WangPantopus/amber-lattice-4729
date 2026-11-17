@@ -177,9 +177,12 @@ async function pastPlanPeople(user, postId) {
   };
 }
 
-/** "Invited 11. 1 can only be reached by text." */
+/**
+ * "Invited 11. 1 can only be reached by text." When nobody new went (everyone already invited or in, or unavailable)
+ * it reads "Nobody new was invited.", with the same text-only sentence after it (08-extras section 6).
+ */
 function doneText(invited, textOnly) {
-  const first = `Invited ${invited}.`;
+  const first = invited > 0 ? `Invited ${invited}.` : 'Nobody new was invited.';
   if (!textOnly) return first;
   return `${first} ${textOnly} can only be reached by text.`;
 }
