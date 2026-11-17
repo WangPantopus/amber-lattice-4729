@@ -28,7 +28,7 @@ const router = express.Router();
 
 const verifyToken = require('../middleware/verifyToken');
 const { residencyLetterIssueLimiter } = require('../middleware/rateLimiter');
-const { checkHomePermission, isVerifiedResident } = require('../utils/homePermissions');
+const { checkHomePermission, isVerifiedResident, mailLevelRefusal } = require('../utils/homePermissions');
 const residencyLetterService = require('../services/residencyLetterService');
 const { NON_RESIDENT_ROLES } = require('../utils/homeAccessPolicy');
 const logger = require('../utils/logger');
@@ -43,10 +43,10 @@ router.post('/:id/residency-letters', verifyToken, residencyLetterIssueLimiter, 
       return res.status(403).json({ error: 'You do not have access to this place.' });
     }
     if (!isVerifiedResident(access)) {
-      return res.status(403).json({
+      return res.status(403).json(await mailLevelRefusal(access, {
         error: 'Verify your address to issue a residency letter.',
         code: 'VERIFICATION_REQUIRED',
-      });
+      }));
     }
     // The letter certifies residency. An accepted invitation verifies every
     // role, but guest access (visitors, the airbnb_guest/cleaner_vendor

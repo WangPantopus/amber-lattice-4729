@@ -591,7 +591,103 @@ function isVerifiedResident(access) {
   return !verificationAge.staleAffectsTrust(access.occupancy.verified_at);
 }
 
+// ============================================================
+// FASTVERIFY (founder, 2026-11-17): the Verified level from a fast check
+// ============================================================
+// A fast check (phone number, at home now, a bill read at once) is a mark on a claimed occupancy, not a proof source:
+// the occupancy stays verification_source 'claim', every claim rule keeps applying, and isVerifiedResident above (the
+// mail level: letters, passes, fridge cards, home Mail, block invitations by mail, the record watch) is unchanged.
+// isVerified below is the second gate: the Verified mark, messaging homes near you, Place's verified sections and
+// Real Rent. With home_fast_verify off for the person, no fast check counts.
+const FAST_VERIFY_FLAG = 'home_fast_verify';
+const FAST_CHECK_KINDS = Object.freeze(new Set(['phone', 'location', 'document']));
+/** The occupancy columns a fast check lives in; add them to a select that feeds fastCheckStands or isVerified. */
+const FAST_CHECK_COLUMNS = 'fast_check_kind, fast_check_at, fast_check_expires_at, fast_check_recheck_due_at, fast_check_confirmed_at';
+const MAIL_PROOF_REQUIRED = Object.freeze({
+  code: 'MAIL_PROOF_REQUIRED', error: 'This needs a mailed code. Ask for the postcard in Place.',
+});
+
+/**
+ * Does this occupancy row carry a standing fast check, on the row alone (before the flag and the set-aside check)?
+ * A claim (verified, source 'claim', active) with a known kind, checked, not yet ended; a location check also needs
+ * its second match on another day, or still be inside the 14 days given for it.
+ */
+function fastCheckStands(occupancy, now = Date.now()) {
+  if (!occupancy || occupancy.verification_status !== 'verified' || occupancy.verification_source !== 'claim'
+    || occupancy.is_active === false || !FAST_CHECK_KINDS.has(occupancy.fast_check_kind)) return false;
+  const at = Date.parse(occupancy.fast_check_at);
+  const ends = Date.parse(occupancy.fast_check_expires_at);
+  if (!Number.isFinite(at) || !Number.isFinite(ends) || ends <= now) return false;
+  if (occupancy.fast_check_kind !== 'location') return true;
+  if (Number.isFinite(Date.parse(occupancy.fast_check_confirmed_at))) return true;
+  const due = Date.parse(occupancy.fast_check_recheck_due_at);
+  return Number.isFinite(due) && due > now;
+}
+
+/** Is home_fast_verify on for this person (a user id or { id, role })? Unreadable counts as off. */
+function fastVerifyOn(user) {
+  // eslint-disable-next-line global-require
+  return require('../services/featureFlagService').isFeatureEnabled(FAST_VERIFY_FLAG, user).catch(() => false);
+}
+
+/**
+ * fastVerified(occupancy): the row's fast check stands, home_fast_verify is on for its person, and the claim isn't
+ * set aside for someone who proved the address (home_claim_set_aside; until they confirm). The row needs home_id and
+ * user_id. Fails closed: an unreadable set-aside check is not verified.
+ */
+async function fastVerified(occupancy, now = Date.now()) {
+  if (!fastCheckStands(occupancy, now) || !occupancy.home_id || !occupancy.user_id) return false;
+  if (!(await fastVerifyOn(occupancy.user_id))) return false;
+  try {
+    return !(await claimSetAside(occupancy.home_id, occupancy.user_id));
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * The Verified gate, stated once: the mail level (isVerifiedResident) or a standing fast check. Guards the Verified
+ * mark, messaging homes near you, Place's verified sections and Real Rent; never a mail-level thing.
+ * @param {{ occupancy?: object|null }} access - from checkHomePermission, or { occupancy: row }
+ * @returns {Promise<boolean>}
+ */
+async function isVerified(access) {
+  if (isVerifiedResident(access)) return true;
+  return fastVerified(access && access.occupancy);
+}
+
+/**
+ * For lists of occupancy rows (each with home_id, user_id and FAST_CHECK_COLUMNS): one pass that answers isVerified
+ * for every row, returned as a synchronous predicate. Only rows whose fast check stands are looked up further.
+ */
+async function verifiedRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const key = (row) => `${row.home_id}:${row.user_id}`;
+  const fast = new Set();
+  await Promise.all(list.filter((row) => row && !isVerifiedResident({ occupancy: row }) && fastCheckStands(row))
+    .map(async (row) => { if (await fastVerified(row)) fast.add(key(row)); }));
+  return (row) => !!row && (isVerifiedResident({ occupancy: row }) || fast.has(key(row)));
+}
+
+/**
+ * The answer a mail-level route gives someone it refuses: MAIL_PROOF_REQUIRED (section 6 words) when they are
+ * Verified by a fast check, otherwise the route's own refusal, unchanged.
+ */
+async function mailLevelRefusal(access, refusal) {
+  return (await fastVerified(access && access.occupancy)) ? { ...MAIL_PROOF_REQUIRED } : refusal;
+}
+
 module.exports = {
+  claimSetAside,
+  isVerified,
+  fastVerified,
+  fastCheckStands,
+  fastVerifyOn,
+  verifiedRows,
+  mailLevelRefusal,
+  FAST_CHECK_COLUMNS,
+  FAST_VERIFY_FLAG,
+  MAIL_PROOF_REQUIRED,
   hasPermission,
   getUserAccess,
   checkHomePermission,

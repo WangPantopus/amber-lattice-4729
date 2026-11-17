@@ -11,11 +11,12 @@ const logger = require('../../utils/logger');
 const parsePostGISPoint = require('../../utils/parsePostGISPoint');
 const { isFeatureEnabled } = require('../featureFlagService');
 const { getMuteAndHideFilters } = require('../feedService');
-const { isVerifiedResident } = require('../../utils/homePermissions');
+const { verifiedRows, FAST_CHECK_COLUMNS } = require('../../utils/homePermissions');
 const { isFreshGps, PRIVATE_FLAG, ONLINE_FLAG, KINDS_FLAG, GUEST_ANSWERS_FLAG } = require('./planRules');
 const { postScopeAccess } = require('../pulse/readAccess');
 
-const VERIFIED_SELECT = 'home_id, verification_status, verification_source, verified_at, is_active';
+// The Verified gate (homePermissions.isVerified): mail-level proof, or a standing fast check while home_fast_verify is on.
+const VERIFIED_SELECT = `home_id, user_id, verification_status, verification_source, verified_at, is_active, ${FAST_CHECK_COLUMNS}`;
 // A household member in a trusted state (the household states in utils/homeMailAccess.js,
 // householdHomeIds): never a pending claim, which anyone can file on any address.
 const TRUSTED_OCCUPANCY_STATUSES = ['verified', 'provisional', 'provisional_bootstrap'];
@@ -37,14 +38,15 @@ async function verifiedUserIds(userIds) {
   if (ids.length === 0) return new Set();
   const { data, error } = await supabaseAdmin
     .from('HomeOccupancy')
-    .select(`user_id, ${VERIFIED_SELECT}`)
+    .select(VERIFIED_SELECT)
     .in('user_id', ids)
     .eq('is_active', true)
     .eq('verification_status', 'verified');
   if (error) throw new Error(`Failed to read address verification: ${error.message}`);
   const verified = new Set();
+  const isVerifiedRow = await verifiedRows(data || []);
   for (const occupancy of data || []) {
-    if (isVerifiedResident({ occupancy })) verified.add(String(occupancy.user_id));
+    if (isVerifiedRow(occupancy)) verified.add(String(occupancy.user_id));
   }
   return verified;
 }
@@ -65,11 +67,12 @@ async function loadHomes(userId) {
   if (owned.error) throw new Error(`Failed to read homes: ${owned.error.message}`);
 
   const homes = new Map();
+  const isVerifiedRow = await verifiedRows(occupancies.data || []);
   for (const row of occupancies.data || []) {
     if (!row.home) continue;
     homes.set(String(row.home.id), {
       ...row.home,
-      verified: isVerifiedResident({ occupancy: row }),
+      verified: isVerifiedRow(row),
       // Probation is provisional without proof (home claims PR 4), so it isn't trusted.
       trusted: TRUSTED_OCCUPANCY_STATUSES.includes(row.verification_status) && row.verification_source !== 'probation',
     });

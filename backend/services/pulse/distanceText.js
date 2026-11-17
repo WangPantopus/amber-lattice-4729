@@ -4,7 +4,7 @@ const db = require('../../config/supabaseAdmin');
 const parsePoint = require('../../utils/parsePostGISPoint');
 const { haversineMeters } = require('../../utils/trustState');
 const { applyLocationPrecision, leastPrecise } = require('../../utils/locationPrivacy');
-const { homeAreaContext, HOME_SELECT, verifiedHomeOccupancy } = require('./areas');
+const { homeAreaContext, HOME_SELECT, verifiedHomeOccupancy, fastVerifiedRows } = require('./areas');
 
 const MILE = 1609.344;
 // The existing approximate grid is 0.005 degrees, about 556 metres north/south.
@@ -61,7 +61,8 @@ async function distanceFormatter(viewerId, { publicResponse = false, homes } = {
       p_reader_home: home.id, p_low_m: band.low, p_high_m: band.high,
     }).select(HOME_SELECT).eq('is_active', true).eq('verification_status', 'verified').limit(1000);
     if (densityError) throw densityError;
-    return new Set((occupancies || []).filter(verifiedHomeOccupancy).map(row => row.home_id)).size >= MIN_HOMES;
+    const fast = await fastVerifiedRows(occupancies);
+    return new Set((occupancies || []).filter(row => verifiedHomeOccupancy(row, fast)).map(row => row.home_id)).size >= MIN_HOMES;
   }
 
   return async post => {

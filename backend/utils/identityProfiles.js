@@ -20,7 +20,7 @@ async function verifiedResidentUserIds(userIds) {
   if (ids.length === 0) return new Set();
   const { data, error } = await supabaseAdmin
     .from('HomeOccupancy')
-    .select('user_id, verified_at')
+    .select('user_id, verified_at, verification_source')
     .in('user_id', ids)
     .eq('is_active', true)
     .eq('verification_status', 'verified')
@@ -30,9 +30,32 @@ async function verifiedResidentUserIds(userIds) {
     logger.warn('identity.verified_resident_lookup_error', { error: error.message });
     return new Set();
   }
-  return new Set((data || [])
+  const verified = new Set((data || [])
     .filter((row) => !verificationAge.staleAffectsTrust(row.verified_at))
     .map((row) => String(row.user_id)));
+  // FASTVERIFY: a claim with a standing fast check carries the Verified mark too (homePermissions.isVerified). Only
+  // claims with a fast check on them are read, so with no fast checks this is the same answer as before.
+  const rest = ids.filter((id) => !verified.has(id));
+  if (rest.length) {
+    // eslint-disable-next-line global-require
+    const { fastVerified, FAST_CHECK_COLUMNS } = require('./homePermissions');
+    const { data: claims, error: claimError } = await supabaseAdmin
+      .from('HomeOccupancy')
+      .select(`home_id, user_id, is_active, verification_status, verification_source, ${FAST_CHECK_COLUMNS}`)
+      .in('user_id', rest)
+      .eq('is_active', true)
+      .eq('verification_status', 'verified')
+      .eq('verification_source', 'claim')
+      .not('fast_check_at', 'is', null);
+    if (claimError) {
+      logger.warn('identity.fast_verified_lookup_error', { error: claimError.message });
+      return verified;
+    }
+    await Promise.all((claims || []).map(async (row) => {
+      if (await fastVerified(row)) verified.add(String(row.user_id));
+    }));
+  }
+  return verified;
 }
 
 // PersonaMembership.fan_handle is intentionally NOT derived from User.username,
