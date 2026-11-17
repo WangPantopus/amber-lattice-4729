@@ -1,0 +1,29 @@
+/* Guidance cards (GUIDE SPEC §1): the centre card fades and scales in from 96% over 200 ms; with
+   reduced motion it only fades. The pointer fades in. */
+.dim {
+  animation: guidanceFade 200ms ease-out both;
+}
+
+.card {
+  animation: guidanceIn 200ms ease-out both;
+}
+
+.pointer {
+  animation: guidanceFade 200ms ease-out both;
+}
+
+@keyframes guidanceFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes guidanceIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation-name: guidanceFade;
+  }
+}

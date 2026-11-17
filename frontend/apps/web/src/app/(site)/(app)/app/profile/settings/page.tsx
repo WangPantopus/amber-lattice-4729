@@ -435,6 +435,24 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* The guidance cards for each tab, to read again (the apps keep this row in Help & Support). */}
+          {user?.guidance?.enabled && user.accountType !== 'business' ? (
+            <div className="bg-surface rounded-xl border border-app p-6">
+              <h2 className="text-lg font-semibold text-app mb-4">Getting started</h2>
+              <button
+                type="button"
+                data-testid="helpCenter.tips"
+                onClick={() => router.push('/app/profile/settings/tips')}
+                className="w-full flex items-center justify-between px-4 py-3 border border-app rounded-lg hover-bg-app transition group"
+              >
+                <span className="font-medium text-app group-hover:text-primary-600">Tips for each screen</span>
+                <svg className="w-5 h-5 text-app-muted group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 

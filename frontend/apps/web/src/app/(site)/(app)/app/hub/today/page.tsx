@@ -46,6 +46,7 @@ import { ADDRESS_FIRST_PATH, TodayAreaAddAddress, TodayAreaStart } from '@/compo
 import { useMe } from '@/lib/me';
 import { AroundYouPanel, TodayHalfSwitch } from '@/components/hub/AroundYou';
 import { aroundYouQuery, type TodayHalf } from '@/lib/aroundYou';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import {
   AREA_REREAD_MS,
   areaSunData,
@@ -314,6 +315,8 @@ export default function HubTodayPage() {
         </div>
 
         {aroundData ? <TodayHalfSwitch half={half} onChange={setHalf} /> : null}
+        {/* Today has loaded, with its At home | Around you switch if there is one: its guidance card may show. */}
+        {!loading && !error && !around.isLoading ? <GuidanceScreen name="today" /> : null}
         {showAround && aroundData ? <AroundYouPanel data={aroundData} now={hydrated ? aroundNow : null} queryKey={aroundRead.queryKey} /> : null}
 
         {/* At home: Today as it was. It stays mounted under Around you, so coming back is instant. */}

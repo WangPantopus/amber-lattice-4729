@@ -11,6 +11,7 @@ import { extractApiError } from '@/lib/auth-utils';
 import { launchFeatures } from '@/lib/featureFlags';
 import { queryKeys } from '@/lib/query-keys';
 import { useMe } from '@/lib/me';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 
 /**
  * SavedPlace is a private bookmark, never a Home or an access credential. `claimInReview`: the overview
@@ -53,9 +54,11 @@ export default function SavedPlaceContext({ previewId, savedPlaceId, claimInRevi
   }} />;
   if (saved.isPending) return <p role="status">Loading your saved places…</p>;
   if (saved.isError) return <ErrorState message="We could not load your saved places." onRetry={() => saved.refetch()} />;
-  if (!active && claimInReview && !savedPlaceId) return null;
+  // Place has loaded (its guidance cards may show): your claim in review above, and nothing to start here.
+  if (!active && claimInReview && !savedPlaceId) return <GuidanceScreen name="place" />;
   if (!active) return (
     <section className="rounded-2xl border border-app-border bg-app-surface p-5">
+      <GuidanceScreen name="place" />
       <h1 className="text-xl font-semibold">{savedPlaceId ? 'This saved place is unavailable' : 'Start with a place that matters to you'}</h1>
       {/* Launch cut #1 (Beacon): no Beacons to browse; the copy names Pulse only. */}
       <p className="mt-2 text-app-text-secondary">{launchFeatures.beacon
@@ -72,6 +75,8 @@ export default function SavedPlaceContext({ previewId, savedPlaceId, claimInRevi
   const setup = () => router.push(`/app/homes/new?savedPlace=${encodeURIComponent(active.id)}`);
   return (
     <div>
+      {/* Place shows an address you saved: its guidance card (“This is your Place”) may show once it has loaded. */}
+      {preview.isPending ? null : <GuidanceScreen name="place" facts={{ savedAddress: true }} />}
       <section className="rounded-2xl border border-app-border bg-app-surface p-5">
         <p className="text-sm text-app-text-secondary">Saved privately · Public address information</p>
         <h1 className="mt-1 break-words text-xl font-semibold">{active.label}</h1>

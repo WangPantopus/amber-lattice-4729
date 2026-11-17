@@ -722,6 +722,20 @@ export interface GigIncident {
   created_at: string;
 }
 
+/** One guidance card's record: how many times it closed, and when last. */
+export interface GuidanceSeenEntry {
+  times: number;
+  last_at: string;
+}
+
+/** GET /api/users/profile `guidance`, and the answer of POST /api/users/guidance/shown. */
+export interface GuidanceState {
+  enabled: boolean;
+  /** The account is under 14 days old. */
+  new_account: boolean;
+  seen: Record<string, GuidanceSeenEntry>;
+}
+
 export interface UserProfile extends User {
   total_gigs_completed?: number;
   total_gigs_posted?: number;
@@ -763,6 +777,8 @@ export interface UserProfile extends User {
   showEmail?: boolean;
   show_phone?: boolean;
   showPhone?: boolean;
+  /** The guidance cards' switch and which cards this person has closed (own profile only). */
+  guidance?: GuidanceState;
   // Reviews (populated on public profiles)
   reviews?: Array<{
     id: string;
