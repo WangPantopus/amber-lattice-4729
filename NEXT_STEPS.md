@@ -34,7 +34,7 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
 - [x] No SavedItem / Action / Watch tables; extend `SavedPlace` and `HomeRecordWatch` instead.
 - [x] Pilot is available nationwide and observed locally; paid spend only after week-four return is measured.
 - [x] Cash Earn hidden until a balance is withdrawable.
-- [x] Address-verified vs household-verified: only postcard, document, landlord or admin verification unlocks attested artifacts and neighbor messaging; an accepted household invite gives household tools only (design doc F3b).
+- [x] Address-verified vs household-verified: only postcard, document, landlord or admin verification unlocks attested artifacts and neighbor messaging; an accepted household invite gives household tools only (design doc F3b). (Changed November 17: a fast check also opens messaging; attested artifacts still need the mailed code. See below.)
 
 **Made September 27.**
 
@@ -458,6 +458,28 @@ Sessions you start for one job (Instant Screens, Nearby Plans, single fixes) wor
   5. The pointer is blue.
   6. The reminders are kept.
 - [x] One backend switch, `GUIDANCE_CARDS`: on for staging, off in production until you set it.
+
+**Made by the founder on November 17 (faster home verification).** You asked whether verifying a home is too complex next to Nextdoor and others, and whether a couple of taps could do it safely. The research found that today's path is a four-step form and a mailed code, while Nextdoor verifies most people in under a minute by phone or location. You said "Yes, draw it up", then "Yes, all nine" to the decisions on [the design page](https://claude.ai/artifact/HWZu7m6B7p8fwo9KXSsBmB), then started the build: "yes, use Opus 5.5, with Extra High reasoning … And at the end, use Fable 5.2 to verify and check on everything. Please make sure we have the auto address complete available everywhere when it is related to addresses, as users typing." Progress is in the section "Faster home verification" below.
+
+- [x] Three levels:
+  - a home added: home tools for the household at once;
+  - verified by a fast check: the Verified mark, messaging homes near you, the home's details and what others near you pay in rent;
+  - verified by mail or document, as today: all of that plus residency letters, home Mail and owner powers.
+- [x] Your nine decisions:
+  1. A fast check opens messaging, the Verified mark, the home's details and others' rent. This changes the September 27 rule above; residency letters, home Mail and owner powers stay behind the mailed code.
+  2. Three fast checks: phone number, at home now, a bill read at once. Planning moved "at home now" from first to last in the build, because it needs proof that the reading came from a real phone.
+  3. At home now verifies on the first match; a second match on another day within 14 days keeps it.
+  4. Add Home becomes two steps.
+  5. Home tools open as soon as a home is added (the instant claim built on October 25).
+  6. Twilio becomes a new paid service, for texts and the phone-records check.
+  7. The postcard gets a QR picture and a "Didn't ask for this card?" line, and asking for a card is one tap.
+  8. A fast check stands for 12 months and is renewed with one tap at home.
+  9. In a building with units, a fast check works only when the unit has no household on Pantopus yet.
+- [x] Every field where a person types an address suggests addresses as they type, on all three apps.
+- [x] Everything ships switched off: six switches in the database, each off until you switch it on. No new database table.
+- [ ] Yours: a Twilio account with Verify and Lookup, and its keys on staging and production.
+- [ ] Yours: Apple's App Attest turned on for `com.pantopus.app` and Google's Play Integrity linked for the Play app, before the location check goes live.
+- [ ] Yours: switching each part on in production after you have tried it on staging. The Google address-check and Lob keys in production (above, open since October 9) come first: without them no new home can be added there.
 
 **Still open. The brief builds the default until you decide.**
 
@@ -1340,3 +1362,24 @@ Decided November 16 (section 0). Drawn first ([the design page](https://claude.a
   - it reaches production when you promote `dev` to `master`;
   - production shows nothing until you set `GUIDANCE_CARDS=1` on the production API (see [the production checklist](docs/release/prod-config-checklist.md));
   - the store apps show it once new store builds carry it.
+
+## Faster home verification (added November 17)
+
+Decided November 17 (section 0). The drawings and the rules are on [the design page](https://claude.ai/artifact/HWZu7m6B7p8fwo9KXSsBmB). Building started November 17 from one written contract: one session each for the server, the web, the iPhone and Android on Opus 5.5 at Extra High, and a final check of everything on Fable 5.2 when they finish. Nothing is merged yet; each line is ticked when it is on `dev` and checked in the real apps.
+
+- [ ] Base: the three levels on the server, and the apps' existing verify sheet reading its choices from the server.
+- [ ] Add Home in two steps, with the home's details filled from the county record.
+- [ ] Mail made easier: one tap to ask for the postcard, the QR picture, and "This wasn't me".
+- [ ] The phone number check, built against a stand-in until Twilio keys exist.
+- [ ] A bill read at once on today's document upload. A person still reviews each one.
+- [ ] At home now on iPhone and Android, with Apple's and Google's device proofs.
+- [ ] Address suggestions on every address field, on each app.
+- [ ] The final check on Fable 5.2.
+
+Found while planning:
+
+- The apps already had a verify sheet listing mail, a document and the landlord. The fast checks are added to it; no second screen is built.
+- A location reading can be faked by sending a home's coordinates to the server. The location check therefore needs Apple's App Attest and Google's Play Integrity, is built last, and stays off in production until real phones have passed it.
+- A fast check is kept as a mark on the claimed home, so every claim rule already built still applies: the address watch runs first, homes with a household are left out, and proof by mail outranks it.
+
+What the builders can't check: real texts and phone-company records, the device proofs (real phones and store-signed builds), real mail and scanning a printed card, and production.
