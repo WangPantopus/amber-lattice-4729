@@ -169,7 +169,9 @@ const takes = {
       { at: 7.25, kind: 'drag', path: (a, g) => [[0, a.card.x + 0.4 * g.cw, a.card.y + 0.1 * g.ch], [60, a.card.x + 0.3 * g.cw, a.card.y + 0.1 * g.ch],
         [120, a.card.x - 1.02 * g.cw, a.card.y + 0.12 * g.ch]] },
     ],
-    blur: [[1.15, 1.75], [7.25, 8.3]],
+    // The spin's blur starts as the finger lets go (7.38 s): stepped in sixteen while the flick is still on the card, the
+    // table reads it as faster and the card goes a half turn further.
+    blur: [[1.15, 1.75], [7.38, 8.3]],
   },
 };
 
