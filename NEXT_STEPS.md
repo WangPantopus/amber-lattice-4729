@@ -1340,3 +1340,31 @@ Decided November 16 (section 0). Drawn first ([the design page](https://claude.a
   - it reaches production when you promote `dev` to `master`;
   - production shows nothing until you set `GUIDANCE_CARDS=1` on the production API (see [the production checklist](docs/release/prod-config-checklist.md));
   - the store apps show it once new store builds carry it.
+
+## Christmas cards: easier to read, answer and send (added November 17)
+
+You asked on November 17 what else could be better in sending, drafting, receiving and opening a card, then said "Plan everything" and answered the plan's decisions the same morning: [the plan](docs/product/mail-cards-experience-2026-11-17/README.md), with your answers in its section "Decided by the founder". Three Opus 5.5 sessions built it the same day: the server and web, the iPhone with the Duo, and Android. Each part was checked in the real apps against a local backend and database with made-up people, from both people's side and after a reload or relaunch. Both hand-made moments, opening the envelope by hand and sealing it by hand, are unchanged.
+
+Wave A is on `dev` for all three apps:
+
+- [x] Part 1, the pen fits the note: the pen is 30, 27 or 23 pt on an iPhone 17 (9, 10 or 11 ruled lines), the writing box steps the same way as you type, and the share pictures follow. Web [#4387](https://github.com/WangPantopus/skinny-pantopus/pull/4387), iPhone [#4395](https://github.com/WangPantopus/skinny-pantopus/pull/4395), Android [#4383](https://github.com/WangPantopus/skinny-pantopus/pull/4383).
+- [x] Part 2, Read it in print: the note in plain type on the verse's bookmark, growing with the phone's text size. Web [#4390](https://github.com/WangPantopus/skinny-pantopus/pull/4390), iPhone [#4396](https://github.com/WangPantopus/skinny-pantopus/pull/4396), Android [#4384](https://github.com/WangPantopus/skinny-pantopus/pull/4384).
+- [x] Part 8, small fixes: "Verified resident" under a verified sender on a card's link page, and a larger hint under the table's button. On the web the card table also can't scroll inside itself. Web [#4391](https://github.com/WangPantopus/skinny-pantopus/pull/4391), iPhone [#4404](https://github.com/WangPantopus/skinny-pantopus/pull/4404), Android [#4385](https://github.com/WangPantopus/skinny-pantopus/pull/4385).
+- [x] Part 5, shorter sending (your D5 answer): "Seal and send" above "Look it over" on "Seal it for the day", straight to the sealing table. Look it over keeps only its button at the bottom, so the card shows down to the button. Web [#4397](https://github.com/WangPantopus/skinny-pantopus/pull/4397), iPhone [#4398](https://github.com/WangPantopus/skinny-pantopus/pull/4398), Android [#4386](https://github.com/WangPantopus/skinny-pantopus/pull/4386).
+- [x] Part 4, Open the next card: from one waiting card to the next without going back to the list. Web [#4399](https://github.com/WangPantopus/skinny-pantopus/pull/4399), iPhone [#4405](https://github.com/WangPantopus/skinny-pantopus/pull/4405), Android [#4389](https://github.com/WangPantopus/skinny-pantopus/pull/4389).
+- [x] Part 6, Send this card to someone else: the same picture and signature, a new note, three pages. Web [#4400](https://github.com/WangPantopus/skinny-pantopus/pull/4400), iPhone [#4406](https://github.com/WangPantopus/skinny-pantopus/pull/4406), Android [#4392](https://github.com/WangPantopus/skinny-pantopus/pull/4392).
+
+Also on `dev`:
+
+- [x] Part 3, Write back (the reply approved on November 2), note only. Server [#4394](https://github.com/WangPantopus/skinny-pantopus/pull/4394): one reply per card, free, with the other person's next 7 a.m. mail, can be taken back until pickup, withdrawn by a block. It sits behind one new server-only switch, `card_replies`. No migration and no new table. Web [#4402](https://github.com/WangPantopus/skinny-pantopus/pull/4402). On the web, the reply sits below the card's picture, as you asked on November 17: [#4408](https://github.com/WangPantopus/skinny-pantopus/pull/4408). The iPhone and Android parts are still being built.
+- [x] Part 7, the mantel, from the sample you approved: web [#4407](https://github.com/WangPantopus/skinny-pantopus/pull/4407), Android [#4393](https://github.com/WangPantopus/skinny-pantopus/pull/4393); the iPhone's is open.
+- [x] A store build that knows cards but not replies (iPhone tag `ios-v2.1.3`) shows a reply as a plain letter, "A reply to a Christmas card", with its note. So replies don't break today's store apps.
+
+Yours:
+
+- [ ] The reply's server change ([#4394](https://github.com/WangPantopus/skinny-pantopus/pull/4394)) reaches staging with the next backend release that goes live on staging. The last one went live at 9:56 a.m. Pacific on November 17, before it.
+- [ ] Turn replies on in staging (your D4): add `card_replies` to `LAUNCH_FEATURES` on the staging backend and worker. It also needs `mailbox` and `holiday_card_memories`, which staging has. Until then no app offers "Write back".
+- [ ] Production: promote `dev` to `master` once staging looks right. `card_replies` stays off in production until you set it there.
+- [ ] Store builds: the iPhone and Android parts reach people with the next store builds.
+
+- [ ] Not checked: real phones (sounds, and the tap you can feel when a reply lands), screen readers speaking aloud, an Android store build reading a reply, staging and production.
