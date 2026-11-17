@@ -35,9 +35,10 @@ struct PlanPaySpotSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 header
-                if !forLink { party }
+                // While paying, the choice stays as it was paid for.
+                if !forLink { party.disabled(isPaying) }
                 if let groupOffer, partySize > 1 || forLink {
-                    PlanGroupPayChooser(offer: groupOffer, forLink: $forLink, spots: $linkSpots)
+                    PlanGroupPayChooser(offer: groupOffer, forLink: $forLink, spots: $linkSpots).disabled(isPaying)
                 }
                 amounts
                 if forLink, let note = shownQuote?.note { PlanGroupPayNote(text: note) }
