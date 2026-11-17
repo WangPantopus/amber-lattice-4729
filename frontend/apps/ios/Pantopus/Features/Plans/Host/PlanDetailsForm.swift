@@ -37,7 +37,7 @@ struct PlanDetailsForm: View {
                     PlanKindFields(model: model)
                     if model.kind != .pickupGame || model.isBusiness { titleField }
                     if model.kind == .walkCoffee { PlanWalkExtras(model: model) }
-                    when
+                    if !model.picksDate { when } // Find a date (board 26): the offered times take its place
                     if model.isBusiness { PlanBusinessWhereField(model: model) } else { whereSection }
                     if model.offersPrivate { PlanAudienceField(model: model) }
                     spotsRow

@@ -146,6 +146,7 @@ struct PlanCardBox<Content: View>: View {
 enum PlanScreenLines {
     /// "Sunday, Oct 18 · 1:25–4:45 PM", "Saturday morning", "Happening now · until 10:30".
     static func when(_ card: PlanCardDTO) -> String {
+        if let picking = card.pickingText { return picking } // find a date, until the host picks
         let calendar = PlanFormat.calendar(for: card.timezone)
         if card.state == .live {
             return PlanFormat.rowWhen(state: .live, start: card.startsAtDate, end: card.endsAtDate, calendar: calendar) ?? "Happening now"
@@ -159,6 +160,7 @@ enum PlanScreenLines {
     /// "Sun 1:25 PM", "Tomorrow 6:00 PM", "Happening now · until 10:30"; a
     /// playdate before you're in: "Saturday morning".
     static func shortWhen(_ card: PlanCardDTO) -> String {
+        if let picking = card.pickingText { return picking }
         let calendar = PlanFormat.calendar(for: card.timezone)
         return PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, calendar: calendar)
             ?? PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, calendar: calendar)

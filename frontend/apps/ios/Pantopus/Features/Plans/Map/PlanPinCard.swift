@@ -187,7 +187,9 @@ enum PlanCardLines {
     static func whenWhere(_ card: PlanCardDTO, long: Bool = false) -> String {
         let calendar = PlanFormat.calendar(for: card.timezone)
         var parts: [String] = []
-        if card.state == .live {
+        if let picking = card.pickingText {
+            parts.append(picking) // find a date, until the host picks
+        } else if card.state == .live {
             parts
                 .append(PlanFormat
                     .rowWhen(state: .live, start: card.startsAtDate, end: card.endsAtDate, calendar: calendar) ?? "Happening now")

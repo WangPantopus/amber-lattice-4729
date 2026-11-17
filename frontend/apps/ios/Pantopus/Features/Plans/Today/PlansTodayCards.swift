@@ -80,7 +80,8 @@ final class PlansTodayModel {
     /// Live now, or starting later today in the plan's own time zone.
     static func isToday(_ card: PlanCardDTO) -> Bool {
         if card.state == .live { return true }
-        guard card.state == .upcoming, let start = card.startsAtDate else { return false }
+        // A plan still picking its date (find a date) isn't on today, whatever its earliest offered time.
+        guard card.state == .upcoming, card.pickingText == nil, let start = card.startsAtDate else { return false }
         return PlanFormat.calendar(for: card.timezone).isDateInToday(start)
     }
 

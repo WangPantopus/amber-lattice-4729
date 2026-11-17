@@ -117,8 +117,8 @@ public struct CreatePlanBody: Encodable, Sendable {
     public let kind: PlanKind
     public let title: String
     public let about: String?
-    public let startsAt: String
-    public let endsAt: String
+    public var startsAt: String
+    public var endsAt: String
     /// Nil for a business's plan, which meets at one of its locations.
     public let place: PlanPlaceBody?
     public let spots: Int
@@ -154,11 +154,14 @@ public struct CreatePlanBody: Encodable, Sendable {
     public var priceCents: Int?
     /// The extras (08-extras): chip in. Left out unless the host switched it on (`plans_chip_in`).
     public var chipIn: PlanChipInBody?
+    /// Find a date: 2 to 5 times guests tick (`plans_find_date`); `starts_at` is then the earliest.
+    public var dateOptions: [PlanDateOptionBody]?
 
     enum CodingKeys: String, CodingKey {
         case kind, title, about, place, spots, details, gps, label, audience, bring, occasion, deal
         case priceCents = "price_cents"
         case chipIn = "chip_in"
+        case dateOptions = "date_options"
         case kidsWelcome = "kids_welcome"
         case repeatPattern = "repeat"
         case startsAt = "starts_at"
