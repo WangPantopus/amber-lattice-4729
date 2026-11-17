@@ -7,28 +7,53 @@
 //  first. While it is open the page shows the server's "Chris got you a spot" and its "I'm in" in place of the paid
 //  "Join": claiming is free (`POST …/requests/claim-spot`), and the pay sheet never opens. A stopped or used-up link
 //  shows the server's closed words and then the ordinary page; a refusal (already in, blocked) shows its sentence.
+//  Only a clear answer leads to the ordinary page: when the server can't be asked, the token is kept, the paid "Join"
+//  stays away and "Try again" (or a pull to refresh) reads the offer again; a claim that couldn't reach the server
+//  keeps the offer.
 //
 
 import SwiftUI
 
-/// The buyer's link and what it offers.
+/// The buyer's link and what it offers; no offer while the server couldn't be asked.
 struct PlanSpotState: Equatable {
     let token: String
-    let offer: PlanSpotOfferDTO
+    let offer: PlanSpotOfferDTO?
+
+    static let unreachable = "Couldn't check your spot. Try again."
+}
+
+/// A clear answer from the server (a refusal or "not available"), as opposed to not reaching it.
+private func isClearAnswer(_ error: any Error) -> Bool {
+    guard let error = error as? APIError else { return false }
+    switch error {
+    case .clientError, .forbidden, .notFound, .unauthorized: return true
+    default: return false
+    }
 }
 
 extension PlanScreenViewModel {
     /// Reads what the link offers. Open: kept for the page; closed: its words as a notice, then the ordinary page.
     /// Unavailable (the business doesn't take it, or the plan isn't shown to this person): the ordinary page.
     func readSpot(token: String) async {
-        guard let reply: PlanSpotOfferResponse = try? await api.request(PlansEndpoints.spotOffer(planId: planId, token: token)),
-              let offer = reply.spot else { return }
-        if offer.open {
+        do {
+            let reply: PlanSpotOfferResponse = try await api.request(PlansEndpoints.spotOffer(planId: planId, token: token))
+            guard let offer = reply.spot, offer.open else {
+                spot = nil
+                notice = reply.spot?.closedText
+                return
+            }
             spot = PlanSpotState(token: token, offer: offer)
-        } else {
-            spot = nil
-            notice = offer.closedText
+        } catch is CancellationError {
+        } catch {
+            // "Not available" (404) is a clear answer: the ordinary page. Anything else keeps the token, never "Join".
+            spot = isClearAnswer(error) ? nil : PlanSpotState(token: token, offer: nil)
         }
+    }
+
+    /// A pull to refresh: the plan, and an offer the server couldn't be asked about again.
+    func refreshWithSpot() async {
+        await load()
+        if let spot, spot.offer == nil { await readSpot(token: spot.token) }
     }
 
     /// "I'm in": in, free. A refusal shows the server's sentence and the ordinary page.
@@ -42,6 +67,13 @@ extension PlanScreenViewModel {
             await load()
         } catch is CancellationError {
         } catch {
+            guard isClearAnswer(error) else {
+                // The server couldn't be reached: the offer stays; reading again shows whether the claim went through.
+                actionError = PlanErrors.sentence(for: error)
+                await load()
+                if mode == .going { spot = nil }
+                return
+            }
             spot = nil
             actionError = PlanErrors.sentence(for: error)
             await load()
@@ -90,5 +122,37 @@ struct PlanSpotClaimButton: View {
         .planButton(.primary)
         .disabled(isClaiming)
         .accessibilityIdentifier("planSpotClaim")
+    }
+}
+
+/// The footer while the offer couldn't be checked: no paid "Join", the line and "Try again".
+struct PlanSpotRetry: View {
+    let viewModel: PlanScreenViewModel
+    let token: String
+
+    @State private var isReading = false
+
+    var body: some View {
+        VStack(spacing: Spacing.s2) {
+            Text(PlanSpotState.unreachable)
+                .planFont(.small)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("planSpotUnreachable")
+            Button {
+                guard !isReading else { return }
+                Task {
+                    isReading = true
+                    await viewModel.readSpot(token: token)
+                    isReading = false
+                }
+            } label: {
+                PlanButtonLabel(title: "Try again", kind: .secondary, isLoading: isReading)
+            }
+            .planButton(.secondary)
+            .disabled(isReading)
+            .accessibilityIdentifier("planSpotRetry")
+        }
     }
 }

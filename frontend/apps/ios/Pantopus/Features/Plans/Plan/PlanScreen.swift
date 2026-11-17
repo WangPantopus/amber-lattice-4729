@@ -216,7 +216,7 @@ struct PlanScreen: View {
             )
             PlanSamePeopleFooter(viewModel: viewModel, onHost: onHost)
         }
-        .refreshableUnlessZoomed { await viewModel.load() }
+        .refreshableUnlessZoomed { await viewModel.refreshWithSpot() }
     }
 
     private func topButtons(_ card: PlanCardDTO) -> some View {
