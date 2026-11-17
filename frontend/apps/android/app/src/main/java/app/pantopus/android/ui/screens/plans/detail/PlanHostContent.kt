@@ -108,11 +108,15 @@ internal fun ColumnScope.PlanHostBody(
     onMarkUsed: (PlanPersonDto) -> Unit = {},
     /** Business track B5: the guest list with money (C3), on a plan that takes the bill here. */
     checks: PlanChecksEntry? = null,
+    /** The holidays' extras changed the plan (a date picked): read it again. */
+    onExtrasChanged: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val closed = plan.planState == PlanState.CANCELLED || plan.planState == PlanState.ENDED
     HostHeading(plan)
     if (closed) HostClosedBanner(plan)
+    // The holidays' find a date (board 25): while picking, the count and "Pick a date".
+    PlanDatesHostCard(plan, onPicked = onExtrasChanged)
     // Business track B1: the business's deal as guests see it (its count and time left, or how it settled).
     PlanDealCardOf(plan)
     HostSeries(plan, closed, series)
