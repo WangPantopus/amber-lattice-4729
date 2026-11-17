@@ -144,6 +144,8 @@ internal fun ColumnScope.PlanHostBody(
     plan.bring?.takeIf { !closed }?.let { PlanBringHostCard(it, onOpen = onOpenBring) }
     // The holidays' chip in (extras section 3): the same card with the count; who paid is on Who's coming.
     PlanChipInIfAny(plan)
+    // The holidays' gift exchange: the count and "Draw names now"; never a name but the host's own, should they join.
+    PlanGiftIfAny(plan, isHost = true)
     if (closed && plan.chatRoomId != null) {
         // The chat stays to read once the plan is over (as on iOS).
         GhostButton(title = "Read the group chat", onClick = onMessageGuests)

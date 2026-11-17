@@ -174,6 +174,8 @@ data class HostDraft(
     val chipIn: ChipInDraft? = null,
     /** The holidays' find a date (extras section 2): the times offered, earliest first; null while off. */
     val dateOptions: List<DateOptionDraft>? = null,
+    /** The holidays' gift exchange (extras section 4): how much each spends and when names are drawn; null while off. */
+    val gift: GiftDraft? = null,
 )
 
 /** "Chip in" as typed: dollars each person, what for, and the host's own Venmo, PayPal or Cash App link. */
@@ -270,6 +272,10 @@ data class HostUi(
     val chipInOn: Boolean = false,
     /** `plans_find_date` is on for this person (extras section 2): the "Let guests pick the date" row. */
     val findDateOn: Boolean = false,
+    /** `plans_gift_exchange` is on for this person (extras section 4): the "Gift exchange" row. */
+    val giftOn: Boolean = false,
+    /** The server's sentence under a gift field it refused (`budget_cents` or `draw_at`). */
+    val giftErrors: Map<String, String> = emptyMap(),
     /** The server's sentence under a chip-in field it refused (`amount_cents`, `note` or `link`). */
     val chipInErrors: Map<String, String> = emptyMap(),
 ) {
@@ -311,7 +317,13 @@ data class HostUi(
     val showsBringRow: Boolean get() = bringOn && isPrivate && draft.kind?.countsPeople == true
 
     /** The "Add to this plan" card shows (Plans for the holidays, board 3) while any of its rows does. */
-    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn || showsFindDate
+    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn || showsFindDate || showsGift
+
+    /** "Gift exchange" shows in the card (extras section 4): a private plan of a person's, never a playdate. */
+    val showsGift: Boolean get() = giftOn && isPrivate && business == null && draft.kind?.countsPeople == true
+
+    /** The plan is posted with a gift exchange: the row shows and is on. */
+    val postsGift: Boolean get() = showsGift && draft.gift != null
 
     /**
      * "Let guests pick the date" shows in the card (extras section 2): a private plan of a person's, never a playdate,
@@ -427,6 +439,7 @@ class HostFlowViewModel
                     occasionsOn = feature.flags.value.occasionsOn,
                     chipInOn = feature.flags.value.chipInOn,
                     findDateOn = feature.flags.value.findDateOn,
+                    giftOn = feature.flags.value.giftOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
@@ -744,6 +757,26 @@ class HostFlowViewModel
 
         /** "Remove" on an offered time. */
         fun removeDateOption(key: Int) = edit { draft -> draft.withDateOptions(draft.dateOptions.orEmpty().filter { it.key != key }) }
+
+        /** "Gift exchange" on (names drawn the day before at noon) or off (forgets what was set). */
+        fun setGift(on: Boolean) {
+            _ui.update {
+                val now = LocalDateTime.now(it.zone)
+                val gift = if (on) it.draft.gift ?: GiftDraft.startingFor(it.draft.start, now) else null
+                it.copy(draft = it.draft.copy(gift = gift), giftErrors = emptyMap())
+            }
+        }
+
+        /** A gift field changed; its refusal goes. */
+        fun editGift(
+            field: String,
+            transform: (GiftDraft) -> GiftDraft,
+        ) {
+            _ui.update { ui ->
+                val gift = ui.draft.gift ?: return@update ui
+                ui.copy(draft = ui.draft.copy(gift = transform(gift)), giftErrors = ui.giftErrors - field, error = null)
+            }
+        }
 
         /** A chip-in field typed into; its refusal goes. */
         fun editChipIn(
@@ -1178,6 +1211,12 @@ class HostFlowViewModel
                 _ui.update { it.copy(posting = false, step = HostStep.Details, chipInErrors = mapOf(field to message), error = message) }
                 return
             }
+            // A gift field: the same, under "Spend up to" or "Draw names".
+            if (field != null && field in GIFT_FIELDS && _ui.value.postsGift) {
+                val message = error.planMessage
+                _ui.update { it.copy(posting = false, step = HostStep.Details, giftErrors = mapOf(field to message), error = message) }
+                return
+            }
             if (field != null && field in DEAL_FIELDS && _ui.value.showsDealStep) {
                 val errors = mapOf(field to error.planMessage)
                 _ui.update {
@@ -1379,6 +1418,8 @@ class HostFlowViewModel
                 chipIn = draft.chipIn?.takeIf { ui.showsChipIn }?.toInput(),
                 // Extras section 2: the times guests tick; the plan's own time above is the earliest of them.
                 dateOptions = draft.dateOptions?.takeIf { ui.postsFindDate }?.map { it.toInput(zone) },
+                // Extras section 4: the gift exchange; the server checks the budget and the draw time.
+                gift = draft.gift?.takeIf { ui.postsGift }?.toInput(zone),
             )
         }
 
@@ -1422,10 +1463,11 @@ class HostFlowViewModel
             }
         }
 
-        /** What the holidays' extras still need: find a date's two times; null when nothing. */
+        /** What the holidays' extras still need: find a date's two times, the gift exchange's amount and draw time; else null. */
         private fun extrasProblem(draft: HostDraft): String? =
             when {
                 _ui.value.postsFindDate && draft.dateOptions.orEmpty().size < DATE_OPTIONS_FEWEST -> DATE_OPTIONS_TOO_FEW
+                _ui.value.postsGift && (draft.gift?.drawAt == null || centsOf(draft.gift.amount) == null) -> GIFT_INCOMPLETE
                 else -> null
             }
 
