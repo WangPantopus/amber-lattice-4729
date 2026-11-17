@@ -11,10 +11,14 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import app.pantopus.android.data.api.models.plans.HostAsResponse
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanAmountBody
 import app.pantopus.android.data.api.models.plans.PlanBringAddBody
 import app.pantopus.android.data.api.models.plans.PlanBringInput
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanCancelReply
+import app.pantopus.android.data.api.models.plans.PlanCheckPayResponse
+import app.pantopus.android.data.api.models.plans.PlanCheckResponse
+import app.pantopus.android.data.api.models.plans.PlanChecksDto
 import app.pantopus.android.data.api.models.plans.PlanDealPreviewBody
 import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDealUsedResponse
@@ -28,6 +32,7 @@ import app.pantopus.android.data.api.models.plans.PlanInviteLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
+import app.pantopus.android.data.api.models.plans.PlanMyCheckResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
 import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
@@ -41,7 +46,10 @@ import app.pantopus.android.data.api.models.plans.PlanQuoteDto
 import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
+import app.pantopus.android.data.api.models.plans.PlanSendCheckBody
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
+import app.pantopus.android.data.api.models.plans.PlanTipBody
+import app.pantopus.android.data.api.models.plans.PlanTipConfirmDto
 import app.pantopus.android.data.api.models.plans.PlansListResponse
 import app.pantopus.android.data.api.models.plans.PublicPlanDto
 import app.pantopus.android.data.api.models.plans.StillComingBody
@@ -221,6 +229,76 @@ interface PlansApi {
     suspend fun confirmMine(
         @Path("id") id: String,
     ): PlanDto
+
+    /** `GET /api/plans/:id/checks/mine` (business track B5): the guest's open check, or the last paid one. */
+    @GET("api/plans/{id}/checks/mine")
+    suspend fun myCheck(
+        @Path("id") id: String,
+    ): PlanMyCheckResponse
+
+    /** `POST /api/plans/:id/checks/mine` (B5): a guest starts their own check (no deal on the bill). */
+    @POST("api/plans/{id}/checks/mine")
+    suspend fun startCheck(
+        @Path("id") id: String,
+        @Body body: PlanAmountBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/quote` (B5): the check's lines with a tip; no side effect. */
+    @POST("api/plans/{id}/checks/{checkId}/quote")
+    suspend fun quoteCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: PlanTipBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/pay` (B5): the payment for the shipped sheet, and the check as it will be paid. */
+    @POST("api/plans/{id}/checks/{checkId}/pay")
+    suspend fun payCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: PlanTipBody,
+    ): PlanCheckPayResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/confirm` (B5): the sheet closed; the check once paid. */
+    @POST("api/plans/{id}/checks/{checkId}/confirm")
+    suspend fun confirmCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+    ): PlanCheckResponse
+
+    /** `GET /api/plans/:id/checks` (B5, staff with plans.manage): the guest list with money (C3). */
+    @GET("api/plans/{id}/checks")
+    suspend fun checks(
+        @Path("id") id: String,
+    ): PlanChecksDto
+
+    /** `POST /api/plans/:id/checks` (B5, staff): send a guest a check. */
+    @POST("api/plans/{id}/checks")
+    suspend fun sendCheck(
+        @Path("id") id: String,
+        @Body body: PlanSendCheckBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/refund` (B5, staff): all (`{}`) or `{ amount_cents }`; answers C3's list. */
+    @POST("api/plans/{id}/checks/{checkId}/refund")
+    suspend fun refundCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: RequestBody,
+    ): PlanChecksDto
+
+    /** `POST /api/plans/:id/tip` (B6): a tip after a paid plan; answers the payment for the shipped sheet. */
+    @POST("api/plans/{id}/tip")
+    suspend fun tipLater(
+        @Path("id") id: String,
+        @Body body: PlanAmountBody,
+    ): PlanCheckPayResponse
+
+    /** `POST /api/plans/:id/tip/confirm` (B6): "You tipped $5.00" once it went through. */
+    @POST("api/plans/{id}/tip/confirm")
+    suspend fun confirmTip(
+        @Path("id") id: String,
+    ): PlanTipConfirmDto
 
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")

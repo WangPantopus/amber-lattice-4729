@@ -127,6 +127,8 @@ data class PlanDealPreviewBody(
     @Json(name = "starts_at") val startsAt: String,
     /** From B4, for money off the spot. */
     @Json(name = "price_cents") val priceCents: Int? = null,
+    /** From B5: guests will pay their bill here, so money off the bill is offered. */
+    @Json(name = "pay_here") val payHere: Boolean? = null,
 )
 
 /** The server's words for the deal the form describes, or the field errors (`errors` keyed by field). */

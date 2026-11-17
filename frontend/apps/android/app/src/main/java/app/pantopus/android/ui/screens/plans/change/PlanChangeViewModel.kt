@@ -11,6 +11,7 @@ import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.UpdatePlanBody
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.plans.PlanChecksRepository
 import app.pantopus.android.data.plans.PlanFormat
 import app.pantopus.android.data.plans.PlanLocation
 import app.pantopus.android.data.plans.PlanLocationResolver
@@ -95,6 +96,8 @@ data class PlanChangeUi(
     val online: PlanChangeOnline = PlanChangeOnline(),
     /** A business's deal (business track B1, PlanChangeDeal.kt). */
     val deal: PlanChangeDeal = PlanChangeDeal(),
+    /** A business's price and the bill here (business track B2, B5, PlanChangeMoney.kt). */
+    val money: PlanChangeMoney = PlanChangeMoney(),
 ) {
     /** The Repeats row shows on a person's plan (never a business's): with the switch on, or when it already repeats. */
     val showsRepeats: Boolean get() = plan != null && plan.business == null && (repeatOn || originalRepeat != null)
@@ -191,7 +194,7 @@ data class PlanChangeUi(
     /** Anything to save besides how it repeats (the link and online or a place included, Plans step 3). */
     val changedBesidesRepeat: Boolean get() = timesMoved || newPlace != null || locationMoved || onlineChanged
 
-    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged
+    val changed: Boolean get() = changedBesidesRepeat || repeatChanged || dealChanged || money.changed
 
     private companion object {
         const val STILL_COMING_MINUTES = 30
@@ -211,6 +214,7 @@ class PlanChangeViewModel
         private val repository: PlansRepository,
         private val feature: PlansFeature,
         private val locations: PlanLocationResolver,
+        private val checksRepository: PlanChecksRepository,
     ) : ViewModel() {
         private val planId: String = savedStateHandle.get<String>(PlansRoutes.PLAN_ID_KEY).orEmpty()
         private val _ui = MutableStateFlow(PlanChangeUi())
@@ -253,6 +257,7 @@ class PlanChangeViewModel
                                         link = plan.place?.link.orEmpty(),
                                     ),
                                 deal = DealDraft.from(plan.deal?.form, zone).let { PlanChangeDeal(original = it, draft = it) },
+                                money = PlanChangeMoney.of(plan),
                             )
                         }
                         lookForOrigin()
@@ -473,6 +478,10 @@ class PlanChangeViewModel
                         gps = fix?.let { PlanGpsInput(it.latitude, it.longitude, it.at.toString()) },
                         // Business track B1: a changed deal; "No deal" takes it off with its own request, below.
                         deal = ui.deal.chosen?.toInput(ui.zone)?.takeIf { ui.dealChanged },
+                        // Business track B2 and B5: a new price, and the bill here with tips; taking a price off is its own request.
+                        priceCents = ui.money.priceCents?.takeIf { ui.money.priceChanged },
+                        payHere = ui.money.payHere.takeIf { ui.money.payChanged },
+                        tipsOn = (ui.money.payHere && ui.money.tipsOn).takeIf { ui.money.payChanged },
                     )
                 when (val result = send(ui, body)) {
                     is NetworkResult.Success -> _ui.update { it.copy(saving = false, saved = true) }
@@ -489,10 +498,24 @@ class PlanChangeViewModel
             ui: PlanChangeUi,
             body: UpdatePlanBody,
         ): NetworkResult<PlanDto> {
-            val others = ui.changedBesidesRepeat || ui.repeatChanged
-            if (ui.removesDeal && !others) return repository.removeDeal(planId)
-            val first = if (ui.stopsRepeating) repository.updateStoppingRepeat(planId, body) else repository.update(planId, body)
-            return if (first is NetworkResult.Success && ui.removesDeal) repository.removeDeal(planId) else first
+            val others = ui.patchesFields
+            val first =
+                when {
+                    !others && ui.removesDeal -> repository.removeDeal(planId)
+                    !others && ui.money.removesPrice -> checksRepository.removePrice(planId)
+                    ui.stopsRepeating -> repository.updateStoppingRepeat(planId, body)
+                    else -> repository.update(planId, body)
+                }
+            if (first !is NetworkResult.Success) return first
+            val second = if (others && ui.removesDeal) repository.removeDeal(planId) else first
+            if (second !is NetworkResult.Success) return second
+            return if (ui.money.removesPrice && (others || ui.removesDeal)) checksRepository.removePrice(planId) else second
+        }
+
+        // ---- Business track B2 and B5: the price and the bill here ----
+
+        fun editMoney(transform: (PlanChangeMoney) -> PlanChangeMoney) {
+            _ui.update { it.copy(money = transform(it.money), error = null) }
         }
 
         // ---- Business track B1: the deal (D3 over this page) ----
@@ -538,7 +561,7 @@ class PlanChangeViewModel
         private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
             val ui = _ui.value
             val business = ui.business ?: return null
-            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents)
+            val facts = DealPlanFacts(spots = ui.plan?.spots ?: 0, start = ui.start, priceCents = ui.spotPriceCents, bill = ui.bill)
             val body = dealPreviewBody(business, ui.deal.draft, facts, ui.zone) ?: return null
             _ui.update { it.copy(deal = it.deal.copy(preview = it.deal.preview.copy(loading = true, failed = null))) }
             return when (val result = repository.dealPreview(body)) {

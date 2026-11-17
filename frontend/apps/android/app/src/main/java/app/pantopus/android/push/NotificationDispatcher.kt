@@ -192,7 +192,12 @@ class NotificationDispatcher
             data: Map<String, String>,
         ): Routing {
             val planId = data["plan_id"]?.takeIf(String::isNotBlank) ?: return routing
-            return if (data["opens"] == "whos_coming") routing.copy(deepLink = "/plans/$planId/guests") else routing
+            return when (data["opens"]) {
+                "whos_coming" -> routing.copy(deepLink = "/plans/$planId/guests")
+                // Business track B5: a check's notice ("Your check from …", "… refunded $12.00") opens the check (C1).
+                "check" -> routing.copy(deepLink = "/plans/$planId/check")
+                else -> routing
+            }
         }
 
         /**

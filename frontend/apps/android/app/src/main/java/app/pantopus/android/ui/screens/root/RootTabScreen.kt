@@ -3129,6 +3129,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 openPlansLink(PlansRoutes.guests(pending.id))
                 DeepLinkRouter.consume()
             }
+            is DeepLinkRouter.Destination.PlanCheck -> {
+                openPlansLink(PlansRoutes.check(pending.id))
+                DeepLinkRouter.consume()
+            }
             DeepLinkRouter.Destination.NewPlan -> {
                 openPlansLink(PlansRoutes.host())
                 DeepLinkRouter.consume()
@@ -3460,6 +3464,17 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             askPantopus = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                             openProfile = { userId -> navController.navigate(ChildRoutes.publicProfile(userId)) },
                             openBusiness = { businessId -> navController.navigate(ChildRoutes.businessProfile(businessId)) },
+                            openMessage = { userId, name ->
+                                navController.navigate(
+                                    ChildRoutes.chatConversationFromPicker(
+                                        userId = userId,
+                                        displayName = name,
+                                        initials = name.trim().take(1).uppercase(),
+                                        verified = false,
+                                        locality = null,
+                                    ),
+                                )
+                            },
                         ),
                 )
                 composable(PantopusRoute.Mail.path) {

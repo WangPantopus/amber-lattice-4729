@@ -16,6 +16,8 @@ import app.pantopus.android.data.ai.AIScreenContext
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.bring.PlanBringScreen
 import app.pantopus.android.ui.screens.plans.change.PlanChangeScreen
+import app.pantopus.android.ui.screens.plans.checks.PlanCheckScreen
+import app.pantopus.android.ui.screens.plans.checks.PlanChecksScreen
 import app.pantopus.android.ui.screens.plans.detail.PlanDetailScreen
 import app.pantopus.android.ui.screens.plans.guests.PlanGuestsScreen
 import app.pantopus.android.ui.screens.plans.host.HostFlowScreen
@@ -58,6 +60,12 @@ object PlansRoutes {
     /** The bring list for the host (Plans for the holidays, A9). */
     const val BRING = "plans/{$PLAN_ID_KEY}/bring"
 
+    /** The guest's check (business track B5, C1 and C2). */
+    const val CHECK = "plans/{$PLAN_ID_KEY}/check"
+
+    /** The business's guest list with money (business track B5, C3). */
+    const val CHECKS = "plans/{$PLAN_ID_KEY}/checks"
+
     /**
      * Host a plan (H1 to H8); `kind` skips the type step, `game` fills a watch party, `again` copies a plan, and
      * `private` starts "Who can see this" on "Only people I invite" (the empty state's "Plan with people you know").
@@ -83,6 +91,10 @@ object PlansRoutes {
     fun guests(id: String): String = "plans/${Uri.encode(id)}/guests"
 
     fun bring(id: String): String = "plans/${Uri.encode(id)}/bring"
+
+    fun check(id: String): String = "plans/${Uri.encode(id)}/check"
+
+    fun checks(id: String): String = "plans/${Uri.encode(id)}/checks"
 
     fun host(
         kind: String? = null,
@@ -111,6 +123,8 @@ data class PlansExternalRoutes(
     val openProfile: ((userId: String) -> Unit)? = null,
     /** A business's page: the host card of a business's plan (Plans with businesses). */
     val openBusiness: ((businessUserId: String) -> Unit)? = null,
+    /** The shipped conversation with a person or a business (business track B5: "Something's wrong with this payment"). */
+    val openMessage: ((userId: String, name: String) -> Unit)? = null,
 )
 
 /** Opens a person's profile from the Plans pages; null leaves people plain. */
@@ -196,6 +210,8 @@ fun NavGraphBuilder.plansRoutes(
                 onOpenRequests = { id -> nav.navigate(PlansRoutes.requests(id)) },
                 onOpenGuests = { id -> nav.navigate(PlansRoutes.guests(id)) },
                 onOpenBring = { id -> nav.navigate(PlansRoutes.bring(id)) },
+                onOpenCheck = { id -> nav.navigate(PlansRoutes.check(id)) },
+                onOpenChecks = { id -> nav.navigate(PlansRoutes.checks(id)) },
                 onChange = { id -> nav.navigate(PlansRoutes.change(id)) },
                 onHost = { kind, again -> nav.navigate(PlansRoutes.host(kind = kind, again = again)) },
                 onOpenChat = external.openChat,
@@ -228,6 +244,18 @@ fun NavGraphBuilder.plansRoutes(
         arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
     ) {
         PlanBringScreen(onDone = { if (!nav.popBackStack()) external.openNearby() })
+    }
+    composable(
+        route = PlansRoutes.CHECK,
+        arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
+    ) {
+        PlanCheckScreen(onBack = { if (!nav.popBackStack()) external.openNearby() }, onMessageBusiness = external.openMessage)
+    }
+    composable(
+        route = PlansRoutes.CHECKS,
+        arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
+    ) {
+        PlanChecksScreen(onBack = { if (!nav.popBackStack()) external.openNearby() })
     }
     composable(
         route = PlansRoutes.CHANGE,

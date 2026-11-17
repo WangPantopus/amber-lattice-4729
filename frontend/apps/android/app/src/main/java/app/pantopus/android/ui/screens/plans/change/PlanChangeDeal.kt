@@ -40,11 +40,17 @@ val PlanChangeUi.spotPriceCents: Int? get() = plan?.price?.let { it.wasCents ?: 
 /** B4: money off "The spot" is offered on a priced plan the business can charge for. */
 val PlanChangeUi.priced: Boolean get() = spotPriceCents != null && business?.can?.price == true
 
+/** B5: money off the bill is offered on a plan that takes the bill here. */
+val PlanChangeUi.bill: Boolean get() = plan?.payHere != null && business?.can?.payHere == true
+
 /** Anyone is in: the deal can't change (only be removed). */
 val PlanChangeUi.dealLocked: Boolean get() = plan?.deal?.let { !it.canChange } ?: (peopleIn > 0)
 
 /** Save sends a changed deal (or takes it off). */
 val PlanChangeUi.dealChanged: Boolean get() = deal.chosen != null && deal.chosen != deal.original
+
+/** Save sends a PATCH body with something in it (anything but taking the deal or the price off, which are raw PATCHes). */
+val PlanChangeUi.patchesFields: Boolean get() = changedBesidesRepeat || repeatChanged || money.sendsFields
 
 /** Save takes the deal off ("No deal" chosen for a plan that has one). */
 val PlanChangeUi.removesDeal: Boolean get() = dealChanged && deal.chosen?.scope == DealScope.NONE && plan?.deal != null
