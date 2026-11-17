@@ -76,6 +76,15 @@ extension PlaceVerifySheet {
     /// a reviewer shows where it stands instead of a second upload.
     static func fastRows(_ options: HomeVerifyOptions, documentInReview: Bool) -> [FastRow] {
         var rows: [FastRow] = []
+        if options.offers(.phone) {
+            rows.append(FastRow(
+                kind: .start(.phone),
+                icon: .smartphone,
+                label: PlaceVerifyMethod.phone.label,
+                sub: PlaceVerifyMethod.phone.sub,
+                tone: .sky
+            ))
+        }
         let document = options.option(.document)
         // The server's answer wins when it reads a bill at once (another photo is fine after an unreadable one);
         // the app's own claims check only stands in for a review-only upload.
