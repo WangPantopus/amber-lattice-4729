@@ -13,6 +13,8 @@ import SwiftUI
 struct CardTableMenuItem: Identifiable {
     let title: String
     let identifier: String
+    /// A line under a quiet button ("2 more waiting").
+    var detail: String?
     let action: () -> Void
 
     var id: String {
@@ -205,6 +207,8 @@ struct CardTableControls: View {
             hintSize: hintSize,
             secondaries: model.secondaries,
             reservesSecondary: model.reservesSecondary,
+            next: model.showsNextCard ? model.nextCard : nil,
+            reservesNext: model.reservesNext,
             beside: model.printIsButton
                 ? CardTableMenuItem(title: CardTableBookmark.print.title, identifier: CardTableBookmark.print.identifier) {
                     model.bookmark = .print
@@ -234,6 +238,9 @@ struct CardTableAct: View {
     var secondaries: [CardTableMenuItem] = []
     /// Keep its room while it's hidden, so the card doesn't move when it comes.
     var reservesSecondary = false
+    /// "Open the next card" with "{n} more waiting" under it (experience plan Part 4), and whether to keep its room.
+    var next: CardTableMenuItem?
+    var reservesNext = false
     /// A second full button beside the main one ("Read it in print" with larger text, plan Part 2).
     var beside: CardTableMenuItem?
     /// The hint is a link ("Read the verse", plan 6.2; "Read it in print", plan Part 2): its identifier and action.
@@ -279,6 +286,13 @@ struct CardTableAct: View {
                 .frame(minHeight: 44)
                 .opacity(secondaries.isEmpty ? 0 : 1)
                 .animation(.easeInOut(duration: 0.3), value: secondaries.isEmpty)
+            }
+            if next != nil || reservesNext {
+                nextButton
+                    .opacity(next == nil ? 0 : 1)
+                    .disabled(next == nil)
+                    .accessibilityHidden(next == nil)
+                    .animation(.easeInOut(duration: 0.3), value: next == nil)
             }
         }
         .frame(maxWidth: .infinity)
@@ -338,6 +352,28 @@ private extension CardTableAct {
                     CardTableGlass(shape: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
+    }
+
+    /// The quiet "Open the next card" with how many more wait under it.
+    var nextButton: some View {
+        Button { next?.action() } label: {
+            VStack(spacing: 2) {
+                Text(next?.title ?? "Open the next card")
+                    .font(.system(size: primarySize, weight: .medium))
+                    .underline(color: MailPaper.tableCream.opacity(0.4))
+                    .foregroundStyle(MailPaper.tableCream)
+                Text(next?.detail ?? " ")
+                    .font(.system(size: hintSize))
+                    .foregroundStyle(Color.white.opacity(0.85))
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(next?.identifier ?? "cardTableNextCard")
     }
 
     var quietButtons: some View {

@@ -106,6 +106,11 @@ extension CardTableModel {
         return items
     }
 
+    /// "Open the next card", once this card is out and has been turned over (experience plan Part 4).
+    var showsNextCard: Bool {
+        nextCard != nil && sending == nil && step == .out && !content.sealed && (turnedOnce || fold.isSpread)
+    }
+
     // MARK: Sealing (plan Part 2)
 
     private func sendingWords(_ sending: CardTableSending) -> String? {

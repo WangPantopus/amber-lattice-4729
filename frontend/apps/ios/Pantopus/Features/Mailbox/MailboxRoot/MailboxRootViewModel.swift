@@ -489,9 +489,27 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
         onOpenVacationHoldHandler()
     }
 
-    /// A piece tapped in the list.
+    /// A piece tapped in the list. A Christmas card takes the list's other waiting cards with it, for "Open the next
+    /// card" (experience plan Part 4).
     public func openMail(_ mailId: String) {
+        HolidayCardWaiting.hand(from: mailId, waiting: waitingCardIds)
         onOpenMail(mailId)
+    }
+
+    /// The cards in the list that can be opened now: delivered, not opened, and not sealed (a seal that has lifted
+    /// counts), oldest first.
+    private var waitingCardIds: [String] {
+        loadedMail
+            .filter { mail in
+                guard let card = mail.item.card, !card.sealed else { return false }
+                return !mail.item.viewed && !viewedMailIds.contains(mail.id)
+            }
+            .sorted { first, second in
+                let one = MailDates.parse(first.item.deliveredAt) ?? MailDates.parse(first.item.createdAt) ?? .distantPast
+                let two = MailDates.parse(second.item.deliveredAt) ?? MailDates.parse(second.item.createdAt) ?? .distantPast
+                return one < two
+            }
+            .map(\.id)
     }
 
     /// The header's search: every piece this person can read, on the server.

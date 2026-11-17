@@ -130,6 +130,32 @@ extension View {
     }
 }
 
+/// The cards waiting in the Mailbox list a card was opened from (experience plan Part 4): delivered, not opened, and
+/// not sealed (or its seal has lifted), oldest first. Handed over by the list as it opens a piece; a card opened from a
+/// notice or a link finds none, so "Open the next card" doesn't show there.
+@MainActor
+enum HolidayCardWaiting {
+    private static var handed: (from: String, waiting: [String])?
+
+    /// The list opens `mailId`, with these others waiting.
+    static func hand(from mailId: String, waiting: [String]) {
+        handed = (mailId, waiting.filter { $0 != mailId })
+    }
+
+    /// The cards still waiting after this one; none when it wasn't opened from the list.
+    static func after(_ mailId: String) -> [String] {
+        guard let handed, handed.from == mailId else { return [] }
+        return handed.waiting
+    }
+
+    /// The next card to open after this one, which the list then counts as opened from.
+    static func next(after mailId: String) -> String? {
+        guard let handed, handed.from == mailId, let next = handed.waiting.first else { return nil }
+        self.handed = (next, Array(handed.waiting.dropFirst()))
+        return next
+    }
+}
+
 /// Which card the cover shows.
 private struct CardTableCoverItem: Identifiable {
     let id: String
@@ -140,6 +166,8 @@ struct MailCardTableCover: ViewModifier {
     let viewModel: MailDetailViewModel
     let senderLink: (MailDetailContent) -> (title: String, open: () -> Void)?
     var onSendCard: (@MainActor (_ userId: String, _ name: String) -> Void)?
+    /// "Open the next card": this page gives way to the next card's (experience plan Part 4).
+    var onOpenNextCard: (@MainActor (String) -> Void)?
     let onClose: () -> Void
 
     @Environment(\.cardTableCoverSlot) private var slot
@@ -174,7 +202,14 @@ struct MailCardTableCover: ViewModifier {
     }
 
     private func tablePage(_ item: CardTableCoverItem) -> MailCardTablePage {
-        MailCardTablePage(viewModel: viewModel, model: item.model, senderLink: senderLink, onSendCard: onSendCard, onClose: close)
+        MailCardTablePage(
+            viewModel: viewModel,
+            model: item.model,
+            senderLink: senderLink,
+            onSendCard: onSendCard,
+            onOpenNextCard: onOpenNextCard,
+            onClose: close
+        )
     }
 
     private func close() {
@@ -189,6 +224,7 @@ private struct MailCardTablePage: View {
     let model: CardTableModel
     let senderLink: (MailDetailContent) -> (title: String, open: () -> Void)?
     let onSendCard: (@MainActor (_ userId: String, _ name: String) -> Void)?
+    let onOpenNextCard: (@MainActor (String) -> Void)?
     let onClose: () -> Void
 
     @State private var reportsSender = false
@@ -279,6 +315,27 @@ private struct MailCardTablePage: View {
             // Share this card (plan 11.1) comes under it too, so the room is kept for any card that isn't sealed.
             .onAppear { model.reservesSecondary = sendBackPerson != nil || !model.content.sealed }
             .task(id: sendBackPerson?.id) { await checkSendBack() }
+            .onAppear(perform: offerNextCard)
+    }
+
+    /// "Open the next card" with "{n} more waiting" under it, when this card came from the Mailbox list and others
+    /// wait there (experience plan Part 4). It closes this card and brings the next envelope onto the table.
+    private func offerNextCard() {
+        let waiting = HolidayCardWaiting.after(viewModel.mailId)
+        guard onOpenNextCard != nil, !waiting.isEmpty else {
+            model.nextCard = nil
+            model.reservesNext = false
+            return
+        }
+        model.reservesNext = true
+        model.nextCard = CardTableMenuItem(
+            title: "Open the next card",
+            identifier: "cardTableNextCard",
+            detail: "\(waiting.count) more waiting"
+        ) { [viewModel] in
+            guard let next = HolidayCardWaiting.next(after: viewModel.mailId) else { return }
+            onOpenNextCard?(next)
+        }
     }
 
     /// Who "Send {first name} a card" goes to: the person who sent it, on an opened card, when this page can open

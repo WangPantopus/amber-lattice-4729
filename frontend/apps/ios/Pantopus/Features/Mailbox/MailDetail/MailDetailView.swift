@@ -53,6 +53,8 @@ public struct MailDetailView: View {
     private let onVerifyHome: (@MainActor (String) -> Void)?
     /// "Send {first name} a card" on a Christmas card's table: the send flow, that person chosen (their id and name).
     private let onSendCard: (@MainActor (_ userId: String, _ name: String) -> Void)?
+    /// "Open the next card" on a Christmas card's table: the next waiting card's page in place of this one.
+    private let onOpenNextCard: (@MainActor (String) -> Void)?
 
     /// - Parameter viewModel: the page's model when it's kept elsewhere (the Mail tab keeps it across folds); a new
     ///   one otherwise.
@@ -71,7 +73,8 @@ public struct MailDetailView: View {
         onPay: (@MainActor (String) -> Void)? = nil,
         onOpenMail: (@MainActor (String) -> Void)? = nil,
         onVerifyHome: (@MainActor (String) -> Void)? = nil,
-        onSendCard: (@MainActor (_ userId: String, _ name: String) -> Void)? = nil
+        onSendCard: (@MainActor (_ userId: String, _ name: String) -> Void)? = nil,
+        onOpenNextCard: (@MainActor (String) -> Void)? = nil
     ) {
         self.mailId = mailId
         _viewModel = State(initialValue: viewModel ?? MailDetailViewModel(mailId: mailId))
@@ -88,6 +91,7 @@ public struct MailDetailView: View {
         self.onOpenMail = onOpenMail
         self.onVerifyHome = onVerifyHome
         self.onSendCard = onSendCard
+        self.onOpenNextCard = onOpenNextCard
     }
 
     public var body: some View {
@@ -152,7 +156,13 @@ public struct MailDetailView: View {
             }
         }
         .modifier(MailVaultFolderPickers(viewModel: viewModel, isShown: viewModel.cardTable == nil))
-        .modifier(MailCardTableCover(viewModel: viewModel, senderLink: { senderLink($0) }, onSendCard: onSendCard, onClose: back))
+        .modifier(MailCardTableCover(
+            viewModel: viewModel,
+            senderLink: { senderLink($0) },
+            onSendCard: onSendCard,
+            onOpenNextCard: onOpenNextCard,
+            onClose: back
+        ))
         .confirmationDialog(
             "Done with it?",
             isPresented: Binding(get: { viewModel.confirmsDone }, set: { viewModel.confirmsDone = $0 }),

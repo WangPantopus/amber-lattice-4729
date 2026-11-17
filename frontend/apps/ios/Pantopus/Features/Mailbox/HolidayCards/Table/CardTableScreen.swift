@@ -178,7 +178,8 @@ struct CardTableScreen: View {
                 hint: "or swipe it, the way you’d turn it in your hand",
                 primarySize: primarySize,
                 hintSize: hintSize,
-                reservesSecondary: model.reservesSecondary
+                reservesSecondary: model.reservesSecondary,
+                reservesNext: model.reservesNext
             ) {}
                 .frame(width: max(0, width - 32))
                 .fixedSize(horizontal: false, vertical: true)
@@ -189,6 +190,7 @@ struct CardTableScreen: View {
                 primarySize: primarySize,
                 hintSize: hintSize,
                 reservesSecondary: model.reservesSecondary,
+                reservesNext: model.reservesNext,
                 beside: CardTableMenuItem(title: CardTableBookmark.print.title, identifier: "") {}
             ) {}
                 .frame(width: max(0, width - 32))

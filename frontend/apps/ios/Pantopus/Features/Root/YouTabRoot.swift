@@ -1088,6 +1088,13 @@ public struct YouTabRoot: View {
                     Task { @MainActor in
                         path.append(.packageGig(mailId: mailId, isPreDelivery: isPreDelivery))
                     }
+                },
+                // "Open the next card": the next card's page takes this one's place, so ✕ still returns to the Mailbox.
+                onOpenNextCard: { nextId in
+                    Task { @MainActor in
+                        if !path.isEmpty { path.removeLast() }
+                        path.append(.mailItemDetail(mailId: nextId))
+                    }
                 }
             )
         case .settings:
