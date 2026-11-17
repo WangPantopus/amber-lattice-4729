@@ -27,6 +27,7 @@ import VerifiedNeighborsGroup from './VerifiedNeighborsGroup';
 import PlaceDashboardSkeleton from './PlaceDashboardSkeleton';
 import PlaceShell from './PlaceShell';
 import SetupBanner from '@/components/hub/SetupBanner';
+import GuidanceScreen from '@/components/guidance/GuidanceScreen';
 import { usePrimaryHome } from '@/lib/primaryHome';
 import { claimsInReview, myClaimsQuery, myHomesQuery as sharedMyHomesQuery } from '@/lib/myHomes';
 import { PLACE_FRESH_MS, gatedStaleTime, placeCopyGate, useAfterRecheck } from '@/lib/householdCopy';
@@ -204,8 +205,15 @@ export default function PlaceDashboard() {
     );
   }
 
+  // Guidance cards: a home set up and not verified shows “Verify address”; someone whose every home came by a
+  // household invitation never typed an address.
+  const homes = myHomesQuery.data?.homes ?? [];
+  const invited = homes.length > 0 && homes.every((h) => h.occupancy?.verification_source === 'household');
+  const verifiable = !claim && intelligence.tier === 'T3' && intelligence.verify_available !== false;
+
   return (
     <Shell hidden={placeSlugsNotForViewer(intelligence)}>
+      <GuidanceScreen name="place" facts={{ verifiable, invited }} />
       {/* Hub absorption (Phase 1 follow-up): the setup checklist lives on the
           place page now, in wedge order (claim → verify → profile). A claim in
           review has its own status instead. */}

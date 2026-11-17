@@ -146,7 +146,7 @@ export default function PlaceDashboardView({
         </div>
       ) : showVerify ? (
         <div className="mt-4">
-          <VerifyBanner onClick={openVerify} />
+          <VerifyBanner onClick={openVerify} testId="place.verifyAddress" />
         </div>
       ) : null}
 

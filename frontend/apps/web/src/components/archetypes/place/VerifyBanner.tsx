@@ -20,6 +20,8 @@ export interface VerifyBannerProps {
   /** Routes to verification (required — the whole banner is the control). */
   onClick: () => void;
   className?: string;
+  /** data-testid on the banner (the control). */
+  testId?: string;
 }
 
 export default function VerifyBanner({
@@ -28,11 +30,13 @@ export default function VerifyBanner({
   icon: Icon = ShieldCheck,
   onClick,
   className = '',
+  testId,
 }: VerifyBannerProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={testId}
       className={`w-full flex items-center gap-3 text-left rounded-2xl bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800 shadow-sm px-3.5 py-3 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors ${className}`}
     >
       <span className="inline-flex items-center justify-center shrink-0 w-[38px] h-[38px] rounded-xl bg-primary-100 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-300">
