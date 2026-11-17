@@ -134,6 +134,16 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         LaunchFeatures.holidayCardMemories && media?.photo?.usable == true && mediaStamp != .unavailable
     }
 
+    /// A Live Photo keeps its moving part (the server takes one now).
+    var takesLivePhoto: Bool {
+        takesPhoto && media?.photo?.live?.usable == true
+    }
+
+    /// The most bytes a Live Photo's moving part can be.
+    var livePhotoMaxBytes: Int {
+        media?.photo?.live?.maxBytes ?? 15_728_640
+    }
+
     /// "Record a greeting" shows.
     var takesVoice: Bool {
         LaunchFeatures.holidayCardMemories && media?.voice?.usable == true && mediaStamp != .unavailable
@@ -399,12 +409,15 @@ public struct SendHolidayCardBody: Encodable, Sendable {
     public let photo: String?
     public let photoAlt: String?
     public let voice: String?
+    /// The photo's moving part when it goes as a Live Photo; left out for a still.
+    public let photoLive: String?
 
     private enum CodingKeys: String, CodingKey {
         case design, message, arrival, to, signature, photo, voice
         case requestId = "request_id"
         case useStamp = "use_stamp"
         case photoAlt = "photo_alt"
+        case photoLive = "photo_live"
     }
 
     public enum Recipient: Encodable, Sendable {
@@ -449,6 +462,7 @@ public struct SendHolidayCardBody: Encodable, Sendable {
         photo = media.photo
         photoAlt = media.photo == nil ? nil : media.photoAlt
         voice = media.voice
+        photoLive = media.photo == nil ? nil : media.photoLive
     }
 }
 
@@ -639,8 +653,11 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
     /// The page the email's link opens; nil for a person on Pantopus.
     public let linkPage: LinkPage?
 
-    /// The email's words, from the strings the real email uses.
+    /// The email's words and picture, from the strings the real email uses.
     public struct Email: Decodable, Sendable, Hashable {
+        /// The picture at the top of the email (launch key `card_table` on the server): the card's front lying on its
+        /// open envelope, or the sealed envelope for a card sealed until Christmas. Nil from a server without it.
+        public let picture: URL?
         public let subject: String
         public let heading: String
         public let lines: [String]
@@ -651,6 +668,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            picture = (try? c.decodeIfPresent(String.self, forKey: .picture)).flatMap { $0 }.flatMap(URL.init(string:))
             subject = try c.decode(String.self, forKey: .subject)
             heading = try c.decode(String.self, forKey: .heading)
             lines = (try? c.decodeIfPresent([String].self, forKey: .lines)) ?? []
@@ -663,7 +681,7 @@ public struct HolidayCardPreview: Decodable, Sendable, Hashable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case subject, heading, lines, button, footnote, footer
+            case picture, subject, heading, lines, button, footnote, footer
         }
     }
 

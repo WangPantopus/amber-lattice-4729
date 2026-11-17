@@ -46,9 +46,11 @@ struct CardTableScreen: View {
                 screen: screen,
                 trailingStrip: strip,
                 safeTop: insets.top,
-                // The card's own photo keeps room under the card on a phone (memories plan step 4).
-                bottomControls: actHeight + insets.bottom + 8
-                    + CardTableMediaLayer.room(for: model.content, screen: screen, strip: strip, fold: fold),
+                bottomControls: actHeight + insets.bottom + 8,
+                // The card's own photo and greeting keep room under the turned-over card on a phone (memories plan
+                // step 4); nothing lies there while a card is being sealed.
+                keepsMediaRoom: model.sending == nil
+                    && CardTableMediaLayer.liesUnderCard(model.content, screen: screen, strip: strip, fold: fold),
                 wordsBottom: insets.top + 54 + wordsHeight
             )
             ZStack(alignment: .topLeading) {
@@ -89,6 +91,13 @@ struct CardTableScreen: View {
             .onChange(of: fold, initial: true) { _, new in model.setFold(new) }
         }
         .background(MailPaper.tableNight.ignoresSafeArea())
+        // The card's own photo, opened from its print: over the table and its buttons.
+        .overlay {
+            if let photo = model.openedPhoto {
+                CardPhotoViewer(photo: photo) { model.openedPhoto = nil }
+                    .accessibilityAddTraits(.isModal)
+            }
+        }
         .statusBarHidden(false)
         .preferredColorScheme(.dark)
         .accessibilityElement(children: .contain)

@@ -187,13 +187,17 @@ function receiptView(mailId) {
   return mailId ? { link: `/app/mailbox/${mailId}` } : null;
 }
 
-/** What a guest who paid reads on the plan: "Paid $18.00", the receipt, and what leaving gives back. */
+/**
+ * What a guest who paid reads on the plan: "Paid $18.00" (once a part came back and they are still in, "Paid $18.00 ·
+ * $4.00 back", contract 10.2), the receipt, and what leaving gives back.
+ */
 function paidView(plan, request, receiptMailId = null, { keep = 0 } = {}) {
   if (!request || !request.payment_id || !request.paid_cents) return null;
   const back = leaveBackCents(request, { plan, keep });
+  const returned = request.status === 'accepted' && request.refunded_cents > 0 ? request.refunded_cents : 0;
   return {
     cents: request.paid_cents,
-    text: `Paid ${moneyText(request.paid_cents)}`,
+    text: returned ? `Paid ${moneyText(request.paid_cents)} · ${moneyText(returned)} back` : `Paid ${moneyText(request.paid_cents)}`,
     refunded_cents: request.refunded_cents || 0,
     refund_until: request.refund_until,
     leave_back_cents: back,

@@ -119,8 +119,11 @@ struct CardTablePose {
 
         // The envelope.
         let rotation = cardTableLerp(cardTableLerp(-1.1, 0.4, rise), 1.5, lay)
+        // Laid down, the card and its envelope move up the table as the card is turned over, where its own photo or
+        // greeting needs the room under it (0 picture side up, 1 note side up; the same place without them).
+        let turnedOver = CardTableModel.turned(s.card.x)
         var top = cardTableLerp(cardTableLerp(g.envelopeTop, g.envelopeTopOpen, flapT), g.envelopeTopOut, rise)
-        top = cardTableLerp(top, g.envelopeTopFinal, lay)
+        top = cardTableLerp(top, cardTableLerp(g.envelopeTopFinal, g.envelopeTopFinalBack, turnedOver), lay)
         let arrive = drop * (g.height * 0.9)
         var envelopeLeft = g.envelopeX + tx * 2.5
         var envelopeTop = top + ty * 2.5 - arrive
@@ -154,7 +157,7 @@ struct CardTablePose {
         var cardTop = cardTableLerp(top + g.envelopeHeight * 0.02, g.cardTopOut, rise)
         var cardRot = cardTableLerp(rotation, -0.8, rise)
         var scale = cardTableLerp(0.94, 1.03, cardTableEase(0.2, 1, rise))
-        cardTop = cardTableLerp(cardTop, g.cardTop, lay)
+        cardTop = cardTableLerp(cardTop, g.cardTop(turned: turnedOver), lay)
         cardRot = cardTableLerp(cardRot, -1.05, lay)
         scale = cardTableLerp(scale, 1, lay)
         showsCard = flapSide && pull > 0.001

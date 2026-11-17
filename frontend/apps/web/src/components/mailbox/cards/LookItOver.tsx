@@ -77,6 +77,7 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
                 datedOn={mood === 'nostalgia' ? (piece.postmark?.date || piece.created_at) : null}
                 className="w-full"
                 opens
+                live={photo.live ? { own: photo.live.file_id } : null}
               />
             </div>
           ) : null}
@@ -163,7 +164,7 @@ export default function LookItOver({
   const intro = byLink
     ? `The first person to open your link keeps the card. The page it opens shows ${sealed ? 'the sealed envelope' : 'its picture'}, never your note; they open it in Pantopus once they join.`
     : byEmail
-    ? 'They aren’t on Pantopus yet. The email never shows the card; they open it in Pantopus once they join with this address.'
+    ? 'They aren’t on Pantopus yet. The email never shows your note; they read it in Pantopus once they join with this address.'
     : sealed
       ? 'It comes sealed and stays shut until Christmas morning. Use Back to change anything.'
       : card.arrival === 'christmas_morning'

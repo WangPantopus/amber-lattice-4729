@@ -143,7 +143,11 @@ export interface MailCard {
   slug?: string | null;
   table?: string | null;
   /** The card's own photo and voice (launch key holiday_card_memories) on an opened piece and Look it over; null while sealed. */
-  photo?: { file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean } | null;
+  photo?: {
+    file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean;
+    /** A Live Photo's moving part (contract section 13). */
+    live?: { file_id: string; mime_type: string | null; duration_ms: number | null } | null;
+  } | null;
   voice?: { file_id: string; duration_ms: number | null } | null;
 }
 

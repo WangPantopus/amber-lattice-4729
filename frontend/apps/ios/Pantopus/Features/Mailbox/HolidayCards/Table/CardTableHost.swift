@@ -59,7 +59,9 @@ extension CardTableContent {
         sealedDayCount = 0
         signature = piece.card.signature
         // Your own photo: never covered here.
-        photo = piece.card.photo.map { CardPhoto(fileId: $0.fileId, width: $0.width, height: $0.height, alt: $0.alt) }
+        photo = piece.card.photo.map {
+            CardPhoto(fileId: $0.fileId, width: $0.width, height: $0.height, alt: $0.alt, live: $0.live)
+        }
         voice = piece.card.voice
         mediaFrom = .sent(cardId: piece.id)
     }
