@@ -104,6 +104,8 @@ export function sentEnvelope(piece: SentPiece): MailItemV2 {
     sender_trust: 'pantopus_user',
     sender_business_name: null,
     postmark: piece.envelope.postmarked_on ? { town: null, date: piece.envelope.postmarked_on } : null,
+    // A reply they wrote (Part 3): drawn on its card's picture, as the other person's Mailbox shows it.
+    card_reply: piece.card_reply ? { ...piece.card_reply, signature: null } : null,
     card: piece.kind === 'letter' ? null : {
       design: piece.card.design ?? '',
       number: piece.card.number,

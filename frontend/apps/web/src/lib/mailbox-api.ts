@@ -183,6 +183,17 @@ export async function takeBackHolidayCard(cardId: string): Promise<{ taken_back:
   return call(() => mailbox.takeBackHolidayCard(cardId));
 }
 
+// Write back (server key card_replies; mail-cards-experience Part 3): the joined card, and the card's one reply.
+export async function getCardExchange(id: string): Promise<mailbox.CardExchange> {
+  return call(() => mailbox.getCardExchange(id));
+}
+export async function sendCardReply(cardId: string, body: mailbox.CardReplyBody): Promise<{ reply: mailbox.CardReplySummary }> {
+  return call(() => mailbox.sendCardReply(cardId, body));
+}
+export async function takeBackCardReply(cardId: string): Promise<{ taken_back: true; card_id: string }> {
+  return call(() => mailbox.takeBackCardReply(cardId));
+}
+
 // ============================================================
 // SENT (launch key mailbox)
 // ============================================================

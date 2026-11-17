@@ -5,7 +5,7 @@
 
 import apiClient, { get, post, put, del, patch } from '../client';
 import type { Mail, AdCampaign, ApiResponse } from '@pantopus/types';
-import type { MailItemV2 } from './mailboxV2';
+import type { MailCard, MailCardReply, MailItemV2 } from './mailboxV2';
 import type { CardLinkFront } from './mailCompose';
 
 export interface MailboxSummary {
@@ -1033,6 +1033,8 @@ export interface SentPiece {
     /** Their own photo and voice (GET /sent/:id only; never covered). */
     photo?: CardPhoto | null;
     voice?: CardVoice | null };
+  /** A reply they wrote to a card (a letter for older builds): the card it answers, and its own take-back. */
+  card_reply?: (Omit<MailCardReply, 'signature'> & { can_take_back: boolean; take_back_until: string | null }) | null;
 }
 
 /** A step of a sent card's trail: `at` an instant (shown by the sender's clock), `on` a day by theirs. */
@@ -1084,6 +1086,70 @@ export async function getHolidayCardShareVideo(design: string): Promise<{ url: s
  */
 export async function emailHolidayCardAgain(cardId: string): Promise<{ emailed: true }> {
   return post<{ emailed: true }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/email-again`);
+}
+
+// ---- Write back: one reply to a card (server key card_replies; mail-cards-experience Part 3) ----
+
+/** One page of the joined card: the card, or the reply, as this reader may see it. */
+export interface CardExchangePage {
+  id: string;
+  from_name: string | null;
+  to_name: string | null;
+  sent_on: string | null;
+  delivered_on: string | null;
+  card?: MailCard | null;
+  card_reply?: MailCardReply | null;
+  /** Null only for a sealed card seen by its reader. */
+  note: string | null;
+  photo: MailCard['photo'] | null;
+  voice: MailCard['voice'] | null;
+}
+
+/** GET /api/mailbox/cards/:id/exchange: the card and its reply, joined. */
+export interface CardExchange {
+  original: CardExchangePage | null;
+  reply: CardExchangePage | null;
+  /** The replier's own reply while it waits for the 7 a.m. pickup. */
+  pending_reply: { id: string; arrives_on: string | null; take_back_until: string | null; can_take_back: boolean } | null;
+  /** Offer "Write back to {first name}". */
+  can_reply: boolean;
+  reply_controls: { photo: boolean; voice: boolean };
+  reply_refusal: { code: string; error: string } | null;
+}
+
+/** What the replier sees of their reply. */
+export interface CardReplySummary {
+  id: string;
+  card_id: string;
+  to_name: string | null;
+  sent_at: string | null;
+  arrives_at: string | null;
+  arrives_on: string | null;
+  take_back_until: string | null;
+  can_take_back: boolean;
+  status: 'waiting' | 'delivered';
+}
+
+export interface CardReplyBody {
+  message: string;
+  /** One per reply draft, sent again with every retry of it. */
+  request_id: string;
+  signature?: CardSignature | null;
+}
+
+/** GET /api/mailbox/cards/:id/exchange (`id`: the card or its reply). */
+export async function getCardExchange(id: string): Promise<CardExchange> {
+  return get<CardExchange>(`/api/mailbox/cards/${encodeURIComponent(id)}/exchange`);
+}
+
+/** POST /api/mailbox/cards/:id/reply: the card's one reply. 201 { reply }, a repeat 200 { reply }. */
+export async function sendCardReply(cardId: string, body: CardReplyBody): Promise<{ reply: CardReplySummary }> {
+  return post<{ reply: CardReplySummary }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/reply`, body);
+}
+
+/** POST /api/mailbox/cards/:id/reply/take-back: the caller's reply, before the 7 a.m. pickup. */
+export async function takeBackCardReply(cardId: string): Promise<{ taken_back: true; card_id: string }> {
+  return post<{ taken_back: true; card_id: string }>(`/api/mailbox/cards/${encodeURIComponent(cardId)}/reply/take-back`);
 }
 
 /** POST /api/mailbox/cards/:id/take-back: before the 7 a.m. pickup (by email: before they open it). */

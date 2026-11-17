@@ -15,15 +15,16 @@ import { X } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { MailItemV2, VaultFolder } from '@/types/mailbox';
 import type { MailActionName } from '@/lib/mailbox-api';
-import { useCardArrivals, useHolidayCards, useMailAction, useVaultFolders } from '@/lib/mailbox-queries';
+import { useCardArrivals, useCardExchange, useHolidayCards, useMailAction, useVaultFolders } from '@/lib/mailbox-queries';
 import { confirmStore } from '@/components/ui/confirm-store';
 import ReportModal from '@/components/ui/ReportModal';
 import { toast } from '@/components/ui/toast-store';
 import SenderSheet from '../SenderSheet';
 import { mailLoadMessage } from '../mailLoadMessage';
 import CardShareSheet from './CardShareSheet';
-import CardTable, { type TableMenuItem } from './CardTable';
-import { firstNameOf } from './cardArt';
+import CardTable, { type TableCard, type TableMenuItem, type TableReply } from './CardTable';
+import CardReplyWriter from './CardReply';
+import { firstNameOf, shortDay } from './cardArt';
 import { sendOneBackPath } from './sendOneBack';
 import { moveToNextCard, nextCards } from './cardRun';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -85,7 +86,16 @@ export default function CardTablePiece({
   /** Back to the Mailbox. */
   onClose: () => void;
 }) {
-  const card = piece.card!;
+  // A reply to a card (Write back, mail-cards-experience Part 3) opens as the joined pair: the card its reader sent, picture
+  // side up, with the reply lying on it. The card itself (or, once gone, the reply's own picture) comes from the joined read.
+  const replyPiece = piece.card_reply ?? null;
+  const joined = useCardExchange(piece.card?.sealed ? null : piece.id);
+  const exchange = joined.data ?? null;
+  const original = replyPiece ? exchange?.original ?? null : null;
+  const card: TableCard = piece.card ?? original?.card ?? {
+    design: replyPiece?.design ?? '', number: replyPiece?.number ?? null, caption: replyPiece?.caption ?? null,
+    paper: replyPiece?.paper ?? '#f7f0e2', table: replyPiece?.table ?? null, year: replyPiece?.year ?? new Date().getFullYear(), sealed: false,
+  };
   const from = piece.sender_display || 'Someone';
   const action = useMailAction(piece.id);
   const [replay, setReplay] = useState(0);
@@ -105,6 +115,22 @@ export default function CardTablePiece({
   const sendBack: TableMenuItem | null = senderId && theirs.isSuccess
     ? { label: `Send ${firstNameOf(from)} a card`, onSelect: () => router.push(sendOneBackPath({ userId: senderId, name: from })) }
     : null;
+
+  // Write back (Part 3): the server says whether this reader can write back now (can_reply), and their own reply once it's
+  // written (reply, or pending_reply while it waits). Writing opens the sheet; written, it opens the joined pair here.
+  const [writing, setWriting] = useState(false);
+  const [showReply, setShowReply] = useState(false);
+  const ownReply = !replyPiece && exchange?.reply ? exchange.reply : null;
+  const writeBack: TableMenuItem | null = replyPiece || blockedNow ? null
+    : exchange?.can_reply ? { label: `Write back to ${firstNameOf(from)}`, onSelect: () => setWriting(true) }
+      : ownReply ? { label: `You wrote back · ${shortDay(ownReply.sent_on)}`, onSelect: () => setShowReply(true) } : null;
+  const reply: TableReply | null = replyPiece
+    ? { note: piece.content || exchange?.reply?.note || '', fromName: from, signature: replyPiece.signature ?? null,
+      writtenOn: exchange?.reply?.sent_on ?? piece.created_at }
+    : showReply && ownReply
+      ? { note: ownReply.note || '', fromName: ownReply.from_name || 'You', signature: ownReply.card_reply?.signature ?? null, writtenOn: ownReply.sent_on }
+      : null;
+  const { data: cards } = useHolidayCards();
 
   // Open the next card (mail-cards-experience Part 4): only when the Mailbox list opened this card and handed it the
   // others waiting. It replaces this card's page, so ✕ and Back still go to the Mailbox.
@@ -168,7 +194,9 @@ export default function CardTablePiece({
     else if (archived) items.push({ label: 'Back to Incoming', onSelect: () => run('unfile') });
     else items.push({ label: 'File in the Vault', onSelect: () => setSheet('vault') });
     items.push({ label: 'Shred', onSelect: () => { void shred(); } });
-    if (!card.sealed) items.push({ label: 'Open it again', onSelect: () => setReplay((n) => n + 1) });
+    if (!card.sealed && !replyPiece) items.push({ label: 'Open it again', onSelect: () => setReplay((n) => n + 1) });
+    // With Write back in the quiet row, "Share this card" keeps its corner button and this line (Part 3).
+    if (writeBack && !replyPiece) items.push({ label: 'Share this card', onSelect: () => setSheet('share') });
     if (sendBack) items.push(sendBack);
     if (piece.sender_user_id) {
       // As drawn for card memories (wave 4 drawing 6): the card itself is reported, and the person is named.
@@ -178,27 +206,45 @@ export default function CardTablePiece({
     return items;
     // The menu follows the piece; its handlers read the latest piece through this same render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label]);
+  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label, Boolean(writeBack), Boolean(replyPiece)]);
+
+  // A reply waits for the joined read, so its table is made once, with the room the reply needs.
+  if (replyPiece && joined.isPending) return null;
 
   return (
     <CardTable
+      // The joined pair is laid out with room for the reply under the card: a new table when it comes.
+      key={reply ? 'joined' : 'card'}
       card={card}
-      // Its photo and greeting open through the reader's own route (memories contract section 4).
-      mediaFrom={(fileId) => ({ piece: piece.id, fileId })}
-      note={piece.content || ''}
-      fromName={from}
-      toName={recipientName}
-      mailedOn={piece.postmark?.date || piece.created_at}
-      startOnTable={!firstOpen}
+      // Its photo and greeting open through the reader's own route (memories contract section 4); on a reply, the card is
+      // the reader's own, from their Sent.
+      mediaFrom={replyPiece ? (original ? (fileId) => ({ sent: original.id, fileId }) : null) : (fileId) => ({ piece: piece.id, fileId })}
+      note={replyPiece ? original?.note ?? '' : piece.content || ''}
+      fromName={replyPiece ? original?.from_name ?? recipientName : from}
+      toName={replyPiece ? original?.to_name ?? from : recipientName}
+      mailedOn={replyPiece ? original?.sent_on ?? null : piece.postmark?.date || piece.created_at}
+      startOnTable={Boolean(replyPiece) || showReply || !firstOpen}
       replay={replay}
-      paused={sheet !== null || asking}
+      paused={sheet !== null || asking || writing}
       menu={menu}
       sendBack={sendBack}
+      writeBack={writeBack}
+      reply={reply}
       nextCard={nextCard}
-      onShare={() => setSheet('share')}
+      onShare={replyPiece ? undefined : () => setSheet('share')}
       onClose={onClose}
       overlay={(
         <>
+          {writing && !replyPiece ? (
+            <CardReplyWriter
+              cardId={piece.id}
+              card={{ number: card.number, paper: card.paper, year: card.year, table: card.table }}
+              toName={from}
+              fromName={recipientName}
+              signature={cards?.signature?.saved ?? null}
+              onClose={() => { setWriting(false); void joined.refetch(); }}
+            />
+          ) : null}
           {sheet === 'share' ? (
             <CardShareSheet
               details={{ card, note: piece.content || '', fromName: from, mailedOn: piece.postmark?.date || piece.created_at, signature: card.signature ?? null }}
