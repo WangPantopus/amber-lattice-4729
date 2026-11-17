@@ -92,7 +92,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Paying to join, the group price (B2 to B4) | 4215, 4216, 4221, 4252 | 4254 | 4258 |
 | The bill at the place, tips (B5) | 4222 | **not started** | 4267 |
 | A tip after a paid plan (B6) | 4223 | **not started** | 4268 |
-| The same people again | 4234 | 4284 | **not started** |
+| The same people again | 4234 | 4284 | 4297 |
 | Chip in | 4235 | 4294 | **not started** |
 | Find a date | 4237, 4245 | **not started** | **not started** |
 | Gift exchange | 4239 | **not started** | **not started** |
