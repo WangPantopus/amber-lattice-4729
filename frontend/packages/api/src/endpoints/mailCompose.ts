@@ -213,6 +213,22 @@ export async function getEscrowedMailPublic(
 }
 
 /**
+ * Send a one-time code to the address a letter or card waiting on its link was sent to (a card by link: `email`, which
+ * the person types). The answer is the same whether or not the address has an account. Then sign in with
+ * auth.signInWithMailCode and claim it. Calls POST /api/mailbox/claim/:mailId/code
+ */
+export async function sendEscrowCode(
+  mailId: string,
+  token: string,
+  email?: string,
+): Promise<{ sent_to: string; minutes: number }> {
+  return post<{ sent_to: string; minutes: number }>(
+    `/api/mailbox/claim/${encodeURIComponent(mailId)}/code`,
+    { token, ...(email ? { email } : {}) },
+  );
+}
+
+/**
  * Put the letter in the signed-in person's mailbox. Their account's email (or phone number) must be the one the
  * letter was sent to. Calls POST /api/mailbox/claim/:mailId
  */

@@ -99,6 +99,22 @@ export async function login(data: LoginForm): Promise<AuthResponse> {
   return response;
 }
 
+/**
+ * Sign in with the one-time code a letter's or card's page sent (POST /api/mailbox/claim/:mailId/code): to the address
+ * it was sent to, or for a card by link to `email`. Makes the account when the address has none (`newAccount`).
+ * Calls POST /api/users/mail-code; the letter itself is claimed after, with POST /api/mailbox/claim/:mailId.
+ */
+export async function signInWithMailCode(data: { mailId: string; token: string; code: string; email?: string }): Promise<AuthResponse & { newAccount?: boolean }> {
+  const response = await post<AuthResponse & { newAccount?: boolean }>('/api/users/mail-code', {
+    mail_id: data.mailId,
+    token: data.token,
+    code: data.code,
+    ...(data.email ? { email: data.email } : {}),
+  });
+  await persistAuthResponse(response);
+  return response;
+}
+
 export async function register(data: RegisterForm): Promise<AuthResponse> {
   const response = await post<AuthResponse>('/api/users/register', data);
   await persistAuthResponse(response);
