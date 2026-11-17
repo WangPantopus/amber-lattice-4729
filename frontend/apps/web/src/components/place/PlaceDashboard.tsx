@@ -53,7 +53,10 @@ function Shell({ hidden, children }: { hidden?: string[]; children: React.ReactN
   );
 }
 
-export default function PlaceDashboard() {
+export default function PlaceDashboard({ openVerify = false }: {
+  /** `?verify=1` (Add Home in two steps): open the verify sheet once the place is shown. */
+  openVerify?: boolean;
+} = {}) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   // The place the dashboard is showing — null until the resident picks
@@ -132,9 +135,10 @@ export default function PlaceDashboard() {
   const { data: intelligence, waiting: intelWaiting } = useAfterRecheck(intelQuery, showsCopy);
   // FASTVERIFY: the verify sheet's choices and the fast-check mark, for a claimed or verified place
   // of your own (null while the faster verification is off, which keeps today's sheet and group).
-  const verifyOptions = useVerifyOptions(shownHomeId, {
+  const verify = useVerifyOptions(shownHomeId, {
     enabled: authed && !claim && (intelligence?.tier === 'T3' || intelligence?.tier === 'T4'),
-  }).data;
+  });
+  const verifyOptions = verify.data;
 
   // Places for the switcher. Verified mirrors the dashboard tier (T4):
   // an address-verified occupancy or a verified owner; everything else is
@@ -258,6 +262,8 @@ export default function PlaceDashboard() {
         onVerifyByMail={() => router.push(`/app/homes/${homeId}/verify-postcard?return=place`)}
         neighbors={<VerifiedNeighborsGroup />}
         verifyOptions={verifyOptions}
+        autoOpenVerify={openVerify && !verify.loading}
+        onAutoOpened={() => router.replace(`/app/place${placeHomeQuery(switchedHome)}`)}
       />
     </Shell>
   );
