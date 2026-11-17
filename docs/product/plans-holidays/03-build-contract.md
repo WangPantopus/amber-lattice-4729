@@ -884,6 +884,15 @@ guest's Receipts as a paid invoice is today.
   "total_text": "$47.04" }, …]` and `"no_tip": { "total_cents", "total_text" }`.
   For another amount, `POST …/checks/:checkId/quote` with `{ "tip_cents" }`
   answers the lines and the total, with no side effect.
+- **The line under the tip choices**, `tip_base_text`: "Percent of {$48.00},
+  before the deal" on a check with a discount, and "Percent of {$25.00}" on
+  one without (settled November 16 after the iPhone's check read "before the
+  deal" on a check with no deal; the server change is owed).
+- **Pay shows what will be charged** (settled November 16 after the
+  coordinator's read of the iPhone's build): the pay button is enabled only
+  while the amount on it is the server's quote for the tip that `…/pay` will
+  send. While a quote is asked, or after one failed, it is off, and a failed
+  quote clears the choice.
 - **Learning that it is paid.** `POST …/checks/:checkId/confirm`, as a paid
   spot has: it answers the paid check, `{ "state": "paid", "paid_text": "Fri,
   Nov 20 · 8:52 PM", "payer": "Dana L.", "method_text": "Apple Pay", the
