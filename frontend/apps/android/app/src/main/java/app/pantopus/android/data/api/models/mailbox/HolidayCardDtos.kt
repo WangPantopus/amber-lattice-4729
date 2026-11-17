@@ -120,6 +120,16 @@ data class CardPhoto(
     val height: Int? = null,
     val alt: String? = null,
     val covered: Boolean = false,
+    /** The photo is a Live Photo: its few seconds of video (contract section 13), covered whenever the photo is. */
+    val live: CardLive? = null,
+)
+
+/** A Live Photo's moving part: an MP4 or QuickTime clip of at most 10 seconds, read from the same routes as its photo. */
+@JsonClass(generateAdapter = true)
+data class CardLive(
+    @Json(name = "file_id") val fileId: String,
+    @Json(name = "mime_type") val mimeType: String? = null,
+    @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
 /** A card's voice greeting (memories plan step 7): its file and its length as the server measured it. */

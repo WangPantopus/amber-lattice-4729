@@ -77,6 +77,8 @@ data class CardPrintPhoto(
     val height: Int?,
     val alt: String?,
     val covered: Boolean = false,
+    /** A Live Photo: where its moving part is read from (the same kind of route as the photo); null for a still. */
+    val liveUrl: String? = null,
 ) {
     /** How tall the print's picture is for its width; a photo of unknown shape is drawn 4:3. */
     val ratio: Float get() {
@@ -89,8 +91,10 @@ data class CardPrintPhoto(
         private fun base() = BuildConfig.PANTOPUS_API_BASE_URL.trimEnd('/')
 
         /** The sender's own upload, while it's written and on Look it over (`GET /api/mailbox/cards/media/:fileId`). */
-        fun own(photo: CardPhoto): CardPrintPhoto =
-            CardPrintPhoto("${base()}/api/mailbox/cards/media/${Uri.encode(photo.fileId)}", photo.width, photo.height, photo.alt)
+        fun own(photo: CardPhoto): CardPrintPhoto {
+            fun at(fileId: String) = "${base()}/api/mailbox/cards/media/${Uri.encode(fileId)}"
+            return CardPrintPhoto(at(photo.fileId), photo.width, photo.height, photo.alt, liveUrl = photo.live?.let { at(it.fileId) })
+        }
 
         /** On a card the person sent (`GET /api/mailbox/sent/:id/card-media/:fileId`); never covered for its sender. */
         fun sent(
@@ -102,6 +106,7 @@ data class CardPrintPhoto(
                 photo.width,
                 photo.height,
                 photo.alt,
+                liveUrl = photo.live?.let { "${base()}/api/mailbox/sent/${Uri.encode(sentId)}/card-media/${Uri.encode(it.fileId)}" },
             )
 
         /** On a card the person got (`GET /api/mailbox/:id/card-media/:fileId`), covered as the server says. */
@@ -115,6 +120,7 @@ data class CardPrintPhoto(
                 photo.height,
                 photo.alt,
                 covered = photo.covered,
+                liveUrl = photo.live?.let { "${base()}/api/mailbox/${Uri.encode(pieceId)}/card-media/${Uri.encode(it.fileId)}" },
             )
     }
 }
@@ -268,28 +274,38 @@ private fun PrintPicture(
                     ),
                 ),
         )
-        val date = printedDate(datedOn)
-        if (date != null && shown) {
+        // A Live Photo: a small LIVE mark in its corner (its moving part plays in the opened photo).
+        if (shown && photo?.liveUrl != null) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                Text(
-                    date,
-                    style =
-                        TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = (maxWidth.value * 0.065f).coerceIn(10f, 15f).sp,
-                            letterSpacing = 0.08.em,
-                            color = PantopusColors.cardPrintDate,
-                            shadow = Shadow(PantopusColors.cardPrintDateGlow, blurRadius = 8f),
-                        ),
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = maxWidth * 0.06f, bottom = maxWidth * 0.045f)
-                            .clearAndSetSemantics {},
-                )
+                CardLiveMark(size = (maxWidth.value * 0.055f).coerceIn(7f, 11f), modifier = Modifier.padding(maxWidth * 0.035f))
             }
         }
+        val date = printedDate(datedOn)
+        if (date != null && shown) PrintDate(date)
+    }
+}
+
+/** A nostalgia card's day, as a 1990s camera printed it in orange in the photo's corner. */
+@Composable
+private fun PrintDate(date: String) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        Text(
+            date,
+            style =
+                TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (maxWidth.value * 0.065f).coerceIn(10f, 15f).sp,
+                    letterSpacing = 0.08.em,
+                    color = PantopusColors.cardPrintDate,
+                    shadow = Shadow(PantopusColors.cardPrintDateGlow, blurRadius = 8f),
+                ),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = maxWidth * 0.06f, bottom = maxWidth * 0.045f)
+                    .clearAndSetSemantics {},
+        )
     }
 }
 

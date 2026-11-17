@@ -57,6 +57,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Size
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
@@ -80,6 +81,9 @@ internal data class CardPhotoOpened(
  * print it was opened from and goes back into it. Pinch or double-tap enlarges it, up to twice the photo's own size;
  * a finger moves around it; pulling it down, the close button or Back puts it back. Its bytes come only from the
  * print's route, read at their own size and kept in memory, never on disk.
+ *
+ * A Live Photo (contract section 13) moves once as it opens, without its sound, and again with its sound while it's
+ * held or after its LIVE button ([CardLiveClip]).
  */
 @Composable
 internal fun CardPhotoViewer(
@@ -91,10 +95,12 @@ internal fun CardPhotoViewer(
     val grown = remember { Animatable(0f) }
     val view = remember(opened) { PhotoView(scope) }
     var closing by remember { mutableStateOf(false) }
+    val clip = rememberCardLiveClip(opened.photo.liveUrl)
 
     fun close() {
         if (closing) return
         closing = true
+        clip?.stop()
         scope.launch {
             view.rest()
             grown.animateTo(0f, if (reduceMotion) tween(120) else spring(dampingRatio = 1f, stiffness = 420f))
@@ -102,6 +108,14 @@ internal fun CardPhotoViewer(
         }
     }
     view.onPulledAway = ::close
+    view.onHold = { held -> clip?.hold(held) }
+    // It moves once as it opens, without its sound (nothing should startle); with Reduce Motion it waits to be asked.
+    LaunchedEffect(clip?.ready) {
+        if (clip?.ready == true && !reduceMotion) {
+            delay(550)
+            if (!closing) clip.playOnce(muted = true)
+        }
+    }
     LaunchedEffect(Unit) {
         grown.animateTo(1f, if (reduceMotion) tween(150) else spring(dampingRatio = 0.86f, stiffness = 380f))
     }
@@ -124,6 +138,20 @@ internal fun CardPhotoViewer(
         val fitted = min(wide, tall * ratio)
         view.fit(wide, tall, fitted, fitted / ratio)
         PhotoPicture(opened, view, words, reduceMotion) { grown.value }
+        if (clip != null) {
+            CardLiveMoving(clip, view, opened.photo.ratio) { grown.value }
+            if (clip.ready) {
+                val bottom = with(LocalDensity.current) { WindowInsets.safeDrawing.getBottom(this).toDp() }
+                CardLiveButton(
+                    onClick = { clip.playOnce(muted = false) },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 8.dp, bottom = bottom + 10.dp)
+                            .alpha((grown.value * (1f - view.pulledShare)).coerceIn(0f, 1f)),
+                )
+            }
+        }
         val top = with(LocalDensity.current) { WindowInsets.safeDrawing.getTop(this).toDp() }
         Box(
             modifier =
@@ -207,7 +235,7 @@ private fun PhotoPicture(
 
 /** The opened photo under the fingers: how much it's enlarged, where it's been moved to, and how far it's pulled down. */
 @Stable
-private class PhotoView(
+internal class PhotoView(
     private val scope: CoroutineScope,
 ) {
     var scale by mutableFloatStateOf(1f)
@@ -222,6 +250,9 @@ private class PhotoView(
     /** The photo's own width in pixels, once it's read. */
     var ownWidth = 0f
     var onPulledAway: () -> Unit = {}
+
+    /** A finger holds the photo still, or lets go. */
+    var onHold: (Boolean) -> Unit = {}
 
     /** The window, and the photo fitted to it at its resting size, in px. */
     var wide = 0f
@@ -333,7 +364,17 @@ private class PhotoView(
  * slop is left alone, so the double-tap still reads it.
  */
 private fun Modifier.photoGestures(view: PhotoView): Modifier =
-    pointerInput(view) { detectTapGestures(onDoubleTap = { view.doubleTap(it) }) }
+    pointerInput(view) {
+        detectTapGestures(
+            onDoubleTap = { view.doubleTap(it) },
+            // Held still, a Live Photo plays for as long as it's held.
+            onLongPress = { view.onHold(true) },
+            onPress = {
+                tryAwaitRelease()
+                view.onHold(false)
+            },
+        )
+    }
         .pointerInput(view) {
             val slop = viewConfiguration.touchSlop
             awaitEachGesture {
