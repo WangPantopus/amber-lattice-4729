@@ -82,21 +82,49 @@ function readingMatches(readingText, input) {
     && reading.platform === input.platform;
 }
 
+/**
+ * The proof's fields under the names the apps may use: `reading` or `client_data` (the exact JSON text hashed),
+ * `attestation` or `data` (iPhone), `token` (Android), `type` or `kind`. An App Attest assertion isn't taken: each
+ * check sends a fresh attestation (a location check is rare: a first match, a second day, a yearly renewal).
+ */
+function proofFields(proof) {
+  if (!proof || typeof proof !== 'object') return null;
+  const reading = typeof proof.reading === 'string' ? proof.reading : typeof proof.client_data === 'string' ? proof.client_data : null;
+  return { kind: proof.type || proof.kind || null, reading, keyId: proof.key_id, attestation: proof.attestation || proof.data, token: proof.token };
+}
+
+/**
+ * The hashes a proof may carry: SHA-256 of the challenge followed by the reading's JSON text (the contract), or, when
+ * that JSON itself holds the same challenge, SHA-256 of the JSON alone. Either way the challenge is bound in.
+ */
+function proofHashes(challenge, reading) {
+  const hashes = [deviceProof.readingHash(challenge, reading)];
+  try {
+    if (JSON.parse(reading).challenge === challenge) hashes.push(deviceProof.readingHash('', reading));
+  } catch (_) { /* readingMatches already refused it */ }
+  return hashes;
+}
+
 async function proofCounts(input) {
   if (trustClient()) return { ok: true };
   if (input.mocked === true) return { ok: false, reason: 'mocked' };
-  const proof = input.proof && typeof input.proof === 'object' ? input.proof : null;
-  if (!proof || typeof proof.reading !== 'string' || !readingMatches(proof.reading, input)) return { ok: false, reason: 'no_proof' };
-  const hash = deviceProof.readingHash(input.challenge, proof.reading);
-  try {
-    if (input.platform === 'ios') deviceProof.verifyAppAttest({ keyId: proof.key_id, attestation: proof.attestation, clientDataHash: hash });
-    else if (input.platform === 'android') await deviceProof.verifyPlayIntegrity({ token: proof.token, nonceHash: hash });
-    else return { ok: false, reason: 'platform' };
-    return { ok: true };
-  } catch (error) {
-    logger.info('fast_check.location_proof_refused', { platform: input.platform, reason: error.proofReason || 'error' });
-    return { ok: false, reason: `proof_${error.proofReason || 'error'}` };
+  const proof = proofFields(input.proof);
+  if (!proof || !proof.reading || !readingMatches(proof.reading, input)) return { ok: false, reason: 'no_proof' };
+  if (proof.kind === 'assertion') return { ok: false, reason: 'assertion_unsupported' };
+  let last = null;
+  for (const hash of proofHashes(input.challenge, proof.reading)) {
+    try {
+      if (input.platform === 'ios') deviceProof.verifyAppAttest({ keyId: proof.keyId, attestation: proof.attestation, clientDataHash: hash });
+      else if (input.platform === 'android') await deviceProof.verifyPlayIntegrity({ token: proof.token, nonceHash: hash });
+      else return { ok: false, reason: 'platform' };
+      return { ok: true };
+    } catch (error) {
+      last = error;
+      if (error.proofReason !== 'nonce') break;
+    }
   }
+  logger.info('fast_check.location_proof_refused', { platform: input.platform, reason: (last && last.proofReason) || 'error' });
+  return { ok: false, reason: `proof_${(last && last.proofReason) || 'error'}` };
 }
 
 /** The Home's map point, or null. */
@@ -217,4 +245,4 @@ async function noticeLapsed({ now = new Date(), limit = 200 } = {}) {
   return told;
 }
 
-module.exports = { challenge, check, noticeLapsed, ready, challengeValid, readingMatches, trustClient, MATCH_METERS, MAX_ACCURACY_M };
+module.exports = { challenge, check, noticeLapsed, ready, challengeValid, readingMatches, proofFields, proofHashes, trustClient, MATCH_METERS, MAX_ACCURACY_M };
