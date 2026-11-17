@@ -704,7 +704,8 @@ router.get(
   })
 );
 
-// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs)
+// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs). Each train's distance is
+// from the area its page shows to people who are not helping yet (buildCoarseLocation), to the nearest 100 m.
 router.get(
   '/nearby',
   verifyToken,
@@ -724,7 +725,9 @@ router.get(
     if (!Number.isFinite(radiusMeters)) {
       radiusMeters = 40234; // ~25 mi
     }
-    radiusMeters = Math.min(Math.max(radiusMeters, 100), 200000);
+    // Never narrower than about a mile: the list measures from the area a train's page shows, not from an address
+    // (list_support_trains_nearby keeps the same floor).
+    radiusMeters = Math.min(Math.max(radiusMeters, 1609), 200000);
 
     let limit = parseInt(req.query.limit, 10);
     if (!Number.isFinite(limit)) limit = 40;
