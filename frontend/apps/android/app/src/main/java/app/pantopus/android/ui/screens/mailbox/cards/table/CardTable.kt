@@ -361,7 +361,8 @@ private fun rememberTableGeometry(
     val readsInPrint = card.printable && !sending
     // The card's own photo and greeting lie under it once it's turned over (wave 4 drawing 3): the table keeps them room.
     val media = card.hasMedia && !sending
-    return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, readsInPrint, media) {
+    val keys = arrayOf(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending)
+    return remember(*keys, readsVerse, readsInPrint, media) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
             val hintWidth = Constraints(maxWidth = textWidth.coerceAtLeast(1))
