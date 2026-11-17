@@ -35,6 +35,8 @@ final class PlanPrivateDraft {
     var occasion: PlanOccasionDTO?
     /// The extras: chip in being drafted; nil while "Chip in" is off.
     var chipIn: PlanChipInDraft?
+    /// Find a date: the times offered, in the order added; nil while "Let guests pick the date" is off.
+    var dateOptions: [PlanDateOptionDraft]?
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
@@ -93,14 +95,22 @@ final class PlanPrivateDraft {
         inviteProblem = missed == 0 ? nil : "Couldn't invite \(people). You can invite people from the plan."
     }
 
-    /// The private keys of `POST /api/plans`; `kids_welcome` only where the host has `plans_guest_answers`.
-    func apply(to body: inout CreatePlanBody, guestAnswers: Bool, bringList: Bool = false, chipInOn: Bool = false) {
+    /// The private keys of `POST /api/plans`, each only where the form offers it (its switch is on for the host).
+    func apply(to body: inout CreatePlanBody, offers model: PlanComposerModel) {
+        let guestAnswers = model.offersGuestAnswers, bringList = model.offersBringList
+        let chipInOn = model.offersChipIn, findDateOn = model.picksDate
         body.audience = .invited
         body.guestsCanInvite = guestsCanInvite
         body.inviteUserIds = chosen.isEmpty ? nil : chosen
         if guestAnswers { body.kidsWelcome = kidsWelcome }
         if bringList, let bring, !bring.items.isEmpty { body.bring = bring.body }
         if chipInOn { body.chipIn = chipIn?.body }
+        if findDateOn, let options = dateOptions?.sorted(by: { $0.start < $1.start }), let first = options.first {
+            // The plan's own time is the earliest offered, so lists can order it while guests tick.
+            body.dateOptions = options.map { PlanDateOptionBody(startsAt: PlanTime.string($0.start), endsAt: PlanTime.string($0.end)) }
+            body.startsAt = PlanTime.string(first.start)
+            body.endsAt = PlanTime.string(first.end)
+        }
     }
 
     /// "Host again": who the plan was for, "Bring a friend" and "Kids welcome", as the plan had them.
@@ -140,15 +150,27 @@ extension PlanComposerModel {
         PlansFlags.shared.chipIn && isPrivate && kind != .playdate
     }
 
+    /// Find a date (08-extras section 2, board 26): "Let guests pick the date" on a private plan of a host with
+    /// `plans_find_date`, never a playdate, never one that repeats.
+    var offersFindDate: Bool {
+        PlansFlags.shared.findDate && isPrivate && kind != .playdate && !repeating.isOn
+    }
+
+    /// The host offers times instead of one: the "When" card gives way to them.
+    var picksDate: Bool {
+        offersFindDate && privacy.dateOptions != nil
+    }
+
     /// What keeps an extra that is switched on from posting: its fields aren't filled in yet.
     var extrasProblem: String? {
         if offersChipIn, let chipIn = privacy.chipIn, chipIn.body == nil { return PlanChipInDraft.incomplete }
+        if picksDate, (privacy.dateOptions?.count ?? 0) < 2 { return PlanDateOptionDraft.tooFew }
         return nil
     }
 
     /// The "Add to this plan" card shows while it has a row to hold.
     var offersAddToPlan: Bool {
-        offersGuestAnswers || offersBringList || offersChipIn
+        offersGuestAnswers || offersBringList || offersChipIn || offersFindDate
     }
 
     /// The most the spots stepper goes to: 100 for a private plan with guest answers, otherwise 30.

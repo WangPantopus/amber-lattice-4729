@@ -284,7 +284,7 @@ final class PlanComposerModel {
         )
         body.hostedAgainFrom = hostedAgainFrom
         if !isBusiness { body.occasion = privacy.occasion?.key } // H3, on a public or a private plan
-        if isPrivate { privacy.apply(to: &body, guestAnswers: offersGuestAnswers, bringList: offersBringList, chipInOn: offersChipIn) }
+        if isPrivate { privacy.apply(to: &body, offers: self) }
         applyRepeat(to: &body)
         return body
     }

@@ -58,7 +58,16 @@ struct PlanRowModel: Identifiable, Equatable {
         // an online plan.
         let area = card.areaWord.hasPrefix("Near ") ? String(card.areaWord.dropFirst(5)) : card.areaWord
         var parts: [String] = []
-        if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
+        if let picking = card.pickingText {
+            // Find a date: "Picking a date" where the time shows, until the host picks one.
+            parts.append(contentsOf: [picking, area])
+        } else if let when = PlanFormat.rowWhen(
+            state: card.state,
+            start: card.startsAtDate,
+            end: card.endsAtDate,
+            now: now,
+            calendar: calendar
+        ) {
             parts.append(when)
             // A later day names the area too ("Sun 1:25 PM · Downtown · about 2 mi").
             if card.state != .live, let start = card.startsAtDate, !calendar.isDate(start, inSameDayAs: now) {
@@ -136,7 +145,8 @@ struct PlanRowModel: Identifiable, Equatable {
         let viewer = card.viewer
         if viewer?.isHost == true {
             let calendar = PlanFormat.calendar(for: card.timezone)
-            let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar)
+            let when = card.pickingText
+                ?? PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar)
             let trailing: PlanRowTrailing = (requestsCount ?? 0) > 0
                 ? .status("\(requestsCount ?? 0) request\(requestsCount == 1 ? "" : "s")", .bell)
                 : .text("\(card.goingCount) going")
@@ -193,6 +203,7 @@ struct PlanRowModel: Identifiable, Equatable {
 
     /// When, as a list row says it; a playdate before you're in says the part of the day.
     private static func yourWhen(_ card: PlanCardDTO, now: Date) -> String {
+        if let picking = card.pickingText { return picking }
         let calendar = PlanFormat.calendar(for: card.timezone)
         if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
             return when
@@ -247,6 +258,8 @@ struct PlanRowModel: Identifiable, Equatable {
         var parts = [card.isPrivate ? "Private \(card.kind.spokenTitle.lowercased())" : card.kind.spokenTitle, card.title]
         if card.state == .live {
             parts.append("happening now")
+        } else if let picking = card.pickingText {
+            parts.append(picking)
         } else if let start = card.startsAtDate {
             parts.append(PlanFormat.spokenWhen(start, now: now, calendar: calendar))
         } else {
