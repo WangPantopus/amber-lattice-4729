@@ -123,7 +123,7 @@ extension CardTableModel {
     /// Once the card is on the table.
     private var restingHint: String {
         // Enlarging works with Reduce Motion and on the closed Duo too, so its hint comes first.
-        if isZoomed { return "double-tap the card to put it back" }
+        if isZoomed { return "double-tap to bring it back" }
         if fold.isSpread { return "" }
         if !turnedOnce { return reduceMotion ? "" : "or swipe it" }
         if !zoomedOnce { return "double-tap the card to enlarge it" }

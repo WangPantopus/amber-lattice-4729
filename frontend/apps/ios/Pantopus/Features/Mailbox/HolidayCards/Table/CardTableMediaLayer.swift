@@ -145,8 +145,9 @@ struct CardTableMediaLayer: View {
     /// Where the greeting lies: right of the print under a phone's card (alone, centred), right of a wide card, or on
     /// the open Duo's picture page.
     private func greetingFrame() -> CGRect {
-        // A cassette and its pill: about 0.62 of its width tall plus the pill; a gift tag about 0.53.
-        let tall: (CGFloat) -> CGFloat = { width in width * 0.62 + 30 }
+        // A cassette and its pill: about 0.62 of its width tall plus the pill; a gift tag about 0.53, with no pill.
+        let gift = CardTableMood(number: model.content.number) == .reverence
+        let tall: (CGFloat) -> CGFloat = { width in gift ? width * 0.53 : width * 0.62 + 30 }
         if model.fold.isSpread, let pages = model.fold.pages(screen: layout.screen, bottomRoom: model.pagesBottomRoom(layout)) {
             let page = pages.pictureFrame
             let width = min(page.width * 0.38, 170)
@@ -163,8 +164,11 @@ struct CardTableMediaLayer: View {
         }
         // A little lower than the print, as things put down by hand lie, and within the room kept for them.
         let room = layout.mediaRoom
-        let width = min(layout.cardWidth * 0.45, max(80, (room * 0.95 - 30) / 0.62))
-        let top = underCard + room * 0.04
+        // So a gift tag can lie wider than a cassette in the same room.
+        let fits = gift ? room * 0.95 / 0.53 : (room * 0.95 - 30) / 0.62
+        let width = min(layout.cardWidth * 0.45, max(80, fits))
+        // A gift tag is turned twice as far as a cassette, which lifts its far corner: it starts that much lower.
+        let top = underCard + room * 0.04 + (gift ? width * 0.06 : 0)
         guard model.content.photo != nil else {
             return CGRect(x: layout.cardX + (layout.cardWidth - width) / 2, y: top, width: width, height: tall(width))
         }
