@@ -20,6 +20,7 @@ struct PlanSpotState: Equatable {
     let offer: PlanSpotOfferDTO?
 
     static let unreachable = "Couldn't check your spot. Try again."
+    static let claimUnreachable = "Couldn't claim your spot right now. Try again."
 }
 
 /// A clear answer from the server (a refusal or "not available"), as opposed to not reaching it: 404, 403, 409, 410,
@@ -71,8 +72,8 @@ extension PlanScreenViewModel {
         } catch is CancellationError {
         } catch {
             guard isClearAnswer(error) else {
-                // The server couldn't be reached: the offer stays; reading again shows whether the claim went through.
-                actionError = PlanErrors.sentence(for: error)
+                // No clear answer: the offer stays; reading again shows whether the claim went through.
+                actionError = PlanSpotState.claimUnreachable
                 await load()
                 if mode == .going { spot = nil }
                 return
