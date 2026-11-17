@@ -124,6 +124,8 @@ data class PlanDetailUi(
     val myCheck: PlanMyCheckResponse? = null,
     /** Business track B5: the staff's totals for the guest list (C3's entry on the host page). */
     val checks: PlanChecksDto? = null,
+    /** The holidays' board 29: this plan was just posted to invite a past plan's people; its invite sheet opens on them. */
+    val invitePastFrom: String? = null,
 )
 
 /**
@@ -178,6 +180,7 @@ class PlanDetailViewModel
             }
             // Opened in place of a date its host skipped (Plans step 2): this page says so.
             events.takeArrivalNote(planId)?.let { note -> _ui.update { it.copy(notice = note) } }
+            events.takePostedSamePeople(planId)?.let { from -> _ui.update { it.copy(invitePastFrom = from) } }
         }
 
         /** Every appearance: read the plan fresh (opening an invitation first, once). */
@@ -769,6 +772,9 @@ class PlanDetailViewModel
 
         /** The host flow that copies this plan opens its people to invite once the new one is posted. */
         fun planNextWithSamePeople() = events.planNextWithSamePeople(planId)
+
+        /** The invite sheet opened on the past plan's people (once). */
+        fun invitePastShown() = _ui.update { it.copy(invitePastFrom = null) }
 
         private companion object {
             const val CANCEL_NOTE_MAX = 280

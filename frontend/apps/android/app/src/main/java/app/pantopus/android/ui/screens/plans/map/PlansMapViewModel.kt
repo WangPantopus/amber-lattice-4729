@@ -86,8 +86,6 @@ data class PlansMapUiState(
     val postedInvite: PlanPostedInvite? = null,
     /** What went wrong with the invitations the plan just posted sent (Plans step 1), said on H8. */
     val postedNote: String? = null,
-    /** The holidays' board 29: the past plan whose people the invite sheet opens on over the posted plan. */
-    val postedSamePeople: String? = null,
     /** The closest town with plans 5 to 15 miles away, when nothing is near (F4). */
     val elsewhere: PlansElsewhereDto? = null,
     /** The All / Neighbors / Businesses filter the person chose (Plans with businesses, board G2), remembered. */
@@ -189,12 +187,7 @@ class PlansMapViewModel
                 events.posted.collect { id ->
                     if (id != null && id != _state.value.postedId) {
                         _state.update {
-                            it.copy(
-                                postedId = id,
-                                postedInvite = events.takePostedInvite(id),
-                                postedNote = events.takePostedNote(id),
-                                postedSamePeople = events.takePostedSamePeople(id),
-                            )
+                            it.copy(postedId = id, postedInvite = events.takePostedInvite(id), postedNote = events.takePostedNote(id))
                         }
                         select(id)
                         refreshAll(force = true)
@@ -213,7 +206,7 @@ class PlansMapViewModel
 
         /** The invite sheet a private plan's preview asked for has opened. */
         fun postedInviteOpened() {
-            _state.update { it.copy(postedInvite = null, postedSamePeople = null) }
+            _state.update { it.copy(postedInvite = null) }
         }
 
         /** "Skip Thursday" on a repeating plan's card under Your plans (Plans step 2): the next date opens and says so. */

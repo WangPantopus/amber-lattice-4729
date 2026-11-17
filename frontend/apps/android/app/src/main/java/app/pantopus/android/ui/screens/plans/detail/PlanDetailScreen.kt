@@ -358,11 +358,15 @@ private fun PlanReady(
             },
         )
     }
-    if (inviting) {
+    // The holidays' board 29: a plan just posted to invite a past plan's people opens its invite sheet on them.
+    val pastFrom = ui.invitePastFrom?.takeIf { hosting && (ui.state as? PlanDetailUiState.Ready)?.fresh == true }
+    if (inviting || pastFrom != null) {
         PlanInviteSheet(
             plan = plan,
+            pastFrom = pastFrom,
             onDismiss = {
                 inviting = false
+                viewModel.invitePastShown()
                 viewModel.load()
             },
         )

@@ -295,16 +295,13 @@ private fun PlansSheetHost(
     // "Invite friends" from the posted plan (H8).
     var inviting by remember { mutableStateOf<PlanDto?>(null) }
     var textFirst by remember { mutableStateOf(false) }
-    var pastFrom by remember { mutableStateOf<String?>(null) }
     inviting?.let { plan ->
         PlanInviteSheet(
             plan = plan,
             textFirst = textFirst,
-            pastFrom = pastFrom,
             onDismiss = {
                 inviting = null
                 textFirst = false
-                pastFrom = null
             },
         )
     }
@@ -314,7 +311,6 @@ private fun PlansSheetHost(
         val then = state.postedInvite ?: return@LaunchedEffect
         val plan = selected?.takeIf { it.id == state.postedId && it.invites?.canInvite == true } ?: return@LaunchedEffect
         textFirst = then == PlanPostedInvite.Text
-        pastFrom = state.postedSamePeople.takeIf { then == PlanPostedInvite.SamePeople }
         inviting = plan
         viewModel.postedInviteOpened()
     }

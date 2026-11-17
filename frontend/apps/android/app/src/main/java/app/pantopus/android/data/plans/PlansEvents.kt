@@ -15,9 +15,6 @@ enum class PlanPostedInvite {
 
     /** "Email": the sheet opens on its search box, which takes an address. */
     Email,
-
-    /** "Plan the next one with the same people" (the holidays' board 29): the sheet opens on a past plan's people. */
-    SamePeople,
 }
 
 /**
@@ -43,7 +40,8 @@ class PlansEvents
 
         /**
          * "Plan the next one with the same people" on [fromPlanId] (the holidays' board 29): the host flow that copies it
-         * opens the invite sheet on its people once the new plan is posted. Taken once, as that flow starts.
+         * opens the new plan's page once it is posted, and the page opens the invite sheet on [fromPlanId]'s people. Taken
+         * once, as that flow starts.
          */
         fun planNextWithSamePeople(fromPlanId: String) {
             samePeopleNext = fromPlanId
@@ -51,7 +49,7 @@ class PlansEvents
 
         fun takeSamePeopleNext(): String? = samePeopleNext.also { samePeopleNext = null }
 
-        /** The past plan whose people the invite sheet opens on over [planId], once. */
+        /** The past plan whose people [planId]'s invite sheet opens on, once (taken by the new plan's page). */
         fun takePostedSamePeople(planId: String): String? {
             val pending = postedSamePeople?.takeIf { it.first == planId } ?: return null
             postedSamePeople = null

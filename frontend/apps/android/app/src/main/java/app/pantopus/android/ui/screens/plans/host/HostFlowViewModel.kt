@@ -234,6 +234,8 @@ data class HostUi(
     val posting: Boolean = false,
     val error: String? = null,
     val postedId: String? = null,
+    /** "Plan the next one with the same people" (the holidays' board 29): the posted plan's page opens, not the map. */
+    val postedOpensPlan: Boolean = false,
     /** H7's "Near Camas": the city of the plan's place (or home), looked up when the preview opens (as on iOS). */
     val previewArea: String? = null,
     /** The businesses this person may post for (`GET /api/plans/host-as`); "Host as" shows only when there are any. */
@@ -1199,11 +1201,10 @@ class HostFlowViewModel
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        // The holidays' board 29: the invite sheet opens on the past plan's people (board 30's list).
+                        // The holidays' board 29: the new plan's page opens, with its invite sheet on the past plan's people.
                         val same = samePeopleFrom?.takeIf { ui.isPrivate }
-                        val next = if (same != null) PlanPostedInvite.SamePeople else then.takeIf { ui.isPrivate }
-                        events.posted(result.data.id, next, inviteNote(result.data), samePeopleFrom = same)
-                        _ui.update { it.copy(posting = false, postedId = result.data.id) }
+                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data), samePeopleFrom = same)
+                        _ui.update { it.copy(posting = false, postedId = result.data.id, postedOpensPlan = same != null) }
                     }
                     is NetworkResult.Failure -> postFailed(result.error)
                 }
