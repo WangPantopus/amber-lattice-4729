@@ -411,6 +411,8 @@ describe('homeOwnership Phase 2 compatibility writes', () => {
       claim_id: 'claim-2',
       evidence_type: 'deed',
       status: 'pending',
+      // The deed was uploaded to the claim: proof waiting for review counts toward a challenge only then.
+      private_upload_id: 'evidence-1',
     }]);
 
     const res = await request(app)
