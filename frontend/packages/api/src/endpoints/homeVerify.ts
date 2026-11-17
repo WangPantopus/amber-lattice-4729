@@ -5,7 +5,7 @@
 // database flags: while `home_fast_verify` is off the server answers 404
 // FAST_CHECK_OFF, and the apps keep today's verify sheet and pages.
 
-import { get } from '../client';
+import { get, post } from '../client';
 
 /** How far the person's verification at this Home goes. */
 export type VerifyLevel = 'none' | 'added' | 'fast' | 'proven';
@@ -83,4 +83,14 @@ export function availableVerifyOptions(options: VerifyOptions | null | undefined
 /** A choice's reason, when the server lists it but it can't be used now. */
 export function verifyOptionReason(options: VerifyOptions | null | undefined, id: VerifyOptionId): VerifyOptionReason | null {
   return options?.options.find((o) => o.id === id)?.reason ?? null;
+}
+
+// ── The card's QR picture: "This wasn't me" (home_postcard_scan) ──────────────
+
+/**
+ * POST /api/public/postcard-report, with nobody signed in. The server answers
+ * `{ recorded: true }` whatever the input, so the answer says nothing about the home.
+ */
+export async function reportPostcard(homeId: string, code: string): Promise<{ recorded: boolean }> {
+  return post<{ recorded: boolean }>('/api/public/postcard-report', { home_id: homeId, code });
 }

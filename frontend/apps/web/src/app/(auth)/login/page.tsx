@@ -23,6 +23,8 @@ import {
   safeRedirectPath,
 } from '@/lib/auth-utils';
 import WithSearchParams, { type SearchParamsProps } from '@/components/auth/WithSearchParams';
+import ScannedCardPanel from '@/components/homes/postcard/ScannedCardPanel';
+import { codeFromHash, keepScannedCard, verifyPostcardHome, wipeHash, type ScannedCard } from '@/components/homes/postcard/scannedCard';
 
 function LoginContent({ searchParams }: SearchParamsProps) {
   const router = useRouter();
@@ -38,6 +40,17 @@ function LoginContent({ searchParams }: SearchParamsProps) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  // A scanned postcard (FASTVERIFY): its link, opened with nobody signed in, lands here with the code in the
+  // fragment. Ask first; "Yes, sign in to finish" keeps the code for the verify page in this tab.
+  const [scannedCard, setScannedCard] = useState<ScannedCard | null>(null);
+  const [scanSignIn, setScanSignIn] = useState(false);
+  useEffect(() => {
+    const homeId = verifyPostcardHome(redirectTo);
+    const code = codeFromHash(window.location.hash);
+    if (!homeId || !code) return;
+    wipeHash();
+    setScannedCard({ homeId, code });
+  }, [redirectTo]);
   const [submitting, setLoading] = useState(false);
   // Signed in and on the way to the next page: the form stays busy until that page shows.
   const leaving = useLeavingAuthPage();
@@ -170,6 +183,21 @@ function LoginContent({ searchParams }: SearchParamsProps) {
     'focus:outline-none focus:ring-primary-500 focus:border-primary-500';
   const inputErrorClass = ' border-red-300 dark:border-red-700 bg-red-50/40 dark:bg-red-950/20';
   const fieldErrorClass = 'mt-1 text-xs text-red-600 dark:text-red-300';
+
+  if (scannedCard && !scanSignIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-950 dark:to-gray-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="flex justify-center">
+            <PantopusBadge />
+          </div>
+          <div className="mt-8 bg-app-surface/90 backdrop-blur py-8 px-5 shadow-lg shadow-black/5 dark:shadow-black/30 rounded-2xl border border-app-border-subtle sm:px-10">
+            <ScannedCardPanel card={scannedCard} onSignIn={() => { keepScannedCard(scannedCard); setScanSignIn(true); }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-950 dark:to-gray-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
