@@ -88,6 +88,9 @@ class MockMailProvider {
       metadata,
       code,
       templateId: templateId || null,
+      // The scan side's HTML (home_postcard_scan), as a printer would get it.
+      // eslint-disable-next-line global-require
+      ...(options.scan ? { backHtml: await require('../postcardScan').buildScanBackHtml(code, options.scan) } : {}),
       sentAt: new Date().toISOString(),
     };
 

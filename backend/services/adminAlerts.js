@@ -258,6 +258,43 @@ Close a case: <code>POST /api/admin/address-review/&lt;case id&gt;/resolve</code
 }
 
 /**
+ * Someone at a home scanned a verify postcard they didn't ask for and tapped "This wasn't me" (FASTVERIFY,
+ * POST /api/public/postcard-report): the card is cancelled and an AddressReviewCase (trigger postcard_report) waits
+ * for Pantopus, while the person who asked for the card can't make a fast check there. One email per report with the
+ * case id and how to decide it; never a name, the address or the code.
+ *
+ * @returns {Promise<boolean>} true when an email was handed to the mailer.
+ */
+async function notifyPostcardReported({ caseId, homeId, userId = null, home = null }) {
+  const to = recipients();
+  if (!to.length || !caseId) return false;
+  const where = [home && home.city, home && home.state].filter(Boolean).join(', ') || 'unknown area';
+  const subject = `[Pantopus] A verify postcard was reported · ${where}`;
+  const lines = [['Case', caseId], ['Home', homeId], ...(userId ? [['Account that asked for the card', userId]] : []), ['Area', where]];
+  const text = [
+    'Someone at a home scanned a verify postcard they did not ask for and tapped "This wasn\'t me". The card is cancelled.',
+    '',
+    ...lines.map(([label, value]) => `${label}: ${value}`),
+    '',
+    'Read the queue (admin sign-in; no screen yet): GET /api/admin/address-review/queue',
+    'Close a case: POST /api/admin/address-review/<case id>/resolve',
+  ].join('\n');
+  const html = `<p>Someone at a home scanned a verify postcard they did not ask for and tapped "This wasn't me". The card is cancelled.</p>
+<ul>
+${lines.map(([label, value]) => `  <li>${label}: <code>${value}</code></li>`).join('\n')}
+</ul>
+<p>Read the queue (admin sign-in; no screen yet): <code>GET /api/admin/address-review/queue</code><br>
+Close a case: <code>POST /api/admin/address-review/&lt;case id&gt;/resolve</code></p>`;
+  try {
+    await emailService.sendEmail({ to: to.join(','), subject, text, html });
+    return true;
+  } catch (err) {
+    logger.warn('adminAlerts: postcard report email failed (non-fatal)', { caseId, error: err.message });
+    return false;
+  }
+}
+
+/**
  * Someone a household turned down while on probation proved the address by mail, so an AddressReviewCase (trigger
  * probation_dispute) waits for Pantopus and their access stays off until it's decided (homePostcardVerificationService).
  * One email per case with the case id and how to decide it; never names or the address. No admin screen lists these
@@ -427,5 +464,5 @@ async function notifySignInSetupProblem({ provider, reason, appId }) {
 }
 
 module.exports = { notifyClaimToReview, notifyClaimInfoSent, notifyReportToReview, notifyRemovalVoteToReview,
-  notifyAddressWatchCase, notifyProbationDisputeToReview, notifyRecordProblemToReview, notifyFloorPlanSheetToReview,
+  notifyAddressWatchCase, notifyPostcardReported, notifyProbationDisputeToReview, notifyRecordProblemToReview, notifyFloorPlanSheetToReview,
   notifySignInSetupProblem, recipients };

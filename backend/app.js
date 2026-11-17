@@ -442,6 +442,8 @@ app.use('/api', (req, res, next) => dbTiming.resume(req.dbLedger, next));
 
 // Calendarly public booking flow (own per-route limiters) — mounted before the generic public
 // router so /book and /booking paths use bookingWriteLimiter, not the read previewLimiter.
+// "This wasn't me" for a verify postcard (FASTVERIFY; its own limiters by IP and by home).
+app.use('/api/public', require('./routes/postcardReport'));
 app.use('/api/public', require('./routes/schedulingPublic'));
 
 // Public preview endpoints (no auth, rate-limited by IP)
