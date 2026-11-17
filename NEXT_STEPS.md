@@ -1320,7 +1320,16 @@ Decided November 16 (section 0). Drawn first ([the design page](https://claude.a
   - the web on a computer has no tabs, so card 1 says "The list on the left opens each part of the app.";
   - the web's buttons say “Set up this home” and “My posts”;
   - the web's Mail writes a letter from its ••• menu.
-- What the checks showed: see the GUIDE rig notes for each app's own checks, and the three-app check below.
+- [x] What the three-app check showed (November 17, one brand-new account on the web, the iPhone simulator and the Android emulator, each built from `dev`, against a local backend and database):
+  - **Web:** the daily briefings notice came first with no card over it, then card 1 with your two lines; "Get started" recorded it on the server.
+  - **Android:** card 1 didn't come back. Today's card showed on Today's first open, with the clock and status icons visible over it, and the X closed it.
+  - **iPhone:** neither card 1 nor Today's card came back. Pulse's card showed in dark mode, and a tap outside closed it.
+  - **Web again:** no card on Today or Pulse.
+  - **Android after a relaunch:** the "Messages" pointer showed (the second app open), "Got it" closed it, and Pulse showed nothing.
+  - **iPhone after a relaunch:** it skipped "Messages", already closed on Android, and showed the next pointer, "Menu", in dark mode.
+  - **The server's record:** five cards, each closed once.
+
+  Each app's own checks (every card, the rules, large text, screen-reader order) are in its PR.
 - Seen only through the test switch, because the local rig can't reach them: "It's on its way" (needs a real letter sent); "Introducing Plans" (none is switched on); on some apps, "Your household" and the verify reminder.
 - [ ] Not checked anywhere: the hosted staging site with a staging phone build, real phones, a screen reader speaking aloud (the reading order was checked), and the iPhone Duo.
 - [ ] Yours:
