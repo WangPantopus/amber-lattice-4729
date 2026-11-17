@@ -316,6 +316,8 @@ data class PlanDto(
     @Json(name = "time_text") val timeText: String? = null,
     /** The holidays' gift exchange (extras section 4, `extras=1`): for the host and people who are in only. */
     @Json(name = "gift") val gift: PlanGiftDto? = null,
+    /** The holidays' photos afterwards (extras section 5, `extras=1`): on a plan that is over, for those who were in. */
+    @Json(name = "photos") val photos: PlanPhotosCardDto? = null,
     /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */

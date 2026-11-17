@@ -77,13 +77,15 @@ import java.util.Locale
 fun HostFlowScreen(
     onClose: () -> Unit,
     onDoneToMap: () -> Unit,
+    /** The holidays' board 29: after "Plan the next one with the same people", the new plan's page. */
+    onPostedOpenPlan: (String) -> Unit = { onDoneToMap() },
     viewModel: HostFlowViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     // Anyone on Pantopus may host a playdate (founder decision, November 7).
     val choose: (PlanKind) -> Unit = { kind -> viewModel.choose(kind) }
     BackHandler { if (!viewModel.back()) onClose() }
-    LaunchedEffect(ui.postedId) { ui.postedId?.let { onDoneToMap() } }
+    LaunchedEffect(ui.postedId) { ui.postedId?.let { id -> if (ui.postedOpensPlan) onPostedOpenPlan(id) else onDoneToMap() } }
     Box(modifier = Modifier.fillMaxSize().testTag("plansHost")) {
         when (ui.step) {
             HostStep.Type ->

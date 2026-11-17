@@ -97,6 +97,8 @@ internal fun PlanInviteSheet(
     onDismiss: () -> Unit,
     /** Make a text invite as it opens (a private plan's "Text a link" on its preview, Plans step 1). */
     textFirst: Boolean = false,
+    /** The holidays' board 29: open straight on this past plan's people (board 30's list); nothing goes without Invite. */
+    pastFrom: String? = null,
     vm: PlanInviteViewModel = hiltViewModel(key = "planInvite-${plan.id}"),
     pastVm: PlanPastPeopleViewModel = hiltViewModel(key = "planPast-${plan.id}"),
 ) {
@@ -108,7 +110,7 @@ internal fun PlanInviteSheet(
         // One link for everyone (Plans for the holidays, A4): a private plan of a person's that isn't a playdate.
         vm.start(plan.id, openLink = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate, atHome = plan.isAtHome)
         // The same people again (the holidays' extras, section 6): the same plans as the one link.
-        pastVm.start(plan.id, eligible = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate)
+        pastVm.start(plan.id, eligible = plan.isPrivate && !plan.isBusiness && !plan.isPlaydate, peopleOf = pastFrom)
         if (textFirst) vm.makeTextInvite()
     }
     // The open link: to the clipboard ("Link copied."), or to the share sheet with the host's words.

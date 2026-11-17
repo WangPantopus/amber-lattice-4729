@@ -291,6 +291,10 @@ fun NavGraphBuilder.plansRoutes(
                 nav.popBackStack()
                 external.openNearby()
             },
+            onPostedOpenPlan = { id ->
+                nav.popBackStack()
+                nav.navigate(PlansRoutes.plan(id))
+            },
         )
     }
 }
