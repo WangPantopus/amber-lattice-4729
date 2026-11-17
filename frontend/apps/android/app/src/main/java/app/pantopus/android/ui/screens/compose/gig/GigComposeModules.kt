@@ -40,9 +40,12 @@ import app.pantopus.android.data.api.models.gigs.CareDetailsDto
 import app.pantopus.android.data.api.models.gigs.EventDetailsDto
 import app.pantopus.android.data.api.models.gigs.LogisticsDetailsDto
 import app.pantopus.android.data.api.models.gigs.RemoteDetailsDto
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.PantopusFieldState
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.oneLine
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -329,15 +332,28 @@ private fun DeliveryModuleFields(
     vm: GigComposeViewModel,
 ) {
     val current = state.form.deliveryDetails ?: GigDeliveryDetails()
+    // Both addresses suggest as they are typed, near the person's home (FASTVERIFY section 11); a pick fills the line.
+    val pickupSuggestions = rememberAddressSuggestions()
+    val dropoffSuggestions = rememberAddressSuggestions()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s3)) {
         ModuleSection(title = "DELIVERY DETAILS", testTag = "gigCompose.module.delivery") {
             PantopusTextField(
                 label = "Pickup address",
                 value = current.pickupAddress,
-                onValueChange = { vm.updateDeliveryDetails(current.copy(pickupAddress = it)) },
+                onValueChange = {
+                    vm.updateDeliveryDetails(current.copy(pickupAddress = it))
+                    pickupSuggestions?.onTextChanged(it)
+                },
                 placeholder = "Pickup address",
                 fieldTestTag = "gigCompose.module.delivery.pickupAddress",
             )
+            AddressSuggestionList(
+                pickupSuggestions,
+                testTagPrefix = "gigCompose.module.delivery.pickupSuggestion",
+                keepAboveKeyboard = true,
+            ) { picked ->
+                vm.updateDeliveryDetails((state.form.deliveryDetails ?: GigDeliveryDetails()).copy(pickupAddress = picked.oneLine()))
+            }
             PantopusTextField(
                 label = "Pickup notes (optional)",
                 value = current.pickupNotes,
@@ -348,10 +364,20 @@ private fun DeliveryModuleFields(
             PantopusTextField(
                 label = "Drop-off address",
                 value = current.dropoffAddress,
-                onValueChange = { vm.updateDeliveryDetails(current.copy(dropoffAddress = it)) },
+                onValueChange = {
+                    vm.updateDeliveryDetails(current.copy(dropoffAddress = it))
+                    dropoffSuggestions?.onTextChanged(it)
+                },
                 placeholder = "Drop-off address (defaults to your home)",
                 fieldTestTag = "gigCompose.module.delivery.dropoffAddress",
             )
+            AddressSuggestionList(
+                dropoffSuggestions,
+                testTagPrefix = "gigCompose.module.delivery.dropoffSuggestion",
+                keepAboveKeyboard = true,
+            ) { picked ->
+                vm.updateDeliveryDetails((state.form.deliveryDetails ?: GigDeliveryDetails()).copy(dropoffAddress = picked.oneLine()))
+            }
             PantopusTextField(
                 label = "Drop-off notes (optional)",
                 value = current.dropoffNotes,

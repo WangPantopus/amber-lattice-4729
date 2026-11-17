@@ -71,8 +71,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.screens.shared.wizard.WizardChrome
 import app.pantopus.android.ui.screens.shared.wizard.WizardLeadingControl
 import app.pantopus.android.ui.screens.shared.wizard.WizardModel
@@ -469,7 +471,17 @@ private fun AddressStep(
         })
         ManualAddressButton(onClick = vm::addManuallyTapped)
         if (state.isManualEntry) {
-            ManualAddressField("Street address", state.form.address.street) { vm.updateField(AddressField.Street, it) }
+            // The street line suggests addresses too (FASTVERIFY section 11); a rural route, military or Puerto Rico
+            // address is still typed in full, field by field.
+            val streetSuggestions = rememberAddressSuggestions()
+            ManualAddressField("Street address", state.form.address.street) {
+                vm.updateField(AddressField.Street, it)
+                streetSuggestions?.onTextChanged(it)
+            }
+            AddressSuggestionList(streetSuggestions, testTagPrefix = "addHome.manualStreetSuggestion") { picked ->
+                focusManager.clearFocus()
+                vm.applyManualSuggestion(picked)
+            }
             ManualAddressField("Unit or apartment (optional)", state.form.address.unit) { vm.updateField(AddressField.Unit, it) }
             ManualAddressField("City", state.form.address.city) { vm.updateField(AddressField.City, it) }
             ManualAddressField("State", state.form.address.state) { vm.updateField(AddressField.State, it) }

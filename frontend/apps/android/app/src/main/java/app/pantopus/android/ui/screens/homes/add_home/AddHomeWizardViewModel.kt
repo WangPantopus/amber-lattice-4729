@@ -264,6 +264,12 @@ open class AddHomeWizardViewModel
         private var addressJob: Job? = null
         private var propertyLookupJob: Job? = null
 
+        /**
+         * Where the address search looks first (FASTVERIFY section 11): the person's default Home, else their first Home
+         * with a point, rounded to about a kilometer. Null without one.
+         */
+        private var searchArea: Pair<Double, Double>? = null
+
         /** The search [applyInitialSearchQuery] ran: left untouched, it isn't progress to discard. */
         private var prefilledSearchQuery: String? = null
 
@@ -287,6 +293,11 @@ open class AddHomeWizardViewModel
 
         init {
             viewModelScope.launch { session.invalidated.collect { if (it) retireSession() } }
+            viewModelScope.launch {
+                val homes = runCatching { repository.myHomesStored().data?.homes }.getOrNull().orEmpty()
+                val home = homes.firstOrNull { it.isDefault == true && it.location != null } ?: homes.firstOrNull { it.location != null }
+                searchArea = home?.location?.let { roughly(it.latitude) to roughly(it.longitude) }
+            }
             // Two steps when the server says so: the kept answer (or the restored draft's) at once, then a fresh read,
             // which may still change the wizard while it is on its first step.
             val short = savedStateHandle.get<Boolean>(KEY_SHORT) ?: fastVerify?.keptShortAddHome() ?: false
@@ -426,7 +437,8 @@ open class AddHomeWizardViewModel
                 viewModelScope.launch {
                     findAddress(revision, "Address search is unavailable. Try again or enter your address manually.") {
                         delay(SEARCH_DEBOUNCE_MILLIS)
-                        val response = required(safeApiCall { geoApi.autocomplete(query.trim()) })
+                        val area = searchArea
+                        val response = required(safeApiCall { geoApi.autocomplete(query.trim(), lat = area?.first, lng = area?.second) })
                         if (!addressIsCurrent(revision)) return@findAddress
                         check(
                             response.suggestions.all { it.suggestionId.isNotBlank() && it.label.isNotBlank() } &&
@@ -540,6 +552,28 @@ open class AddHomeWizardViewModel
                     form = it.form.copy(address = fields),
                     homeSearchQuery = fields.street,
                     searchResults = emptyList(),
+                    isManualEntry = true,
+                )
+            }
+            persist()
+        }
+
+        /** A suggestion picked under the manual street line: it fills the street, city, state and ZIP; the unit stays. */
+        fun applyManualSuggestion(address: NormalizedAddress) {
+            if (!session.isCurrent || address.address.isNullOrBlank()) return
+            invalidateAddress()
+            _state.update { current ->
+                val next =
+                    current.form.address.copy(
+                        street = address.address.orEmpty(),
+                        city = address.city.orEmpty().ifBlank { current.form.address.city },
+                        state = address.state.orEmpty().ifBlank { current.form.address.state },
+                        zipCode = address.zipcode.orEmpty().ifBlank { current.form.address.zipCode },
+                    )
+                current.copy(
+                    form = current.form.copy(address = next),
+                    homeSearchQuery = next.street,
+                    selectedHomeId = null,
                     isManualEntry = true,
                 )
             }
@@ -1865,6 +1899,9 @@ open class AddHomeWizardViewModel
                         current.description.ifEmpty { suggestions.description.orEmpty() },
                 )
             }
+
+            /** About a kilometer: a search area needs no more, and the exact point stays on the phone. */
+            private fun roughly(value: Double): Double = Math.round(value * 100) / 100.0
 
             /** "2.0" → "2", "2.5" → "2.5". */
             fun trimTrailingZero(value: Double): String = if (value == Math.floor(value)) value.toInt().toString() else value.toString()

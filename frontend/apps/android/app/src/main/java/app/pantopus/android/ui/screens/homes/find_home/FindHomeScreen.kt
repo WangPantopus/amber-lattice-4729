@@ -40,11 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.data.api.models.homediscovery.DiscoveredHomeDto
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -104,13 +106,24 @@ fun FindHomeScreen(
                     .testTag(FIND_HOME_SCREEN_TAG),
         ) {
             FindHomeTopBar(onBack = onBack)
+            // Addresses suggest as they are typed, near the person's home (FASTVERIFY section 11); a pick searches its
+            // street, which the server matches in its spelled-out form too.
+            val addressSuggestions = rememberAddressSuggestions()
             FindHomeSearchHeader(
                 query = query,
                 hint = (state as? FindHomeUiState.Idle)?.hint,
-                onQueryChange = viewModel::updateQuery,
+                onQueryChange = {
+                    viewModel.updateQuery(it)
+                    addressSuggestions?.onTextChanged(it)
+                },
                 onSubmit = viewModel::submitSearch,
                 onClear = viewModel::clearQuery,
             )
+            AddressSuggestionList(
+                addressSuggestions,
+                testTagPrefix = "findHome.addressSuggestion",
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) { picked -> picked.address?.takeIf { it.isNotBlank() }?.let(viewModel::updateQuery) }
             // While typing in the search box, the first tap on a home only puts the keyboard away.
             Box(modifier = Modifier.weight(1f).firstTapClosesKeyboard()) {
                 when (val current = state) {

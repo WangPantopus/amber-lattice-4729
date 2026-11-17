@@ -365,6 +365,12 @@ class PostGigV1ViewModel
                 }
         }
 
+        /**
+         * Favors addresses near this point (the person's home, to about a kilometer; latitude to longitude), set by the
+         * screen (FASTVERIFY section 11). Null searches as before.
+         */
+        var addressSearchArea: Pair<Double, Double>? = null
+
         private fun searchAddresses(text: String) {
             cancelAddressSearch()
             val query = text.trim()
@@ -374,7 +380,8 @@ class PostGigV1ViewModel
             addressJob =
                 viewModelScope.launch {
                     delay(ADDRESS_SEARCH_DEBOUNCE_MILLIS)
-                    val result = safeApiCall { geoApi.autocomplete(query) }
+                    val area = addressSearchArea
+                    val result = safeApiCall { geoApi.autocomplete(query, lat = area?.first, lng = area?.second) }
                     if (revision != addressRevision) return@launch
                     updateContent { content ->
                         when (result) {

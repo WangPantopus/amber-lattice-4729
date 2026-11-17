@@ -120,12 +120,19 @@ class HomeTaskGigController(
         if (state.value.canEdit) mutable.value = state.value.copy(reviewed = value)
     }
 
+    /**
+     * Favors addresses near this point (the person's home, to about a kilometer; latitude to longitude), set by the
+     * dialog (FASTVERIFY section 11). Null searches as before.
+     */
+    var addressSearchArea: Pair<Double, Double>? = null
+
     fun searchAddress() {
         if (!state.value.canEdit || state.value.input.address.trim().length < MIN_GIG_ADDRESS_QUERY) return
         val query = state.value.input.address
+        val area = addressSearchArea
         runAction { revision ->
             current(revision)
-            val result = safeApiCall { geo.autocomplete(query) }.gigValue()
+            val result = safeApiCall { geo.autocomplete(query, lat = area?.first, lng = area?.second) }.gigValue()
             current(revision)
             mutable.value =
                 state.value.copy(

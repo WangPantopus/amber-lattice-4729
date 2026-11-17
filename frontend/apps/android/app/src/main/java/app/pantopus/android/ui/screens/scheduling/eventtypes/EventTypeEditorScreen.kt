@@ -35,9 +35,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.ErrorState
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
+import app.pantopus.android.ui.components.oneLine
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.components.toastDurationMillis
 import app.pantopus.android.ui.screens.scheduling._shared.SchedulingPillar
 import app.pantopus.android.ui.screens.scheduling._shared.SchedulingScreenState
@@ -226,13 +229,29 @@ private fun EditorContent(
                     small = true,
                 )
                 val detail = locationDetailCopy(form.locationMode)
+                // The "In person" address suggests as it is typed, near the person's home (FASTVERIFY section 11);
+                // a pick fills the line, and a suite can still be typed after it. A link, a number and instructions
+                // stay plain fields.
+                val inPerson = form.locationMode == "in_person"
+                val addressSuggestions = rememberAddressSuggestions()
+                LaunchedEffect(inPerson) { if (!inPerson) addressSuggestions?.dismiss() }
                 EtTextField(
                     value = form.locationDetail,
-                    onValueChange = viewModel::onLocationDetail,
+                    onValueChange = { value ->
+                        viewModel.onLocationDetail(value)
+                        if (inPerson) addressSuggestions?.onTextChanged(value)
+                    },
                     label = detail.first,
                     placeholder = detail.second,
                     mono = detail.third,
                 )
+                if (inPerson) {
+                    AddressSuggestionList(
+                        addressSuggestions,
+                        testTagPrefix = "eventType.location.suggestion",
+                        keepAboveKeyboard = true,
+                    ) { picked -> viewModel.onLocationDetail(picked.oneLine()) }
+                }
             }
 
             // Advanced / Controls / Links (and Availability + business cards) are

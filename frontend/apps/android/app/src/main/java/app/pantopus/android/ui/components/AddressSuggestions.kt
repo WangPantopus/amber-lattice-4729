@@ -1,5 +1,6 @@
 package app.pantopus.android.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,22 +8,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -142,11 +152,11 @@ class AddressSuggestions(
     private companion object {
         const val MIN_QUERY = 4
         const val DEBOUNCE_MS = 250L
-
-        /** About a kilometer: a bias needs no more, and the exact point stays on the phone. */
-        fun Double.roughly(): Double = (this * 100).roundToLong() / 100.0
     }
 }
+
+/** About a kilometer: a bias needs no more, and the exact point stays on the phone. */
+private fun Double.roughly(): Double = (this * 100).roundToLong() / 100.0
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
@@ -158,8 +168,9 @@ internal interface AddressSuggestionsEntryPoint {
 
 /**
  * Suggestions for one street field, living as long as the screen. With [nearHomeId], suggestions near that home come
- * first (the stored My Homes has its point). Null in previews and snapshot tests, which have no app graph: the field
- * then works as a plain text field.
+ * first (the stored My Homes has its point); without it, near the person's default Home, or their first Home with a
+ * point (FASTVERIFY section 11: every address field passes a search area). Null in previews and snapshot tests, which
+ * have no app graph: the field then works as a plain text field.
  */
 @Composable
 fun rememberAddressSuggestions(
@@ -176,29 +187,99 @@ fun rememberAddressSuggestions(
         }
     val suggestions = remember(graph, scope, streetOnly) { graph?.let { AddressSuggestions(it.geoApi(), scope, streetOnly) } }
     LaunchedEffect(suggestions, nearHomeId) {
-        if (suggestions != null && nearHomeId != null) {
-            val homes = runCatching { graph?.homesRepository()?.myHomesStored()?.data?.homes }.getOrNull()
-            suggestions.near = homes?.firstOrNull { it.id == nearHomeId }?.location?.let { it.latitude to it.longitude }
-        }
+        if (suggestions != null) suggestions.near = graph?.homePoint(nearHomeId)
     }
     return suggestions
+}
+
+/** The point of [nearHomeId] or, without one, of the person's default Home (or their first Home with a point). */
+private suspend fun AddressSuggestionsEntryPoint.homePoint(nearHomeId: String?): Pair<Double, Double>? {
+    val homes = runCatching { homesRepository().myHomesStored().data?.homes }.getOrNull().orEmpty()
+    val home =
+        if (nearHomeId != null) {
+            homes.firstOrNull { it.id == nearHomeId }
+        } else {
+            homes.firstOrNull { it.isDefault == true && it.location != null } ?: homes.firstOrNull { it.location != null }
+        }
+    return home?.location?.let { it.latitude to it.longitude }
+}
+
+/**
+ * The search area for a screen that runs its own address search (the task composers, a home task's "Find location"):
+ * the person's default Home, or their first Home with a point, to about a kilometer, as latitude to longitude
+ * (FASTVERIFY section 11). Null with no Home, before the stored Homes are read, and in previews and snapshot tests.
+ */
+@Composable
+fun rememberAddressSearchArea(): Pair<Double, Double>? {
+    val context = LocalContext.current
+    val area by produceState<Pair<Double, Double>?>(initialValue = null, context) {
+        val graph =
+            runCatching {
+                EntryPointAccessors.fromApplication(context.applicationContext, AddressSuggestionsEntryPoint::class.java)
+            }.getOrNull()
+        value = graph?.homePoint(null)?.let { it.first.roughly() to it.second.roughly() }
+    }
+    return area
 }
 
 /**
  * The suggestions under a street field; a tapped one is resolved and handed to [onPicked]. Results under a text box
  * take a first tap to put the keyboard away (KeyboardRules).
+ *
+ * [keepAboveKeyboard] is for a field low on a scrolling page: the page doesn't shrink for the keyboard (it only moves
+ * the typed line into view), so a list under such a field would sit behind the keyboard. While suggestions show
+ * with the keyboard up, the list gets the keyboard's height of room below it and the page scrolls it into view, with
+ * the field still on screen above it.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun AddressSuggestionList(
     suggestions: AddressSuggestions?,
     testTagPrefix: String,
     modifier: Modifier = Modifier,
+    keepAboveKeyboard: Boolean = false,
     onPicked: (NormalizedAddress) -> Unit,
 ) {
     if (suggestions == null) return
     val items by suggestions.suggestions.collectAsStateWithLifecycle()
     val resolving by suggestions.resolving.collectAsStateWithLifecycle()
     if (items.isEmpty()) return
+    if (keepAboveKeyboard) {
+        val listAndRoom = remember { BringIntoViewRequester() }
+        val lastRow = remember { BringIntoViewRequester() }
+        val keyboard = WindowInsets.ime.getBottom(LocalDensity.current)
+        LaunchedEffect(items, keyboard) {
+            if (keyboard > 0) {
+                listAndRoom.bringIntoView()
+                // The window had moved up to show the typed line while it sat low. List plus room is taller than what
+                // the keyboard leaves, and the system keeps its old shift for a request that can't fit, which leaves
+                // the field and the first rows off the top of the screen. The last row alone, now above the
+                // keyboard, fits: asking for it lets the window settle back.
+                lastRow.bringIntoView()
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(listAndRoom)) {
+            Box {
+                SuggestionRows(suggestions, items, resolving, testTagPrefix, modifier, onPicked)
+                Spacer(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(48.dp).bringIntoViewRequester(lastRow))
+            }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.ime))
+        }
+    } else {
+        SuggestionRows(suggestions, items, resolving, testTagPrefix, modifier, onPicked)
+    }
+}
+
+@Composable
+@Suppress("LongParameterList")
+private fun SuggestionRows(
+    suggestions: AddressSuggestions,
+    items: List<GeoSuggestion>,
+    resolving: Boolean,
+    testTagPrefix: String,
+    modifier: Modifier,
+    onPicked: (NormalizedAddress) -> Unit,
+) {
     val shape = RoundedCornerShape(Radii.md)
     Column(
         modifier =
@@ -256,4 +337,10 @@ fun AddressSuggestionList(
             }
         }
     }
+}
+
+/** A picked suggestion as one address line, for a field that holds a whole address: "616 Northeast 4th Avenue, Camas, WA 98607". */
+fun NormalizedAddress.oneLine(): String {
+    val region = listOfNotNull(state?.trim(), zipcode?.trim()).filter { it.isNotEmpty() }.joinToString(" ")
+    return listOfNotNull(address?.trim(), city?.trim(), region).filter { it.isNotEmpty() }.joinToString(", ")
 }
