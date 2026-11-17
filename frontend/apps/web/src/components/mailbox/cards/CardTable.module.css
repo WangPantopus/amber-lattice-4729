@@ -1,7 +1,9 @@
 /* One visual world: a card lying on a table, in a light taken from its own picture. Always dark, whatever the phone's
    setting. A port of sample/index.html; sizes that follow large text are in rem. */
+/* overflow: clip, not hidden (Part 8.3): the light and the cloth reach past the edges, and a hidden overflow is still a
+   scroll box, so focusing a button scrolled the whole table up and the close button off the top with no way back. */
 .stage {
-  position: fixed; inset: 0; z-index: 999; overflow: hidden; touch-action: none; contain: strict; color-scheme: dark;
+  position: fixed; inset: 0; z-index: 999; overflow: clip; touch-action: none; contain: strict; color-scheme: dark;
   background: #1c2233; color: var(--cream); font: 0.9375rem/1.35 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
   --cream: #f6ecd9; --cream-soft: rgba(246, 236, 217, 0.74); --cream-faint: rgba(246, 236, 217, 0.5);
@@ -206,7 +208,8 @@
   min-height: 2.75rem; padding: 0 1.5rem; border-radius: 1.375rem; background: var(--glass); box-shadow: inset 0 0 0 0.5px var(--glass-line);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-weight: 600; font-size: 0.9375rem; color: var(--cream);
 }
-.hint { font-size: 0.78125rem; color: rgba(255, 255, 255, 0.7); min-height: 1rem; text-align: center; }
+/* The hint under the main button: 15 px at 85% white (Part 8.2; was 12.5 px at 70%). */
+.hint { font-size: 0.9375rem; color: rgba(255, 255, 255, 0.85); min-height: 1rem; text-align: center; }
 .stage .quiet {
   min-height: 2.75rem; padding: 0 1rem; border-radius: 1.375rem; font-weight: 600; font-size: 0.875rem; color: var(--cream-soft);
   text-decoration: underline; text-decoration-color: rgba(246, 236, 217, 0.35); text-underline-offset: 0.25em; transition: opacity 0.35s ease;
