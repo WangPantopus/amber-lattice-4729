@@ -35,8 +35,11 @@ function recallNames(key) {
 }
 const cleanName = (value) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, 128) : null);
 
-/** Another account's standing phone check on this number. An ended one gives the number back. */
-async function numberInUse(hash, userId) {
+/**
+ * Another account's standing phone check on this number. Any other row that holds the number gives it back (an ended
+ * check, or this person's own earlier one at another home), so the unique index never refuses a number that is free.
+ */
+async function numberInUse(hash, userId, occupancyId) {
   const { data, error } = await db.from('HomeOccupancy')
     .select('id, home_id, user_id, is_active, verification_status, verification_source, fast_check_kind, fast_check_at, fast_check_expires_at, fast_check_recheck_due_at, fast_check_confirmed_at')
     .eq('fast_check_ref_hash', hash).eq('is_active', true);
@@ -44,8 +47,8 @@ async function numberInUse(hash, userId) {
   // eslint-disable-next-line global-require
   const { fastCheckStands } = require('../../utils/homePermissions');
   for (const row of data || []) {
-    if (row.user_id === userId) continue;
-    if (fastCheckStands(row)) return true;
+    if (row.id === occupancyId) continue;
+    if (row.user_id !== userId && fastCheckStands(row)) return true;
     await db.from('HomeOccupancy').update({ fast_check_ref_hash: null }).eq('id', row.id).eq('fast_check_ref_hash', hash);
   }
   return false;
@@ -69,7 +72,7 @@ async function ready() {
 
 /** POST /api/homes/:id/fast-check/phone/start → { sent: true, resend_after_s } */
 async function start({ homeId, user, phone, firstName, lastName }) {
-  await fastCheck.admit({ homeId, user, kind: KIND, countLimit: false });
+  const occupancy = await fastCheck.admit({ homeId, user, kind: KIND, countLimit: false });
   const e164 = provider.normalizeUsNumber(phone);
   if (!e164) throw new FastCheckError('PHONE_INVALID');
   await ready();
@@ -79,7 +82,7 @@ async function start({ homeId, user, phone, firstName, lastName }) {
   }
   const hash = provider.numberHash(e164);
   const ref = provider.numberRef(e164);
-  if (await numberInUse(hash, user.id)) {
+  if (await numberInUse(hash, user.id, occupancy.id)) {
     void fastCheck.countTry(KIND, 'refused', ['phone_in_use']);
     throw new FastCheckError('PHONE_IN_USE');
   }
@@ -132,7 +135,7 @@ async function verify({ homeId, user, phone, code, firstName, lastName }) {
   }
   if (status !== 'approved') return { result: 'wrong_code', level: await level(), tries_left: status === 'pending' ? triesLeft : 0 };
 
-  if (await numberInUse(hash, user.id)) {
+  if (await numberInUse(hash, user.id, occupancy.id)) {
     void fastCheck.countTry(KIND, 'refused', ['phone_in_use']);
     throw new FastCheckError('PHONE_IN_USE');
   }

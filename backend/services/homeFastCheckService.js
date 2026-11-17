@@ -271,6 +271,8 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (elsewhere) reason = 'ONE_HOME';
       else if (await reportedHere(homeId, userId)) reason = 'IN_REVIEW';
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
+      // eslint-disable-next-line global-require
+      else if (id === 'location' && !require('./fastCheck/locationCheck').ready(platform)) reason = 'UNAVAILABLE';
       else if (id === 'document' && await documentInReview(homeId, userId)) reason = 'IN_REVIEW';
       else if (await overLimit(userId, id)) reason = 'LIMIT';
       else if (id === 'phone' && await phoneDailyCeilingReached()) reason = 'UNAVAILABLE';
