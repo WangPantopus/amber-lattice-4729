@@ -983,8 +983,10 @@ private fun MediaUnderTheNote(
 // ── Step 4: seal it for the day ──────────────────────────────
 
 /**
- * The sealed envelope, when it arrives, until when it can be taken back, and "Look it over" (step 5, where it's sent
- * from; "Seal and send" here when the server can't show the look). Why it can't go on shows under the choices.
+ * The sealed envelope, when it arrives, until when it can be taken back and what it costs, then two buttons (plan Part
+ * 5): "Seal and send" runs the look's check and goes straight to the sealing table ([onSealNow]; it sends from here
+ * when the server can't show the look), and the quieter "Look it over" opens step 5. Why it can't go on shows under
+ * the choices.
  */
 @Composable
 internal fun SealStep(
@@ -996,13 +998,19 @@ internal fun SealStep(
     onArrival: (String) -> Unit,
     onLook: () -> Unit,
     onSend: () -> Unit,
-    /** Digital stamps left (postage on, once read): when the look can't be shown, this step says what it costs. */
+    /** "Seal and send": the look's check, then the sealing table. */
+    onSealNow: () -> Unit = onSend,
+    /** The check running is "Seal and send"'s, not "Look it over"'s. */
+    sealingNow: Boolean = false,
+    /** Digital stamps left (postage on, once read): this step says what it costs. */
     stamps: StampBalance? = null,
     onGetStamps: () -> Unit = {},
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val options = arrivalOptions(cards.arrivals, to, form.theirs)
-    val needsStamps = form.lookUnavailable && stamps?.available == 0
+    val several = (to as? CardRecipient.Several)?.entries?.size
+    // No stamp left: "Get stamps to send" opens the stamp books, as on Look it over.
+    val needsStamps = stamps?.available == 0
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s2).rotate(1f)) {
             MailPiece(envelopePreview(design, fromName, to, sealed = form.arrival == "sealed_christmas"))
@@ -1056,26 +1064,68 @@ internal fun SealStep(
                 )
             }
         }
-        // Before it's sent there's no knowing their clock; the sent card says the time on this one.
+        // Before it's sent there's no knowing their clock; the sent card says the time on this one. Both lines show here,
+        // so a sender who skips Look it over has read them (plan Part 5).
         DeskNote(sealNote(to), modifier = Modifier.padding(top = 14.dp))
-        if (form.lookUnavailable) StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3))
-        CardButton(
+        StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3), count = several ?: 1)
+        SealStepButtons(to, form, needsStamps, sealingNow, onSend, onSealNow, onLook, onGetStamps)
+    }
+}
+
+/**
+ * Step 4's two buttons (plan 5.1): "Seal and send" ("Seal it and get the link", "Seal and send 3 cards"; "Get stamps to
+ * send" with none left), and under it the quieter "Look it over", which isn't offered when the server can't show it.
+ */
+@Composable
+private fun SealStepButtons(
+    to: CardRecipient,
+    form: SendCardForm,
+    needsStamps: Boolean,
+    sealingNow: Boolean,
+    onSend: () -> Unit,
+    onSealNow: () -> Unit,
+    onLook: () -> Unit,
+    onGetStamps: () -> Unit,
+) {
+    val chosen = form.arrival != null
+    val busy = form.previewing || form.sending
+    CardButton(
+        sealNowLabel(to, needsStamps),
+        onClick =
             when {
-                needsStamps -> "Get stamps to send"
-                !form.lookUnavailable -> "Look it over"
-                to is CardRecipient.Link -> "Seal it and get the link"
-                else -> "Seal and send"
+                needsStamps -> onGetStamps
+                // The server can't show the look: it seals and sends from here, as before.
+                form.lookUnavailable && to !is CardRecipient.Several -> onSend
+                else -> onSealNow
             },
-            onClick =
-                when {
-                    needsStamps -> onGetStamps
-                    form.lookUnavailable -> onSend
-                    else -> onLook
-                },
-            enabled = form.arrival != null,
-            busy = !needsStamps && (form.previewing || form.sending),
-            modifier = Modifier.padding(top = Spacing.s5).testTag("sendCardSend"),
+        enabled = chosen && (needsStamps || !busy || sealingNow),
+        busy = !needsStamps && (form.sending || (form.previewing && sealingNow)),
+        modifier = Modifier.padding(top = Spacing.s5).testTag("sendCardSend"),
+    )
+    if (!form.lookUnavailable) {
+        CardButton(
+            "Look it over",
+            onClick = onLook,
+            kind = CardButtonKind.Paper,
+            enabled = chosen && !(busy && sealingNow),
+            busy = form.previewing && !sealingNow,
+            modifier = Modifier.padding(top = Spacing.s3).testTag("sendCardLookOver"),
         )
+    }
+}
+
+/** The main button's words on step 4: Look it over's own (plan 5.1). */
+private fun sealNowLabel(
+    to: CardRecipient,
+    needsStamps: Boolean,
+): String {
+    val several = (to as? CardRecipient.Several)?.entries?.size
+    return when {
+        needsStamps -> "Get stamps to send"
+        several == 1 -> "Seal and send 1 card"
+        several != null -> "Seal and send $several cards"
+        to is CardRecipient.Link -> "Seal it and get the link"
+        else -> "Seal and send"
     }
 }
 
