@@ -222,7 +222,8 @@ struct CardTableBack: View, Equatable {
     let number: Int?
     /// The sender's own signature (plan 8.2), drawn after FROM in place of the typed first name.
     var signature: CardSignature?
-    /// Set by the writing step, which writes the note in its own text view on top.
+    /// Set by the writing step and the pages that read the note in their own view on top; the rules still follow
+    /// `note` (plan Part 1), so pass it either way.
     var drawsNote = true
     var grainOpacity = 1.0
 
@@ -233,9 +234,10 @@ struct CardTableBack: View, Equatable {
             var face = context
             face.clip(to: Path(roundedRect: rect, cornerRadius: 0.7 * u, style: .continuous))
             face.fill(Path(rect), with: .color(MailPaper.cardPaper(paper)))
-            drawRules(in: face, u: u)
+            let layout = CardTableNoteLayout(text: note, seed: number, u: u)
+            drawRules(layout.fit, in: face, u: u)
             if drawsNote {
-                CardTableNoteLayout(text: note, seed: number, u: u).draw(in: face)
+                layout.draw(in: face)
             }
             drawFrom(in: face, u: u)
             drawFoot(in: face, u: u, width: size.width)
@@ -245,10 +247,11 @@ struct CardTableBack: View, Equatable {
         .accessibilityHidden(true)
     }
 
-    private func drawRules(in context: GraphicsContext, u: CGFloat) {
+    /// The ruled lines at the pen's line height: 9, 10 or 11 of them, always from 9u down over 83.6u.
+    private func drawRules(_ fit: CardTableNoteLayout.Fit, in context: GraphicsContext, u: CGFloat) {
         var rules = Path()
-        for line in 1...CardTableNoteLayout.ruleCount {
-            let y = (CardTableNoteLayout.top + CardTableNoteLayout.pitch * CGFloat(line)) * u - 0.5
+        for line in 1...fit.rules {
+            let y = (CardTableNoteLayout.top + fit.pitch * CGFloat(line)) * u - 0.5
             rules.move(to: CGPoint(x: 8 * u, y: y))
             rules.addLine(to: CGPoint(x: 92 * u, y: y))
         }

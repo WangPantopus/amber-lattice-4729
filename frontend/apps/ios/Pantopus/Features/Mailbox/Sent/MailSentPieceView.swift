@@ -186,7 +186,7 @@ struct MailSentPieceView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
-        let back = HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year) { width in
+        let back = HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year, noteText: note) { width in
             HolidayCardReadNote(text: note, number: piece.card.number, cardWidth: width)
         }
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))

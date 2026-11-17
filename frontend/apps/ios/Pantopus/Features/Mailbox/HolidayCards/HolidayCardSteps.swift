@@ -542,7 +542,8 @@ struct HolidayCardWriteStep: View {
                     paper: design.paper,
                     fromName: viewModel.fromName,
                     year: cards.year,
-                    signature: viewModel.signature
+                    signature: viewModel.signature,
+                    noteText: viewModel.message
                 ) { width in
                     HolidayCardNoteText(
                         text: $viewModel.message,

@@ -3,12 +3,13 @@
 //  Pantopus
 //
 //  Where the words of a note go on the back of the card (launch key
-//  `card_table`): 6u on a 7.6u line on 11 rules, each word with a small shift
-//  and turn so the writing isn't machine-straight. The turns come from the
-//  card's number, so it looks the same every time. Latin letters are in the
-//  pen; the system's fonts take over for other scripts. A note written on an
-//  older app can run past the rules in the pen, so it gets smaller until it
-//  fits (and tighter, if it has more lines than rules).
+//  `card_table`): the pen as large as the note allows (plan Part 1), each word
+//  with a small shift and turn so the writing isn't machine-straight. The turns
+//  come from the card's number, so it looks the same every time. Latin letters
+//  are in the pen; the system's fonts take over for other scripts. A short
+//  note gets 9 or 10 rules and a larger pen; a note of up to 11 lines gets
+//  today's 6u pen on 7.6u lines; one longer than that (written on an older
+//  app) gets smaller until it fits, and tighter, as it always has.
 //
 
 import SwiftUI
@@ -22,9 +23,34 @@ struct CardTableNoteLayout {
     static let pitch: CGFloat = 7.6
     static let size: CGFloat = 6
     static let ruleCount = 11
-    /// The rules' whole height: `pitch` times `ruleCount`.
+    /// The rules' whole height: `pitch` times `ruleCount`, whichever pen size is used.
     static let boxHeight: CGFloat = 83.6
     private static let smallest: CGFloat = 4.2
+
+    /// One of the pen's sizes and its ruled lines, in u.
+    struct Fit: Equatable {
+        let size: CGFloat
+        let rules: Int
+
+        /// The line height: the rules always fill `boxHeight`.
+        var pitch: CGFloat {
+            CardTableNoteLayout.boxHeight / CGFloat(rules)
+        }
+
+        /// 30, 27 and 23 pt on an iPhone 17 (plan Part 1, D7).
+        static let large = Fit(size: 7.8, rules: 9)
+        static let middle = Fit(size: 7.0, rules: 10)
+        static let today = Fit(size: CardTableNoteLayout.size, rules: CardTableNoteLayout.ruleCount)
+        /// Largest first.
+        static let all = [large, middle, today]
+    }
+
+    /// The one rule every place that draws or writes the back uses: the largest pen at which the note's words fit its
+    /// rules, or today's for a note that doesn't fit even those (it shrinks further as it is laid out).
+    static func fit(_ text: String, u: CGFloat) -> Fit {
+        let wide = width * u
+        return Fit.all.first { lines(text, font: CardTableType.pen($0.size * u), width: wide).count <= $0.rules } ?? .today
+    }
 
     /// One word on the card, in points.
     struct Word {
@@ -42,17 +68,21 @@ struct CardTableNoteLayout {
     let font: UIFont
     /// How many lines it takes at this size.
     let lineCount: Int
+    /// The pen and the rules it's written on: the back draws its rules from this.
+    let fit: Fit
 
     init(text: String, seed: Int?, u: CGFloat) {
-        var size = Self.size
+        let fit = Self.fit(text, u: u)
+        var size = fit.size
         var lines = Self.lines(text, font: CardTableType.pen(size * u), width: Self.width * u)
         while lines.count > Self.ruleCount, size > Self.smallest {
             size -= 0.2
             lines = Self.lines(text, font: CardTableType.pen(size * u), width: Self.width * u)
         }
-        let pitch = lines.count > Self.ruleCount ? Self.pitch * CGFloat(Self.ruleCount) / CGFloat(lines.count) : Self.pitch
+        let pitch = lines.count > fit.rules ? Self.pitch * CGFloat(Self.ruleCount) / CGFloat(lines.count) : fit.pitch
         let font = CardTableType.pen(size * u)
         self.font = font
+        self.fit = fit
         lineCount = lines.count
         var random = CardTableRandom(seed: (seed ?? 1) * 7 + 3)
         let lineHeight = pitch * u
@@ -64,7 +94,8 @@ struct CardTableNoteLayout {
             for word in line {
                 let shift = (random.next() - 0.5) * 0.34 * em
                 let turn = (random.next() - 0.5) * 1.5
-                let opacity = 0.86 + random.next() * 0.14
+                // A little stronger than before (plan Part 1): 93–100%.
+                let opacity = 0.93 + random.next() * 0.07
                 guard !word.text.isEmpty else { continue }
                 placed.append(Word(
                     text: word.text,

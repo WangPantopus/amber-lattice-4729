@@ -340,7 +340,8 @@ struct HolidayCardLookStep: View {
             paper: card?.paper ?? design.paper,
             fromName: from,
             year: card?.year ?? cards.year,
-            signature: card?.signature
+            signature: card?.signature,
+            noteText: note
         ) { width in
             HolidayCardReadNote(text: note, number: design.number, cardWidth: width)
         }

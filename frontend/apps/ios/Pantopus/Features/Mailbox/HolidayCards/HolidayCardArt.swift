@@ -305,6 +305,8 @@ struct HolidayCardBack<Note: View>: View {
     let year: Int
     /// The sender's signature beside FROM (plan 8.2), in place of the typed name; on the card table's back only.
     var signature: CardSignature?
+    /// The note's words: on the card table's back the rules follow the pen's size for them (plan Part 1).
+    var noteText = ""
     @ViewBuilder let note: (_ cardWidth: CGFloat) -> Note
 
     var body: some View {
@@ -314,7 +316,7 @@ struct HolidayCardBack<Note: View>: View {
                 CardTableBack(
                     paperGrain: CardTableSmallArt.shared.paperGrain,
                     paper: paper,
-                    note: "",
+                    note: noteText,
                     fromName: HolidayCardWords.firstName(fromName),
                     year: year,
                     number: nil,
