@@ -58,10 +58,14 @@ class PlanPastPeopleViewModel
         private var planId = ""
         private var addressAgreed = false
 
-        /** The invite sheet opened for [id]; [eligible]: a private plan of a person's that isn't a playdate. */
+        /**
+         * The invite sheet opened for [id]; [eligible]: a private plan of a person's that isn't a playdate. [peopleOf]: open
+         * straight on that past plan's people ("Plan the next one with the same people", the holidays' board 29).
+         */
         fun start(
             id: String,
             eligible: Boolean,
+            peopleOf: String? = null,
         ) {
             if (planId == id) return
             planId = id
@@ -69,6 +73,7 @@ class PlanPastPeopleViewModel
             val on = eligible && feature.flags.value.samePeopleOn
             _ui.value = PlanPastPeopleUi(on = on)
             if (!on) return
+            peopleOf?.let { choosePlan(PlanPastPlanDto(postId = it)) }
             viewModelScope.launch {
                 val result = repository.pastPlans()
                 if (result is NetworkResult.Success) _ui.update { it.copy(plans = result.data.plans) }
@@ -91,11 +96,6 @@ class PlanPastPeopleViewModel
         }
 
         /** "Invite all" on a plan: its people, every one checked who can be invited, before anything goes. */
-        /** Straight to [postId]'s people, for "Plan the next one with the same people" (board 29). */
-        fun openPeopleOf(postId: String) {
-            if (_ui.value.on) choosePlan(PlanPastPlanDto(postId = postId))
-        }
-
         fun choosePlan(plan: PlanPastPlanDto) {
             if (_ui.value.loadingPeople) return
             _ui.update { it.copy(loadingPeople = true, error = null) }

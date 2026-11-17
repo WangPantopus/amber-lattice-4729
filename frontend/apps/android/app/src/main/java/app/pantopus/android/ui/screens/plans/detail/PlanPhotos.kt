@@ -225,7 +225,14 @@ private fun PlanPhotosCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            PlanIconTile(PantopusIcon.Image, PantopusColors.appSurfaceSunken, PantopusColors.appTextStrong, size = 40.dp, glyph = 20.dp, corner = 12.dp)
+            PlanIconTile(
+                PantopusIcon.Image,
+                PantopusColors.appSurfaceSunken,
+                PantopusColors.appTextStrong,
+                size = 40.dp,
+                glyph = 20.dp,
+                corner = 12.dp,
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Photos", style = SEMIBOLD, color = PantopusColors.appText)
                 (grid?.text ?: card.text)?.takeIf(String::isNotBlank)?.let {
@@ -342,7 +349,11 @@ private fun PhotoViewer(
                 Spacer(modifier = Modifier.weight(1f))
                 if (photo.canRemove) {
                     TextButton(onClick = { asks = true }, enabled = !removing, modifier = Modifier.testTag("planPhotoRemove")) {
-                        Text(text = "Remove", color = Color.White, modifier = Modifier.semantics { contentDescription = "Remove this photo" })
+                        Text(
+                            text = "Remove",
+                            color = Color.White,
+                            modifier = Modifier.semantics { contentDescription = "Remove this photo" },
+                        )
                     }
                 }
             }
