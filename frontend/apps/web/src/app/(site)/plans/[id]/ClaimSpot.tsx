@@ -12,9 +12,27 @@ const BUTTON = 'flex h-12 w-full items-center justify-center rounded-xl bg-prima
 
 export type SpotView = { text: string | null; left: number; open: boolean; button: string; closed_text: string | null };
 
-function messageOf(err: unknown): string {
-  const e = err as { data?: { message?: string }; message?: string };
-  return e?.data?.message || e?.message || 'Something went wrong. Please try again.';
+/** The server's refusal (a 4xx with its words), or null when the claim failed without one (no answer, a 5xx). */
+function refusalOf(err: unknown): string | null {
+  const e = err as { statusCode?: number; data?: { message?: string } };
+  return e?.statusCode && e.statusCode >= 400 && e.statusCode < 500 && e.data?.message ? e.data.message : null;
+}
+
+/**
+ * The spot offer couldn't be read, or a claim failed without a refusal (08-extras section 7, "A bought spot is never
+ * paid for twice"): the page keeps the token and offers no paid join, only reading it again.
+ */
+export function SpotUnread({ retryHref }: { retryHref?: string }) {
+  return (
+    <section aria-label="Your spot" className="flex flex-col gap-3 rounded-[20px] border border-app-border bg-app-surface p-4">
+      <p className="text-sm leading-5 text-app-text">Couldn&apos;t check your spot. Try again.</p>
+      {retryHref ? (
+        <a href={retryHref} className={BUTTON}>Try again</a>
+      ) : (
+        <button type="button" className={BUTTON} onClick={() => window.location.reload()}>Try again</button>
+      )}
+    </section>
+  );
 }
 
 export default function ClaimSpot({ planId, token, spot, signedIn, joinNow, alreadyIn, place }: {
@@ -29,6 +47,7 @@ export default function ClaimSpot({ planId, token, spot, signedIn, joinNow, alre
   const [inNow, setInNow] = useState(alreadyIn);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [unread, setUnread] = useState(false);
   const started = useRef(false);
 
   const claim = async () => {
@@ -39,7 +58,9 @@ export default function ClaimSpot({ planId, token, spot, signedIn, joinNow, alre
       await api.post(`/api/plans/${encodeURIComponent(planId)}/requests/claim-spot?biz=1`, { token });
       setInNow(true);
     } catch (err) {
-      setMessage(messageOf(err));
+      const refusal = refusalOf(err);
+      if (refusal) setMessage(refusal);
+      else setUnread(true);
     } finally {
       setBusy(false);
     }
@@ -64,6 +85,8 @@ export default function ClaimSpot({ planId, token, spot, signedIn, joinNow, alre
       </section>
     );
   }
+
+  if (unread) return <SpotUnread />;
 
   if (!spot.open) {
     return <p className="text-sm leading-5 text-app-text-secondary">{spot.closed_text || 'This link isn’t taking anyone now.'}</p>;
