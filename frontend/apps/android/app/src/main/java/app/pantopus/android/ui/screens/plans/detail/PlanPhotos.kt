@@ -48,6 +48,7 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanPhotoDto
 import app.pantopus.android.data.api.models.plans.PlanPhotosResponse
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.plans.PlanExtrasRepository
 import app.pantopus.android.data.plans.PlanPhotoUploads
@@ -74,6 +75,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import javax.inject.Inject
 
 /*
@@ -145,7 +147,7 @@ class PlanPhotosViewModel
                                     _ui.update { it.copy(grid = result.data) }
                                     null
                                 }
-                                is NetworkResult.Failure -> result.error.planMessage
+                                is NetworkResult.Failure -> photoRefusal(result.error)
                             }
                         }
                     if (failed != null) {
@@ -181,6 +183,17 @@ class PlanPhotosViewModel
             const val MILLIS = 1000L
         }
     }
+
+/**
+ * The server's sentence for a refused picture. The picture check that couldn't run answers `503 check_unavailable` with
+ * "This picture couldn't be checked right now. Try again in a little while.", which the app's generic 5xx words would
+ * hide; any other server error keeps them.
+ */
+private fun photoRefusal(error: NetworkError): String {
+    val body = (error as? NetworkError.Server)?.body ?: return error.planMessage
+    val json = runCatching { JSONObject(body) }.getOrNull() ?: return error.planMessage
+    return json.optString("message").takeIf { json.optString("error") == "check_unavailable" && it.isNotBlank() } ?: error.planMessage
+}
 
 /** The card, while the plan carries photos (a plan that is over, for those who were in). */
 @Composable
