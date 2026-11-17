@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search, Home, ChevronRight, PlusCircle, QrCode } from 'lucide-react';
 import * as api from '@pantopus/api';
 import { toast } from '@/components/ui/toast-store';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 function FindContent() {
   const router = useRouter();
@@ -17,12 +19,16 @@ function FindContent() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
 
-  const handleSearch = useCallback(async () => {
-    if (query.trim().length < 2) return;
+  // Address suggestions list addresses near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
+
+  const handleSearch = useCallback(async (picked?: string) => {
+    const q = (picked ?? query).trim();
+    if (q.length < 2) return;
     setLoading(true);
     setSearched(true);
     try {
-      const res = await api.homes.discoverHomes({ q: query.trim() });
+      const res = await api.homes.discoverHomes({ q });
       setResults(res.homes || []);
     } catch {
       toast.error('Search failed');
@@ -54,22 +60,30 @@ function FindContent() {
         <h1 className="text-xl font-bold text-app-text">Find or Add Home</h1>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 bg-app-surface border border-app-border rounded-xl px-3.5 py-2.5 mb-4">
+      {/* Search: address suggestions as you type; a pick searches at once, Enter searches what was typed */}
+      <form
+        onSubmit={(e) => { e.preventDefault(); void handleSearch(); }}
+        className="flex items-center gap-2 bg-app-surface border border-app-border rounded-xl px-3.5 py-2.5 mb-4"
+      >
         <Search className="w-4 h-4 text-app-text-muted flex-shrink-0" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="Search by address, city, or zip..."
-          className="flex-1 text-sm text-app-text bg-transparent outline-none placeholder:text-app-text-muted"
-        />
-        <button onClick={handleSearch} disabled={query.trim().length < 2}
+        <div className="flex-1 min-w-0">
+          <AddressAutocomplete
+            value={query}
+            onChange={setQuery}
+            // The street line alone: the search matches it against the Home's address.
+            onSelectNormalized={(n) => { void handleSearch(n.address); }}
+            placeholder="Search by address, city, or zip..."
+            ariaLabel="Search by address, city, or zip"
+            hintText={null}
+            near={homeCenter}
+            inputClassName="w-full text-sm text-app-text bg-transparent outline-none placeholder:text-app-text-muted"
+          />
+        </div>
+        <button type="submit" disabled={query.trim().length < 2}
           className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition">
           Search
         </button>
-      </div>
+      </form>
 
       {/* Results */}
       {loading ? (

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import { queryKeys } from '@/lib/query-keys';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type ResolvedArea = Awaited<ReturnType<typeof api.location.resolveLocation>>;
 
@@ -38,6 +39,8 @@ export function useAreaPicker(showToast: (msg: string) => void) {
   const keptArea = kept?.area && kept.area.latitude != null && kept.area.longitude != null ? kept.area : null;
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
+  // Places near the area being viewed come first, else near the person's home (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [gpsTimestamp, setGpsTimestamp] = useState<string | null>(null);
   const [viewingLat, setViewingLat] = useState<number | null>(keptArea?.latitude ?? null);
   const [viewingLng, setViewingLng] = useState<number | null>(keptArea?.longitude ?? null);
@@ -137,7 +140,8 @@ export function useAreaPicker(showToast: (msg: string) => void) {
     setAreaSearching(true);
     const t = setTimeout(async () => {
       try {
-        const res = await api.geo.autocomplete(q);
+        const near = userLat != null && userLng != null ? { lat: userLat, lng: userLng } : homeCenter;
+        const res = await api.geo.autocomplete(q, { near });
         if (!cancelled) setAreaSuggestions(res?.suggestions || []);
       } catch {
         if (!cancelled) setAreaSuggestions([]);
@@ -149,7 +153,7 @@ export function useAreaPicker(showToast: (msg: string) => void) {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [areaQuery, showAreaPicker]);
+  }, [areaQuery, showAreaPicker, userLat, userLng, homeCenter]);
 
   const useCurrentArea = useCallback(async () => {
     const loc = await refreshDeviceLocation();
