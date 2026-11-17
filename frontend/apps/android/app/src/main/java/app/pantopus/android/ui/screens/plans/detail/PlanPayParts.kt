@@ -144,7 +144,8 @@ private fun PlanPaySheet(
             if (!ui.forLink) PayPartyField(plan, ui.partySize, enabled = !ui.paying, onParty = viewModel::setParty)
             // The holidays' one person pays for the group (board 31): "Who are they for?" and "How many spots?".
             if (ui.offersLink) PayForField(ui, onLink = viewModel::setForLink, onSpots = viewModel::setSpots)
-            val quote = ui.quote
+            // Only the server's quote for exactly what Pay sends shows a total: none while a new one is asked or after one failed.
+            val quote = ui.quote?.takeIf { !ui.quoteLoading }
             if (quote != null) {
                 PayLines(plan, quote)
                 quote.group?.takeIf { !ui.forLink }?.let { PayGroupCard(it) }

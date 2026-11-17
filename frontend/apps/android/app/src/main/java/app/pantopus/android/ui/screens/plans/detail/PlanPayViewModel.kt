@@ -133,7 +133,8 @@ class PlanPayViewModel
             val ui = _ui.value
             val body =
                 if (ui.forLink) PlanQuoteBody(partySize = 1, forWhom = FOR_LINK, spots = ui.spots) else PlanQuoteBody(partySize = size)
-            _ui.update { it.copy(quoteLoading = true, quoteError = null) }
+            // The old total goes at once: Pay stays off until the server quotes what will be sent now.
+            _ui.update { it.copy(quote = null, quoteLoading = true, quoteError = null) }
             quoteJob =
                 viewModelScope.launch {
                     when (val result = repository.quote(planId, body)) {
