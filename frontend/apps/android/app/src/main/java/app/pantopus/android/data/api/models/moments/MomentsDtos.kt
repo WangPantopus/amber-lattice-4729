@@ -60,6 +60,8 @@ data class MomentRingDto(
      */
     @Json(name = "altitude_ft") val altitudeFt: Double? = null,
     val flying: Boolean = false,
+    /** The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail. */
+    val floating: Boolean = false,
 )
 
 /**

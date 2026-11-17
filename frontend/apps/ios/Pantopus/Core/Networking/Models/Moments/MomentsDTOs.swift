@@ -147,9 +147,11 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
     /// `MomentHeightDTOs.swift`); none unless heights are on for you and its author showed it.
     public let altitudeFt: Int?
     public let flying: Bool
+    /// The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail.
+    public let floating: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case id, author, latitude, longitude, moments, mine, preview, flying
+        case id, author, latitude, longitude, moments, mine, preview, flying, floating
         case altitudeFt = "altitude_ft"
         case placeLabel = "place_label"
         case newestAt = "newest_at"
@@ -172,6 +174,7 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         preview = try? c.decodeIfPresent(MomentRingPreviewDTO.self, forKey: .preview)
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
+        floating = (try? c.decodeIfPresent(Bool.self, forKey: .floating)) ?? false
     }
 
     /// One Moment as a ring of its own: opened from a chat quote, with no map behind it.
@@ -195,6 +198,7 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         preview = nil
         altitudeFt = moment.altitudeFt
         flying = moment.flying
+        floating = moment.sky.floating
     }
 }
 
