@@ -416,6 +416,18 @@ object PantopusColors {
     val tablePictureLine = Color(0x40463214)
     val tableEdgeShade = Color(0x336E501E)
 
+    /** The mantel (plan Part 7): the lamp's warm pool on the wall, `rgba(255 226 170 / 55%)`. */
+    val mantelGlow = Color(0x8CFFE2AA)
+
+    /** A card's shadow on the wall behind the mantel, `rgba(60 40 10 / 26%)`. */
+    val mantelWallShadow = Color(0x423C280A)
+
+    /** The small dark under a card's edge, `rgba(0 0 0 / 25%)`. */
+    val mantelEdgeShadow = Color(0x40000000)
+
+    /** Where a card stands on the shelf: 38% black at the middle of its foot. */
+    val mantelFootShadow = Color(0x61000000)
+
     /** The light: the vignette's edge `rgb(6 3 4 / 46%)`; the window's warm wash on phones without soft light. */
     val tableVignette = Color(0x75060304)
 

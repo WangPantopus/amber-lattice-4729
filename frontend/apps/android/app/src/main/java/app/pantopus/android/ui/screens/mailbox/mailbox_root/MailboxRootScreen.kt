@@ -68,8 +68,10 @@ import app.pantopus.android.ui.guidance.GuidanceScreen
 import app.pantopus.android.ui.guidance.GuidanceSpot
 import app.pantopus.android.ui.guidance.GuidanceSpotFacts
 import app.pantopus.android.ui.screens.ceremonial_mail_open.MailWelcomePorch
+import app.pantopus.android.ui.screens.mailbox.cards.CardMantel
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardRow
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
+import app.pantopus.android.ui.screens.mailbox.cards.mantelCards
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardOnTable
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardSoundsSetting
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableDialog
@@ -375,6 +377,7 @@ private fun MailboxList(
         if (selectedDrawer == MailboxDrawer.Home) {
             waiting.firstOrNull()?.let { home -> item(key = "homeWaiting") { MailHomeWaitingBanner(home) { onVerify(home) } } }
         }
+        mantelItem(state, selectedDrawer, selectedTab, viewModel::openMail)
         holidayCardItem(cards, selectedDrawer, selectedTab, emptyDayCard, onOpenCards)
         when (selectedTab) {
             MailboxTab.Incoming -> incomingItems(state, viewModel)
@@ -434,6 +437,23 @@ private fun LazyListScope.holidayCardItem(
     if (drawer != MailboxDrawer.Me || tab != MailboxTab.Incoming || emptyDayCard) return
     val open = cards?.takeIf { HolidayCardsRepository.cardsOpen(it) } ?: return
     item(key = "holidayCards") { HolidayCardRow(open, onOpen) }
+}
+
+/**
+ * The mantel (plan Part 7): this season's opened Christmas cards standing on a shelf, the first thing in your own mail
+ * (Me, Incoming) once the list holds one. It scrolls away with the list.
+ */
+private fun LazyListScope.mantelItem(
+    state: MailboxUiState,
+    drawer: MailboxDrawer,
+    tab: MailboxTab,
+    onOpen: (String) -> Unit,
+) {
+    if (!LaunchFeatures.holidayCards || drawer != MailboxDrawer.Me || tab != MailboxTab.Incoming) return
+    val loaded = state as? MailboxUiState.Loaded ?: return
+    val cards = mantelCards(loaded.sections.flatMap { it.pieces })
+    if (cards.isEmpty()) return
+    item(key = "mantel") { CardMantel(cards, onOpen, modifier = Modifier.padding(bottom = 4.dp)) }
 }
 
 /** Incoming: the pieces by the day they came. */
