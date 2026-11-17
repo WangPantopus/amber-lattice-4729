@@ -29,19 +29,24 @@ export type PublicCollection = { id: string; name: string; designs: string[] };
 /**
  * A phone's store button that carries the sending flow through the install (`getStoreDownloadCta`): Google Play
  * hands it to the Android app on its first launch; on an iPhone the tap copies it for the app's Paste button.
+ * `joins`: the page's `ref` is a creator's code, and it carries that code's join link instead (`cardsStoreLink`), so the
+ * creator is credited when the account is made; the cards are then in the side menu's "Send a Christmas card".
  */
-export type PublicCardsStore = { href: string; copyPath: string | null; platform: 'ios' | 'android' };
+export type PublicCardsStore = { href: string; copyPath: string | null; platform: 'ios' | 'android'; joins?: boolean };
 
 /** Getting the app on a phone, with the card waiting for them in it. */
 function GetTheApp({ store, label, testId }: { store: PublicCardsStore; label: string; testId: string }) {
+  const words = store.joins
+    ? (store.platform === 'ios'
+      ? 'Free on the App Store. When Pantopus opens, tap Paste and create your account, then tap Send a Christmas card in the menu.'
+      : 'Free on Google Play. Create your account when Pantopus opens, then tap Send a Christmas card in the menu.')
+    : (store.platform === 'ios'
+      ? 'Free on the App Store. When Pantopus opens, tap Paste, and your card is ready once you sign up.'
+      : 'Free on Google Play. Your card is ready when Pantopus opens and you sign up.');
   return (
     <>
       <StoreLink href={store.href} copyPath={store.copyPath} className={styles.primary} data-testid={testId}>{label}</StoreLink>
-      <p className={styles.small}>
-        {store.platform === 'ios'
-          ? 'Free on the App Store. When Pantopus opens, tap Paste, and your card is ready once you sign up.'
-          : 'Free on Google Play. Your card is ready when Pantopus opens and you sign up.'}
-      </p>
+      <p className={styles.small}>{words}</p>
     </>
   );
 }
