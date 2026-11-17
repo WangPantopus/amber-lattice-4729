@@ -43,6 +43,8 @@ data class PlansFlags(
     val bringList: Boolean = false,
     /** `plans_occasions` (Plans for the holidays, H3): the kind picker's "Coming up" strip. */
     val occasions: Boolean = false,
+    /** `plans_same_people` (the holidays' extras, section 6): the invite sheet's "People from a past plan". */
+    val samePeople: Boolean = false,
 ) {
     val playdatesOn: Boolean get() = plans && playdates
 
@@ -72,6 +74,9 @@ data class PlansFlags(
 
     /** Plans for the holidays, H3: the kind picker shows "Coming up" (it needs the newer kinds, as the server does). */
     val occasionsOn: Boolean get() = kindsOn && occasions
+
+    /** The same people again (08-extras section 6): it invites, so it needs private plans, as the server does. */
+    val samePeopleOn: Boolean get() = privateOn && samePeople
 }
 
 /**
@@ -200,6 +205,7 @@ class PlansFeature
                     val guestAnswers = async { read(FLAG_GUEST_ANSWERS) }
                     val bringList = async { read(FLAG_BRING_LIST) }
                     val occasions = async { read(FLAG_OCCASIONS) }
+                    val samePeople = async { read(FLAG_SAME_PEOPLE) }
                     val plansOn = plans.await()
                     val playdatesOn = playdates.await()
                     // A private plan is posted and filled by invitation, so it needs both switches (the server's own rule).
@@ -210,6 +216,7 @@ class PlansFeature
                     val guestAnswersOn = guestAnswers.await()
                     val bringOn = bringList.await()
                     val occasionsOn = occasions.await()
+                    val samePeopleOn = samePeople.await()
                     if (userId != id) return@launch
                     val current = _flags.value
                     val next =
@@ -223,6 +230,7 @@ class PlansFeature
                             guestAnswers = guestAnswersOn ?: current.guestAnswers,
                             bringList = bringOn ?: current.bringList,
                             occasions = occasionsOn ?: current.occasions,
+                            samePeople = samePeopleOn ?: current.samePeople,
                         )
                     _flags.value = next
                     remember(id, next)
@@ -249,7 +257,8 @@ class PlansFeature
         /**
          * One character a flag, in order: plans, playdates, private, repeat, online (`plans_online`), kinds
          * (`plans_kinds`), guest answers (`plans_guest_answers`), the bring list (`plans_bring_list`) and occasions
-         * (`plans_occasions`). A shorter string from before a flag existed reads that flag off ("11" reads the rest off).
+         * (`plans_occasions`), then the extras' (`plans_same_people`). A shorter string from before a flag existed
+         * reads that flag off ("11" reads the rest off).
          */
         @Suppress("MagicNumber")
         private fun remembered(id: String): PlansFlags {
@@ -264,6 +273,7 @@ class PlansFeature
                 guestAnswers = raw.getOrNull(INDEX_GUEST_ANSWERS) == '1',
                 bringList = raw.getOrNull(INDEX_BRING_LIST) == '1',
                 occasions = raw.getOrNull(INDEX_OCCASIONS) == '1',
+                samePeople = raw.getOrNull(INDEX_SAME_PEOPLE) == '1',
             )
         }
 
@@ -282,6 +292,7 @@ class PlansFeature
                     flags.guestAnswers,
                     flags.bringList,
                     flags.occasions,
+                    flags.samePeople,
                 ).joinToString("") { if (it) "1" else "0" }
             prefs.edit().putString(id, raw).apply()
         }
@@ -304,5 +315,7 @@ class PlansFeature
             const val INDEX_BRING_LIST = 7
             const val FLAG_OCCASIONS = "plans_occasions"
             const val INDEX_OCCASIONS = 8
+            const val FLAG_SAME_PEOPLE = "plans_same_people"
+            const val INDEX_SAME_PEOPLE = 9
         }
     }

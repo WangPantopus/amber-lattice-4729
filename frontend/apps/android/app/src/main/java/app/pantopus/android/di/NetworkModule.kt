@@ -99,6 +99,7 @@ import app.pantopus.android.data.api.services.PaymentsApi
 import app.pantopus.android.data.api.services.PersonaDmApi
 import app.pantopus.android.data.api.services.PersonaEditApi
 import app.pantopus.android.data.api.services.PlaceApi
+import app.pantopus.android.data.api.services.PlanExtrasApi
 import app.pantopus.android.data.api.services.PlansApi
 import app.pantopus.android.data.api.services.PostPrecheckApi
 import app.pantopus.android.data.api.services.PostsApi
@@ -802,6 +803,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun providePlansApi(retrofit: Retrofit): PlansApi = retrofit.create(PlansApi::class.java)
+
+    /** Plans for the holidays, the six extras: their routes under `/api/plans`. */
+    @Provides
+    @Singleton
+    fun providePlanExtrasApi(retrofit: Retrofit): PlanExtrasApi = retrofit.create(PlanExtrasApi::class.java)
 
     /** Pantopus Moments: `/api/moments` and the `moments` flag. */
     @Provides

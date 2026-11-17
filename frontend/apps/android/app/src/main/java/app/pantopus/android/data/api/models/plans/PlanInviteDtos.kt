@@ -63,6 +63,11 @@ data class PlanInviteRowDto(
     @Json(name = "state") val state: String = "invited",
     @Json(name = "person") val person: PlanInvitePersonDto? = null,
     @Json(name = "email") val email: String? = null,
+    /**
+     * The holidays' "same people again": an email invitation made from a past plan never shows its address; the row has
+     * `email: null` and the guest's name from that plan here.
+     */
+    @Json(name = "name") val name: String? = null,
     /** The email couldn't be sent (the address said no to invitation emails, or it bounced). */
     @Json(name = "email_failed") val emailFailed: Boolean = false,
     @Json(name = "request_id") val requestId: String? = null,
@@ -84,7 +89,7 @@ data class PlanInviteRowDto(
     val isLinkAccountWaiting: Boolean get() = via == "open" && person != null && state == "asked" && requestId != null
 
     /** The name, the address, or "Text invite". */
-    val title: String get() = person?.displayName ?: guest?.name ?: email ?: "Text invite"
+    val title: String get() = person?.displayName ?: guest?.name ?: name ?: email ?: "Text invite"
 }
 
 /** An account's party on the host's list (contract 6.9): adults, and kids only with kids welcome. */
