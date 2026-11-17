@@ -133,7 +133,7 @@ export function LinkPageSummary({ letter }: { letter: LinkPageLetter }) {
           {letter.senderVerified && (
             <p className="inline-flex items-center gap-1.5 rounded-full bg-app-success-light px-2.5 py-1 mt-2 text-[12px] font-semibold text-app-success">
               <BadgeCheck size={14} strokeWidth={2.25} />
-              {letter.senderKind === 'business' ? 'Verified business' : 'Verified neighbor'}
+              {letter.senderKind === 'business' ? 'Verified business' : 'Verified resident'}
             </p>
           )}
         </div>
@@ -367,7 +367,7 @@ export function CardLinkWords({ letter }: { letter: LinkPageLetter }) {
     <div className={table.words}>
       <h1>A Christmas card for you</h1>
       <p className={table.from}>From {letter.senderName}</p>
-      {letter.senderVerified ? <span className={table.badge}>{letter.senderKind === 'business' ? 'Verified business' : 'Verified neighbor'}</span> : null}
+      {letter.senderVerified ? <span className={table.badge}>{letter.senderKind === 'business' ? 'Verified business' : 'Verified resident'}</span> : null}
       {letter.card?.sealed ? <p className={table.sealed}>It’s sealed until Christmas morning.</p> : null}
     </div>
   );
