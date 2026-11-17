@@ -134,6 +134,11 @@ data class PlanDatesDto(
     @Json(name = "options") val options: List<PlanDateOptionDto> = emptyList(),
     /** An invited person's own answer; absent for the host. */
     @Json(name = "mine") val mine: PlanDatesMineDto? = null,
+    /**
+     * An invited person's line under "Save my times" (server gap 13): "You're in when {Host} picks a time you ticked.",
+     * or for someone who will wait for the host's yes "When {Host} picks a time you ticked, {Host} lets you in."
+     */
+    @Json(name = "mine_text") val mineText: String? = null,
 )
 
 /** One time offered. The host's options also carry [who], [most], [pickText] and [pickNote], favorite first. */

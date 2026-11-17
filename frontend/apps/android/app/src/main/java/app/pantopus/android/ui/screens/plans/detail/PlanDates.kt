@@ -270,7 +270,10 @@ private fun DatesNumbers(
     }
 }
 
-/** Board 24's footer: "Save my times" and "You're in when {Host} picks a time you ticked". */
+/**
+ * Board 24's footer: "Save my times" and the server's `mine_text` under it ("You're in when {Host} picks a time you
+ * ticked.", or "… {Host} lets you in." for someone who waits for the host's yes); today's words while it is absent.
+ */
 @Composable
 internal fun ColumnScope.PlanDatesFooter(
     plan: PlanDto,
@@ -286,7 +289,8 @@ internal fun ColumnScope.PlanDatesFooter(
         isEnabled = !ui.saving && (ui.dirty || !answered),
         modifier = Modifier.height(50.dp).testTag("planDatesSave"),
     )
-    PlanFooterCaption("You're in when ${PlanFormat.hostName(plan)} picks a time you ticked")
+    val line = plan.dates?.mineText?.takeIf(String::isNotBlank) ?: "You're in when ${PlanFormat.hostName(plan)} picks a time you ticked"
+    PlanFooterCaption(line)
 }
 
 /** On the host's page while picking: the count and "Pick a date", which opens board 25. */
