@@ -70,6 +70,7 @@ public struct MomentsTabRoot: View {
                 viewerHooks: viewerHooks
             )
             .toolbar(.hidden, for: .navigationBar)
+            .guidanceScreen(.moments)
         }
         .sheet(isPresented: $showsAreaPicker) {
             MomentsAreaPicker(viewModel: map) { showsAreaPicker = false }

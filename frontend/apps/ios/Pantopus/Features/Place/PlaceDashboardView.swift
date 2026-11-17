@@ -63,6 +63,20 @@ struct PlaceDashboardView: View {
         _viewModel = State(initialValue: viewModel)
     }
 
+    private var isLoaded: Bool {
+        if case .loaded = viewModel.state { return true }
+        return false
+    }
+
+    /// Card 1 leaves out its address line for someone who joined by a household invitation (never typed one).
+    private var guidanceVariants: GuidanceVariants {
+        guard case let .loaded(intel) = viewModel.state, viewModel.claim == nil else {
+            return GuidanceVariants(placeHasAddress: true)
+        }
+        let invited = intel.viewer?.role == "member" || intel.viewer?.role == "nonresident"
+        return GuidanceVariants(joinedByInvite: invited, placeHasAddress: true)
+    }
+
     private var verifyAddress: String {
         if case let .loaded(intel) = viewModel.state { return intel.place.label }
         return ""
@@ -126,6 +140,8 @@ struct PlaceDashboardView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+        // The Place tab's first screen for the guidance cards (card 1, and the pointers here).
+        .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return
@@ -357,7 +373,7 @@ struct PlaceDashboardView: View {
     private func header(intel: PlaceIntelligence) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                if isRoot { menuButton.padding(.leading, -Spacing.s3) }
+                if isRoot { menuButton.guidanceAnchor(.tipMenu).padding(.leading, -Spacing.s3) }
                 HStack(spacing: 8) {
                     Text("Your Place")
                         .font(.system(size: 28, weight: .bold))
@@ -402,6 +418,7 @@ struct PlaceDashboardView: View {
                         .frame(width: Spacing.s12, height: 44)
                         .contentShape(Rectangle())
                 }
+                .guidanceAnchor(.tipAsk, when: isRoot)
             }
         }
     }
@@ -620,6 +637,8 @@ struct PlaceDashboardView: View {
 
     private func saveOpenGroups(_ groups: Set<PlaceGlanceGroup>) {
         UserDefaults.standard.set(groups.map(\.rawValue).sorted(), forKey: openGroupsKey)
+        // "See more" (the guidance pointer on the first row's +) is for someone who hasn't opened one.
+        if !groups.isEmpty { GuidanceCenter.shared.note(.placeRowOpened) }
     }
 
     /// The sections that belong in each glance group, in the server's order.
@@ -658,7 +677,8 @@ struct PlaceDashboardView: View {
                 PlaceGlanceRow(
                     group: group,
                     summary: summary(group, sections: sections, intel: intel, claim: claim),
-                    isOpen: groupBinding(group)
+                    isOpen: groupBinding(group),
+                    guidanceAnchor: index == 0 && isRoot ? .tipPlaceRow : nil
                 ) {
                     groupContent(group, sections: sections, intel: intel, claim: claim)
                 }

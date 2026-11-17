@@ -1621,6 +1621,7 @@ public struct HubTabRoot: View {
                 onOpenDetail: { path.append(.savedPlaceDetail(savedPlaceId: place.id, group: $0)) }
             )
             .id(place.id)
+            .guidanceScreen(.place, variants: GuidanceVariants(savedAddress: true, placeHasAddress: true))
             .onAppear { Self.placeRootViewed("saved_place") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
@@ -1639,11 +1640,13 @@ public struct HubTabRoot: View {
             .accessibilityIdentifier("place.firstRun")
             .toolbar(.hidden, for: .navigationBar)
             .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+            .guidanceScreen(.place)
             .onAppear { Self.placeRootViewed("first_run") }
             .task { await refreshPlaceUnread() }
             .refreshesOnStoreChange { await refreshPlaceUnread() }
         case .homes:
             placeRootBar(destination(for: .myHomes) { path.append($0) })
+                .guidanceScreen(.place, variants: GuidanceVariants(placeHasAddress: true))
                 .onAppear { Self.placeRootViewed("homes") }
         case .resolving:
             PlaceDashboardSkeleton()
@@ -1702,6 +1705,7 @@ public struct HubTabRoot: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { rootTabs.showsNavigationMenu = true } label: {
                         Icon(.menu, size: 20, color: Theme.Color.appText)
+                            .guidanceAnchor(.tipMenu)
                     }
                     .accessibilityLabel("Menu")
                     .accessibilityIdentifier("place.menu")

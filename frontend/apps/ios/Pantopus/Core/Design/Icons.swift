@@ -478,6 +478,8 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
     /// Plans for the holidays: the Birthday and New Year's Eve occasions.
     case cake
     case sparkle
+    /// Guidance cards: Today's "Around you" (local headlines).
+    case newspaper
 
     /// SF Symbol name used to render this icon. Chosen for closest visual
     /// parity with the Lucide source; designers can later swap the
@@ -863,6 +865,7 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
         case .switchCamera: "arrow.triangle.2.circlepath.camera"
         case .cake: "birthday.cake"
         case .sparkle: "sparkle"
+        case .newspaper: "newspaper"
         }
     }
 }

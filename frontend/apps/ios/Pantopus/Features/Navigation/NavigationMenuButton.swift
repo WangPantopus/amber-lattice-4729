@@ -49,6 +49,8 @@ struct NavigationMenuButton: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Menu")
             .accessibilityIdentifier(accessibilityIdentifier)
+            // Every tab's first screen carries this button: the guidance pointer "Menu" rings it.
+            .guidanceAnchor(.tipMenu)
         }
     }
 }
@@ -91,6 +93,8 @@ struct MessagesButton: View {
             .buttonStyle(.plain)
             .accessibilityLabel(rootTabs.messagesBadge > 0 ? "Messages, \(rootTabs.messagesBadge) unread" : "Messages")
             .accessibilityIdentifier(accessibilityIdentifier)
+            // The guidance pointer "Messages" rings it.
+            .guidanceAnchor(.tipMessages)
         }
     }
 }
