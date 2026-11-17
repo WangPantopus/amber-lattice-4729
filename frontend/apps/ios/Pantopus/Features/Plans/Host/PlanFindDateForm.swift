@@ -34,7 +34,8 @@ struct PlanFindDateFormCard: View {
                 subtitle: "They tick what works; you choose",
                 isOn: Binding(get: { model.privacy.dateOptions != nil }, set: { on in
                     // The time already on the form is the first one offered.
-                    model.privacy.dateOptions = on ? (model.privacy.dateOptions ?? [PlanDateOptionDraft(start: model.start, end: model.end)]) : nil
+                    let first = PlanDateOptionDraft(start: model.start, end: model.end)
+                    model.privacy.dateOptions = on ? (model.privacy.dateOptions ?? [first]) : nil
                 })
             )
             .accessibilityIdentifier("planFindDate")
@@ -63,7 +64,7 @@ struct PlanFindDateFormCard: View {
                             Icon(.plus, size: 18, color: Theme.Color.primary600)
                             Text("Add a time").planFont(.bodyStrong).foregroundStyle(Theme.Color.primary600)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

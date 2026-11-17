@@ -63,6 +63,7 @@ final class PlanDatesDraft {
         do {
             _ = try await viewModel.api.request(PlansEndpoints.tickDates(planId: viewModel.planId, body), as: EmptyResponse.self)
             edited = false
+            editsNumbers = false
             seededFrom = nil
             PlansStoreReads.changed(planId: viewModel.planId)
             await viewModel.load()

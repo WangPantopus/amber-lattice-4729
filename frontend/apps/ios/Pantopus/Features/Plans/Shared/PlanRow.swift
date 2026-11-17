@@ -61,7 +61,13 @@ struct PlanRowModel: Identifiable, Equatable {
         if let picking = card.pickingText {
             // Find a date: "Picking a date" where the time shows, until the host picks one.
             parts.append(contentsOf: [picking, area])
-        } else if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
+        } else if let when = PlanFormat.rowWhen(
+            state: card.state,
+            start: card.startsAtDate,
+            end: card.endsAtDate,
+            now: now,
+            calendar: calendar
+        ) {
             parts.append(when)
             // A later day names the area too ("Sun 1:25 PM · Downtown · about 2 mi").
             if card.state != .live, let start = card.startsAtDate, !calendar.isDate(start, inSameDayAs: now) {

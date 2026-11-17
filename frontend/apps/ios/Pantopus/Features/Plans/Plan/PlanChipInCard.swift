@@ -173,13 +173,14 @@ struct PlanGoingExtraCards: View {
     }
 }
 
-/// The host's cards under the counts: the bring list (H2), then the extras'.
+/// The host's cards under the counts: find a date's while picking, the bring list (H2), then chip in.
 struct PlanHostExtraCards: View {
     let viewModel: PlanScreenViewModel
     let card: PlanCardDTO
     let onOpenBring: () -> Void
 
     var body: some View {
+        if let dates = card.extrasPart.dates { PlanDatesHostCard(card: card, dates: dates) }
         if let bring = card.bring { PlanBringHostCard(bring: bring, onOpen: onOpenBring) }
         if let chipIn = card.extrasPart.chipIn { PlanChipInCard(viewModel: viewModel, chipIn: chipIn) }
     }

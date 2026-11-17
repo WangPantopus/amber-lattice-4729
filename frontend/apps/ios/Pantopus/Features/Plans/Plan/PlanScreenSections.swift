@@ -29,7 +29,9 @@ struct PlanScreenSections: View {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 switch viewModel.mode {
                 case .browsing:
-                    if let invite = viewModel.openInvite, invite.status == .maybe, card.answersWithNumbers {
+                    if card.extrasPart.dates != nil, card.viewer?.isHost != true {
+                        PlanPickingBanner(card: card) // find a date (board 24): ticking is the answer for now
+                    } else if let invite = viewModel.openInvite, invite.status == .maybe, card.answersWithNumbers {
                         PlanAnswerBanner(kind: .maybe, line: "\(PlanCardLines.hostName(card)) sees your answer", onChange: onAnswer)
                     } else if viewModel.openInvite != nil, card.isPrivate {
                         // Board Invited: only the people the host invites can see a private plan.
@@ -40,6 +42,9 @@ struct PlanScreenSections: View {
                             .accessibilityIdentifier("planInviteBanner")
                     }
                     PlanBrowsingSection(card: card, onOpenHost: onOpenHost)
+                    if let dates = card.extrasPart.dates, card.viewer?.isHost != true {
+                        PlanDatesGuestCard(card: card, dates: dates, draft: PlanDatesDraft.of(card.id))
+                    }
                 case .requested:
                     PlanRequestedSection(card: card, myRequest: viewModel.plan?.myRequest)
                 case .waitlisted:

@@ -104,7 +104,10 @@ struct PlanFooter: View {
     @ViewBuilder
     private func browsing(_ card: PlanCardDTO) -> some View {
         let viewer = card.viewer
-        if let invite = viewModel.openInvite, viewer?.canAsk == true || viewer?.cannotAskReason == .fullUseWaitlist {
+        if card.extrasPart.dates != nil, viewer?.isHost != true {
+            // Find a date (board 24): while the host picks, ticking is the answer; "I'm in" waits for the pick.
+            PlanDatesSaveBar(viewModel: viewModel, card: card)
+        } else if let invite = viewModel.openInvite, viewer?.canAsk == true || viewer?.cannotAskReason == .fullUseWaitlist {
             invited(card, invite)
         } else if viewer?.canAsk ?? true {
             Button { onAsk(false) } label: {

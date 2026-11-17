@@ -15,7 +15,7 @@ import SwiftUI
 final class PlanPickDateModel {
     let planId: String
     private(set) var card: PlanCardDTO?
-    private(set) var remind: PlanRemindDTO?
+    private(set) var remind: PlanRemindStateDTO?
     private(set) var loadError: String?
     private(set) var isWorking = false
     var chosen: String?
@@ -207,7 +207,7 @@ struct PlanPickDateScreen: View {
     }
 
     @ViewBuilder private var remindButton: some View {
-        if let remind = model.remind, remind.count > 0, !remind.remindedToday {
+        if let remind = model.remind, remind.count >= 1, !remind.remindedToday {
             Button("Remind the \(remind.count) who \(remind.count == 1 ? "hasn't" : "haven't") answered") {
                 Task { await model.remindEveryone() }
             }
@@ -228,7 +228,15 @@ struct PlanPickDateScreen: View {
                     .accessibilityIdentifier("planPickError")
             }
             Button { Task { if await model.pick() { onBack() } } } label: {
-                PlanButtonLabel(title: option.pickText ?? "Pick this time", kind: .primary, isLoading: model.isWorking)
+                ZStack {
+                    // The date is the point of the button: it wraps at the largest text sizes instead of being cut.
+                    Text(option.pickText ?? "Pick this time")
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(model.isWorking ? 0 : 1)
+                    if model.isWorking { ProgressView().tint(Theme.Color.appTextInverse) }
+                }
             }
             .planButton(.primary)
             .disabled(model.isWorking)

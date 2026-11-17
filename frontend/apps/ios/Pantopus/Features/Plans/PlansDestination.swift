@@ -32,6 +32,8 @@ struct PlansDestination: View {
                 PlanBringListRoute(planId: planId) { pop() }
             case let .change(planId):
                 PlanChangeScreen(planId: planId) { pop() }
+            case let .pickDate(planId):
+                PlanPickDateScreen(planId: planId) { pop() }
             case let .profile(userId):
                 PublicProfileView(
                     userId: userId,
