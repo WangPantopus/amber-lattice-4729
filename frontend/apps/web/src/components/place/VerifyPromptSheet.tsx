@@ -423,7 +423,7 @@ function FastVerifySheet({
       <div className="flex items-center gap-3 mb-3">
         <IconTile icon={ShieldCheck} tone="home" size={38} />
         <div className="flex-1 min-w-0">
-          <h2 id="fast-verify-title" className="text-lg font-bold text-app-text -tracking-[0.02em] leading-[22px]">
+          <h2 id="fast-verify-title" className="text-lg font-bold text-app-text -tracking-[0.02em] leading-tight">
             {FAST_VERIFY_WORDS.sheetTitle}
           </h2>
           <p className="text-[13px] text-app-text-secondary mt-0.5 truncate">{address}</p>
