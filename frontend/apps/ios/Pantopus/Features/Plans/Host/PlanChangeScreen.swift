@@ -34,6 +34,8 @@ struct PlanChangeScreen: View {
     @State private var newLink: String?
     /// Plans for the holidays: a private plan's room and "Kids welcome", sent only when changed.
     @State private var room = PlanRoomChange()
+    /// The extras: chip in as the plan has it and as changed here (08-extras section 3).
+    @State private var chipIn = PlanChipInEdit()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,6 +52,7 @@ struct PlanChangeScreen: View {
                             PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)
                         } else if card.placeKind != .home { place(card) }
                         if card.changesRoom { PlanChangeRoomRows(room: $room, seatsTaken: card.goingCount) }
+                        if card.changesChipIn { PlanChipInFormCard(draft: $chipIn.draft, identifierPrefix: "planChangeChipIn") }
                         if asksStillComing(card) { warning(card) }
                         if asksStillComing(card) { preview(card) }
                     } else {
@@ -141,21 +144,6 @@ struct PlanChangeScreen: View {
                 }
             }
         }
-    }
-
-    private func load() async {
-        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
-        guard plan == nil else { return }
-        guard let detail = try? await PlansStoreReads.detail(id: planId) else {
-            error = "We couldn't load this plan."
-            return
-        }
-        if let owner = detail.card.business { business = await PlanComposerHostAs.business(owner.userId) }
-        plan = detail
-        start = detail.card.startsAtDate ?? Date()
-        end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
-        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
-        room = PlanRoomChange(card: detail.card)
     }
 
     private func when(_ card: PlanCardDTO) -> some View {
@@ -320,6 +308,11 @@ struct PlanChangeScreen: View {
         }
         body.businessLocationId = newLocationId
         if let card = plan?.card { room.apply(to: &body, card: card) }
+        if plan?.card.changesChipIn == true, let problem = chipIn.apply(to: &body) {
+            isSaving = false
+            error = problem
+            return
+        }
         if let newLink {
             // The server's check first, with its sentence.
             guard let parsed = PlanOnlineLink.parse(newLink) else {
@@ -374,5 +367,26 @@ private struct PlanChangeErrorLine: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("planChangeError")
+    }
+}
+
+// MARK: - Reading
+
+extension PlanChangeScreen {
+    /// Reads the plan once and starts each field from it.
+    func load() async {
+        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
+        guard plan == nil else { return }
+        guard let detail = try? await PlansStoreReads.detail(id: planId) else {
+            error = "We couldn't load this plan."
+            return
+        }
+        if let owner = detail.card.business { business = await PlanComposerHostAs.business(owner.userId) }
+        plan = detail
+        start = detail.card.startsAtDate ?? Date()
+        end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
+        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
+        room = PlanRoomChange(card: detail.card)
+        chipIn = PlanChipInEdit(card: detail.card)
     }
 }

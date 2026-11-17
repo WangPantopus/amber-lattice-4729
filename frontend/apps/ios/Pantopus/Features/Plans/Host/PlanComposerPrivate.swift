@@ -33,6 +33,8 @@ final class PlanPrivateDraft {
     var bring: PlanBringEditor?
     /// Plans for the holidays H3: the occasion the plan was started from (its name titles the form).
     var occasion: PlanOccasionDTO?
+    /// The extras: chip in being drafted; nil while "Chip in" is off.
+    var chipIn: PlanChipInDraft?
     /// The host's people (connections, people who came to their plans), for the preview's "Invite" list.
     private(set) var people: [PlanInviteCandidateDTO] = []
     private(set) var peoplePhase = PeoplePhase.idle
@@ -92,12 +94,13 @@ final class PlanPrivateDraft {
     }
 
     /// The private keys of `POST /api/plans`; `kids_welcome` only where the host has `plans_guest_answers`.
-    func apply(to body: inout CreatePlanBody, guestAnswers: Bool, bringList: Bool = false) {
+    func apply(to body: inout CreatePlanBody, guestAnswers: Bool, bringList: Bool = false, chipInOn: Bool = false) {
         body.audience = .invited
         body.guestsCanInvite = guestsCanInvite
         body.inviteUserIds = chosen.isEmpty ? nil : chosen
         if guestAnswers { body.kidsWelcome = kidsWelcome }
         if bringList, let bring, !bring.items.isEmpty { body.bring = bring.body }
+        if chipInOn { body.chipIn = chipIn?.body }
     }
 
     /// "Host again": who the plan was for, "Bring a friend" and "Kids welcome", as the plan had them.
@@ -131,9 +134,21 @@ extension PlanComposerModel {
         PlansFlags.shared.bringList && isPrivate && kind != .playdate && kind != .pickupGame
     }
 
+    /// The extras (08-extras section 3, board 26): "Chip in" on a private plan of a host with `plans_chip_in`,
+    /// never a playdate.
+    var offersChipIn: Bool {
+        PlansFlags.shared.chipIn && isPrivate && kind != .playdate
+    }
+
+    /// What keeps an extra that is switched on from posting: its fields aren't filled in yet.
+    var extrasProblem: String? {
+        if offersChipIn, let chipIn = privacy.chipIn, chipIn.body == nil { return PlanChipInDraft.incomplete }
+        return nil
+    }
+
     /// The "Add to this plan" card shows while it has a row to hold.
     var offersAddToPlan: Bool {
-        offersGuestAnswers || offersBringList
+        offersGuestAnswers || offersBringList || offersChipIn
     }
 
     /// The most the spots stepper goes to: 100 for a private plan with guest answers, otherwise 30.
