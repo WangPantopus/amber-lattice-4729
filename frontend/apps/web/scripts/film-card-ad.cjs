@@ -1061,6 +1061,31 @@ async function filmCut({ browser, server, shapeName, work, out, name, music }) {
       await sharp({ create: { width: cols * (tw + 4), height: Math.ceil(tiles.length / cols) * (th + 4), channels: 3, background: '#111' } })
         .composite(tiles.map((input, i) => ({ input, left: (i % cols) * (tw + 4), top: Math.floor(i / cols) * (th + 4) }))).jpeg({ quality: 85 }).toFile(sheet);
       console.log(`${sheet}  sounds ${take.sounds.map((x) => `${x.name}@${x.second.toFixed(2)}s`).join(' ')}`);
+    } else if (process.argv.includes('--overlays')) {
+      // Where a cut's words and end card sit, as shares of the frame (for the safe areas, and nothing cut off).
+      const cut = SHOTS.cuts[argument('cut', 'main')];
+      const shape = { ...SHAPES[shapeName] };
+      const [w, fullH] = [shape.width * shape.scale, shape.height * shape.scale];
+      const top = shape.crop?.top ?? 0;
+      const h = shape.crop?.height ?? fullH;
+      const context = await browser.newContext({ viewport: { width: shape.width, height: shape.height }, deviceScaleFactor: shape.scale });
+      const overlays = overlayCache(context, shape, server.url, cut.end || SHOTS.end);
+      const bounds = (image) => {
+        let [x0, y0, x1, y1] = [w, fullH, -1, -1];
+        for (let y = 0; y < fullH; y += 1) for (let x = 0; x < w; x += 1) {
+          if (image[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        const pc = (v, of) => `${((100 * v) / of).toFixed(1)}%`;
+        return x1 < 0 ? 'nothing drawn' : `x ${pc(x0, w)}–${pc(x1 + 1, w)}, y ${pc(y0 - top, h)}–${pc(y1 + 1 - top, h)}${y0 < top || y1 >= top + h || x0 <= 0 || x1 >= w - 1 ? '  CUT OFF' : ''}`;
+      };
+      for (const [a, b, lines] of cut.words) console.log(`words ${a}–${b}s  "${lines.join(' / ')}"  ${bounds(await overlays.words(lines))}`);
+      if (cut.end) {
+        const parts = await Promise.all(['mark', 'name', 'line', 'badges', 'address'].map((part) => overlays.end(part)));
+        const union = Buffer.alloc(parts[0].length);
+        for (const image of parts) for (let i = 3; i < image.length; i += 4) union[i] = Math.max(union[i], image[i]);
+        console.log(`end card  ${bounds(union)}`);
+      }
+      await context.close();
     } else if (process.argv.includes('--stills')) {
       const made = await stills({ browser, server: server.url, shapeName, work, out, art });
       console.log(`${made.length} stills in ${out}`);
