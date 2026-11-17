@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardTimes
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.rememberReduceMotion
 
@@ -65,6 +66,48 @@ internal fun VerseBookmark(
     onClose: () -> Unit,
 ) {
     val verse = card.verse ?: return
+    TableBookmark(pane = "The verse", tag = "cardTableVerse", closeTag = "cardTableVerseClose", bottom = bottom, onClose = onClose) {
+        Text(verse, style = bookmarkVerseStyle, modifier = Modifier.fillMaxWidth())
+        Text(card.caption, style = bookmarkReferenceStyle, modifier = Modifier.fillMaxWidth().padding(top = 14.dp))
+    }
+}
+
+/**
+ * "Read it in print" (plan Part 2): the same bookmark with the note in plain type, FROM {FIRST NAME} · {the day it was
+ * mailed} first, then the note in the card's serif at 19, growing with the phone's text size and keeping its line
+ * breaks; it scrolls inside the bookmark when long. Close, a tap outside or Back puts it away; a screen reader reads it
+ * as ordinary text.
+ */
+@Composable
+internal fun NoteBookmark(
+    card: CardOnTable,
+    bottom: Dp,
+    onClose: () -> Unit,
+) {
+    val heading = remember(card.fromFirst, card.mailedOn) { printHeading(card) }
+    TableBookmark(pane = "The note", tag = "cardTablePrint", closeTag = "cardTablePrintClose", bottom = bottom, onClose = onClose) {
+        Text(heading, style = bookmarkFromStyle, modifier = Modifier.fillMaxWidth().testTag("cardTablePrintFrom"))
+        Text(card.note, style = bookmarkNoteStyle, modifier = Modifier.fillMaxWidth().padding(top = 14.dp).testTag("cardTablePrintWords"))
+    }
+}
+
+/** "FROM IVY · NOVEMBER 17": the first name and the day it was mailed, on the phone's own calendar. */
+private fun printHeading(card: CardOnTable): String {
+    val day = HolidayCardTimes.monthDay(card.mailedOn, HolidayCardTimes.zone(null))
+    val from = "From ${card.fromFirst}"
+    return (if (day.isEmpty()) from else "$from · $day").uppercase()
+}
+
+/** The cream bookmark with the red ribbon, sliding up over the dimmed table; [content] above its Close. */
+@Composable
+private fun TableBookmark(
+    pane: String,
+    tag: String,
+    closeTag: String,
+    bottom: Dp,
+    onClose: () -> Unit,
+    content: @Composable () -> Unit,
+) {
     val reduceMotion = rememberReduceMotion()
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -99,8 +142,8 @@ internal fun VerseBookmark(
                     .background(PantopusColors.tableCream)
                     // Taps on the paper stay on it.
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .semantics { paneTitle = "The verse" }
-                    .testTag("cardTableVerse"),
+                    .semantics { paneTitle = pane }
+                    .testTag(tag),
         ) {
             Column(
                 modifier =
@@ -110,8 +153,7 @@ internal fun VerseBookmark(
                         .padding(start = 28.dp, end = 28.dp, top = 62.dp, bottom = bottom + 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(verse, style = bookmarkVerseStyle, modifier = Modifier.fillMaxWidth())
-                Text(card.caption, style = bookmarkReferenceStyle, modifier = Modifier.fillMaxWidth().padding(top = 14.dp))
+                content()
                 Box(
                     modifier =
                         Modifier
@@ -121,7 +163,7 @@ internal fun VerseBookmark(
                             .background(PantopusColors.tableNight)
                             .clickable(role = Role.Button, onClick = onClose)
                             .padding(horizontal = 24.dp, vertical = 10.dp)
-                            .testTag("cardTableVerseClose"),
+                            .testTag(closeTag),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("Close", style = bookmarkCloseStyle)
@@ -166,6 +208,27 @@ private val bookmarkReferenceStyle =
         lineHeight = 1.3.em,
         color = PantopusColors.cardTextQuiet,
         textAlign = TextAlign.Center,
+    )
+
+/** The bookmark's first line in small capitals: who it's from and the day it was mailed. */
+private val bookmarkFromStyle =
+    TextStyle(
+        fontFamily = FontFamily.Serif,
+        fontSize = 13.sp,
+        lineHeight = 1.4.em,
+        letterSpacing = 0.12.em,
+        color = PantopusColors.cardTextQuiet,
+        textAlign = TextAlign.Start,
+    )
+
+/** The note in print: the card's serif at 19, growing with the phone's text size. */
+private val bookmarkNoteStyle =
+    TextStyle(
+        fontFamily = FontFamily.Serif,
+        fontSize = 19.sp,
+        lineHeight = 1.5.em,
+        color = PantopusColors.tableNight,
+        textAlign = TextAlign.Start,
     )
 
 private val bookmarkCloseStyle =
