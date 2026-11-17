@@ -22,6 +22,7 @@ Pantopus, with tips.
 | [06-screens.md](06-screens.md) | Every screen of the people track, element by element, with its words, states and routes |
 | [07-screens-business.md](07-screens-business.md) | The business track's screens, element by element: deals, paying to join, the bill and tips |
 | [08-extras.md](08-extras.md) | The six extras, each with its design, contract and screens: find a date, chip in, gift exchange, photos afterwards, the same people again, one person paying for a group |
+| [09-handoff.md](09-handoff.md) | **Start here when picking the build up**: what is built, what is left, when it is done, and the briefs for the next sessions (November 16) |
 | [screens/](screens/) | The thirty-one boards as pictures (light) |
 
 ## Where the design lives outside the repository
@@ -58,8 +59,8 @@ Pantopus, with tips.
 | Calls these documents make | H1 to H11 and K1 to K10, accepted by the founder November 15, all as recommended ([01-design.md](01-design.md), section 7, and [03-build-contract.md](03-build-contract.md), section 2) |
 | Build | The founder said "yes, let's start" on November 15 for the people track, and on November 16 to keep every session working until everything discussed and designed is built and checked, without being asked before each piece. The build sessions run on Opus 5.5 at Extra High; one session designs and coordinates and writes no product code |
 | The people track | On `dev` on the server, the web, the iPhone and Android (November 15 and 16), and checked with the two phones together both ways round. Its server and web halves are on staging, with guests answering in a browser turned on there at the founder's word. Production has none of it |
-| The business track | On `dev` and staging on the server and the web (PRs 4209, 4212, 4214, 4215, 4216, 4221, 4222, 4223, November 16), every switch off, checked in the payment company's test mode on a session's own setup. Being built on the iPhone and Android |
-| The six extras | Being built on the server and the web since November 16, then on the phones ([08-extras.md](08-extras.md), section 8) |
+| The business track | On `dev` on the server and the web (every switch off, checked in the payment company's test mode on a session's own setup). On the phones: deals and paying for a spot are on `dev` on both; the bill, tips and the tip afterwards are open pull requests on Android and not started on the iPhone ([09-handoff.md](09-handoff.md), section 3) |
+| The six extras | On `dev` on the server and the web, each behind its own switch, off. Not started on either phone ([09-handoff.md](09-handoff.md), section 4) |
 | Made precise during the build | Several keys a guest, and the key only by email at a home (contract 6.1, 6.3). Which emails count against a guest's three, and that a cancellation always goes (contract 6.6). Both were the designer's calls after the server session asked, reported to the founder, not separately approved |
 
 ## Not checked
