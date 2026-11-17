@@ -1418,7 +1418,8 @@ public struct HubTabRoot: View {
         case let .postcardVerification(id, code):
             // A scanned card's code waits for the postcard screen, outside the navigation path.
             PostcardLinkCode.hand(code, homeId: id)
-            path.append(.postcardVerification(homeId: id))
+            // The screen already showing takes the code itself; a second copy of it would lose the code.
+            if path.last != .postcardVerification(homeId: id) { path.append(.postcardVerification(homeId: id)) }
             _ = router.consume()
         case .notifications:
             path.append(.notifications)

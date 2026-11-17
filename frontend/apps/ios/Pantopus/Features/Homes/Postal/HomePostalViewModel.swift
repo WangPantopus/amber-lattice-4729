@@ -78,7 +78,6 @@ final class HomePostalViewModel {
             session: HomeClaimSessionScope(api: api),
             store: PendingHomePostalStore()
         )
-        model.linkCode = PostcardLinkCode.take(homeId: homeId)
         model.fastOptions = HomeVerifyOptionsStore.shared.cached(homeId: homeId)
         return model
     }
@@ -152,8 +151,18 @@ final class HomePostalViewModel {
         coordinator.hide()
     }
 
+    /// A scanned card's code handed over by its link: kept for this screen, and filled in when the card can be
+    /// verified now (otherwise after "Done" on a request panel, by `loadCurrent`).
+    func takeLinkCode() {
+        guard let code = PostcardLinkCode.take(homeId: homeId) else { return }
+        linkCode = code
+        report = .idle
+        if status?.canVerify == true, pending == nil { codeInput = code }
+    }
+
     func open() async {
         guard !isWorking else { return }
+        takeLinkCode()
         visible = true
         guard isCurrent else { error = HomePostalError.sessionChanged.localizedDescription
             return
