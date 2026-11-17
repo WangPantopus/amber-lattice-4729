@@ -105,10 +105,6 @@ fun PlanDetailScreen(
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
-    val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${viewModel.planId}")
-    val spot by spotVm.ui.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { spotVm.readOffer() }
     val toast = remember { ToastController() }
     val scope = rememberCoroutineScope()
     val openVerification: () -> Unit = { scope.launch { onOpenVerification(viewModel.verificationTarget()) } }
@@ -220,6 +216,10 @@ private fun PlanReady(
     }
     val context = LocalContext.current
     val reduceMotion = rememberReduceMotion()
+    // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
+    val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${plan.id}")
+    val spot by spotVm.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(plan.id) { spotVm.readOffer() }
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
             if (results.values.any { it }) viewModel.useMyLocation()
