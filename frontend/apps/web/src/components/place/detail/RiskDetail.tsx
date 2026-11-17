@@ -49,6 +49,8 @@ import { findPlaceSection, detailAddress } from './sections';
 import { statusToState } from './format';
 import { useLocalDraft } from './useLocalDraft';
 import FridgeCardLeaf from './FridgeCardLeaf';
+import MailProofCard from '../fastVerify/MailProofCard';
+import { useVerifyOptions } from '../fastVerify/useVerifyOptions';
 
 const FLOOD_CHIP: Record<FloodRiskLevel, { label: string; variant: ChipVariant; icon: LucideIcon }> = {
   minimal: { label: 'Minimal risk', variant: 'success', icon: ShieldCheck },
@@ -434,6 +436,8 @@ export default function RiskDetail({ intelligence, homeId }: { intelligence: Pla
   const verified = intelligence.tier === 'T4';
   // Guests and service providers can't verify this address (server `verify_available`).
   const canVerify = intelligence.verify_available !== false;
+  // FASTVERIFY: verified by a fast check, the Fridge card needs a mailed code (null with the flags off).
+  const fastOnly = useVerifyOptions(homeId, { enabled: verified }).data?.level === 'fast';
   const heatCold = findPlaceSection(intelligence, 'heat_cold');
   const flood = findPlaceSection(intelligence, 'flood');
   const floodReady = isReady(flood);
@@ -443,7 +447,7 @@ export default function RiskDetail({ intelligence, homeId }: { intelligence: Pla
   const water = findPlaceSection(intelligence, 'drinking_water');
   const hazards = findPlaceSection(intelligence, 'environmental_hazards');
 
-  if (fridgeCardOpen && verified && homeId) {
+  if (fridgeCardOpen && verified && !fastOnly && homeId) {
     return (
       <FridgeCardLeaf
         homeId={homeId}
@@ -517,7 +521,9 @@ export default function RiskDetail({ intelligence, homeId }: { intelligence: Pla
         <SourceNote name="Recommended items from Ready.gov & American Red Cross" />
 
         <DetailSectionLabel>Fridge card</DetailSectionLabel>
-        {verified && homeId ? (
+        {verified && homeId && fastOnly ? (
+          <MailProofCard title="The 911-ready household card" homeId={homeId} />
+        ) : verified && homeId ? (
           <button
             type="button"
             onClick={() => setFridgeCardOpen(true)}
