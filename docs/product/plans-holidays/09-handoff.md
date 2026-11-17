@@ -125,9 +125,12 @@ word), `plans_bring_list`, `plans_occasions`, `plans_deals`, `plans_paid`,
 The apps tell the server what they can draw with the markers `guests=1`,
 `more=1`, `biz=1` and `extras=1`.
 
-**Staging**: the last release that really deployed is `dev` 742e533365 at
-3:27 PM Pacific on November 16. It has everything on the server up to group
-pay as first built. It does not have 4259 and 4261. A staging release follows
+**Staging** (corrected by the third coordinator at 7:50 PM Pacific on
+November 16, from each run's "Release backend" job): two releases deployed
+after `dev` 742e533365, at 4:08 PM (`dev` 9b8bbbeefc, which has 4259 and 4261)
+and at 7:22 PM (`dev` 2d7e0857d9). So staging's server has the whole business
+track and all six extras as they are on `dev`, every new switch off. A staging
+release follows
 each `dev` CI run that passes; with merges every few minutes most runs are
 replaced before they finish, so read the "Release backend" job of a "Deploy
 Backend to staging" run, never the run's conclusion (a skipped release still
@@ -174,8 +177,8 @@ In the order it should be done. Each item is its own small pull request into
 **Server and web**
 
 9. Nothing is known to be open. A server session is needed when a phone
-   session finds a gap, and to see that a staging release carries 4259 and
-   4261.
+   session finds a gap. Staging carries 4259 and 4261 since 4:08 PM Pacific on
+   November 16 (section 3).
 
 **Documents**
 
@@ -259,6 +262,13 @@ Left running for the next sessions, at the time of writing:
 - The Android rig's stack `pantopus-plansbiz` (API 32401); its backend and
   emulator are stopped. Its notes: `HOLAND-4-brief.md`,
   `HOLAND-android-notes.md`.
+
+**Since this hand-off** (November 16, 7:50 PM Pacific): a third coordinator
+started three build sessions from section 8's briefs, each in its own
+worktree on Opus 5.5 at Extra High: HOLIOS-4 (the iPhone's bill, tips and tip
+afterwards), HOLIOS-E (the iPhone's six extras) and HOLAND-4 (Android: the
+smoke check of the merged business track, the small fix, the refund rerun,
+the six extras). What they merge is recorded in `NEXT_STEPS.md`.
 
 The earlier sessions cannot be reached from another account. Their worktrees
 were checked at this hand-off: none holds an uncommitted change, and every
