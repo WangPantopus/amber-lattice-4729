@@ -26,9 +26,9 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.routing.DeepLinkRouter
@@ -211,8 +211,9 @@ class GuidanceViewModel
             // Before the first profile read the account may still be new: read anyway (the Home's from the kept copies).
             val state = repository.state.value ?: return
             if (state.loaded && (!state.enabled || !state.newAccount)) return
-            val homeId = facts.homeId
-            if (facts.screen == GuidanceScreen.Place && homeId != null && (visit || homeRecord?.homeId != homeId)) readHome(homeId)
+            val homeId = facts.homeId?.takeIf { facts.screen == GuidanceScreen.Place }
+            val staleHome = visit || homeRecord?.homeId != homeId
+            if (homeId != null && staleHome) readHome(homeId)
             if (facts.screen == GuidanceScreen.Messages && visit && !state.hasSeen(GuidanceIds.DONE_CONNECTED)) readConnected()
         }
 

@@ -186,11 +186,7 @@ fun PlaceDashboardScreen(
 
     var showSwitcher by remember { mutableStateOf(false) }
     var showVerify by remember { mutableStateOf(false) }
-    // Guidance card 26's “Verify address”: the same sheet as the card's own button.
-    val guidance = LocalGuidance.current
-    LaunchedEffect(guidance?.action, state) {
-        if (state is PlaceDashboardUiState.Loaded && guidance?.takeAction(GuidanceAction.Verify) == true) showVerify = true
-    }
+    GuidanceVerifyAction(ready = state is PlaceDashboardUiState.Loaded) { showVerify = true }
     val verifyAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.label.orEmpty()
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
@@ -1019,4 +1015,16 @@ internal fun PlaceDeniedState(modifier: Modifier = Modifier) {
         subcopy = "You don't have permission to view this place.",
         modifier = modifier,
     )
+}
+
+/** Guidance card 26's “Verify address” opens the same sheet as Your Place's own button, once the dashboard shows. */
+@Composable
+private fun GuidanceVerifyAction(
+    ready: Boolean,
+    onVerify: () -> Unit,
+) {
+    val guidance = LocalGuidance.current
+    LaunchedEffect(guidance?.action, ready) {
+        if (ready && guidance?.takeAction(GuidanceAction.Verify) == true) onVerify()
+    }
 }

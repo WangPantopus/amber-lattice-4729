@@ -8115,43 +8115,7 @@ private fun PlaceTabRoot(
         host.refreshUnread()
     }
     val openNotifications = { navController.navigate(ChildRoutes.NOTIFICATIONS) }
-    // Guidance cards: Place's root, with what it shows (cards 1, 2, 8, 11 and 12). Not ready while it loads, fails or
-    // the arrival step covers it.
-    val guidanceShows =
-        when (root) {
-            HomeLanding.FirstRun -> GuidancePlaceShows.FirstRun
-            is HomeLanding.SavedPlace -> GuidancePlaceShows.SavedPlace
-            is HomeLanding.Home -> GuidancePlaceShows.Home
-            is HomeLanding.Claim -> GuidancePlaceShows.Claim
-            HomeLanding.Homes -> GuidancePlaceShows.Homes
-            else -> null
-        }
-    GuidanceSpot(
-        GuidanceSpotFacts(
-            GuidanceScreen.Place,
-            ready = guidanceShows != null && !arrivalOpen,
-            place = guidanceShows,
-            homeId = (root as? HomeLanding.Home)?.homeId,
-            savedAt = (root as? HomeLanding.SavedPlace)?.place?.createdAt,
-        ),
-    )
-    val guidance = LocalGuidance.current
-    LaunchedEffect(guidanceShows) { if (guidanceShows == GuidancePlaceShows.SavedPlace) guidance?.note(GuidanceFlags.SAVED_ADDRESS) }
-    // A reminder's button (guidance cards 24, 25 and 27): its next step on what Place shows. 26 is Your Place's own.
-    val addressFocus = remember { FocusRequester() }
-    LaunchedEffect(guidance?.action, root) {
-        val host = guidance ?: return@LaunchedEffect
-        when (val current = root) {
-            HomeLanding.FirstRun -> if (host.takeAction(GuidanceAction.AddAddress)) runCatching { addressFocus.requestFocus() }
-            is HomeLanding.SavedPlace ->
-                if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(current.place.label))
-            is HomeLanding.Home ->
-                if (host.takeAction(GuidanceAction.Invite)) {
-                    navController.navigate(ChildRoutes.homeMembers(current.homeId, MembersTab.INVITE))
-                }
-            else -> Unit
-        }
-    }
+    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController)
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,
@@ -8254,6 +8218,52 @@ private fun PlaceTabRoot(
                 }
         }
     }
+}
+
+/**
+ * Guidance cards on Place's root: what it shows (cards 1, 2, 8, 11, 12 and 16–27), not ready while it loads, fails or
+ * the arrival step covers it; and a reminder's button (24, 25 and 27), its next step on what Place shows (26 is Your
+ * Place's own). Returns the address box's focus, for 24.
+ */
+@Composable
+private fun rememberPlaceGuidance(
+    root: HomeLanding,
+    arrivalOpen: Boolean,
+    navController: NavHostController,
+): FocusRequester {
+    val shows =
+        when (root) {
+            HomeLanding.FirstRun -> GuidancePlaceShows.FirstRun
+            is HomeLanding.SavedPlace -> GuidancePlaceShows.SavedPlace
+            is HomeLanding.Home -> GuidancePlaceShows.Home
+            is HomeLanding.Claim -> GuidancePlaceShows.Claim
+            HomeLanding.Homes -> GuidancePlaceShows.Homes
+            else -> null
+        }
+    GuidanceSpot(
+        GuidanceSpotFacts(
+            GuidanceScreen.Place,
+            ready = shows != null && !arrivalOpen,
+            place = shows,
+            homeId = (root as? HomeLanding.Home)?.homeId,
+            savedAt = (root as? HomeLanding.SavedPlace)?.place?.createdAt,
+        ),
+    )
+    val guidance = LocalGuidance.current
+    LaunchedEffect(shows) { if (shows == GuidancePlaceShows.SavedPlace) guidance?.note(GuidanceFlags.SAVED_ADDRESS) }
+    val addressFocus = remember { FocusRequester() }
+    LaunchedEffect(guidance?.action, root) {
+        val host = guidance ?: return@LaunchedEffect
+        when (root) {
+            HomeLanding.FirstRun -> if (host.takeAction(GuidanceAction.AddAddress)) runCatching { addressFocus.requestFocus() }
+            is HomeLanding.SavedPlace ->
+                if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(root.place.label))
+            is HomeLanding.Home ->
+                if (host.takeAction(GuidanceAction.Invite)) navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+            else -> Unit
+        }
+    }
+    return addressFocus
 }
 
 /** Your Place for one Home, with the same doors whether it is the Place tab's root or pushed on top by a link. */

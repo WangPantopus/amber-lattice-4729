@@ -215,15 +215,7 @@ object GuidanceEngine {
         val spot = input.spot
         val fresh = { id: String -> !state.hasSeen(id) }
         return when (spot.screen) {
-            GuidanceScreen.Place -> {
-                val home = input.home?.takeIf { spot.place == GuidancePlaceShows.Home && it.homeId == spot.homeId } ?: return null
-                when {
-                    !home.invited && fresh(GuidanceIds.DONE_HOME_SETUP) -> GuidanceCatalog.doneHomeSetup()
-                    home.verified && fresh(GuidanceIds.DONE_VERIFIED) -> GuidanceCatalog.doneVerified(input.mailbox)
-                    (home.members ?: 0) >= 2 && fresh(GuidanceIds.DONE_HOUSEHOLD) -> GuidanceCatalog.doneHousehold()
-                    else -> null
-                }
-            }
+            GuidanceScreen.Place -> placeAfterAction(input)
             GuidanceScreen.Pulse -> GuidanceCatalog.doneFirstPost().takeIf { GuidanceFlags.POSTED in state.flags }
             GuidanceScreen.Moments -> GuidanceCatalog.doneFirstMoment().takeIf { GuidanceFlags.MOMENT_POSTED in state.flags }
             GuidanceScreen.Plans -> GuidanceCatalog.doneFirstPlan().takeIf { GuidanceFlags.PLAN_POSTED in state.flags }
@@ -233,28 +225,45 @@ object GuidanceEngine {
         }?.takeIf { fresh(it.id) }
     }
 
+    /** 16, 17 and 23 on Place's Home, the first one still unseen. */
+    private fun placeAfterAction(input: GuidanceInput): GuidanceCentre? {
+        val spot = input.spot
+        val home = input.home?.takeIf { spot.place == GuidancePlaceShows.Home && it.homeId == spot.homeId } ?: return null
+        val fresh = { id: String -> !input.state.hasSeen(id) }
+        return when {
+            !home.invited && fresh(GuidanceIds.DONE_HOME_SETUP) -> GuidanceCatalog.doneHomeSetup()
+            home.verified && fresh(GuidanceIds.DONE_VERIFIED) -> GuidanceCatalog.doneVerified(input.mailbox)
+            (home.members ?: 0) >= 2 && fresh(GuidanceIds.DONE_HOUSEHOLD) -> GuidanceCatalog.doneHousehold()
+            else -> null
+        }
+    }
+
     /** 24–27 on Place: at most one a week, never on a day another centre card showed, each at most twice. */
     private fun reminder(input: GuidanceInput): GuidanceCentre? {
         val spot = input.spot
         if (spot.screen != GuidanceScreen.Place || !reminderDayOpen(input)) return null
         val state = input.state
-        val left = { id: String -> (state.seen[id]?.times ?: 0) < REMINDER_TIMES }
+        return when (spot.place) {
+            GuidancePlaceShows.FirstRun ->
+                GuidanceCatalog.nextAddAddress().takeIf { olderThan(state.createdAt, ADD_ADDRESS_AFTER_DAYS, input.now) }
+            GuidancePlaceShows.SavedPlace ->
+                GuidanceCatalog.nextSetupHome().takeIf { olderThan(spot.savedAt, SET_UP_HOME_AFTER_DAYS, input.now) }
+            GuidancePlaceShows.Home -> homeReminder(input)
+            else -> null
+        }?.takeIf { (state.seen[it.id]?.times ?: 0) < REMINDER_TIMES }
+    }
+
+    /** 26 and 27: the person set this Home up a week ago or more (not invited), each while it is still true. */
+    private fun homeReminder(input: GuidanceInput): GuidanceCentre? {
         val home =
-            input.home?.takeIf {
-                spot.place == GuidancePlaceShows.Home &&
-                    it.homeId == spot.homeId &&
-                    !it.invited &&
-                    olderThan(it.setUpAt, HOME_REMINDERS_AFTER_DAYS, input.now)
-            }
+            input.home
+                ?.takeIf { it.homeId == input.spot.homeId && !it.invited }
+                ?.takeIf { olderThan(it.setUpAt, HOME_REMINDERS_AFTER_DAYS, input.now) }
+                ?: return null
+        val left = { id: String -> (input.state.seen[id]?.times ?: 0) < REMINDER_TIMES }
         return when {
-            spot.place == GuidancePlaceShows.FirstRun &&
-                olderThan(state.createdAt, ADD_ADDRESS_AFTER_DAYS, input.now) &&
-                left(GuidanceIds.NEXT_ADD_ADDRESS) -> GuidanceCatalog.nextAddAddress()
-            spot.place == GuidancePlaceShows.SavedPlace &&
-                olderThan(spot.savedAt, SET_UP_HOME_AFTER_DAYS, input.now) &&
-                left(GuidanceIds.NEXT_SETUP_HOME) -> GuidanceCatalog.nextSetupHome()
-            home != null && !home.verified && home.canVerify && left(GuidanceIds.NEXT_VERIFY) -> GuidanceCatalog.nextVerify()
-            home != null && home.members == 1 && left(GuidanceIds.NEXT_INVITE) -> GuidanceCatalog.nextInvite()
+            !home.verified && home.canVerify && left(GuidanceIds.NEXT_VERIFY) -> GuidanceCatalog.nextVerify()
+            home.members == 1 && left(GuidanceIds.NEXT_INVITE) -> GuidanceCatalog.nextInvite()
             else -> null
         }
     }
