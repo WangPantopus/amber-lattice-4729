@@ -207,11 +207,16 @@ dinner" in an email, "for coffee"). The words as shipped:
   to answer get the invitation with the time, and a new invitation, text
   message or page names the date. With the switch off, or in an app without
   `extras=1`, nothing changes.
-- **A cancellation while picking** names no date either (settled November 17;
-  the server change is owed: as built it names the earliest time offered).
+- **A cancellation while picking** names no date either (settled November 17).
   The notice and the guest's email say "{Host} cancelled {title}." with
   nothing where the date would stand; everything else about a cancellation is
-  as today (contract 6.6).
+  as today (contract 6.6). As built: the notice's title stays "Sam cancelled
+  the dinner" and its line reads "Sam cancelled {title}." in place of
+  "{Monday 6:00 PM} is off." (a note from the host is the line, as today); the
+  guest's email ("Sam cancelled {title}") lists the title with no date under
+  it. Who is told is as today: the people invited on Pantopus who have not
+  answered, ticked times included, and a guest only once in (never before the
+  pick).
 
 ## 3. Chip in
 
