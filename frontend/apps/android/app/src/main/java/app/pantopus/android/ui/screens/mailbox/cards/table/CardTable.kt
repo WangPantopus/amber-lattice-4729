@@ -425,7 +425,7 @@ private fun rememberTableGeometry(
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            val nextHeight = if (nextCard && !sending && !card.sealed) nextCardRoom(measurer) else 0f
+            val nextHeight = nextCardRoom(measurer, shows = nextCard, sending = sending, sealed = card.sealed)
             val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + nextHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
@@ -448,8 +448,14 @@ private fun rememberTableGeometry(
     }
 }
 
-/** "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4). */
-private fun Density.nextCardRoom(measurer: TextMeasurer): Float {
+/** "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4); none while sealing. */
+private fun Density.nextCardRoom(
+    measurer: TextMeasurer,
+    shows: Boolean,
+    sending: Boolean,
+    sealed: Boolean,
+): Float {
+    if (!shows || sending || sealed) return 0f
     val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle).size.height
     val line = measurer.measure("9 more waiting", tableHintStyle).size.height
     return max(48.dp.toPx(), words + line + 12.dp.toPx()) + 2.dp.toPx()
