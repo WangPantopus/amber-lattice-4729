@@ -5,6 +5,7 @@ Implementation proposal approved November 7, 2026. This change is **off by defau
 ## Product contract
 
 - Three free sends per personal account, granted once. Existing/scheduled cards are not charged retroactively.
+- One more free send for the sender each time a card they sent by email or link brings in someone new (account made after the card was sealed, card opened), once per new person: ledger row `join:<new person>` in the free bucket (`mailStamps.rewardJoin`, November 16). Only while `MAIL_STAMPS_ENABLED` is on for the sender and cards can still be sent.
 - One digital stamp sends one new Christmas card to one recipient, including cards by email or share link. A reply uses the existing free reply/messaging flow. Receiving and ordinary letters stay free.
 - Books: 5 stamps / US$2.99; 20 / US$7.99; 50 / US$14.99. These are one-time consumable purchases, not subscriptions. Native clients display the store's localized price; configure the US prices above in each store.
 - Purchased stamps never expire, are shared across the account's devices and web, and are not cash or transferable. This is digital delivery, not postal postage.
