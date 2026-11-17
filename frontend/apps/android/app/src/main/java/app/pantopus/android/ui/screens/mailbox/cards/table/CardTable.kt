@@ -100,10 +100,18 @@ internal fun CardTableDialog(
     onLetterOut: (() -> Unit)? = null,
     /** "Open the next card" once this one has been turned over (plan Part 4); null with no list in hand. */
     next: CardTableNext? = null,
+    /**
+     * The reply's quiet button, first under the main one once the card has been turned over (plan Part 3): "Write back
+     * to Hazel", or "You wrote back · {day}"; "Share this card" then keeps its round button and a line in ⋯.
+     */
+    reply: CardTableSendBack? = null,
+    /** Laid over the table in its own window: the reply's sheet, or the joined card. */
+    overlay: (@Composable () -> Unit)? = null,
 ) {
     FullScreenWindow(onDismissRequest = onClose) {
-        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut, next)
+        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut, next = next, reply = reply)
         CardTable(card, firstOpen, onClose, onOpened, menu, message, mine, canShare, sendBack, sender)
+        overlay?.invoke()
     }
 }
 
@@ -116,7 +124,20 @@ private class TableSending(
     val onLetterOut: (() -> Unit)? = null,
     /** "Open the next card" for a card being read (plan Part 4). */
     val next: CardTableNext? = null,
-)
+    /** The reply's quiet button (plan Part 3). */
+    val reply: CardTableSendBack? = null,
+) {
+    /** The quiet line's second button: the reply's, in place of "Share this card". */
+    val quietTitle: String get() = reply?.title ?: SHARE_THIS_CARD
+}
+
+/** With the reply's button in the quiet line, "Share this card" moves into ⋯ (its round button stays). */
+private fun menuWithShare(
+    menu: List<CardTableMenuItem>,
+    replies: Boolean,
+    canShare: Boolean,
+    onShare: () -> Unit,
+): List<CardTableMenuItem> = if (replies && canShare) menu + CardTableMenuItem(SHARE_THIS_CARD, "cardTableMenuShare", onShare) else menu
 
 @Composable
 private fun CardTable(
@@ -200,6 +221,7 @@ private fun CardTable(
                 quietButton = hasQuietLine(sendBack, canShare),
                 sending = calls != null,
                 nextCard = sending.next != null,
+                quietTitle = sending.quietTitle,
             )
         SideEffect { state.geometry = geometry }
         // A new window size (the phone turned, a fold opened) brings an enlarged card back to its size.
@@ -237,7 +259,7 @@ private fun CardTable(
             with(density) {
                 PaddingValues(top = safeTop.toDp(), bottom = safeBottom.toDp())
             }
-        val allItems = rememberMenu(menu, state)
+        val allItems = rememberMenu(menuWithShare(menu, replies = sending.reply != null, canShare = canShare) { sharing = true }, state)
         // Once the sent card is gone: Take it back, and Share this card.
         val gone = remember(sending.goneActions) { sending.goneActions + CardTableSendBack("Share this card") { sharing = true } }
         CardTableControls(
@@ -252,6 +274,7 @@ private fun CardTable(
             sendBack = sendBack,
             gone = gone,
             next = sending.next.takeIf { calls == null },
+            reply = sending.reply.takeIf { calls == null },
         )
         OpenedPhoto(openedPhoto)
     }
@@ -361,6 +384,8 @@ private fun rememberTableGeometry(
     sending: Boolean = false,
     /** "Open the next card" with its line under it (plan Part 4). */
     nextCard: Boolean = false,
+    /** The quiet line's second button beside "Send … a card": "Share this card", or the reply's (plan Part 3). */
+    quietTitle: String = SHARE_THIS_CARD,
 ): TableGeometry {
     val measurer = rememberTextMeasurer()
     val width = constraints.maxWidth
@@ -384,6 +409,7 @@ private fun rememberTableGeometry(
         readsInPrint,
         media,
         nextCard,
+        quietTitle,
     ) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
@@ -415,7 +441,7 @@ private fun rememberTableGeometry(
             val quietHeight =
                 if (quietButton && !card.sealed) {
                     val send = measurer.measure("Send ${card.fromFirst} a card", tableQuietStyle).size
-                    val share = measurer.measure(SHARE_THIS_CARD, tableQuietStyle).size
+                    val share = measurer.measure(quietTitle, tableQuietStyle).size
                     // Side by side when both fit the line (plan 11.1), else one under the other at large text.
                     val lines = if (send.width + share.width + 64.dp.roundToPx() > textWidth) 2 else 1
                     (max(48.dp.toPx(), send.height + 12.dp.toPx()) + 2.dp.toPx()) * lines

@@ -1,7 +1,11 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
+import app.pantopus.android.data.api.models.mailbox.CardExchange
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
+import app.pantopus.android.data.api.models.mailbox.CardReplyBody
+import app.pantopus.android.data.api.models.mailbox.CardReplyResponse
+import app.pantopus.android.data.api.models.mailbox.CardReplyTakenBack
 import app.pantopus.android.data.api.models.mailbox.CardSignatureBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
@@ -183,6 +187,31 @@ interface HolidayCardsApi {
     suspend fun takeBack(
         @Path("id") id: String,
     ): TakeBackHolidayCardResponse
+
+    /**
+     * `GET /api/mailbox/cards/:id/exchange` — route `backend/routes/mailbox.js` (plan Part 3): the joined card, `:id` the
+     * card or its reply; needs only `mailbox`. 404 for anyone but the two people.
+     */
+    @GET("api/mailbox/cards/{id}/exchange")
+    suspend fun exchange(
+        @Path("id") id: String,
+    ): CardExchange
+
+    /**
+     * `POST /api/mailbox/cards/:id/reply` — the same route file (plan Part 3; `mailbox` + `holiday_card_memories` +
+     * `card_replies`): one reply per card, from the person it went to; 201, or 200 for the same request again.
+     */
+    @POST("api/mailbox/cards/{id}/reply")
+    suspend fun reply(
+        @Path("id") id: String,
+        @Body body: CardReplyBody,
+    ): CardReplyResponse
+
+    /** `POST /api/mailbox/cards/:id/reply/take-back` — the writer's waiting reply, until the 7 a.m. pickup. */
+    @POST("api/mailbox/cards/{id}/reply/take-back")
+    suspend fun takeBackReply(
+        @Path("id") id: String,
+    ): CardReplyTakenBack
 
     /**
      * `POST /api/mailbox/cards/:id/email-again` — the same route file (after take-back): one more try at a card by

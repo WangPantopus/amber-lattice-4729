@@ -143,6 +143,8 @@ internal fun CardTableControls(
     gone: List<CardTableSendBack> = emptyList(),
     /** "Open the next card" once the card has been turned over, with the Mailbox list's waiting cards in hand. */
     next: CardTableNext? = null,
+    /** The reply's quiet button, first in the line, with "Share this card" then in ⋯ (plan Part 3). */
+    reply: CardTableSendBack? = null,
 ) {
     val top = insets.calculateTopPadding()
     val bottom = insets.calculateBottomPadding()
@@ -154,7 +156,8 @@ internal fun CardTableControls(
     val quiet =
         when {
             moment != null -> if (moment.step == SendStep.Gone) gone else emptyList()
-            state.sendBackShows -> listOfNotNull(sendBack, CardTableSendBack(SHARE_THIS_CARD, onShare).takeIf { canShare })
+            state.sendBackShows ->
+                listOfNotNull(reply, sendBack, CardTableSendBack(SHARE_THIS_CARD, onShare).takeIf { canShare && reply == null })
             else -> emptyList()
         }
     Box(modifier = Modifier.fillMaxSize()) {
@@ -299,7 +302,13 @@ private fun ActionBlock(
                 // The reader's quiet buttons side by side in the one quiet line (plan 11.1), wrapping at large text.
                 FlowRow(horizontalArrangement = Arrangement.Center) {
                     quiet.forEach { action ->
-                        QuietButton(action, away, if (action.title == SHARE_THIS_CARD) "cardTableShareQuiet" else "cardTableSendBack")
+                        val tag =
+                            when {
+                                action.title == SHARE_THIS_CARD -> "cardTableShareQuiet"
+                                action.title.startsWith("Send ") -> "cardTableSendBack"
+                                else -> "cardTableWriteBack"
+                            }
+                        QuietButton(action, away, tag)
                     }
                 }
             } else {

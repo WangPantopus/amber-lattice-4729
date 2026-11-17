@@ -587,6 +587,8 @@ data class SentCard(
     @Json(name = "email_send_at") val emailSendAt: String? = null,
     /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
     @Json(name = "email_to") val emailTo: String? = null,
+    /** A reply this person wrote back to a card (plan Part 3): the card it answers; a letter otherwise. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
 )
 
 /** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */

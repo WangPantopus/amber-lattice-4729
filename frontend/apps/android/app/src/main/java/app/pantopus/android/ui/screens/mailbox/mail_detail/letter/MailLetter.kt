@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.mailbox.mail_detail.letter
 
+import app.pantopus.android.data.api.models.mailbox.CardReplyFace
 import app.pantopus.android.data.api.models.mailbox.CardSignature
 import app.pantopus.android.data.api.models.mailbox.MailDetail
 import app.pantopus.android.data.api.models.mailbox.v2.DrawerMail
@@ -117,6 +118,8 @@ data class MailLetter(
     val trail: List<MailTrailStep>,
     /** A Christmas card: its page shows the card instead of a letter; null for everything else. */
     val card: MailLetterCard? = null,
+    /** A reply to a Christmas card (plan Part 3): its page is the joined card; null for everything else. */
+    val reply: CardReplyFace? = null,
 ) {
     companion object {
         private val dayFormat = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US)
@@ -167,6 +170,7 @@ data class MailLetter(
                 checked = checkedSentence(envelope.sender),
                 trail = trail(detail, posted, delivered, book, zone),
                 card = card(detail, zone, now, cardFirstOpen),
+                reply = detail.cardReply,
             )
         }
 

@@ -90,8 +90,9 @@ fun mantelCards(
     return pieces
         .mapNotNull { piece ->
             val card = piece.card ?: return@mapNotNull null
-            // Opened and open, and one that came to this person, not one they sent.
-            if (!piece.opened || card.sealed || card.sentTo != null) return@mapNotNull null
+            // Opened and open, and one that came to this person: not one they sent, and not a reply (plan Part 3).
+            if (!piece.opened || card.sealed) return@mapNotNull null
+            if (card.sentTo != null || card.replyFrom != null) return@mapNotNull null
             if ((card.year ?: season) != season) return@mapNotNull null
             MantelCard(
                 id = piece.id,
