@@ -159,8 +159,10 @@ final class CardTableModel {
     /// Enlarged on the table (plan 6.1, `CardTableZoom.swift`): 1 to 3 times, moved this far from its place.
     var zoom: CGFloat = 1
     var zoomOffset: CGSize = .zero
-    /// "Read the verse" (plan 6.2): the bookmark is up.
-    var showsVerse = false
+    /// The cream bookmark that's up: the verse (plan 6.2) or the note in print (plan Part 2).
+    var bookmark: CardTableBookmark?
+    /// Larger text than the default is set on the phone: "Read it in print" is a full button (plan Part 2).
+    var largerText = false
     @ObservationIgnored var pinchStartZoom: CGFloat?
     /// One tap on the card waits 0.3 s for a second (a double-tap enlarges it) before it turns the card.
     @ObservationIgnored var pendingCardTap: Task<Void, Never>?

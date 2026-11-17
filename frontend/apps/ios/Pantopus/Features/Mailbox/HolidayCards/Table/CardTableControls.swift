@@ -51,16 +51,31 @@ struct CardTableControls: View {
                 menu
             }
             toast
-            if model.showsVerse, let verse = model.content.verse {
-                CardTableVerseBookmark(verse: verse, reference: model.content.caption, bottomInset: safeArea.bottom) {
-                    model.showsVerse = false
+            if let words = bookmarkWords {
+                CardTableVerseBookmark(words: words, bottomInset: safeArea.bottom) {
+                    model.bookmark = nil
                 }
                 .transition(.opacity)
                 .zIndex(40)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: model.showsVerse)
+        .animation(.easeInOut(duration: 0.3), value: model.bookmark)
         .environment(\.colorScheme, .dark)
+        .onChange(of: dynamicTypeSize, initial: true) { _, size in
+            model.largerText = size > .large
+        }
+    }
+
+    /// What the bookmark that's up holds.
+    private var bookmarkWords: CardTableVerseBookmark.Words? {
+        switch model.bookmark {
+        case .verse:
+            model.content.verse.map { .verse($0, reference: model.content.caption) }
+        case .print:
+            .print(note: model.content.note, from: model.content.firstName, mailedOn: model.content.mailedOn)
+        case nil:
+            nil
+        }
     }
 
     // MARK: Top
@@ -190,7 +205,12 @@ struct CardTableControls: View {
             hintSize: hintSize,
             secondaries: model.secondaries,
             reservesSecondary: model.reservesSecondary,
-            hintAction: model.readsVerse ? { model.showsVerse = true } : nil,
+            beside: model.printIsButton
+                ? CardTableMenuItem(title: CardTableBookmark.print.title, identifier: CardTableBookmark.print.identifier) {
+                    model.bookmark = .print
+                }
+                : nil,
+            hintLink: model.hintLink.map { link in (link.identifier, { model.bookmark = link }) },
             // Over an enlarged card the hint needs its glass to read.
             hintOnGlass: model.isZoomed
         ) { model.primary() }
@@ -214,33 +234,28 @@ struct CardTableAct: View {
     var secondaries: [CardTableMenuItem] = []
     /// Keep its room while it's hidden, so the card doesn't move when it comes.
     var reservesSecondary = false
-    /// The hint is a link ("Read the verse", plan 6.2).
-    var hintAction: (() -> Void)?
+    /// A second full button beside the main one ("Read it in print" with larger text, plan Part 2).
+    var beside: CardTableMenuItem?
+    /// The hint is a link ("Read the verse", plan 6.2; "Read it in print", plan Part 2): its identifier and action.
+    var hintLink: (identifier: String, action: () -> Void)?
     var hintOnGlass = false
     let action: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 6) {
-            Button(action: action) {
-                Text(title ?? " ")
-                    .font(.system(size: primarySize, weight: .semibold))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(MailPaper.tableCream)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: 44)
-                    .background { CardTableGlass(shape: Capsule()) }
-                    .contentShape(Capsule())
+            if let beside {
+                // Side by side, or one under the other when they don't fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { mainButtons(beside) }
+                    VStack(spacing: 8) { mainButtons(beside) }
+                }
+            } else {
+                primaryButton
             }
-            .buttonStyle(.plain)
-            .opacity(title == nil ? 0 : 1)
-            .disabled(title == nil)
-            .accessibilityHidden(title == nil)
-            .accessibilityIdentifier("cardTablePrimary")
-            if let hintAction {
+            if let hintLink {
                 // The link keeps the hint's height, so nothing moves; its finger area reaches 12 pt further.
-                Button(action: hintAction) {
+                Button(action: hintLink.action) {
                     hintText
                         .underline(color: MailPaper.tableCream.opacity(0.45))
                         .padding(.vertical, 12)
@@ -248,7 +263,7 @@ struct CardTableAct: View {
                         .padding(.vertical, -12)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("cardTableReadVerse")
+                .accessibilityIdentifier(hintLink.identifier)
             } else {
                 hintText
                     .accessibilityHidden(hint.isEmpty)
@@ -271,6 +286,38 @@ struct CardTableAct: View {
 }
 
 private extension CardTableAct {
+    var primaryButton: some View {
+        glassButton(title ?? " ", identifier: "cardTablePrimary", action: action)
+            .opacity(title == nil ? 0 : 1)
+            .disabled(title == nil)
+            .accessibilityHidden(title == nil)
+    }
+
+    /// The main button and the one beside it; where there's no main button (the open Duo), the other alone.
+    @ViewBuilder
+    func mainButtons(_ beside: CardTableMenuItem) -> some View {
+        if title != nil {
+            primaryButton
+        }
+        glassButton(beside.title, identifier: beside.identifier, action: beside.action)
+    }
+
+    func glassButton(_ text: String, identifier: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: primarySize, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(MailPaper.tableCream)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 6)
+                .frame(minHeight: 44)
+                .background { CardTableGlass(shape: Capsule()) }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+
     var onGlass: Bool {
         dynamicTypeSize.isAccessibilitySize || hintOnGlass
     }
@@ -281,7 +328,7 @@ private extension CardTableAct {
             .multilineTextAlignment(.center)
             // White at 70%, so it reads on every cloth (plan 1.8); a link in cream.
             .foregroundStyle(
-                dynamicTypeSize.isAccessibilitySize || hintAction != nil ? MailPaper.tableCream : Color.white.opacity(0.7)
+                dynamicTypeSize.isAccessibilitySize || hintLink != nil ? MailPaper.tableCream : Color.white.opacity(0.7)
             )
             // At the largest sizes it runs over the mail, so it gets its own glass.
             .padding(.horizontal, onGlass && !hint.isEmpty ? 12 : 0)
