@@ -238,7 +238,7 @@ private fun BuyerCard(
             AlertDialog(
                 onDismissRequest = { asks = false },
                 title = { Text(giveBack.label ?: "Give back the spots?") },
-                text = giveBack.text?.let { { Text(it) } },
+                text = { giveBack.text?.let { Text(it) } },
                 confirmButton = {
                     TextButton(onClick = {
                         asks = false
