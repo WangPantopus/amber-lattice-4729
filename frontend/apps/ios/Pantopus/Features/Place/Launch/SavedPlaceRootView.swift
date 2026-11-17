@@ -142,6 +142,7 @@ struct SavedPlaceRootView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Menu")
             .accessibilityIdentifier("place.menu")
+            .guidanceAnchor(.tipMenu)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Your Place")
                     .font(.system(size: 28, weight: .bold))

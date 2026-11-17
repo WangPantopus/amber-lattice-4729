@@ -128,7 +128,9 @@ final class IconTests: XCTestCase {
         // Plans step 4: the die of a game night (the other new kinds reuse utensils, mountain and plus).
         "plan-game",
         // Plans for the holidays: the Birthday and New Year's Eve occasions.
-        "cake", "sparkle"
+        "cake", "sparkle",
+        // Guidance cards: Today's "Around you".
+        "newspaper"
     ]
 
     func testInventoryMatches() {

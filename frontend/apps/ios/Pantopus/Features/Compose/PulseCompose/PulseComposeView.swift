@@ -197,6 +197,8 @@ public struct PulseComposeView: View {
                 return nil
             }()
             viewModel.acknowledgeDismiss()
+            // The guidance pointer "Post to Pulse" is for someone who hasn't posted.
+            if postId != nil { GuidanceCenter.shared.note(.posted) }
             Task {
                 // Hold the success toast briefly so the user sees it.
                 try? await Task.sleep(nanoseconds: 700_000_000)

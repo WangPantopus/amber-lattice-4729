@@ -109,6 +109,7 @@ struct PlaceHomeCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             PlaceTextButton(title: "Verify address", minHeight: 44, action: verify)
                 .accessibilityIdentifier("place.verifyBanner")
+                .guidanceAnchor(.tipVerify, cornerRadius: 15)
         }
         .accessibilityElement(children: .contain)
     }

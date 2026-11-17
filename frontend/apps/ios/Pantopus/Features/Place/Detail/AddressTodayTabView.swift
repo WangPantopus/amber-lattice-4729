@@ -88,6 +88,8 @@ struct AddressTodayTabView: View {
             .onChange(of: rootTabs.selected) { _, tab in
                 if tab != .today { discardTemporaryPlace() }
             }
+            // The Today tab's card: its third line only while the At home | Around you switch shows.
+            .guidanceScreen(.today, ready: resolved, variants: GuidanceVariants(aroundYouSwitch: aroundYou.available && detail != nil))
             .accessibilityIdentifier("addressTodayTab")
     }
 

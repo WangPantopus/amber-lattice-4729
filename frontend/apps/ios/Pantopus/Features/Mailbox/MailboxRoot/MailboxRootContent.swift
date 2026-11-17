@@ -73,6 +73,8 @@ struct MailboxRootHeader: View {
                         viewModel.selectDrawer(drawer)
                     }
                     .accessibilityIdentifier("mailboxRootDrawer.\(drawer.rawValue)")
+                    // The guidance pointer "Me and Home": one ring around both chips.
+                    .guidanceAnchor(.tipMailMeHome, when: drawer == .me || drawer == .home)
                 }
                 // What you've sent: not a drawer, so no count.
                 if viewModel.showsSentChip {

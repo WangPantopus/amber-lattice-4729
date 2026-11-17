@@ -33,6 +33,9 @@ struct WaitingCardLanding: ViewModifier {
             Self.markAsked(account)
             return
         }
+        // No guidance card while a waiting card may still open (GUIDE spec §2).
+        GuidanceCenter.shared.waitingCardCheck = true
+        defer { GuidanceCenter.shared.waitingCardCheck = false }
         let answer: HolidayCardWaitingResponse
         do {
             answer = try await APIClient.shared.request(HolidayCardEndpoints.waiting())
@@ -44,6 +47,7 @@ struct WaitingCardLanding: ViewModifier {
         guard !Task.isCancelled, Self.signedInAccount == account else { return }
         Self.markAsked(account)
         guard let card = answer.card, !linkWon(account) else { return }
+        GuidanceCenter.shared.noteLinkOpening()
         tabs.pendingMailRequest = .route(.mailItemDetail(mailId: card.mailId))
         tabs.selected = .mail
     }

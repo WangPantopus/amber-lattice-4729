@@ -176,6 +176,7 @@ struct PlaceLaunchView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Menu")
                     .accessibilityIdentifier("place.menu")
+                    .guidanceAnchor(.tipMenu)
                     Spacer()
                     PlaceBellButton(unreadCount: embedded.unreadCount, action: embedded.onOpenNotifications)
                     MessagesButton(accessibilityIdentifier: "place.chat")

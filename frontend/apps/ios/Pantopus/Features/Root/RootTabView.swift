@@ -299,6 +299,9 @@ public struct RootTabView: View {
                 // Every invite shares the person's own link; read it before anyone taps one.
                 await PersonalInviteLink.shared.load(account: signedInUserID)
             }
+            // The guidance cards for new accounts (founder, 2026-11-16): this account's, read on each sign-in.
+            .task(id: signedInUserID) { await GuidanceCenter.shared.start(account: signedInUserID) }
+            .onChange(of: model.showsNavigationMenu) { _, open in GuidanceCenter.shared.sideMenuOpen = open }
             .onChange(of: signedInUserName, initial: true) { _, name in
                 drawerModel.updateContext(.personal(name: name))
             }
@@ -339,6 +342,8 @@ public struct RootTabView: View {
                 model.messagesBadge = unread
             }
             .onChange(of: router.pending) { _, pending in
+                // No guidance card over a link or notification that is opening.
+                GuidanceCenter.shared.noteLinkOpening()
                 consumeInviteDeepLinkIfNeeded(pending: pending)
             }
             .onChange(of: model.profileCoverDestination) { _, destination in

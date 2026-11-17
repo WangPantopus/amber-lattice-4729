@@ -129,6 +129,13 @@ public struct MailboxRootView: View {
             Analytics.track(.screenMailboxRootViewed)
             viewModel.showSentIfPending()
         }
+        // The Mail tab's card, on the tab's own Mailbox once it has loaded (after Face ID when the lock is on).
+        .guidanceScreen(
+            .mail,
+            ready: viewModel.state.showsContent,
+            variants: GuidanceVariants(writesLetters: viewModel.fab != nil),
+            active: showsMenuButton
+        )
     }
 
     private var accountId: String {

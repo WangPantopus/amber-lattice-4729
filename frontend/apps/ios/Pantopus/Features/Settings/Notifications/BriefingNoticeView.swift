@@ -46,6 +46,10 @@ struct BriefingNoticeView: View {
     var body: some View {
         Color.clear.frame(width: 0, height: 0)
             .task { await load() }
+            // No guidance card while this sheet is deciding or up (GUIDE spec §2).
+            .onChange(of: notice == nil) { _, _ in noteGuidanceWait() }
+            .onChange(of: mayShow) { _, _ in noteGuidanceWait() }
+            .onDisappear { GuidanceCenter.shared.briefingNoticeBusy = false }
             .sheet(item: Binding(get: { mayShow ? notice : nil }, set: { notice = $0 })) { shown in
                 if shown.kind == .suggestions {
                     suggestionsNotice
@@ -136,7 +140,13 @@ struct BriefingNoticeView: View {
         prefs.suggestionsSupported && prefs.suggestionsEnabled == nil
     }
 
+    private func noteGuidanceWait() {
+        GuidanceCenter.shared.briefingNoticeBusy = notice != nil && mayShow
+    }
+
     private func load() async {
+        GuidanceCenter.shared.briefingNoticeBusy = true
+        defer { noteGuidanceWait() }
         do {
             try scope.requireCurrent()
             let response = try await model.readPreferences(force: true)

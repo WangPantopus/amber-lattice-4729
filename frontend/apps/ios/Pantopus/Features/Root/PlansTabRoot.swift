@@ -111,13 +111,15 @@ public struct PlansTabRoot: View {
     }
 
     /// The stack's first screen: the list beside the map, or the map with the list in its sheet.
-    @ViewBuilder
     private func plansRoot(beside: Bool) -> some View {
-        if beside {
-            PlansListColumn(viewModel: map, actions: plansActions)
-        } else {
-            PlansMapView(viewModel: map, actions: plansActions)
+        Group {
+            if beside {
+                PlansListColumn(viewModel: map, actions: plansActions)
+            } else {
+                PlansMapView(viewModel: map, actions: plansActions)
+            }
         }
+        .guidanceScreen(.plans)
     }
 
     /// Two columns: regular width, with room for the phone-width column beside the narrowest iPhone's width (as
