@@ -424,6 +424,37 @@ public enum PlansEndpoints {
         Endpoint(method: .get, path: "\(base)/occasions", query: biz())
     }
 
+    // MARK: - Plans for the holidays, the business track B1 (404 while `plans_deals` is off for the business)
+
+    /// `POST /api/plans/deal-preview` (staff with `plans.manage`) — the sentence guests will read, how it's claimed,
+    /// and each field's error; nothing is saved. Route `backend/routes/plans.js:316`,
+    /// `planDeals.preview`.
+    public static func dealPreview(_ body: PlanDealPreviewBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/deal-preview", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/requests/:requestId/deal-used` (staff) — marks a guest's free thing used; no undo.
+    /// Route `backend/routes/plans.js:426`, `planDeals.markUsed`.
+    public static func dealUsed(planId: String, requestId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/\(requestId)/deal-used", query: biz())
+    }
+
+    // MARK: - Plans for the holidays, the business track B2 (404 while `plans_paid` is off or the plan is free)
+
+    /// `POST /api/plans/:id/requests/quote` — what a paid spot costs this party, with no side effect: the spots,
+    /// each, the total, the group price and the refund line. Ask again whenever the party changes.
+    /// Route `backend/routes/plans.js:381`.
+    public static func quote(planId: String, _ body: PlanQuoteBody) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/quote", query: biz(), body: body)
+    }
+
+    /// `POST /api/plans/:id/requests/mine/confirm` — after the payment sheet closes: the plan, now with the guest in
+    /// and `paid`; or 409 `payment_not_complete`, `full`, `ended` with the server's sentence.
+    /// Route `backend/routes/plans.js:392`.
+    public static func confirmJoin(planId: String) -> Endpoint {
+        Endpoint(method: .post, path: "\(base)/\(planId)/requests/mine/confirm", query: biz())
+    }
+
     // MARK: - Plans for the holidays, H2 (404 while `plans_bring_list` is off for the host)
 
     /// `PUT /api/plans/:id/bring` (host) — the whole list, `{ bring }`. Kept ids keep their claims; `mine` claims or

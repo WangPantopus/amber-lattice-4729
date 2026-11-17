@@ -13,7 +13,7 @@
 import Foundation
 
 /// `POST /api/moments/place-preview`'s Sky fields, there only when it answers `sky: true` (the Post sheet then draws
-/// "Floating over …", "Pin it at a place" and "Share later"). Route backend/routes/moments.js (skyPreview).
+/// "Around …", "Pin it at a place" and "Share later"). Route backend/routes/moments.js (skyPreview).
 public struct MomentSkyPreviewDTO: Sendable, Hashable {
     /// The area the point floats over; nil with no point.
     public let area: MomentSkyAreaDTO?

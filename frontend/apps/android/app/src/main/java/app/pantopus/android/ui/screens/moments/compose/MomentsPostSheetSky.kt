@@ -94,7 +94,7 @@ internal fun SkyPinRow(
     }
 }
 
-/** At home: "You're at home, so this floats over the area". */
+/** At home: "You're at home, so this shows only the area". */
 @Composable
 internal fun SkyHomeNote() {
     Row(

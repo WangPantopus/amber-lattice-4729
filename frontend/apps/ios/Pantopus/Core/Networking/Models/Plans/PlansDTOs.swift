@@ -85,7 +85,7 @@ public enum PlanPlaceKind: String, Codable, Sendable, Hashable {
 
 /// One person's request to join, as the server keeps it.
 public enum PlanRequestStatus: String, Sendable, Hashable {
-    case pending, waitlisted, accepted, declined, withdrawn, left, removed, expired
+    case pending, waitlisted, accepted, declined, withdrawn, left, removed, expired, paying // paying: B2's 10-minute hold
 
     public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)

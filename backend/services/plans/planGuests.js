@@ -289,6 +289,12 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
     // The page was opened with the plan's live open link (6.9): its "Open app" carries the link into the app.
     open_live: openLive && invites().isOpenForAnswers(plan),
   };
+  // Photos afterwards (the extras): a guest who was in, on a plan that is over, may look (GET …/photos).
+  const planPhotos = require('./planPhotos');
+  if (isGuestIn(mine) && planPhotos.isOver(plan) && require('./planExtras').takesExtras(plan) && (await planPhotos.enabledFor(plan.host_user_id))) {
+    const count = ((plan.photos && plan.photos.items) || []).length;
+    answer.photos = { count, add_text: 'Add yours in the app.', note: 'Only the people who came can see these. They stay with the plan.' };
+  }
   // Find a date (the extras): while the host picks, W1 shows the times in place of the three answers.
   const planDates = require('./planDates');
   if (planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
@@ -307,6 +313,8 @@ async function forPage(plan, { inviteToken = null, openToken = null, guestKey = 
       bring: await bringFor(plan, mine),
       // Chip in (the extras), while the host has its switch: the payment link reaches only people who are in.
       ...(await chipInFor(plan, mine)),
+      // The gift exchange (the extras): their own card, with whom they drew and nobody else's.
+      ...(await giftFor(plan, mine)),
       // The plan's time or place changed since the guest last answered: 'time', 'place' or 'both'.
       changed: changedReason(mine),
     };
@@ -325,6 +333,12 @@ async function bringFor(plan, row) {
   const planBring = require('./planBring');
   if (!plan.bring_list || !planBring.takesBringList(plan) || !(await planBring.enabledFor(plan.host_user_id))) return null;
   return planBring.view(plan.bring_list, planBring.mineFor({ role: 'guest', inviteId: row.id }));
+}
+
+async function giftFor(plan, row) {
+  if (!plan.gift) return {};
+  const gift = await require('./planGift').forGuest(plan, row);
+  return gift ? { gift } : {};
 }
 
 async function chipInFor(plan, row) {
@@ -450,6 +464,11 @@ async function sendDateEmail(plan, row, kind, { when = null, stamp = null } = {}
   const planDates = require('./planDates');
   const words = { when: when || planDates.noticeDate(plan.post.event_date, rules.timezoneForPlan(plan)) };
   return sendGuestEmail(plan, row, kind, { words, stamp, inThree: false, capped: false });
+}
+
+/** The gift exchange's draw, by email to a guest (outside the plan's three): it never carries the name. */
+async function sendGiftEmail(plan, row, kind) {
+  return sendGuestEmail(plan, row, kind, { inThree: false, capped: false });
 }
 
 async function guestRowsFull(postId) {
@@ -830,6 +849,7 @@ async function answer(postId, body = {}, { cookieKey = null, patch = false } = {
   // Seats given back go to someone waiting, and what they were bringing goes back on the list.
   if (wasIn && status !== 'accepted') {
     await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
+    await require('./planGift').onLeave(plan.post_id, require('./planExtras').guestKey(row.id));
     const fresh = await planService.loadPlanRow(plan.post_id);
     if (fresh) await actions().offerOpenSpots(fresh).catch((err) => logger.warn('plans.guests.offer_failed', { error: err.message }));
   }
@@ -979,7 +999,10 @@ async function removeGuest(plan, row) {
     .update({ status: 'cancelled', needs_host_ok: false, updated_at: nowIso() })
     .eq('id', row.id).neq('status', 'cancelled').select('id');
   if (error) throw new Error(`Failed to remove them: ${error.message}`);
-  if (data && data.length) await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
+  if (data && data.length) {
+    await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
+    await require('./planGift').onLeave(plan.post_id, require('./planExtras').guestKey(row.id));
+  }
   if (data && data.length && row.status === 'accepted') {
     const fresh = await planService.loadPlanRow(plan.post_id);
     if (fresh) await actions().offerOpenSpots(fresh).catch((err) => logger.warn('plans.guests.offer_failed', { error: err.message }));
@@ -1354,6 +1377,7 @@ async function adoptAnswer(plan, row, userId, { io = null } = {}) {
     await require('./planBring').moveClaims(plan.post_id, { kind: 'guest', id: row.id }, { kind: 'user', id: ask.id });
   } else {
     await require('./planBring').clearClaims(plan.post_id, 'guest', row.id);
+    await require('./planGift').onLeave(plan.post_id, require('./planExtras').guestKey(row.id));
   }
   recordFunnelEvent('plan_guest_answered', { userId, meta: { plan_id: plan.post_id, kind: plan.kind, via: row.channel, answer: stateOf(row), into_app: true } });
   return true;
@@ -1435,6 +1459,8 @@ async function sendReminders(plans) {
 }
 
 module.exports = {
+  GUEST_COLUMNS_TEXT: GUEST_COLUMNS,
+  sendGiftEmail,
   answerDates,
   settlePicked,
   settleFull,

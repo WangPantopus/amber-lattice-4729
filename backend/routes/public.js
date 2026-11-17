@@ -155,6 +155,44 @@ router.put('/plans/:id/dates/mine', async (req, res) => {
   }
 });
 
+// ── One person pays for the group (the extras): the buyer's link's page, before signing in ──
+// GET /api/public/plans/:id/spot?token=. Answers { spot: { from, text, left, open, button, closed_text } }; joining
+// takes an account (POST /api/plans/:id/requests/claim-spot).
+router.get('/plans/:id/spot', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await require('../services/plans/planGroupPay').readLink(req.params.id, req.query.token));
+  } catch (err) {
+    return planError(res, err, 'group_pay_link');
+  }
+});
+
+// ── Photos afterwards (the extras): a guest without an account who was in looks, by their key ──
+// GET /api/public/plans/:id/photos. Answers the grid (links signed for minutes) with "Add yours in the app."
+router.get('/plans/:id/photos', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const key = planGuests.isKey(req.query.guest) ? req.query.guest : guestCookie(req);
+    return res.json(await require('../services/plans/planPhotos').guestList(req.params.id, key));
+  } catch (err) {
+    return planError(res, err, 'photos');
+  }
+});
+
+// ── The gift exchange (the extras): a guest without an account who is in joins, by their key ──
+// POST /api/public/plans/:id/gift/join { wish }, PATCH | DELETE /api/public/plans/:id/gift/mine. Answers { gift }.
+const giftPublic = (method, path, label, handler) => router[method](path, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return planError(res, err, label);
+  }
+});
+giftPublic('post', '/plans/:id/gift/join', 'gift_join', (req) => require('../services/plans/planGift').guestJoin(req.params.id, guestKeyOf(req), req.body || {}));
+giftPublic('patch', '/plans/:id/gift/mine', 'gift_wish', (req) => require('../services/plans/planGift').guestSetWish(req.params.id, guestKeyOf(req), req.body || {}));
+giftPublic('delete', '/plans/:id/gift/mine', 'gift_leave', (req) => require('../services/plans/planGift').guestLeave(req.params.id, guestKeyOf(req)));
+
 // ── Chip in (the extras): a guest without an account who is in says they paid the host, by their key ──
 // POST | DELETE /api/public/plans/:id/chip-in/paid. Answers { chip_in }.
 router.post('/plans/:id/chip-in/paid', async (req, res) => {
