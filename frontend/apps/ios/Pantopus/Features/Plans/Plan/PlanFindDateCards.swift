@@ -184,7 +184,8 @@ struct PlanDatesGuestCard: View {
     }
 }
 
-/// The footer while the host picks: "Save my times" and "You're in when {Host} picks a time you ticked".
+/// The footer while the host picks: "Save my times" and the server's line under it (`dates.mine_text`), or "You're in
+/// when {Host} picks a time you ticked" from a server that doesn't send it yet.
 struct PlanDatesSaveBar: View {
     let viewModel: PlanScreenViewModel
     let card: PlanCardDTO
@@ -205,7 +206,7 @@ struct PlanDatesSaveBar: View {
         .planButton(.primary)
         .disabled(draft.isSaving)
         .accessibilityIdentifier("planDatesSave")
-        Text("You're in when \(PlanCardLines.hostName(card)) picks a time you ticked")
+        Text(card.extrasPart.dates?.mineText ?? "You're in when \(PlanCardLines.hostName(card)) picks a time you ticked")
             .planFont(.caption)
             .foregroundStyle(Theme.Color.appTextSecondary)
             .multilineTextAlignment(.center)
