@@ -151,6 +151,8 @@ data class PlanPersonDto(
     @Json(name = "deal") val deal: PlanPersonDealDto? = null,
     /** Business track B2, staff only: what this guest paid and who brought them. */
     @Json(name = "paid") val paid: PlanPersonPaidDto? = null,
+    /** The holidays' chip in, on the host's screens: whether this person said they paid, and `who` for "Mark paid". */
+    @Json(name = "chip_in") val chipIn: PlanChipInMarkDto? = null,
 )
 
 /** `my_request`: the viewer's own request, once they have one. */
@@ -306,6 +308,8 @@ data class PlanDto(
     // Plans for the holidays, H1 (contract 6.5), with `guests=1`; absent from an older server.
     /** Guests say how many adults and how many kids. */
     @Json(name = "kids_welcome") val kidsWelcome: Boolean? = null,
+    /** The holidays' chip in (extras section 3, `extras=1`): for the host and people who are in only. */
+    @Json(name = "chip_in") val chipIn: PlanChipInDto? = null,
     /** The host and people who are in: how many adults and kids are coming, guests without an account included. */
     @Json(name = "headcount") val headcount: PlanHeadcountDto? = null,
     /** The host only: how many people said I'm in, Maybe, or haven't answered. */
@@ -664,6 +668,8 @@ data class CreatePlanBody(
     @Json(name = "bring") val bring: PlanBringInput? = null,
     /** Plans for the holidays, H3: the occasion the plan was started from (a key); none for an ordinary plan. */
     @Json(name = "occasion") val occasion: String? = null,
+    /** The holidays' chip in: the amount each person, what for, and the host's own payment link. */
+    @Json(name = "chip_in") val chipIn: PlanChipInInput? = null,
     /** Business track B1: a business's deal (D3); none leaves it out. */
     @Json(name = "deal") val deal: PlanDealInput? = null,
     /** Business track B2: a spot's price in cents ($1 to $500); none is free. */

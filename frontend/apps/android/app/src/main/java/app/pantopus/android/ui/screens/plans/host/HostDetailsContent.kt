@@ -786,9 +786,21 @@ internal fun AddToThisPlan(
                     onOpen = vm::openBringList,
                 )
             }
-            if (ui.showsKidsWelcome) {
+            if (ui.showsChipIn) {
+                // The holidays' chip in (extras section 3, board 26).
                 AddToPlanRow(
                     first = !ui.showsBringRow,
+                    icon = PantopusIcon.DollarSign,
+                    title = "Chip in",
+                    caption = "Guests pay you, not Pantopus",
+                    checked = ui.draft.chipIn != null,
+                    tag = "planChipIn",
+                    onChecked = vm::setChipIn,
+                )
+            }
+            if (ui.showsKidsWelcome) {
+                AddToPlanRow(
+                    first = !ui.showsBringRow && !ui.showsChipIn,
                     icon = PantopusIcon.AdultChild,
                     title = "Kids welcome",
                     caption = "Guests say how many adults and kids",
@@ -800,6 +812,7 @@ internal fun AddToThisPlan(
         }
         PlanScopeLine("Only what you switch on shows on the plan. Everything else stays out of the way.", icon = PantopusIcon.Info)
     }
+    if (ui.showsChipIn && ui.draft.chipIn != null) ChipInFields(ui, vm)
 }
 
 /** One row of "Add to this plan": a 36 dp tile with its glyph, the name and its line, and a switch (board "rowlink"). */

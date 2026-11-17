@@ -65,3 +65,56 @@ data class PlanFromPlanResponse(
     @Json(name = "text_only") val textOnly: Int = 0,
     @Json(name = "text") val text: String? = null,
 )
+
+// ---- 2. Chip in (boards 26 and 27, switch `plans_chip_in`): no money moves through Pantopus ----
+
+/**
+ * The card's `chip_in`, for the host and people who are in only (never anyone else): the server's words for the amount
+ * ([text], [paidText], [payText], [straightText]) and the host's own payment [link]. [mine] is null for the host.
+ */
+@JsonClass(generateAdapter = true)
+data class PlanChipInDto(
+    @Json(name = "text") val text: String = "",
+    @Json(name = "amount_cents") val amountCents: Int = 0,
+    @Json(name = "note") val note: String? = null,
+    @Json(name = "service") val service: String? = null,
+    @Json(name = "link") val link: String? = null,
+    @Json(name = "paid_count") val paidCount: Int = 0,
+    @Json(name = "of") val of: Int = 0,
+    @Json(name = "paid_text") val paidText: String? = null,
+    @Json(name = "pay_text") val payText: String? = null,
+    @Json(name = "straight_text") val straightText: String? = null,
+    @Json(name = "mine") val mine: PlanChipInMineDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlanChipInMineDto(
+    @Json(name = "paid") val paid: Boolean = false,
+)
+
+/** On the host's screens, each person who is in: whether they paid, and [who] (what "Mark paid" sends). */
+@JsonClass(generateAdapter = true)
+data class PlanChipInMarkDto(
+    @Json(name = "paid") val paid: Boolean = false,
+    @Json(name = "who") val who: String? = null,
+)
+
+/** The host form's `chip_in`: 100 to 50000 cents each person, a note of 1 to 60 characters, a Venmo, PayPal or Cash App link. */
+@JsonClass(generateAdapter = true)
+data class PlanChipInInput(
+    @Json(name = "amount_cents") val amountCents: Int?,
+    @Json(name = "note") val note: String,
+    @Json(name = "link") val link: String,
+)
+
+/** `POST /api/plans/:id/chip-in/paid` body: empty for "I've paid"; the host's "Mark paid" names [who]. */
+@JsonClass(generateAdapter = true)
+data class PlanChipInWhoBody(
+    @Json(name = "who") val who: String? = null,
+)
+
+/** What marking answers. */
+@JsonClass(generateAdapter = true)
+data class PlanChipInResponse(
+    @Json(name = "chip_in") val chipIn: PlanChipInDto? = null,
+)
