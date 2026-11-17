@@ -20,7 +20,8 @@
 //     --bbox    keep only the tiles this box touches (a local rig's sample). Homes in states not built aren't counted,
 //               so a tile across a state line reads larger areas on the side not built: never smaller.
 //     --cache   keep each state's table here (tl_2020_<ss>_tabblock20.dbf) and read it from here next time
-// Needs Node 22 and nothing else (.github/workflows/area-cells.yml runs it by hand).
+// Needs Node 22 and nothing else (.github/workflows/area-cells.yml runs it by hand). The file servers read ships in the
+// repository: after a change here, rebuild it with --out backend/data/area-cells and commit it.
 'use strict';
 
 const fs = require('node:fs');

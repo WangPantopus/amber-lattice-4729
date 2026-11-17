@@ -6,17 +6,20 @@
 // list and takes back only a key from it, so nobody writes a place's name themselves. The Post sheet's place picker
 // (the Pulse composer's, around the Moment's pin) may also name a venue a little farther off, the coffee shop or the
 // stadium the photo was taken in: the app sends only the venue's id, and venueNear finds it again near the pin.
-// With the Sky's places on for the author (`sky_places`), a Moment is pinned only at a public place picked by name
-// (namingPlace, venueForKey, venueNear; never a school or a preschool) and otherwise floats over its area, named by the
-// town at the area's own point (townAt).
+// With the Sky's places on for the author (`sky_places`), a Moment is where it was taken unless its author pins it at a
+// public place close by, picked by name (namingPlace, venueForKey, venueNear; never a school or a preschool, and no
+// farther than pickWithinM, which is shorter where the spot is built up); at home it shows only its area: it stands
+// over a street close by (closeArea), named by the town there (townAt).
 
 const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const geoProvider = require('../geo');
 const venues = require('../geo/venues');
+const streets = require('../geo/streets');
 const parsePostGISPoint = require('../../utils/parsePostGISPoint');
 const { haversineMeters } = require('../../utils/trustState');
+const { knownStepAt, pointAt } = require('../../utils/areaCells');
 
 // The place whose outline holds the point names the spot (the park, the stadium; the smallest one when several do),
 // unless the pin is right at a venue mapped as a point; with no outline, a venue this close does.
@@ -29,6 +32,17 @@ const MAX_PLACES = 6;
 // The place picker's venues: this far from the pin at most (a venue whose outline holds the pin is 0 m away). The pin
 // moves to the venue, so it stays in the same part of town as the photo.
 const PICK_PLACE_M = 1500;
+// With the Sky on (founder 2026-11-17: a place close by, nearer where it's built up, farther in open country): how far
+// by how built-up the spot is, from the homes around it (the five steps of utils/areaCells.js): a quarter mile
+// downtown, half a mile, a mile, a mile and a half, and two miles in open country. A mile where nobody counted the
+// homes (abroad).
+const PICK_PLACE_BY_STEP_M = [400, 800, 1600, 2400, 3200];
+const PICK_PLACE_UNKNOWN_M = 1600;
+// A Moment that shows only its area (at home, always) stands over a public street this close to the middle of its
+// quarter-mile cell (founder 2026-11-17: at home it floats over a very close street, never miles off); with no street
+// there, or none found in time, at the middle itself.
+const AREA_STREET_M = 200;
+const AREA_STREET_WAIT_MS = 3500;
 // The Post sheet's home notice: a pin this close to a home the person lives at.
 const AT_HOME_M = 60;
 const VENUE_WAIT_MS = 2500;
@@ -118,17 +132,19 @@ async function settle(promise, what) {
  * The labels for a point: { place_label, area_label, places }. `place_label` is what an exact pin says unless its
  * author picks another of `places`, `area_label` what an area pin (and a home) says. `places` are the names that fit
  * an exact pin, [{ key, label }], at most MAX_PLACES: the places right there, then the street's name, then the town;
- * the first is `place_label`. Never throws; a label nobody could find is FALLBACK_LABEL.
+ * the first is `place_label`. Never throws; a label nobody could find is FALLBACK_LABEL. `pinnableOnly` (the Sky)
+ * leaves out the places that never take a pin, so a Moment taken at a school reads the street's name or the town's.
  */
-async function labelsAt(latitude, longitude) {
-  const [venueList, ts] = await Promise.all([
+async function labelsAt(latitude, longitude, { pinnableOnly = false } = {}) {
+  const [around, ts] = await Promise.all([
     settle(venuesAt(latitude, longitude), 'venues'),
     settle(townAndStreet(latitude, longitude), 'reverse'),
   ]);
+  const venueList = (around || []).filter((place) => !pinnableOnly || place.pinnable);
   const town = ts?.town || null;
   const fixed = [ts?.street && { key: 'street', label: ts.street }, town && { key: 'town', label: town }].filter(Boolean);
   const places = [];
-  for (const { key, label } of [...(venueList || []).slice(0, MAX_PLACES - fixed.length), ...fixed]) {
+  for (const { key, label } of [...venueList.slice(0, MAX_PLACES - fixed.length), ...fixed]) {
     if (!places.some((listed) => listed.label.toLowerCase() === label.toLowerCase())) places.push({ key, label });
   }
   if (!places.length) places.push({ key: 'auto', label: FALLBACK_LABEL });
@@ -142,15 +158,51 @@ function pickedLabel(labels, key) {
 }
 
 /**
- * The venue the place picker listed as `venueId` (an `osm:` id) when it is within PICK_PLACE_M of the pin:
- * { latitude, longitude, label } at the venue's point, or null. Never throws (a lookup that fails is null).
+ * How far from a spot a place picked for it may be, in metres, with the Sky on: PICK_PLACE_BY_STEP_M by how built-up
+ * the spot is, PICK_PLACE_UNKNOWN_M where the homes file can't say. Never throws.
  */
-async function venueNear(venueId, latitude, longitude) {
-  const venue = await settle(venues.venueNear({ placeId: venueId, latitude, longitude, maxDistance: PICK_PLACE_M }),
-    'venue');
+async function pickWithinM(latitude, longitude) {
+  const step = await knownStepAt(latitude, longitude);
+  return step ? PICK_PLACE_BY_STEP_M[step - 1] : PICK_PLACE_UNKNOWN_M;
+}
+
+/**
+ * The venue the place picker listed as `venueId` (an `osm:` id) when it is within `maxDistance` of the pin
+ * (PICK_PLACE_M unless given): { latitude, longitude, label } at the venue's point, or null. Never throws (a lookup
+ * that fails is null).
+ */
+async function venueNear(venueId, latitude, longitude, maxDistance = PICK_PLACE_M) {
+  const venue = await settle(venues.venueNear({ placeId: venueId, latitude, longitude, maxDistance }), 'venue');
   if (!venue?.name || !Number.isFinite(venue.center?.lat) || !Number.isFinite(venue.center?.lng)) return null;
   return {
     latitude: venue.center.lat, longitude: venue.center.lng, label: String(venue.name).slice(0, 80), pinnable: isPinnable(venue),
+  };
+}
+
+// ─── The Sky: a Moment that shows only its area ────────────────────────────
+
+/**
+ * The area a Moment that shows only its area is drawn over: { latitude, longitude, step, radius_m }, or null for a
+ * point that isn't a number. It is the quarter-mile cell holding the point (the smallest of utils/areaCells.js: about
+ * 0.35 by 0.25 mile), shown at the spot on a public street closest to the cell's middle, within AREA_STREET_M of it;
+ * with no street there (or none found within `waitMs`) at the middle. The answer depends on the cell only, never on
+ * where in it the point is, so every home in the cell shows the same spot and many Moments never narrow it down.
+ * `radius_m` reaches every point of the cell from the spot shown. Never throws.
+ */
+async function closeArea(latitude, longitude, { waitMs = AREA_STREET_WAIT_MS } = {}) {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (latitude == null || longitude == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const cell = pointAt(lat, lng, 1);
+  const street = await settle(streets.streetPointNear({
+    latitude: cell.latitude, longitude: cell.longitude, radiusM: AREA_STREET_M, waitMs,
+  }), 'street');
+  if (!street) return cell;
+  return {
+    latitude: Math.round(street.latitude * 1e5) / 1e5,
+    longitude: Math.round(street.longitude * 1e5) / 1e5,
+    step: cell.step,
+    radius_m: Math.ceil((cell.radius_m + street.distance_m) / 10) * 10,
   };
 }
 
@@ -208,6 +260,6 @@ function labelKind(labels, label) {
 }
 
 module.exports = {
-  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt,
+  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
   FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
 };

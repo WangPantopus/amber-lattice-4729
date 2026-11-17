@@ -8,7 +8,8 @@ Battle Ground, Ridgefield, La Center, Yacolt). Built from Washington's 2020 Cens
 node backend/scripts/area-cells/build.cjs --states 53 --bbox 45.54,-122.80,45.98,-122.24 --out backend/scripts/area-cells/sample
 ```
 
-Point a local backend at it:
+The whole-US file now ships with the server (`backend/data/area-cells`), so a local backend needs nothing set. To
+read this one tile instead, point a local backend at it:
 
 ```bash
 AREA_CELLS_URL=file://$PWD/backend/scripts/area-cells/sample
