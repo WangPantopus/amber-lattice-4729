@@ -15,6 +15,7 @@ const supabaseAdmin = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
 const { GeoCache } = require('../../utils/geoCache');
 const { escapeIlike } = require('../../utils/escapeIlike');
+const { isUuid, isIsoTime, finiteNumber, invalidPosition } = require('../../utils/pagingValues');
 const s3 = require('../s3Service');
 const {
   applyLocationPrivacyBatch,
@@ -308,13 +309,29 @@ function encodeCursor(obj) {
   return Buffer.from(JSON.stringify(obj)).toString('base64');
 }
 
-function decodeCursor(cursorStr) {
+// A position as buildNextCursor wrote it for this sort: an id with a time, a price or a distance. Null without one;
+// throws (400) when it isn't one this list handed out.
+function decodeCursor(cursorStr, sort) {
   if (!cursorStr) return null;
+  let raw;
   try {
-    return JSON.parse(Buffer.from(cursorStr, 'base64').toString('utf8'));
+    raw = JSON.parse(Buffer.from(String(cursorStr), 'base64').toString('utf8'));
   } catch {
-    return null;
+    throw invalidPosition();
   }
+  if (!raw || typeof raw !== 'object' || !isUuid(raw.id)) throw invalidPosition();
+  if (sort === 'price_low' || sort === 'price_high') {
+    const price = raw.price == null ? null : finiteNumber(raw.price);
+    if (raw.price != null && price === null) throw invalidPosition();
+    return { id: raw.id, price };
+  }
+  if (sort === 'nearest') {
+    const distance = raw.distance_meters == null ? null : finiteNumber(raw.distance_meters);
+    if (raw.distance_meters != null && distance === null) throw invalidPosition();
+    return { id: raw.id, distance_meters: distance };
+  }
+  if (!isIsoTime(raw.created_at)) throw invalidPosition();
+  return { id: raw.id, created_at: raw.created_at };
 }
 
 function buildNextCursor(lastItem, sort, refLat, refLng) {
@@ -419,7 +436,7 @@ async function browseListings({
   }
 
   // 5. Keyset cursor pagination
-  const decodedCursor = decodeCursor(cursor);
+  const decodedCursor = decodeCursor(cursor, sort || 'newest');
 
   if (sort === 'newest' || !sort) {
     // ORDER BY created_at DESC, id DESC

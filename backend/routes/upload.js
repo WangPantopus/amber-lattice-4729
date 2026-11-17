@@ -1389,6 +1389,31 @@ router.post('/listing-media/:listingId', uploadLimiter, verifyToken, upload.arra
   }
 });
 
+// The storage key of a listing photo, when `url` is in this deployment's public storage and the file is one
+// uploadListingMedia wrote for this listing (listings/<listing id>/<uploader id>/<file>). Null for anything else.
+function listingMediaKey(url, listingId) {
+  if (typeof url !== 'string' || !s3.isPublicStorageUrl(url)) return null;
+  let key;
+  try {
+    key = decodeURIComponent(new URL(url).pathname.slice(new URL(s3.getPublicUrl('')).pathname.length));
+  } catch {
+    return null;
+  }
+  const parts = key.split('/');
+  const plain = (part) => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(part) && !part.includes('..');
+  return parts.length === 4 && parts[0] === 'listings' && parts[1] === String(listingId) && parts.slice(2).every(plain)
+    ? key : null;
+}
+
+// True when `key` names a file in this person's own folder, in one of the layouts uploads are written in:
+// <folder>/<user id>/<file> (s3Service.generateS3Key) or <folder>/<user id>/<upload id>/<file> (uploads that can be
+// retried). No part is empty, "." or "..".
+function isOwnFileKey(key, userId) {
+  const parts = key.split('/');
+  if (parts.length < 3 || !parts.every((part) => part && part !== '.' && part !== '..')) return false;
+  return parts[parts.length - 2] === String(userId) || (parts.length >= 4 && parts[parts.length - 3] === String(userId));
+}
+
 /**
  * DELETE /api/upload/listing-media/:listingId
  * Remove a media URL from a listing by index
@@ -1419,13 +1444,9 @@ router.delete('/listing-media/:listingId', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid media index' });
     }
 
-    // Try to extract S3 key from URL and delete
-    const urlToDelete = urls[index];
-    try {
-      const urlObj = new URL(urlToDelete);
-      const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
-      if (key) await s3.deleteFromS3(key);
-    } catch { /* URL parsing failed, skip S3 delete */ }
+    // The stored file goes too when the entry is one this listing uploaded; any other entry only leaves the list.
+    const key = listingMediaKey(urls[index], listingId);
+    if (key) await s3.deleteFromS3(key);
 
     urls.splice(index, 1);
     types.splice(index, 1);
@@ -1520,7 +1541,7 @@ router.delete('/file', verifyToken, async (req, res) => {
     const userId = req.user.id;
     const { key, table, recordId } = req.body;
     if (typeof key !== 'string' || !key) return res.status(400).json({ error: 'S3 key is required' });
-    if (!key.includes(`/${userId}/`)) return res.status(403).json({ error: 'Not authorized to delete this file' });
+    if (!isOwnFileKey(key, userId)) return res.status(403).json({ error: 'Not authorized to delete this file' });
     const allowedTables = ['GigMedia', 'ListingMedia', 'ReviewMedia', 'PostMedia', 'ChatAttachment'];
     if (Boolean(table) !== Boolean(recordId) || (table && !allowedTables.includes(table))) {
       return res.status(400).json({ error: 'A supported media table and record are required together' });
