@@ -116,12 +116,7 @@ public final class FeedMapViewModel {
               area.latitude != shownArea?.latitude || area.longitude != shownArea?.longitude
         else { return false }
         shownArea = area
-        let next = FeedMapRegion(
-            latitude: area.latitude,
-            longitude: area.longitude,
-            latitudeDelta: region.latitudeDelta,
-            longitudeDelta: region.longitudeDelta
-        )
+        let next = centered(latitude: area.latitude, longitude: area.longitude)
         moveCamera(to: next)
         await fetchMarkers(for: next)
         return true
@@ -193,6 +188,20 @@ public final class FeedMapViewModel {
             return nil
         }
         return (place.latitude, place.longitude)
+    }
+
+    /// The viewport moved to a point at the zoom the map has; from the globe
+    /// (`MapGlobe`), at the zoom the map opens at, so it flies back in.
+    private func centered(latitude: Double, longitude: Double) -> FeedMapRegion {
+        guard max(region.latitudeDelta, region.longitudeDelta) <= MapGlobe.leaveSpan else {
+            return openingRegion(latitude: latitude, longitude: longitude)
+        }
+        return FeedMapRegion(
+            latitude: latitude,
+            longitude: longitude,
+            latitudeDelta: region.latitudeDelta,
+            longitudeDelta: region.longitudeDelta
+        )
     }
 
     private func openingRegion(latitude: Double, longitude: Double) -> FeedMapRegion {
@@ -299,12 +308,7 @@ public final class FeedMapViewModel {
             userCoordinate = fresh
         }
         guard let coordinate = userCoordinate else { return }
-        let next = FeedMapRegion(
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude,
-            latitudeDelta: region.latitudeDelta,
-            longitudeDelta: region.longitudeDelta
-        )
+        let next = centered(latitude: coordinate.latitude, longitude: coordinate.longitude)
         moveCamera(to: next)
         await fetchMarkers(for: next)
     }
@@ -313,12 +317,7 @@ public final class FeedMapViewModel {
     /// back empty.
     public func jumpToNearestActivity() async {
         guard case let .loaded(loaded) = state, let center = loaded.nearestActivityCenter else { return }
-        let next = FeedMapRegion(
-            latitude: center.latitude,
-            longitude: center.longitude,
-            latitudeDelta: region.latitudeDelta,
-            longitudeDelta: region.longitudeDelta
-        )
+        let next = centered(latitude: center.latitude, longitude: center.longitude)
         moveCamera(to: next)
         await fetchMarkers(for: next)
     }

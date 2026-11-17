@@ -17,6 +17,11 @@
 //  Dragging the map reports how far its content moved, so the header can
 //  hide and come back as a list's would.
 //
+//  Zoomed far out, the map is a satellite globe you can turn, as the
+//  Moments map is (`MapGlobe`, founder 2026-11-16). Recenter, a new area
+//  in the Pulse chip, "Show nearest activity" or a cluster from the globe
+//  fly back down and land on the drawn, tilted map.
+//
 //  Reuses `ExploreYouAreHereDot` and the Explore clusterer, so Pulse and
 //  Explore group pins the same way.
 //
@@ -94,6 +99,8 @@ struct FeedMapView: View {
     @State private var centerSpan: Double?
     @State private var mapSize: CGSize = .zero
     @State private var clusterRowsHeight: CGFloat = 0
+    /// Zoomed far out, the satellite globe (`MapGlobe`, shared with the Moments map).
+    @State private var globe = MapGlobe()
 
     init(
         viewModel: FeedMapViewModel,
@@ -196,9 +203,10 @@ struct FeedMapView: View {
                     }
                 }
             }
-            .mapStyle(.standard(elevation: .realistic, pointsOfInterest: .excludingAll))
+            .mapGlobe(globe, closeIn: .standard(elevation: .realistic, pointsOfInterest: .excludingAll))
             .mapControlVisibility(.hidden)
             .onMapCameraChange(frequency: .continuous) { context in
+                followGlobe(context.region)
                 trackDrag(to: context.camera, proxy: proxy)
             }
             .onMapCameraChange(frequency: .onEnd) { context in
@@ -219,11 +227,14 @@ struct FeedMapView: View {
 
     /// Moves the camera for the view model (opening, Recenter, a new area,
     /// the nearest activity). In 3D the centre moves and the turn and height
-    /// stay; the first move flies in from above to the tilted view.
+    /// stay; the first move flies in from above to the tilted view, and so
+    /// does a move from the globe. Out there the map was flattened by height,
+    /// not by the person, so the fly-in tilts to 45° again.
     private func follow(_ request: FeedMapCameraRequest) {
         let center = CLLocationCoordinate2D(latitude: request.region.latitude, longitude: request.region.longitude)
         tracker.tiltAttempts = 0
-        if hasTilted, let current = tracker.camera {
+        if globe.wantsGlobe { tracker.pitch = Self.pitch }
+        if hasTilted, !globe.wantsGlobe, let current = tracker.camera {
             moveCamera(
                 to: MapCamera(centerCoordinate: center, distance: current.distance, heading: current.heading, pitch: tracker.pitch),
                 duration: 0.6,
@@ -244,6 +255,16 @@ struct FeedMapView: View {
         }
     }
 
+    /// The globe follows the person's zoom as it happens. The view's own
+    /// moves (opening, Recenter, a cluster tap) keep the style they start
+    /// with until they settle, and the style catches up then: MapKit stops
+    /// a camera animation when the style changes under it (a fly-in from the
+    /// globe stopped 70 km up, 2026-11-16).
+    private func followGlobe(_ region: MKCoordinateRegion) {
+        guard hasTilted, !tracker.isOwnMove else { return }
+        globe.follow(region)
+    }
+
     /// The opening view comes a little closer than the region a flat map
     /// shows: tilted, the horizon side shows the rest.
     private static let openingCloseness = 0.6
@@ -256,6 +277,8 @@ struct FeedMapView: View {
             cameraPosition = .camera(camera)
         } else {
             withAnimation(.easeInOut(duration: duration)) { cameraPosition = .camera(camera) }
+            // From the globe: the fade covers the landing (`MapGlobe.coverLanding`).
+            globe.coverLanding(in: duration)
         }
     }
 
@@ -322,6 +345,8 @@ struct FeedMapView: View {
             )
             return
         }
+        // Where a move of the view's own ended: the style catches up (`followGlobe`).
+        globe.follow(context.region)
         centerSpan = straightDownSpan(proxy: proxy)
         viewModel.cameraDidSettle(
             on: FeedMapRegion(
@@ -362,20 +387,36 @@ struct FeedMapView: View {
     private func openCluster(_ cluster: ExploreCluster) {
         let target = clusterRegion(cluster)
         if zoomCanSplit(cluster), zoomsCloser(to: target.span), let current = tracker.camera {
-            let ratio = target.span.latitudeDelta / max(centerSpan ?? target.span.latitudeDelta * 2, 0.000_1)
             moveCamera(
                 to: MapCamera(
                     centerCoordinate: target.center,
-                    distance: current.distance * min(ratio, 1),
+                    distance: clusterDistance(showing: target, from: current),
                     heading: current.heading,
                     pitch: current.pitch
                 ),
-                duration: 0.6,
+                duration: globe.wantsGlobe ? 1.4 : 0.6,
                 adoptsSettle: false
             )
         } else {
             viewModel.showClusterPosts(cluster)
         }
+    }
+
+    /// How high a cluster tap takes the camera: closer by how much narrower
+    /// the cluster is than the span at the centre of the screen. From the
+    /// globe that span is no guide to the ground (a tap came down to 1.3 km,
+    /// the posts out of view): the height that shows the cluster's area.
+    private func clusterDistance(showing target: MKCoordinateRegion, from current: MapCamera) -> Double {
+        guard !globe.wantsGlobe else {
+            return distance(showing: FeedMapRegion(
+                latitude: target.center.latitude,
+                longitude: target.center.longitude,
+                latitudeDelta: target.span.latitudeDelta,
+                longitudeDelta: target.span.longitudeDelta
+            ))
+        }
+        let ratio = target.span.latitudeDelta / max(centerSpan ?? target.span.latitudeDelta * 2, 0.000_1)
+        return current.distance * min(ratio, 1)
     }
 
     /// Whether zooming in can split `cluster`: its posts fall in more than one
