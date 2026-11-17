@@ -1784,7 +1784,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null 
       return { status: 'uploading', progress: 0, file, localUrl: URL.createObjectURL(file), ref: null, error: null };
     });
     const mine = (draft: PhotoDraft | null) => Boolean(draft && draft.file === file);
-    cardPhotoToSend(file, data?.media?.photo.long_side || 1600)
+    cardPhotoToSend(file, data?.media?.photo.long_side || 2400)
       .then((body) => mailbox.uploadHolidayCardMedia('photo', body))
       .then(({ media }) => setPhoto((d) => (mine(d) ? { ...d!, status: 'ready', progress: 1, ref: media } : d)))
       .catch((error: unknown) => setPhoto((d) => (mine(d)

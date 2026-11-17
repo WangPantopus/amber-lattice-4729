@@ -2366,7 +2366,7 @@ const cardMediaTooLarge = (res, kind) => {
 /**
  * POST /api/mailbox/cards/media  multipart: `file` and `kind` (photo | voice | live)
  * Adds a photo, a Live Photo's moving part or a voice greeting for a card the sender is writing. A photo is stored as
- * the card keeps it: upright, at most 1600 px on its long side, a JPEG with no metadata (the original is never kept). A
+ * the card keeps it: upright, at most 2400 px on its long side, a JPEG with no metadata (the original is never kept). A
  * voice greeting is AAC-LC in an ordinary or fragmented MP4, at most 5 MiB and 60 seconds, stored as it came with its
  * metadata boxes blanked; its length is read from the file (`duration_ms`, which the apps show). A Live Photo's moving
  * part (`live`, founder November 16) is an MP4 or QuickTime clip of at most 15 MiB and 10 seconds, stored as it came

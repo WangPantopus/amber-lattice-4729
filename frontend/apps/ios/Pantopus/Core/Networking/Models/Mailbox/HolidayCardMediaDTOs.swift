@@ -17,7 +17,7 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
         public let usable: Bool
         /// The most bytes a photo can be as it comes (10 MiB).
         public let maxBytes: Int
-        /// The stored photo's long side (1600).
+        /// The stored photo's long side (2400; 1600 until November 16).
         public let longSide: Int
         /// A Live Photo's moving part can ride the photo (contract section 13); nil from a server before it.
         public let live: Live?
@@ -124,7 +124,7 @@ public struct HolidayCardMediaSpec: Decodable, Sendable, Hashable {
     }
 }
 
-/// `POST /api/mailbox/cards/media` → 201: the stored photo (upright, at most 1600 px, a JPEG with no metadata) or voice
+/// `POST /api/mailbox/cards/media` → 201: the stored photo (upright, at most 2400 px, a JPEG with no metadata) or voice
 /// greeting, as a send names it, sendable by its uploader until `expiresAt` (72 hours).
 public struct HolidayCardMediaUpload: Decodable, Sendable, Hashable {
     public struct Media: Decodable, Sendable, Hashable {

@@ -146,7 +146,7 @@ data class CardMediaUploaded(
     @Json(name = "expires_at") val expiresAt: String? = null,
 )
 
-/** A stored photo (upright, at most 1600 px on its long side, no metadata) or voice greeting. */
+/** A stored photo (upright, at most 2400 px on its long side, no metadata) or voice greeting. */
 @JsonClass(generateAdapter = true)
 data class CardMediaFile(
     @Json(name = "file_id") val fileId: String,
