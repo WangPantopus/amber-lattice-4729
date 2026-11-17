@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -82,6 +83,7 @@ import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.composeEmail
 import app.pantopus.android.ui.components.shareText
+import app.pantopus.android.ui.guidance.GuidanceAction
 import app.pantopus.android.ui.guidance.GuidanceFlags
 import app.pantopus.android.ui.guidance.GuidancePlaceShows
 import app.pantopus.android.ui.guidance.GuidanceScreen
@@ -3505,6 +3507,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     if (!LaunchFeatures.mailbox) {
                         // Opened by the chat button: Back returns to the tab it was opened from.
                         androidx.activity.compose.BackHandler(onBack = closeMessages)
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Messages))
                         return@composable InboxScreen(
                             onOpenConversation = { row -> navController.navigate(ChildRoutes.chatConversation(row)) },
                             onCompose = { navController.navigate(ChildRoutes.NEW_MESSAGE) },
@@ -3606,6 +3609,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // Messages while Mailbox is on: the conversation list, opened by the chat button (founder decision
                     // 2026-11-08). Back returns to the tab it was opened from.
                     androidx.activity.compose.BackHandler(onBack = closeMessages)
+                    // The conversation list, for the guidance cards: card 21 (the first connection).
+                    GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Messages))
                     InboxScreen(
                         onOpenConversation = { row ->
                             navController.navigate(ChildRoutes.chatConversation(row))
@@ -8121,9 +8126,32 @@ private fun PlaceTabRoot(
             HomeLanding.Homes -> GuidancePlaceShows.Homes
             else -> null
         }
-    GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Place, ready = guidanceShows != null && !arrivalOpen, place = guidanceShows))
+    GuidanceSpot(
+        GuidanceSpotFacts(
+            GuidanceScreen.Place,
+            ready = guidanceShows != null && !arrivalOpen,
+            place = guidanceShows,
+            homeId = (root as? HomeLanding.Home)?.homeId,
+            savedAt = (root as? HomeLanding.SavedPlace)?.place?.createdAt,
+        ),
+    )
     val guidance = LocalGuidance.current
     LaunchedEffect(guidanceShows) { if (guidanceShows == GuidancePlaceShows.SavedPlace) guidance?.note(GuidanceFlags.SAVED_ADDRESS) }
+    // A reminder's button (guidance cards 24, 25 and 27): its next step on what Place shows. 26 is Your Place's own.
+    val addressFocus = remember { FocusRequester() }
+    LaunchedEffect(guidance?.action, root) {
+        val host = guidance ?: return@LaunchedEffect
+        when (val current = root) {
+            HomeLanding.FirstRun -> if (host.takeAction(GuidanceAction.AddAddress)) runCatching { addressFocus.requestFocus() }
+            is HomeLanding.SavedPlace ->
+                if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(current.place.label))
+            is HomeLanding.Home ->
+                if (host.takeAction(GuidanceAction.Invite)) {
+                    navController.navigate(ChildRoutes.homeMembers(current.homeId, MembersTab.INVITE))
+                }
+            else -> Unit
+        }
+    }
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,
@@ -8221,7 +8249,7 @@ private fun PlaceTabRoot(
                         onSignIn = {},
                         onCreateAccount = {},
                         onSavePreview = host::openArrival,
-                        embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu),
+                        embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu, addressFocus),
                     )
                 }
         }

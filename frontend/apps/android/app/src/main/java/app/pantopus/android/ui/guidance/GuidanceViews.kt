@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -132,6 +135,8 @@ fun GuidanceCentreCardView(
         }
         val shown = remember { Animatable(0f) }
         LaunchedEffect(Unit) { shown.animateTo(1f, tween(APPEAR_MS)) }
+        val titleFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { titleFocus.requestFocus() } }
         val surface = if (dark) PantopusColors.appSurfaceRaisedDark else PantopusColors.appSurface
         val ink = if (dark) PantopusColors.appTextDark else PantopusColors.appText
         val rowInk = if (dark) PantopusColors.appTextStrongDark else PantopusColors.appTextStrong
@@ -180,6 +185,10 @@ fun GuidanceCentreCardView(
                         modifier =
                             Modifier
                                 .weight(1f)
+                                // A screen reader starts on the title (spec §1): it takes the window's first focus,
+                                // which TalkBack follows.
+                                .focusRequester(titleFocus)
+                                .focusable()
                                 .semantics {
                                     heading()
                                     traversalIndex = TITLE_ORDER

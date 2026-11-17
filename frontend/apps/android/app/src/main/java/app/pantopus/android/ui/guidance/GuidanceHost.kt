@@ -26,22 +26,31 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.BuildConfig
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.core.security.AppLockManager
+import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.guidance.GuidanceRepository
+import app.pantopus.android.data.homes.HomeMembersRepository
+import app.pantopus.android.data.homes.HomesRepository
+import app.pantopus.android.data.moments.MomentPostingOutcome
 import app.pantopus.android.data.moments.MomentsFeature
+import app.pantopus.android.data.moments.MomentsPosting
 import app.pantopus.android.data.plans.PlansFeature
+import app.pantopus.android.data.relationships.RelationshipsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** The guidance host below [GuidanceRoot]; null in previews and tests, where every report is a no-op. */
@@ -67,6 +76,21 @@ object GuidanceDebug {
     }
 }
 
+/** What a reminder's button opens besides closing it (spec §5, cards 24–27). The screen on top takes it. */
+enum class GuidanceAction {
+    /** 24: focus Place's address box. */
+    AddAddress,
+
+    /** 25: the set-up flow for the saved address. */
+    SetUpHome,
+
+    /** 26: the verify flow for the Home on Place. */
+    Verify,
+
+    /** 27: the Members invite for the Home on Place. */
+    Invite,
+}
+
 /** A card on screen; [replay] is one opened again from the Tips list, which doesn't count as seen. */
 data class GuidanceShowing(
     val card: GuidanceCard,
@@ -87,9 +111,38 @@ class GuidanceViewModel
         appLock: AppLockManager,
         private val moments: MomentsFeature,
         private val plans: PlansFeature,
+        private val homes: HomesRepository,
+        private val members: HomeMembersRepository,
+        private val relationships: RelationshipsRepository,
+        momentsPosting: MomentsPosting,
     ) : ViewModel() {
         val locked = appLock.isLocked
         val anchors = GuidanceAnchors()
+
+        init {
+            // A Moment of the person's went live: Moments then has card 19.
+            viewModelScope.launch {
+                momentsPosting.outcomes.collect { if (it is MomentPostingOutcome.Live) note(GuidanceFlags.MOMENT_POSTED) }
+            }
+        }
+
+        /** Your Place's own word on the Home it shows: verified, and whether it offers “Verify address”. */
+        private var placeHome by mutableStateOf<GuidanceHomeFacts?>(null)
+
+        /** The Home's record for the cards (who set it up, since when, how many live there), read on each Place visit. */
+        private var homeRecord by mutableStateOf<GuidanceHomeFacts?>(null)
+        private var homeJob: Job? = null
+
+        /** Messages: the person has a connection (card 21), read on each visit while the card is unseen. */
+        private var connected by mutableStateOf<Boolean?>(null)
+        private var connectedJob: Job? = null
+
+        /** The visit (spot token) a card last showed on: no reminder, introduction or pointer right after it. */
+        private var shownOnVisit: Int? = null
+
+        /** A reminder's button asked for its next step; the screen on top takes it ([takeAction]). */
+        var action by mutableStateOf<GuidanceAction?>(null)
+            private set
 
         private var spotToken = 0
         private var spotOwner by mutableStateOf<Int?>(null)
@@ -119,6 +172,7 @@ class GuidanceViewModel
             spotOwner = token
             spot = facts
             repository.visit(facts.screen.key)
+            readFacts(facts, visit = true)
             return token
         }
 
@@ -126,7 +180,73 @@ class GuidanceViewModel
             token: Int,
             facts: GuidanceSpotFacts,
         ) {
-            if (spotOwner == token && spot != facts) spot = facts
+            if (spotOwner != token || spot == facts) return
+            val before = spot
+            spot = facts
+            if (before?.homeId != facts.homeId) readFacts(facts, visit = false)
+        }
+
+        /** Your Place reports the Home it shows: [verified] (“Verified home”) and [canVerify] (it offers “Verify address”). */
+        fun reportHome(
+            homeId: String,
+            verified: Boolean,
+            canVerify: Boolean,
+        ) {
+            val facts = GuidanceHomeFacts(homeId, verified = verified, canVerify = canVerify)
+            if (placeHome != facts) placeHome = facts
+        }
+
+        /** The screen asking takes a reminder's next step once: true when [kind] was waiting. */
+        fun takeAction(kind: GuidanceAction): Boolean {
+            if (action != kind) return false
+            action = null
+            return true
+        }
+
+        /** What the after-action cards and reminders need beyond the screen's own facts, while one may still show. */
+        private fun readFacts(
+            facts: GuidanceSpotFacts,
+            visit: Boolean,
+        ) {
+            // Before the first profile read the account may still be new: read anyway (the Home's from the kept copies).
+            val state = repository.state.value ?: return
+            if (state.loaded && (!state.enabled || !state.newAccount)) return
+            val homeId = facts.homeId
+            if (facts.screen == GuidanceScreen.Place && homeId != null && (visit || homeRecord?.homeId != homeId)) readHome(homeId)
+            if (facts.screen == GuidanceScreen.Messages && visit && !state.hasSeen(GuidanceIds.DONE_CONNECTED)) readConnected()
+        }
+
+        private fun readHome(homeId: String) {
+            homeJob?.cancel()
+            homeJob =
+                viewModelScope.launch {
+                    val home = homes.myHomesStored(false).data?.homes?.firstOrNull { it.id == homeId } ?: return@launch
+                    val occupancy = home.occupancy
+                    val roster = members.listOccupantsStored(homeId).data?.occupants
+                    homeRecord =
+                        GuidanceHomeFacts(
+                            homeId = homeId,
+                            invited = occupancy?.verificationSource == JOINED_BY_HOUSEHOLD,
+                            setUpAt = occupancy?.startAt ?: home.createdAt,
+                            members = roster?.count { it.isActive && it.role !in NOT_HOUSEHOLD },
+                        )
+                }
+        }
+
+        private fun readConnected() {
+            connectedJob?.cancel()
+            connectedJob =
+                viewModelScope.launch {
+                    val result = relationships.list(status = ACCEPTED, limit = 1)
+                    if (result is NetworkResult.Success) connected = result.data.relationships.isNotEmpty()
+                }
+        }
+
+        /** Place's Home with both halves known: the screen's word and the record. */
+        private fun homeFacts(homeId: String?): GuidanceHomeFacts? {
+            val shown = placeHome?.takeIf { it.homeId == homeId } ?: return null
+            val record = homeRecord?.takeIf { it.homeId == homeId } ?: return null
+            return record.copy(verified = shown.verified, canVerify = shown.canVerify)
         }
 
         fun leaveSpot(token: Int) {
@@ -167,11 +287,24 @@ class GuidanceViewModel
                 otherCardThisOpen = repository.otherCardShownThisOpen(),
                 mailbox = LaunchFeatures.mailbox,
                 writesLetters = LaunchFeatures.mailExtras,
+                shownThisVisit = spotOwner != null && shownOnVisit == spotOwner,
+                home = homeFacts(facts.homeId).takeIf { facts.screen == GuidanceScreen.Place },
+                connected = connected.takeIf { facts.screen == GuidanceScreen.Messages },
+                appVersion = BuildConfig.VERSION_CODE,
             )
         }
 
         fun show(card: GuidanceCard) {
-            if (showing == null) showing = GuidanceShowing(card)
+            if (showing != null) return
+            showing = GuidanceShowing(card)
+            shownOnVisit = spotOwner
+        }
+
+        /** The card's button: it closes the card, and a reminder's also opens its next step. */
+        fun primary() {
+            val current = showing ?: return
+            close()
+            if (!current.replay) action = REMINDER_ACTIONS[current.card.id]
         }
 
         /** The Tips list: [card] again, which doesn't change its count. */
@@ -188,6 +321,8 @@ class GuidanceViewModel
             repository.markSeen(id)
             if (id !in GuidanceIds.tabCards) repository.markOtherCardShown()
             if (current.card is GuidanceCentre) repository.markCentreCardDay()
+            // At most one introduction per app update.
+            if (GuidanceIntroductions.card(id) != null) repository.note(GuidanceFlags.introducedIn(BuildConfig.VERSION_CODE))
         }
 
         /** The Tips list's cards (spec §4): the tab cards on for this account. */
@@ -206,6 +341,24 @@ class GuidanceViewModel
 
         /** The Tips row shows while the server's switch is on for this account. */
         fun tipsAvailable(): Boolean = repository.state.value?.let { it.enabled && !it.business } == true
+
+        private companion object {
+            const val ACCEPTED = "accepted"
+
+            /** An occupancy let in by the household (an invitation): the person didn't set the Home up. */
+            const val JOINED_BY_HOUSEHOLD = "household"
+
+            /** Occupants who don't live there. */
+            val NOT_HOUSEHOLD = setOf("guest", "service_provider")
+
+            val REMINDER_ACTIONS =
+                mapOf(
+                    GuidanceIds.NEXT_ADD_ADDRESS to GuidanceAction.AddAddress,
+                    GuidanceIds.NEXT_SETUP_HOME to GuidanceAction.SetUpHome,
+                    GuidanceIds.NEXT_VERIFY to GuidanceAction.Verify,
+                    GuidanceIds.NEXT_INVITE to GuidanceAction.Invite,
+                )
+        }
     }
 
 /**
@@ -225,7 +378,7 @@ fun GuidanceRoot(
             when (val shown = viewModel.showing?.card) {
                 is GuidanceCentre -> {
                     GuidanceDim()
-                    GuidanceCentreCardView(card = shown, onClose = viewModel::close)
+                    GuidanceCentreCardView(card = shown, onClose = viewModel::close, onPrimary = viewModel::primary)
                 }
                 is GuidancePointer -> GuidancePointerView(pointer = shown, anchors = viewModel.anchors, onClose = viewModel::close)
                 null -> Unit

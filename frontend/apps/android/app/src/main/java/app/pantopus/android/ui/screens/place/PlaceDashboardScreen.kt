@@ -70,7 +70,9 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Shimmer
+import app.pantopus.android.ui.guidance.GuidanceAction
 import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.screens.ballot.BallotGovernmentsSheet
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
@@ -184,6 +186,11 @@ fun PlaceDashboardScreen(
 
     var showSwitcher by remember { mutableStateOf(false) }
     var showVerify by remember { mutableStateOf(false) }
+    // Guidance card 26's “Verify address”: the same sheet as the card's own button.
+    val guidance = LocalGuidance.current
+    LaunchedEffect(guidance?.action, state) {
+        if (state is PlaceDashboardUiState.Loaded && guidance?.takeAction(GuidanceAction.Verify) == true) showVerify = true
+    }
     val verifyAddress = (state as? PlaceDashboardUiState.Loaded)?.intelligence?.place?.label.orEmpty()
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { listState.animateScrollToItem(0) } }
@@ -369,6 +376,11 @@ internal fun PlaceDashboardContent(
     // Verifying is the next step for a claimed resident and for a private setup (by mail). Guests and service
     // providers can't verify, so they get no verify prompts; older servers don't say, and claimed decides.
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))
+    // The guidance cards read the same (16, 17, 23, 26 and 27).
+    val guidance = LocalGuidance.current
+    LaunchedEffect(homeId, isVerified, showsVerify, claim) {
+        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null)
+    }
     val ballot = BallotPlacement.ballot(intel)
     var ballotGovernments by remember { mutableStateOf<BallotGovernments?>(null) }
     val (openGroups, toggleGroup) = rememberGlanceOpen(homeId)
