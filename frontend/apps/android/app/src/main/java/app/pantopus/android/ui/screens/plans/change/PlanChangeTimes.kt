@@ -23,8 +23,8 @@ data class PlanChangeTimes(
     val original: List<DateOptionDraft> = emptyList(),
     val options: List<DateOptionDraft> = emptyList(),
 ) {
-    /** A time was added or removed: Save sends them. */
-    val changed: Boolean get() = isPicking && options.map { it.key } != original.map { it.key }
+    /** A time was added or removed (an added one carries no server value, even at a time removed here): Save sends them. */
+    val changed: Boolean get() = isPicking && options != original
 
     /** What Save can't send (the list keeps two, so this is a guard). */
     val problem: String? get() = if (changed && options.size < DATE_OPTIONS_FEWEST) "Offer two to five times." else null
