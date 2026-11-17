@@ -728,7 +728,7 @@ export interface GuidanceSeenEntry {
   last_at: string;
 }
 
-/** GET /api/users/profile `guidance`, and the answer of POST /api/users/guidance/shown. */
+/** GET /api/users/profile `guidance` (a top-level key beside `user`), and the answer of the guidance writes. */
 export interface GuidanceState {
   enabled: boolean;
   /** The account is under 14 days old. */
@@ -777,8 +777,6 @@ export interface UserProfile extends User {
   showEmail?: boolean;
   show_phone?: boolean;
   showPhone?: boolean;
-  /** The guidance cards' switch and which cards this person has closed (own profile only). */
-  guidance?: GuidanceState;
   // Reviews (populated on public profiles)
   reviews?: Array<{
     id: string;

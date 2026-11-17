@@ -72,8 +72,27 @@ export async function getMyProfile(): Promise<UserProfile> {
   const response = await get<any>('/api/users/profile');
   // Backend wraps response in { user: {...} }, so unwrap it
   const user = response.user || response;
-  // The guidance cards' state may sit beside `user`; it stays with the profile either way.
-  return response.guidance && user && !user.guidance ? { ...user, guidance: response.guidance } : user;
+  // The guidance cards' state is a top-level key beside `user`: it goes to onProfileGuidance's listeners,
+  // and the profile answer stays the user alone.
+  if (response.guidance && typeof response.guidance === 'object') {
+    lastProfileGuidance = { guidance: response.guidance, userId: user?.id ?? null };
+    profileGuidanceListeners.forEach((listener) => listener(response.guidance, user?.id ?? null));
+  }
+  return user;
+}
+
+type ProfileGuidanceListener = (guidance: GuidanceState, userId: string | null) => void;
+const profileGuidanceListeners = new Set<ProfileGuidanceListener>();
+let lastProfileGuidance: { guidance: GuidanceState; userId: string | null } | null = null;
+
+/**
+ * Hears the `guidance` of every GET /api/users/profile that getMyProfile reads (the latest one at once), so the
+ * guidance cards read it from the profile the app already loads. Answers the unsubscribe.
+ */
+export function onProfileGuidance(listener: ProfileGuidanceListener): () => void {
+  profileGuidanceListeners.add(listener);
+  if (lastProfileGuidance) listener(lastProfileGuidance.guidance, lastProfileGuidance.userId);
+  return () => { profileGuidanceListeners.delete(listener); };
 }
 
 /**

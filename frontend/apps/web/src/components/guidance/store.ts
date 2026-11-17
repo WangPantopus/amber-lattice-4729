@@ -14,7 +14,7 @@
 
 import * as api from '@pantopus/api';
 import type { GuidanceSeenEntry, GuidanceState } from '@pantopus/types';
-import { setMe } from '@/lib/me';
+import { setProfileGuidance } from './profileGuidance';
 
 export type GuidanceScreenName = 'place' | 'today' | 'mail' | 'pulse';
 
@@ -110,7 +110,7 @@ export async function flushPending(userId: string): Promise<void> {
         write(userId, { ...now, pending: now.pending.slice(1) });
         if (guidance) {
           mergeServerSeen(userId, guidance);
-          setMe({ guidance });
+          setProfileGuidance(userId, guidance);
         }
       } catch (error) {
         const status = statusOf(error);

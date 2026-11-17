@@ -16,6 +16,7 @@ import { myHomesQuery } from '@/lib/myHomes';
 import { mailCard, placeSavedCard, pulseCard, todayCard, welcomeCard, type CentreCardContent } from '@/components/guidance/cards';
 import { replayCard } from '@/components/guidance/replay';
 import { isSeen } from '@/components/guidance/store';
+import { useProfileGuidance } from '@/components/guidance/profileGuidance';
 
 export default function GuidanceTipsPage() {
   const router = useRouter();
@@ -25,15 +26,16 @@ export default function GuidanceTipsPage() {
   const me = useMe({ enabled: signedIn });
   const user = me.data;
   const userId = user?.id;
-  const on = !!user?.guidance?.enabled && user.accountType !== 'business';
+  const guidance = useProfileGuidance(userId);
+  const on = !!guidance?.enabled && user?.accountType !== 'business';
 
   useEffect(() => {
     if (mounted && !getAuthToken()) router.push('/login');
   }, [mounted, router]);
   // The list is for accounts the cards are on for; Settings shows its row only then.
   useEffect(() => {
-    if (user && !on) router.replace('/app/profile/settings');
-  }, [user, on, router]);
+    if (user && guidance && !on) router.replace('/app/profile/settings');
+  }, [user, guidance, on, router]);
 
   const saved = useQuery({
     queryKey: ['place-entry', userId, 'saved'],

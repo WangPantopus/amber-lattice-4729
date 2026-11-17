@@ -4,7 +4,7 @@
 // GuidanceHost: decides when a guidance card shows (GUIDE SPEC §2). Mounted once in the
 // app shell; it replaced the web's seven older promo pop-ups (founder decision 4).
 //
-// - Nothing shows unless the profile's `guidance.enabled` is true. New accounts (under
+// - Nothing shows unless the profile's `guidance.enabled` is true (a top-level key of GET /api/users/profile). New accounts (under
 //   14 days) get the tab cards and pointers; business accounts get none.
 // - Never over something else: the daily briefings notice (and until it has been
 //   answered), the name prompt, a composer, the menu drawer, any open dialog, menu or
@@ -24,7 +24,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
-import type { GuidanceState } from '@pantopus/types';
 import { useNotificationPreferences } from '@/lib/me';
 import { launchFeatures } from '@/lib/featureFlags';
 import {
@@ -35,6 +34,7 @@ import GuidanceCard from './GuidanceCard';
 import GuidancePointer from './GuidancePointer';
 import { currentScreen, screenForPath, subscribeScreen, type GuidanceScreenReport } from './screens';
 import { subscribeReplay, takeReplay } from './replay';
+import { setProfileGuidance, useProfileGuidance } from './profileGuidance';
 import {
   appOpenNumber, countVisit, flushPending, isSeen, markShownThisOpen, mergeServerSeen, noteVisibility,
   oneShownThisOpen, recordSeen, startAppOpen, type GuidanceScreenName,
@@ -51,7 +51,6 @@ type Active =
 interface HostUser {
   id: string;
   accountType?: string;
-  guidance?: GuidanceState;
 }
 
 /** The forced card, honoured only outside production builds. */
@@ -168,12 +167,15 @@ export default function GuidanceHost({
 }) {
   const pathname = usePathname() ?? '';
   const userId = user?.id ?? null;
-  const guidance = user?.guidance;
+  // The profile's top-level `guidance`, from the profile the shell already loads.
+  const guidance = useProfileGuidance(userId);
   const screen = useSyncExternalStore(subscribeScreen, currentScreen, () => null);
   const prefs = useNotificationPreferences({ enabled: !!userId });
   const [active, setActive] = useState<Active | null>(null);
   const visit = useRef<{ path: string | null; screen: GuidanceScreenName | null; n: number; shown: boolean }>({ path: null, screen: null, n: 0, shown: false });
   const lastScroll = useRef(0);
+
+  useEffect(() => api.users.onProfileGuidance((state, id) => { if (id) setProfileGuidance(id, state); }), []);
 
   // App opens: this page load, and a return after 30 minutes in the background.
   useEffect(() => {
