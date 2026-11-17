@@ -15,7 +15,7 @@
 
 'use client';
 
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Clock, Compass, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { PlaceIntelligence } from '@pantopus/types';
@@ -67,6 +67,9 @@ export interface PlaceDashboardViewProps {
   neighbors?: ReactNode;
   /** The server's verify-options answer (FASTVERIFY); null while the faster verification is off. */
   verifyOptions?: VerifyOptions | null;
+  /** Open the verify sheet once (Add Home in two steps lands here); then `onAutoOpened` drops the request. */
+  autoOpenVerify?: boolean;
+  onAutoOpened?: () => void;
 }
 
 export default function PlaceDashboardView({
@@ -87,6 +90,8 @@ export default function PlaceDashboardView({
   onOpenClaimStatus,
   neighbors = null,
   verifyOptions = null,
+  autoOpenVerify = false,
+  onAutoOpened,
 }: PlaceDashboardViewProps) {
   const [verifyOpen, setVerifyOpen] = useState(false);
   const openVerify = () => setVerifyOpen(true);
@@ -125,6 +130,14 @@ export default function PlaceDashboardView({
   const setupStage = tier === 'T1';
   const hasServerIdentity = intelligence.groups.some((g) => g.group === 'identity');
   const showIdentity = tier === 'T4' && !hasServerIdentity;
+
+  // Add Home in two steps ends here with the verify sheet open (only where it would show at all).
+  useEffect(() => {
+    if (!autoOpenVerify) return;
+    if (showVerify) setVerifyOpen(true);
+    onAutoOpened?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenVerify]);
 
   return (
     <div className="flex flex-col">

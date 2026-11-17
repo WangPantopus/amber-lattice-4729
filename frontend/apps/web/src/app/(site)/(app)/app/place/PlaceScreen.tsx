@@ -57,7 +57,7 @@ function PlaceRoute() {
     <>
       {previewId || savedPlaceId ? (
         <div className="mx-auto max-w-[760px] px-4 py-6"><SavedPlaceContext previewId={previewId ?? undefined} savedPlaceId={savedPlaceId ?? undefined} /></div>
-      ) : <PlaceHomeContext.Provider value={switchedHome}><PlaceDashboard /></PlaceHomeContext.Provider>}
+      ) : <PlaceHomeContext.Provider value={switchedHome}><PlaceDashboard openVerify={params?.get('verify') === '1'} /></PlaceHomeContext.Provider>}
     </>
   );
 }
