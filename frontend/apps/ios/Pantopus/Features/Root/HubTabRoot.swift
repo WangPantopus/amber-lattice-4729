@@ -1369,7 +1369,9 @@ public struct HubTabRoot: View {
         case let .homeResidency(id):
             path.append(.residencyStatus(homeId: id))
             _ = router.consume()
-        case let .postcardVerification(id):
+        case let .postcardVerification(id, code):
+            // A scanned card's code waits for the postcard screen, outside the navigation path.
+            PostcardLinkCode.hand(code, homeId: id)
             path.append(.postcardVerification(homeId: id))
             _ = router.consume()
         case .notifications:

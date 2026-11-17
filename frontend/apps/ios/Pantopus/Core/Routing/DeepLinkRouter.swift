@@ -75,7 +75,8 @@ final class DeepLinkRouter {
         case verifyLandlord(id: String)
         /// `pantopus://homes/:id/verify-postcard` — opens the A12.7
         /// sibling status screen directly.
-        case postcardVerification(id: String)
+        /// `code` is the card's code from a scanned link's `#c=` fragment (FASTVERIFY), filled into the code field.
+        case postcardVerification(id: String, code: String? = nil)
         case conversation(id: String)
         case user(id: String)
         /// `pantopus://persona/:handle` or `/@handle` — public Beacon profile.
@@ -970,7 +971,8 @@ final class DeepLinkRouter {
             return .verifyLandlord(id: id)
         }
         if trailing.first == "verify-postcard" || trailing.first == "verify_postcard" {
-            return .postcardVerification(id: id)
+            // The card's QR link carries its code in the fragment, which never reaches a server.
+            return .postcardVerification(id: id, code: PostcardLinkCode.sanitized(fragmentParam(url.fragment, name: "c")))
         }
         // B1.6 — `pantopus://homes/:id/waiting-room` opens the A18.4 room.
         if trailing.first == "waiting-room" || trailing.first == "waiting_room" {
