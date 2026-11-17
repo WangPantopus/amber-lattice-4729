@@ -6,6 +6,7 @@
 import apiClient, { get, post, put, del, patch } from '../client';
 import type { Mail, AdCampaign, ApiResponse } from '@pantopus/types';
 import type { MailItemV2 } from './mailboxV2';
+import type { CardLinkFront } from './mailCompose';
 
 export interface MailboxSummary {
   total_mail: number;
@@ -902,7 +903,9 @@ export interface HolidayCardPreview {
     /** The sealed envelope at its top (launch key card_table). */
     picture?: string } | null;
   /** By email: the page its link opens (the address masked, as on that page). */
-  link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean } | null;
+  link_page: { sender_name: string; sender_verified: boolean; sealed: boolean; sent_to: string; sent_on: string; by_link?: boolean;
+    /** The card's front as the page shows it; null when it's sealed until Christmas. */
+    front?: CardLinkFront | null } | null;
   /** By email, set to go at your 7 a.m. or on Christmas morning: when (null: as it's sealed). */
   email_send_at?: string | null;
 }

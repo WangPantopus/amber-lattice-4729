@@ -954,6 +954,11 @@ Decided October 30 (section 0). Christmas cards are built behind `holiday_cards`
 - [ ] Founder: the privacy policy's section 5 now names card notes; it still waits on the Anthropic retention confirmation noted there.
 - [ ] Not verified anywhere: production, real phones, screen readers speaking aloud.
 
+**The page a card's link opens (added November 16).** You asked for more sign-ups from cards, and decided that the page may now show the card's front before the person joins: the stock picture the sender picked, never the note, signature, photo or voice.
+
+- [x] The front before sign-up: `GET /api/mailbox/claim/:mailId` answers `card.front` (the picture's id, its printed caption, paper and cloth, from the season's list), null while the card is sealed until Christmas. The web page draws the card lying on its open envelope, as `/cards/<slug>` does, and keeps the shut envelope and "sealed until Christmas morning" for a sealed card; the link's preview in chat apps stays the sealed envelope. Look it over on the web shows the same page (`link_page.front`). Checked in a browser against a local server and database: an unsealed card by email showed its front, a sealed one the shut envelope.
+- [ ] The phones' Look it over still draws the link's page as the shut envelope for every card (iOS `CardTableLinkPagePicture` and `HolidayCardLinkPagePicture`, Android `LinkPageOnTable` and `LinkPagePicture`): they need to draw `link_page.front` when it's there.
+
 ## Mail and card design (added November 11)
 
 The founder approved the [design plan](docs/product/mail-cards-design-plan-2026-11-09.md) and its eight decisions on

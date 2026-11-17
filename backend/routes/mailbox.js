@@ -427,6 +427,17 @@ function closedEscrowReason(mail) {
   return null;
 }
 
+// The front of a card on its link's page (GET /claim/:mailId) and on Look it over's picture of that page: the stock
+// picture the sender picked, as the public /cards/<slug> page draws it, from the season's list alone (never the
+// stored caption). Nothing of the note, the signature, the sender's own photo or voice. A card sealed until Christmas
+// shows no front (null), and neither does a picture that isn't on the list.
+function cardLinkFront(card) {
+  if (!card || card.arrival === 'sealed_christmas') return null;
+  const design = holidayCards.designById(card.design);
+  if (!design) return null;
+  return { design: design.id, caption: design.caption, paper: design.paper, table: design.table || null };
+}
+
 // Who a letter a person sent in their own name is from on its link's page (GET /claim/:mailId), and on a card's look
 // before it's sent (POST /cards/preview): the name neighbors see (their Local Profile) and whether they still have a
 // verified home.
@@ -2724,7 +2735,7 @@ async function cardLook(senderId, checked, now) {
   if (toEmail || byLink) {
     const { senderName, senderVerified } = await claimPagePerson(senderId, senderDisplay);
     linkPage = { sender_name: senderName, sender_verified: senderVerified, sealed, sent_to: byLink ? '' : maskContact(toEmail),
-      sent_on: now.toISOString(), ...(byLink ? { by_link: true } : {}) };
+      sent_on: now.toISOString(), front: cardLinkFront({ ...card, arrival }), ...(byLink ? { by_link: true } : {}) };
   }
   return {
     piece: {
@@ -4135,7 +4146,9 @@ router.post('/send', verifyToken, validate(sendMailSchema), async (req, res) => 
  * GET /api/mailbox/claim/:mailId?token=…
  * Public (no sign-in): what the link in a letter's email or text opens (the web app's /open/:mailId page). It shows
  * who the letter is from and its preview, never the letter itself, which the person reads once it is in their
- * mailbox (POST /claim/:mailId). A letter sent as a business shows the business, never the person who sent it.
+ * mailbox (POST /claim/:mailId). A Christmas card shows its front, the stock picture the sender picked (`card.front`,
+ * null while it's sealed until Christmas), never its note, signature, photo or voice. A letter sent as a business
+ * shows the business, never the person who sent it.
  */
 router.get('/claim/:mailId', async (req, res) => {
   try {
@@ -4178,7 +4191,7 @@ router.get('/claim/:mailId', async (req, res) => {
     if (previewText && (mail.content_excerpt || '').length > previewText.length) {
       previewText = `${previewText.replace(/\s+\S*$/, '')}…`;
     }
-    // A Christmas card says only that it is one: no picture, no note, until it's in their mailbox.
+    // A Christmas card shows its front (the stock picture, unless it's sealed until Christmas), never its note.
     const card = holidayCards.isCard(mail) ? mail.mail_extracted.card : null;
     if (card) previewText = null;
 
@@ -4193,7 +4206,7 @@ router.get('/claim/:mailId', async (req, res) => {
         mailType: mail.mail_type || mail.type || null,
         outcomeDescription,
         card: card ? { holiday: card.holiday || holidayCards.SEASON.holiday, year: card.year || holidayCards.SEASON.year,
-          sealed: card.arrival === 'sealed_christmas', ...(card.by_link ? { by_link: true } : {}) } : null,
+          sealed: card.arrival === 'sealed_christmas', front: cardLinkFront(card), ...(card.by_link ? { by_link: true } : {}) } : null,
         // The address or number to sign in with, masked as in the sender's expiry notice. A card by link went to none.
         sentTo: card?.by_link ? '' : maskContact(mail.escrow_recipient_contact || ''),
         createdAt: mail.created_at,

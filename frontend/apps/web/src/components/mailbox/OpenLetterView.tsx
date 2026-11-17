@@ -2,12 +2,15 @@
 // OpenLetterView — a letter for someone who isn't on Pantopus yet,
 // opened from the link in its email (or text).
 // Signed out, it shows who the letter is from and a short preview,
-// never the letter itself. Signing in or creating an account with the
+// never the letter itself; a Christmas card shows its front (the stock
+// picture the sender picked) unless it's sealed until Christmas, never
+// its note. Signing in or creating an account with the
 // address it was sent to comes back here, and "Read the letter" puts
 // it in that person's own mailbox, where they read it. A letter sent
 // as a business names only the business. Plain state, not react-query,
 // like the other public token pages. With launch key card_table, a
-// Christmas card's page is the table and its shut envelope.
+// Christmas card's page is the table with the card lying on its open
+// envelope (sealed: the shut envelope).
 // ============================================================
 
 'use client';
@@ -20,7 +23,8 @@ import type { EscrowClaimErrorCode, EscrowedMailView } from '@pantopus/api';
 import { BadgeCheck, Clock, Loader2, Mail, MailCheck, MailX, type LucideIcon } from 'lucide-react';
 import { confirmStore } from '@/components/ui/confirm-store';
 import { launchFeatures } from '@/lib/featureFlags';
-import CardLinkScene, { cardLinkStyles as table } from './cards/CardLinkScene';
+import CardLinkScene, { cardLinkStyles as table, type CardLinkSceneFront } from './cards/CardLinkScene';
+import { PaperFront } from './cards/CardPaper';
 
 type Letter = EscrowedMailView['mail'];
 type ClosedCode = Extract<EscrowClaimErrorCode, 'MAIL_LINK_INVALID' | 'MAIL_CLAIMED' | 'MAIL_EXPIRED' | 'MAIL_WITHDRAWN'> | 'UNAVAILABLE';
@@ -101,12 +105,19 @@ export const LINK_PAGE_PANEL = 'bg-app-surface border border-app-border rounded-
 /** What the page says about the piece: the server's answer, or (Look it over) what it will answer once it's sent. */
 export type LinkPageLetter = Pick<Letter, 'senderName' | 'senderVerified' | 'senderKind' | 'subject' | 'previewText' | 'outcomeDescription' | 'sentTo' | 'createdAt' | 'card'>;
 
+/** A card's front as the page draws it, postmarked the day it was sent; null when it's sealed or has none. */
+export function linkPageFront(letter: LinkPageLetter): CardLinkSceneFront | null {
+  const front = letter.card?.front;
+  return front && !letter.card?.sealed ? { ...front, year: letter.card?.year ?? new Date().getFullYear(), mailedOn: letter.createdAt || null } : null;
+}
+
 /**
- * Who it's from and what it is (a Christmas card says only that it is one: no picture, no note, until it's in
- * their mailbox). Look it over shows this same block before a card is sent, so the two can't drift.
+ * Who it's from and what it is (a Christmas card shows its front, never its note, and sealed only says it is one).
+ * Look it over shows this same block before a card is sent, so the two can't drift.
  */
 export function LinkPageSummary({ letter }: { letter: LinkPageLetter }) {
   const card = letter.card ?? null;
+  const front = linkPageFront(letter);
   return (
     <>
       <div className="flex items-start gap-3.5">
@@ -127,9 +138,14 @@ export function LinkPageSummary({ letter }: { letter: LinkPageLetter }) {
 
       <section aria-label={card ? 'Card' : 'Letter preview'} className="mt-5 rounded-xl border border-app-border-subtle bg-app-surface-raised p-4">
         {letter.subject && <h2 className="text-[15px] font-semibold text-app-text break-words">{letter.subject}</h2>}
+        {front ? (
+          <div className="mx-auto mt-3 w-[min(100%,15rem)] -rotate-2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.25)]" role="img" aria-label={`A Christmas card: ${front.caption}`} data-testid="cardLinkFront">
+            <PaperFront design={front.design} caption={front.caption} paper={front.paper} year={front.year} mailedOn={front.mailedOn} />
+          </div>
+        ) : null}
         {card ? (
           <p className="text-[14px] text-app-text-secondary leading-[21px] mt-1">
-            {card.sealed ? 'It’s sealed until Christmas morning. ' : ''}You’ll see the card once it’s in your mailbox.
+            {front ? 'Open it to read what they wrote.' : `${card.sealed ? 'It’s sealed until Christmas morning. ' : ''}You’ll see the card once it’s in your mailbox.`}
           </p>
         ) : null}
         {letter.previewText && (
@@ -168,7 +184,7 @@ export function LinkPageSignIn({ letter, loginHref, registerHref }: { letter: Li
   );
 }
 
-/** The card on the table's page: who it's from, in words that say nothing of the card itself. Look it over draws these too. */
+/** The card on the table's page: who it's from, in words that say nothing of the note. Look it over draws these too. */
 export function CardLinkWords({ letter }: { letter: LinkPageLetter }) {
   return (
     <div className={table.words}>
@@ -386,7 +402,7 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
   }
 
   const { letter } = state;
-  // A Christmas card says only that it is one: no picture, no note, until it's in their mailbox.
+  // A Christmas card shows its front (unless it's sealed until Christmas), never its note, until it's in their mailbox.
   const card = letter.card ?? null;
   const noun = card ? 'card' : 'letter';
   const byNumber = !letter.sentTo.includes('@');
@@ -395,7 +411,7 @@ export default function OpenLetterView({ mailId, token, isCard = false }: {
 
   if (launchFeatures.cardTable && card) {
     return (
-      <CardLinkScene>
+      <CardLinkScene front={linkPageFront(letter)}>
         <CardLinkWords letter={letter} />
 
         {signedIn === false && (
