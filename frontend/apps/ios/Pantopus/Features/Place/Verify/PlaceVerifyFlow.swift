@@ -22,6 +22,8 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
     case landlord
     /// FASTVERIFY: the phone number check, drawn only while the server offers it.
     case phone
+    /// FASTVERIFY: "I'm at home now", the location check (iPhone and Android only).
+    case location
 
     /// Today's doors, in today's order (the faster sheet draws the server's).
     static let todayDoors: [PlaceVerifyMethod] = [.document, .mail, .landlord]
@@ -32,6 +34,7 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
         case .mail: .send
         case .landlord: .shieldCheck
         case .phone: .smartphone
+        case .location: .mapPin
         }
     }
 
@@ -41,6 +44,7 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
         case .mail: "Mail a code to my address"
         case .landlord: "Confirm with your landlord"
         case .phone: "Use my phone number"
+        case .location: "I'm at home now"
         }
     }
 
@@ -50,6 +54,7 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
         case .mail: "A postcard with a code, 3–7 days. Yours to keep."
         case .landlord: "Your landlord confirms that you live here."
         case .phone: "We text a code, then match the number to this address."
+        case .location: "One tap. We check your phone's location once."
         }
     }
 }

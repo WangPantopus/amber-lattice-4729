@@ -262,6 +262,9 @@ extension PlaceVerifySheet {
     static func otherWays(_ options: HomeVerifyOptions?, excluding: PlaceVerifyMethod) -> [FastRow] {
         guard let options else { return [] }
         var rows: [FastRow] = []
+        if excluding != .location, options.offers(.location) {
+            rows.append(FastRow(kind: .start(.location), icon: .mapPin, label: "I'm at home now", sub: "One tap.", tone: .sky))
+        }
         if excluding != .phone, options.offers(.phone) {
             rows.append(FastRow(kind: .start(.phone), icon: .smartphone, label: "Use my phone number", sub: "About a minute.", tone: .sky))
         }

@@ -85,6 +85,15 @@ extension PlaceVerifySheet {
                 tone: .sky
             ))
         }
+        if options.offers(.location) {
+            rows.append(FastRow(
+                kind: .start(.location),
+                icon: .mapPin,
+                label: PlaceVerifyMethod.location.label,
+                sub: PlaceVerifyMethod.location.sub,
+                tone: .sky
+            ))
+        }
         let document = options.option(.document)
         // The server's answer wins when it reads a bill at once (another photo is fine after an unreadable one);
         // the app's own claims check only stands in for a review-only upload.

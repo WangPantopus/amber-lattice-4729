@@ -32,6 +32,18 @@ public enum HomeFastVerifyEndpoints {
         Endpoint(method: .post, path: "/api/homes/\(homeId)/fast-check/phone/verify", body: request)
     }
 
+    /// `POST /api/homes/:id/fast-check/location/challenge` (FASTVERIFY phase 5): a signed, two-minute value for
+    /// one reading. Answers `{ challenge, expires_at }`.
+    public static func locationChallenge(homeId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/homes/\(homeId)/fast-check/location/challenge")
+    }
+
+    /// `POST /api/homes/:id/fast-check/location` (FASTVERIFY phase 5): one reading with its device proof. Answers
+    /// `{ result: verified|confirmed|no_match|too_rough|not_counted, level, recheck_due_at }`.
+    static func location(homeId: String, request: LocationCheckRequest) -> Endpoint {
+        Endpoint(method: .post, path: "/api/homes/\(homeId)/fast-check/location", body: request)
+    }
+
     /// `POST /api/public/postcard-report` — "This wasn't me" for a scanned card (FASTVERIFY phase 2). Needs no
     /// account; the server answers `{ recorded: true }` whatever it found.
     public static func postcardReport(homeId: String, code: String) -> Endpoint {

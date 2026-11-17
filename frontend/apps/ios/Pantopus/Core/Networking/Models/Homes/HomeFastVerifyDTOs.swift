@@ -219,3 +219,43 @@ public struct PhoneCheckVerifyResponse: Decodable, Sendable, Hashable {
         case triesLeft = "tries_left"
     }
 }
+
+// MARK: - At home now (phase 5)
+
+public struct LocationChallengeResponse: Decodable, Sendable, Hashable {
+    public let challenge: String
+    public let expiresAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case challenge
+        case expiresAt = "expires_at"
+    }
+}
+
+/// One reading, its challenge and the device proof (App Attest on iPhone; none from a simulator).
+struct LocationCheckRequest: Encodable {
+    let challenge: String
+    let latitude: Double
+    let longitude: Double
+    let accuracyM: Double
+    let mocked: Bool
+    let platform: String
+    let proof: AppAttestProofDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case challenge, latitude, longitude, mocked, platform, proof
+        case accuracyM = "accuracy_m"
+    }
+}
+
+/// `verified` (first match), `confirmed` (a match on a later day), `no_match`, `too_rough` or `not_counted`.
+public struct LocationCheckResponse: Decodable, Sendable, Hashable {
+    public let result: String
+    public let level: String?
+    public let recheckDueAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case result, level
+        case recheckDueAt = "recheck_due_at"
+    }
+}
