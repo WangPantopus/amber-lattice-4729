@@ -214,7 +214,7 @@ function invitedKeys(rows) {
  * The card's `dates` while picking (with `extras=1`): each time with how many can make it and whether the reader
  * ticked it; for the host, first names and the favorite. `names`: key → first name (the host's view only).
  */
-function view(plan, { mineKey = null, host = false, names = null, invited = 0 }) {
+function view(plan, { mineKey = null, host = false, names = null, invited = 0, room = null }) {
   const value = plan.date_options;
   if (!isPicking(plan)) return null;
   const tz = rules.timezoneForPlan(plan);
@@ -234,7 +234,8 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0 })
       out.who = who.map((k) => names?.get(k)).filter(Boolean);
       out.most = best > 0 && who.length === best;
       out.pick_text = `Pick ${pickDate(o.starts_at, tz)}`;
-      out.pick_note = pickNote(who.length, answeredKeys.length - who.length, Math.max(0, invited - answeredKeys.length), dayName(o.starts_at, tz));
+      out.pick_note = pickNote(who.length, answeredKeys.length - who.length, Math.max(0, invited - answeredKeys.length), dayName(o.starts_at, tz),
+        room ? passedOver(plan, value, o.id, room) : 0);
     }
     return out;
   });
@@ -251,28 +252,86 @@ function view(plan, { mineKey = null, host = false, names = null, invited = 0 })
   return out;
 }
 
-/** "The 6 who ticked Sunday are in as soon as you pick it. The other 3 are asked if Sunday works. The 5 who haven't answered get the invitation with the date." */
-function pickNote(ticked, others, silent, day) {
+/**
+ * "The 6 who ticked Sunday are in as soon as you pick it. The other 3 are asked if Sunday works. The 5 who haven't
+ * answered get the invitation with the date." When the room can't take everyone who ticked (`over`, worked out by the
+ * pick's own rule): "2 of the 3 who ticked Sunday are in as soon as you pick it. 1 doesn't fit in the room for now."
+ */
+function pickNote(ticked, others, silent, day, over = 0) {
   const parts = [];
-  if (ticked) parts.push(`The ${ticked} who ticked ${day} ${ticked === 1 ? 'is' : 'are'} in as soon as you pick it.`);
+  const fit = ticked - over;
+  if (ticked && over > 0) {
+    const tail = `${over} ${over === 1 ? 'doesn’t' : 'don’t'} fit in the room for now.`;
+    parts.push(fit > 0 ? `${fit} of the ${ticked} who ticked ${day} ${fit === 1 ? 'is' : 'are'} in as soon as you pick it. ${tail}`
+      : ticked === 1 ? `The 1 who ticked ${day} doesn’t fit in the room for now.` : `None of the ${ticked} who ticked ${day} fit in the room for now.`);
+  } else if (ticked) parts.push(`The ${ticked} who ticked ${day} ${ticked === 1 ? 'is' : 'are'} in as soon as you pick it.`);
   if (others) parts.push(`The other ${others} ${others === 1 ? 'is' : 'are'} asked if ${day} works.`);
   if (silent) parts.push(`The ${silent} who ${silent === 1 ? 'hasn’t' : 'haven’t'} answered ${silent === 1 ? 'gets' : 'get'} the invitation with the date.`);
   return parts.join(' ');
 }
 
-/** For a card: the invited keys and (for the host) first names, read for one plan. */
+/**
+ * What the pick would find, read for the host's note (08-extras section 2): the seats free now, the invitations by
+ * account and by guest row, and whom the host blocked. Nothing changes.
+ */
+async function roomFor(plan, rows) {
+  const [requests, guestSeats, fullRows, filters] = await Promise.all([
+    actions().activeRequests(plan.post_id), guests().guestSeatsOf(plan.post_id), guests().guestRowsFull(plan.post_id),
+    require('../feedService').getMuteAndHideFilters(String(plan.host_user_id)),
+  ]);
+  return {
+    free: plan.spots - planService.seatsTaken(plan, requests, guestSeats),
+    inviteByUser: new Map(rows.filter((r) => r.invitee_user_id).map((r) => [String(r.invitee_user_id), r])),
+    rowById: new Map(fullRows.map((r) => [String(r.id), r])),
+    blocked: filters?.blockedUserIds || new Set(),
+  };
+}
+
+/**
+ * How many who ticked this time the pick would pass over for room (settle's rule, changing nothing): in the order they
+ * answered, with their numbers; an account in or waiting on the host's yes as settle counts it, a guest's seats taken
+ * whether in or waiting; a party larger than the room left is passed over and a later, smaller one may still fit.
+ */
+function passedOver(plan, value, optionId, room) {
+  const ticks = value.ticks || {};
+  const order = Object.entries(value.answered || {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]))).map(([k]) => k);
+  let free = room.free;
+  let over = 0;
+  for (const key of order.filter((k) => (ticks[k] || []).includes(optionId))) {
+    if (key.startsWith('p:')) {
+      const userId = key.slice(2);
+      const invite = room.inviteByUser.get(userId);
+      if (!invite || ['cancelled', 'declined'].includes(invite.status) || room.blocked.has(userId)) continue;
+      const numbers = (value.numbers || {})[key] || { party_size: 1, kids_count: 0 };
+      const seats = rules.seatsFor(plan, numbers.party_size, plan.kids_welcome ? numbers.kids_count : 0);
+      if (seats > free) over += 1;
+      else if (!invite.needs_host_ok) free -= seats;
+    } else {
+      const row = room.rowById.get(key.slice(2));
+      if (!row || row.status === 'cancelled' || row.invitee_user_id) continue;
+      const seats = (Number(row.guest_adults) || 1) + (plan.kids_welcome ? Number(row.guest_kids) || 0 : 0);
+      if (seats > free) over += 1;
+      else free -= seats;
+    }
+  }
+  return over;
+}
+
+/** For a card: the invited keys and (for the host) first names and the room the pick would find, read for one plan. */
 async function cardParts(plan, { host = false } = {}) {
   const rows = await invites().loadInvites(plan.post_id);
   const keys = invitedKeys(rows);
   let names = null;
+  let room = null;
   if (host) {
+    room = await roomFor(plan, rows);
     names = new Map();
     const accountIds = rows.filter((r) => r.invitee_user_id).map((r) => String(r.invitee_user_id));
     const accountNames = await actions().userNames(accountIds);
     for (const id of accountIds) names.set(extras.personKey(id), actions().firstOf(accountNames.get(id)));
     for (const r of rows) if (!r.invitee_user_id && r.guest_name) names.set(extras.guestKey(r.id), actions().firstOf(r.guest_name));
   }
-  return { invited: keys.size, names };
+  return { invited: keys.size, names, room };
 }
 
 // ── The pick ─────────────────────────────────────────────────
