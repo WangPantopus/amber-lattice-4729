@@ -58,13 +58,36 @@ extension CardTableModel {
         case .pulling:
             ""
         case .out:
-            content.isLetter ? "" : readsVerse ? "Read the verse" : restingHint
+            content.isLetter ? "" : hintLink?.title ?? (readsInPrint ? "" : restingHint)
         }
     }
 
-    /// A Christmas with Jesus Christ card out of its envelope: the hint is the link "Read the verse" (plan 6.2).
+    /// A Christmas with Jesus Christ card out of its envelope with the picture side up (or on the open Duo): "Read the
+    /// verse" (plan 6.2).
     var readsVerse: Bool {
         step == .out && sending == nil && !content.sealed && !(content.verse ?? "").isEmpty
+            && (!cardBackIsUp || fold.isSpread)
+    }
+
+    /// The note side up, out of its envelope, not sealed and not enlarged (on the open Duo the note's page shows): the
+    /// note can be read in plain type that follows the phone's text size (plan Part 2).
+    var readsInPrint: Bool {
+        step == .out && sending == nil && !content.sealed && !content.isLetter && !isZoomed
+            && !content.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (cardBackIsUp || fold.isSpread)
+    }
+
+    /// "Read it in print" as a full button beside "Turn it back", in place of the line, when larger text is set.
+    var printIsButton: Bool {
+        readsInPrint && largerText
+    }
+
+    /// The bookmark the hint opens, when the hint is a link: "Read it in print" in place of "double-tap the card to
+    /// enlarge it" on the note side, "Read the verse" on the picture side. The open Duo shows both sides; a verse card
+    /// keeps its verse link there.
+    var hintLink: CardTableBookmark? {
+        if readsInPrint, !largerText, !(fold.isSpread && readsVerse) { return .print }
+        return readsVerse ? .verse : nil
     }
 
     /// The quiet buttons under the main one: "Send {first name} a card" and "Share this card" (plan 11.1), once the
