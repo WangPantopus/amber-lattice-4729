@@ -61,7 +61,9 @@ import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardBack
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFlip
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFront
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardTimes
+import app.pantopus.android.ui.screens.mailbox.cards.SEND_THIS_CARD_AGAIN
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
+import app.pantopus.android.ui.screens.mailbox.cards.canSendAnother
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardGreetingVoice
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardPrintPhoto
@@ -95,6 +97,8 @@ import java.util.Locale
 @Composable
 fun MailSentCardScreen(
     onBack: () -> Unit,
+    /** "Send this card to someone else" (plan Part 6): the send flow with this picture kept, from Who it's for. */
+    onSendAgain: ((design: String) -> Unit)? = null,
     viewModel: MailSentCardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -148,6 +152,16 @@ fun MailSentCardScreen(
                                     onEmailAgain = viewModel::emailAgain,
                                 ),
                         )
+                        // Only while another card can go now: a stamp left, or today's card not used.
+                        val design = shown.card.card?.design
+                        if (onSendAgain != null && design != null && cards.canSendAnother(null)) {
+                            CardButton(
+                                SEND_THIS_CARD_AGAIN,
+                                onClick = { onSendAgain(design) },
+                                kind = CardButtonKind.Paper,
+                                modifier = Modifier.testTag("sentSendThisCardAgain"),
+                            )
+                        }
                     }
             }
         }

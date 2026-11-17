@@ -317,6 +317,7 @@ import app.pantopus.android.ui.screens.listings.MyListingsScreen
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasMenuRow
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasToday
+import app.pantopus.android.ui.screens.mailbox.cards.SEND_CARD_SAME_PICTURE_KEY
 import app.pantopus.android.ui.screens.mailbox.cards.SendCardScreen
 import app.pantopus.android.ui.screens.mailbox.cards.SendCardViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.WaitingCardLandingViewModel
@@ -602,7 +603,8 @@ private object ChildRoutes {
     const val MAILBOX_CARDS =
         "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}={${SendCardViewModel.SEND_CARD_DESIGN_KEY}}" +
             "&${SendCardViewModel.SEND_CARD_TO_USER_KEY}={${SendCardViewModel.SEND_CARD_TO_USER_KEY}}" +
-            "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}={${SendCardViewModel.SEND_CARD_TO_NAME_KEY}}"
+            "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}={${SendCardViewModel.SEND_CARD_TO_NAME_KEY}}" +
+            "&$SEND_CARD_SAME_PICTURE_KEY={$SEND_CARD_SAME_PICTURE_KEY}"
 
     /** A card the person sent, opened from Sent in the Mailbox (launch key `mailbox`). */
     const val MAILBOX_SENT_CARD = "mailbox/sent/{$MAIL_SENT_CARD_ID_KEY}"
@@ -1619,6 +1621,10 @@ private object ChildRoutes {
     /** The steps of sending a card, with [design] chosen when there is one. */
     fun mailboxCards(design: String?): String =
         if (design == null) "mailbox/cards" else "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}=$design"
+
+    /** "Send this card to someone else" from Sent (plan Part 6): Who it's for, then straight to the note, this picture kept. */
+    fun mailboxCardsAgain(design: String): String =
+        "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}=${Uri.encode(design)}&$SEND_CARD_SAME_PICTURE_KEY=true"
 
     /** The steps of sending a card to this person, from Pick a card ("Send Hazel a card"). */
     fun mailboxCardsTo(
@@ -5406,6 +5412,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 nullable = true
                                 defaultValue = null
                             },
+                            navArgument(SEND_CARD_SAME_PICTURE_KEY) {
+                                type = NavType.BoolType
+                                defaultValue = false
+                            },
                         ),
                 ) {
                     // Launch cut #12 (Christmas cards), with #10 (Mailbox).
@@ -5430,7 +5440,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 ) {
                     // Launch cut #10 (Mailbox): Sent is part of it.
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
-                    MailSentCardScreen(onBack = { navController.popBackStack() })
+                    MailSentCardScreen(
+                        onBack = { navController.popBackStack() },
+                        onSendAgain =
+                            { design: String -> navController.navigate(ChildRoutes.mailboxCardsAgain(design)) }
+                                .takeIf { LaunchFeatures.holidayCards },
+                    )
                 }
                 mailComposable(
                     navController,

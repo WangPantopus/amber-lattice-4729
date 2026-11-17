@@ -38,6 +38,8 @@ internal fun SealByHand(
     /** Done (or ✕) once it's sent: back to the Mailbox. */
     onFinished: () -> Unit,
     onTakeBack: () -> Unit,
+    /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // Read once, from the look: sending clears it.
@@ -76,10 +78,11 @@ internal fun SealByHand(
             refusals > 0 -> SealAnswer.Refused(form.sendError ?: form.sealError, refusals)
             else -> null
         }
+    val again = onSendAgain?.takeIf { form.step == SendCardStep.Sent }?.let { listOf(CardTableSendBack(SEND_THIS_CARD_AGAIN, it)) }
     val goneActions =
         goneActions(form, onTable.fromFirst, onTakeBack) { link, copy ->
             if (copy) copyLink(context, link) else shareLink(context, link, onTable.fromFirst)
-        }
+        } + again.orEmpty()
     val isSent = form.step == SendCardStep.Sent
     CardTableDialog(
         card = onTable,
