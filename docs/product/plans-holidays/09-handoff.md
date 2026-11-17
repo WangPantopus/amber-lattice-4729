@@ -97,7 +97,7 @@ switch off equal to untouched `dev`. Numbers are pull requests.
 | Find a date | 4237, 4245, 4326, 4332 | 4300, 4312 (changing the offered times on the Change screen) | 4335 (ticking and picking; the host form's and the Change screen's times: not built) |
 | Gift exchange | 4239 | 4317 | **not started** |
 | Photos afterwards | 4242, 4249 | 4321 | **not started** |
-| One person pays for the group | 4255, 4259, 4261 | **not started** | **not started** |
+| One person pays for the group | 4255, 4259, 4261 | 4327 | **not started** |
 
 Also done:
 
@@ -162,7 +162,7 @@ In the order it should be done. Each item is its own small pull request into
    (B5): screens C1, C2, C3 of `07-screens-business.md`, worked examples 3 and
    4 of `02-payments.md` to the cent.
 5. Done November 16 (4307). The tip after a paid plan (B6): screen C4.
-6. The six extras, in the same order as Android's.
+6. Done November 17 (4284, 4294, 4300 and 4312, 4317 and 4333, 4321 and 4323, 4327). The six extras, in the same order as Android's.
 
 **Both phones together**
 
