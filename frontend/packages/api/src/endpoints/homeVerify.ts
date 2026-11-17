@@ -18,6 +18,8 @@ export interface VerifyOption {
   id: VerifyOptionId;
   available: boolean;
   reason: VerifyOptionReason | null;
+  /** Document only: true when the photo is read at once (the Bill check); false for today's reviewed upload. */
+  fast?: boolean;
 }
 
 export interface FastCheckStanding {

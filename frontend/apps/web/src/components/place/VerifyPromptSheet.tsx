@@ -381,7 +381,10 @@ function FastVerifySheet({
         </button>
       );
     }
-    const words = FAST_VERIFY_ROWS[row.id];
+    // A document that isn't read at once is today's reviewed upload: today's words, no promise of speed.
+    const words = row.id === 'document' && option('document')?.fast === false
+      ? { label: 'Upload a document', sub: 'A utility bill, lease, or ID. A person reviews it.' }
+      : FAST_VERIFY_ROWS[row.id];
     return (
       <button
         key={row.id}
