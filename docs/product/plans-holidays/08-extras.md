@@ -632,6 +632,24 @@ in test mode to the cent, with the payout after it. What this extra still
 lacks: the phones' screen (board 31), the payment company's call-back, and
 live mode.
 
+**When the switch goes off** (settled November 17, after the Android check
+found a buyer's leave line counting the claimers' spots once
+`plans_group_pay` was off for the business). A purchase already made settles
+by this section's rules whatever the switch says; off stops only new group
+buys (the quote offers no "I'll send a link", and `for: "link"` is ignored)
+and new claims (the link's page and `claim-spot` answer 404). Everything else
+goes on as with the switch on: the buyer's leave line and its amount count
+the claimers' spots as staying paid, in every app ("You'll get $18.00 back
+for your spot. The 3 people you paid for stay in.", where it had read
+"You'll get $72.00 back." while only $18.00 went back); the buyer may give
+the spots nobody took back early; a claimer who leaves or is removed, the
+business removing the buyer, the tick's refund of the untaken spots at
+`refund_until`, and the payout work as above. The buyer's "Your {11} spots"
+card and a claimer's "{Chris} got you a spot" are not shown while it is off,
+since the link takes nobody. Nobody ends up in for free and no spot is
+refunded twice. Seen on the rig in test mode to the cent, with the payout
+after each, with the switch off and on.
+
 **Screens.** Board 31: "How many spots?" with the stepper and "{12} × {$18.00}"
 / "{$216.00}" from the quote; "Who are they for?"; the note "After you pay you
 get one link. The first {11} people who open it are in, paid by you. Spots
