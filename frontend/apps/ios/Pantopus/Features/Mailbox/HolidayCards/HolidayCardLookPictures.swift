@@ -162,7 +162,7 @@ struct HolidayCardLinkPagePicture: View {
                     if page.senderVerified {
                         HStack(spacing: 6) {
                             Icon(.shieldCheck, size: 14, strokeWidth: 2.25, color: Theme.Color.success)
-                            Text("Verified neighbor")
+                            Text("Verified resident")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Theme.Color.success)
                         }

@@ -38,7 +38,9 @@ struct HolidayCardTableCloth: View {
                     tint
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            // The light is 40 pt larger than the cloth all round, which makes the stack larger: pinned to its top-left
+            // corner the cloth covers the screen (centred, it stopped 40 pt short of the right and bottom edges).
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .clipped()
         }
         .ignoresSafeArea()
