@@ -36,6 +36,8 @@ struct PlanChangeScreen: View {
     @State private var room = PlanRoomChange()
     /// The extras: chip in as the plan has it and as changed here (08-extras section 3).
     @State private var chipIn = PlanChipInEdit()
+    /// Find a date: the offered times while the plan is picking (08-extras section 2).
+    @State private var times = PlanTimesEdit()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +45,7 @@ struct PlanChangeScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     if let card = plan?.card {
-                        when(card)
+                        if times.isPicking { PlanChangeTimesCard(edit: $times) } else { when(card) }
                         if card.isBusiness {
                             businessPlace(card)
                             PlanChangeMoneyRows(card: card, business: business) // B2's price, B5's pay rows
@@ -273,7 +275,7 @@ struct PlanChangeScreen: View {
             .planButton(.primary)
             .disabled(isSaving)
             .accessibilityIdentifier("planChangeSave")
-            if let original = card.startsAtDate {
+            if let original = card.startsAtDate, !times.isPicking {
                 Button("Keep \(PlanFormat.time(original, calendar: PlanFormat.calendar(for: card.timezone)))", action: onBack)
                     .planButton(.text, size: .extraSmall)
             }
@@ -290,7 +292,7 @@ struct PlanChangeScreen: View {
         error = nil
         var body = UpdatePlanBody()
         // The times go only when they changed: a change to how it repeats alone moves nothing.
-        if start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
+        if !times.isPicking, start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
             body.startsAt = PlanTime.string(start)
             body.endsAt = PlanTime.string(end)
         }
@@ -308,6 +310,11 @@ struct PlanChangeScreen: View {
         }
         body.businessLocationId = newLocationId
         if let card = plan?.card { room.apply(to: &body, card: card) }
+        if let problem = times.apply(to: &body) {
+            isSaving = false
+            error = problem
+            return
+        }
         if plan?.card.changesChipIn == true, let problem = chipIn.apply(to: &body) {
             isSaving = false
             error = problem
@@ -388,5 +395,6 @@ extension PlanChangeScreen {
         repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
         room = PlanRoomChange(card: detail.card)
         chipIn = PlanChipInEdit(card: detail.card)
+        times = PlanTimesEdit(card: detail.card)
     }
 }

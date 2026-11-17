@@ -239,9 +239,12 @@ public struct UpdatePlanBody: Encodable, Sendable {
     public var tipsOn: Bool?
     /// The extras: chip in changed (who paid is kept), or `.remove` (sent as `null`, who paid is forgotten).
     public var chipIn: PlanChipInChange?
+    /// Find a date: the offered times while picking (a kept time keeps its ticks).
+    public var dateOptions: [PlanDateOptionBody]?
 
     enum CodingKeys: String, CodingKey {
         case title, about, place, spots, gps, label, deal
+        case dateOptions = "date_options"
         case priceCents = "price_cents"
         case payHere = "pay_here"
         case tipsOn = "tips_on"
