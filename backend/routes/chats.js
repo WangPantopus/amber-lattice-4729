@@ -1718,11 +1718,12 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
  * Update room details (name, description)
  */
 /**
- * A plan's chat (type 'plan') changes its members and its name only through the
- * Plans endpoints (routes/plans.js), which keep it in step with who's in.
- * Answers for the caller and returns true when the room is a plan's (or can't be read).
+ * Only a group chat (type 'group') has members and a name its owner and admins manage here. A direct chat is its two
+ * people; a plan's chat changes only through the Plans endpoints (routes/plans.js), which keep it in step with who's
+ * in; a Support Train's, a home's and a task's chat follow their own memberships.
+ * Answers for the caller and returns true when the room is not a group chat (or can't be read).
  */
-async function refusePlanRoom(roomId, res) {
+async function refuseUnlessGroupRoom(roomId, res) {
   const { data: room, error } = await supabaseAdmin.from('ChatRoom').select('type').eq('id', roomId).maybeSingle();
   if (error) {
     res.status(503).json({ error: 'Chat is unavailable. Please try again.' });
@@ -1730,6 +1731,10 @@ async function refusePlanRoom(roomId, res) {
   }
   if (room?.type === 'plan') {
     res.status(403).json({ error: "A plan's chat changes only through the plan.", code: 'PLAN_ROOM' });
+    return true;
+  }
+  if (room && room.type !== 'group') {
+    res.status(403).json({ error: 'Only a group chat can be changed this way.', code: 'NOT_A_GROUP_CHAT' });
     return true;
   }
   return false;
@@ -1740,7 +1745,7 @@ router.put('/rooms/:roomId', verifyToken, validate(updateRoomSchema), async (req
     const { roomId } = req.params;
     const userId = req.user.id;
     const { roomName, roomDescription } = req.body;
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
     const { data: participant } = await supabaseAdmin
@@ -2976,7 +2981,7 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     if (!newUserId) {
       return res.status(400).json({ error: 'userId required' });
     }
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
     const { data: participant } = await supabaseAdmin
@@ -3069,7 +3074,7 @@ router.delete('/rooms/:roomId/participants/:participantUserId', verifyToken, par
   try {
     const { roomId, participantUserId } = req.params;
     const userId = req.user.id;
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Check if removing self or if user is admin/owner
     const isSelf = userId === participantUserId;
