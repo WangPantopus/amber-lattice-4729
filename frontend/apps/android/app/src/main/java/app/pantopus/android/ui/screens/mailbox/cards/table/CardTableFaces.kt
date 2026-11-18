@@ -158,13 +158,26 @@ internal fun CardTableBack(
                         ).height(with(density) { (u * (83.6f + UNDER_THE_RULES)).toDp() }),
             ) { writing(style) }
         }
-        if (leaves != null && painter != null && writing == null) {
-            val u = constraints.maxWidth.toFloat() / 100f
-            val two = remember(painter, words, u) { painter.twoLeaves(words, u) }
-            LaunchedEffect(two) { leaves.two = two }
-            if (two) LiftingLeaf(leaves, painter, words)
-        }
+        if (writing == null) FirstLeafOver(leaves, painter, words, constraints.maxWidth)
     }
+}
+
+/**
+ * On a back that can be turned ([leaves]), the first leaf of a note that goes over two leaves, at the card's own
+ * width [widthPx]; it tells [leaves] whether there is one.
+ */
+@Composable
+private fun BoxScope.FirstLeafOver(
+    leaves: CardLeaves?,
+    painter: CardFacePainter?,
+    words: CardFaceWords,
+    widthPx: Int,
+) {
+    if (leaves == null || painter == null) return
+    val u = widthPx.toFloat() / 100f
+    val two = remember(painter, words, u) { painter.twoLeaves(words, u) }
+    LaunchedEffect(two) { leaves.two = two }
+    if (two) LiftingLeaf(leaves, painter, words)
 }
 
 /**
@@ -194,7 +207,12 @@ private fun BoxScope.LiftingLeaf(
             .matchParentSize()
             .graphicsLayer {
                 val p = run.value
-                alpha = if (reduceMotion) 1f - p else if (p >= 1f) 0f else 1f
+                alpha =
+                    when {
+                        reduceMotion -> 1f - p
+                        p >= 1f -> 0f
+                        else -> 1f
+                    }
                 // A positive X turn about the top edge brings the foot up toward you (seen on the emulator).
                 rotationX = if (reduceMotion) 0f else 90f * p
                 transformOrigin = TransformOrigin(0.5f, 0f)

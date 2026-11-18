@@ -905,20 +905,7 @@ internal fun WriteStep(
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("sendCardCount"),
             )
         }
-        // The writing box stays as it is; the reader will turn a long note's first leaf over (plan Part 9).
-        if (LaunchFeatures.cardTable && rememberSecondLeaf(message, design.id, cardWidth)) {
-            Text(
-                "This note runs onto a second leaf.",
-                fontSize = 13.sp,
-                color = DeskInk.quiet,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = Spacing.s1)
-                        .semantics { liveRegion = LiveRegionMode.Polite }
-                        .testTag("sendCardSecondLeaf"),
-            )
-        }
+        SecondLeafLine(message, design.id, cardWidth)
         if (noteHelp != null) {
             // A note picked there lands on the back, face up.
             CardNoteHelpRow(noteHelp, design.id, to, message, limit, onOpen = { focusManager.clearFocus() }, onPicked = { showBack = true })
@@ -1420,4 +1407,28 @@ private fun envelopePreview(
 private fun notOnPantopusYet(many: Boolean): String {
     val yet = if (LaunchFeatures.cardTable) " yet" else ""
     return if (many) "Not on Pantopus$yet? Add their email" else "Not on Pantopus$yet? Send it to their email"
+}
+
+/**
+ * Under the writing box while the note will go over two leaves (plan Part 9): the box itself stays as it is, and the
+ * reader turns the first leaf over.
+ */
+@Composable
+private fun SecondLeafLine(
+    message: String,
+    design: String,
+    cardWidth: Int,
+) {
+    if (!LaunchFeatures.cardTable || !rememberSecondLeaf(message, design, cardWidth)) return
+    Text(
+        "This note runs onto a second leaf.",
+        fontSize = 13.sp,
+        color = DeskInk.quiet,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s1)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("sendCardSecondLeaf"),
+    )
 }

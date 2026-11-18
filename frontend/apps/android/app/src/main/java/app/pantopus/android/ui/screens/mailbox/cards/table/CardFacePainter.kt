@@ -157,11 +157,12 @@ internal class CardFacePainter(
     private var edgeShaders: List<LinearGradient> = emptyList()
     private var noteCache: PenNote? = null
     private var noteCacheLeaves = false
-    private val overInk = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
+    private val overInk =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
     private val overArrow = Path()
     private val letterInk = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val signatureInk = CardSignatureInk.paint()
@@ -758,18 +759,30 @@ internal class PenNote private constructor(
         ): PenNote? {
             for ((rules, pen) in SIZES) {
                 val placed = place(note, number, u * pen, u * 85f, paint)
-                if (placed.lines > rules * 2) continue
-                val first = wholeWords(placed.words, min(rules, placed.lines - 2))
-                // A single word taller than the first leaf: the next pen, or one side.
-                if (first < 1) continue
-                val blank = placed.words.none { it.line == first }
-                val second = if (blank) first + 1 else first
-                // The second leaf can't hold what's left once a word moved over: the next pen.
-                if (placed.lines - second > rules) continue
+                val cut = leafBreak(placed, rules) ?: continue
                 val pitch = u * RULED / rules
-                return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch, LeafBreak(first, second))
+                return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch, cut)
             }
             return null
+        }
+
+        /**
+         * Where [placed] breaks over two leaves of [rules] lines each, or null when this pen can't: the first leaf
+         * takes the first lines, the second the rest, never fewer than two. A blank line that would open the second
+         * leaf is left out, so a closing line after it may stand alone.
+         */
+        private fun leafBreak(
+            placed: Placed,
+            rules: Int,
+        ): LeafBreak? {
+            if (placed.lines > rules * 2) return null
+            val first = wholeWords(placed.words, min(rules, placed.lines - 2))
+            // A single word taller than the first leaf: the next pen, or one side.
+            if (first < 1) return null
+            val blank = placed.words.none { it.line == first }
+            val second = if (blank) first + 1 else first
+            // The second leaf can't hold what's left once a word moved over: the next pen.
+            return if (placed.lines - second > rules) null else LeafBreak(first, second)
         }
 
         /**
