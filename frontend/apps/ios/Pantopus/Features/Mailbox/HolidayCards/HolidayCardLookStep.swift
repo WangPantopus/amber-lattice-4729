@@ -521,7 +521,9 @@ struct HolidayCardLookFooter: View {
     }
 }
 
-/// A page's one pinned button on a soft fade: 12 pt above it, the safe area below, and a refusal in one line over it.
+/// A page's pinned buttons on a soft fade: 12 pt above them, the safe area below, and a refusal right over them. The
+/// refusal lies on its own cream slip in dark ink, so it reads over whatever scrolls under the fade (the arrival
+/// choices, the card), as Android shows it (design check, Nov 17).
 struct HolidayCardPinnedButton<Content: View>: View {
     let error: String?
     @ViewBuilder let button: Content
@@ -532,10 +534,15 @@ struct HolidayCardPinnedButton<Content: View>: View {
             if let error {
                 Text(error)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(HolidayCardDesk.error(scheme))
+                    .foregroundStyle(HolidayCardDesk.error(.light))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Spacing.s3)
+                    .padding(.vertical, Spacing.s2)
                     .frame(maxWidth: .infinity)
+                    .background(MailPaper.letter, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 3)
+                    .environment(\.colorScheme, .light)
                     .accessibilityIdentifier("sendCardError")
             }
             button

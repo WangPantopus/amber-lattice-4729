@@ -208,11 +208,15 @@ struct HolidayCardFlowView: View {
         return viewModel.recipient
     }
 
-    /// What's pinned under the page: Look it over's footer (a list's, or one card's), step 1's button on with a list,
-    /// or Pick a card's bar.
+    /// What's pinned under the page: step 4's buttons, Look it over's footer (a list's, or one card's), step 1's button
+    /// on with a list, or Pick a card's bar.
     @ViewBuilder
     private var footer: some View {
-        if viewModel.cards != nil, viewModel.step == .look, let entries = viewModel.recipient?.entries, let look = viewModel.listPreview {
+        if viewModel.step == .seal, viewModel.today == nil, let cards = viewModel.cards, cards.open, viewModel.design != nil,
+           let recipient = viewModel.recipient {
+            HolidayCardSealFooter(viewModel: viewModel, cards: cards, recipient: recipient)
+        } else if viewModel.cards != nil, viewModel.step == .look, let entries = viewModel.recipient?.entries,
+                  let look = viewModel.listPreview {
             HolidayCardListLookFooter(viewModel: viewModel, entries: entries, look: look)
         } else if let recipient = lookRecipient {
             HolidayCardLookFooter(viewModel: viewModel, byEmail: recipient.isEmail)

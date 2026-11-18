@@ -4,8 +4,9 @@
 //
 //  Sealing a Christmas card and what follows (the web's `SendCardFlow`):
 //  seal it for the day (when it arrives, until when it can be taken back,
-//  the postage, then "Seal and send" with "Look it over" under it), the card
-//  on its way or today's card, and the season once sending has closed.
+//  the postage; "Seal and send" with "Look it over" under it pinned at the
+//  bottom), the card on its way or today's card, and the season once sending
+//  has closed.
 //
 
 import SwiftUI
@@ -17,8 +18,6 @@ struct HolidayCardSealStep: View {
     let cards: HolidayCardsResponse
     let design: HolidayCardDesign
     let recipient: HolidayCardRecipient
-    /// "Look it over" was pressed (its button shows the wait, not "Seal and send").
-    @State private var looking = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -60,16 +59,8 @@ struct HolidayCardSealStep: View {
                 )
                 .padding(.top, Spacing.s3)
             }
-            if let notice = viewModel.sealNotice {
-                Text(notice)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(HolidayCardDesk.error(scheme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, Spacing.s3)
-                    .accessibilityIdentifier("sendCardError")
-            }
-            buttons
-                .padding(.top, Spacing.s5)
+            // "Seal and send" and "Look it over" are pinned under the page (`HolidayCardSealFooter`); the page's own
+            // end leaves room for the last line to scroll clear of them.
         }
     }
 
@@ -105,65 +96,6 @@ struct HolidayCardSealStep: View {
     private var sealNote: String {
         if let entries = recipient.entries { return HolidayCardWords.sealNote(list: entries) }
         return recipient.isLink ? HolidayCardWords.sealNoteByLink : HolidayCardWords.sealNote(byEmail: recipient.isEmail)
-    }
-
-    /// "Seal and send" goes straight to the sealing table after the same check Look it over runs; "Look it over" under
-    /// it shows exactly what they'll see first (experience plan 5.1). With no stamp left, the stamp books.
-    private var buttons: some View {
-        VStack(spacing: Spacing.s3) {
-            HolidayCardWaxButton(
-                title: needsStamps ? "Get stamps to send" : sealTitle,
-                isLoading: (viewModel.previewing && !looking) || viewModel.sending,
-                isEnabled: viewModel.arrival != nil
-            ) {
-                if needsBoughtStamp {
-                    viewModel.openStampsForMedia()
-                } else if needsStamps {
-                    getStamps()
-                } else {
-                    looking = false
-                    Task { await viewModel.sealFromChoices() }
-                }
-            }
-            .accessibilityIdentifier("sendCardSend")
-            // Nothing to show when the server can't show the look; the card can still be sealed.
-            if !viewModel.lookUnavailable {
-                HolidayCardPaperButton(title: "Look it over", isLoading: viewModel.previewing && looking, fullWidth: true) {
-                    looking = true
-                    Task { await viewModel.lookItOver() }
-                }
-                .opacity(viewModel.arrival == nil ? 0.5 : 1)
-                .disabled(viewModel.arrival == nil || viewModel.previewing || viewModel.sending)
-                .accessibilityIdentifier("sendCardLookItOver")
-            }
-        }
-    }
-
-    /// Look it over's main words: "Seal and send", "Seal it and get the link", or "Seal and send 4 cards".
-    private var sealTitle: String {
-        if let entries = recipient.entries { return "Seal and send \(entries.count == 1 ? "1 card" : "\(entries.count) cards")" }
-        return recipient.isLink ? "Seal it and get the link" : "Seal and send"
-    }
-
-    /// Postage on and too few stamps left for this card (or each card on the list), or no bought stamp for the card's
-    /// photo or greeting.
-    private var needsStamps: Bool {
-        guard cards.postageEnabled else { return false }
-        if let entries = recipient.entries { return (viewModel.stamps.balance?.available ?? entries.count) < entries.count }
-        return viewModel.stamps.isOut || needsBoughtStamp
-    }
-
-    private var needsBoughtStamp: Bool {
-        recipient.entries == nil && viewModel.carriesMedia && viewModel.boughtStampsLeft == 0
-    }
-
-    /// The stamp books, saying how many more a list's cards need.
-    private func getStamps() {
-        if let entries = recipient.entries {
-            let missing = entries.count - (viewModel.stamps.balance?.available ?? 0)
-            viewModel.stampShort = StampShort(cards: entries.count, missing: max(1, missing))
-        }
-        viewModel.showsStampBooks = true
     }
 
     /// The red envelope as it will go: from the sender, to them, sealed when
@@ -227,6 +159,78 @@ struct HolidayCardSealStep: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(checked ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("sendCardArrival.\(arrival.rawValue)")
+    }
+}
+
+/// Step 4's buttons, pinned at the bottom on the soft fade Look it over's button has, so both show the moment the step
+/// opens (design check, Nov 17, Fix 2): "Seal and send" (or "Seal it and get the link", "Seal and send 4 cards", "Get
+/// stamps to send"), and under it "Look it over" as a quiet button. Why the card didn't go shows in one line over them.
+struct HolidayCardSealFooter: View {
+    let viewModel: HolidayCardFlowViewModel
+    let cards: HolidayCardsResponse
+    let recipient: HolidayCardRecipient
+    /// "Look it over" was pressed (its button shows the wait, not "Seal and send").
+    @State private var looking = false
+
+    /// "Seal and send" goes straight to the sealing table after the same check Look it over runs; "Look it over" under
+    /// it shows exactly what they'll see first (experience plan 5.1). With no stamp left, the stamp books.
+    var body: some View {
+        HolidayCardPinnedButton(error: viewModel.sealNotice) {
+            VStack(spacing: Spacing.s1) {
+                HolidayCardWaxButton(
+                    title: needsStamps ? "Get stamps to send" : sealTitle,
+                    isLoading: (viewModel.previewing && !looking) || viewModel.sending,
+                    isEnabled: viewModel.arrival != nil,
+                    height: 52
+                ) {
+                    if needsBoughtStamp {
+                        viewModel.openStampsForMedia()
+                    } else if needsStamps {
+                        getStamps()
+                    } else {
+                        looking = false
+                        Task { await viewModel.sealFromChoices() }
+                    }
+                }
+                .accessibilityIdentifier("sendCardSend")
+                // Nothing to show when the server can't show the look; the card can still be sealed.
+                if !viewModel.lookUnavailable {
+                    HolidayCardQuietButton(title: "Look it over", isLoading: viewModel.previewing && looking) {
+                        looking = true
+                        Task { await viewModel.lookItOver() }
+                    }
+                    .disabled(viewModel.arrival == nil || viewModel.previewing || viewModel.sending)
+                    .accessibilityIdentifier("sendCardLookItOver")
+                }
+            }
+        }
+    }
+
+    /// Look it over's main words: "Seal and send", "Seal it and get the link", or "Seal and send 4 cards".
+    private var sealTitle: String {
+        if let entries = recipient.entries { return "Seal and send \(entries.count == 1 ? "1 card" : "\(entries.count) cards")" }
+        return recipient.isLink ? "Seal it and get the link" : "Seal and send"
+    }
+
+    /// Postage on and too few stamps left for this card (or each card on the list), or no bought stamp for the card's
+    /// photo or greeting.
+    private var needsStamps: Bool {
+        guard cards.postageEnabled else { return false }
+        if let entries = recipient.entries { return (viewModel.stamps.balance?.available ?? entries.count) < entries.count }
+        return viewModel.stamps.isOut || needsBoughtStamp
+    }
+
+    private var needsBoughtStamp: Bool {
+        recipient.entries == nil && viewModel.carriesMedia && viewModel.boughtStampsLeft == 0
+    }
+
+    /// The stamp books, saying how many more a list's cards need.
+    private func getStamps() {
+        if let entries = recipient.entries {
+            let missing = entries.count - (viewModel.stamps.balance?.available ?? 0)
+            viewModel.stampShort = StampShort(cards: entries.count, missing: max(1, missing))
+        }
+        viewModel.showsStampBooks = true
     }
 }
 
