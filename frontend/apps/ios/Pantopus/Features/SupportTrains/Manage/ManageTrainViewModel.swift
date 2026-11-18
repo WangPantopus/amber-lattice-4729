@@ -175,6 +175,8 @@ public final class ManageTrainViewModel {
 
     /// Editable thank-you note typed inside the close sheet.
     public var thankYouNote: String = ""
+    /// The thank-you went out as an update: it is locked, and a retry after a failed close only closes.
+    public private(set) var thankYouSent = false
 
     /// Close-train sheet presentation state.
     public var sheetMode: ManageTrainSheetMode = .hidden
@@ -194,6 +196,8 @@ public final class ManageTrainViewModel {
     public private(set) var deliveryAddressLabel: String?
     /// Who can open the train (`sharing_mode`) (A2).
     public private(set) var sharingMode: String?
+    /// A `recipient_delegate` posts updates but the server refuses them the address, audience and invitations.
+    public private(set) var isRecipientDelegate = false
     /// Today's date where the train is, for a new date's default (B4).
     public private(set) var trainToday: Date = Calendar.current.startOfDay(for: Date())
     /// The train's IANA zone, for arrival times (B4).
@@ -274,6 +278,7 @@ public final class ManageTrainViewModel {
             hasDeliveryAddress = !(dto.address?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
             deliveryAddressLabel = hasDeliveryAddress ? dto.address?.singleLineLabel : nil
             sharingMode = dto.sharingMode
+            isRecipientDelegate = dto.viewerSupportTrainRole == "recipient_delegate"
             trainToday = Self.trainTodayDate(dto)
             trainTimeZoneId = dto.timezone
             await loadOrganizerSurfaces(read: read, cache: cache)
@@ -470,7 +475,7 @@ public final class ManageTrainViewModel {
     }
 
     public func updateThankYouNote(_ value: String) {
-        guard !isSubmitting else { return }
+        guard !isSubmitting, !thankYouSent else { return }
         thankYouNote = value
     }
 
@@ -509,7 +514,7 @@ public final class ManageTrainViewModel {
             viewerRole: content.viewerRole
         )
         do {
-            if !note.isEmpty {
+            if !note.isEmpty, !thankYouSent {
                 let update = try await api.request(
                     SupportTrainsEndpoints.postUpdate(
                         supportTrainId: trainId,
@@ -518,6 +523,7 @@ public final class ManageTrainViewModel {
                     as: SupportTrainUpdateDTO.self
                 )
                 guard UUID(uuidString: update.id) != nil, update.body == note else { throw APIError.invalidResponse }
+                thankYouSent = true
             }
             let saved = try await api.request(
                 SupportTrainsEndpoints.complete(supportTrainId: trainId),
@@ -526,10 +532,12 @@ public final class ManageTrainViewModel {
             guard saved.id == trainId, saved.status == "completed" else { throw APIError.invalidResponse }
             markTrainChanged()
             state = .loaded(next)
+            thankYouSent = false
             sheetMode = .closed
             toast = note.isEmpty ? "Train closed" : "Train closed · thanks sent to \(content.helpersValue) helpers"
         } catch {
-            actionError = (error as? APIError)?.errorDescription ?? "Couldn't close this train."
+            let message = (error as? APIError)?.errorDescription ?? "Couldn't close this train."
+            actionError = thankYouSent ? message + " Your thank-you was sent; trying again only closes the train." : message
         }
     }
 }

@@ -46,6 +46,9 @@ public final class NewMessageViewModel {
     private let api: APIClient
     /// Today's "Send in a chat" can send to a group chat too.
     private let includesGroups: Bool
+    /// Only the viewer's connections are offered (no recents, groups or search of everyone): a Support Train invite
+    /// by account is refused by the server for anyone else. Chats and the co-organizer picker keep the default.
+    private let connectionsOnly: Bool
     private let onSelect: @MainActor (NewMessageDestination) -> Void
     private let onCancel: @MainActor () -> Void
     private let onInvite: @MainActor () -> Void
@@ -67,12 +70,14 @@ public final class NewMessageViewModel {
     init(
         api: APIClient = .shared,
         includesGroups: Bool = false,
+        connectionsOnly: Bool = false,
         onSelect: @escaping @MainActor (NewMessageDestination) -> Void = { _ in },
         onCancel: @escaping @MainActor () -> Void = {},
         onInvite: @escaping @MainActor () -> Void = {}
     ) {
         self.api = api
         self.includesGroups = includesGroups
+        self.connectionsOnly = connectionsOnly
         self.onSelect = onSelect
         self.onCancel = onCancel
         self.onInvite = onInvite
@@ -206,7 +211,7 @@ public final class NewMessageViewModel {
         let trimmed = normalizedSearch
         verifiedResults = []
         searchFailed = false
-        isSearching = trimmed.count >= 2
+        isSearching = !connectionsOnly && trimmed.count >= 2
         rebuild()
         guard isSearching else { return }
         let seq = searchSequence
@@ -262,9 +267,11 @@ public final class NewMessageViewModel {
 
         var sections: [NewMessageSection] = []
         if !connectionsSection.rows.isEmpty { sections.append(connectionsSection) }
-        if !recentSection.rows.isEmpty { sections.append(recentSection) }
-        if !groupsSection.rows.isEmpty { sections.append(groupsSection) }
-        if !allVerifiedSection.rows.isEmpty { sections.append(allVerifiedSection) }
+        if !connectionsOnly {
+            if !recentSection.rows.isEmpty { sections.append(recentSection) }
+            if !groupsSection.rows.isEmpty { sections.append(groupsSection) }
+            if !allVerifiedSection.rows.isEmpty { sections.append(allVerifiedSection) }
+        }
 
         let queryActive = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if sections.isEmpty {

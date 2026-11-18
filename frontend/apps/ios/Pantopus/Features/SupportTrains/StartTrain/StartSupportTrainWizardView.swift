@@ -738,6 +738,13 @@ private struct StartSupportTrainReviewStep: View {
                     id: "Allergies"
                 )
                 detailField("Diet (vegetarian…)", text: Binding(get: { viewModel.diet }, set: { viewModel.diet = $0 }), id: "Diet")
+                if let problem = viewModel.detailsProblem {
+                    Text(problem)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Color.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("startSupportTrainDetailsProblem")
+                }
                 detailField(
                     "Instructions (gate code, doorbell…)",
                     text: Binding(get: { viewModel.instructions }, set: { viewModel.instructions = $0 }),

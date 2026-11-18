@@ -215,20 +215,30 @@ public extension ManageTrainViewModel {
     /// Fan-out for the organizer-only feeds. Failures degrade to empty
     /// sections instead of blowing up the whole screen.
     internal func loadOrganizerSurfaces(read: Int, cache: Int) async {
-        let reservations = try? await api.request(
-            SupportTrainsEndpoints.reservations(supportTrainId: supportTrainId),
+        // The four reads go out together, so the invitations list adds no round trip (founder: a fix must not
+        // slow a feature).
+        let client = api
+        let trainId = supportTrainId
+        async let reservationsRead = try? client.request(
+            SupportTrainsEndpoints.reservations(supportTrainId: trainId),
             as: SupportTrainReservationsResponse.self
         )
-        guard readIsCurrent(read, cache: cache) else { return }
-        let organizers = try? await api.request(
-            SupportTrainActionsEndpoints.organizers(supportTrainId: supportTrainId),
+        async let organizersRead = try? client.request(
+            SupportTrainActionsEndpoints.organizers(supportTrainId: trainId),
             as: SupportTrainOrganizersResponse.self
         )
-        guard readIsCurrent(read, cache: cache) else { return }
-        let fundSummary = try? await api.request(
-            SupportTrainActionsEndpoints.fund(supportTrainId: supportTrainId),
+        async let fundRead = try? client.request(
+            SupportTrainActionsEndpoints.fund(supportTrainId: trainId),
             as: SupportTrainFundDTO.self
         )
+        async let invitesRead = try? client.request(
+            SupportTrainActionsEndpoints.invites(supportTrainId: trainId),
+            as: SupportTrainInvitesResponse.self
+        )
+        let reservations = await reservationsRead
+        let organizers = await organizersRead
+        let fundSummary = await fundRead
+        let invites = await invitesRead
         guard readIsCurrent(read, cache: cache) else { return }
         let helperIdentities = reservations?.reservations.filter { $0.status != "canceled" }.map { row -> String? in
             guard ["reserved", "delivered", "confirmed"].contains(row.status ?? "") else { return nil }
@@ -244,11 +254,6 @@ public extension ManageTrainViewModel {
         if let rows = reservations?.reservations {
             setDropouts(rows.filter { $0.status == "canceled" }.count)
         }
-        let invites = try? await api.request(
-            SupportTrainActionsEndpoints.invites(supportTrainId: supportTrainId),
-            as: SupportTrainInvitesResponse.self
-        )
-        guard readIsCurrent(read, cache: cache) else { return }
         replaceInvites(invites?.invites.filter { $0.inviteeUserId != nil } ?? [])
         replaceOrganizerSurfaces(
             helpers: Self.helperRows(

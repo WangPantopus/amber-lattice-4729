@@ -70,6 +70,8 @@ public struct ManageTrainView: View {
     /// Invite someone by account (A2), and set where help goes (A1).
     @State private var showInvitePicker = false
     @State private var showAddressSheet = false
+    /// "People near you" lists the train for people within about 25 miles, so it is asked first.
+    @State private var confirmNearby = false
     /// "Invite to Pantopus" in the picker shares the train once the picker closes.
     @State private var shareAfterPicker = false
     /// Set while a card's own field (the reminder, the gift-fund goal) has the keyboard.
@@ -132,6 +134,12 @@ public struct ManageTrainView: View {
         } message: { confirm in
             Text(confirm.message)
         }
+        .alert("List this Train for people near you?", isPresented: $confirmNearby) {
+            Button("Cancel", role: .cancel) {}
+            Button("List it") { Task { await viewModel.updateSharingMode("private_link") } }
+        } message: {
+            Text("People within about 25 miles can find it and sign up.")
+        }
         .alert(
             "Something went wrong",
             isPresented: Binding(
@@ -167,10 +175,11 @@ public struct ManageTrainView: View {
         )
     }
 
-    /// Invite someone you know by account (connections; the server checks).
+    /// Invite someone you know by account: only connections are listed (the server refuses anyone else).
     private var invitePicker: some View {
         NewMessageView(
             viewModel: NewMessageViewModel(
+                connectionsOnly: true,
                 onSelect: { destination in
                     showInvitePicker = false
                     Task { await viewModel.inviteHelper(userId: destination.userId) }
@@ -340,10 +349,18 @@ public struct ManageTrainView: View {
                     addressLabel: viewModel.deliveryAddressLabel,
                     sharingMode: viewModel.sharingMode,
                     invites: viewModel.inviteRows,
-                    canEdit: content.viewerRole.isOrganizer && !["completed", "archived"].contains(content.status),
+                    // Only the primary and co-organizers may change these; a recipient_delegate is refused (403).
+                    canEdit: content.viewerRole.isOrganizer && !viewModel.isRecipientDelegate
+                        && !["completed", "archived"].contains(content.status),
                     isBusy: viewModel.isSubmitting,
                     onEditAddress: { showAddressSheet = true },
-                    onChooseAudience: { mode in Task { await viewModel.updateSharingMode(mode) } },
+                    onChooseAudience: { mode in
+                        if mode == "private_link", viewModel.sharingMode != mode {
+                            confirmNearby = true
+                        } else {
+                            Task { await viewModel.updateSharingMode(mode) }
+                        }
+                    },
                     onInvite: { showInvitePicker = true }
                 )
                 .sheet(isPresented: $showAddressSheet) {
@@ -610,6 +627,7 @@ public struct ManageTrainView: View {
                             recipientQuote: content.close.recipientQuote
                         ),
                         thankYouNote: $viewModel.thankYouNote,
+                        thankYouSent: viewModel.thankYouSent,
                         onCancel: { viewModel.hideCloseSheet() },
                         onConfirm: { Task { await viewModel.confirmClose() } }
                     )

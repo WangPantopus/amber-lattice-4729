@@ -58,7 +58,15 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     public var allergies: String = ""
     public var diet: String = ""
     public var contactless: Bool = false
-    public var instructions: String = ""
+    /// Held to the 2,000 characters the server keeps (`special_instructions`).
+    public var instructions: String = "" {
+        didSet {
+            if instructions.count > Self.instructionsCharLimit {
+                instructions = String(instructions.prefix(Self.instructionsCharLimit))
+            }
+        }
+    }
+
     public var visibility: StartSupportTrainVisibility = .linkOnly
     /// The person picked by account wasn't linked to the train (not a connection) (A13).
     public private(set) var recipientNotLinkedName: String?
@@ -377,7 +385,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         switch step {
         case .whoAndWhy: canAdvanceFromWhoAndWhy
         case .whatAndWhen: canAdvanceFromWhatAndWhen
-        case .reviewAndLaunch: !isSubmittingFlag && scheduleProblem == nil
+        case .reviewAndLaunch: !isSubmittingFlag && scheduleProblem == nil && detailsProblem == nil
         case .success: true
         }
     }
@@ -460,6 +468,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     }
 
     private func launch() async {
+        guard detailsProblem == nil else { return }
         isSubmittingFlag = true
         launchError = nil
         defer { isSubmittingFlag = false }
@@ -515,10 +524,15 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
                     supportMode: kind.supportMode,
                     weekdays: weekdays.count == 7 ? nil : weekdays.sorted()
                 )
-                _ = try await api.request(
+                let saved = try await api.request(
                     SupportTrainsEndpoints.generateSlots(supportTrainId: created.id, body: schedule),
-                    as: EmptyResponse.self
+                    as: GeneratedSlotsCount.self
                 )
+                // The server skips a date that has already passed where the train is (its zone can be ahead of
+                // the phone's): with no date left, say so instead of the publish refusal.
+                if saved.count == 0 {
+                    throw LaunchProblem.datePassed
+                }
             }
             _ = try await api.request(
                 SupportTrainsEndpoints.publish(supportTrainId: created.id),
@@ -538,12 +552,22 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
                 case .failed: leftoverTrainId = id
                 }
             }
+            if case LaunchProblem.datePassed = error {
+                launchError = "That date has already passed where the train is. Pick a later date and launch again."
+                step = .whatAndWhen
+                return
+            }
             launchError = (error as? APIError)?.errorDescription
                 ?? "Couldn't launch the train. Try again."
         }
     }
 
     private enum DraftDiscard { case deleted, live, failed }
+
+    private enum LaunchProblem: Error { case datePassed }
+
+    /// `POST /:id/generate-slots` answers `{ slots, count }`; only the count is read.
+    private struct GeneratedSlotsCount: Decodable { let count: Int }
 
     /// Deletes a draft this wizard created. The server keeps a train that is
     /// no longer a draft (`draftOnly`), so a launch that went live is never undone.
@@ -578,10 +602,38 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
         }
     }
 
-    /// "peanuts, shellfish" → ["peanuts", "shellfish"].
-    private static func list(_ text: String) -> [String]? {
-        let items = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        return items.isEmpty ? nil : Array(items.prefix(50))
+    static let instructionsCharLimit = 2000
+    /// The server keeps each allergy or diet item to 100 characters.
+    static let listItemCharLimit = 100
+
+    /// One allergy or diet item longer than the server keeps, said under the fields; Launch waits for it.
+    public var detailsProblem: String? {
+        if (Self.list(allergies) ?? []).contains(where: { $0.count > Self.listItemCharLimit }) {
+            return "Keep each allergy to \(Self.listItemCharLimit) characters, and separate them with commas."
+        }
+        if (Self.list(diet) ?? []).contains(where: { $0.count > Self.listItemCharLimit }) {
+            return "Keep each diet to \(Self.listItemCharLimit) characters, and separate them with commas."
+        }
+        return nil
+    }
+
+    /// "peanuts, shellfish" → ["peanuts", "shellfish"]; a comma inside parentheses stays in its item.
+    static func list(_ text: String) -> [String]? {
+        var items: [String] = []
+        var current = ""
+        var depth = 0
+        for ch in text {
+            if ch == "(" { depth += 1 } else if ch == ")", depth > 0 { depth -= 1 }
+            if ch == ",", depth == 0 {
+                items.append(current)
+                current = ""
+            } else {
+                current.append(ch)
+            }
+        }
+        items.append(current)
+        let trimmed = items.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return trimmed.isEmpty ? nil : Array(trimmed.prefix(50))
     }
 
     private func displayName(_ recipient: MailRecipientDTO) -> String {

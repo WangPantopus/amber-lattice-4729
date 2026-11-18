@@ -19,17 +19,20 @@ import SwiftUI
 public struct CloseTrainSheet: View {
     private let content: CloseTrainSheetContent
     @Binding private var thankYouNote: String
+    private let thankYouSent: Bool
     private let onCancel: @MainActor () -> Void
     private let onConfirm: @MainActor () -> Void
 
     public init(
         content: CloseTrainSheetContent,
         thankYouNote: Binding<String>,
+        thankYouSent: Bool = false,
         onCancel: @escaping @MainActor () -> Void,
         onConfirm: @escaping @MainActor () -> Void
     ) {
         self.content = content
         _thankYouNote = thankYouNote
+        self.thankYouSent = thankYouSent
         self.onCancel = onCancel
         self.onConfirm = onConfirm
     }
@@ -155,8 +158,15 @@ public struct CloseTrainSheet: View {
                     .font(.system(size: 13.5))
                     .foregroundStyle(Theme.Color.appText)
                     .accessibilityIdentifier("manageTrainThankYouField")
+                    .disabled(thankYouSent)
             }
             .frame(height: 66)
+            if thankYouSent {
+                Text("Your thank-you was sent to every helper. Close the train to finish.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .accessibilityIdentifier("manageTrainThankYouSent")
+            }
         }
     }
 

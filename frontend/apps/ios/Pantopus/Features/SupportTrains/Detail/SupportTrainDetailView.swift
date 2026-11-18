@@ -538,8 +538,13 @@ public struct SupportTrainDetailView: View {
             // Directions and a copy, so a helper doesn't retype the address (B16).
             HStack(spacing: Spacing.s2) {
                 rowActionButton(title: "Directions", icon: .navigation, identifier: "supportTrainAddressDirections") {
-                    let query = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                    if let url = URL(string: "https://maps.apple.com/?daddr=\(query)") { UIApplication.shared.open(url) }
+                    // URLComponents encodes "&" and "#" inside the value (.urlQueryAllowed left them in); "+" is
+                    // encoded by hand, or Maps reads it as a space.
+                    var components = URLComponents(string: "https://maps.apple.com/")
+                    components?.queryItems = [URLQueryItem(name: "daddr", value: address)]
+                    components?.percentEncodedQuery = components?.percentEncodedQuery?
+                        .replacingOccurrences(of: "+", with: "%2B")
+                    if let url = components?.url { UIApplication.shared.open(url) }
                 }
                 rowActionButton(title: "Copy", icon: .copy, identifier: "supportTrainAddressCopy") {
                     UIPasteboard.general.string = address

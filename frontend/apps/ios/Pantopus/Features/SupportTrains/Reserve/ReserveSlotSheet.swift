@@ -183,7 +183,8 @@ public struct ReserveSlotSheet: View {
         }
     }
 
-    /// The ways of helping the chosen date takes (the train's lanes when the date doesn't say).
+    /// The ways of helping the chosen date takes (the train's lanes only when the date doesn't say; an empty list
+    /// stays empty, never the train's).
     private var availableModes: [SupportTrainContributionMode] {
         selectedOption?.allowedModes ?? context.enabledModes
     }
@@ -191,6 +192,13 @@ public struct ReserveSlotSheet: View {
     private var modeStep: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             stepTitle("How would you like to help?")
+            if availableModes.isEmpty {
+                // A date with no ways of helping (groceries off on a groceries date) takes no signup here.
+                Text("This date doesn't take signups right now. Pick another date.")
+                    .pantopusTextStyle(.body)
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .accessibilityIdentifier("supportTrainReserveNoModes")
+            }
             ForEach(availableModes, id: \.self) { option in
                 selectableCard(
                     isSelected: option == mode,
