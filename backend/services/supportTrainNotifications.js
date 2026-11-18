@@ -11,17 +11,39 @@
  *   support_train_donations
  *   support_train_open_slots
  */
+const { createHmac, timingSafeEqual } = require('node:crypto');
 const supabaseAdmin = require('../config/supabaseAdmin');
 const { createNotification, createBulkNotifications } = require('./notificationService');
 const { sendGuestReservationReminderEmail, sendGuestSignupReleasedEmail } = require('./emailService');
-const { inferTimezone } = require('./context/locationResolver');
-const { DateTime } = require('luxon');
+const { trainToday } = require('./supportTrainZone');
 const logger = require('../utils/logger');
 const { loadChatPeople } = require('./chatPeople');
 const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
 const pantopusLetters = require('./pantopusLetters');
 
 const DEEP_LINK_PREFIX = '/app/support-trains';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+
+// A guest who signed up by email cancels from a link in their signup and reminder emails (A6). The link names the
+// signup and carries a signature only the server can make, so it needs nothing stored and works in every email sent.
+const GUEST_LINK_KEY = process.env.SUPPORT_TRAIN_LINK_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+function guestCancelSignature(reservationId) {
+  if (!GUEST_LINK_KEY || !reservationId) return null;
+  return createHmac('sha256', `pantopus:st-guest-cancel:v1:${GUEST_LINK_KEY}`)
+    .update(String(reservationId).toLowerCase())
+    .digest('base64url')
+    .slice(0, 32);
+}
+function guestCancelSignatureMatches(reservationId, signature) {
+  const expected = guestCancelSignature(reservationId);
+  if (!expected || typeof signature !== 'string' || signature.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+/** The page where a guest cancels this signup, or null when links can't be signed. */
+function guestCancelUrl(reservationId) {
+  const signature = guestCancelSignature(reservationId);
+  return signature ? `${APP_URL}/support-trains/cancel-signup?r=${encodeURIComponent(reservationId)}&s=${signature}` : null;
+}
 
 function supportTrainReference(trainTitle) {
   const safeTrainTitle = typeof trainTitle === 'string' ? trainTitle.trim() : '';
@@ -90,7 +112,7 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
     // Load Support Train + Activity for context
     const { data: st } = await supabaseAdmin
       .from('SupportTrain')
-      .select('id, organizer_user_id, recipient_user_id, status, story, Activity!inner ( title )')
+      .select('id, organizer_user_id, recipient_user_id, status, story, recipient_home_id, delivery_lat, delivery_lng, Activity!inner ( title, timezone, home_id )')
       .eq('id', supportTrainId)
       .single();
 
@@ -192,6 +214,8 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
             slots: [{ slotLabel: payload.slot_label || 'Your signup', slotDate: formatSlotDate(payload.slot_date) }],
             removed: true,
             reason: payload.organizer_reason,
+            // An address that never opened its signup email's link gets fixed wording, nothing a person typed (C6).
+            confirmed: payload.helper_guest_confirmed === true,
           });
         }
         if (payload.helper_user_id) {
@@ -359,6 +383,7 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
             confirmed: payload.guest_email_confirmed === true,
             ...(addressLabel ? { addressLabel } : {}),
             supportTrainId,
+            cancelUrl: guestCancelUrl(payload.reservation_id),
           });
           // A local log preview is not delivery and must not retire the retry.
           return { delivered: result?.success === true && result.preview !== true };
@@ -414,26 +439,24 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
         // Closing ends the Train's reminders, so helpers still signed up for a date from today
         // on (in the Train's time zone) are told they are no longer needed. Their reservations
         // stay as they are.
-        const [{ data: train }, { data: reservations, error }] = await Promise.all([
-          supabaseAdmin.from('SupportTrain').select('delivery_lat, delivery_lng').eq('id', supportTrainId).single(),
+        const [{ data: reservations, error }] = await Promise.all([
           supabaseAdmin
             .from('SupportTrainReservation')
-            .select('user_id, guest_name, guest_email, SupportTrainSlot:slot_id ( slot_date, slot_label )')
+            .select('user_id, guest_name, guest_email, guest_email_confirmed_at, SupportTrainSlot:slot_id ( slot_date, slot_label )')
             .eq('support_train_id', supportTrainId)
             .eq('status', 'reserved'),
         ]);
         if (error) throw error;
-        const today = DateTime.now()
-          .setZone(inferTimezone(train?.delivery_lat, train?.delivery_lng))
-          .toISODate();
+        const today = await trainToday(st);
         const byHelper = new Map();
         for (const r of reservations || []) {
           const slot = r.SupportTrainSlot;
           if (!slot?.slot_date || slot.slot_date < today) continue;
           const key = r.user_id || (r.guest_email ? `guest:${r.guest_email.toLowerCase()}` : null);
           if (!key || r.user_id === actorUserId) continue;
-          if (!byHelper.has(key)) byHelper.set(key, { userId: r.user_id, guestEmail: r.guest_email, guestName: r.guest_name, slots: [] });
+          if (!byHelper.has(key)) byHelper.set(key, { userId: r.user_id, guestEmail: r.guest_email, guestName: r.guest_name, confirmed: false, slots: [] });
           byHelper.get(key).slots.push(slot);
+          if (r.guest_email_confirmed_at) byHelper.get(key).confirmed = true;
         }
 
         const released = (slots) => {
@@ -465,10 +488,11 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
             slots: [...h.slots]
               .sort((a, b) => a.slot_date.localeCompare(b.slot_date))
               .map((s) => ({ slotLabel: s.slot_label || 'Your signup', slotDate: formatSlotDate(s.slot_date) })),
+            confirmed: h.confirmed,
           });
         }
         // Letters in their Mail (SRV-9): a thank-you to each helper, the summary to the person helped and organizers.
-        await doneLetters(supportTrainId);
+        await doneLetters(supportTrainId, { endedBySchedule: payload.ended_by_schedule === true });
         break;
       }
 
@@ -665,7 +689,7 @@ async function thanksLetter({ supportTrainId, reservationId, helperUserId, confi
       content: [
         `${by} confirmed your ${what}${day ? ` on ${day}` : ''} for ${t.reference}.`,
         '',
-        'Thank you for showing up for your neighbor.',
+        'Thank you for showing up for them.',
         '',
         'Your Pantopus carrier',
       ].join('\n'),
@@ -685,7 +709,7 @@ async function thanksLetter({ supportTrainId, reservationId, helperUserId, confi
  * 5. The Train is done: a thank-you to each helper, and a summary to the person helped and each organizer (days
  * covered, helpers, gifts). Never throws.
  */
-async function doneLetters(supportTrainId) {
+async function doneLetters(supportTrainId, { endedBySchedule = false } = {}) {
   if (!isLaunchFeatureEnabled('mailbox')) return;
   try {
     const t = await trainForLetters(supportTrainId);
@@ -725,7 +749,7 @@ async function doneLetters(supportTrainId) {
         recipient_user_id: userId,
         subject: t.recipientName ? `Thank you for helping ${t.recipientName}` : `${t.title} is complete`,
         content: [
-          `${t.organizerName} closed ${t.reference}: it's complete.`,
+          endedBySchedule ? `${capitalized(t.reference)} is complete: its last date has passed.` : `${t.organizerName} closed ${t.reference}: it's complete.`,
           '',
           `You signed up for ${days || 1} ${days === 1 || !days ? 'day' : 'days'}${range ? ` (${range})` : ''}. Thank you for helping.`,
           '',
@@ -738,7 +762,7 @@ async function doneLetters(supportTrainId) {
 
     const lines = [
       `Days covered: ${covered.size} of ${allDays.size || covered.size}${t.dates ? ` (${t.dates})` : ''}`,
-      `Helpers: ${helperKeys.size} ${helperKeys.size === 1 ? 'neighbor' : 'neighbors'}`,
+      `Helpers: ${helperKeys.size} ${helperKeys.size === 1 ? 'person' : 'people'}`,
       ...(gifts ? [`Gifts: ${gifts.total} from ${gifts.count} ${gifts.count === 1 ? 'gift' : 'gifts'}`] : []),
     ];
     for (const userId of leaders) {
@@ -747,15 +771,15 @@ async function doneLetters(supportTrainId) {
         recipient_user_id: userId,
         subject: `${t.title} is complete`,
         content: [
-          `${capitalized(t.reference)} is complete. Here's what neighbors gave:`,
+          `${capitalized(t.reference)} is complete. Here's what people gave:`,
           '',
           ...lines,
           '',
-          helped ? 'Your neighbors were glad to help.' : 'Thank you for organizing it.',
+          helped ? 'Everyone who helped was glad to.' : 'Thank you for organizing it.',
           '',
           'Your Pantopus carrier',
         ].join('\n'),
-        summary: `${capitalized(t.reference)} is complete: ${covered.size} of ${allDays.size || covered.size} days covered by ${helperKeys.size} ${helperKeys.size === 1 ? 'neighbor' : 'neighbors'}${gifts ? `, and ${gifts.total} in gifts` : ''}.`,
+        summary: `${capitalized(t.reference)} is complete: ${covered.size} of ${allDays.size || covered.size} days covered by ${helperKeys.size} ${helperKeys.size === 1 ? 'helper' : 'helpers'}${gifts ? `, and ${gifts.total} in gifts` : ''}.`,
         key_facts: [
           { label: 'Days covered', value: `${covered.size} of ${allDays.size || covered.size}` },
           { label: 'Helpers', value: String(helperKeys.size) },
@@ -815,4 +839,11 @@ async function giftReceiptLetter(contributionId) {
   }
 }
 
-module.exports = { emitSupportTrainEvent, formatSupportTrainSlotTime, inviteLetters, giftReceiptLetter };
+module.exports = {
+  emitSupportTrainEvent,
+  formatSupportTrainSlotTime,
+  guestCancelSignatureMatches,
+  guestCancelUrl,
+  inviteLetters,
+  giftReceiptLetter,
+};

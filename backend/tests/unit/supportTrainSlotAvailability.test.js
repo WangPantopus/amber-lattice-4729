@@ -210,7 +210,9 @@ describe('supportTrainSlotAvailability', () => {
     ])('refuses stale shared address after %s following the job query', async (_name, mutation) => {
       const original = seed({ shared: '2026-10-03T20:00:00Z' });
       const from = supabase.from;
-      let trainReads = 0;
+      // The job reads SupportTrain twice before any reminder: trains missing a zone, then trains whose dates are over.
+      const JOB_READS = 2;
+      let trainReads = -JOB_READS;
       const spy = jest.spyOn(supabase, 'from').mockImplementation(table => {
         if (table === 'SupportTrain') {
           trainReads++;
