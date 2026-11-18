@@ -512,28 +512,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
             publishedTrainId = created.id
             recipientNotLinkedName = created.recipientLinked == false
                 ? (selectedBeneficiary.map(displayName) ?? beneficiaryQuery) : nil
-            // The whole schedule in one request (a slot on every day of the range): a request
-            // per slot ran a long train into the write limits partway through.
-            if let first = generatedSlots.first, let last = generatedSlots.last {
-                let schedule = GenerateSupportTrainSlotsBody(
-                    startDate: first.dateKey,
-                    endDate: last.dateKey,
-                    startTime: first.startTime,
-                    endTime: first.endTime,
-                    slotLabel: kind.defaultSlotLabel,
-                    supportMode: kind.supportMode,
-                    weekdays: weekdays.count == 7 ? nil : weekdays.sorted()
-                )
-                let saved = try await api.request(
-                    SupportTrainsEndpoints.generateSlots(supportTrainId: created.id, body: schedule),
-                    as: GeneratedSlotsCount.self
-                )
-                // The server skips a date that has already passed where the train is (its zone can be ahead of
-                // the phone's): with no date left, say so instead of the publish refusal.
-                if saved.count == 0 {
-                    throw LaunchProblem.datePassed
-                }
-            }
+            try await saveDates(trainId: created.id)
             _ = try await api.request(
                 SupportTrainsEndpoints.publish(supportTrainId: created.id),
                 as: EmptyResponse.self
@@ -560,6 +539,27 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
             launchError = (error as? APIError)?.errorDescription
                 ?? "Couldn't launch the train. Try again."
         }
+    }
+
+    /// The whole schedule in one request (a slot on every day of the range): a request per slot ran a long train
+    /// into the write limits partway through. The server skips a date that has already passed where the train is
+    /// (its zone can be ahead of the phone's); with no date left, that is said instead of the publish refusal.
+    private func saveDates(trainId: String) async throws {
+        guard let first = generatedSlots.first, let last = generatedSlots.last else { return }
+        let schedule = GenerateSupportTrainSlotsBody(
+            startDate: first.dateKey,
+            endDate: last.dateKey,
+            startTime: first.startTime,
+            endTime: first.endTime,
+            slotLabel: kind.defaultSlotLabel,
+            supportMode: kind.supportMode,
+            weekdays: weekdays.count == 7 ? nil : weekdays.sorted()
+        )
+        let saved = try await api.request(
+            SupportTrainsEndpoints.generateSlots(supportTrainId: trainId, body: schedule),
+            as: GeneratedSlotsCount.self
+        )
+        if saved.count < 1 { throw LaunchProblem.datePassed }
     }
 
     private enum DraftDiscard { case deleted, live, failed }
