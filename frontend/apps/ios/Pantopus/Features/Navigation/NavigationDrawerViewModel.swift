@@ -126,7 +126,9 @@ enum NavigationDrawerDestination: Equatable {
         // Launch cut #3 (Marketplace).
         case .myListings: LaunchFeatures.marketplace
         // Launch cut #4 (Open gigs): bids, gig offers and open task posting.
-        case .myBids, .offersAndBids, .postTask, .businessPostTask: LaunchFeatures.openGigs
+        // My Tasks (the gigs you posted) is off in the menu too (founder,
+        // 2026-11-17); the home's own Tasks row stays.
+        case .myTasks, .myBids, .offersAndBids, .postTask, .businessPostTask: LaunchFeatures.openGigs
         // Launch cuts #6 + #4 + #3: "Discover Neighbors" opens the Discover
         // hub (business, open-task and listing rails), not people search.
         case .discoverNeighbors: LaunchFeatures.businessDirectory && LaunchFeatures.openGigs && LaunchFeatures.marketplace
