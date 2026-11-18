@@ -163,6 +163,8 @@ internal class TableGeometry(
     wordsBottom: Float,
     /** The card's own photo or greeting lies under it once it's turned over (memories plan). */
     keepsMediaRoom: Boolean = false,
+    /** The reader's quiet row, part of [bottomRoom]: it shows only once the card is out and turned over. */
+    quietRoom: Float = 0f,
 ) {
     val cardWidth: Float
     val cardHeight: Float
@@ -197,8 +199,8 @@ internal class TableGeometry(
         val side = (if (width / d < 560f) 9f else 14f) * d
         // Tablets and wide windows go to 640 dp where the height allows (plan 6.3).
         val widest = min(width - side * 2f, (if (wide) 640f else 470f) * d)
-        // Shut, the envelope sits at least 88 dp below the safe area and clear of the buttons.
-        val shutLimit = (height - safeTop - bottomRoom - 88f * d) / ENVELOPE_TALL
+        // Shut, the envelope sits at least 88 dp below the safe area and clear of the buttons; the quiet row isn't there yet.
+        val shutLimit = (height - safeTop - (bottomRoom - quietRoom) - 88f * d) / ENVELOPE_TALL
 
         fun fitted(above: Float): Float =
             max(
