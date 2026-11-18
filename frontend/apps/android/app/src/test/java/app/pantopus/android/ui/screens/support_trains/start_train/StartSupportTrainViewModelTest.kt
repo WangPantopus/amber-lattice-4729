@@ -87,7 +87,7 @@ class StartSupportTrainViewModelTest {
         coEvery { supportTrains.create(any()) } returns
             NetworkResult.Success(CreateSupportTrainResponse(id = "train_demo"))
         coEvery { supportTrains.updateRecipientDetails(any(), any()) } returns NetworkResult.Success(Unit)
-        coEvery { supportTrains.generateSlots(any(), any(), any()) } returns NetworkResult.Success(Unit)
+        coEvery { supportTrains.generateSlots(any(), any(), any()) } returns NetworkResult.Success(7)
         coEvery { supportTrains.publish(any()) } returns NetworkResult.Success(Unit)
     }
 
