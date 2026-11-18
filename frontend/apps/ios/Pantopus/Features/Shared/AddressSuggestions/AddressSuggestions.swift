@@ -88,17 +88,54 @@ final class AddressSuggestions {
     /// own yet; nil when none is known.
     static func anyHomePoint() async -> (latitude: Double, longitude: Double)? {
         guard let response = try? await HomesStoreReads.myHomes().value else { return nil }
-        let homes = response.homes
-        let preferred = response.defaultHomeId.flatMap { id in homes.first { $0.home.id == id } }
-        guard let point = preferred?.location ?? homes.compactMap(\.location).first else { return nil }
-        return (point.latitude, point.longitude)
+        return point(in: response, homeId: nil)
     }
 
     /// One of your homes' map point, for `near`; nil when it isn't known.
     static func homePoint(homeId: String) async -> (latitude: Double, longitude: Double)? {
-        guard let homes = try? await HomesStoreReads.myHomes().value.homes,
-              let point = homes.first(where: { $0.home.id == homeId })?.location else { return nil }
+        guard let response = try? await HomesStoreReads.myHomes().value else { return nil }
+        return point(in: response, homeId: homeId)
+    }
+
+    /// That home's point in a list of your homes; with no `homeId`, your default Home's, else any home's.
+    fileprivate static func point(in response: MyHomesResponse, homeId: String?) -> (latitude: Double, longitude: Double)? {
+        let homes = response.homes
+        if let homeId {
+            guard let point = homes.first(where: { $0.home.id == homeId })?.location else { return nil }
+            return (point.latitude, point.longitude)
+        }
+        let preferred = response.defaultHomeId.flatMap { id in homes.first { $0.home.id == id } }
+        guard let point = preferred?.location ?? homes.compactMap(\.location).first else { return nil }
         return (point.latitude, point.longitude)
+    }
+}
+
+/// A search area for a screen that runs its own address search (the task composers). A search never waits for
+/// it: `find` answers from the list of your homes the app already holds, and otherwise asks for that list beside
+/// the search, so `point` is nil until it is known and the search goes out without an area.
+@MainActor
+final class HomeSearchArea {
+    private(set) var point: (latitude: Double, longitude: Double)?
+    private var task: Task<Void, Never>?
+
+    nonisolated init() {}
+
+    /// `homeId` nil: your default Home (else any of your homes).
+    func find(homeId: String? = nil) {
+        guard point == nil, task == nil else { return }
+        if let held = HomesStoreReads.peekMyHomes()?.value, let known = AddressSuggestions.point(in: held, homeId: homeId) {
+            point = known
+            return
+        }
+        task = Task { [weak self] in
+            let found: (latitude: Double, longitude: Double)? = if let homeId {
+                await AddressSuggestions.homePoint(homeId: homeId)
+            } else {
+                await AddressSuggestions.anyHomePoint()
+            }
+            self?.point = found
+            self?.task = nil
+        }
     }
 }
 
