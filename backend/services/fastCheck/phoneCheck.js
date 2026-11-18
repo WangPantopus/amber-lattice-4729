@@ -8,6 +8,9 @@
 // clear, never the per-field match levels. The person is never told which part missed.
 // Limits: 3 different numbers per account in 30 days, 5 codes per number per hour, and a server-wide daily ceiling of
 // records checks (FAST_CHECK_PHONE_DAILY_MAX, default 200) after which the option is unavailable for the day.
+// Five wrong checks use a code up, and Twilio Verify then sends no new code to that number until the verification
+// ends (ten minutes after it was made): `start` answers FAST_CHECK_LIMIT in that time instead of texting a code that
+// could never pass.
 
 const db = require('../../config/supabaseAdmin');
 const logger = require('../../utils/logger');
@@ -21,6 +24,8 @@ const RESEND_AFTER_S = 30;
 const NAMES_KEPT_MS = 15 * 60 * 1000;
 const CODE_WINDOW_MS = 10 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+// A try row's step when the provider's five checks of a code are used up (beside 'start' and 'verify').
+const LOCKED = 'locked';
 
 // "Name on the phone account", given at start and needed at verify: kept in this process only, for 15 minutes.
 const givenNames = new Map();
@@ -52,6 +57,19 @@ async function numberInUse(hash, userId, occupancyId) {
     await db.from('HomeOccupancy').update({ fast_check_ref_hash: null }).eq('id', row.id).eq('fast_check_ref_hash', hash);
   }
   return false;
+}
+
+/**
+ * Is the code last sent to this number used up at the provider (five wrong checks)? `rows` are this person's tries
+ * of the last ten minutes, newest first. True from the 'locked' row until ten minutes after the send before it, when
+ * the provider's verification has ended and a new send is a new code. A send after the row means it has ended.
+ */
+function codeLocked(rows, ref, now = Date.now()) {
+  const ofNumber = rows.filter((row) => row.metadata && row.metadata.ref === ref);
+  const locked = ofNumber.findIndex((row) => row.metadata.step === LOCKED);
+  if (locked < 0 || ofNumber.slice(0, locked).some((row) => row.metadata.step === 'start')) return false;
+  const sent = ofNumber.slice(locked + 1).find((row) => row.metadata.step === 'start');
+  return Boolean(sent) && now < new Date(sent.created_at).getTime() + CODE_WINDOW_MS;
 }
 
 /** 'start' rows for this number in the last hour, across every account (5 codes per number per hour). */
@@ -86,7 +104,15 @@ async function start({ homeId, user, phone, firstName, lastName }) {
     void fastCheck.countTry(KIND, 'refused', ['phone_in_use']);
     throw new FastCheckError('PHONE_IN_USE');
   }
-  const recent = await fastCheck.triesSince({ userId: user.id, kind: KIND, step: 'start', sinceMs: Date.now() - fastCheck.LIMITS.phoneNumbers.windowMs });
+  // Read together, so the second read adds no wait: the numbers used (30 days) and the last ten minutes of tries.
+  const [recent, lately] = await Promise.all([
+    fastCheck.triesSince({ userId: user.id, kind: KIND, step: 'start', sinceMs: Date.now() - fastCheck.LIMITS.phoneNumbers.windowMs }),
+    fastCheck.triesSince({ userId: user.id, kind: KIND, sinceMs: Date.now() - CODE_WINDOW_MS }),
+  ]);
+  if (codeLocked(lately, ref)) {
+    void fastCheck.countTry(KIND, 'refused', ['limit']);
+    throw new FastCheckError('FAST_CHECK_LIMIT');
+  }
   const numbers = new Set(recent.map((row) => row.metadata && row.metadata.ref).filter(Boolean));
   if ((!numbers.has(ref) && numbers.size >= fastCheck.LIMITS.phoneNumbers.numbers)
     || await codesSentForNumber(ref) >= fastCheck.LIMITS.phoneCodes.codes) {
@@ -97,6 +123,11 @@ async function start({ homeId, user, phone, firstName, lastName }) {
     await provider.startVerification(e164);
   } catch (error) {
     logger.warn('fast_check.phone_start_failed', { status: error.status, twilio_code: error.twilioCode });
+    // Verify itself says this number's code is used up for now: the limit's words, not "isn't available".
+    if (provider.usedUp(error)) {
+      void fastCheck.countTry(KIND, 'refused', ['limit']);
+      throw new FastCheckError('FAST_CHECK_LIMIT');
+    }
     void fastCheck.countTry(KIND, 'error', ['send_failed']);
     throw new FastCheckError('PHONE_CHECK_UNAVAILABLE');
   }
@@ -133,7 +164,17 @@ async function verify({ homeId, user, phone, code, firstName, lastName }) {
     void fastCheck.countTry(KIND, 'error', ['check_failed']);
     throw new FastCheckError('PHONE_CHECK_UNAVAILABLE');
   }
-  if (status !== 'approved') return { result: 'wrong_code', level: await level(), tries_left: status === 'pending' ? triesLeft : 0 };
+  // Verify allows five checks of one verification, then keeps it shut until it ends; a new send in that time is the
+  // same verification, so its code could never pass. Remember that, so `start` says so instead of texting again.
+  if (status === 'locked') {
+    await fastCheck.logTry({ homeId, userId: user.id, kind: KIND, step: LOCKED, ref });
+    void fastCheck.countTry(KIND, 'refused', ['limit']);
+    throw new FastCheckError('FAST_CHECK_LIMIT');
+  }
+  if (status !== 'approved') {
+    if (status === 'pending' && triesLeft === 0) await fastCheck.logTry({ homeId, userId: user.id, kind: KIND, step: LOCKED, ref });
+    return { result: 'wrong_code', level: await level(), tries_left: status === 'pending' ? triesLeft : 0 };
+  }
 
   if (await numberInUse(hash, user.id, occupancy.id)) {
     void fastCheck.countTry(KIND, 'refused', ['phone_in_use']);

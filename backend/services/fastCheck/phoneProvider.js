@@ -20,6 +20,9 @@ const KEYS = ['TWILIO_ACCOUNT_SID', 'TWILIO_API_KEY_SID', 'TWILIO_API_KEY_SECRET
 const VERIFY_BASE = 'https://verify.twilio.com';
 const LOOKUP_BASE = 'https://lookups.twilio.com';
 const TIMEOUT_MS = 8000;
+// Twilio Verify's refusals of one verification: its five checks, or its five sends, are used up (HTTP 429).
+const MAX_CHECKS_REACHED = 60202;
+const MAX_SENDS_REACHED = 60203;
 
 const env = (key) => String(process.env[key] || '').trim();
 const hosted = () => ['staging', 'production'].includes(env('APP_ENV').toLowerCase());
@@ -90,15 +93,24 @@ async function startVerification(e164) {
 }
 
 /**
- * Check the code the person typed. Returns 'approved', 'pending' (a wrong code, more tries left), or 'closed' (no
- * pending verification: expired, used, or too many tries). Throws PhoneProviderError on anything else.
+ * Check the code the person typed. Returns 'approved', 'pending' (a wrong code), 'locked' (Verify's five checks of
+ * this verification are used up: error 60202; it stays shut until it ends, ten minutes after it was made, and a new
+ * send in that time is the same verification), or 'closed' (no pending verification: expired or used). Throws
+ * PhoneProviderError on anything else.
  */
 async function checkVerification(e164, code) {
   const url = `${base('verify')}/v2/Services/${encodeURIComponent(env('TWILIO_VERIFY_SERVICE_SID'))}/VerificationCheck`;
   const { status, body } = await call('POST', url, { To: e164, Code: String(code) });
   if (status >= 200 && status < 300 && body) return body.status === 'approved' ? 'approved' : body.status === 'pending' ? 'pending' : 'closed';
+  if (status === 429 && body && Number(body.code) === MAX_CHECKS_REACHED) return 'locked';
   if (status === 404 || status === 429) return 'closed';
   throw new PhoneProviderError('verification check failed', { status, code: body && body.code });
+}
+
+/** Did Verify refuse because this number's verification has used up its checks or its sends (wait for it to end)? */
+function usedUp(error) {
+  return error instanceof PhoneProviderError && error.status === 429
+    && [MAX_CHECKS_REACHED, MAX_SENDS_REACHED].includes(Number(error.twilioCode));
 }
 
 /**
@@ -135,5 +147,5 @@ function matchResult(identity) {
 
 module.exports = {
   configured, hosted, KEYS, normalizeUsNumber, numberHash, numberRef,
-  startVerification, checkVerification, identityMatch, matchResult, PhoneProviderError,
+  startVerification, checkVerification, usedUp, identityMatch, matchResult, PhoneProviderError,
 };
