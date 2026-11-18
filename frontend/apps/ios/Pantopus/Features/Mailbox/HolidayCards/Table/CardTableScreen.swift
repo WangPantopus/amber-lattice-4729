@@ -21,6 +21,9 @@ struct CardTableScreen: View {
     var closeLabel = "Back to the Mailbox"
     /// Off where there's nothing to share yet (Look it over).
     var canShare = true
+    /// "Share this card" as a quiet button too (plan 11.1); off on a reader's card, where the quiet row holds the
+    /// design check's three (Nov 17) and Share keeps its corner and its ⋯ line.
+    var sharesQuietly = true
     let onClose: () -> Void
 
     @State private var wordsHeight: CGFloat = 0
@@ -111,7 +114,7 @@ struct CardTableScreen: View {
             }
         }
         .onAppear {
-            model.offersShare = canShare
+            model.offersShare = canShare && sharesQuietly
             model.reduceMotion = reduceMotion
             model.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
             model.setShowing(true)
@@ -178,8 +181,8 @@ struct CardTableScreen: View {
                 hint: "or swipe it, the way you’d turn it in your hand",
                 primarySize: primarySize,
                 hintSize: hintSize,
-                reservesSecondary: model.reservesSecondary,
-                reservesNext: model.reservesNext
+                reservesSecondary: model.reservesSecondary || model.reservesNext,
+                oneRow: true
             ) {}
                 .frame(width: max(0, width - 32))
                 .fixedSize(horizontal: false, vertical: true)
@@ -189,8 +192,8 @@ struct CardTableScreen: View {
                 hint: "",
                 primarySize: primarySize,
                 hintSize: hintSize,
-                reservesSecondary: model.reservesSecondary,
-                reservesNext: model.reservesNext,
+                reservesSecondary: model.reservesSecondary || model.reservesNext,
+                oneRow: true,
                 beside: CardTableMenuItem(title: CardTableBookmark.print.title, identifier: "") {}
             ) {}
                 .frame(width: max(0, width - 32))

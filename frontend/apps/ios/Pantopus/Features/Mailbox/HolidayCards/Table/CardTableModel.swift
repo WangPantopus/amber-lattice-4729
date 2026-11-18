@@ -132,10 +132,10 @@ final class CardTableModel {
     var zoomedOnce = false
     /// "Send {first name} a card" (plan Part 3), set by the reader's page once the server says a card can go to them.
     var sendBack: CardTableMenuItem?
-    /// "Write back to {first name}", or "You wrote back · {day}" (experience plan Part 3), set by the reader's page.
+    /// "Write back to {first name}", or "You wrote back" (experience plan Part 3), set by the reader's page.
     var writeBack: CardTableMenuItem?
-    /// "Open the next card" (experience plan Part 4), set by the reader's page when the Mailbox list it came from has
-    /// other cards waiting; `reservesNext` keeps its room from the start.
+    /// "Open the next card (2 more)" (experience plan Part 4), set by the reader's page when the Mailbox list it came
+    /// from has other cards waiting; `reservesNext` keeps the quiet row's room from the start.
     var nextCard: CardTableMenuItem?
     var reservesNext = false
     /// The quiet buttons may come (Send {first name} a card, or step 5's): the buttons keep room for them from the

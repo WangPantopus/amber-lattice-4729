@@ -9,12 +9,14 @@
 
 import SwiftUI
 
-/// One line in the ⋯ menu.
+/// One line in the ⋯ menu, or one quiet button.
 struct CardTableMenuItem: Identifiable {
     let title: String
     let identifier: String
-    /// A line under a quiet button ("2 more waiting").
-    var detail: String?
+    /// A quiet button's short words, when two with their full words don't fit side by side ("Write back").
+    var short: String?
+    /// What VoiceOver says, when it isn't the title ("Open the next card, 2 more waiting").
+    var spoken: String?
     let action: () -> Void
 
     var id: String {
@@ -206,9 +208,9 @@ struct CardTableControls: View {
             primarySize: primarySize,
             hintSize: hintSize,
             secondaries: model.secondaries,
-            reservesSecondary: model.reservesSecondary,
-            next: model.showsNextCard ? model.nextCard : nil,
-            reservesNext: model.reservesNext,
+            reservesSecondary: model.reservesSecondary || model.reservesNext,
+            // Under a card: one row, two at most (the design check, Nov 17); after sealing, all three as before.
+            oneRow: model.sending == nil,
             beside: model.printIsButton
                 ? CardTableMenuItem(title: CardTableBookmark.print.title, identifier: CardTableBookmark.print.identifier) {
                     model.bookmark = .print
@@ -234,13 +236,15 @@ struct CardTableAct: View {
     let hint: String
     let primarySize: CGFloat
     let hintSize: CGFloat
-    /// The quiet buttons under the main one (Send {first name} a card; Take it back · Share this card).
+    /// The quiet buttons under the main one, in order (Open the next card; Write back; Send {first name} a card; Share
+    /// this card), or after sealing Take it back · Share this card · Send this card to someone else.
     var secondaries: [CardTableMenuItem] = []
     /// Keep its room while it's hidden, so the card doesn't move when it comes.
     var reservesSecondary = false
-    /// "Open the next card" with "{n} more waiting" under it (experience plan Part 4), and whether to keep its room.
-    var next: CardTableMenuItem?
-    var reservesNext = false
+    /// Under a card (the design check, Nov 17): ONE row of at most two, side by side, never stacked. If the two don't
+    /// fit with their full words they take their short ones; if those don't fit either (the largest text), only the
+    /// first shows. The rest are in the ⋯ menu.
+    var oneRow = false
     /// A second full button beside the main one ("Read it in print" with larger text, plan Part 2).
     var beside: CardTableMenuItem?
     /// The hint is a link ("Read the verse", plan 6.2; "Read it in print", plan Part 2): its identifier and action.
@@ -278,24 +282,34 @@ struct CardTableAct: View {
             }
             // The quiet buttons sit under the hint, so the hint stays with the main button.
             if !secondaries.isEmpty || reservesSecondary {
-                // Side by side, or one under the other when they don't fit (the largest text).
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 4) { quietButtons }
-                    VStack(spacing: 0) { quietButtons }
-                }
-                .frame(minHeight: 44)
-                .opacity(secondaries.isEmpty ? 0 : 1)
-                .animation(.easeInOut(duration: 0.3), value: secondaries.isEmpty)
-            }
-            if next != nil || reservesNext {
-                nextButton
-                    .opacity(next == nil ? 0 : 1)
-                    .disabled(next == nil)
-                    .accessibilityHidden(next == nil)
-                    .animation(.easeInOut(duration: 0.3), value: next == nil)
+                quietRow
+                    .frame(minHeight: 44)
+                    .opacity(secondaries.isEmpty ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.3), value: secondaries.isEmpty)
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var quietRow: some View {
+        if oneRow {
+            let two = Array(secondaries.prefix(2))
+            let first = Array(secondaries.prefix(1))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { quietButtons(two, short: false) }
+                HStack(spacing: 4) { quietButtons(two, short: true) }
+                HStack(spacing: 4) { quietButtons(first, short: false) }
+                // Still one line at the largest sizes: the words may get a little smaller rather than wrap.
+                HStack(spacing: 4) { quietButtons(first, short: true, fit: .shrinks) }
+            }
+        } else {
+            // Side by side, or one under the other when they don't fit (the largest text).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { quietButtons(secondaries, short: false) }
+                VStack(spacing: 0) { quietButtons(secondaries, short: false, fit: .wraps) }
+            }
+        }
     }
 }
 
@@ -354,34 +368,22 @@ private extension CardTableAct {
             }
     }
 
-    /// The quiet "Open the next card" with how many more wait under it.
-    var nextButton: some View {
-        Button { next?.action() } label: {
-            VStack(spacing: 2) {
-                Text(next?.title ?? "Open the next card")
-                    .font(.system(size: primarySize, weight: .medium))
-                    .underline(color: MailPaper.tableCream.opacity(0.4))
-                    .foregroundStyle(MailPaper.tableCream)
-                Text(next?.detail ?? " ")
-                    .font(.system(size: hintSize))
-                    .foregroundStyle(Color.white.opacity(0.85))
-            }
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(next?.identifier ?? "cardTableNextCard")
+    /// How a quiet button's words take the room: one line at their size (so the row can tell when they don't fit), one
+    /// line a little smaller when nothing narrower is left, or wrapping (the column after sealing).
+    enum QuietFit {
+        case oneLine, shrinks, wraps
     }
 
-    var quietButtons: some View {
-        ForEach(secondaries) { item in
+    /// Quiet buttons with their full or short words. VoiceOver always hears the full words.
+    func quietButtons(_ items: [CardTableMenuItem], short: Bool, fit: QuietFit = .oneLine) -> some View {
+        ForEach(items) { item in
             Button(action: item.action) {
-                Text(item.title)
+                Text(short ? item.short ?? item.title : item.title)
                     .font(.system(size: primarySize, weight: .medium))
                     .multilineTextAlignment(.center)
+                    .lineLimit(fit == .wraps ? nil : 1)
+                    .minimumScaleFactor(fit == .shrinks ? 0.7 : 1)
+                    .fixedSize(horizontal: fit == .oneLine, vertical: true)
                     .foregroundStyle(MailPaper.tableCream)
                     .underline(color: MailPaper.tableCream.opacity(0.4))
                     .padding(.horizontal, 12)
@@ -389,6 +391,7 @@ private extension CardTableAct {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(item.spoken ?? item.title)
             .accessibilityIdentifier(item.identifier)
         }
     }
