@@ -62,6 +62,8 @@ fun SlotRow(
     onSignUp: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** False for the person the train is for: no Sign up pill on their own train's dates (B2). */
+    showSignUp: Boolean = true,
 ) {
     val shape = RoundedCornerShape(Radii.lg)
     val borderColor = if (content.mine) PantopusColors.primary300 else PantopusColors.appBorder
@@ -83,7 +85,7 @@ fun SlotRow(
     ) {
         DateColumn(content)
         Body(content)
-        Trailing(content, onSignUp = onSignUp, onEdit = onEdit)
+        Trailing(content, onSignUp = onSignUp, onEdit = onEdit, showSignUp = showSignUp)
     }
 }
 
@@ -233,8 +235,10 @@ private fun Trailing(
     content: SlotRowContent,
     onSignUp: (() -> Unit)?,
     onEdit: (() -> Unit)?,
+    showSignUp: Boolean,
 ) {
     when {
+        content.state == SlotRowState.Open && !showSignUp -> Unit
         content.state == SlotRowState.Open -> {
             Box(
                 modifier =
