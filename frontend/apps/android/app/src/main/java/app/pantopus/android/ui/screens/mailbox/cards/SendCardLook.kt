@@ -832,26 +832,30 @@ internal fun PinnedLookButton(
                 .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
                 .testTag("sendCardLookPinned"),
     ) {
-        problem?.let {
-            Text(
-                it,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-                color = PantopusColors.cardTextProblem,
-                modifier =
-                    Modifier
-                        .padding(bottom = Spacing.s2)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(Radii.md))
-                        .background(PantopusColors.cardNotePaper)
-                        .padding(horizontal = Spacing.s3, vertical = 6.dp)
-                        .semantics { liveRegion = LiveRegionMode.Assertive }
-                        .testTag("sendCardError"),
-            )
-        }
+        problem?.let { PinnedProblem(it) }
         button()
     }
+}
+
+/** Why it didn't go, as one line on cream paper right above a pinned button. */
+@Composable
+internal fun PinnedProblem(problem: String) {
+    Text(
+        problem,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontWeight = FontWeight.Medium,
+        color = PantopusColors.cardTextProblem,
+        modifier =
+            Modifier
+                .padding(bottom = Spacing.s2)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.md))
+                .background(PantopusColors.cardNotePaper)
+                .padding(horizontal = Spacing.s3, vertical = 6.dp)
+                .semantics { liveRegion = LiveRegionMode.Assertive }
+                .testTag("sendCardError"),
+    )
 }
 
 /**
