@@ -175,6 +175,14 @@ final class AddHomeWizardViewModel: WizardModel {
     /// Started from the Place tab: finishing opens Your Place for the new Home.
     let completionOpensPlace: Bool
 
+    // MARK: - Address suggestions (founder 2026-11-17: "everywhere … as users typing")
+
+    /// Suggestions under "Street address" when the address is typed by hand. A rural route, military or Puerto
+    /// Rico address still types in full: picking is never required.
+    let manualStreetSuggestions: AddressSuggestions
+    /// Nearby first: the person's own home's point, when they have one.
+    private var searchArea: (latitude: Double, longitude: Double)?
+
     // MARK: - Two steps (FASTVERIFY, `home_short_add`)
 
     /// Add Home in two steps: find and check the address, then how you live there. The server fills the Home's
@@ -267,6 +275,7 @@ final class AddHomeWizardViewModel: WizardModel {
         completionOpensPlace: Bool = false
     ) {
         self.api = api
+        manualStreetSuggestions = AddressSuggestions(api: api)
         self.completionOpensPlace = completionOpensPlace
         self.requiredHomeId = requiredHomeId?.lowercased()
         self.initialSearchQuery = initialSearchQuery?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -302,6 +311,30 @@ final class AddHomeWizardViewModel: WizardModel {
         let on = await AddHomeShortSwitch.load(api: api)
         guard currentStep == .address, isCurrent else { return }
         isShortAdd = on
+    }
+
+    /// The search area for address suggestions (the person's home, if any).
+    func loadSearchArea() async {
+        guard searchArea == nil, let point = await AddressSuggestions.anyHomePoint() else { return }
+        searchArea = point
+        manualStreetSuggestions.near = point
+    }
+
+    /// A suggestion picked under the typed street fills street, city, state and ZIP; the unit stays as typed.
+    func chooseManualStreet(_ suggestion: GeoSuggestion) async {
+        guard isCurrent, let address = await manualStreetSuggestions.choose(suggestion) else { return }
+        let unit = form.address.unit
+        invalidateAddress()
+        form.address = AddHomeAddressFields(
+            street: address.address ?? form.address.street,
+            unit: unit,
+            city: address.city ?? form.address.city,
+            state: address.state ?? form.address.state,
+            zipCode: address.zipcode ?? form.address.zipCode
+        )
+        selectedHomeID = nil
+        homeSearchQuery = form.address.street
+        isManualEntry = true
     }
 
     func applyInitialSearchQuery() {
@@ -494,7 +527,7 @@ final class AddHomeWizardViewModel: WizardModel {
             do {
                 try await Task.sleep(for: .milliseconds(300))
                 try scope.requireCurrent()
-                let response: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: text))
+                let response: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: text, near: searchArea))
                 guard addressIsCurrent(revision) else { return }
                 guard response.suggestions.allSatisfy({ !$0.suggestionId.isEmpty && !$0.label.isEmpty }),
                       Set(response.suggestions.map(\.suggestionId)).count == response.suggestions.count else {
@@ -609,7 +642,9 @@ final class AddHomeWizardViewModel: WizardModel {
     func update(_ field: AddressField, to value: String) {
         invalidateAddress()
         switch field {
-        case .street: form.address.street = value
+        case .street:
+            form.address.street = value
+            manualStreetSuggestions.textChanged(value)
         case .unit: form.address.unit = value
         case .city: form.address.city = value
         case .state: form.address.state = value

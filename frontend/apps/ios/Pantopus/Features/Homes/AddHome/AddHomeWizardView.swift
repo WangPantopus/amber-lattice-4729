@@ -119,6 +119,7 @@ public struct AddHomeWizardView: View {
             viewModel.applyInitialSearchQuery()
             Task { await viewModel.resumeCreation() }
             Task { await viewModel.loadShortAdd() }
+            Task { await viewModel.loadSearchArea() }
             // Fire the initial step view event since transitions only
             // fire on user-driven step changes after this point.
             if let stepNumber = viewModel.currentStep.stepNumber {

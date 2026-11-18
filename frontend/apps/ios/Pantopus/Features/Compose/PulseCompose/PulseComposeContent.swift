@@ -758,6 +758,7 @@ public struct PulseComposeContent: View {
             dateField
             eventEndDateField
             textField(.eventLocation, label: "Location", placeholder: "Where?")
+            locationSuggestions(.eventLocation)
             bodyField(label: "Details", placeholder: "Add anything attendees should know…", minHeight: 96)
         }
     }
@@ -851,6 +852,7 @@ public struct PulseComposeContent: View {
             lostFoundToggle
             bodyField(label: "Description", placeholder: "Describe the item…", minHeight: 96)
             textField(.lostLastSeenLocation, label: "Last seen location", placeholder: "Where?")
+            locationSuggestions(.lostLastSeenLocation)
             lastSeenDateField
             contactPrefRow
             // Editing shows the saved number read-only (none saved, no field).
@@ -1362,6 +1364,16 @@ public struct PulseComposeContent: View {
     }
 
     // MARK: - Field builders
+
+    /// Address suggestions under a "Where?" field (founder 2026-11-17: suggestions everywhere).
+    private func locationSuggestions(_ key: PulseComposeField) -> some View {
+        LocationSuggestionList(
+            text: actions.fieldValue?(key) ?? state.fields[key]?.value ?? "",
+            identifier: "composePulseField_\(key.rawValue).suggestion"
+        ) { picked in
+            actions.onUpdateField(key, picked)
+        }
+    }
 
     private func textField(
         _ key: PulseComposeField,

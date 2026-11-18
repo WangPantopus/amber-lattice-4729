@@ -53,6 +53,8 @@ public struct CreateBusinessWizardView: View {
                     stepName: step.rawValue
                 ))
             }
+            // Address suggestions favor the owner's own home's area (founder 2026-11-17).
+            .task { await viewModel.loadAddressSearchArea() }
             .onAppear {
                 Analytics.track(.screenCreateBusinessStepViewed(
                     stepNumber: viewModel.currentStep.stepNumber,
