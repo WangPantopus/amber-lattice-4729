@@ -1285,6 +1285,7 @@ public struct HubTabRoot: View {
         case .myBeacon: return .myBeacon
         case .myListings: return .myListings
         case .myPulse: return .myPosts(initialTab: nil)
+        case .supportTrains: return .supportTrains
         case .myTasks: return .myTasks
         case .myBids: return .myBids
         case .offersAndBids: return .offers
