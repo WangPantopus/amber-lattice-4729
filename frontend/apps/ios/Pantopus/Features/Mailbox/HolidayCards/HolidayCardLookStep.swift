@@ -31,6 +31,8 @@ struct HolidayCardLookStep: View {
     private let openedEnvelope: MailPieceModel
 
     @State private var showBack = false
+    /// A long note's first leaf: 0 on the back, 1 lifted by Read on (plan Part 9).
+    @State private var leafLift = 0.0
     /// "Open it again": the card rises out of its envelope once more.
     @State private var rises = false
     @State private var replays = 0
@@ -198,7 +200,7 @@ struct HolidayCardLookStep: View {
             HolidayCardFlip(showBack: showBack) {
                 front
             } back: {
-                back
+                HolidayCardTurningBack(note: note, lift: leafLift) { backFace($0) }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -214,10 +216,8 @@ struct HolidayCardLookStep: View {
 
     private var cardButtons: some View {
         HStack(spacing: Spacing.s2) {
-            HolidayCardPaperButton(title: showBack ? "Turn it back" : "Turn it over", isPressed: showBack) {
-                showBack.toggle()
-            }
-            .accessibilityIdentifier("sendCardLookTurn")
+            HolidayCardTurnButton(showBack: $showBack, leafLift: $leafLift, note: note)
+                .accessibilityIdentifier("sendCardLookTurn")
             Button {
                 if LaunchFeatures.cardTable {
                     tableContent = lookContent
@@ -336,17 +336,22 @@ struct HolidayCardLookStep: View {
 
     /// The back with the note and who it's from.
     private var back: some View {
+        backFace(.whole)
+            .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
+    }
+
+    private func backFace(_ leaf: CardTableLeaf) -> some View {
         HolidayCardBack(
             paper: card?.paper ?? design.paper,
             fromName: from,
             year: card?.year ?? cards.year,
             signature: card?.signature,
-            noteText: note
+            noteText: note,
+            leaf: leaf
         ) { width in
-            HolidayCardReadNote(text: note, number: design.number, cardWidth: width)
+            HolidayCardReadNote(text: note, number: design.number, cardWidth: width, leaf: leaf)
         }
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
     }
 
     /// The back on its own, the size of the picture side.

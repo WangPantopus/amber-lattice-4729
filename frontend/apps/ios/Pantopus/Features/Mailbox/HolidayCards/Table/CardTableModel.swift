@@ -167,6 +167,11 @@ final class CardTableModel {
     var zoomOffset: CGSize = .zero
     /// The cream bookmark that's up: the verse (plan 6.2) or the note in print (plan Part 2).
     var bookmark: CardTableBookmark?
+    /// A long note's first leaf (plan Part 9, `CardTableModel+Leaf.swift`): Read on was pressed, and how far the leaf
+    /// has gone, 0 lying on the back to 1 gone.
+    var leafLifted = false
+    var leafLift = 0.0
+    @ObservationIgnored var leavesFor: (note: String, leaves: CardTableNoteLayout.Leaves?)?
     /// Larger text than the default is set on the phone: "Read it in print" is a full button (plan Part 2).
     var largerText = false
     @ObservationIgnored var pinchStartZoom: CGFloat?
@@ -339,6 +344,7 @@ final class CardTableModel {
         let wasSpread = self.fold.isSpread
         self.fold = fold
         resetZoom()
+        putLeafBack()
         // Closing the phone goes back to the picture side.
         if wasSpread, !fold.isSpread {
             springs.card.jump(to: 0)
@@ -433,6 +439,7 @@ final class CardTableModel {
         if next.advanceFree(step: slice, count: count) { moving = true }
         springs = next
         if sending != nil, advanceSending(elapsed: elapsed) { moving = true }
+        if advanceLeaf(elapsed: elapsed) { moving = true }
         // Once it has cleared the envelope, the card is laid down in front of it.
         if step == .pulling, springs.pull.x > 0.985 {
             didCardLand()

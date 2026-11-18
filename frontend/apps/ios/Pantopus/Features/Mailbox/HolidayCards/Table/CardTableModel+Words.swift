@@ -42,7 +42,9 @@ extension CardTableModel {
         case .pulling:
             nil
         case .out:
-            content.isLetter ? "Read the letter" : fold.isSpread ? nil : (cardBackIsUp ? "Turn it back" : "Turn it over")
+            // A long note's first leaf: Read on, on the open Duo's note page too (plan Part 9).
+            content.isLetter ? "Read the letter" : readsOn ? "Read on"
+                : fold.isSpread ? nil : (cardBackIsUp ? "Turn it back" : "Turn it over")
         }
     }
 

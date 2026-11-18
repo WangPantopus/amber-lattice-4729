@@ -63,6 +63,8 @@ struct HolidayCardReadNote: View {
     /// The card's number, for the writing's shifts and turns.
     var number: Int?
     let cardWidth: CGFloat
+    /// A long note's first or second leaf (plan Part 9).
+    var leaf: CardTableLeaf = .whole
 
     var body: some View {
         if LaunchFeatures.cardTable {
@@ -70,7 +72,7 @@ struct HolidayCardReadNote: View {
                 let unit = cardWidth / 100
                 var page = context
                 page.translateBy(x: -CardTableNoteLayout.left * unit, y: -CardTableNoteLayout.top * unit)
-                CardTableNoteLayout(text: text, seed: number, u: unit).draw(in: page)
+                CardTableNoteLayout(text: text, seed: number, u: unit, leaf: leaf).draw(in: page)
             }
             .blendMode(.multiply)
             .allowsHitTesting(false)

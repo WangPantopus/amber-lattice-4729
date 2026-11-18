@@ -21,6 +21,8 @@ struct MailSentPieceView: View {
     /// "Send this card to someone else": the send flow with this card's picture (experience plan Part 6).
     private let onSendThisCard: ((String) -> Void)?
     @State private var showBack = false
+    /// A long note's first leaf: 0 on the back, 1 lifted by Read on (plan Part 9).
+    @State private var leafLift = 0.0
     /// "See it the way they did": the real moment, full screen.
     @State private var tableContent: CardTableContent?
     @State private var tableSharesSealed = false
@@ -191,20 +193,25 @@ struct MailSentPieceView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
-        let back = HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year, noteText: note) { width in
-            HolidayCardReadNote(text: note, number: piece.card.number, cardWidth: width)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        .shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
-        return VStack(spacing: 18) {
-            HolidayCardFlip(showBack: showBack) { front } back: { back }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Your card: \(HolidayCardWords.captionSentence(piece.card.caption)) On the back: \(note)")
-                .rotationEffect(.degrees(-1))
-            HolidayCardPaperButton(title: showBack ? "Turn it back" : "Turn it over", isPressed: showBack) {
-                showBack.toggle()
+        func backFace(_ leaf: CardTableLeaf) -> some View {
+            HolidayCardBack(paper: piece.card.paper, fromName: from, year: piece.card.year, noteText: note, leaf: leaf) { width in
+                HolidayCardReadNote(text: note, number: piece.card.number, cardWidth: width, leaf: leaf)
             }
-            .accessibilityIdentifier("mailSentPieceTurn")
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+        let back = backFace(.whole).shadow(color: MailPaper.cardShadow.opacity(0.28), radius: 15, x: 0, y: 14)
+        return VStack(spacing: 18) {
+            // A long note runs onto a second leaf on the card that turns over (plan Part 9); the still under it stays one side.
+            HolidayCardFlip(showBack: showBack) {
+                front
+            } back: {
+                HolidayCardTurningBack(note: note, lift: leafLift) { backFace($0) }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Your card: \(HolidayCardWords.captionSentence(piece.card.caption)) On the back: \(note)")
+            .rotationEffect(.degrees(-1))
+            HolidayCardTurnButton(showBack: $showBack, leafLift: $leafLift, note: note)
+                .accessibilityIdentifier("mailSentPieceTurn")
             front.hidden()
                 .overlay { back }
                 .accessibilityElement(children: .ignore)
