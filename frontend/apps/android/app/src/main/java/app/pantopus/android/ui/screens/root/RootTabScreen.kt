@@ -8589,6 +8589,7 @@ private fun routeForDrawer(
         NavigationDrawerDestination.MyBeacon -> ChildRoutes.MY_BEACON
         NavigationDrawerDestination.MyListings -> ChildRoutes.MY_LISTINGS
         NavigationDrawerDestination.MyPulse -> ChildRoutes.MY_POSTS
+        NavigationDrawerDestination.SupportTrains -> ChildRoutes.SUPPORT_TRAINS
         NavigationDrawerDestination.MyTasks -> ChildRoutes.MY_TASKS
         NavigationDrawerDestination.MyBids -> ChildRoutes.MY_BIDS
         NavigationDrawerDestination.OffersAndBids -> ChildRoutes.OFFERS
