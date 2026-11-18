@@ -9,6 +9,7 @@ import app.pantopus.android.data.api.models.support_trains.CancelReservationBody
 import app.pantopus.android.data.api.models.support_trains.ReserveSlotBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainReservationsResponse
+import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.api.net.refusesStoredCopy
@@ -243,6 +244,8 @@ class SupportTrainDetailViewModel
             val content = loadedContent
             if (content == null || content.reserveOptions.isEmpty()) {
                 _action.update { it.copy(error = NO_OPEN_DATES_NOTICE) }
+                // The page may be out of date: show where things stand now (B6).
+                if (active) load()
                 return
             }
             val resolved = content.reserveOptions.firstOrNull { it.id == slotId }?.id
@@ -303,6 +306,9 @@ class SupportTrainDetailViewModel
                         if (!session.confirmCurrent()) return@launch
                         _action.update { it.copy(isSubmitting = false) }
                         onResult(reserveFailureMessage(result.error.displayMessage("Failed to reserve. Please try again.")))
+                        // The date was taken, the train paused or the date passed meanwhile: refresh the page and the
+                        // sheet's dates now, so the next try isn't against the old ones (B6).
+                        if (result.error is NetworkError.ClientError && active) load()
                     }
                 }
             }
@@ -398,8 +404,9 @@ class SupportTrainDetailViewModel
          */
         private fun reserveFailureMessage(raw: String): String =
             when {
-                raw.contains("SLOT_FULL") || raw.contains("SLOT_NOT_OPEN") || raw.contains("no longer open") ->
-                    "This slot was just filled. Please refresh and try another."
+                raw.contains("SLOT_FULL") || raw.contains("SLOT_NOT_OPEN") || raw.contains("no longer open") ||
+                    raw.contains("just filled") || raw.contains("already full") ->
+                    "Someone just took this date. Pick another one."
                 raw.contains("ALREADY_RESERVED") || raw.contains("already have a reservation") ->
                     "You already have a reservation on this slot."
                 else -> raw

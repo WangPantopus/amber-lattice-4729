@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,6 +53,7 @@ const val MANAGE_TRAIN_THANK_YOU_FIELD_TAG: String = "manageTrainThankYouField"
  * summary card + italic recipient testimonial + 66dp thank-you note
  * textarea + Cancel/Close action row in a 1:1.4 ratio.
  */
+@Suppress("LongParameterList")
 @Composable
 fun CloseTrainSheet(
     content: CloseTrainSheetContent,
@@ -62,6 +63,7 @@ fun CloseTrainSheet(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    thankYouSent: Boolean = false,
 ) {
     Column(
         modifier =
@@ -82,9 +84,22 @@ fun CloseTrainSheet(
         ThankYouBlock(
             value = thankYouNote,
             onValueChange = onUpdateThankYouNote,
-            enabled = enabled,
+            enabled = enabled && !thankYouSent,
         )
-        ActionRow(onCancel = onCancel, onConfirm = onConfirm, enabled = enabled)
+        if (thankYouSent) {
+            Text(
+                text = "Your thank-you was sent to every helper. Close the train to finish.",
+                color = PantopusColors.appTextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.testTag("manageTrainCloseThankYouSent"),
+            )
+        }
+        ActionRow(
+            onCancel = onCancel,
+            onConfirm = onConfirm,
+            enabled = enabled,
+            withThanks = thankYouNote.isNotBlank() && !thankYouSent,
+        )
     }
 }
 
@@ -147,7 +162,7 @@ private fun SummaryCard(content: CloseTrainSheetContent) {
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             SummaryStat(value = content.mealsDelivered, label = "Meals delivered", modifier = Modifier.weight(1f))
-            SummaryStat(value = content.neighborsHelped, label = "Neighbors helped", modifier = Modifier.weight(1f))
+            SummaryStat(value = content.peopleHelped, label = "People helped", modifier = Modifier.weight(1f))
             SummaryStat(value = content.coverageDays, label = "Of coverage", modifier = Modifier.weight(1f))
         }
         Text(
@@ -200,6 +215,12 @@ private fun ThankYouBlock(
             fontWeight = FontWeight.SemiBold,
             color = PantopusColors.appTextStrong,
         )
+        Text(
+            // Sent as an update before the train closes: a closed train takes no more updates (B9).
+            text = "Sent to every helper as an update, then the train closes.",
+            fontSize = 11.5.sp,
+            color = PantopusColors.appTextSecondary,
+        )
         OutlinedTextField(
             value = value,
             readOnly = !enabled,
@@ -207,7 +228,8 @@ private fun ThankYouBlock(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(66.dp)
+                    // At least the design's 66dp, so large text grows the box instead of clipping it (B15).
+                    .heightIn(min = 66.dp)
                     .testTag(MANAGE_TRAIN_THANK_YOU_FIELD_TAG),
             placeholder = {
                 Text(
@@ -233,6 +255,7 @@ private fun ActionRow(
     enabled: Boolean,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
+    withThanks: Boolean = true,
 ) {
     // The design source gives the destructive CTA `flex: 1.4` while Cancel
     // sits at `flex: 1`. Use `BoxWithConstraints` to compute the explicit
@@ -247,7 +270,7 @@ private fun ActionRow(
                 modifier =
                     Modifier
                         .width(cancelWidth)
-                        .height(46.dp)
+                        .heightIn(min = 46.dp)
                         .clip(RoundedCornerShape(Radii.lg))
                         .background(PantopusColors.appSurface)
                         .border(BorderStroke(1.dp, PantopusColors.appBorder), RoundedCornerShape(Radii.lg))
@@ -266,7 +289,7 @@ private fun ActionRow(
                 modifier =
                     Modifier
                         .width(confirmWidth)
-                        .height(46.dp)
+                        .heightIn(min = 46.dp)
                         .clip(RoundedCornerShape(Radii.lg))
                         .background(PantopusColors.error)
                         .clickable(enabled = enabled, onClick = onConfirm)
@@ -282,7 +305,7 @@ private fun ActionRow(
                 )
                 Spacer(modifier = Modifier.width(Spacing.s1))
                 Text(
-                    text = "Close & thank",
+                    text = if (withThanks) "Close & thank" else "Close train",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = PantopusColors.appTextInverse,

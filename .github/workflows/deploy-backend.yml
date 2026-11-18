@@ -12,6 +12,13 @@ on:
     types: [completed]
     branches: [master, dev]
   workflow_dispatch:
+    inputs:
+      include_all_migrations:
+        description: >-
+          Also apply migrations dated before the database's newest applied one (supabase db push --include-all).
+          Only for a promotion that carries dev migrations older than one that reached this database first.
+        type: boolean
+        default: false
 
 # Shared with rollback, including database writes. Never interrupt a rollout.
 concurrency:
@@ -148,6 +155,8 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           SUPABASE_SESSION_POOLER_HOST: ${{ vars.SUPABASE_SESSION_POOLER_HOST }}
+          # Manual runs only: automatic releases always keep the CLI's order check.
+          INCLUDE_ALL_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_all_migrations == true }}
         run: |
           : "${SUPABASE_ACCESS_TOKEN:?}" "${SUPABASE_DB_PASSWORD:?}" "${SUPABASE_PROJECT_ID:?}"
           supabase link --project-ref "$SUPABASE_PROJECT_ID"
@@ -163,8 +172,13 @@ jobs:
             export PGPASSWORD="$SUPABASE_DB_PASSWORD"
             db_flags=(--db-url "postgresql://postgres.${SUPABASE_PROJECT_ID}@${SUPABASE_SESSION_POOLER_HOST}:5432/postgres")
           fi
-          supabase db push "${db_flags[@]}" --dry-run --skip-vault
-          supabase db push "${db_flags[@]}" --yes
+          push_flags=()
+          if [[ "$INCLUDE_ALL_MIGRATIONS" == true ]]; then
+            echo '::notice::Applying every migration missing from this database, including ones dated before its newest.'
+            push_flags=(--include-all)
+          fi
+          supabase db push "${db_flags[@]}" "${push_flags[@]}" --dry-run --skip-vault
+          supabase db push "${db_flags[@]}" "${push_flags[@]}" --yes
       # A release that's overdue by now goes out anyway (scripts/deploy/require-ci.cjs).
       - name: Reject a superseded release before cutover
         id: cutover

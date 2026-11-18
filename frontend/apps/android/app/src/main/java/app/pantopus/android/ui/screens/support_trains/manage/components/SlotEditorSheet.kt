@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -37,7 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
+import app.pantopus.android.ui.components.FutureDatePickerDialog
+import app.pantopus.android.ui.components.TimeOnlyPickerDialog
 import app.pantopus.android.ui.screens.support_trains.manage.ManageSlotEditorState
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -83,7 +84,7 @@ fun SlotEditorSheet(
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
         Box(
-            modifier = Modifier.fillMaxWidth().height(52.dp).background(PantopusColors.appSurface),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).background(PantopusColors.appSurface),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -98,7 +99,7 @@ fun SlotEditorSheet(
                     Modifier
                         .align(Alignment.CenterStart)
                         .padding(start = Spacing.s2)
-                        .height(44.dp)
+                        .heightIn(min = 44.dp)
                         .clickable(enabled = !isSubmitting, onClick = onCancel)
                         .padding(horizontal = Spacing.s3)
                         .testTag("slotEditorCloseButton")
@@ -136,7 +137,7 @@ fun SlotEditorSheet(
                 onSelect = { if (!isSubmitting) updateDraft(draft.copy(slotLabel = it)) },
             )
 
-            FieldLabel("How can neighbors help?")
+            FieldLabel("How can people help?")
             ChipRow(
                 options = ManageSlotEditorState.MODES,
                 selected = draft.supportMode,
@@ -176,7 +177,7 @@ fun SlotEditorSheet(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .clip(RoundedCornerShape(Radii.lg))
                         .background(if (canSave) PantopusColors.primary600 else PantopusColors.appBorderStrong)
                         .clickable(enabled = canSave) { onSave(draft) }
@@ -193,25 +194,31 @@ fun SlotEditorSheet(
         }
     }
 
-    pickerTarget?.let { target ->
-        FutureDateTimePickerDialogs(
-            initial =
-                runCatching {
-                    val time = if (target == PickerTarget.END) draft.endTime else draft.startTime
-                    LocalDate.parse(draft.slotDate).atTime(LocalTime.parse(time))
-                }.getOrNull(),
-            onPicked = { picked ->
-                updateDraft(
-                    when (target) {
-                        PickerTarget.DATE -> draft.copy(slotDate = picked.toLocalDate().format(DATE_FORMAT))
-                        PickerTarget.START -> draft.copy(startTime = picked.toLocalTime().format(TIME_FORMAT))
-                        PickerTarget.END -> draft.copy(endTime = picked.toLocalTime().format(TIME_FORMAT))
-                    },
-                )
-                pickerTarget = null
-            },
-            onDismiss = { pickerTarget = null },
-        )
+    // The date picks a date; a window time picks only a time (the date step it showed was ignored, B15).
+    when (pickerTarget) {
+        PickerTarget.DATE ->
+            FutureDatePickerDialog(
+                initial = runCatching { LocalDate.parse(draft.slotDate) }.getOrNull(),
+                onSelect = { picked ->
+                    updateDraft(draft.copy(slotDate = picked.format(DATE_FORMAT)))
+                    pickerTarget = null
+                },
+                onDismiss = { pickerTarget = null },
+                confirmLabel = "Done",
+            )
+        PickerTarget.START, PickerTarget.END -> {
+            val isEnd = pickerTarget == PickerTarget.END
+            TimeOnlyPickerDialog(
+                initial = runCatching { LocalTime.parse(if (isEnd) draft.endTime else draft.startTime) }.getOrDefault(LocalTime.of(17, 0)),
+                onSelect = { picked ->
+                    val time = picked.format(TIME_FORMAT)
+                    updateDraft(if (isEnd) draft.copy(endTime = time) else draft.copy(startTime = time))
+                    pickerTarget = null
+                },
+                onDismiss = { pickerTarget = null },
+            )
+        }
+        null -> Unit
     }
 }
 
@@ -281,7 +288,8 @@ private fun ChipRow(
             Box(
                 modifier =
                     Modifier
-                        .height(34.dp)
+                        // At least 34dp, so large text grows the chip instead of clipping it (B15).
+                        .heightIn(min = 34.dp)
                         .clip(RoundedCornerShape(Radii.pill))
                         .background(if (isSelected) PantopusColors.primary600 else PantopusColors.appSurface)
                         .border(
@@ -290,7 +298,7 @@ private fun ChipRow(
                             RoundedCornerShape(Radii.pill),
                         )
                         .selectable(selected = isSelected, role = Role.RadioButton) { onSelect(option) }
-                        .padding(horizontal = Spacing.s3)
+                        .padding(horizontal = Spacing.s3, vertical = Spacing.s1)
                         .testTag("$tagPrefix-$option"),
                 contentAlignment = Alignment.Center,
             ) {

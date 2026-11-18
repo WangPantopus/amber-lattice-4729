@@ -17,7 +17,6 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.posts.PostCameraPhotos
 import app.pantopus.android.data.saved_places.TodayAreaStore
 import app.pantopus.android.data.store.ScreenStore
-import app.pantopus.android.data.support_trains.SupportTrainReservationsStore
 import app.pantopus.android.data.widget.TodayWidgetStore
 import app.pantopus.android.data.widget.WidgetSnapshotStore
 import app.pantopus.android.ui.screens.audience_profile.broadcast_detail.BroadcastDetailSeedCache
@@ -49,7 +48,6 @@ class AccountDeviceData
         private val tasksWidget: WidgetSnapshotStore,
         private val chatBadges: ChatBadgeCoordinator,
         private val chatPreferences: ChatConversationPreferences,
-        private val reservations: SupportTrainReservationsStore,
         private val broadcastSeeds: BroadcastDetailSeedCache,
         private val gigDrafts: GigDraftQueue,
         private val screenStore: ScreenStore,
@@ -72,7 +70,6 @@ class AccountDeviceData
             // The city's Today read before an address (TABCARD §4); the area itself stays under the account's own id.
             TodayAreaStore.forgetAnswers()
             chatBadges.reset()
-            reservations.reset()
             broadcastSeeds.clear()
             gigDrafts.drafts.value.forEach { gigDrafts.remove(it.id) }
             withContext(Dispatchers.IO) {

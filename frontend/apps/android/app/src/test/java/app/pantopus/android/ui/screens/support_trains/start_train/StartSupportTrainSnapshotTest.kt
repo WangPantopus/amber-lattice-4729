@@ -40,7 +40,6 @@ class StartSupportTrainSnapshotTest {
                     form =
                         StartSupportTrainFormState(
                             beneficiaryQuery = "Maya Patel",
-                            selectedReason = StartSupportTrainReason.Surgery,
                             reason = StartSupportTrainSampleData.VERIFIED_CONTEXT_NOTE,
                         ),
                     results = emptyList(),
@@ -52,7 +51,6 @@ class StartSupportTrainSnapshotTest {
                     onSelectBeneficiary = {},
                     onClearBeneficiary = {},
                     onSearchAgain = {},
-                    onSelectReason = {},
                     onReason = {},
                     onToggleInviteOnly = {},
                     onToggleBlockVisible = {},
@@ -71,7 +69,6 @@ class StartSupportTrainSnapshotTest {
                     form =
                         StartSupportTrainFormState(
                             beneficiaryQuery = StartSupportTrainSampleData.INVITE_QUERY,
-                            selectedReason = StartSupportTrainReason.Baby,
                         ),
                     results = emptyList(),
                     selected = null,
@@ -82,7 +79,6 @@ class StartSupportTrainSnapshotTest {
                     onSelectBeneficiary = {},
                     onClearBeneficiary = {},
                     onSearchAgain = {},
-                    onSelectReason = {},
                     onReason = {},
                     onToggleInviteOnly = {},
                     onToggleBlockVisible = {},

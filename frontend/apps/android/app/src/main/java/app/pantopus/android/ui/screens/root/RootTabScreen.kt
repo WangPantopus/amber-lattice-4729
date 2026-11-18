@@ -438,7 +438,6 @@ import app.pantopus.android.ui.screens.profile.PublicProfileScreen
 import app.pantopus.android.ui.screens.profile.professional.ProfessionalProfileScreen
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimDetailScreen
 import app.pantopus.android.ui.screens.review_claims.ReviewClaimsScreen
-import app.pantopus.android.ui.screens.review_signups.ReviewSignupsScreen
 import app.pantopus.android.ui.screens.saved_places.SavedPlacesScreen
 import app.pantopus.android.ui.screens.scheduling._shared.SchedulingRoutes
 import app.pantopus.android.ui.screens.scheduling.automations.MessageTemplateEditorScreen
@@ -1321,14 +1320,6 @@ private object ChildRoutes {
      *  top-bar search action; reuses the shared SearchListShell. */
     const val SUPPORT_TRAINS_SEARCH = "support-trains/search"
 
-    /** T6.6c (P26.5) Review signups (organizer-only). `:id` is the
-     *  Support Train UUID. Keep in sync with
-     *  `ReviewSignupsViewModel.SUPPORT_TRAIN_ID_KEY`. */
-    const val REVIEW_SIGNUPS_ID_KEY = "supportTrainId"
-    const val REVIEW_SIGNUPS = "support-trains/{$REVIEW_SIGNUPS_ID_KEY}/review"
-
-    fun reviewSignups(trainId: String): String = "support-trains/${java.net.URLEncoder.encode(trainId, "UTF-8")}/review"
-
     /** A10.9 (P3.1) Participant-facing Support Train detail. `:id`
      *  is the Support Train UUID. Replaces the previous default of
      *  landing on the organizer review queue; organizers still
@@ -1340,16 +1331,18 @@ private object ChildRoutes {
 
     fun supportTrainDetail(trainId: String): String = "support-trains/${java.net.URLEncoder.encode(trainId, "UTF-8")}"
 
-    /** P3.7 Edit Signup form. `:reservationId` is the reservation UUID;
-     *  the seed DTO is staged in
-     *  `SupportTrainReservationsStore` by the Review-signups
-     *  screen before navigation so the form can prefill without a
-     *  re-fetch. Keep in sync with
-     *  `EditSignupFormViewModel.RESERVATION_ID_KEY`. */
+    /** P3.7 Edit Signup form: a helper's own signup on a train (B1), opened from the train page. The form reads the
+     *  train for the signup. Keep in sync with `EditSignupFormViewModel.TRAIN_ID_KEY` / `RESERVATION_ID_KEY`. */
+    const val EDIT_SIGNUP_TRAIN_ID_KEY = "supportTrainId"
     const val EDIT_SIGNUP_ID_KEY = "reservationId"
-    const val EDIT_SIGNUP = "support-trains/reservations/{$EDIT_SIGNUP_ID_KEY}/edit"
+    const val EDIT_SIGNUP = "support-trains/{$EDIT_SIGNUP_TRAIN_ID_KEY}/reservations/{$EDIT_SIGNUP_ID_KEY}/edit"
 
-    fun editSignup(reservationId: String): String = "support-trains/reservations/${java.net.URLEncoder.encode(reservationId, "UTF-8")}/edit"
+    fun editSignup(
+        trainId: String,
+        reservationId: String,
+    ): String =
+        "support-trains/${java.net.URLEncoder.encode(trainId, "UTF-8")}/reservations/" +
+            "${java.net.URLEncoder.encode(reservationId, "UTF-8")}/edit"
 
     /** P4.3 / A13.13 Manage train (organizer surface). `:id` is the
      *  Support Train UUID. Pushed from the A10.9 detail dock overflow
@@ -7159,8 +7152,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 // The screen opens its own reserve sheet; pushing a
                                 // placeholder here covered it (C-16).
                                 onSignUp = {},
-                                // Edit slot, Send a card and Join as backup have no
-                                // backend route yet, so they stay unwired and hidden.
+                                // A helper edits their own signup (B1). Send a card and
+                                // Join as backup have no backend route yet, so they stay
+                                // unwired and hidden.
+                                onEditSlot = { row ->
+                                    row.reservationId?.let { navController.navigate(ChildRoutes.editSignup(trainId, it)) }
+                                },
                                 onMessageHost = { host ->
                                     navController.navigate(
                                         ChildRoutes.chatConversationFromPicker(
@@ -7189,35 +7186,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     )
                 }
                 composable(
-                    route = ChildRoutes.REVIEW_SIGNUPS,
-                    arguments =
-                        listOf(
-                            navArgument(ChildRoutes.REVIEW_SIGNUPS_ID_KEY) {
-                                type = NavType.StringType
-                            },
-                        ),
-                ) { entry ->
-                    val trainId = entry.arguments?.getString(ChildRoutes.REVIEW_SIGNUPS_ID_KEY).orEmpty()
-                    ReviewSignupsScreen(
-                        onBack = { navController.popBackStack() },
-                        onShareTrain = {
-                            appContext.shareText(
-                                "Join my support train on Pantopus — ${InviteLinks.supportTrainUrl(trainId)}",
-                                "Share train",
-                            )
-                        },
-                        onEditSignup = { reservationId ->
-                            navController.navigate(ChildRoutes.editSignup(reservationId))
-                        },
-                        onMessageHelper = { _ ->
-                            navController.navigate(ChildRoutes.placeholder("Message helper"))
-                        },
-                    )
-                }
-                composable(
                     route = ChildRoutes.EDIT_SIGNUP,
                     arguments =
                         listOf(
+                            navArgument(ChildRoutes.EDIT_SIGNUP_TRAIN_ID_KEY) {
+                                type = NavType.StringType
+                            },
                             navArgument(ChildRoutes.EDIT_SIGNUP_ID_KEY) {
                                 type = NavType.StringType
                             },
@@ -8615,6 +8589,7 @@ private fun routeForDrawer(
         NavigationDrawerDestination.MyBeacon -> ChildRoutes.MY_BEACON
         NavigationDrawerDestination.MyListings -> ChildRoutes.MY_LISTINGS
         NavigationDrawerDestination.MyPulse -> ChildRoutes.MY_POSTS
+        NavigationDrawerDestination.SupportTrains -> ChildRoutes.SUPPORT_TRAINS
         NavigationDrawerDestination.MyTasks -> ChildRoutes.MY_TASKS
         NavigationDrawerDestination.MyBids -> ChildRoutes.MY_BIDS
         NavigationDrawerDestination.OffersAndBids -> ChildRoutes.OFFERS

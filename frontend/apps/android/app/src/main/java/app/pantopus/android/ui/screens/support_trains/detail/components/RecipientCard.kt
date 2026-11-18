@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -30,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.ui.screens.support_trains.detail.RecipientCardContent
+import app.pantopus.android.ui.screens.support_trains.detail.RecipientDetailLine
 import app.pantopus.android.ui.screens.support_trains.detail.RecipientIdentityTag
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevations
@@ -67,6 +69,35 @@ fun RecipientCard(
         Header(content)
         // A train with no story or household summary has nothing to quote.
         if (content.quote.isNotBlank()) QuoteBlock(content)
+        if (content.details.isNotEmpty()) DetailsBlock(content.details)
+    }
+}
+
+/** What helpers should know before they cook or shop (A14): household, allergies, diet, drop-off, contactless. */
+@Composable
+private fun DetailsBlock(details: List<RecipientDetailLine>) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("supportTrainRecipientDetails"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        details.forEach { line ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Text(
+                    text = line.label,
+                    color = PantopusColors.appTextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.widthIn(min = 88.dp).padding(end = Spacing.s2),
+                )
+                Text(
+                    text = line.value,
+                    color = if (line.label == "Allergies") PantopusColors.error else PantopusColors.appTextStrong,
+                    fontSize = 12.sp,
+                    fontWeight = if (line.label == "Allergies") FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
 }
 

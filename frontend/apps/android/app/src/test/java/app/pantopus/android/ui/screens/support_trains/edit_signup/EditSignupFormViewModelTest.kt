@@ -3,9 +3,16 @@
 package app.pantopus.android.ui.screens.support_trains.edit_signup
 
 import androidx.lifecycle.SavedStateHandle
-import app.pantopus.android.data.api.models.support_trains.SupportTrainHelperDto
-import app.pantopus.android.data.api.models.support_trains.SupportTrainReservationDto
-import app.pantopus.android.data.support_trains.SupportTrainReservationsStore
+import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
+import app.pantopus.android.data.api.models.support_trains.SupportTrainMyReservationDto
+import app.pantopus.android.data.api.models.support_trains.SupportTrainSlotDto
+import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.support_trains.SupportTrainSignupEdit
+import app.pantopus.android.data.support_trains.SupportTrainsRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -22,24 +29,22 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * P3.7 — Edit Signup form ViewModel. Covers:
- *  - prefill: contribution / drop-off time / dietary notes seed
- *    from the staged reservation
+ * P3.7 — Edit Signup form ViewModel, on the real route (B1). Covers:
+ *  - prefill from the helper's own signup on the train (contribution / drop-off time in the train's zone / notes)
  *  - dirty/valid bookkeeping (Save disabled until a real change)
  *  - contribution-mode label & wire-field swap (takeout → restaurant)
  *  - drop-off time validator rejects nonsense, accepts HH:mm
- *  - successful save patches the shared store and flips
- *    `shouldDismiss` after the toast holds
- *  - missing seed (no stage call) surfaces the recovery CTA state
+ *  - submit sends every field with the version it started from
+ *  - a signup that isn't the viewer's reserved one surfaces the recovery state
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditSignupFormViewModelTest {
-    private lateinit var store: SupportTrainReservationsStore
+    private val repo: SupportTrainsRepository = mockk()
 
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        store = SupportTrainReservationsStore()
+        coEvery { repo.editSignup(any(), any(), any()) } returns NetworkResult.Success(Unit)
     }
 
     @After
@@ -53,41 +58,43 @@ class EditSignupFormViewModelTest {
         restaurant: String? = null,
         privateNote: String? = null,
         arrival: String? = "2026-05-22T22:00:00Z",
-    ) = SupportTrainReservationDto(
+        status: String = "reserved",
+    ) = SupportTrainMyReservationDto(
         id = "r1",
         slotId = "s1",
-        userId = "u1",
-        guestName = null,
-        status = "pending",
+        status = status,
         contributionMode = mode,
         dishTitle = dish,
         restaurantName = restaurant,
         estimatedArrivalAt = arrival,
         noteToRecipient = "Knock on the door.",
-        privateNoteToOrganizer = privateNote,
         createdAt = "2026-05-15T10:00:00Z",
-        updatedAt = "2026-05-15T10:00:00Z",
-        canceledAt = null,
-        helper =
-            SupportTrainHelperDto(
-                id = "u1",
-                username = "lena",
-                name = "Lena Park",
-                profilePictureUrl = null,
-            ),
+        updatedAt = "2026-05-15T10:00:00.123456Z",
+        privateNoteToOrganizer = privateNote,
     )
 
-    private fun savedState(reservationId: String = "r1"): SavedStateHandle =
-        SavedStateHandle(
-            mapOf(EditSignupFormViewModel.RESERVATION_ID_KEY to reservationId),
-        )
-
-    private fun stageAndMake(
-        seed: SupportTrainReservationDto = reservation(),
-        savedState: SavedStateHandle = savedState(seed.id),
+    private fun make(
+        seed: SupportTrainMyReservationDto? = reservation(),
+        reservationId: String = "r1",
     ): EditSignupFormViewModel {
-        store.stage(seed)
-        return EditSignupFormViewModel(store, savedState)
+        coEvery { repo.detail("t1") } returns
+            NetworkResult.Success(
+                SupportTrainDetailDto(
+                    id = "t1",
+                    timezone = "America/Los_Angeles",
+                    slots = listOf(SupportTrainSlotDto(id = "s1", slotDate = "2026-05-22")),
+                    myReservations = listOfNotNull(seed),
+                ),
+            )
+        return EditSignupFormViewModel(
+            repo,
+            SavedStateHandle(
+                mapOf(
+                    EditSignupFormViewModel.TRAIN_ID_KEY to "t1",
+                    EditSignupFormViewModel.RESERVATION_ID_KEY to reservationId,
+                ),
+            ),
+        )
     }
 
     // MARK: - Prefill
@@ -95,8 +102,7 @@ class EditSignupFormViewModelTest {
     @Test
     fun prefills_contribution_from_dish_title_for_cook_mode() =
         runTest {
-            val vm = stageAndMake()
-            val state = vm.state.value
+            val state = make().state.value
             assertEquals("Meal description", state.contributionLabel)
             assertEquals("Veggie chili", state.fields[EditSignupField.Contribution]?.value)
             assertFalse(state.contributionMapsToRestaurant)
@@ -105,23 +111,20 @@ class EditSignupFormViewModelTest {
     @Test
     fun prefills_contribution_from_restaurant_for_takeout_mode() =
         runTest {
-            val vm =
-                stageAndMake(seed = reservation(mode = "takeout", dish = null, restaurant = "Sweetgreen"))
-            val state = vm.state.value
+            val state = make(seed = reservation(mode = "takeout", dish = null, restaurant = "Sweetgreen")).state.value
             assertEquals("Restaurant", state.contributionLabel)
             assertEquals("Sweetgreen", state.fields[EditSignupField.Contribution]?.value)
             assertTrue(state.contributionMapsToRestaurant)
         }
 
     @Test
-    fun prefills_dietary_notes_from_private_note() =
+    fun prefills_notes_and_the_drop_off_time_where_the_train_is() =
         runTest {
-            val vm = stageAndMake(seed = reservation(privateNote = "Strictly vegetarian."))
-            val state = vm.state.value
-            assertEquals(
-                "Strictly vegetarian.",
-                state.fields[EditSignupField.DietaryNotes]?.value,
-            )
+            val state = make(seed = reservation(privateNote = "Strictly vegetarian.")).state.value
+            assertEquals("Strictly vegetarian.", state.fields[EditSignupField.DietaryNotes]?.value)
+            assertEquals("Knock on the door.", state.fields[EditSignupField.NoteToRecipient]?.value)
+            // 22:00 UTC is 3:00 PM in Pacific daylight time (B4).
+            assertEquals("15:00", state.fields[EditSignupField.DropoffTime]?.value)
         }
 
     // MARK: - Dirty / valid
@@ -129,8 +132,7 @@ class EditSignupFormViewModelTest {
     @Test
     fun initial_state_is_clean_and_valid() =
         runTest {
-            val vm = stageAndMake()
-            val state = vm.state.value
+            val state = make().state.value
             assertFalse(state.isDirty)
             assertTrue(state.isValid)
         }
@@ -138,21 +140,19 @@ class EditSignupFormViewModelTest {
     @Test
     fun editing_contribution_flips_dirty() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.Contribution, "Veggie chili + cornbread")
-            val state = vm.state.value
-            assertTrue(state.isDirty)
-            assertTrue(state.isValid)
+            assertTrue(vm.state.value.isDirty)
+            assertTrue(vm.state.value.isValid)
         }
 
     @Test
     fun too_long_contribution_marks_invalid() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.Contribution, "x".repeat(201))
-            val state = vm.state.value
-            assertNotNull(state.fields[EditSignupField.Contribution]?.error)
-            assertFalse(state.isValid)
+            assertNotNull(vm.state.value.fields[EditSignupField.Contribution]?.error)
+            assertFalse(vm.state.value.isValid)
         }
 
     // MARK: - Drop-off time validator
@@ -160,104 +160,84 @@ class EditSignupFormViewModelTest {
     @Test
     fun dropoff_time_rejects_garbage() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.DropoffTime, "two pm")
-            val state = vm.state.value
-            assertNotNull(state.fields[EditSignupField.DropoffTime]?.error)
-            assertFalse(state.isValid)
+            assertNotNull(vm.state.value.fields[EditSignupField.DropoffTime]?.error)
+            assertFalse(vm.state.value.isValid)
         }
 
     @Test
     fun dropoff_time_accepts_HHmm() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.DropoffTime, "18:30")
-            val state = vm.state.value
-            assertNull(state.fields[EditSignupField.DropoffTime]?.error)
-            assertTrue(state.isValid)
+            assertNull(vm.state.value.fields[EditSignupField.DropoffTime]?.error)
+            assertTrue(vm.state.value.isValid)
         }
 
-    // MARK: - Save → store
+    // MARK: - Save
 
     @Test
-    fun submit_patches_store_with_dish_title_for_cook_mode() =
+    fun submit_sends_every_field_with_the_version_it_started_from() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.Contribution, "Veggie chili + cornbread")
             vm.update(EditSignupField.DropoffTime, "18:30")
             vm.update(EditSignupField.DietaryNotes, "Strictly vegetarian.")
+            val sent = slot<SupportTrainSignupEdit>()
+            coEvery { repo.editSignup("t1", "r1", capture(sent)) } returns NetworkResult.Success(Unit)
             vm.submit()
-            val patch = store.consumePatch("r1")
-            assertNotNull(patch)
-            assertEquals("Veggie chili + cornbread", patch?.dishTitle)
-            assertEquals("Strictly vegetarian.", patch?.privateNoteToOrganizer)
-            assertNull(patch?.restaurantName)
+            assertEquals("Veggie chili + cornbread", sent.captured.dishTitle)
+            assertEquals("Strictly vegetarian.", sent.captured.privateNoteToOrganizer)
+            assertEquals("Knock on the door.", sent.captured.noteToRecipient)
+            assertNull(sent.captured.restaurantName)
+            assertEquals("2026-05-15T10:00:00.123456Z", sent.captured.expectedUpdatedAt)
+            // 6:30 PM on the signup's day, where the train is.
+            assertEquals("2026-05-22T18:30:00-07:00", sent.captured.estimatedArrivalAt)
             assertTrue(vm.state.value.toast?.isError == false)
         }
 
     @Test
     fun submit_maps_contribution_to_restaurant_for_takeout_mode() =
         runTest {
-            val vm =
-                stageAndMake(seed = reservation(mode = "takeout", dish = null, restaurant = "Sweetgreen"))
+            val vm = make(seed = reservation(mode = "takeout", dish = null, restaurant = "Sweetgreen"))
             vm.update(EditSignupField.Contribution, "Sage & Stone")
+            val sent = slot<SupportTrainSignupEdit>()
+            coEvery { repo.editSignup("t1", "r1", capture(sent)) } returns NetworkResult.Success(Unit)
             vm.submit()
-            val patch = store.consumePatch("r1")
-            assertEquals("Sage & Stone", patch?.restaurantName)
-            assertNull(patch?.dishTitle)
+            assertEquals("Sage & Stone", sent.captured.restaurantName)
+            assertNull(sent.captured.dishTitle)
+            // An untouched time keeps the saved instant exactly.
+            assertEquals("2026-05-22T22:00:00Z", sent.captured.estimatedArrivalAt)
         }
 
     @Test
     fun submit_with_invalid_field_short_circuits_with_error_toast() =
         runTest {
-            val vm = stageAndMake()
+            val vm = make()
             vm.update(EditSignupField.DropoffTime, "midnight-ish")
             vm.submit()
             assertEquals(true, vm.state.value.toast?.isError)
-            assertNull(store.consumePatch("r1"))
+            coVerify(exactly = 0) { repo.editSignup(any(), any(), any()) }
         }
 
-    // MARK: - Missing seed
+    // MARK: - Nothing to edit
 
     @Test
-    fun missing_seed_surfaces_recovery_state() =
+    fun missing_signup_surfaces_recovery_state() =
         runTest {
-            // No stage() — VM init draws from an empty store.
-            val vm = EditSignupFormViewModel(store, savedState())
-            assertTrue(vm.state.value.isMissingSeed)
-        }
-
-    @Test
-    fun mismatched_seed_id_surfaces_recovery_state() =
-        runTest {
-            store.stage(reservation())
-            val vm =
-                EditSignupFormViewModel(
-                    store,
-                    SavedStateHandle(
-                        mapOf(EditSignupFormViewModel.RESERVATION_ID_KEY to "different"),
-                    ),
-                )
-            assertTrue(vm.state.value.isMissingSeed)
-        }
-
-    // MARK: - Store revision
-
-    @Test
-    fun store_revision_bumps_on_each_patch() =
-        runTest {
-            val before = store.revision.value
-            store.applyPatch(reservation())
-            assertEquals(before + 1, store.revision.value)
-            store.applyPatch(reservation(dish = "Different"))
-            assertEquals(before + 2, store.revision.value)
+            assertTrue(make(seed = null).state.value.isMissingSeed)
         }
 
     @Test
-    fun consume_patch_removes_it() =
+    fun delivered_signup_surfaces_recovery_state() =
         runTest {
-            store.applyPatch(reservation())
-            assertNotNull(store.consumePatch("r1"))
-            assertNull(store.consumePatch("r1"))
+            assertTrue(make(seed = reservation(status = "delivered")).state.value.isMissingSeed)
+        }
+
+    @Test
+    fun another_signup_id_surfaces_recovery_state() =
+        runTest {
+            assertTrue(make(reservationId = "different").state.value.isMissingSeed)
         }
 }
