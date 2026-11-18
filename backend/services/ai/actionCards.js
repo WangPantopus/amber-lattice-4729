@@ -590,10 +590,14 @@ function detailsInput(kind, details) {
   return {};
 }
 
+/** A stored value as a card shows it: "stroller_walk" -> "Stroller walk". */
+const shown = (value) => (value ? String(value).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : value);
+
 function detailLines(kind, details) {
   const d = details || {};
-  if (kind === 'pickup_game') return [line('Sport', d.sport), line('Level', d.level), d.extra_gear ? line('Gear', 'Extra gear to share') : null];
-  if (kind === 'walk_coffee') return [line('Kind', d.walk_kind && d.walk_kind.replace('_', ' ')), line('Pace', d.pace), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
+  if (kind === 'pickup_game') return [line('Sport', shown(d.sport)), line('Level', shown(d.level)), d.extra_gear ? line('Gear', 'Extra gear to share') : null];
+  // "Walk", not a second "Kind": the card's first row is already the plan's kind.
+  if (kind === 'walk_coffee') return [line('Walk', shown(d.walk_kind)), line('Pace', shown(d.pace)), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
   if (kind === 'study_group') return [line('Subject', d.subject), line('Style', d.study_style === 'together' ? 'Working through it together' : 'Quiet study')];
   if (kind === 'watch_party') return [line('Watching', d.game?.label)];
   if (kind === 'playdate') return [line('Kids’ ages', agesText(d.kids_age_bands))];
