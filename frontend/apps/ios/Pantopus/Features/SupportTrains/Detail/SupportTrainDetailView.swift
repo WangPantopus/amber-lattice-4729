@@ -542,8 +542,8 @@ public struct SupportTrainDetailView: View {
                     // encoded by hand, or Maps reads it as a space.
                     var components = URLComponents(string: "https://maps.apple.com/")
                     components?.queryItems = [URLQueryItem(name: "daddr", value: address)]
-                    components?.percentEncodedQuery = components?.percentEncodedQuery?
-                        .replacingOccurrences(of: "+", with: "%2B")
+                    let encoded = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+                    components?.percentEncodedQuery = encoded
                     if let url = components?.url { UIApplication.shared.open(url) }
                 }
                 rowActionButton(title: "Copy", icon: .copy, identifier: "supportTrainAddressCopy") {
