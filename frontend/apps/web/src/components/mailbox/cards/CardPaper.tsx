@@ -131,8 +131,10 @@ type LeafCut = { note: string; fit: NoteFit; lineOf: number[][]; first: number; 
 /**
  * Part 9's rule. A note that fits 9 lines in the largest pen or 10 in the middle one stays on one side (null). A longer
  * one goes on two leaves at the first pen that holds it, 9, 10 or 11 lines a leaf: the first leaf takes that many lines as
- * the pen wraps them and the second the rest, never fewer than two, without a blank line at its top. A note that no pen
- * holds on two leaves (very many short lines) stays on one side with Part 1's shrinking (null).
+ * the pen wraps them and the second the rest, never fewer than two, without a blank line at its top. A word is never
+ * split between the leaves or cut: a word wider than a line (a web address) covers several lines, and the first leaf ends
+ * before a word that would cross the break. A note that no pen holds on two leaves (very many short lines, or one word
+ * taller than a leaf) stays on one side with Part 1's shrinking (null).
  */
 export function measureLeaves(note: string): LeafCut | null {
   if (!note.trim()) return null;
@@ -148,17 +150,25 @@ export function measureLeaves(note: string): LeafCut | null {
       const height = size.line * 8;
       const perLeaf = Math.round(NOTE_HEIGHT / size.line);
       const total = Math.round(box.offsetHeight / height);
-      // A word's line is where its box sits; a space, or an empty part between two spaces, stays on its word's line.
+      // A word's line is where its box starts; a space, or an empty part between two spaces, stays on its word's line.
+      // A word wider than a line wraps inside its box and covers every line down to the box's foot.
       const blank = new Set<number>();
+      const spans: Array<[number, number]> = [];
       const lineOf = rows.map(({ row, words }) => {
         let line = Math.round(row.offsetTop / height);
         if (words.length === 1 && !words[0]?.textContent) blank.add(line);
         return words.map((word) => {
-          if (word?.textContent) line = Math.round(word.offsetTop / height);
+          if (word?.textContent) {
+            line = Math.round(word.offsetTop / height);
+            const last = Math.round((word.offsetTop + word.offsetHeight) / height) - 1;
+            if (last > line) spans.push([line, last]);
+          }
           return line;
         });
       });
+      const crosses = (first: number) => spans.some(([top, last]) => top < first && last >= first);
       for (let first = Math.min(perLeaf, total - 2); first >= 1; first -= 1) {
+        if (crosses(first)) continue;
         const start = blank.has(first) ? first + 1 : first;
         const rest = total - start;
         if (rest > perLeaf) break;
