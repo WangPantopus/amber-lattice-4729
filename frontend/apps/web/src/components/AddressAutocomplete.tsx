@@ -44,6 +44,11 @@ type Props = {
    * address (or only the city) says so here, so the picked text doesn't start a new search.
    */
   fillPicked?: (n: { address: string; city: string; state: string; zipcode: string }) => string;
+  /**
+   * Search only once the person types in the field (default false: any value change searches, which Add Home relies
+   * on). For a form that loads a saved address into the field, so the list doesn't open by itself.
+   */
+  quietUntilTyped?: boolean;
 };
 
 const DEFAULT_INPUT_CLASS = 'w-full px-4 py-2 border border-app-border rounded-lg bg-app-surface text-app-text placeholder:text-app-text-secondary caret-gray-900 [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-primary-500';
@@ -88,6 +93,7 @@ export default function AddressAutocomplete({
   near = null,
   streetOnly = false,
   fillPicked,
+  quietUntilTyped = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -116,6 +122,8 @@ export default function AddressAutocomplete({
   // The address a pick wrote back into the field: it is an answer, not a new
   // query, so it must not reopen the list until the person types again.
   const pickedText = useRef<string | null>(null);
+  // Whether the person has typed here yet (quietUntilTyped).
+  const typedHere = useRef(false);
   useEffect(() => {
     alive.current = true;
     const cancel = () => { revision.current++; abortRef.current?.abort(); };
@@ -135,6 +143,7 @@ export default function AddressAutocomplete({
     const operation = ++revision.current;
     if ((debounced || '').trim().length < 4 || debounced !== value) { setLoading(false); return; }
     if (debounced === pickedText.current) { setLoading(false); return; }
+    if (quietUntilTyped && !typedHere.current) { setLoading(false); return; }
     const ac = new AbortController(); abortRef.current = ac;
     const current = () => alive.current && operation === revision.current && !ac.signal.aborted
       && debounced === latestValue.current && document.visibilityState !== 'hidden';
@@ -150,7 +159,7 @@ export default function AddressAutocomplete({
     };
     void run();
     return () => ac.abort();
-  }, [debounced, value, reopen]);
+  }, [debounced, value, reopen, quietUntilTyped]);
 
   // Keep the active option scrolled into view for sighted keyboard users.
   useEffect(() => {
@@ -263,6 +272,7 @@ export default function AddressAutocomplete({
         onChange={(e) => {
           revision.current++; abortRef.current?.abort(); suggestedFor.current = null; setSuggestions([]); setLoading(false);
           pickedText.current = null;
+          typedHere.current = true;
           onChange(e.target.value);
           setActiveIndex(-1);
           setOpen(true);
