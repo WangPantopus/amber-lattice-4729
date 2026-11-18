@@ -7,6 +7,12 @@
 // no colour-space conversion, and that is the look the founder approved. Current three.js converts built-in
 // materials' output to sRGB, so the renderer's output colour space is set to linear (no conversion) and every texture
 // keeps three's default NoColorSpace (no decoding): the shaders see and write the same numbers as in the sample.
+//
+// Two tiers of pictures: the sample's 4096-wide ones first, then NASA's own 8192-wide Black Marble and Blue Marble
+// (tone-matched to the first; public/home/README.md), so the Earth stays sharp in the middle of the zoom. The second
+// tier loads only after the first is showing, is decoded off the main thread and uploaded before it is swapped in, and
+// only where it can be carried: a GPU that takes 8192-wide textures, a wide screen with a mouse or trackpad, and no
+// sign of a small memory or a data saver. Everywhere else the Earth stays as in the sample.
 // ============================================================
 
 import {
@@ -14,6 +20,7 @@ import {
   BackSide,
   CanvasTexture,
   Group,
+  ImageBitmapLoader,
   LinearSRGBColorSpace,
   Mesh,
   PerspectiveCamera,
@@ -22,10 +29,10 @@ import {
   SphereGeometry,
   Sprite,
   SpriteMaterial,
+  Texture,
   TextureLoader,
   Vector3,
   WebGLRenderer,
-  type Texture,
 } from 'three';
 import { lerp, sstep } from './scene';
 
@@ -150,20 +157,73 @@ export function createGlobe(canvas: HTMLCanvasElement, opts: { W: number; H: num
     return { ring, dot, off: (n * 0.618) % 1, dur: 2.6 + (n % 5) * 0.5 };
   });
 
-  let loaded = false, got = 0;
+  let loaded = false, got = 0, disposed = false, wide = !opts.narrow;
+  let sharpTimer = 0;
+  const aniso = Math.min(8, R.capabilities.getMaxAnisotropy());
   const done = () => {
-    if (++got === 2) loaded = true;
+    if (++got !== 2) return;
+    loaded = true;
+    sharpTimer = window.setTimeout(sharpen, 1500); // once the first tier has faded in
   };
   const loader = new TextureLoader();
   const night = loader.load(`${opts.base}/earth-night.jpg`, done);
   const day = loader.load(`${opts.base}/earth-day.jpg`, done);
-  const aniso = Math.min(8, R.capabilities.getMaxAnisotropy());
   night.anisotropy = aniso;
   day.anisotropy = aniso;
   un.night.value = night;
   un.day.value = day;
+  const textures: Texture[] = [night, day];
+
+  // The second tier (see the top of this file).
+  function sharpen() {
+    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+    const canCarry =
+      R.capabilities.maxTextureSize >= 8192 &&
+      wide &&
+      window.matchMedia('(pointer: fine)').matches &&
+      (nav.deviceMemory ?? 8) >= 4 &&
+      !nav.connection?.saveData &&
+      typeof createImageBitmap === 'function';
+    if (disposed || !canCarry) return;
+    // Decoded straight to the orientation and colours the first tier uploads with (flipped, no colour conversion).
+    const bitmaps = new ImageBitmapLoader().setOptions({ imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    const get = (name: string) =>
+      new Promise<Texture>((resolve, reject) => {
+        bitmaps.load(
+          `${opts.base}/${name}`,
+          (bitmap) => {
+            const t = new Texture(bitmap);
+            t.flipY = false;
+            t.anisotropy = aniso;
+            t.needsUpdate = true;
+            resolve(t);
+          },
+          undefined,
+          reject,
+        );
+      });
+    Promise.all([get('earth-night-8k.jpg'), get('earth-day-8k.jpg')])
+      .then(([n8, d8]) => {
+        if (disposed) {
+          n8.dispose();
+          d8.dispose();
+          return;
+        }
+        R.initTexture(n8); // upload now, not inside a frame
+        R.initTexture(d8);
+        un.night.value = n8;
+        un.day.value = d8;
+        night.dispose();
+        day.dispose();
+        textures.push(n8, d8);
+      })
+      .catch(() => {
+        // The first tier stays.
+      });
+  }
 
   const size = (W: number, H: number, narrow: boolean) => {
+    wide = !narrow;
     R.setPixelRatio(Math.min(window.devicePixelRatio || 1, narrow ? 1.5 : 2));
     R.setSize(W, H, false);
     cam.aspect = W / H;
@@ -212,7 +272,9 @@ export function createGlobe(canvas: HTMLCanvasElement, opts: { W: number; H: num
   };
 
   const dispose = () => {
-    for (const x of [earthGeo, atmoGeo, earthMat, atmoMat, ringMap, dotMap, night, day]) x.dispose();
+    disposed = true;
+    window.clearTimeout(sharpTimer);
+    for (const x of [earthGeo, atmoGeo, earthMat, atmoMat, ringMap, dotMap, ...textures]) x.dispose();
     home.material.dispose();
     homeRing.material.dispose();
     for (const p of pings) {
