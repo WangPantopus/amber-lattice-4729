@@ -349,15 +349,19 @@ const draftFromStorySchema = Joi.object({
   }).optional(),
 });
 
+/**
+ * Where help goes on create: one of the organizer's homes (its id is enough; the Home holds the point, as on
+ * PATCH /:id), or a typed or GPS address with its point.
+ */
 const deliveryLocationSchema = Joi.object({
   mode: Joi.string().valid('home', 'current', 'address').required(),
-  latitude: Joi.number().min(-90).max(90).required(),
-  longitude: Joi.number().min(-180).max(180).required(),
-  address: Joi.string().min(3).max(500).required(),
+  latitude: Joi.number().min(-90).max(90).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+  longitude: Joi.number().min(-180).max(180).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
+  address: Joi.string().min(3).max(500).when('mode', { is: 'home', then: Joi.optional(), otherwise: Joi.required() }),
   city: Joi.string().allow('', null).optional(),
   state: Joi.string().allow('', null).optional(),
   zip: Joi.string().allow('', null).optional(),
-  home_id: Joi.string().uuid().allow(null).optional(),
+  home_id: Joi.string().uuid().when('mode', { is: 'home', then: Joi.required(), otherwise: Joi.allow(null).optional() }),
   place_id: Joi.string().allow('', null).optional(),
 });
 
