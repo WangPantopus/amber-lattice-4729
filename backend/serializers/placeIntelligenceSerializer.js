@@ -87,7 +87,7 @@ const PLACE_SECTION_META = {
   // residents who proved they live here is only honest to serve to
   // someone who did the same. The Block Founders meter counts toward
   // exactly this unlock.
-  real_rent: { group: 'money_signals', band: 'D', source: 'Pantopus · verified neighbors on your block', layer: null },
+  real_rent: { group: 'money_signals', band: 'D', source: 'Pantopus · verified residents on your block', layer: null },
   // Wave 2 — homestead-style exemption on the parcel's assessor line.
   // Band B: the answer needs the exact parcel record (ATTOM).
   exemption_check: { group: 'money_signals', band: 'B', source: 'County records · ATTOM', layer: null },
