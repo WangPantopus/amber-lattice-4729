@@ -190,19 +190,21 @@ export default function CardTablePiece({
   };
 
   const menu = useMemo<TableMenuItem[]>(() => {
-    const items: TableMenuItem[] = [{ label: 'Who sent it and its trail', onSelect: () => setSheet('sender') }];
+    // The quiet row under the card holds at most two buttons (design check of November 17, Fix 1), so the menu starts
+    // with what it can offer whenever it applies, as on the iPhone and Android: Open the next card, then Write back (or
+    // You wrote back). Send {first name} a card and Share this card follow further down.
+    const items: TableMenuItem[] = [];
+    if (nextCard) items.push({ label: `Open the next card (${nextCard.count} more)`, onSelect: nextCard.onOpen });
+    if (writeBack) items.push({ label: writeBack.label, onSelect: writeBack.onSelect });
+    items.push({ label: 'Who sent it and its trail', onSelect: () => setSheet('sender') });
     if (filed) items.push({ label: 'Take out of the Vault', onSelect: () => run('unfile') });
     else if (archived) items.push({ label: 'Back to Incoming', onSelect: () => run('unfile') });
     else items.push({ label: 'File in the Vault', onSelect: () => setSheet('vault') });
     items.push({ label: 'Shred', onSelect: () => { void shred(); } });
     if (!card.sealed && !replyPiece) items.push({ label: 'Open it again', onSelect: () => setReplay((n) => n + 1) });
-    // The quiet row under the card holds at most two buttons (design check of November 17, Fix 1), so everything it
-    // can offer is here too: Write back (or You wrote back), Send {first name} a card and Open the next card.
-    if (writeBack) items.push({ label: writeBack.label, onSelect: writeBack.onSelect });
-    // With Write back in the quiet row, "Share this card" keeps its corner button and this line (Part 3).
-    if (writeBack && !replyPiece) items.push({ label: 'Share this card', onSelect: () => setSheet('share') });
+    // "Share this card" is never in the quiet row on a reader's card: its corner button and this line (Part 3, Fix 1).
+    if (!card.sealed && !replyPiece) items.push({ label: 'Share this card', onSelect: () => setSheet('share') });
     if (sendBack) items.push({ label: sendBack.label, onSelect: sendBack.onSelect });
-    if (nextCard) items.push({ label: 'Open the next card', onSelect: nextCard.onOpen });
     if (piece.sender_user_id) {
       // As drawn for card memories (wave 4 drawing 6): the card itself is reported, and the person is named.
       items.push({ label: launchFeatures.holidayCardMemories ? 'Report this card' : 'Report', onSelect: () => setSheet('report') });
@@ -211,7 +213,7 @@ export default function CardTablePiece({
     return items;
     // The menu follows the piece; its handlers read the latest piece through this same render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label, writeBack?.label, Boolean(replyPiece), Boolean(nextCard)]);
+  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label, writeBack?.label, Boolean(replyPiece), nextCard?.count]);
 
   // A reply waits for the joined read, so its table is made once, with the room the reply needs.
   if (replyPiece && joined.isPending) return null;
