@@ -62,6 +62,8 @@ data class HomeVerifyOption(
     val id: String,
     val available: Boolean,
     val reason: String? = null,
+    /** `document` only: true when the photo is read at once (the Bill check), false for today's review-only upload. */
+    val fast: Boolean? = null,
 )
 
 /** `POST /api/public/postcard-report` body ("This wasn't me" for a scanned card, FASTVERIFY). */

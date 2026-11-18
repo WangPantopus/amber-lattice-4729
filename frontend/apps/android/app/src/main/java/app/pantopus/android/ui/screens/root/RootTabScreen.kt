@@ -412,6 +412,7 @@ import app.pantopus.android.ui.screens.place.privacy.PlacePrivacyMirrorScreen
 import app.pantopus.android.ui.screens.place.pulse.PLACE_PULSE_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.pulse.PlacePulseScreen
 import app.pantopus.android.ui.screens.place.today.TodayTabScreen
+import app.pantopus.android.ui.screens.place.verify.BillVerifiedScreen
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_ADDRESS_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
@@ -3848,6 +3849,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                     navController.popBackStack()
                                     navController.openPlaceVerify(other, verifyHomeId, verifyAddress)
                                 },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        // A bill read at once (FASTVERIFY phase 4): "You're verified".
+                        PlaceVerifyMethod.DOCUMENT ->
+                            BillVerifiedScreen(
+                                onDone = { navController.popBackStack() },
                                 onMailCode = {
                                     navController.popBackStack()
                                     navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
@@ -8083,7 +8093,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 defaultValue = "residency"
                             },
                         ),
-                ) {
+                ) { entry ->
+                    val residencyHomeId = entry.arguments?.getString(CLAIM_OWNERSHIP_HOME_ID_KEY).orEmpty()
                     ClaimOwnershipWizardScreen(
                         onDismiss = { navController.popBackStack() },
                         onOpenClaimsList = {
@@ -8093,6 +8104,11 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenFindHome = {
                             navController.popBackStack()
                             navController.navigate(ChildRoutes.FIND_HOME)
+                        },
+                        // The Bill check read the bill (FASTVERIFY phase 4): "You're verified" in the wizard's place.
+                        onBillVerified = {
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.placeVerifyStatus(residencyHomeId, PlaceVerifyMethod.DOCUMENT.slug, ""))
                         },
                     )
                 }

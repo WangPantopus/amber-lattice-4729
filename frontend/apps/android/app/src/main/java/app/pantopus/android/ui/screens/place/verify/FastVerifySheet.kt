@@ -112,6 +112,16 @@ private val FASTEST_ROWS =
 private val MAIL_ROW =
     FastVerifyRow("mail", PantopusIcon.Mail, "Mail me a code", "A postcard to this home. It arrives in about a week.", PlaceTileTone.MUTED)
 
+/** A document a person reviews (no read at once) keeps today's words. */
+private val TODAY_DOCUMENT_ROW =
+    FastVerifyRow(
+        "document",
+        PlaceVerifyMethod.DOCUMENT.icon,
+        PlaceVerifyMethod.DOCUMENT.label,
+        PlaceVerifyMethod.DOCUMENT.sub,
+        PlaceTileTone.MUTED,
+    )
+
 /** The landlord keeps today's words. */
 private val LANDLORD_ROW =
     FastVerifyRow(
@@ -128,7 +138,7 @@ private val LANDLORD_ROW =
  * phone, location, document, mail, landlord. A document already in review keeps today's row.
  */
 @Composable
-@Suppress("LongMethod", "LongParameterList")
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 internal fun FastVerifySheetContent(
     address: String,
     options: HomeVerifyOptions,
@@ -139,7 +149,12 @@ internal fun FastVerifySheetContent(
 ) {
     val inReview = documentInReview || options.option("document")?.reason == "IN_REVIEW"
     val opens = { row: FastVerifyRow -> PlaceVerifyMethod.fromOption(row.id)?.takeIf { options.available(row.id) != null } }
-    val fastest = FASTEST_ROWS.filter { row -> (row.id == "document" && inReview) || opens(row) != null }
+    // The bill row is a fast check only when the server reads the photo at once; otherwise the document keeps today's row.
+    val documentRead = options.option("document")?.fast != false
+    val fastest =
+        FASTEST_ROWS.filter { row ->
+            if (row.id == "document") documentRead && (inReview || opens(row) != null) else opens(row) != null
+        }
     Column(
         modifier =
             Modifier
@@ -217,6 +232,17 @@ internal fun FastVerifySheetContent(
         opens(MAIL_ROW)?.let { method ->
             VerifyOverline("Or by mail")
             Column(modifier = Modifier.fillMaxWidth().placeCard()) { FastRow(MAIL_ROW) { onStart(method) } }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        val todayDocument = opens(TODAY_DOCUMENT_ROW)
+        if (!documentRead && (inReview || todayDocument != null)) {
+            Column(modifier = Modifier.fillMaxWidth().placeCard()) {
+                if (inReview) {
+                    DocumentReviewRow(onOpenDocumentStatus)
+                } else if (todayDocument != null) {
+                    FastRow(TODAY_DOCUMENT_ROW) { onStart(todayDocument) }
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
         }
         opens(LANDLORD_ROW)?.let { method ->
