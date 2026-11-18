@@ -443,11 +443,7 @@ class ManageTrainViewModel
             }
         }
 
-        /**
-         * Fan-out for the organizer-only feeds. A failed roster clears
-         * its rows and shows an error without hiding the rest of the screen.
-         */
-        @Suppress("CyclomaticComplexMethod")
+        /** The organizer-only reads, made together. */
         private suspend fun readOrganizerSurfaces(): OrganizerReads =
             coroutineScope {
                 val reservationsCall = async { repo.reservations(trainId) }
@@ -457,6 +453,11 @@ class ManageTrainViewModel
                 OrganizerReads(reservationsCall.await(), organizersCall.await(), fundCall.await(), invitesCall.await())
             }
 
+        /**
+         * Fan-out for the organizer-only feeds. A failed roster clears
+         * its rows and shows an error without hiding the rest of the screen.
+         */
+        @Suppress("CyclomaticComplexMethod")
         private suspend fun loadOrganizerSurfaces(
             slots: List<ManageSlotRow>,
             version: Long,
