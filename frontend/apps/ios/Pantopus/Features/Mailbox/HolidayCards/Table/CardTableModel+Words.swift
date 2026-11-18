@@ -90,27 +90,24 @@ extension CardTableModel {
         return readsVerse ? .verse : nil
     }
 
-    /// The quiet buttons under the main one: "Send {first name} a card" and "Share this card" (plan 11.1), once the
-    /// reader has turned the card over (on the open Duo both sides show, so at once). Never on a sealed card; the
-    /// corner's share stays.
+    /// The quiet buttons that may show under the main one once the card has been turned over (on the open Duo both
+    /// sides show, so at once), in the design check's order (Nov 17): "Open the next card (2 more)" when cards wait;
+    /// "Write back to {first name}" or "You wrote back"; "Send {first name} a card". Only the first two show, side by
+    /// side; all of them are in the ⋯ menu too. "Share this card" (plan 11.1) is a quiet button only on the sender's
+    /// own look at their card; on a reader's card it keeps its corner and its ⋯ line. Never on a sealed card.
     var secondaries: [CardTableMenuItem] {
         if let sending { return sending == .gone ? goneButtons : [] }
         guard step == .out, !content.sealed, turnedOnce || fold.isSpread else { return [] }
         var items: [CardTableMenuItem] = []
-        // Write back comes first, with Send {first name} a card beside it; Share keeps its corner and its ⋯ line.
+        if let nextCard { items.append(nextCard) }
         if let writeBack { items.append(writeBack) }
         if let sendBack { items.append(sendBack) }
-        if offersShare, writeBack == nil {
-            items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableShareQuiet") { [weak self] in
+        if offersShare {
+            items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableShareQuiet", short: "Share") { [weak self] in
                 self?.isSharing = true
             })
         }
         return items
-    }
-
-    /// "Open the next card", once this card is out and has been turned over (experience plan Part 4).
-    var showsNextCard: Bool {
-        nextCard != nil && sending == nil && step == .out && !content.sealed && (turnedOnce || fold.isSpread)
     }
 
     // MARK: Sealing (plan Part 2)
@@ -148,7 +145,7 @@ extension CardTableModel {
     /// Where the open Duo's pages must end: above the buttons when one can show under them (plan 1.7), or when the
     /// hint is a link to read ("Read it in print", "Read the verse").
     func pagesBottomRoom(_ layout: CardTableLayout) -> CGFloat? {
-        reservesSecondary || hintLink != nil || printIsButton ? layout.bottomControls + 12 : nil
+        reservesSecondary || reservesNext || hintLink != nil || printIsButton ? layout.bottomControls + 12 : nil
     }
 
     /// Once the card is on the table.

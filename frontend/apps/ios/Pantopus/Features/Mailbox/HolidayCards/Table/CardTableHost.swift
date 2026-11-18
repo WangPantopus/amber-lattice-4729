@@ -251,7 +251,7 @@ private struct MailCardTablePage: View {
     }
 
     var body: some View {
-        CardTableScreen(model: model, menuItems: menuItems, onClose: onClose)
+        CardTableScreen(model: model, menuItems: menuItems, sharesQuietly: false, onClose: onClose)
             .sheet(isPresented: Binding(get: { viewModel.showsSenderSheet }, set: { viewModel.showsSenderSheet = $0 })) {
                 if let letter, let content = senderContent {
                     MailSenderSheet(letter: letter, senderLink: leavingLink(content))
@@ -342,11 +342,20 @@ private struct MailCardTablePage: View {
         guard let exchange, !Task.isCancelled else { return }
         let first = model.content.firstName
         if exchange.canReply {
-            model.writeBack = CardTableMenuItem(title: CardReplyWords.writeBack(first), identifier: "cardTableWriteBack") {
+            model.writeBack = CardTableMenuItem(
+                title: CardReplyWords.writeBack(first),
+                identifier: "cardTableWriteBack",
+                short: "Write back"
+            ) {
                 writingBack = true
             }
         } else if let reply = exchange.reply, let pair = CardReplyPair(exchange) {
-            model.writeBack = CardTableMenuItem(title: CardReplyWords.wroteBack(on: reply.sentOn), identifier: "cardTableWroteBack") {
+            // The row drops the day (the joined card shows it); VoiceOver still hears it.
+            model.writeBack = CardTableMenuItem(
+                title: "You wrote back",
+                identifier: "cardTableWroteBack",
+                spoken: CardReplyWords.wroteBack(on: reply.sentOn)
+            ) {
                 joined = pair
             }
         } else {
@@ -354,8 +363,9 @@ private struct MailCardTablePage: View {
         }
     }
 
-    /// "Open the next card" with "{n} more waiting" under it, when this card came from the Mailbox list and others
-    /// wait there (experience plan Part 4). It closes this card and brings the next envelope onto the table.
+    /// "Open the next card (2 more)", when this card came from the Mailbox list and others wait there (experience plan
+    /// Part 4; the count in its own words since the design check, Nov 17). It closes this card and brings the next
+    /// envelope onto the table.
     private func offerNextCard() {
         let waiting = HolidayCardWaiting.after(viewModel.mailId)
         guard onOpenNextCard != nil, !waiting.isEmpty else {
@@ -365,9 +375,10 @@ private struct MailCardTablePage: View {
         }
         model.reservesNext = true
         model.nextCard = CardTableMenuItem(
-            title: "Open the next card",
+            title: "Open the next card (\(waiting.count) more)",
             identifier: "cardTableNextCard",
-            detail: "\(waiting.count) more waiting"
+            short: "Next card (\(waiting.count) more)",
+            spoken: "Open the next card, \(waiting.count) more waiting"
         ) { [viewModel] in
             guard let next = HolidayCardWaiting.next(after: viewModel.mailId) else { return }
             onOpenNextCard?(next)
@@ -384,7 +395,11 @@ private struct MailCardTablePage: View {
     private func checkSendBack() async {
         guard let person = sendBackPerson, model.sendBack == nil else { return }
         guard await HolidayCardSendBack.isOpen(to: person.id), !Task.isCancelled else { return }
-        model.sendBack = CardTableMenuItem(title: "Send \(model.content.firstName) a card", identifier: "cardTableSendBack") {
+        model.sendBack = CardTableMenuItem(
+            title: "Send \(model.content.firstName) a card",
+            identifier: "cardTableSendBack",
+            short: "Send a card"
+        ) {
             sendCard(to: person)
         }
     }
@@ -415,11 +430,19 @@ private struct MailCardTablePage: View {
     }
 
     private var menuItems: [CardTableMenuItem] {
-        var items = [
-            CardTableMenuItem(title: "Who sent it and its trail", identifier: "cardTableMenuWho") {
-                viewModel.showsSenderSheet = true
-            }
-        ]
+        var items: [CardTableMenuItem] = []
+        // Only two quiet buttons show under the card (the design check, Nov 17), so the next card and Write back lead
+        // the menu whenever they apply, as on Android.
+        if let next = model.nextCard, !model.content.sealed {
+            items.append(CardTableMenuItem(title: next.title, identifier: "cardTableMenuNextCard", action: next.action))
+        }
+        if let writeBack = model.writeBack {
+            let identifier = writeBack.identifier == "cardTableWroteBack" ? "cardTableMenuWroteBack" : "cardTableMenuWriteBack"
+            items.append(CardTableMenuItem(title: writeBack.title, identifier: identifier, action: writeBack.action))
+        }
+        items.append(CardTableMenuItem(title: "Who sent it and its trail", identifier: "cardTableMenuWho") {
+            viewModel.showsSenderSheet = true
+        })
         if letter?.isFiled == true {
             items.append(CardTableMenuItem(title: "Take out of the Vault", identifier: "cardTableMenuUnfile") {
                 Task { await viewModel.tapLetterAction(.unfile) }
@@ -435,6 +458,10 @@ private struct MailCardTablePage: View {
         if !model.content.sealed {
             items.append(CardTableMenuItem(title: "Open it again", identifier: "cardTableMenuAgain") {
                 model.restart(animated: true)
+            })
+            // Share keeps its corner button, and its line here, now that it's no longer a quiet button on a reader's card.
+            items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableMenuShare") {
+                model.isSharing = true
             })
         }
         if let sendBack = model.sendBack {
