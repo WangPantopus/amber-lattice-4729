@@ -291,15 +291,15 @@ struct EmptyThreadState: View {
     private var subcopy: String {
         switch intent {
         case .lostFound:
-            "A neighbor sighting, a tip, or even a \"looking\" matters in the first hour."
+            "A sighting, a tip, or even a \"looking\" matters in the first hour."
         case .ask:
             "A question, tip, or resource can get the thread moving."
         case .offer:
-            "Ask a detail, claim interest, or help the offer find the right neighbor."
+            "Ask a detail, claim interest, or help the offer find the right person."
         case .event:
             "A quick RSVP or offer to bring something helps the host plan."
         case .share, .deal, .generic:
-            "Add context, say thanks, or help other neighbors spot why it matters."
+            "Add context, say thanks, or help others spot why it matters."
         case .alert:
             "Confirm what you are seeing nearby or share a useful next step."
         }

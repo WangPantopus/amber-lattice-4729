@@ -917,11 +917,11 @@ private fun QuickReplyChip(
 
 private fun emptySubcopy(intent: PostIntent): String =
     when (intent) {
-        PostIntent.LostFound -> "A neighbor sighting, a tip, or even a \"looking\" matters in the first hour."
+        PostIntent.LostFound -> "A sighting, a tip, or even a \"looking\" matters in the first hour."
         PostIntent.Ask -> "A question, tip, or resource can get the thread moving."
-        PostIntent.Offer -> "Ask a detail, claim interest, or help the offer find the right neighbor."
+        PostIntent.Offer -> "Ask a detail, claim interest, or help the offer find the right person."
         PostIntent.Event -> "A quick RSVP or offer to bring something helps the host plan."
-        PostIntent.Share, PostIntent.Deal -> "Add context, say thanks, or help other neighbors spot why it matters."
+        PostIntent.Share, PostIntent.Deal -> "Add context, say thanks, or help others spot why it matters."
         PostIntent.Alert -> "Confirm what you are seeing nearby or share a useful next step."
     }
 
