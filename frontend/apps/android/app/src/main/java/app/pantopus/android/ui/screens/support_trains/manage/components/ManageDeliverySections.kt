@@ -319,6 +319,7 @@ fun ManageDetailsSheet(
 }
 
 private const val LIST_LIMIT = 400
+
 /** The server keeps 2,000 characters of instructions (`special_instructions` max(2000)). */
 private const val INSTRUCTIONS_LIMIT = 2000
 

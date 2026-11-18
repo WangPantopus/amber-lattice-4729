@@ -33,7 +33,6 @@ import app.pantopus.android.ui.screens.support_trains.start_train.listItemProble
 import app.pantopus.android.ui.screens.support_trains.start_train.splitList
 import app.pantopus.android.ui.theme.PantopusIcon
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -42,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * A13.13 — Manage train. Aggregate UI state for the organizer-side
@@ -693,7 +693,7 @@ class ManageTrainViewModel
                                 isSubmitting = false,
                                 actionError =
                                     result.error.displayMessage("Couldn't close this train.") +
-                                        if (_state.value.thankYouSent) " Your thank-you was sent; trying again only closes the train." else "",
+                                        if (_state.value.thankYouSent) THANK_YOU_SENT_RETRY else "",
                             )
                         }
                 }
@@ -1170,6 +1170,9 @@ private data class OrganizerReads(
     val fund: NetworkResult<SupportTrainFundDto>,
     val invites: NetworkResult<SupportTrainInvitesResponse>,
 )
+
+/** Added to a failed close once the thank-you went out. */
+private const val THANK_YOU_SENT_RETRY = " Your thank-you was sent; trying again only closes the train."
 
 /** `private_link` is "People near you": listed for people within about 25 miles. */
 private const val NEARBY_SHARING_MODE = "private_link"

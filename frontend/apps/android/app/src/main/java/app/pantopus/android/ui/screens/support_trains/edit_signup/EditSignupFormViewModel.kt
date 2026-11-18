@@ -157,7 +157,11 @@ class EditSignupFormViewModel
                             } else {
                                 it.copy(
                                     isLoading = false,
-                                    toast = EditSignupToastPayload(result.error.displayMessage("Couldn't load your signup."), isError = true),
+                                    toast =
+                                        EditSignupToastPayload(
+                                            result.error.displayMessage("Couldn't load your signup."),
+                                            isError = true,
+                                        ),
                                 )
                             }
                         }
