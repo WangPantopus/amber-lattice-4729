@@ -29,6 +29,7 @@ import {
   countScheduleDates,
   weekdaysEnabledForPreset,
 } from '@/components/support-trains/scheduleUtils';
+import { SUPPORT_TRAIN_WIZARD_KEY, clearSupportTrainWizardDraft } from '@/components/support-trains/wizardDraft';
 
 // ============================================================
 // CREATE SUPPORT TRAIN (Web) — Two-step single-page flow
@@ -65,8 +66,9 @@ function cuisineKey(label: string): string {
 
 type Step = 'story' | 'review';
 
-// What the organizer has filled in, kept for this tab so a refresh or Back doesn't lose it (B7). Cleared on publish.
-const WIZARD_KEY = 'pantopus.supportTrainWizard.v1';
+// What the organizer has filled in, kept for this tab so a refresh or Back doesn't lose it (B7). Cleared on publish
+// and on sign-out (components/support-trains/wizardDraft.ts).
+const WIZARD_KEY = SUPPORT_TRAIN_WIZARD_KEY;
 type SavedWizard = Record<string, unknown> & { step?: Step };
 function readSavedWizard(): SavedWizard | null {
   try {
@@ -76,9 +78,7 @@ function readSavedWizard(): SavedWizard | null {
     return null;
   }
 }
-function clearSavedWizard() {
-  try { sessionStorage.removeItem(WIZARD_KEY); } catch { /* storage blocked */ }
-}
+const clearSavedWizard = clearSupportTrainWizardDraft;
 // The browser's zone, for a train with a typed address the server can't place in one (A5).
 function browserTimezone(): string | undefined {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch { return undefined; }

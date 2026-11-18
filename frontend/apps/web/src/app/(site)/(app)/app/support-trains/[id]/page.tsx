@@ -634,6 +634,7 @@ export default function SupportTrainDetailPage() {
                   slot={slotsById.get(reservation.slot_id)}
                   busy={helperAction !== null}
                   timezone={trainZone}
+                  canEdit={signupChangeable(data.status, slotsById.get(reservation.slot_id), todayKey)}
                   onDelivered={(slotDate) => handleMarkDelivered(reservation.id, slotDate)}
                   onEdit={() => openEditSignup(reservation)}
                   onLeave={() => handleLeaveSlot(reservation.id)}
@@ -914,11 +915,12 @@ const MY_SIGNUP_STATUS: Record<string, string> = {
   confirmed: 'Delivery confirmed',
 };
 
-function MySignupRow({ reservation, slot, busy, timezone, onDelivered, onEdit, onLeave }: {
+function MySignupRow({ reservation, slot, busy, timezone, canEdit, onDelivered, onEdit, onLeave }: {
   reservation: any;
   slot: any;
   busy: boolean;
   timezone: string | null;
+  canEdit: boolean;
   onDelivered: (slotDate?: string | null) => void;
   onEdit: () => void;
   onLeave: () => void;
@@ -962,7 +964,7 @@ function MySignupRow({ reservation, slot, busy, timezone, onDelivered, onEdit, o
           >
             Mark delivered
           </button>
-          {reservation.updated_at && (
+          {canEdit && reservation.updated_at && (
             <button
               type="button"
               onClick={onEdit}
@@ -1432,6 +1434,13 @@ function StatBox({ label, value }: { label: string; value: number | string }) {
       <p className="text-xs text-app-text-muted mt-0.5">{label}</p>
     </div>
   );
+}
+
+/** The server refuses a helper's change once the train has ended or the date is behind the train's today. */
+function signupChangeable(status: string | null | undefined, slot: unknown, todayKey: string): boolean {
+  if (status === 'completed' || status === 'archived') return false;
+  const date = (slot as { slot_date?: string | null } | undefined)?.slot_date;
+  return !(date && String(date) < todayKey);
 }
 
 /** Reservations only open on a published or active train; the server refuses the rest. */

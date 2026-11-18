@@ -200,6 +200,69 @@ function formatAddressLabel(address) {
   return [firstLine, secondLine].filter(Boolean).join('\n');
 }
 
+/**
+ * Where help goes changed on a live train (PATCH /:id): tell everyone who already holds the old address for a date
+ * from today on. Signed-in helpers with the address get a notification (no address in it; the train shows the new
+ * one); email guests whose address was shared get the new address by email, replacing the earlier one. Runs after
+ * the save has answered, so a save costs nothing more.
+ */
+async function notifyDeliveryChanged(train, actorUserId) {
+  const supportTrainId = train.id;
+  const [{ data: reservations, error }, { data: grants, error: grantErr }] = await Promise.all([
+    supabaseAdmin
+      .from('SupportTrainReservation')
+      .select('id, user_id, guest_name, guest_email, guest_address_shared_at, SupportTrainSlot:slot_id ( slot_date, slot_label, start_time, end_time )')
+      .eq('support_train_id', supportTrainId)
+      .eq('status', 'reserved'),
+    supabaseAdmin.from('SupportTrainAddressGrant').select('grantee_user_id').eq('support_train_id', supportTrainId),
+  ]);
+  if (error || grantErr) throw error || grantErr;
+  const today = await trainToday(train);
+  const upcoming = (reservations || []).filter((r) => r.SupportTrainSlot?.slot_date && String(r.SupportTrainSlot.slot_date) >= today);
+  const granted = new Set((grants || []).map((g) => g.grantee_user_id));
+  const helperIds = [...new Set(upcoming.filter((r) => r.user_id && granted.has(r.user_id) && r.user_id !== actorUserId).map((r) => r.user_id))];
+  if (helperIds.length > 0) {
+    await emitSupportTrainEvent({
+      event: 'support_train.delivery_changed',
+      supportTrainId,
+      actorUserId,
+      payload: { helper_user_ids: helperIds },
+    });
+  }
+  // One email per guest address for one change, dated with their earliest coming date.
+  const slotKey = (r) => `${r.SupportTrainSlot?.slot_date || ''} ${r.SupportTrainSlot?.start_time || ''}`;
+  const earliestByEmail = new Map();
+  for (const r of upcoming) {
+    if (r.user_id || !r.guest_email || !r.guest_address_shared_at) continue;
+    const email = r.guest_email.trim().toLowerCase();
+    const seen = earliestByEmail.get(email);
+    if (!seen || slotKey(r) < slotKey(seen)) earliestByEmail.set(email, r);
+  }
+  const guests = [...earliestByEmail.values()];
+  if (guests.length === 0) return;
+  const delivery = await getSupportTrainExactDeliveryDetails(train, supportTrainId, { includeInstructions: true });
+  if (!delivery.address?.address?.trim()) return;
+  for (const r of guests) {
+    const slot = r.SupportTrainSlot;
+    const result = await sendGuestReservationAddressEmail({
+      toEmail: r.guest_email,
+      guestName: r.guest_name || 'there',
+      trainTitle: train.Activity?.title || 'Support Train',
+      slotLabel: slot?.slot_label || 'Support',
+      slotDate: formatSupportTrainSlotDate(slot?.slot_date),
+      slotTime: formatSupportTrainSlotTime(slot),
+      addressLabel: delivery.addressLabel,
+      deliveryInstructions: delivery.deliveryInstructions,
+      specialInstructions: delivery.specialInstructions,
+      supportTrainId,
+      replacesEarlier: true,
+    });
+    if (!result?.success) {
+      logger.error('Support Train changed-address guest email failed', { supportTrainId, reservationId: r.id, error: result?.error });
+    }
+  }
+}
+
 async function getSupportTrainExactDeliveryDetails(st, supportTrainId, { includeInstructions = true } = {}) {
   const [profileResult, homeResult] = await Promise.all([
     includeInstructions ? supabaseAdmin
@@ -1550,6 +1613,13 @@ router.post(
       return res
         .status(409)
         .json({ error: 'ALREADY_PRIMARY', message: 'This user is already the primary organizer.' });
+    }
+    // The person the train is for doesn't run it: organizers see helpers' private notes to them.
+    if (st.recipient_user_id && user_id === st.recipient_user_id) {
+      return res.status(409).json({
+        error: 'IS_RECIPIENT',
+        message: "The person this Support Train is for can't also organize it.",
+      });
     }
     if (!(await knownToOrganizer(req.user.id, user_id))) return res.status(403).json(NOT_KNOWN);
 
@@ -4077,6 +4147,13 @@ router.patch(
     if (!isOrganizer && reservation.status !== 'reserved') {
       return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This help was already delivered, so the signup can’t be changed.' });
     }
+    // A helper changes only a signup still ahead of them on a train still running; organizers keep their edits.
+    if (!isOrganizer && ['completed', 'archived'].includes(req.supportTrain.status)) {
+      return res.status(409).json({ error: 'INVALID_TRANSITION', message: 'This Support Train has ended, so signups can’t be changed.' });
+    }
+    if (!isOrganizer && reservation.Slot?.slot_date && String(reservation.Slot.slot_date) < (await trainToday(req.supportTrain))) {
+      return res.status(409).json({ error: 'SLOT_PASSED', message: 'That date has passed, so the signup can’t be changed.' });
+    }
     const body = req.body;
     const patch = {
       dish_title: body.dish_title?.trim() || null,
@@ -4955,6 +5032,7 @@ router.patch(
     // Where help goes, set or changed after the train was made, with the rule create uses: a home must be one the
     // person making the change belongs to. A home and a typed address replace each other, and the train's zone
     // follows the new place.
+    let deliveryChanged = false;
     if (body.delivery_location) {
       const loc = body.delivery_location;
       if (loc.mode === 'home') {
@@ -4962,6 +5040,7 @@ router.patch(
         if (!homeIds.includes(loc.home_id)) {
           return res.status(403).json({ error: 'HOME_NOT_ACCESSIBLE', message: 'You can only use a home you belong to.' });
         }
+        deliveryChanged = st.recipient_home_id !== loc.home_id;
         Object.assign(supportTrainPatch, EMPTY_DELIVERY, { recipient_home_id: loc.home_id });
         activityPatch.home_id = loc.home_id;
         activityPatch.timezone = (await homeTimezone(loc.home_id, req.activity?.timezone)) || req.activity?.timezone || null;
@@ -4970,6 +5049,10 @@ router.patch(
         if (!delivery) {
           return res.status(400).json({ error: 'INVALID_ADDRESS', message: 'Pick an address from the suggestions, then save again.' });
         }
+        deliveryChanged = Boolean(st.recipient_home_id)
+          || st.delivery_address !== delivery.delivery_address
+          || Number(st.delivery_lat) !== delivery.delivery_lat
+          || Number(st.delivery_lng) !== delivery.delivery_lng;
         Object.assign(supportTrainPatch, delivery, { recipient_home_id: null });
         activityPatch.home_id = null;
         activityPatch.timezone = timezoneFromCoordinates(delivery.delivery_lat, delivery.delivery_lng, req.activity?.timezone || null);
@@ -5031,6 +5114,12 @@ router.patch(
 
     const { Activity: activity, ...supportTrain } = updated;
     res.json({ ...supportTrain, activity });
+
+    if (deliveryChanged && ['published', 'active', 'paused'].includes(st.status)) {
+      notifyDeliveryChanged(updated, req.user.id).catch((err) => {
+        logger.error('Support Train changed-address notices failed', { supportTrainId: st.id, error: err?.message });
+      });
+    }
   })
 );
 

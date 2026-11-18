@@ -993,7 +993,7 @@ function EditTrainModal({ open, train, homes, onClose, onSaved }: {
           <p className="text-sm font-medium text-app-text">Delivery address</p>
           <p className="text-xs text-app-text-muted mb-2">
             {train?.address?.address
-              ? `Now: ${[train.address.address, train.address.city, train.address.state].filter(Boolean).join(', ')}. Pick another to change it.`
+              ? `Now: ${[train.address.address, train.address.city, train.address.state].filter(Boolean).join(', ')}. Pick another to change it. Helpers who already have the address are told it changed.`
               : 'Not set yet.'}
           </p>
           <WhereSection

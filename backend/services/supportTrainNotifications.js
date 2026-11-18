@@ -493,6 +493,43 @@ async function emitSupportTrainEvent({ event, supportTrainId, actorUserId, paylo
         }
         // Letters in their Mail (SRV-9): a thank-you to each helper, the summary to the person helped and organizers.
         await doneLetters(supportTrainId, { endedBySchedule: payload.ended_by_schedule === true });
+        // Ended by the reminders job: the letters need Mail, so the organizers and the person it's for also get
+        // one notification in the app.
+        if (payload.ended_by_schedule === true) {
+          const people = await _getOrganizersAndRecipient(supportTrainId, st, null);
+          if (people.length > 0) {
+            await createBulkNotifications(
+              people.map((userId) => ({
+                userId,
+                type: 'support_train_updates',
+                title: 'Support Train Ended',
+                body: `${supportTrainReference(title).replace(/^t/, 'T')} ended because its last date has passed.`,
+                icon: '🚂',
+                link,
+                metadata: { support_train_id: supportTrainId, ended_by_schedule: true },
+              }))
+            );
+          }
+        }
+        break;
+      }
+
+      case 'support_train.delivery_changed': {
+        // Where help goes changed: helpers who already had the address are told to open the train for the new one.
+        const helperIds = Array.isArray(payload.helper_user_ids) ? payload.helper_user_ids : [];
+        if (helperIds.length > 0) {
+          await createBulkNotifications(
+            helperIds.map((userId) => ({
+              userId,
+              type: 'support_train_slot_changes',
+              title: 'Support Train Address Changed',
+              body: `The delivery address for ${supportTrainReference(title)} changed. Open the train for the new one.`,
+              icon: '📍',
+              link,
+              metadata: { support_train_id: supportTrainId },
+            }))
+          );
+        }
         break;
       }
 

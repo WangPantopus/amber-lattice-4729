@@ -1374,10 +1374,12 @@ async function sendGuestReservationAddressEmail({
   deliveryInstructions,
   specialInstructions,
   supportTrainId,
+  replacesEarlier = false,
 }) {
   const appUrl = `${APP_URL}/support-trains/${supportTrainId}`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLabel)}`;
-  const subject = `Delivery location for ${trainTitle}`;
+  // replacesEarlier: the organizer changed where help goes after this guest had the address.
+  const subject = replacesEarlier ? `New delivery location for ${trainTitle}` : `Delivery location for ${trainTitle}`;
   const instructions = [
     deliveryInstructions ? `Delivery instructions: ${deliveryInstructions}` : null,
     specialInstructions ? `Special instructions: ${specialInstructions}` : null,
@@ -1394,12 +1396,12 @@ async function sendGuestReservationAddressEmail({
   <div style="max-width:480px; margin:40px auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
 
     <div style="background:#111827; padding:32px 32px 24px; text-align:center;">
-      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">Delivery Location</h1>
+      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">${replacesEarlier ? 'New Delivery Location' : 'Delivery Location'}</h1>
     </div>
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi <strong>${escapeHtml(guestName)}</strong>, the organizer has shared the exact delivery location for <strong>${escapeHtml(trainTitle)}</strong>.
+        Hi <strong>${escapeHtml(guestName)}</strong>, ${replacesEarlier ? 'the delivery location changed' : 'the organizer has shared the exact delivery location'} for <strong>${escapeHtml(trainTitle)}</strong>.${replacesEarlier ? ' This replaces the address we sent you earlier.' : ''}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
@@ -1447,9 +1449,9 @@ async function sendGuestReservationAddressEmail({
 </html>`;
 
   const text = `
-Delivery location for ${trainTitle}
+${subject}
 
-Hi ${guestName}, the organizer has shared the exact delivery location.
+Hi ${guestName}, ${replacesEarlier ? 'the delivery location changed. This replaces the address we sent you earlier.' : 'the organizer has shared the exact delivery location.'}
 
 ${slotLabel} · ${slotDate}${slotTime ? `\nTime: ${slotTime}` : ''}
 
