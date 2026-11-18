@@ -76,6 +76,7 @@ abstract class OffsetPostsTabViewModel(
     fun dismissCardToast() {
         _cardToast.value = null
     }
+
     private val _state = MutableStateFlow<ListOfRowsUiState>(ListOfRowsUiState.Loading)
     val state: StateFlow<ListOfRowsUiState> = _state.asStateFlow()
 
