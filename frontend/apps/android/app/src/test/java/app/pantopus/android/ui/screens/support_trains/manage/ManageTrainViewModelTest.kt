@@ -5,11 +5,13 @@ package app.pantopus.android.ui.screens.support_trains.manage
 import androidx.lifecycle.SavedStateHandle
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainFundDto
+import app.pantopus.android.data.api.models.support_trains.SupportTrainInvitesResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainOrganizersResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainReservationsResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainSlotDto
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.store.Stored
 import app.pantopus.android.data.support_trains.SupportTrainsRepository
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimScopeTestFixture
@@ -42,6 +44,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ManageTrainViewModelTest {
     private val repo: SupportTrainsRepository = mockk()
+    private val homes: HomesRepository = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -53,6 +56,7 @@ class ManageTrainViewModelTest {
         coEvery { repo.reservations(any()) } returns NetworkResult.Success(SupportTrainReservationsResponse(reservations = emptyList()))
         coEvery { repo.organizers(any()) } returns NetworkResult.Success(SupportTrainOrganizersResponse())
         coEvery { repo.fund(any()) } returns NetworkResult.Success(SupportTrainFundDto())
+        coEvery { repo.invites(any()) } returns NetworkResult.Success(SupportTrainInvitesResponse())
     }
 
     @After
@@ -65,7 +69,7 @@ class ManageTrainViewModelTest {
 
     /** Offline VM seeded with the design fixture (no `load()` network). */
     private fun makeVm(): ManageTrainViewModel =
-        ManageTrainViewModel(repo, savedState(), claimScopeFactory(HomeClaimScopeTestFixture())).also {
+        ManageTrainViewModel(repo, savedState(), claimScopeFactory(HomeClaimScopeTestFixture()), homes).also {
             it.load(ManageTrainSampleData.active)
         }
 
@@ -209,7 +213,7 @@ class ManageTrainViewModelTest {
                         ),
                 )
             coEvery { repo.detail("t9") } returns NetworkResult.Success(dto)
-            val vm = ManageTrainViewModel(repo, savedState("t9"), claimScopeFactory(HomeClaimScopeTestFixture()))
+            val vm = ManageTrainViewModel(repo, savedState("t9"), claimScopeFactory(HomeClaimScopeTestFixture()), homes)
             vm.load()
             val loaded = vm.state.value.state as ManageTrainState.Loaded
             assertEquals("Meals for the Reyes family", loaded.content.title)
@@ -228,7 +232,7 @@ class ManageTrainViewModelTest {
     fun load_server_error_surfaces_error() =
         runTest {
             coEvery { repo.detail("t9") } returns NetworkResult.Failure(NetworkError.Server(500, null))
-            val vm = ManageTrainViewModel(repo, savedState("t9"), claimScopeFactory(HomeClaimScopeTestFixture()))
+            val vm = ManageTrainViewModel(repo, savedState("t9"), claimScopeFactory(HomeClaimScopeTestFixture()), homes)
             vm.load()
             assertTrue(vm.state.value.state is ManageTrainState.Error)
         }
@@ -237,7 +241,7 @@ class ManageTrainViewModelTest {
     fun sample_data_active_fixture_matches_design_copy() {
         val content = ManageTrainSampleData.active
         assertEquals("18", content.close.mealsDelivered)
-        assertEquals("12", content.close.neighborsHelped)
+        assertEquals("12", content.close.peopleHelped)
         assertEquals("12d", content.close.coverageDays)
         assertTrue(content.close.recipientQuote.contains("Theo"))
         assertEquals("All helpers", content.audienceChips.first().label)

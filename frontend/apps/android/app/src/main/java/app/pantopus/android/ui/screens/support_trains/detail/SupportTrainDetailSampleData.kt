@@ -123,7 +123,7 @@ object SupportTrainDetailSampleData {
                 HostedByFooter(
                     organizerInitials = "DK",
                     organizerDisplayName = "Diane K.",
-                    neighborHint = "neighbor at 422 Elm",
+                    neighborHint = "lives at 422 Elm",
                 ),
             dock = SupportTrainDock.SignUp(label = "Sign up for a slot"),
             celebrationBanner = null,
@@ -215,7 +215,7 @@ object SupportTrainDetailSampleData {
                 HostedByFooter(
                     organizerInitials = "DK",
                     organizerDisplayName = "Diane K.",
-                    neighborHint = "neighbor at 422 Elm",
+                    neighborHint = "lives at 422 Elm",
                 ),
             dock = SupportTrainDock.SendCardAndBackup,
             celebrationBanner =

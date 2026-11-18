@@ -261,7 +261,8 @@ fun ManageHelpersSection(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainHelpersSection"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        ManageSectionHeader(title = if (failed) "Helpers" else "Helpers (${rows.size})")
+        // Signups that still count: a cancelled one stays listed but isn't a helper (B12).
+        ManageSectionHeader(title = if (failed) "Helpers" else "Helpers (${rows.count { it.status != "canceled" }})")
         if (rows.isEmpty()) {
             ManageCard {
                 Text(
@@ -628,13 +629,13 @@ fun ManageFundSection(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Neighbors can chip in from the train's page.",
+                    text = "People can chip in from the train's page.",
                     color = PantopusColors.appTextSecondary,
                     fontSize = 12.5.sp,
                 )
             } else {
                 Text(
-                    text = "Let neighbors chip in money as well as meals.",
+                    text = "Let people chip in money as well as meals.",
                     color = PantopusColors.appTextSecondary,
                     fontSize = 12.5.sp,
                 )

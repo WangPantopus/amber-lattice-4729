@@ -36,33 +36,50 @@ object SupportTrainDetailProjection {
         dto: SupportTrainDetailDto,
         helperReservations: List<SupportTrainReservationDto>? = null,
     ): SupportTrainDetailContent {
-        val slots = dto.slots ?: emptyList()
+        // A removed date is never shown or counted (A10), whatever an older server sends.
+        val slots = (dto.slots ?: emptyList()).filterNot { it.isRemoved }
         val reservations = dto.myReservations ?: emptyList()
         val organizers = dto.organizers ?: emptyList()
+        // The train's own day, not the phone's or UTC's (B4).
+        val today = trainToday(dto)
+        val zone = trainZone(dto.timezone)
 
         val covered = slots.count { it.isCovered }
         val total = slots.size
         val title = dto.title ?: dto.recipientSummary ?: "Support train"
         val primaryName = organizers.firstOrNull()?.user?.let { it.name ?: MadeUpUsername.chosen(it.username) }
+        val role = viewerRole(dto)
+        val activeHelpers =
+            helperReservations?.filter { it.status in ACTIVE_SIGNUPS }
+        val helpers = activeHelpers?.let(::distinctHelpers)
 
         val typeDates =
             TypeDatesCardContent(
                 kind = kind(dto.supportModes),
                 title = title,
                 dateRange = dateRange(slots),
-                daysLeft = daysLeft(slots, dto.status),
+                daysLeft = daysLeft(slots, dto.status, today),
                 slotsFilled = covered,
                 slotsTotal = total,
-                contributors = emptyList(),
-                extraCount = 0,
+                contributors =
+                    helpers.orEmpty().take(4).mapIndexed { index, name ->
+                        ContributorBubble(
+                            id = "helper-$index",
+                            initials = initials(name),
+                            tone = CONTRIBUTOR_TONES[index % CONTRIBUTOR_TONES.size],
+                        )
+                    },
+                extraCount = ((helpers?.size ?: 0) - 4).coerceAtLeast(0),
                 status = dto.status,
+                helperCount = helpers?.size,
             )
         val isFull = typeDates.isFullyCovered
         val mineSlotIds = reservations.mapNotNull { it.slotId }.toSet()
+        val enabled = enabledModes(dto.supportModes)
         val openSlots =
             slots
                 .filter {
-                    !it.isCovered && (it.status ?: "open") == "open" && it.id !in mineSlotIds && !isOver(it.slotDate)
+                    !it.isCovered && (it.status ?: "open") == "open" && it.id !in mineSlotIds && !isOver(it, today)
                 }
                 .sortedBy { it.slotDate ?: "" }
 
@@ -70,36 +87,58 @@ object SupportTrainDetailProjection {
             trainId = dto.id,
             recipient = recipient(dto, primaryName),
             typeDates = typeDates,
-            calendarDays = calendar(slots, reservations),
-            sections = sections(slots, reservations, helperReservations),
+            calendarDays = calendar(slots, reservations, today),
+            sections = sections(slots, reservations, helperReservations, today, zone, role),
             hostedBy = hostedBy(primaryName, organizers.firstOrNull()?.user?.id),
-            dock = dock(dto.status, isFull),
+            dock = dock(dto.status, isFull, role),
             celebrationBanner =
                 if (isFull) {
                     CelebrationBanner(
                         title = "Every slot is covered",
                         // No backup sign-up exists yet (see the dock), so don't offer one,
                         // and don't repeat the title.
-                        body = "Thanks, neighbors. No more sign-ups are needed right now.",
+                        body = "Thank you, everyone. No more sign-ups are needed right now.",
                     )
                 } else {
                     null
                 },
-            reserveOptions = openSlots.map { reserveOption(it) },
+            // The person the train is for isn't asked to sign up for their own meals (B2).
+            reserveOptions = if (role == SupportTrainViewerRole.RECIPIENT) emptyList() else openSlots.map { reserveOption(it, enabled) },
             reserveContext =
                 ReserveSheetContext(
-                    enabledModes = enabledModes(dto.supportModes),
+                    enabledModes = enabled,
                     restrictionChips =
                         ((dto.dietaryRestrictions ?: emptyList()) + (dto.dietaryPreferences ?: emptyList()))
                             .map(::dietaryLabel),
                     contactlessPreferred = dto.contactlessPreferred == true,
+                    timezone = dto.timezone,
                 ),
-            viewerRole = viewerRole(dto),
+            viewerRole = role,
             exactAddress = dto.address?.singleLineLabel?.takeIf { it.isNotBlank() },
             deliveryInstructions = dto.deliveryInstructions,
+            specialInstructions = dto.specialInstructions?.trim()?.takeIf { it.isNotEmpty() },
             updates = updateCards(dto.updates.orEmpty(), organizers),
             chatRoomId = dto.chatThreadId?.takeIf { it.isNotBlank() },
         )
+    }
+
+    /** A signup that still counts: reserved, delivered or confirmed (not canceled). */
+    private val ACTIVE_SIGNUPS = setOf("reserved", "delivered", "confirmed")
+
+    private val CONTRIBUTOR_TONES =
+        listOf(ContributorTone.Warning, ContributorTone.Primary, ContributorTone.Business, ContributorTone.Success)
+
+    /** One name per person signed up (an account, or a guest by email), in signup order. */
+    private fun distinctHelpers(reservations: List<SupportTrainReservationDto>): List<String> {
+        val seen = linkedMapOf<String, String>()
+        reservations.forEach { row ->
+            val key =
+                (row.helperUser?.id ?: row.userId)?.let { "user:$it" }
+                    ?: row.guestEmail?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { "guest:$it" }
+                    ?: "row:${row.id}"
+            seen.putIfAbsent(key, row.displayName)
+        }
+        return seen.values.toList()
     }
 
     /**
@@ -146,9 +185,16 @@ object SupportTrainDetailProjection {
     private fun dock(
         status: String?,
         isFull: Boolean,
+        role: SupportTrainViewerRole,
     ): SupportTrainDock =
-        signupsClosedReason(status)?.let { SupportTrainDock.Closed(it) }
-            ?: if (isFull) SupportTrainDock.SendCardAndBackup else SupportTrainDock.SignUp("Sign up for a slot")
+        when {
+            // Organizers run the train from Manage (B2); the recipient isn't asked to sign up.
+            role.isOrganizer -> SupportTrainDock.Manage
+            role == SupportTrainViewerRole.RECIPIENT -> SupportTrainDock.None
+            else ->
+                signupsClosedReason(status)?.let { SupportTrainDock.Closed(it) }
+                    ?: if (isFull) SupportTrainDock.SendCardAndBackup else SupportTrainDock.SignUp("Sign up for a slot")
+        }
 
     /**
      * Reservations only open on a published or active train; the server
@@ -189,7 +235,10 @@ object SupportTrainDetailProjection {
         }
     }
 
-    private fun reserveOption(slot: SupportTrainSlotDto): ReserveSlotOption {
+    private fun reserveOption(
+        slot: SupportTrainSlotDto,
+        enabled: List<SupportTrainContributionMode>,
+    ): ReserveSlotOption {
         val date = parseDate(slot.slotDate)
         return ReserveSlotOption(
             id = slot.id,
@@ -198,7 +247,25 @@ object SupportTrainDetailProjection {
             windowLabel = windowLabel(slot),
             slotDate = slot.slotDate,
             windowStart = slot.startTime,
+            modes = modesFor(slot, enabled),
         )
+    }
+
+    /**
+     * The ways of helping a date takes, as the server checks them (B3): a groceries date takes groceries; a meal date
+     * takes a home-cooked meal or takeout. Only the ones the train asks for.
+     */
+    fun modesFor(
+        slot: SupportTrainSlotDto,
+        enabled: List<SupportTrainContributionMode>,
+    ): List<SupportTrainContributionMode> {
+        val fits =
+            if (slot.supportMode == "groceries") {
+                setOf(SupportTrainContributionMode.GROCERIES)
+            } else {
+                setOf(SupportTrainContributionMode.COOK, SupportTrainContributionMode.TAKEOUT)
+            }
+        return enabled.filter { it in fits }
     }
 
     private fun windowLabel(slot: SupportTrainSlotDto): String? {
@@ -222,8 +289,30 @@ object SupportTrainDetailProjection {
             proximity = null,
             quote = dto.story ?: dto.recipientSummary ?: "",
             quoteAttribution = primaryName,
+            details = recipientDetails(dto),
         )
     }
+
+    /** What helpers should know before they cook or shop (A14), in the order they'd read it. */
+    fun recipientDetails(dto: SupportTrainDetailDto): List<RecipientDetailLine> =
+        buildList {
+            dto.householdSize?.takeIf { it > 0 }?.let { add(RecipientDetailLine("Household", if (it == 1) "1 person" else "$it people")) }
+            dto.dietaryRestrictions.orEmpty().filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }?.let { items ->
+                add(RecipientDetailLine("Allergies", items.joinToString(", ") { dietaryLabel(it) }))
+            }
+            dto.dietaryPreferences.orEmpty().filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }?.let { items ->
+                add(RecipientDetailLine("Diet", items.joinToString(", ") { dietaryLabel(it) }))
+            }
+            val window = dto.preferredDropoffWindow
+            val start = window?.startTime?.takeIf { it.isNotBlank() }
+            val end = window?.endTime?.takeIf { it.isNotBlank() }
+            when {
+                start != null && end != null -> add(RecipientDetailLine("Drop-off", "${shortTime(start)} – ${shortTime(end)}"))
+                start != null -> add(RecipientDetailLine("Drop-off", "From ${shortTime(start)}"))
+                end != null -> add(RecipientDetailLine("Drop-off", "By ${shortTime(end)}"))
+            }
+            if (dto.contactlessPreferred == true) add(RecipientDetailLine("Contactless", "Leave it at the door"))
+        }
 
     private fun hostedBy(
         primaryName: String?,
@@ -261,6 +350,7 @@ object SupportTrainDetailProjection {
     private fun calendar(
         slots: List<SupportTrainSlotDto>,
         reservations: List<SupportTrainMyReservationDto>,
+        today: Date,
     ): List<SlotCalendarDay> {
         val coveredDates = slots.filter { it.isCovered }.mapNotNull { parseDate(it.slotDate)?.time }.toSet()
         val openDates = slots.filterNot { it.isCovered }.mapNotNull { parseDate(it.slotDate)?.time }.toSet()
@@ -269,11 +359,11 @@ object SupportTrainDetailProjection {
             reservations.mapNotNull { res -> res.slotId?.let { slotById[it] }?.let { parseDate(it.slotDate)?.time } }.toSet()
 
         val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        val earliest = slots.mapNotNull { parseDate(it.slotDate) }.minByOrNull { it.time } ?: startOfTodayUtc()
+        val earliest = slots.mapNotNull { parseDate(it.slotDate) }.minByOrNull { it.time } ?: today
         cal.time = earliest
         cal.add(Calendar.DAY_OF_MONTH, -(cal.get(Calendar.DAY_OF_WEEK) - 1))
         val start = cal.time
-        val todayMillis = startOfTodayUtc().time
+        val todayMillis = today.time
 
         return (0 until 28).map { idx ->
             cal.time = start
@@ -297,23 +387,26 @@ object SupportTrainDetailProjection {
         slots: List<SupportTrainSlotDto>,
         reservations: List<SupportTrainMyReservationDto>,
         helperReservations: List<SupportTrainReservationDto>?,
+        today: Date,
+        zone: TimeZone,
+        role: SupportTrainViewerRole,
     ): List<SlotSection> {
         val out = mutableListOf<SlotSection>()
         val slotById = slots.associateBy { it.id }
 
-        val mineRows = reservations.map { reservationRow(it, it.slotId?.let { id -> slotById[id] }) }
+        val mineRows = reservations.map { reservationRow(it, it.slotId?.let { id -> slotById[id] }, today, zone) }
         if (mineRows.isNotEmpty()) {
             out += SlotSection(id = "mine", overline = "Your commitment", rows = mineRows)
         }
 
-        val open = slots.filter { !it.isCovered && !isOver(it.slotDate) }.sortedBy { it.slotDate ?: "" }
+        val open = slots.filter { !it.isCovered && !isOver(it, today) }.sortedBy { it.slotDate ?: "" }
         if (open.isNotEmpty()) {
             val shown = open.take(4).map { slotRow(it, covered = false) }
             val action = if (open.size > shown.size) "See all ${open.size}" else null
             out +=
                 SlotSection(
                     id = "open",
-                    overline = "Open slots near you",
+                    overline = if (role == SupportTrainViewerRole.RECIPIENT) "Dates still open" else "Open slots",
                     actionLabel = action,
                     rows = shown,
                     moreRows = open.drop(shown.size).map { slotRow(it, covered = false) },
@@ -321,7 +414,7 @@ object SupportTrainDetailProjection {
         }
 
         // The viewer's own signups are listed under "Your commitment". A slot only
-        // they fill isn't repeated here, where it would read as a neighbor's.
+        // they fill isn't repeated here, where it would read as someone else's.
         val mineCountBySlot = reservations.mapNotNull { it.slotId }.groupingBy { it }.eachCount()
         val covered =
             slots
@@ -337,7 +430,7 @@ object SupportTrainDetailProjection {
                     .groupBy { it.slotId }
             val rows =
                 covered.flatMap { slot ->
-                    helpersBySlot[slot.id]?.map { helperRow(it, slot) }
+                    helpersBySlot[slot.id]?.map { helperRow(it, slot, today, zone) }
                         ?: listOf(slotRow(slot, covered = true))
                 }
             val shown = rows.take(4)
@@ -345,7 +438,8 @@ object SupportTrainDetailProjection {
             out +=
                 SlotSection(
                     id = "covered",
-                    overline = "Already on the train",
+                    // The person the train is for sees who is coming (B2).
+                    overline = if (role == SupportTrainViewerRole.RECIPIENT) "Who's coming" else "Already on the train",
                     actionLabel = action,
                     rows = shown,
                     moreRows = rows.drop(shown.size),
@@ -377,6 +471,8 @@ object SupportTrainDetailProjection {
     private fun reservationRow(
         reservation: SupportTrainMyReservationDto,
         slot: SupportTrainSlotDto?,
+        today: Date,
+        zone: TimeZone,
     ): SlotRowContent {
         val date = slot?.let { parseDate(it.slotDate) }
         // "Home-cooked meal", not the wire value "Cook", when the helper named no dish.
@@ -395,12 +491,12 @@ object SupportTrainDetailProjection {
             state = SlotRowState.Covered,
             author = SlotRowAuthor(initials = "YO", displayName = "You", tone = ContributorTone.Primary),
             title = title,
-            subtitle = arrivalLabel(reservation.estimatedArrivalAt) ?: reservation.noteToRecipient,
+            subtitle = arrivalLabel(reservation.estimatedArrivalAt, zone) ?: reservation.noteToRecipient,
             mine = true,
             slotId = reservation.slotId,
             reservationId = reservation.id,
             reservationStatus = reservation.status,
-            isBeforeSlotDay = date?.let { it.time > startOfTodayUtc().time } ?: false,
+            isBeforeSlotDay = date?.let { it.time > today.time } ?: false,
             slotDayLabel = date?.let { format(it, "EEE, MMM d") },
         )
     }
@@ -408,6 +504,8 @@ object SupportTrainDetailProjection {
     private fun helperRow(
         reservation: SupportTrainReservationDto,
         slot: SupportTrainSlotDto,
+        today: Date,
+        zone: TimeZone,
     ): SlotRowContent {
         val contribution =
             SupportTrainMyReservationDto(
@@ -426,11 +524,11 @@ object SupportTrainDetailProjection {
                 "confirmed" -> "Delivery confirmed"
                 else -> null
             }
-        return reservationRow(contribution, slot).copy(
+        return reservationRow(contribution, slot, today, zone).copy(
             mine = false,
             author = SlotRowAuthor(initials(reservation.displayName), reservation.displayName, ContributorTone.Personal),
             subtitle =
-                listOfNotNull(status, arrivalLabel(reservation.estimatedArrivalAt), reservation.noteToRecipient)
+                listOfNotNull(status, arrivalLabel(reservation.estimatedArrivalAt, zone), reservation.noteToRecipient)
                     .joinToString(" · ").takeIf { it.isNotBlank() },
         )
     }
@@ -447,27 +545,37 @@ object SupportTrainDetailProjection {
         return "${format(min, "EEE MMM d")} → ${format(max, "EEE MMM d")}"
     }
 
-    // Days until the last slot. A closed Train has none left, whatever its last date.
+    // Days until the last slot, from the train's own today. A closed Train has none left, whatever its last date.
     private fun daysLeft(
         slots: List<SupportTrainSlotDto>,
         status: String?,
+        today: Date,
     ): Int {
         if (status == "completed" || status == "archived") return 0
         val max = slots.mapNotNull { parseDate(it.slotDate) }.maxByOrNull { it.time } ?: return 0
-        val diff = ((max.time - startOfTodayUtc().time) / MILLIS_PER_DAY).toInt()
+        val diff = ((max.time - today.time) / MILLIS_PER_DAY).toInt()
         return maxOf(0, diff)
     }
 
-    private fun arrivalLabel(iso: String?): String? {
-        if (iso == null) return null
-        val date =
-            listOf("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", "yyyy-MM-dd'T'HH:mm:ssXXX").firstNotNullOfOrNull { pattern ->
-                runCatching { utcFormatter(pattern).parse(iso) }.getOrNull()
-            } ?: return null
-        // An arrival is an instant (the sign-up sheets send one), so it reads in the helper's own
-        // time zone, as the Edit signup form shows it; in UTC a 5:30 pm drop-off read 12:30 AM.
-        return SimpleDateFormat("h:mm a", Locale.US).format(date)
+    /**
+     * An arrival is an instant; it reads as the clock time where the train is (B4), which is where the helper drives
+     * to. In UTC a 5:30 pm drop-off read 12:30 AM; in a traveling helper's zone it read their own clock.
+     */
+    fun arrivalLabel(
+        iso: String?,
+        zone: TimeZone,
+    ): String? {
+        if (iso.isNullOrBlank()) return null
+        val instant = runCatching { OffsetDateTime.parse(iso).toInstant() }.getOrNull() ?: return null
+        return SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = zone }.format(Date.from(instant))
     }
+
+    /** The train's zone, or the phone's when an older server sends none. */
+    fun trainZone(id: String?): TimeZone =
+        id?.takeIf { it.isNotBlank() }?.let { name -> TimeZone.getTimeZone(name).takeIf { it.id == name } } ?: TimeZone.getDefault()
+
+    /** The train's today (`today` from the server) as that date at UTC midnight, how slot dates are read. */
+    fun trainToday(dto: SupportTrainDetailDto): Date = parseDate(dto.today) ?: startOfTodayUtc()
 
     private fun shortTime(hhmm: String): String {
         val parsed =
@@ -500,8 +608,11 @@ object SupportTrainDetailProjection {
         return cal.time
     }
 
-    // A slot whose date is before today can't take a signup. One without a readable date is never over.
-    private fun isOver(slotDate: String?): Boolean = parseDate(slotDate)?.let { it.time < startOfTodayUtc().time } ?: false
+    // A slot whose date is before the train's today can't take a signup. One without a readable date is never over.
+    private fun isOver(
+        slot: SupportTrainSlotDto,
+        today: Date,
+    ): Boolean = slot.isPast ?: parseDate(slot.slotDate)?.let { it.time < today.time } ?: false
 
     private fun initials(name: String): String {
         val words = name.trim().split(" ").filter { it.isNotEmpty() }.take(2)

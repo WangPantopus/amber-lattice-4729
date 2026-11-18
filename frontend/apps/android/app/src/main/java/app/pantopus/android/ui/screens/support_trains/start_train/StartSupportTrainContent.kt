@@ -13,8 +13,8 @@ import java.util.TimeZone
 /**
  * P2.6 — Render-only models for the Start-a-Support-Train wizard.
  *
- *  Step 1: Who & why   — beneficiary + reason
- *  Step 2: What & when — kind + date range + slot duration
+ *  Step 1: Who & why   — recipient, story, where help goes, audience
+ *  Step 2: What & when — date range, days, drop-off time, the household's needs
  *  Step 3: Review      — generated slot grid + launch
  *  + terminal Success step
  */
@@ -41,29 +41,8 @@ enum class StartSupportTrainStep {
 }
 
 /**
- * Step-1 reason picker values from A12.11. Renders in declaration order as
- * a 3×2 grid — everyday-help reasons on the first row (meal train · ride ·
- * errand), life moments on the second (surgery · baby · loss).
- *
- * [wire] mirrors the iOS `StartSupportTrainReason` raw value so the
- * `startSupportTrainReason_<wire>` test tags match across platforms.
- */
-enum class StartSupportTrainReason(
-    val wire: String,
-    val title: String,
-    val icon: PantopusIcon,
-) {
-    MealTrain("meal_train", "Meal train", PantopusIcon.Utensils),
-    Ride("ride", "Ride", PantopusIcon.Car),
-    Errand("errand", "Errand", PantopusIcon.ShoppingBag),
-    Surgery("surgery", "Surgery", PantopusIcon.Stethoscope),
-    Baby("baby", "Baby", PantopusIcon.Baby),
-    Loss("loss", "Loss", PantopusIcon.Flower),
-}
-
-/**
  * A mutual connection shared between the organizer and the recipient,
- * surfaced as a micro-avatar strip on the verified-neighbor card so the
+ * surfaced as a micro-avatar strip on the recipient card so the
  * organizer can confirm they picked the right person.
  */
 @Immutable
@@ -84,9 +63,9 @@ data class StartSupportTrainMutual(
 }
 
 /**
- * The recipient the organizer typed but who isn't a verified Pantopus
- * neighbor yet — the Frame-2 invite branch. Carries the typed name plus
- * the (stubbed) contact handles the invite can be sent to.
+ * The recipient the organizer typed but who isn't on Pantopus yet — the
+ * Frame-2 invite branch. Carries the typed name plus the (stubbed)
+ * contact handles the invite can be sent to.
  */
 @Immutable
 data class StartSupportTrainInviteCandidate(
@@ -112,24 +91,19 @@ enum class StartSupportTrainInviteMethod(
     Email("Invite by email", "d.chen@example.com", PantopusIcon.Mail),
 }
 
-/** Six designed train kinds + a generic escape hatch. Mirrors iOS. */
-enum class SupportTrainKind(
-    val wire: String,
-    val title: String,
-    val icon: PantopusIcon,
-    /** Default start-of-window hour (24h) used by the slot generator. */
-    val defaultStartHour: Int,
-    /** Default `slot_label` matching backend enum. */
-    val defaultSlotLabel: String,
-    /** Backend `support_mode` enum value. */
-    val supportMode: String,
-) {
-    Meals("meal_support", "Meals", PantopusIcon.Utensils, 17, "Dinner", "meal"),
-    Rides("ride_support", "Rides", PantopusIcon.Navigation, 9, "Custom", "meal"),
-    Childcare("childcare", "Childcare", PantopusIcon.Baby, 9, "Custom", "meal"),
-    Errands("errand_support", "Errands", PantopusIcon.ShoppingBag, 10, "Groceries", "groceries"),
-    DogWalks("pet_care", "Dog walks", PantopusIcon.PawPrint, 8, "Custom", "meal"),
-    Other("visit_support", "Other", PantopusIcon.HandCoins, 10, "Custom", "meal"),
+/**
+ * Every train is a meal train (founder, 11-17): helpers bring a home-cooked meal, takeout or groceries. The other
+ * kinds the wizard once offered (rides, childcare, errands, dog walks) were never sent, so they're gone until built.
+ */
+object SupportTrainMeals {
+    const val TITLE: String = "Meals"
+
+    /** Backend `slot_label` and `support_mode` for a dinner date. */
+    const val SLOT_LABEL: String = "Dinner"
+    const val SUPPORT_MODE: String = "meal"
+
+    /** 5:00 PM, minutes after midnight. */
+    const val DEFAULT_START_MINUTES: Int = 17 * 60
 }
 
 /** Slot duration choices the organizer can pick from. Stored in minutes. */
@@ -149,41 +123,70 @@ enum class StartSupportTrainVisibility(
     /** Who the success screen says can find the new train. */
     val audience: String,
 ) {
-    Neighbors(
+    Nearby(
         "private_link",
-        "Nearby neighbors",
-        "Anyone within 25 mi can find and sign up.",
+        "People near you",
+        "Listed for people within 25 mi, and open to anyone with the link.",
         PantopusIcon.Users,
-        "nearby neighbors",
+        "people near you",
     ),
     Connections(
         "invited_only",
         "My connections",
-        "Your connections and people you invite can find this.",
+        "Your connections and people you invite can see it and sign up.",
         PantopusIcon.UserPlus,
         "your connections",
     ),
     LinkOnly(
         "direct_share_only",
-        "Link only",
-        "Hidden — share the link with people you trust.",
+        "Anyone with the link",
+        "Not listed anywhere. Anyone you share the link with can see it and sign up.",
         PantopusIcon.Link,
-        "people you share the link with",
+        "anyone you share the link with",
     ),
     ;
 
     companion object {
-        /** Step 1's audience switches as one choice; neither selected means Link only. */
+        /** Step 1's audience switches as one choice; neither selected means anyone with the link. */
         fun from(
             inviteOnly: Boolean,
             blockVisible: Boolean,
         ): StartSupportTrainVisibility =
             when {
                 inviteOnly -> Connections
-                blockVisible -> Neighbors
+                blockVisible -> Nearby
                 else -> LinkOnly
             }
+
+        fun fromWire(wire: String?): StartSupportTrainVisibility? = entries.firstOrNull { it.sharingModeWire == wire }
     }
+}
+
+/** One of the organizer's homes that a train can be delivered to (a home they belong to). */
+@Immutable
+data class StartSupportTrainHomeOption(
+    val id: String,
+    val title: String,
+    val subtitle: String?,
+)
+
+/**
+ * Where help goes: one of the organizer's homes ([homeId]), or a picked address with its point. [label] is the line
+ * the wizard and the review show.
+ */
+@Immutable
+data class StartSupportTrainDelivery(
+    val label: String,
+    val homeId: String? = null,
+    val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val zip: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val placeId: String? = null,
+) {
+    val isHome: Boolean get() = homeId != null
 }
 
 /** One generated slot in the preview grid. */
@@ -202,20 +205,39 @@ data class StartSupportTrainSlot(
 data class StartSupportTrainFormState(
     val step: StartSupportTrainStep = StartSupportTrainStep.WhoAndWhy,
     val beneficiaryQuery: String = "",
-    val selectedReason: StartSupportTrainReason = StartSupportTrainReason.MealTrain,
     val reason: String = "",
-    val inviteOnly: Boolean = true,
+    // Anyone with the link by default (founder, 11-17): neither switch on.
+    val inviteOnly: Boolean = false,
     val blockVisible: Boolean = false,
     val inviteMethod: StartSupportTrainInviteMethod = StartSupportTrainInviteMethod.Phone,
-    val kind: SupportTrainKind = SupportTrainKind.Meals,
     val startDateMillis: Long = defaultStartMillis(),
     val endDateMillis: Long = defaultEndMillis(),
+    /** Days of the week the train runs, 0 = Sunday … 6 = Saturday. */
+    val weekdays: Set<Int> = ALL_WEEKDAYS,
+    /** When each drop-off window opens, minutes after midnight. */
+    val startMinutes: Int = SupportTrainMeals.DEFAULT_START_MINUTES,
     val slotDuration: StartSupportTrainSlotDuration = StartSupportTrainSlotDuration.Sixty,
-    // Matches "Invite only", which is on by default.
-    val visibility: StartSupportTrainVisibility = StartSupportTrainVisibility.Connections,
+    val visibility: StartSupportTrainVisibility = StartSupportTrainVisibility.LinkOnly,
+    /** Where help goes; null until the organizer picks a home or an address. */
+    val delivery: StartSupportTrainDelivery? = null,
+    /** "Another address" is chosen and its field shows. */
+    val typingAddress: Boolean = false,
+    val addressQuery: String = "",
+    // What helpers are told about the household.
+    val householdSize: String = "",
+    val allergies: String = "",
+    val diet: String = "",
+    val contactless: Boolean = false,
+    val instructions: String = "",
 ) {
     companion object {
         const val REASON_CHAR_LIMIT: Int = 500
+        const val INSTRUCTIONS_CHAR_LIMIT: Int = 500
+
+        /** The server takes a schedule of up to 90 days from its first date (`generateSlotsSchema`). */
+        const val MAX_RANGE_DAYS: Int = 90
+
+        val ALL_WEEKDAYS: Set<Int> = (0..6).toSet()
 
         /** Default end-of-window offset (inclusive) — a 7-day span. */
         private const val DEFAULT_RANGE_DAYS_INCLUSIVE: Int = 6
@@ -242,22 +264,23 @@ sealed interface StartSupportTrainEvent {
 
 /** Slot-grid generator. Public so the unit test can drive it directly. */
 object StartSupportTrainSlotGenerator {
-    private const val MAX_HOUR: Int = 23
     private const val MINUTES_PER_HOUR: Int = 60
-    private const val MAX_MINUTE_OF_HOUR: Int = 59
     private const val NOON_HOUR: Int = 12
+    private const val LAST_MINUTE_OF_DAY: Int = 23 * MINUTES_PER_HOUR + 59
 
-    /** Backend caps a train at 90 slots; mirror that here. */
-    private const val SLOT_CAPACITY: Int = 90
-    private const val MAX_MINUTES_OF_DAY: Int = MAX_HOUR * MINUTES_PER_HOUR + MAX_MINUTE_OF_HOUR
+    /**
+     * The server's 90-day range holds at most 91 dates. The wizard refuses a longer range before this point, so the
+     * cap only guards the preview.
+     */
+    private const val SLOT_CAPACITY: Int = StartSupportTrainFormState.MAX_RANGE_DAYS + 1
 
-    /** Build per-day slots covering `[startMillis, endMillis]` inclusive.
-     *  Returns at most [SLOT_CAPACITY] slots to match the backend cap. */
+    /** Build one slot per chosen weekday covering `[startMillis, endMillis]` inclusive. */
     fun generate(
         startMillis: Long,
         endMillis: Long,
         durationMinutes: Int,
-        startHour: Int,
+        startMinutes: Int,
+        weekdays: Set<Int> = StartSupportTrainFormState.ALL_WEEKDAYS,
     ): List<StartSupportTrainSlot> {
         val start =
             Calendar.getInstance().apply {
@@ -272,49 +295,54 @@ object StartSupportTrainSlotGenerator {
         if (end.before(start)) return emptyList()
         val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getDefault() }
         val dayFmt = SimpleDateFormat("EEE MMM d", Locale.US).apply { timeZone = TimeZone.getDefault() }
+        val (startStr, endStr, timeLabel) = timeRange(startMinutes, durationMinutes)
 
         val slots = mutableListOf<StartSupportTrainSlot>()
         val cursor = start.clone() as Calendar
-        var generated = 0
-        while (!cursor.after(end) && generated < SLOT_CAPACITY) {
-            val dateKey = dateFmt.format(cursor.time)
-            val dayLabel = dayFmt.format(cursor.time)
-            val (startStr, endStr, timeLabel) = timeRange(startHour, durationMinutes)
-            slots.add(
-                StartSupportTrainSlot(
-                    id = "${dateKey}_$startStr",
-                    dateKey = dateKey,
-                    dayLabel = dayLabel,
-                    timeLabel = timeLabel,
-                    startTime = startStr,
-                    endTime = endStr,
-                ),
-            )
+        var days = 0
+        while (!cursor.after(end) && days < SLOT_CAPACITY) {
+            // Calendar's Sunday is 1; the server counts Sunday as 0.
+            if ((cursor.get(Calendar.DAY_OF_WEEK) - 1) in weekdays) {
+                val dateKey = dateFmt.format(cursor.time)
+                slots.add(
+                    StartSupportTrainSlot(
+                        id = "${dateKey}_$startStr",
+                        dateKey = dateKey,
+                        dayLabel = dayFmt.format(cursor.time),
+                        timeLabel = timeLabel,
+                        startTime = startStr,
+                        endTime = endStr,
+                    ),
+                )
+            }
             cursor.add(Calendar.DAY_OF_YEAR, 1)
-            generated += 1
+            days += 1
         }
         return slots
     }
 
+    /** The window's end, minutes after midnight; it stops at 11:59 PM. */
+    fun endMinutes(
+        startMinutes: Int,
+        durationMinutes: Int,
+    ): Int = (startMinutes.coerceIn(0, LAST_MINUTE_OF_DAY) + durationMinutes.coerceAtLeast(0)).coerceAtMost(LAST_MINUTE_OF_DAY)
+
     private fun timeRange(
-        startHour: Int,
+        startMinutes: Int,
         durationMinutes: Int,
     ): Triple<String, String, String> {
-        val startMinutes = (startHour.coerceIn(0, MAX_HOUR) * MINUTES_PER_HOUR).coerceAtMost(MAX_MINUTES_OF_DAY)
-        val endMinutes = (startMinutes + durationMinutes.coerceAtLeast(0)).coerceAtMost(MAX_MINUTES_OF_DAY)
-        val startStr = wireString(startMinutes)
-        val endStr = wireString(endMinutes)
-        val label = "${displayString(startMinutes)}–${displayString(endMinutes)}"
-        return Triple(startStr, endStr, label)
+        val from = startMinutes.coerceIn(0, LAST_MINUTE_OF_DAY)
+        val to = endMinutes(from, durationMinutes)
+        return Triple(wireString(from), wireString(to), "${displayString(from)}–${displayString(to)}")
     }
 
-    private fun wireString(totalMinutes: Int): String {
+    fun wireString(totalMinutes: Int): String {
         val h = totalMinutes / MINUTES_PER_HOUR
         val m = totalMinutes % MINUTES_PER_HOUR
         return String.format(Locale.US, "%02d:%02d", h, m)
     }
 
-    private fun displayString(totalMinutes: Int): String {
+    fun displayString(totalMinutes: Int): String {
         val h24 = totalMinutes / MINUTES_PER_HOUR
         val m = totalMinutes % MINUTES_PER_HOUR
         val suffix = if (h24 < NOON_HOUR) "am" else "pm"
@@ -337,3 +365,7 @@ internal fun formatDay(millis: Long): String {
     fmt.timeZone = TimeZone.getDefault()
     return fmt.format(Date(millis))
 }
+
+/** "peanuts, shellfish" → ["peanuts", "shellfish"]: one item per comma or line. */
+internal fun splitList(text: String): List<String> =
+    text.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(50)

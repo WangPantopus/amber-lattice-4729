@@ -14,12 +14,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -44,25 +47,34 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.core.identity.MadeUpUsername
+import app.pantopus.android.data.api.models.geo.NormalizedAddress
 import app.pantopus.android.data.api.models.mail_compose.MailRecipientDto
+import app.pantopus.android.ui.components.AddressSuggestions
+import app.pantopus.android.ui.components.TimeOnlyPickerDialog
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.screens.shared.wizard.WizardIdentity
 import app.pantopus.android.ui.screens.shared.wizard.WizardShell
+import app.pantopus.android.ui.screens.support_trains.start_train.components.DeliveryAddressPicker
 import app.pantopus.android.ui.screens.support_trains.start_train.components.InviteRecipientCard
-import app.pantopus.android.ui.screens.support_trains.start_train.components.ReasonPicker
 import app.pantopus.android.ui.screens.support_trains.start_train.components.StartTrainRecipientCard
 import app.pantopus.android.ui.screens.support_trains.start_train.components.StepRail
+import app.pantopus.android.ui.screens.support_trains.start_train.components.SupportTrainRadioCircle
 import app.pantopus.android.ui.screens.support_trains.start_train.components.TrainChip
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -70,6 +82,7 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
+import java.time.LocalTime
 
 private const val SCREEN_TAG: String = "startSupportTrainWizard"
 
@@ -92,6 +105,9 @@ fun StartSupportTrainWizardScreen(
     val isEditingQuery by viewModel.isEditingBeneficiaryQuery.collectAsStateWithLifecycle()
     val launchError by viewModel.launchError.collectAsStateWithLifecycle()
     val pendingEvent by viewModel.pendingEvent.collectAsStateWithLifecycle()
+    val homeOptions by viewModel.homeOptions.collectAsStateWithLifecycle()
+    val recipientNotLinked by viewModel.recipientNotLinked.collectAsStateWithLifecycle()
+    val addressSuggestions = rememberAddressSuggestions()
 
     LaunchedEffect(pendingEvent) {
         val event = pendingEvent ?: return@LaunchedEffect
@@ -107,6 +123,8 @@ fun StartSupportTrainWizardScreen(
         modifier = Modifier.testTag(SCREEN_TAG),
         identity = WizardIdentity.Warm,
         handleSystemBack = true,
+        // Each step opens at its top.
+        scrollResetKey = form.step,
     ) {
         when (form.step) {
             StartSupportTrainStep.WhoAndWhy ->
@@ -122,7 +140,6 @@ fun StartSupportTrainWizardScreen(
                     onSelectBeneficiary = viewModel::selectBeneficiary,
                     onClearBeneficiary = viewModel::clearBeneficiary,
                     onSearchAgain = viewModel::searchAgain,
-                    onSelectReason = viewModel::selectReason,
                     onReason = viewModel::updateReason,
                     onToggleInviteOnly = viewModel::toggleInviteOnly,
                     onToggleBlockVisible = viewModel::toggleBlockVisible,
@@ -131,14 +148,31 @@ fun StartSupportTrainWizardScreen(
                     searchFailed = searchFailed,
                     onRetrySearch = viewModel::retryBeneficiarySearch,
                     onQueryFocusChanged = viewModel::setEditingBeneficiaryQuery,
+                    homeOptions = homeOptions,
+                    addressSuggestions = addressSuggestions,
+                    onSelectHome = viewModel::selectHome,
+                    onChooseAnotherAddress = viewModel::chooseAnotherAddress,
+                    onAddressQuery = { text ->
+                        viewModel.updateAddressQuery(text)
+                        addressSuggestions?.onTextChanged(text)
+                    },
+                    onPickAddress = viewModel::pickAddress,
                 )
             StartSupportTrainStep.WhatAndWhen ->
                 WhatAndWhenStep(
                     form = form,
-                    onSelectKind = viewModel::selectKind,
+                    scheduleProblem = viewModel.scheduleProblem(),
+                    householdSizeProblem = viewModel.householdSizeProblem(),
                     onStartDate = viewModel::setStartDate,
                     onEndDate = viewModel::setEndDate,
+                    onToggleWeekday = viewModel::toggleWeekday,
+                    onStartMinutes = viewModel::setStartMinutes,
                     onSelectDuration = viewModel::selectSlotDuration,
+                    onHouseholdSize = viewModel::updateHouseholdSize,
+                    onAllergies = viewModel::updateAllergies,
+                    onDiet = viewModel::updateDiet,
+                    onContactless = viewModel::setContactless,
+                    onInstructions = viewModel::updateInstructions,
                 )
             StartSupportTrainStep.ReviewAndLaunch ->
                 ReviewStep(
@@ -152,6 +186,7 @@ fun StartSupportTrainWizardScreen(
                 SuccessStep(
                     slotCount = viewModel.generatedSlots().size,
                     visibility = form.visibility,
+                    recipientNotLinked = recipientNotLinked,
                 )
         }
     }
@@ -171,7 +206,6 @@ internal fun WhoAndWhyStep(
     onSelectBeneficiary: (MailRecipientDto) -> Unit,
     onClearBeneficiary: () -> Unit,
     onSearchAgain: () -> Unit,
-    onSelectReason: (StartSupportTrainReason) -> Unit,
     onReason: (String) -> Unit,
     onToggleInviteOnly: (Boolean) -> Unit,
     onToggleBlockVisible: (Boolean) -> Unit,
@@ -180,6 +214,12 @@ internal fun WhoAndWhyStep(
     searchFailed: Boolean = false,
     onRetrySearch: () -> Unit = {},
     onQueryFocusChanged: (Boolean) -> Unit = {},
+    homeOptions: List<StartSupportTrainHomeOption> = emptyList(),
+    addressSuggestions: AddressSuggestions? = null,
+    onSelectHome: (StartSupportTrainHomeOption) -> Unit = {},
+    onChooseAnotherAddress: () -> Unit = {},
+    onAddressQuery: (String) -> Unit = {},
+    onPickAddress: (NormalizedAddress) -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
         TrainChip()
@@ -191,8 +231,8 @@ internal fun WhoAndWhyStep(
         )
         Text(
             text =
-                "A support train coordinates meals, rides, and help around someone going through something. " +
-                    "Pick the person and the moment.",
+                "A support train lines up meals for someone going through something: home-cooked, takeout or " +
+                    "groceries. Pick the person, say what's going on, and where help goes.",
             style = PantopusTextStyle.body,
             color = PantopusColors.appTextSecondary,
         )
@@ -226,7 +266,9 @@ internal fun WhoAndWhyStep(
                     SearchFailedRow(onRetry = onRetrySearch)
                 } else {
                     Text(
-                        text = "Search neighbors, or enter a name for someone who isn't on Pantopus. No invitation is sent from this step.",
+                        text =
+                            "Search people on Pantopus, or enter a name for someone who isn't on it. " +
+                                "No invitation is sent from this step.",
                         style = PantopusTextStyle.caption,
                         color = PantopusColors.appTextMuted,
                     )
@@ -234,24 +276,65 @@ internal fun WhoAndWhyStep(
             }
         }
 
-        ReasonPicker(selected = form.selectedReason, onSelect = onSelectReason)
-
-        if (inviteCandidate != null) {
-            InvitePrivacyHint()
-        } else {
-            ContextNoteField(
-                note = form.reason,
-                remaining = reasonRemaining,
-                onReason = onReason,
-            )
-            PrivacyToggleList(
-                inviteOnly = form.inviteOnly,
-                blockVisible = form.blockVisible,
-                onToggleInviteOnly = onToggleInviteOnly,
-                onToggleBlockVisible = onToggleBlockVisible,
-            )
-        }
+        // The story shows whoever the recipient is (B8): a person who isn't on Pantopus needs it most.
+        ContextNoteField(
+            note = form.reason,
+            remaining = reasonRemaining,
+            onReason = onReason,
+        )
+        DeliverToSection(
+            form = form,
+            homeOptions = homeOptions,
+            suggestions = addressSuggestions,
+            onSelectHome = onSelectHome,
+            onChooseAnotherAddress = onChooseAnotherAddress,
+            onAddressQuery = onAddressQuery,
+            onPickAddress = onPickAddress,
+        )
+        PrivacyToggleList(
+            inviteOnly = form.inviteOnly,
+            blockVisible = form.blockVisible,
+            onToggleInviteOnly = onToggleInviteOnly,
+            onToggleBlockVisible = onToggleBlockVisible,
+        )
         StepRail(current = 1)
+    }
+}
+
+/**
+ * Where help goes (A1): one of the organizer's homes, or another address picked from the suggestions, so the train
+ * has a point and helpers can be given the address. Rows look like the review's audience rows.
+ */
+@Composable
+private fun DeliverToSection(
+    form: StartSupportTrainFormState,
+    homeOptions: List<StartSupportTrainHomeOption>,
+    suggestions: AddressSuggestions?,
+    onSelectHome: (StartSupportTrainHomeOption) -> Unit,
+    onChooseAnotherAddress: () -> Unit,
+    onAddressQuery: (String) -> Unit,
+    onPickAddress: (NormalizedAddress) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2), modifier = Modifier.testTag("startSupportTrainDeliverTo")) {
+        Overline("DELIVER TO")
+        DeliveryAddressPicker(
+            homeOptions = homeOptions,
+            delivery = form.delivery,
+            typingAddress = form.typingAddress,
+            addressQuery = form.addressQuery,
+            suggestions = suggestions,
+            onSelectHome = onSelectHome,
+            onChooseAnotherAddress = onChooseAnotherAddress,
+            onAddressQuery = onAddressQuery,
+            onPickAddress = onPickAddress,
+        )
+        Text(
+            text =
+                "The exact address shows only to the train's organizers and the person it's for, until you share " +
+                    "it with a helper who signed up.",
+            style = PantopusTextStyle.caption,
+            color = PantopusColors.appTextMuted,
+        )
     }
 }
 
@@ -332,7 +415,7 @@ private fun ContextNoteField(
             onValueChange = onReason,
             placeholder = {
                 Text(
-                    text = "Add a few details so neighbors know what kind of help fits.",
+                    text = "Add a few details so helpers know what kind of help fits.",
                     color = PantopusColors.appTextMuted,
                     style = PantopusTextStyle.small,
                 )
@@ -342,7 +425,8 @@ private fun ContextNoteField(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(116.dp)
+                    // At least the old height, so large text grows the box instead of clipping it (B15).
+                    .heightIn(min = 116.dp)
                     .testTag("startSupportTrainReasonField"),
         )
         Row(
@@ -391,7 +475,7 @@ private fun PrivacyToggleList(
         PrivacyToggleRow(
             icon = PantopusIcon.UsersRound,
             title = "My connections",
-            subtitle = "Your connections and people you invite can see and sign up",
+            subtitle = "Only your connections and people you invite can see and sign up",
             checked = inviteOnly,
             onToggle = onToggleInviteOnly,
             testTag = "startSupportTrainInviteOnly",
@@ -399,13 +483,25 @@ private fun PrivacyToggleList(
         HorizontalDivider(thickness = 1.dp, color = PantopusColors.appBorderSubtle)
         PrivacyToggleRow(
             icon = PantopusIcon.Home,
-            title = "Nearby neighbors",
-            // The Tasks list shows block-visible trains to people nearby
+            title = "People near you",
+            // The Support Trains list shows these trains to people nearby
             // (about 25 mi); it doesn't check verification or a block.
-            subtitle = "People nearby on Pantopus can see and offer",
+            subtitle = "Listed for people within 25 mi, who can see and sign up",
             checked = blockVisible,
             onToggle = onToggleBlockVisible,
             testTag = "startSupportTrainBlockVisible",
+        )
+        HorizontalDivider(thickness = 1.dp, color = PantopusColors.appBorderSubtle)
+        Text(
+            text =
+                when {
+                    inviteOnly -> "Someone else who opens the link can't see it. Invite people from Manage once it's launched."
+                    blockVisible -> "Anyone you share the link with can see it too."
+                    else -> "Both off: anyone with the link. It isn't listed anywhere; share the link with the people you choose."
+                },
+            style = PantopusTextStyle.caption,
+            color = PantopusColors.appTextSecondary,
+            modifier = Modifier.padding(horizontal = Spacing.s3, vertical = Spacing.s2).testTag("startSupportTrainAudienceNote"),
         )
     }
 }
@@ -460,34 +556,6 @@ private fun PrivacyToggleRow(
                     checkedTrackColor = PantopusColors.warmAmber,
                 ),
             modifier = Modifier.testTag(testTag),
-        )
-    }
-}
-
-@Composable
-private fun InvitePrivacyHint() {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(Radii.lg))
-                .background(PantopusColors.appSurfaceSunken)
-                .padding(Spacing.s3)
-                .testTag("startSupportTrainInvitePrivacyHint"),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
-    ) {
-        PantopusIconImage(
-            icon = PantopusIcon.Shield,
-            contentDescription = null,
-            size = 14.dp,
-            tint = PantopusColors.appTextSecondary,
-        )
-        Text(
-            // No invite goes to the recipient, so nothing is waiting on them to accept.
-            text = "Visible to your connections by default. You can change the audience before launching.",
-            style = PantopusTextStyle.caption,
-            color = PantopusColors.appTextStrong,
         )
     }
 }
@@ -558,13 +626,22 @@ private fun ResultList(
 @Composable
 internal fun WhatAndWhenStep(
     form: StartSupportTrainFormState,
-    onSelectKind: (SupportTrainKind) -> Unit,
+    scheduleProblem: String?,
+    householdSizeProblem: String?,
     onStartDate: (Long) -> Unit,
     onEndDate: (Long) -> Unit,
+    onToggleWeekday: (Int) -> Unit,
+    onStartMinutes: (Int) -> Unit,
     onSelectDuration: (StartSupportTrainSlotDuration) -> Unit,
+    onHouseholdSize: (String) -> Unit,
+    onAllergies: (String) -> Unit,
+    onDiet: (String) -> Unit,
+    onContactless: (Boolean) -> Unit,
+    onInstructions: (String) -> Unit,
 ) {
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
         Text(
@@ -575,13 +652,11 @@ internal fun WhatAndWhenStep(
         )
         Text(
             text =
-                "Pick the kind of help, the dates the train runs, and how long each slot is. We'll generate the calendar next.",
+                "Pick the dates, the days and when meals arrive, then tell helpers what the household needs. " +
+                    "We'll build the calendar next.",
             style = PantopusTextStyle.body,
             color = PantopusColors.appTextSecondary,
         )
-
-        Overline("KIND")
-        KindGrid(form.kind, onSelectKind)
 
         Overline("DATES")
         DateRow(
@@ -597,8 +672,33 @@ internal fun WhatAndWhenStep(
             testTag = "startSupportTrainEndDate",
         )
 
-        Overline("SLOT LENGTH")
+        Overline("DAYS")
+        WeekdayRow(selected = form.weekdays, onToggle = onToggleWeekday)
+
+        Overline("DROP-OFF")
+        val endMinutes = StartSupportTrainSlotGenerator.endMinutes(form.startMinutes, form.slotDuration.minutes)
+        DateRow(
+            label = "Starts at",
+            value =
+                "${StartSupportTrainSlotGenerator.displayString(form.startMinutes)}–" +
+                    StartSupportTrainSlotGenerator.displayString(endMinutes),
+            onClick = { showTimePicker = true },
+            testTag = "startSupportTrainStartTime",
+            icon = PantopusIcon.Clock,
+        )
         SlotDurationRow(form.slotDuration, onSelectDuration)
+
+        scheduleProblem?.let { ProblemLine(it, testTag = "startSupportTrainScheduleProblem") }
+
+        HouseholdSection(
+            form = form,
+            householdSizeProblem = householdSizeProblem,
+            onHouseholdSize = onHouseholdSize,
+            onAllergies = onAllergies,
+            onDiet = onDiet,
+            onContactless = onContactless,
+            onInstructions = onInstructions,
+        )
     }
 
     if (showStartPicker) {
@@ -622,74 +722,199 @@ internal fun WhatAndWhenStep(
             onDismiss = { showEndPicker = false },
         )
     }
+    if (showTimePicker) {
+        TimeOnlyPickerDialog(
+            initial = LocalTime.of(form.startMinutes / 60, form.startMinutes % 60),
+            onSelect = {
+                onStartMinutes(it.hour * 60 + it.minute)
+                showTimePicker = false
+            },
+            onDismiss = { showTimePicker = false },
+        )
+    }
 }
 
+/** S M T W T F S: the days of the week the train runs (0 = Sunday, as the server counts). */
 @Composable
-private fun KindGrid(
-    selected: SupportTrainKind,
-    onSelect: (SupportTrainKind) -> Unit,
+private fun WeekdayRow(
+    selected: Set<Int>,
+    onToggle: (Int) -> Unit,
 ) {
-    val kinds = SupportTrainKind.entries
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        kinds.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("startSupportTrainWeekdays"),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        WEEKDAY_NAMES.forEachIndexed { day, name ->
+            val on = day in selected
+            Box(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp)
+                        .clip(RoundedCornerShape(Radii.md))
+                        .background(if (on) PantopusColors.primary600 else PantopusColors.appSurface)
+                        .border(
+                            width = 1.dp,
+                            color = if (on) PantopusColors.primary600 else PantopusColors.appBorder,
+                            shape = RoundedCornerShape(Radii.md),
+                        )
+                        .toggleable(value = on, role = Role.Checkbox, onValueChange = { onToggle(day) })
+                        .semantics { contentDescription = name }
+                        .testTag("startSupportTrainWeekday_$day"),
+                contentAlignment = Alignment.Center,
             ) {
-                row.forEach { kind ->
-                    KindCell(
-                        kind = kind,
-                        isSelected = kind == selected,
-                        onClick = { onSelect(kind) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                if (row.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+                Text(
+                    text = name.take(1),
+                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (on) PantopusColors.appTextInverse else PantopusColors.appTextStrong,
+                )
             }
         }
     }
 }
 
+private val WEEKDAY_NAMES = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+/**
+ * What helpers are told about the household (A1, A14): its size, allergies and diet, a contactless wish and
+ * instructions for the door. The drop-off window is the dates' own time.
+ */
 @Composable
-private fun KindCell(
-    kind: SupportTrainKind,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun HouseholdSection(
+    form: StartSupportTrainFormState,
+    householdSizeProblem: String?,
+    onHouseholdSize: (String) -> Unit,
+    onAllergies: (String) -> Unit,
+    onDiet: (String) -> Unit,
+    onContactless: (Boolean) -> Unit,
+    onInstructions: (String) -> Unit,
 ) {
-    val bg = if (isSelected) PantopusColors.primary50 else PantopusColors.appSurface
-    val ink = if (isSelected) PantopusColors.primary700 else PantopusColors.appText
-    val shape = RoundedCornerShape(Radii.md)
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2), modifier = Modifier.testTag("startSupportTrainHousehold")) {
+        Overline("FOR THE HOUSEHOLD")
+        LabeledField(
+            label = "How many people to feed",
+            value = form.householdSize,
+            placeholder = "e.g. 4",
+            onValueChange = onHouseholdSize,
+            testTag = "startSupportTrainHouseholdSize",
+            keyboardType = KeyboardType.Number,
+        )
+        householdSizeProblem?.let { ProblemLine(it, testTag = "startSupportTrainHouseholdProblem") }
+        LabeledField(
+            label = "Allergies",
+            value = form.allergies,
+            placeholder = "e.g. peanuts, shellfish",
+            onValueChange = onAllergies,
+            testTag = "startSupportTrainAllergies",
+        )
+        LabeledField(
+            label = "Diet",
+            value = form.diet,
+            placeholder = "e.g. vegetarian, low salt",
+            onValueChange = onDiet,
+            testTag = "startSupportTrainDiet",
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(PantopusColors.appSurface)
+                    .border(1.dp, PantopusColors.appBorder, RoundedCornerShape(Radii.md))
+                    .toggleable(value = form.contactless, role = Role.Switch, onValueChange = onContactless)
+                    .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
+                    .testTag("startSupportTrainContactless"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Contactless drop-off",
+                    style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
+                    color = PantopusColors.appText,
+                )
+                Text(
+                    text = "Helpers leave the meal at the door.",
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextSecondary,
+                )
+            }
+            Switch(
+                checked = form.contactless,
+                onCheckedChange = null,
+                colors =
+                    SwitchDefaults.colors(
+                        checkedThumbColor = PantopusColors.appTextInverse,
+                        checkedTrackColor = PantopusColors.warmAmber,
+                    ),
+            )
+        }
+        LabeledField(
+            label = "Instructions for helpers",
+            value = form.instructions,
+            placeholder = "Gate code, which door, a cooler on the porch…",
+            onValueChange = onInstructions,
+            testTag = "startSupportTrainInstructions",
+            singleLine = false,
+        )
+        Text(
+            text =
+                "Household size, allergies, diet and the drop-off time show to anyone who can open the train. " +
+                    "Instructions show only to people who can see the address.",
+            style = PantopusTextStyle.caption,
+            color = PantopusColors.appTextMuted,
+        )
+    }
+}
+
+@Composable
+private fun LabeledField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    testTag: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    singleLine: Boolean = true,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
+        Text(
+            text = label,
+            style = PantopusTextStyle.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.appTextSecondary,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = PantopusColors.appTextMuted, style = PantopusTextStyle.small) },
+            singleLine = singleLine,
+            minLines = if (singleLine) 1 else 2,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = pantopusTextFieldColors(),
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = label }.testTag(testTag),
+        )
+    }
+}
+
+@Composable
+private fun ProblemLine(
+    message: String,
+    testTag: String,
+) {
     Row(
         modifier =
-            modifier
-                .height(44.dp)
-                .clip(shape)
-                .background(bg)
-                .border(
-                    width = 1.dp,
-                    color = if (isSelected) PantopusColors.primary600 else PantopusColors.appBorder,
-                    shape = shape,
-                )
-                .clickable { onClick() }
-                .padding(horizontal = Spacing.s3)
-                .testTag("startSupportTrainKind_${kind.wire}"),
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.md))
+                .background(PantopusColors.errorBg)
+                .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        PantopusIconImage(
-            icon = kind.icon,
-            contentDescription = null,
-            size = Radii.xl,
-            tint = if (isSelected) PantopusColors.primary700 else PantopusColors.appTextSecondary,
-        )
-        Text(
-            text = kind.title,
-            style = PantopusTextStyle.small.copy(fontWeight = FontWeight.SemiBold),
-            color = ink,
-        )
+        PantopusIconImage(icon = PantopusIcon.AlertCircle, contentDescription = null, size = 14.dp, tint = PantopusColors.error)
+        Text(text = message, style = PantopusTextStyle.caption.copy(fontWeight = FontWeight.Medium), color = PantopusColors.error)
     }
 }
 
@@ -699,18 +924,20 @@ private fun DateRow(
     value: String,
     onClick: () -> Unit,
     testTag: String,
+    icon: PantopusIcon = PantopusIcon.Calendar,
 ) {
     val shape = RoundedCornerShape(Radii.md)
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                // At least 48dp: large text grows the row instead of clipping it (B15).
+                .heightIn(min = 48.dp)
                 .clip(shape)
                 .background(PantopusColors.appSurface)
                 .border(width = 1.dp, color = PantopusColors.appBorder, shape = shape)
-                .clickable { onClick() }
-                .padding(horizontal = Spacing.s3)
+                .clickable(role = Role.Button) { onClick() }
+                .padding(horizontal = Spacing.s3, vertical = Spacing.s2)
                 .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -721,7 +948,7 @@ private fun DateRow(
             modifier = Modifier.weight(1f),
         )
         PantopusIconImage(
-            icon = PantopusIcon.Calendar,
+            icon = icon,
             contentDescription = null,
             size = 14.dp,
             tint = PantopusColors.appTextSecondary,
@@ -752,11 +979,11 @@ private fun SlotDurationRow(
             Row(
                 modifier =
                     Modifier
-                        .height(32.dp)
+                        .heightIn(min = 32.dp)
                         .clip(RoundedCornerShape(Radii.pill))
                         .background(bg)
-                        .clickable { onSelect(option) }
-                        .padding(horizontal = Spacing.s3)
+                        .selectable(selected = isActive, role = Role.RadioButton) { onSelect(option) }
+                        .padding(horizontal = Spacing.s3, vertical = Spacing.s1)
                         .testTag("startSupportTrainSlotDuration_${option.minutes}"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -789,7 +1016,8 @@ internal fun ReviewStep(
         )
         Text(
             text =
-                "Here's the calendar — ${slots.size} slots, one per day. Decide who can see this, then launch.",
+                "Here's the calendar: ${slots.size} ${if (slots.size == 1) "date" else "dates"}. " +
+                    "Decide who can see this, then launch.",
             style = PantopusTextStyle.body,
             color = PantopusColors.appTextSecondary,
         )
@@ -826,14 +1054,43 @@ private fun SummaryCard(
             selected?.name
                 ?: MadeUpUsername.chosen(selected?.username)
                 ?: form.beneficiaryQuery.ifBlank { "—" }
-        SummaryLine("Beneficiary", beneficiaryDisplay)
-        SummaryLine("Kind", form.kind.title)
-        SummaryLine("Slot length", form.slotDuration.title)
-        SummaryLine("Slots", slotCount.toString())
+        SummaryLine("Recipient", beneficiaryDisplay)
+        SummaryLine("Deliver to", form.delivery?.label.orEmpty())
+        SummaryLine("Dates", "${formatDay(form.startDateMillis)} → ${formatDay(form.endDateMillis)}")
+        SummaryLine("Days", weekdaysLabel(form.weekdays))
+        val end = StartSupportTrainSlotGenerator.endMinutes(form.startMinutes, form.slotDuration.minutes)
+        SummaryLine(
+            "Drop-off",
+            "${StartSupportTrainSlotGenerator.displayString(form.startMinutes)}–${StartSupportTrainSlotGenerator.displayString(end)}",
+        )
+        SummaryLine("Dates to fill", slotCount.toString())
+        householdLine(form)?.let { SummaryLine("Household", it) }
+        if (form.instructions.isNotBlank()) SummaryLine("Instructions", form.instructions.trim())
         if (form.reason.isNotEmpty()) {
-            SummaryLine("Reason", form.reason)
+            SummaryLine("Story", form.reason)
         }
     }
+}
+
+/** "Every day", "Weekdays", or "Mon, Wed, Fri". */
+private fun weekdaysLabel(days: Set<Int>): String =
+    when {
+        days.size == 7 -> "Every day"
+        days == setOf(1, 2, 3, 4, 5) -> "Weekdays"
+        else -> days.sorted().joinToString(", ") { WEEKDAY_NAMES[it].take(3) }
+    }
+
+/** "4 people · Allergies: peanuts · Diet: vegetarian · Contactless", or null when nothing was given. */
+private fun householdLine(form: StartSupportTrainFormState): String? {
+    val size = form.householdSize.toIntOrNull()
+    val parts =
+        listOfNotNull(
+            size?.let { if (it == 1) "1 person" else "$it people" },
+            splitList(form.allergies).takeIf { it.isNotEmpty() }?.let { "Allergies: ${it.joinToString(", ")}" },
+            splitList(form.diet).takeIf { it.isNotEmpty() }?.let { "Diet: ${it.joinToString(", ")}" },
+            "Contactless".takeIf { form.contactless },
+        )
+    return parts.joinToString(" · ").ifEmpty { null }
 }
 
 @Composable
@@ -1010,7 +1267,7 @@ private fun VisibilityRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        RadioCircle(isSelected = isSelected)
+        SupportTrainRadioCircle(isSelected = isSelected)
         PantopusIconImage(
             icon = option.icon,
             contentDescription = null,
@@ -1027,31 +1284,6 @@ private fun VisibilityRow(
                 text = option.subtitle,
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RadioCircle(isSelected: Boolean) {
-    Box(
-        modifier =
-            Modifier
-                .size(20.dp)
-                .border(
-                    width = 2.dp,
-                    color = if (isSelected) PantopusColors.primary600 else PantopusColors.appBorderStrong,
-                    shape = CircleShape,
-                ),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (isSelected) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(PantopusColors.primary600),
             )
         }
     }
@@ -1096,6 +1328,7 @@ private fun LaunchErrorBanner(message: String) {
 internal fun SuccessStep(
     slotCount: Int,
     visibility: StartSupportTrainVisibility,
+    recipientNotLinked: String? = null,
 ) {
     Column(
         modifier =
@@ -1129,12 +1362,35 @@ internal fun SuccessStep(
         )
         Text(
             text =
-                "$slotCount slots are open and visible to ${visibility.audience}. " +
-                    "Review who signs up from the new train's dashboard.",
+                "$slotCount ${if (slotCount == 1) "date is" else "dates are"} open to ${visibility.audience}. " +
+                    "Share the link, and manage the train from its page.",
             style = PantopusTextStyle.body,
             color = PantopusColors.appTextSecondary,
             modifier = Modifier.padding(horizontal = Spacing.s3),
         )
+        recipientNotLinked?.let { name ->
+            // The server keeps someone the organizer isn't connected to by name only (A13).
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radii.md))
+                        .background(PantopusColors.warmAmberBg)
+                        .padding(Spacing.s3)
+                        .testTag("startSupportTrainRecipientNotLinked"),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                verticalAlignment = Alignment.Top,
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Info, contentDescription = null, size = 14.dp, tint = PantopusColors.warmAmber)
+                Text(
+                    text =
+                        "$name isn't linked to this train because you two aren't connected, so they won't see it " +
+                            "as theirs. Send them the link, or connect with them first.",
+                    style = PantopusTextStyle.caption,
+                    color = PantopusColors.appTextStrong,
+                )
+            }
+        }
     }
 }
 

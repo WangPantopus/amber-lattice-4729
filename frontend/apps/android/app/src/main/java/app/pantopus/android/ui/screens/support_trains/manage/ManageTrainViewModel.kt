@@ -8,17 +8,24 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.support_trains.AddSupportTrainOrganizerBody
 import app.pantopus.android.data.api.models.support_trains.AddSupportTrainSlotBody
 import app.pantopus.android.data.api.models.support_trains.CancelReservationBody
+import app.pantopus.android.data.api.models.geo.NormalizedAddress
 import app.pantopus.android.data.api.models.support_trains.SupportTrainFundDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainUpdateBody
+import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainBody
 import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainSlotBody
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.api.net.refusesStoredCopy
+import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.store.StoreKind
+import app.pantopus.android.data.support_trains.SupportTrainRecipientDetails
 import app.pantopus.android.data.support_trains.SupportTrainsRepository
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimSessionScopeFactory
 import app.pantopus.android.ui.screens.support_trains.detail.SupportTrainViewerRole
+import app.pantopus.android.ui.screens.support_trains.start_train.StartSupportTrainDelivery
+import app.pantopus.android.ui.screens.support_trains.start_train.StartSupportTrainHomeOption
+import app.pantopus.android.ui.screens.support_trains.start_train.components.SupportTrainHomes
 import app.pantopus.android.ui.theme.PantopusIcon
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -70,10 +77,67 @@ data class OrganizeRowContent(
 data class CloseTrainSheetContent(
     val daysEarlyLabel: String,
     val mealsDelivered: String,
-    val neighborsHelped: String,
+    val peopleHelped: String,
     val coverageDays: String,
     val recipientQuote: String,
 )
+
+/** The "Deliver to" editor: the organizer's homes, or another address picked from the suggestions (A1). */
+data class ManageAddressEditor(
+    val homeOptions: List<StartSupportTrainHomeOption> = emptyList(),
+    val delivery: StartSupportTrainDelivery? = null,
+    val typingAddress: Boolean = false,
+    val addressQuery: String = "",
+)
+
+/** The "Details for helpers" editor, as typed (A1, A14). The drop-off window keeps its saved times. */
+data class ManageDetailsEditor(
+    val householdSize: String = "",
+    val allergies: String = "",
+    val diet: String = "",
+    val contactless: Boolean = false,
+    val instructions: String = "",
+    val dropoffStart: String? = null,
+    val dropoffEnd: String? = null,
+) {
+    /** A typed household size must be 1 to 50. */
+    val householdSizeProblem: String?
+        get() =
+            householdSize.takeIf { it.isNotEmpty() }?.let { text ->
+                val size = text.toIntOrNull()
+                if (size == null || size !in 1..MAX_HOUSEHOLD) "Enter a household size from 1 to 50." else null
+            }
+
+    fun toDetails(): SupportTrainRecipientDetails =
+        SupportTrainRecipientDetails(
+            householdSize = householdSize.toIntOrNull()?.takeIf { it in 1..MAX_HOUSEHOLD },
+            allergies = splitList(allergies),
+            dietaryStyles = splitList(diet),
+            dropoffStart = dropoffStart,
+            dropoffEnd = dropoffEnd,
+            contactlessPreferred = contactless,
+            specialInstructions = instructions.trim().ifEmpty { null },
+        )
+
+    companion object {
+        private const val MAX_HOUSEHOLD = 50
+
+        fun from(details: SupportTrainRecipientDetails): ManageDetailsEditor =
+            ManageDetailsEditor(
+                householdSize = details.householdSize?.toString().orEmpty(),
+                allergies = details.allergies.joinToString(", "),
+                diet = details.dietaryStyles.joinToString(", "),
+                contactless = details.contactlessPreferred,
+                instructions = details.specialInstructions.orEmpty(),
+                dropoffStart = details.dropoffStart,
+                dropoffEnd = details.dropoffEnd,
+            )
+
+        /** "peanuts, shellfish" → ["peanuts", "shellfish"]. */
+        fun splitList(text: String): List<String> =
+            text.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(50)
+    }
+}
 
 /** Static, design-driven content for one Manage Train screen instance. */
 data class ManageTrainContent(
@@ -113,6 +177,16 @@ data class ManageTrainContent(
     val privateDetailsAvailable: Boolean = true,
     /** A sharing grant alone does not establish that a delivery address exists. */
     val deliveryAddressAvailable: Boolean = false,
+    /** "Close train" is the primary organizer's, on a published, active or paused train (A11). */
+    val canClose: Boolean = false,
+    /** The train's own today (`YYYY-MM-DD`), where a new date starts (B4). */
+    val today: String? = null,
+    /** Where help goes, as the organizer sees it; null before one is set (A1). */
+    val deliveryAddress: String? = null,
+    /** `private_link` / `invited_only` / `direct_share_only`. */
+    val sharingMode: String? = null,
+    /** What helpers are told about the household now. */
+    val recipientDetails: SupportTrainRecipientDetails = SupportTrainRecipientDetails(),
 )
 
 /** Drives the Close-train confirmation sheet presentation. */
@@ -162,6 +236,13 @@ data class ManageTrainUiState(
     val pendingConfirm: ManageDestructiveConfirm? = null,
     /** Set once the train is deleted so the host can pop the screen. */
     val didDeleteTrain: Boolean = false,
+    /** The open "Deliver to" editor, or null. */
+    val addressEditor: ManageAddressEditor? = null,
+    /** The open "Details for helpers" editor, or null. */
+    val detailsEditor: ManageDetailsEditor? = null,
+    /** Names of the people the organizers invited. */
+    val invitedNames: List<String> = emptyList(),
+    val invitesFailed: Boolean = false,
     val refreshing: Boolean = false,
     val refreshNotice: RefreshNotice? = null,
 ) {
@@ -204,6 +285,7 @@ class ManageTrainViewModel
         private val repo: SupportTrainsRepository,
         savedStateHandle: SavedStateHandle,
         sessionScopes: HomeClaimSessionScopeFactory,
+        private val homes: HomesRepository,
     ) : ViewModel() {
         private val trainId: String =
             savedStateHandle.get<String>(TRAIN_ID_KEY).orEmpty()
@@ -246,6 +328,7 @@ class ManageTrainViewModel
                     helperRows = emptyList(), organizerRows = emptyList(), fund = null, deliveredMeals = null,
                     slotRows = emptyList(), helpersFailed = false, organizersFailed = false, pendingConfirm = null,
                     toast = null, actionError = null, refreshing = false, refreshNotice = null,
+                    invitedNames = emptyList(), invitesFailed = false, addressEditor = null, detailsEditor = null,
                 )
             }
         }
@@ -371,6 +454,12 @@ class ManageTrainViewModel
                     is NetworkResult.Success -> result.data
                     is NetworkResult.Failure -> null
                 }
+            val invitesResult = repo.invites(trainId)
+            if (!current(version)) return
+            val invited =
+                (invitesResult as? NetworkResult.Success)?.data?.invites.orEmpty()
+                    .filter { it.inviteeUserId != null }
+                    .map { it.displayName }
             val helperIds =
                 reservations.filter { it.status != "canceled" }.map { row ->
                     if (row.status !in listOf("reserved", "delivered", "confirmed")) {
@@ -398,7 +487,7 @@ class ManageTrainViewModel
                                         content.audienceChips.map { chip ->
                                             if (chip.id == "all") chip.copy(count = helperCount) else chip
                                         },
-                                    close = content.close.copy(neighborsHelped = helperCount),
+                                    close = content.close.copy(peopleHelped = helperCount),
                                 ),
                             )
                         } ?: it.state,
@@ -415,6 +504,8 @@ class ManageTrainViewModel
                     organizerRows = ManageOrganizerProjection.organizerRows(organizers),
                     organizersFailed = organizersResult is NetworkResult.Failure,
                     fund = fund,
+                    invitedNames = invited,
+                    invitesFailed = invitesResult is NetworkResult.Failure,
                 )
             }
         }
@@ -503,7 +594,9 @@ class ManageTrainViewModel
 
         // MARK: - Close-train sheet
 
+        /** Only the primary organizer closes a train, and only a live one: the server refuses everyone else (A11). */
         fun showCloseSheet() {
+            if ((_state.value.state as? ManageTrainState.Loaded)?.content?.canClose != true) return
             _state.update { it.copy(sheetMode = ManageTrainSheetMode.CLOSING) }
         }
 
@@ -517,59 +610,56 @@ class ManageTrainViewModel
             _state.update { it.copy(thankYouNote = value) }
         }
 
-        /** Keep the confirmation open until both the optional thanks and close are confirmed. */
+        /**
+         * Close first (A11): a refused close sends nobody a thank-you. The thank-you then goes to the train's group
+         * chat, because a closed train takes no more updates (B9). If only the note fails, the train stays closed and
+         * the organizer is told to post it in the chat.
+         */
         fun confirmClose() {
             val current = _state.value
-            val content = (current.state as? ManageTrainState.Loaded)?.content?.takeIf { !current.isSubmitting && canAct } ?: return
+            val content =
+                (current.state as? ManageTrainState.Loaded)?.content?.takeIf { !current.isSubmitting && canAct && it.canClose } ?: return
             val note = current.thankYouNote.trim()
             _state.update { it.copy(isSubmitting = true, actionError = null, toast = null) }
             viewModelScope.launch {
-                if (note.isNotEmpty()) {
-                    when (
-                        val result =
-                            checkedAction {
-                                repo.postUpdate(trainId, SupportTrainUpdateBody(body = note, clientRequestId = closeRequestId))
-                            } ?: return@launch
-                    ) {
-                        is NetworkResult.Success -> Unit
-                        is NetworkResult.Failure -> {
-                            _state.update {
-                                it.copy(
-                                    isSubmitting = false,
-                                    actionError = result.error.displayMessage("Couldn't send the thank-you note."),
-                                )
-                            }
-                            return@launch
-                        }
-                    }
-                }
                 when (val result = checkedAction { repo.complete(trainId) } ?: return@launch) {
-                    is NetworkResult.Success ->
-                        _state.update {
-                            it.copy(
-                                isSubmitting = false,
-                                state =
-                                    if (canAct) {
-                                        ManageTrainState.Loaded(content.copy(isActive = false, status = "completed"))
-                                    } else {
-                                        it.state
-                                    },
-                                sheetMode = ManageTrainSheetMode.CLOSED,
-                                toast =
-                                    if (note.isEmpty()) {
-                                        "Train closed"
-                                    } else {
-                                        "Train closed · thanks sent to ${content.helpersValue} helpers"
-                                    },
-                            )
-                        }
-                    is NetworkResult.Failure ->
+                    is NetworkResult.Success -> Unit
+                    is NetworkResult.Failure -> {
                         _state.update {
                             it.copy(
                                 isSubmitting = false,
                                 actionError = result.error.displayMessage("Couldn't close this train."),
                             )
                         }
+                        return@launch
+                    }
+                }
+                val thanksSent =
+                    note.isEmpty() || (checkedAction { repo.sendNudge(trainId, note) } ?: return@launch) is NetworkResult.Success
+                _state.update {
+                    it.copy(
+                        isSubmitting = false,
+                        state =
+                            if (canAct) {
+                                ManageTrainState.Loaded(content.copy(isActive = false, status = "completed", canClose = false))
+                            } else {
+                                it.state
+                            },
+                        sheetMode = ManageTrainSheetMode.CLOSED,
+                        thankYouNote = if (thanksSent) "" else it.thankYouNote,
+                        toast =
+                            when {
+                                note.isEmpty() -> "Train closed"
+                                thanksSent -> "Train closed · thanks posted in the group chat"
+                                else -> null
+                            },
+                        actionError =
+                            if (thanksSent) {
+                                null
+                            } else {
+                                "The train is closed, but your thank-you couldn't be posted. Post it in the train's group chat."
+                            },
+                    )
                 }
             }
         }
@@ -638,12 +728,16 @@ class ManageTrainViewModel
             }
 
         fun startAddSlot() {
+            // The train's own today (B4), not the UTC date: after 4 PM Pacific the UTC date is already tomorrow.
+            val today =
+                (_state.value.state as? ManageTrainState.Loaded)?.content?.today
+                    ?: java.time.LocalDate.now().toString()
             _state.update {
                 it.copy(
                     slotEditor =
                         ManageSlotEditorState(
                             slotId = null,
-                            slotDate = ManageOrganizerProjection.isoDate(java.util.Date(System.currentTimeMillis() + DAY_MILLIS)),
+                            slotDate = today,
                             slotLabel = "Dinner",
                             supportMode = "meal",
                             startTime = "17:00",
@@ -838,6 +932,110 @@ class ManageTrainViewModel
         /** `POST /:id/fund/disable` — primary only. */
         fun disableFund() = runAction("Gift fund disabled", "Couldn't disable the gift fund.") { repo.disableFund(trainId) }
 
+        // ─── Where help goes, who can see it, the household, invitations ─────
+
+        /** Opens "Deliver to" with the organizer's homes; the current home stays chosen. */
+        fun openAddressEditor() {
+            if (!canAct) return
+            _state.update { it.copy(addressEditor = ManageAddressEditor()) }
+            viewModelScope.launch {
+                val list = runCatching { homes.myHomesStored().data?.homes }.getOrNull().orEmpty()
+                _state.update { ui -> ui.copy(addressEditor = ui.addressEditor?.copy(homeOptions = SupportTrainHomes.options(list))) }
+            }
+        }
+
+        fun dismissAddressEditor() {
+            if (_state.value.isSubmitting) return
+            _state.update { it.copy(addressEditor = null) }
+        }
+
+        fun selectDeliveryHome(option: StartSupportTrainHomeOption) {
+            _state.update {
+                it.copy(addressEditor = it.addressEditor?.copy(delivery = SupportTrainHomes.homeDelivery(option), typingAddress = false))
+            }
+        }
+
+        fun chooseAnotherAddress() {
+            _state.update { ui ->
+                val editor = ui.addressEditor ?: return@update ui
+                ui.copy(addressEditor = editor.copy(typingAddress = true, delivery = editor.delivery?.takeIf { !it.isHome }))
+            }
+        }
+
+        fun updateAddressQuery(value: String) {
+            _state.update { ui ->
+                ui.copy(
+                    addressEditor =
+                        ui.addressEditor?.let { editor ->
+                            editor.copy(addressQuery = value, delivery = editor.delivery?.takeIf { it.isHome || it.label == value })
+                        },
+                )
+            }
+        }
+
+        fun pickDeliveryAddress(address: NormalizedAddress) {
+            val delivery = SupportTrainHomes.addressDelivery(address) ?: return
+            _state.update {
+                it.copy(addressEditor = it.addressEditor?.copy(typingAddress = true, addressQuery = delivery.label, delivery = delivery))
+            }
+        }
+
+        /** `PATCH /:id { delivery_location }`: the train's zone follows the new place on the server. */
+        fun saveAddress() {
+            val delivery = _state.value.addressEditor?.delivery ?: return
+            runAction(
+                "Delivery address saved",
+                "Couldn't save the delivery address.",
+                onSuccess = { _state.update { it.copy(addressEditor = null) } },
+            ) {
+                repo.updateTrain(trainId, UpdateSupportTrainBody(deliveryLocation = SupportTrainHomes.body(delivery)))
+            }
+        }
+
+        /** `PATCH /:id { sharing_mode }` — who can see the train. */
+        fun setAudience(sharingMode: String) {
+            val content = (_state.value.state as? ManageTrainState.Loaded)?.content ?: return
+            if (content.sharingMode == sharingMode) return
+            runAction("Audience changed", "Couldn't change who can see this train.") {
+                repo.updateTrain(trainId, UpdateSupportTrainBody(sharingMode = sharingMode))
+            }
+        }
+
+        fun openDetailsEditor() {
+            val content = (_state.value.state as? ManageTrainState.Loaded)?.content ?: return
+            if (!canAct) return
+            _state.update { it.copy(detailsEditor = ManageDetailsEditor.from(content.recipientDetails)) }
+        }
+
+        fun updateDetailsEditor(editor: ManageDetailsEditor) {
+            _state.update { it.copy(detailsEditor = editor) }
+        }
+
+        fun dismissDetailsEditor() {
+            if (_state.value.isSubmitting) return
+            _state.update { it.copy(detailsEditor = null) }
+        }
+
+        /** `PUT /:id/recipient-profile` — what helpers are told about the household. */
+        fun saveDetails() {
+            val editor = _state.value.detailsEditor ?: return
+            if (editor.householdSizeProblem != null) return
+            runAction(
+                "Details saved",
+                "Couldn't save the details.",
+                onSuccess = { _state.update { it.copy(detailsEditor = null) } },
+            ) { repo.updateRecipientDetails(trainId, editor.toDetails()) }
+        }
+
+        /** `POST /:id/invites` — invite a connection; the server refuses someone the organizer doesn't know. */
+        fun invite(
+            userId: String,
+            name: String,
+        ) {
+            if (userId.isBlank()) return
+            runAction("Invited $name", "Couldn't invite $name.") { repo.invite(trainId, userId) }
+        }
+
         fun requestConfirm(confirm: ManageDestructiveConfirm) {
             _state.update { it.copy(pendingConfirm = confirm) }
         }
@@ -891,7 +1089,6 @@ class ManageTrainViewModel
             /** Nav-arg key for the train id. Keep in sync with [TRAIN_ID_KEY] in `ChildRoutes`. */
             const val TRAIN_ID_KEY: String = "supportTrainId"
             private const val CENTS_PER_DOLLAR = 100
-            private const val DAY_MILLIS = 24L * 60 * 60 * 1000
             private const val NUDGE_DRAFT_FAILED_NOTE = "Couldn't draft a reminder. Here's a simple one you can edit and send."
 
             /**

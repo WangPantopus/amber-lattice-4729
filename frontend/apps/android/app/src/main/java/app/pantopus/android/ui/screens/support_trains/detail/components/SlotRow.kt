@@ -262,8 +262,8 @@ private fun Trailing(
             }
         }
         content.mine -> {
-            // Only with an edit action: no screen passes one today (the edit route is
-            // organizer-only), and a disabled Edit sat on every helper's own slot.
+            // Only with an edit action: the train page passes one for the helper's own signup while it's
+            // still ahead of them (B1); a disabled Edit sat on every helper's own slot.
             if (onEdit != null) {
                 Box(
                     modifier =
@@ -277,7 +277,7 @@ private fun Trailing(
                             .padding(horizontal = Spacing.s2)
                             .clearAndSetSemantics {
                                 role = Role.Button
-                                contentDescription = "Edit your slot"
+                                contentDescription = "Edit your signup"
                             },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -306,7 +306,7 @@ private fun accessibilityLabel(content: SlotRowContent): String {
     return when (content.state) {
         SlotRowState.Open -> "Open slot · $datePart · ${content.title}. ${content.subtitle.orEmpty()}".trim()
         SlotRowState.Covered -> {
-            val who = if (content.mine) "your slot" else (content.author?.displayName ?: "a neighbor")
+            val who = if (content.mine) "your slot" else (content.author?.displayName ?: "a helper")
             "$datePart · $who bringing ${content.title}"
         }
     }

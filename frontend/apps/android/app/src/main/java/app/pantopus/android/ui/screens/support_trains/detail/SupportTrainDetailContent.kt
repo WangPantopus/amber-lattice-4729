@@ -32,14 +32,27 @@ enum class RecipientIdentityTag { Home, Personal, Business }
 /** Semantic palette swatch for contributor / author discs. */
 enum class ContributorTone { Warning, Primary, Business, Success, Error, Personal }
 
-/** Sticky bottom-dock variant. [Closed] keeps the sign-up button in place, greyed out, with the reason. */
+/**
+ * Sticky bottom-dock variant. [Closed] keeps the sign-up button in place, greyed out, with the reason. Organizers
+ * get [Manage] as their main action (B2); the person the train is for gets [None]: they aren't asked to sign up.
+ */
 sealed interface SupportTrainDock {
     data class SignUp(val label: String) : SupportTrainDock
 
     data object SendCardAndBackup : SupportTrainDock
 
     data class Closed(val reason: String) : SupportTrainDock
+
+    data object Manage : SupportTrainDock
+
+    data object None : SupportTrainDock
 }
+
+/** One line of what helpers should know about the household ("Allergies" · "Peanuts, shellfish"). */
+data class RecipientDetailLine(
+    val label: String,
+    val value: String,
+)
 
 /** Slot-row presentation state. */
 enum class SlotRowState { Open, Covered }
@@ -68,6 +81,8 @@ data class RecipientCardContent(
     val proximity: String?,
     val quote: String,
     val quoteAttribution: String?,
+    /** Household size, allergies, diet, the drop-off window and a contactless wish (A14). */
+    val details: List<RecipientDetailLine> = emptyList(),
 )
 
 /** "The train" overline + type-dates card payload. */
@@ -81,6 +96,8 @@ data class TypeDatesCardContent(
     val contributors: List<ContributorBubble>,
     val extraCount: Int,
     val status: String? = null,
+    /** Distinct people signed up, when the viewer may see the signups (organizers, the recipient); else null (B12). */
+    val helperCount: Int? = null,
 ) {
     val isFullyCovered: Boolean get() = slotsTotal > 0 && slotsFilled >= slotsTotal
 
@@ -137,6 +154,8 @@ data class ReserveSlotOption(
     val slotDate: String? = null,
     /** The window's start ("17:00:00"), where the arrival time starts. */
     val windowStart: String? = null,
+    /** The ways of helping this date takes (B3): a groceries date, groceries; a meal date, a meal or takeout. */
+    val modes: List<SupportTrainContributionMode> = emptyList(),
 )
 
 /**
@@ -147,6 +166,8 @@ data class ReserveSheetContext(
     val enabledModes: List<SupportTrainContributionMode>,
     val restrictionChips: List<String>,
     val contactlessPreferred: Boolean,
+    /** The train's zone: an arrival time is picked and saved as that clock time where the train is (B4). */
+    val timezone: String? = null,
 )
 
 /**
@@ -235,6 +256,8 @@ data class SupportTrainDetailContent(
      */
     val exactAddress: String? = null,
     val deliveryInstructions: String? = null,
+    /** Gate code, door and the like: only for people who can see the address (A14). */
+    val specialInstructions: String? = null,
     /** The organizers' updates, newest first (the train's latest 10). */
     val updates: List<TrainUpdateCard> = emptyList(),
     /** False on the retained title/slots while this visit rechecks the mixed private response. */

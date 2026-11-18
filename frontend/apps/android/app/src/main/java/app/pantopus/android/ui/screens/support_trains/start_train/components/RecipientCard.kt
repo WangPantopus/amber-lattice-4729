@@ -35,8 +35,8 @@ import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
 
 /**
- * A12.11 — Verified-neighbor recipient card for step 1 (Frame 1). Avatar +
- * name + verified-neighbor shield + a mutuals strip (micro-avatars +
+ * A12.11 — Recipient card for step 1 (Frame 1), for someone on Pantopus. Avatar +
+ * name + verified shield + a mutuals strip (micro-avatars +
  * "2 mutuals: Marisa, Devon"), with a trailing "Change" affordance.
  *
  * Named `StartTrainRecipientCard` to mirror the iOS type and stay distinct
@@ -200,9 +200,9 @@ private fun MutualsStrip(mutuals: List<StartSupportTrainMutual>) {
 private fun metaLine(recipient: MailRecipientDto): String {
     val address = recipient.homeAddress
     return when {
-        !address.isNullOrBlank() -> "Neighbor · $address"
-        recipient.isVerified == true -> "Verified neighbor"
-        else -> "Neighbor"
+        !address.isNullOrBlank() -> "On Pantopus · $address"
+        recipient.isVerified == true -> "Verified on Pantopus"
+        else -> "On Pantopus"
     }
 }
 

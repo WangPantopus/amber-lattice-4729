@@ -273,20 +273,27 @@ private fun ContributorStrip(content: TypeDatesCardContent) {
                 }
             }
         }
-        Text(
-            text = signupLine(content.slotsFilled),
-            color = PantopusColors.appTextSecondary,
-            fontSize = 12.sp,
-        )
+        signupLine(content)?.let { line ->
+            Text(
+                text = line,
+                color = PantopusColors.appTextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.testTag("supportTrainSignupLine"),
+            )
+        }
     }
 }
 
-/** Counts signups only: a covered slot is reserved, not yet confirmed. */
-private fun signupLine(filled: Int): String =
-    when (filled) {
+/**
+ * People signed up, counted once each however many dates they took (B12). Only organizers and the recipient can see
+ * the signups; for anyone else a covered train has the date count above and no people count.
+ */
+private fun signupLine(content: TypeDatesCardContent): String? =
+    when (val people = content.helperCount) {
+        null -> if (content.slotsFilled == 0) "No one has signed up yet" else null
         0 -> "No one has signed up yet"
-        1 -> "1 neighbor signed up"
-        else -> "$filled neighbors signed up"
+        1 -> "1 person signed up"
+        else -> "$people people signed up"
     }
 
 private fun contributorRowWidth(

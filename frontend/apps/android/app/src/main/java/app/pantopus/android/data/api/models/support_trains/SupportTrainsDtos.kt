@@ -158,9 +158,8 @@ data class SupportTrainHelperDto(
 
 /**
  * `POST /api/support-trains/` body. Backend validation lives at
- * `createSupportTrainSchema` (`supportTrains.js:306`). We only ride
- * the free-form `draft_payload.story` slot so the reason copy
- * survives the round-trip onto the published-train detail screen.
+ * `createSupportTrainSchema`. The story rides `draft_payload.story`; [deliveryLocation] is where help
+ * goes (one of the organizer's homes, or a picked address), so helpers can be given the address (A1).
  */
 @JsonClass(generateAdapter = true)
 data class CreateSupportTrainBody(
@@ -175,11 +174,66 @@ data class CreateSupportTrainBody(
     val timezone: String = java.util.TimeZone.getDefault().id,
     /** Same id on a retry reaches the draft an earlier attempt already made (lost reply). */
     @Json(name = "client_request_id") val clientRequestId: String? = null,
+    @Json(name = "delivery_location") val deliveryLocation: SupportTrainDeliveryLocationBody? = null,
 ) {
     @JsonClass(generateAdapter = true)
     data class DraftPayload(
         val story: String?,
     )
+}
+
+/**
+ * Where help goes: `{mode: "home", home_id}` for one of the organizer's homes, or `{mode: "address", latitude,
+ * longitude, address, city, state, zip, place_id}` for a picked address (`deliveryLocationSchema`). Null fields are
+ * left out of the request.
+ */
+@JsonClass(generateAdapter = true)
+data class SupportTrainDeliveryLocationBody(
+    val mode: String,
+    @Json(name = "home_id") val homeId: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val address: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val zip: String? = null,
+    @Json(name = "place_id") val placeId: String? = null,
+)
+
+/** `PATCH /api/activities/support-trains/:id` body: only the fields being changed (`updateSupportTrainSchema`). */
+@JsonClass(generateAdapter = true)
+data class UpdateSupportTrainBody(
+    @Json(name = "sharing_mode") val sharingMode: String? = null,
+    @Json(name = "delivery_location") val deliveryLocation: SupportTrainDeliveryLocationBody? = null,
+)
+
+/** `POST /:id/invites` body: invite one account (a connection, or someone sharing a home). */
+@JsonClass(generateAdapter = true)
+data class SupportTrainInviteBody(
+    @Json(name = "invitee_user_id") val inviteeUserId: String,
+)
+
+/** `GET /:id/invites` envelope (organizers). */
+@JsonClass(generateAdapter = true)
+data class SupportTrainInvitesResponse(
+    val invites: List<SupportTrainInviteDto> = emptyList(),
+)
+
+/** One invitation; the person arrives as `User` (an account invite) or only an email. */
+@JsonClass(generateAdapter = true)
+data class SupportTrainInviteDto(
+    val id: String,
+    @Json(name = "invitee_user_id") val inviteeUserId: String? = null,
+    @Json(name = "invitee_email") val inviteeEmail: String? = null,
+    val status: String? = null,
+    @Json(name = "User") val user: SupportTrainHelperDto? = null,
+    @Json(name = "user") val lowercaseUser: SupportTrainHelperDto? = null,
+) {
+    val displayName: String
+        get() {
+            val person = user ?: lowercaseUser
+            return person?.name ?: MadeUpUsername.chosen(person?.username) ?: inviteeEmail ?: "Someone you invited"
+        }
 }
 
 /**
@@ -191,6 +245,11 @@ data class CreateSupportTrainBody(
 data class CreateSupportTrainResponse(
     // The route answers `{ support_train_id, activity_id, status }`.
     @Json(name = "support_train_id") val id: String,
+    /**
+     * Sent when the train names an account: false when the organizer isn't connected to that person (and shares no
+     * home with them), so the train keeps them by name only and the organizer is told (A13).
+     */
+    @Json(name = "recipient_linked") val recipientLinked: Boolean? = null,
 )
 
 /**
@@ -210,9 +269,9 @@ data class AddSupportTrainSlotBody(
 
 /**
  * `POST /api/activities/support-trains/:id/generate-slots` body: a slot on every day from
- * [startDate] through [endDate] (the daily `every_dinner` preset) with these times, label and
- * mode. [replaceExisting] makes a retry after a lost reply replace the open slots instead of
- * adding a second set. Backend validation lives at `generateSlotsSchema`.
+ * [startDate] through [endDate] (the daily `every_dinner` preset), or only on [weekdays] (0 = Sunday … 6 = Saturday),
+ * with these times, label and mode. [replaceExisting] makes a retry after a lost reply replace the open slots instead
+ * of adding a second set. Backend validation lives at `generateSlotsSchema`.
  */
 @JsonClass(generateAdapter = true)
 data class GenerateSupportTrainSlotsBody(
@@ -224,6 +283,7 @@ data class GenerateSupportTrainSlotsBody(
     @Json(name = "support_mode") val supportMode: String,
     val preset: String = "every_dinner",
     @Json(name = "replace_existing") val replaceExisting: Boolean = true,
+    val weekdays: List<Int>? = null,
 )
 
 /** `POST …/generate-slots` reply: how many slots the server created. */

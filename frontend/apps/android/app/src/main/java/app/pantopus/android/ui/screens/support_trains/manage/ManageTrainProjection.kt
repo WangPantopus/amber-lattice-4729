@@ -4,10 +4,11 @@ package app.pantopus.android.ui.screens.support_trains.manage
 
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainSlotDto
+import app.pantopus.android.data.support_trains.SupportTrainRecipientDetails
 import app.pantopus.android.ui.screens.support_trains.detail.SupportTrainDetailProjection
+import app.pantopus.android.ui.screens.support_trains.detail.SupportTrainViewerRole
 import app.pantopus.android.ui.theme.PantopusIcon
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -17,22 +18,24 @@ import java.util.TimeZone
  * organizer dashboard model. Mirrors iOS `ManageTrainProjection`.
  *
  * PROJECTION GAPS: `/:id` exposes per-slot filled/capacity counts but no
- * helper roster, dropout count, or audience segmentation, so the helper
- * count is proxied from covered slots, dropout shows `0`, and the audience
- * picker is a single "All helpers" chip. The Organize rows are static UI
- * affordances (their destinations are separate screens).
+ * helper roster or dropout count, so helpers are counted from the organizer
+ * reservation read, dropout shows `0`, and the audience picker is a single
+ * "All helpers" chip. Removed dates are never shown or counted (A10), and
+ * "today" is the train's own day (B4).
  */
 object ManageTrainProjection {
     private const val MILLIS_PER_DAY = 1000L * 60 * 60 * 24
 
     fun project(dto: SupportTrainDetailDto): ManageTrainContent {
-        val slots = dto.slots ?: emptyList()
+        val slots = (dto.slots ?: emptyList()).filterNot { it.isRemoved }
+        val today = SupportTrainDetailProjection.trainToday(dto)
         val total = slots.size
         val filled = slots.count { it.isCovered }
         val open = maxOf(0, total - filled)
         val percent = if (total > 0) Math.round(filled.toFloat() * 100f / total.toFloat()) else 0
-        val days = daysLeft(slots)
+        val days = daysLeft(slots, today)
         val isActive = dto.status in listOf("published", "active", "paused")
+        val role = SupportTrainDetailProjection.viewerRole(dto)
         // The separate organizer reservation read establishes distinct helpers.
         val helpers = "—"
 
@@ -58,18 +61,36 @@ object ManageTrainProjection {
             closeRow = defaultCloseRow(),
             close =
                 CloseTrainSheetContent(
-                    daysEarlyLabel = "Locks new signups · $days days early",
+                    daysEarlyLabel = if (days > 0) "Locks new signups · $days days early" else "Locks new signups",
                     // Delivery is established by the organizer reservation read.
                     mealsDelivered = "—",
-                    neighborsHelped = helpers,
-                    coverageDays = "${coverageDays(slots)}d",
+                    peopleHelped = helpers,
+                    coverageDays = "${coverageDays(slots, today)}d",
                     recipientQuote = dto.story ?: "",
                 ),
             status = dto.status ?: "",
-            viewerRole = SupportTrainDetailProjection.viewerRole(dto),
+            viewerRole = role,
             deliveryAddressAvailable = !dto.address?.address.isNullOrBlank(),
+            // Only the primary organizer closes a train, and only a live one (A11).
+            canClose = role == SupportTrainViewerRole.PRIMARY_ORGANIZER && dto.status in listOf("published", "active", "paused"),
+            today = dto.today,
+            deliveryAddress = dto.address?.singleLineLabel?.takeIf { it.isNotBlank() },
+            sharingMode = dto.sharingMode,
+            recipientDetails = recipientDetails(dto),
         )
     }
+
+    /** What helpers are told about the household now, for the Manage editor. */
+    private fun recipientDetails(dto: SupportTrainDetailDto): SupportTrainRecipientDetails =
+        SupportTrainRecipientDetails(
+            householdSize = dto.householdSize,
+            allergies = dto.dietaryRestrictions.orEmpty(),
+            dietaryStyles = dto.dietaryPreferences.orEmpty(),
+            dropoffStart = dto.preferredDropoffWindow?.startTime?.take(5),
+            dropoffEnd = dto.preferredDropoffWindow?.endTime?.take(5),
+            contactlessPreferred = dto.contactlessPreferred == true,
+            specialInstructions = dto.specialInstructions,
+        )
 
     private fun defaultOrganizeRows(slotsTotal: Int): List<OrganizeRowContent> =
         listOf(
@@ -86,9 +107,9 @@ object ManageTrainProjection {
                 id = "invite",
                 icon = PantopusIcon.UserPlus,
                 tone = OrganizeRowTone.SKY,
-                label = "Invite more helpers",
+                label = "Share the link",
                 meta = null,
-                sub = "Share a link with people you know.",
+                sub = "Send the train's link to people you know.",
                 isDestructive = false,
             ),
             OrganizeRowContent(
@@ -122,18 +143,24 @@ object ManageTrainProjection {
         return "${format(min)} → ${format(max)} · $dayCount $dayLabel"
     }
 
-    private fun daysLeft(slots: List<SupportTrainSlotDto>): Int {
+    private fun daysLeft(
+        slots: List<SupportTrainSlotDto>,
+        today: Date,
+    ): Int {
         val max = slots.mapNotNull { parseDate(it.slotDate) }.maxByOrNull { it.time } ?: return 0
-        val diff = ((max.time - startOfTodayUtc().time) / MILLIS_PER_DAY).toInt()
+        val diff = ((max.time - today.time) / MILLIS_PER_DAY).toInt()
         return maxOf(0, diff)
     }
 
-    private fun coverageDays(slots: List<SupportTrainSlotDto>): Int {
+    private fun coverageDays(
+        slots: List<SupportTrainSlotDto>,
+        today: Date,
+    ): Int {
         val dates = slots.mapNotNull { parseDate(it.slotDate) }
         val first = dates.minByOrNull { it.time } ?: return 0
         val last = dates.maxByOrNull { it.time } ?: return 0
         // Coverage is elapsed calendar days, capped at the scheduled span.
-        val end = minOf(startOfTodayUtc().time, last.time)
+        val end = minOf(today.time, last.time)
         return maxOf(0, ((end - first.time) / MILLIS_PER_DAY).toInt() + 1)
     }
 
@@ -145,13 +172,4 @@ object ManageTrainProjection {
 
     private fun format(date: Date): String =
         SimpleDateFormat("MMM d", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(date)
-
-    private fun startOfTodayUtc(): Date {
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
-        cal.set(Calendar.MILLISECOND, 0)
-        return cal.time
-    }
 }

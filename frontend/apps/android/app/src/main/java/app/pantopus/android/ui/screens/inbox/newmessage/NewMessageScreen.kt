@@ -80,6 +80,8 @@ fun NewMessageScreen(
     emptyBody: String? = null,
     // Today's "Send in a chat" lists recent group chats too.
     withGroups: Boolean = false,
+    // A Support Train invitation lists only connections (the server takes no one else).
+    connectionsOnly: Boolean = false,
     viewModel: NewMessageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -89,6 +91,7 @@ fun NewMessageScreen(
 
     LifecycleResumeEffect(Unit) {
         viewModel.includesGroups = withGroups
+        viewModel.connectionsOnly = connectionsOnly
         viewModel.load()
         onPauseOrDispose { }
     }
@@ -123,7 +126,7 @@ fun NewMessageScreen(
                     EmptyFrame(
                         headline = emptyHeadline ?: viewModel.emptyHeadline,
                         body = emptyBody ?: viewModel.emptyBody,
-                        hints = viewModel.emptySearchHints,
+                        hints = if (connectionsOnly) emptyList() else viewModel.emptySearchHints,
                         onInvite = onInvite,
                     )
                 is NewMessageUiState.Loaded ->

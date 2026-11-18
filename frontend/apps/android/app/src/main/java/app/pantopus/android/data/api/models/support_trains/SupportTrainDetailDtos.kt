@@ -58,6 +58,10 @@ data class SupportTrainDetailDto(
     @Json(name = "activity_visibility") val activityVisibility: String? = null,
     /** The train's chat room — only for someone in it (organizers, the recipient, helpers with a signup). */
     @Json(name = "chat_thread_id") val chatThreadId: String? = null,
+    /** The train's own time zone (IANA), where its days and arrival times are read (B4). */
+    val timezone: String? = null,
+    /** Today's date where the train is (`YYYY-MM-DD`): a date before it has passed (A8, B4). */
+    val today: String? = null,
 ) {
     /** True for primary / co-organizer / recipient-delegate viewers. */
     val viewerIsOrganizer: Boolean
@@ -75,6 +79,8 @@ data class SupportTrainDetailDto(
             status = status,
             supportModes = supportModes,
             slots = slots,
+            timezone = timezone,
+            today = today,
         )
 }
 
@@ -106,7 +112,13 @@ data class SupportTrainSlotDto(
     val status: String? = null,
     @Json(name = "filled_count") val filledCount: Int? = null,
     val capacity: Int? = null,
+    /** The date is before the train's own today: it takes no signup. */
+    @Json(name = "is_past") val isPast: Boolean? = null,
 ) {
+    /** A removed date. The server no longer sends them; never shown or counted if one arrives (A10). */
+    val isRemoved: Boolean
+        get() = status == "canceled"
+
     /** Covered once filled count meets capacity (or status is `full`). */
     val isCovered: Boolean
         get() = status == "full" || (capacity != null && capacity > 0 && (filledCount ?: 0) >= capacity)
@@ -124,6 +136,10 @@ data class SupportTrainMyReservationDto(
     @Json(name = "estimated_arrival_at") val estimatedArrivalAt: String? = null,
     @Json(name = "note_to_recipient") val noteToRecipient: String? = null,
     @Json(name = "created_at") val createdAt: String? = null,
+    /** The signup's version: an edit sends it back so a change made meanwhile isn't overwritten (B1). */
+    @Json(name = "updated_at") val updatedAt: String? = null,
+    /** The helper's own note to the organizers, which only they and the organizers read. */
+    @Json(name = "private_note_to_organizer") val privateNoteToOrganizer: String? = null,
 )
 
 /** One broadcast update (also the `POST /:id/updates` response shape). */

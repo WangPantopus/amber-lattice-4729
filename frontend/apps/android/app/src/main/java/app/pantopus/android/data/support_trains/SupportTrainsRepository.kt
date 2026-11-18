@@ -12,6 +12,8 @@ import app.pantopus.android.data.api.models.support_trains.GenerateSupportTrainS
 import app.pantopus.android.data.api.models.support_trains.ReserveSlotBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainDetailDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainFundDto
+import app.pantopus.android.data.api.models.support_trains.SupportTrainInviteBody
+import app.pantopus.android.data.api.models.support_trains.SupportTrainInvitesResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainListItemDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainNudgeBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainOrganizersResponse
@@ -19,6 +21,7 @@ import app.pantopus.android.data.api.models.support_trains.SupportTrainReservati
 import app.pantopus.android.data.api.models.support_trains.SupportTrainUpdateBody
 import app.pantopus.android.data.api.models.support_trains.SupportTrainsListResponse
 import app.pantopus.android.data.api.models.support_trains.SupportTrainsNearbyResponse
+import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainBody
 import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainSlotBody
 import app.pantopus.android.data.api.net.Conditional
 import app.pantopus.android.data.api.net.NetworkResult
@@ -32,12 +35,45 @@ import app.pantopus.android.data.store.ScreenStore
 import app.pantopus.android.data.store.StoreKeys
 import app.pantopus.android.data.store.Stored
 import com.squareup.moshi.JsonDataException
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /** Saved slot times come back as `HH:mm:ss`; the request sends `HH:mm`. */
 private const val CLOCK_TIME_LENGTH = 5
 private const val MY_TRAINS_PAGE_SIZE = 50
+private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+/**
+ * What helpers are told about the household (`PUT /:id/recipient-profile`): anyone who can open the train sees the
+ * household size, allergies, diet, drop-off window and contactless wish; [specialInstructions] only people who can
+ * see the address. Times are `HH:mm`.
+ */
+data class SupportTrainRecipientDetails(
+    val householdSize: Int? = null,
+    val allergies: List<String> = emptyList(),
+    val dietaryStyles: List<String> = emptyList(),
+    val dropoffStart: String? = null,
+    val dropoffEnd: String? = null,
+    val contactlessPreferred: Boolean = false,
+    val specialInstructions: String? = null,
+)
+
+/**
+ * A helper's own signup as they edit it (`PATCH /:id/reservations/:rid`). Every field is sent, the unchanged ones
+ * with their current values; [expectedUpdatedAt] is the version the edit started from.
+ */
+data class SupportTrainSignupEdit(
+    val dishTitle: String?,
+    val restaurantName: String?,
+    val estimatedArrivalAt: String?,
+    val privateNoteToOrganizer: String?,
+    val noteToRecipient: String?,
+    val expectedUpdatedAt: String,
+)
 
 /**
  * Wraps `api/activities/support-trains/…` calls in the [NetworkResult]
@@ -195,7 +231,11 @@ class SupportTrainsRepository
         ): NetworkResult<Unit> =
             safeApiCall {
                 val saved = api.generateSlots(supportTrainId, body)
-                if (saved.count != expectedCount) throw JsonDataException("Dates save could not be confirmed.")
+                // The server skips a date that has already passed where the train is, which can be the phone's
+                // today when the train's zone is ahead of the phone's: one fewer date is still the schedule.
+                if (saved.count !in (expectedCount - 1).coerceAtLeast(1)..expectedCount) {
+                    throw JsonDataException("Dates save could not be confirmed.")
+                }
                 Unit
             }
 
@@ -417,4 +457,60 @@ class SupportTrainsRepository
             safeApiCall {
                 actionsApi.disableFund(supportTrainId).close()
             }
+    
+        // ─── Address, audience, household, invitations, a helper's own signup ───
+
+        /** `PATCH /:id` — the audience or where help goes. The server's refusal reads as words. */
+        suspend fun updateTrain(
+            supportTrainId: String,
+            body: UpdateSupportTrainBody,
+        ): NetworkResult<Unit> = safeApiCall { actionsApi.updateTrain(supportTrainId, body).close() }
+
+        /** `PUT /:id/recipient-profile` — what helpers are told about the household. */
+        suspend fun updateRecipientDetails(
+            supportTrainId: String,
+            details: SupportTrainRecipientDetails,
+        ): NetworkResult<Unit> {
+            val json =
+                JSONObject()
+                    .put("household_size", details.householdSize ?: JSONObject.NULL)
+                    .put("allergies", JSONArray(details.allergies))
+                    .put("dietary_styles", JSONArray(details.dietaryStyles))
+                    .put("preferred_dropoff_start_time", details.dropoffStart ?: JSONObject.NULL)
+                    .put("preferred_dropoff_end_time", details.dropoffEnd ?: JSONObject.NULL)
+                    .put("contactless_preferred", details.contactlessPreferred)
+                    .put("special_instructions", details.specialInstructions?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+            return safeApiCall {
+                actionsApi.updateRecipientProfile(supportTrainId, json.toString().toRequestBody(JSON_MEDIA_TYPE)).close()
+            }
+        }
+
+        /** `POST /:id/invites` — invite one account. */
+        suspend fun invite(
+            supportTrainId: String,
+            userId: String,
+        ): NetworkResult<Unit> = safeApiCall { actionsApi.invite(supportTrainId, SupportTrainInviteBody(userId)).close() }
+
+        /** `GET /:id/invites` — who the organizers invited. */
+        suspend fun invites(supportTrainId: String): NetworkResult<SupportTrainInvitesResponse> =
+            safeApiCall { actionsApi.invites(supportTrainId) }
+
+        /** `PATCH /:id/reservations/:rid` — the helper's edit of their own signup (B1). */
+        suspend fun editSignup(
+            supportTrainId: String,
+            reservationId: String,
+            edit: SupportTrainSignupEdit,
+        ): NetworkResult<Unit> {
+            val json =
+                JSONObject()
+                    .put("dish_title", edit.dishTitle ?: JSONObject.NULL)
+                    .put("restaurant_name", edit.restaurantName ?: JSONObject.NULL)
+                    .put("estimated_arrival_at", edit.estimatedArrivalAt ?: JSONObject.NULL)
+                    .put("private_note_to_organizer", edit.privateNoteToOrganizer ?: JSONObject.NULL)
+                    .put("note_to_recipient", edit.noteToRecipient ?: JSONObject.NULL)
+                    .put("expected_updated_at", edit.expectedUpdatedAt)
+            return safeApiCall {
+                actionsApi.editReservation(supportTrainId, reservationId, json.toString().toRequestBody(JSON_MEDIA_TYPE)).close()
+            }
+        }
     }
