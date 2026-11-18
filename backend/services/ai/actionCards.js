@@ -75,8 +75,8 @@ const AGE_LABELS = { under_2: 'Under 2', '2_3': '2–3', '4_5': '4–5', '6_8': 
 const agesText = (bands) => (Array.isArray(bands) && bands.length ? bands.map((band) => AGE_LABELS[band] || band).join(', ') : null);
 const WHO_GETS_IN = {
   host_approves: { rules: [], text: 'You approve each person' },
-  verified_neighbors: { rules: ['verified'], text: 'Verified neighbors get in right away; you approve everyone else' },
-  verified_and_hosted: { rules: ['verified', 'hosted_before'], text: "Verified neighbors and people you've hosted get in right away; you approve everyone else" },
+  verified_neighbors: { rules: ['verified'], text: 'People with a verified address get in right away; you approve everyone else' },
+  verified_and_hosted: { rules: ['verified', 'hosted_before'], text: "People with a verified address and people you've hosted get in right away; you approve everyone else" },
   hosted_before: { rules: ['hosted_before'], text: "People you've hosted before get in right away; you approve everyone else" },
   anyone_nearby: { rules: ['anyone_nearby'], text: 'Anyone nearby gets in right away' },
 };
@@ -701,8 +701,8 @@ async function draftPlan(args, ctx) {
       ]
       : [
         checked.place.kind === 'home'
-          ? 'Neighbors see the title and about. Only people you accept see your address.'
-          : 'Neighbors see the title, about and area; they see the exact place once they get in.',
+          ? 'Others see the title and about. Only people you accept see your address.'
+          : 'Others see the title, about and area; they see the exact place once they get in.',
       ],
     actions: [action('confirm', 'Post plan', { method: 'POST', path: '/api/plans', body },
       { label: 'Plan posted', link: linkFor('plan', '{{response.id}}') })],
