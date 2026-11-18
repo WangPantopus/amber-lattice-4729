@@ -850,6 +850,9 @@ public struct HubTabRoot: View {
             launchScopedDestination(for: item.route) { path.append($0) }
         }
         .sheet(item: $systemSheet) { request in request.makeView() }
+        .onChange(of: mailVerifyHome == nil) { _, closed in
+            if closed, mode == .hub { rootTabs.placeVerifySheetUp = false }
+        }
         .sheet(item: $mailVerifyHome) { home in
             PlaceVerifySheet(
                 address: home.address,
@@ -1091,6 +1094,9 @@ public struct HubTabRoot: View {
     /// After Add Home in two steps: Your Place for the new Home, and its verify sheet once the sheet knows its rows.
     @MainActor
     private func openPlaceToVerify(homeId: String, street: String) {
+        // The first-run notices (daily briefings, Suggestions) wait from here until the sheet is closed: both
+        // are waiting for Place's top screen, and the notice would take the sheet's place.
+        rootTabs.placeVerifySheetUp = true
         openPlaceRoot(homeId: homeId)
         Task { @MainActor in
             await HomeVerifyOptionsStore.shared.load(homeId: homeId)

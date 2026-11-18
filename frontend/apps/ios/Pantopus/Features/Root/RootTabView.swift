@@ -168,6 +168,9 @@ public final class RootTabModel {
     public var messagesBadge: Int = 0
     /// The Place stack is on its root (kept current by `HubTabRoot`).
     public var placeAtRoot = false
+    /// Place is opening or showing "Verify you live here" for a Home just added in two steps (kept current by
+    /// `HubTabRoot`): the first-run notices wait until it is closed, or they would take its place.
+    public var placeVerifySheetUp = false
     /// Changes each time the Place tab is tapped again while already on its
     /// root, so the root scrolls back to the top.
     public var placeReselectedAtRoot: UUID?
@@ -633,10 +636,10 @@ public struct RootTabView: View {
 
     /// The briefings notice waits until nothing else is asking: the Place tab
     /// on its own root (not under "Keep this address handy", nor a plan or post
-    /// opened by a link), or Today.
+    /// opened by a link, nor the verify sheet a new Home opens with), or Today.
     private var briefingNoticeMayShow: Bool {
         switch model.selected {
-        case .place: model.placeAtRoot
+        case .place: model.placeAtRoot && !model.placeVerifySheetUp
         case .today: true
         default: false
         }
