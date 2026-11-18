@@ -233,7 +233,7 @@ public struct SlotRow: View {
         case .open:
             return "Open slot · \(datePart) · \(content.title). \(content.subtitle ?? "")"
         case .covered:
-            let who = content.mine ? "your slot" : (content.author?.displayName ?? "a neighbor")
+            let who = content.mine ? "your slot" : (content.author?.displayName ?? "a helper")
             return "\(datePart) · \(who) bringing \(content.title)"
         }
     }

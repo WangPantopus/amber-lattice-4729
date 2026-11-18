@@ -67,6 +67,9 @@ public struct ManageTrainView: View {
     @State private var fundGoalDollars: String = ""
     /// The people picker (the chat New message picker) that adds a co-organizer.
     @State private var showOrganizerPicker = false
+    /// Invite someone by account (A2), and set where help goes (A1).
+    @State private var showInvitePicker = false
+    @State private var showAddressSheet = false
     /// "Invite to Pantopus" in the picker shares the train once the picker closes.
     @State private var shareAfterPicker = false
     /// Set while a card's own field (the reminder, the gift-fund goal) has the keyboard.
@@ -161,6 +164,26 @@ public struct ManageTrainView: View {
             title: "Add co-organizer",
             emptyHeadline: "Find a co-organizer",
             emptyBody: "Search by name, or invite someone who isn't on Pantopus yet."
+        )
+    }
+
+    /// Invite someone you know by account (connections; the server checks).
+    private var invitePicker: some View {
+        NewMessageView(
+            viewModel: NewMessageViewModel(
+                onSelect: { destination in
+                    showInvitePicker = false
+                    Task { await viewModel.inviteHelper(userId: destination.userId) }
+                },
+                onCancel: { showInvitePicker = false },
+                onInvite: {
+                    showInvitePicker = false
+                    onInviteHelpers?(viewModel.supportTrainId)
+                }
+            ),
+            title: "Invite someone",
+            emptyHeadline: "Invite people you know",
+            emptyBody: "Search your connections by name, or share the link with anyone else."
         )
     }
 
@@ -312,11 +335,34 @@ public struct ManageTrainView: View {
                     handler(forOrganizeRow: row.id)?(content.trainId)
                 }
 
+                sectionOverline("The train")
+                ManageTrainSetupSection(
+                    addressLabel: viewModel.deliveryAddressLabel,
+                    sharingMode: viewModel.sharingMode,
+                    invites: viewModel.inviteRows,
+                    canEdit: content.viewerRole.isOrganizer && !["completed", "archived"].contains(content.status),
+                    isBusy: viewModel.isSubmitting,
+                    onEditAddress: { showAddressSheet = true },
+                    onChooseAudience: { mode in Task { await viewModel.updateSharingMode(mode) } },
+                    onInvite: { showInvitePicker = true }
+                )
+                .sheet(isPresented: $showAddressSheet) {
+                    ManageTrainAddressSheet(
+                        isBusy: viewModel.isSubmitting,
+                        onSave: { await viewModel.updateDeliveryLocation($0) },
+                        onClose: { showAddressSheet = false }
+                    )
+                }
+                .sheet(isPresented: $showInvitePicker) { invitePicker }
+
                 organizerControls(content)
 
-                sectionOverline("Wind down")
-                WindDownSection(row: content.closeRow) {
-                    viewModel.showCloseSheet()
+                // Only the primary organizer closes a live train (A11).
+                if viewModel.canCloseTrain {
+                    sectionOverline("Wind down")
+                    WindDownSection(row: content.closeRow) {
+                        viewModel.showCloseSheet()
+                    }
                 }
 
                 ManageLifecycleSection(
@@ -331,7 +377,7 @@ public struct ManageTrainView: View {
                             ManageDestructiveConfirm(
                                 kind: .unpublishTrain,
                                 title: "Unpublish this train?",
-                                message: "\(content.title) goes back to draft and neighbors stop seeing it.",
+                                message: "\(content.title) goes back to a draft, and the link stops working until you publish again.",
                                 confirmLabel: "Unpublish"
                             )
                         )
@@ -480,7 +526,7 @@ public struct ManageTrainView: View {
                         ManageDestructiveConfirm(
                             kind: .disableFund,
                             title: "Disable the gift fund?",
-                            message: "Neighbors won't be able to chip in money any more.",
+                            message: "People won't be able to chip in money any more.",
                             confirmLabel: "Disable"
                         )
                     )

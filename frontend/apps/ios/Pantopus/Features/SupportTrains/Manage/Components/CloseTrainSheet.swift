@@ -82,7 +82,7 @@ public struct CloseTrainSheet: View {
                 .foregroundStyle(Theme.Color.appTextSecondary)
             HStack(spacing: Spacing.s3) {
                 summaryStat(content.mealsDelivered, "Meals delivered")
-                summaryStat(content.neighborsHelped, "Neighbors helped")
+                summaryStat(content.neighborsHelped, "Helpers")
                 summaryStat(content.coverageDays, "Of coverage")
             }
             Text(content.recipientQuote)

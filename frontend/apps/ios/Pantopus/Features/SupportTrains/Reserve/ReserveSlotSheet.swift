@@ -183,10 +183,15 @@ public struct ReserveSlotSheet: View {
         }
     }
 
+    /// The ways of helping the chosen date takes (the train's lanes when the date doesn't say).
+    private var availableModes: [SupportTrainContributionMode] {
+        selectedOption?.allowedModes ?? context.enabledModes
+    }
+
     private var modeStep: some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             stepTitle("How would you like to help?")
-            ForEach(context.enabledModes, id: \.self) { option in
+            ForEach(availableModes, id: \.self) { option in
                 selectableCard(
                     isSelected: option == mode,
                     identifier: "supportTrainReserveMode-\(option.rawValue)"
@@ -380,7 +385,10 @@ public struct ReserveSlotSheet: View {
     private func advance() async {
         errorMessage = nil
         switch step {
-        case .date: step = .mode
+        case .date:
+            // A different date may take other ways of helping.
+            if let mode, !availableModes.contains(mode) { self.mode = nil }
+            step = .mode
         case .mode: step = .details
         case .details: step = .confirm
         case .confirm: await submit()
@@ -395,7 +403,7 @@ public struct ReserveSlotSheet: View {
             dishTitle: dishTitle.isEmpty ? nil : dishTitle,
             restaurantName: restaurantName.isEmpty ? nil : restaurantName,
             estimatedArrivalAt: hasArrivalTime
-                ? Self.isoTimestamp(Self.arrival(at: arrivalTime, on: selectedOption?.slotDate))
+                ? Self.isoTimestamp(Self.arrival(at: arrivalTime, on: selectedOption?.slotDate, zoneId: context.timeZoneId))
                 : nil,
             noteToRecipient: noteToRecipient.isEmpty ? nil : noteToRecipient
         )
@@ -542,13 +550,14 @@ public struct ReserveSlotSheet: View {
         return Calendar.current.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: Date())
     }
 
-    /// The picker sets only the hour and minute, on today's date. The arrival is that time
-    /// on the slot's day, in the helper's time zone, as on the web.
-    private static func arrival(at time: Date, on slotDate: String?) -> Date {
+    /// The picker sets only the hour and minute (read on this phone's clock). The arrival is that
+    /// clock time on the slot's day where the train is (B4), as on the web.
+    static func arrival(at time: Date, on slotDate: String?, zoneId: String? = nil) -> Date {
         let day = (slotDate ?? "").prefix(10).split(separator: "-").compactMap { Int($0) }
         guard day.count == 3 else { return time }
-        let calendar = Calendar.current
-        let clock = calendar.dateComponents([.hour, .minute], from: time)
+        let clock = Calendar.current.dateComponents([.hour, .minute], from: time)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zoneId.flatMap(TimeZone.init(identifier:)) ?? .current
         let parts = DateComponents(year: day[0], month: day[1], day: day[2], hour: clock.hour, minute: clock.minute)
         return calendar.date(from: parts) ?? time
     }

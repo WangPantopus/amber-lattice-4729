@@ -56,23 +56,27 @@ public final class EditSignupFormViewModel {
     private let api: APIClient
     private let store: SupportTrainReservationsStore
     private let onSaved: @MainActor (SupportTrainReservationDTO) -> Void
+    /// The train's zone: a drop-off time is read and saved as that clock time where the train is (B4).
+    private let timeZone: TimeZone
 
     init(
         supportTrainId: String,
         reservation: SupportTrainReservationDTO,
+        timeZoneId: String? = nil,
         store: SupportTrainReservationsStore = .shared,
         api: APIClient = .shared,
         onSaved: @escaping @MainActor (SupportTrainReservationDTO) -> Void = { _ in }
     ) {
         self.supportTrainId = supportTrainId
         self.reservation = reservation
+        timeZone = timeZoneId.flatMap(TimeZone.init(identifier:)) ?? .current
         self.store = store
         self.api = api
         self.onSaved = onSaved
         for field in EditSignupField.allCases {
             fields[field] = FormFieldState(
                 id: field.rawValue,
-                originalValue: Self.originalValue(for: field, in: reservation)
+                originalValue: Self.originalValue(for: field, in: reservation, timeZone: timeZone)
             )
         }
     }
@@ -251,7 +255,7 @@ public final class EditSignupFormViewModel {
     /// the picked `HH:mm` on the original arrival date, or the assigned
     /// slot date when the helper has not supplied an arrival time.
     private func newArrivalISO() -> String? {
-        guard fields[.dropoffTime]?.value != Self.originalValue(for: .dropoffTime, in: reservation) else {
+        guard fields[.dropoffTime]?.value != Self.originalValue(for: .dropoffTime, in: reservation, timeZone: timeZone) else {
             return reservation.estimatedArrivalAt
         }
         let value = (fields[.dropoffTime]?.value ?? "")
@@ -261,7 +265,8 @@ public final class EditSignupFormViewModel {
         guard parts.count == 2,
               let hour = Int(parts[0]),
               let minute = Int(parts[1]) else { return reservation.estimatedArrivalAt }
-        let calendar = Calendar(identifier: .gregorian)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
         let baseDate: Date?
         if let original = reservation.estimatedArrivalAt, let parsed = Self.parseISO(original) {
             baseDate = parsed
@@ -269,6 +274,7 @@ public final class EditSignupFormViewModel {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.calendar = calendar
+            formatter.timeZone = timeZone
             formatter.dateFormat = "yyyy-MM-dd"
             baseDate = reservation.slotDate.flatMap { formatter.date(from: $0) }
         }
@@ -290,7 +296,8 @@ public final class EditSignupFormViewModel {
 
     private static func originalValue(
         for field: EditSignupField,
-        in reservation: SupportTrainReservationDTO
+        in reservation: SupportTrainReservationDTO,
+        timeZone: TimeZone
     ) -> String {
         switch field {
         case .contribution:
@@ -301,7 +308,11 @@ public final class EditSignupFormViewModel {
         case .dropoffTime:
             guard let iso = reservation.estimatedArrivalAt,
                   let date = parseISO(iso) else { return "" }
-            return timeFormatter.string(from: date)
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.timeZone = timeZone
+            return formatter.string(from: date)
         case .dietaryNotes:
             return reservation.privateNoteToOrganizer ?? ""
         }
@@ -327,13 +338,6 @@ public final class EditSignupFormViewModel {
     private nonisolated(unsafe) static let isoFormatterNoFraction: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        f.calendar = Calendar(identifier: .gregorian)
         return f
     }()
 }

@@ -7,6 +7,8 @@
 //  broadcast to all helpers; the backend has no combined close-with-thanks route.
 //
 
+// swiftlint:disable file_length
+
 import Foundation
 
 // MARK: - Content models
@@ -59,12 +61,12 @@ public struct ManageTrainContent: Sendable, Hashable {
     public let slotFillValue: String
     public var helpersValue: String
     public let daysLeftValue: String
-    public let dropoutValue: String
+    public var dropoutValue: String
 
     // SlotPreview mini-fill strip — paints 21 dots in 3 buckets.
     public let slotsFilled: Int
     public let slotsOpen: Int
-    public let slotsDropout: Int
+    public var slotsDropout: Int
     public let slotsTotal: Int
     public let slotFillCaption: String
 
@@ -188,6 +190,22 @@ public final class ManageTrainViewModel {
     public private(set) var helpersFailed = false
     /// True only when the organizer detail includes an exact street address.
     public private(set) var hasDeliveryAddress = false
+    /// Where help goes, as the organizer reads it ("123 Main St, Vancouver"); nil when the train has none (A1).
+    public private(set) var deliveryAddressLabel: String?
+    /// Who can open the train (`sharing_mode`) (A2).
+    public private(set) var sharingMode: String?
+    /// Today's date where the train is, for a new date's default (B4).
+    public private(set) var trainToday: Date = Calendar.current.startOfDay(for: Date())
+    /// The train's IANA zone, for arrival times (B4).
+    public private(set) var trainTimeZoneId: String?
+    /// The train's invitations by account (A2).
+    public private(set) var inviteRows: [SupportTrainInviteDTO] = []
+    /// Only the primary organizer closes a live train (A11).
+    public var canCloseTrain: Bool {
+        guard case let .loaded(content) = state else { return false }
+        return content.viewerRole == .primaryOrganizer && ["published", "active", "paused"].contains(content.status)
+    }
+
     /// Nil while the existing reservation read cannot establish delivery counts.
     public private(set) var deliveredMeals: Int?
     /// Slot roster from the detail payload — drives add / edit / remove date.
@@ -252,8 +270,12 @@ public final class ManageTrainViewModel {
             )
             guard readIsCurrent(read, cache: cache) else { return }
             apply(Self.project(dto))
-            slotRows = Self.slotRows(dto.slots ?? [])
+            slotRows = Self.slotRows(dto.liveSlots)
             hasDeliveryAddress = !(dto.address?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            deliveryAddressLabel = hasDeliveryAddress ? dto.address?.singleLineLabel : nil
+            sharingMode = dto.sharingMode
+            trainToday = Self.trainTodayDate(dto)
+            trainTimeZoneId = dto.timezone
             await loadOrganizerSurfaces(read: read, cache: cache)
         } catch {
             guard readIsCurrent(read, cache: cache), !(error is CancellationError) else { return }
@@ -317,6 +339,17 @@ public final class ManageTrainViewModel {
         if let slots { slotRows = slots }
         if let organizers { organizerRows = organizers }
         if let fund { self.fund = fund }
+    }
+
+    func setDropouts(_ count: Int) {
+        guard case var .loaded(content) = state else { return }
+        content.dropoutValue = String(count)
+        content.slotsDropout = count
+        state = .loaded(content)
+    }
+
+    func replaceInvites(_ rows: [SupportTrainInviteDTO]) {
+        inviteRows = rows
     }
 
     func setSubmitting(_ value: Bool) {
@@ -441,9 +474,11 @@ public final class ManageTrainViewModel {
         thankYouNote = value
     }
 
-    /// Keep the confirmation open until both the optional thanks and close are confirmed.
+    /// Keep the confirmation open until both the optional thanks and close are confirmed. Only a close that can
+    /// succeed starts (A11): the primary organizer, a live train. The note goes first, since an ended train takes
+    /// no more updates; both carry request ids, so trying again repeats neither.
     public func confirmClose() async {
-        guard !isSubmitting, case let .loaded(content) = state else { return }
+        guard !isSubmitting, canCloseTrain, case let .loaded(content) = state else { return }
         let note = thankYouNote.trimmingCharacters(in: .whitespacesAndNewlines)
         actionError = nil
         toast = nil

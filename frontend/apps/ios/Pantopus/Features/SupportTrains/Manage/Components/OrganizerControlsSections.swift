@@ -433,11 +433,11 @@ struct ManageFundSection: View {
                     Text(totalLabel)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
-                    Text("Neighbors can chip in from the train's page.")
+                    Text("People can chip in from the train's page.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 } else {
-                    Text("Let neighbors chip in money as well as meals.")
+                    Text("Let people chip in money as well as meals.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }

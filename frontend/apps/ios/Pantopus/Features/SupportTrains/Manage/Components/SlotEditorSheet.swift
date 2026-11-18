@@ -58,7 +58,7 @@ public struct SlotEditorSheet: View {
                         identifierPrefix: "slotEditorLabel"
                     ) { editor.slotLabel = $0 }
 
-                    fieldLabel("How can neighbors help?")
+                    fieldLabel("How can people help?")
                     chipRow(
                         options: modes,
                         selection: editor.supportMode,
