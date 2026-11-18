@@ -201,9 +201,8 @@ private fun ThankYouBlock(
             color = PantopusColors.appTextStrong,
         )
         Text(
-            // The train closes first, so a refused close never sends anyone a thank-you (A11); the note then goes to
-            // the train's group chat, which still reaches everyone on it.
-            text = "Posted in the train's group chat once it's closed.",
+            // Sent as an update before the train closes: a closed train takes no more updates (B9).
+            text = "Sent to every helper as an update, then the train closes.",
             fontSize = 11.5.sp,
             color = PantopusColors.appTextSecondary,
         )
