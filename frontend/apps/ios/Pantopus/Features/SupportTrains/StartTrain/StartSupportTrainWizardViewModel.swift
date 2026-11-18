@@ -66,6 +66,8 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     public private(set) var recipientNotLinkedName: String?
     public private(set) var launchError: String?
     public private(set) var publishedTrainId: String?
+    /// How many dates the server saved: it skips a date that had passed where the train is.
+    public private(set) var savedDateCount: Int?
     /// A half-built draft a failed launch couldn't delete; the next launch removes it first.
     private var leftoverTrainId: String?
     /// The create's request id, kept until its reply arrives, so a retry reaches the same draft.
@@ -559,6 +561,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
             as: GeneratedSlotsCount.self
         )
         if saved.count < 1 { throw LaunchProblem.datePassed }
+        savedDateCount = saved.count
     }
 
     private enum DraftDiscard { case deleted, live, failed }
