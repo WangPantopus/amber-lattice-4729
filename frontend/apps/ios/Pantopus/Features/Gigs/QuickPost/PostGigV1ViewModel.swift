@@ -328,8 +328,8 @@ public final class PostGigV1ViewModel {
 
     /// Address suggestions for the location field (`GET /api/geo/autocomplete`).
     public private(set) var addressSuggestions: [GeoSuggestion] = []
-    /// The person's own home's point, for nearby address suggestions.
-    private var addressSearchArea: (latitude: Double, longitude: Double)?
+    /// The person's own home's point, for nearby address suggestions; a search never waits for it.
+    private let addressSearchArea = HomeSearchArea()
     public private(set) var isFindingAddress = false
     public private(set) var addressSearchError: String?
     private var addressTask: Task<Void, Never>?
@@ -684,14 +684,14 @@ public extension PostGigV1ViewModel {
         guard query.count >= 3 else { return }
         let revision = addressRevision
         isFindingAddress = true
+        // Nearby first: the person's own home's area (founder 2026-11-17), looked up beside the search.
+        addressSearchArea.find()
         addressTask = Task {
             defer { if addressRevision == revision { isFindingAddress = false } }
             do {
                 try await Task.sleep(for: .milliseconds(300))
-                // Nearby first: the person's own home's area (founder 2026-11-17).
-                if addressSearchArea == nil { addressSearchArea = await AddressSuggestions.anyHomePoint() }
                 let response: GeoAutocompleteResponse = try await api.request(
-                    GeoEndpoints.autocomplete(query: query, near: addressSearchArea)
+                    GeoEndpoints.autocomplete(query: query, near: addressSearchArea.point)
                 )
                 guard addressRevision == revision else { return }
                 addressSuggestions = response.suggestions
