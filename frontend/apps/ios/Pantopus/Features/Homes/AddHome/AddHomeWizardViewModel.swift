@@ -1593,9 +1593,10 @@ final class AddHomeWizardViewModel: WizardModel {
     private func primaryCTALabel(for step: AddHomeStep) -> String {
         if isShortAdd {
             switch step {
-            case .confirm: return "This is my home"
+            // One name through "1 of 2": finding the address, then its check.
+            case .address, .confirm: return "This is my home"
             case .role, .review: return isClaimingExistingHome ? "Submit claim" : "Add home"
-            case .address, .success: break
+            case .success: break
             }
         }
         return switch step {

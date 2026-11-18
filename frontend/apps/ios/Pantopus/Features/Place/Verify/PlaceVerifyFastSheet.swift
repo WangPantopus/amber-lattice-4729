@@ -14,7 +14,7 @@ extension PlaceVerifySheet {
     /// a tap; "Not now" closes it. Only ways the server lists as available, and that this app can open, are drawn.
     func fastSheet(_ options: HomeVerifyOptions, documentInReview: Bool) -> some View {
         let fastRows = Self.fastRows(options, documentInReview: documentInReview)
-        let mailRows = Self.mailRows(options)
+        let mailRows = Self.mailRows(options, documentInReview: documentInReview)
         return VStack(spacing: 0) {
             Capsule().fill(Theme.Color.appBorderStrong).frame(width: 40, height: 5).padding(.top, 8).padding(.bottom, 12)
             header(title: "Verify you live here")
@@ -25,11 +25,14 @@ extension PlaceVerifySheet {
                             PlaceChip(model: PlaceChipModel(tone: .success, text: "Home added"))
                                 .accessibilityIdentifier("place.verifySheet.homeAdded")
                         }
-                        Text("It takes under a minute. Then you can message homes near you, and your home gets the Verified mark.")
-                            .font(.system(size: 14.5))
-                            .lineSpacing(2)
-                            .foregroundStyle(Theme.Color.appTextSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // Only while a check that verifies at once is on offer.
+                        if !fastRows.isEmpty {
+                            Text("It takes under a minute. Then you can message homes near you, and your home gets the Verified mark.")
+                                .font(.system(size: 14.5))
+                                .lineSpacing(2)
+                                .foregroundStyle(Theme.Color.appTextSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     if !fastRows.isEmpty { fastGroup("Fastest", rows: fastRows) }
                     if !mailRows.isEmpty { fastGroup("Or by mail", rows: mailRows) }
@@ -72,8 +75,7 @@ extension PlaceVerifySheet {
         }
     }
 
-    /// The fast checks this app can open, in the SPEC's order (phone, location, document). A document waiting on
-    /// a reviewer shows where it stands instead of a second upload.
+    /// The checks that verify at once and this app can open, in the SPEC's order (phone, location, bill).
     static func fastRows(_ options: HomeVerifyOptions, documentInReview: Bool) -> [FastRow] {
         var rows: [FastRow] = []
         if options.offers(.phone) {
@@ -85,18 +87,17 @@ extension PlaceVerifySheet {
                 tone: .sky
             ))
         }
-        let document = options.option(.document)
-        // The server's answer wins when it reads a bill at once (another photo is fine after an unreadable one);
-        // the app's own claims check only stands in for a review-only upload.
-        if document?.reason == "IN_REVIEW" || (documentInReview && document?.fast != true) {
+        if options.offers(.location) {
             rows.append(FastRow(
-                kind: .documentInReview,
-                icon: .hourglass,
-                label: "Document under review",
-                sub: "A person is reviewing your document. You'll get a notification when it's decided.",
-                tone: .muted
+                kind: .start(.location),
+                icon: .mapPin,
+                label: PlaceVerifyMethod.location.label,
+                sub: PlaceVerifyMethod.location.sub,
+                tone: .sky
             ))
-        } else if document?.available == true, document?.fast != false {
+        }
+        let document = options.option(.document)
+        if !documentWaitsOnReview(document, documentInReview: documentInReview), document?.available == true, document?.fast != false {
             rows.append(FastRow(
                 kind: .start(.document),
                 icon: .camera,
@@ -108,12 +109,20 @@ extension PlaceVerifySheet {
         return rows
     }
 
-    /// Mail, today's review-only document upload (when the bill isn't read at once) and the landlord, in today's
-    /// words for the last two, when the server offers them.
-    static func mailRows(_ options: HomeVerifyOptions) -> [FastRow] {
+    /// A document a person is reviewing: the sheet shows where it stands instead of a second upload. The server's
+    /// answer wins when it reads a bill at once (another photo is fine after an unreadable one); the app's own
+    /// claims check only stands in for a review-only upload.
+    static func documentWaitsOnReview(_ document: HomeVerifyOption?, documentInReview: Bool) -> Bool {
+        document?.reason == "IN_REVIEW" || (documentInReview && document?.fast != true)
+    }
+
+    /// Mail, then a document a person reviews (today's upload when the bill isn't read at once, or one already
+    /// waiting on review), then the landlord, in today's words for the last two, when the server offers them.
+    static func mailRows(_ options: HomeVerifyOptions, documentInReview: Bool) -> [FastRow] {
         var rows: [FastRow] = []
         let document = options.option(.document)
-        let reviewOnlyDocument = document?.available == true && document?.fast == false && document?.reason != "IN_REVIEW"
+        let waitsOnReview = documentWaitsOnReview(document, documentInReview: documentInReview)
+        let reviewOnlyDocument = !waitsOnReview && document?.available == true && document?.fast == false
         if options.offers(.mail) {
             rows.append(FastRow(
                 kind: .start(.mail),
@@ -123,7 +132,15 @@ extension PlaceVerifySheet {
                 tone: .muted
             ))
         }
-        if reviewOnlyDocument {
+        if waitsOnReview {
+            rows.append(FastRow(
+                kind: .documentInReview,
+                icon: .hourglass,
+                label: "Document under review",
+                sub: "A person is reviewing your document. You'll get a notification when it's decided.",
+                tone: .muted
+            ))
+        } else if reviewOnlyDocument {
             rows.append(FastRow(
                 kind: .start(.document),
                 icon: PlaceVerifyMethod.document.icon,

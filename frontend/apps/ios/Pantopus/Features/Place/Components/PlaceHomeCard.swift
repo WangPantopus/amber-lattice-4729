@@ -47,7 +47,9 @@ struct PlaceHomeCard: View {
                 standing
                     .padding(.bottom, 10)
             }
-            if showsVerify, let onUnlock {
+            // verify-options is read fresh; a Place copy from before a check can still say "verify": the newer
+            // answer wins, so the card never says both.
+            if showsVerify, let onUnlock, Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) == nil {
                 verifyLine(onUnlock)
                     .padding(.bottom, 12)
             }

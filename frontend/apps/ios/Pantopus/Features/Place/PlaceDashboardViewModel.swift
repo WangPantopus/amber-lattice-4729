@@ -352,6 +352,14 @@ final class PlaceDashboardViewModel {
     /// The server's verify-options answer (FASTVERIFY); the verify sheet reads the same copy.
     private func refreshVerifyOptions() async {
         verifyOptions = await HomeVerifyOptionsStore.shared.load(homeId: homeId)
+        // A location check waiting for its second day is checked again quietly, when location is already allowed.
+        if let options = verifyOptions {
+            let id = homeId
+            Task { [weak self] in
+                guard await LocationRecheck.runIfDue(options, homeId: id) else { return }
+                self?.verifyOptions = await HomeVerifyOptionsStore.shared.load(homeId: id)
+            }
+        }
         guard verifyOptions != nil else {
             hasPendingPostcard = false
             return

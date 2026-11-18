@@ -416,6 +416,8 @@ public enum HubRoute: Hashable {
     case placeVerifyStatus(homeId: String, method: PlaceVerifyMethod, address: String)
     /// FASTVERIFY — "Phone check": the texted code and the phone records' answer for this Home.
     case phoneCheck(homeId: String)
+    /// FASTVERIFY — "Location check": one reading at home, with the device proof.
+    case locationCheck(homeId: String)
     /// W7 D1 — compose a template-only heads-up to a verified neighbor on
     /// your block. `recipient` is nil when opened without a chosen home
     /// (the "choose a neighbor" empty state).
@@ -848,6 +850,9 @@ public struct HubTabRoot: View {
             launchScopedDestination(for: item.route) { path.append($0) }
         }
         .sheet(item: $systemSheet) { request in request.makeView() }
+        .onChange(of: mailVerifyHome == nil) { _, closed in
+            if closed, mode == .hub { rootTabs.placeVerifySheetUp = false }
+        }
         .sheet(item: $mailVerifyHome) { home in
             PlaceVerifySheet(
                 address: home.address,
@@ -1057,6 +1062,7 @@ public struct HubTabRoot: View {
         case .mail: .postcardVerification(homeId: homeId)
         case .landlord: .verifyLandlord(homeId: homeId)
         case .phone: .phoneCheck(homeId: homeId)
+        case .location: .locationCheck(homeId: homeId)
         }
     }
 
@@ -1078,14 +1084,19 @@ public struct HubTabRoot: View {
     private func leaveFastCheck(homeId: String) {
         HomeVerifyOptionsStore.shared.forget(homeId: homeId)
         path.removeAll { route in
-            if case .phoneCheck = route { return true }
-            return false
+            switch route {
+            case .phoneCheck, .locationCheck: true
+            default: false
+            }
         }
     }
 
     /// After Add Home in two steps: Your Place for the new Home, and its verify sheet once the sheet knows its rows.
     @MainActor
     private func openPlaceToVerify(homeId: String, street: String) {
+        // The first-run notices (daily briefings, Suggestions) wait from here until the sheet is closed: both
+        // are waiting for Place's top screen, and the notice would take the sheet's place.
+        rootTabs.placeVerifySheetUp = true
         openPlaceRoot(homeId: homeId)
         Task { @MainActor in
             await HomeVerifyOptionsStore.shared.load(homeId: homeId)
@@ -1413,7 +1424,8 @@ public struct HubTabRoot: View {
         case let .postcardVerification(id, code):
             // A scanned card's code waits for the postcard screen, outside the navigation path.
             PostcardLinkCode.hand(code, homeId: id)
-            path.append(.postcardVerification(homeId: id))
+            // The screen already showing takes the code itself; a second copy of it would lose the code.
+            if path.last != .postcardVerification(homeId: id) { path.append(.postcardVerification(homeId: id)) }
             _ = router.consume()
         case .notifications:
             path.append(.notifications)
@@ -4066,6 +4078,18 @@ public struct HubTabRoot: View {
         case let .phoneCheck(homeId):
             PhoneCheckView(
                 viewModel: PhoneCheckViewModel(homeId: homeId, address: Self.homeStreet(homeId)),
+                isRenter: Self.isRenter(homeId),
+                onStart: { method in
+                    pop()
+                    push(Self.verifyRoute(method, homeId: homeId))
+                },
+                onMailCode: { push(.postcardVerification(homeId: homeId)) },
+                onGoToPlace: { leaveFastCheck(homeId: homeId) },
+                onBack: { pop() }
+            )
+        case let .locationCheck(homeId):
+            LocationCheckView(
+                viewModel: LocationCheckViewModel(homeId: homeId, address: Self.homeStreet(homeId)),
                 isRenter: Self.isRenter(homeId),
                 onStart: { method in
                     pop()

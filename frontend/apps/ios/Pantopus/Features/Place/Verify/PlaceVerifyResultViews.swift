@@ -247,6 +247,8 @@ struct FastCheckDock<Content: View>: View {
 
     var body: some View {
         VStack(spacing: Spacing.s2) { content }
+            // At the largest text sizes the bar would take half the screen; the page above it scrolls instead.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s3)
             .padding(.bottom, Spacing.s4)
@@ -262,6 +264,9 @@ extension PlaceVerifySheet {
     static func otherWays(_ options: HomeVerifyOptions?, excluding: PlaceVerifyMethod) -> [FastRow] {
         guard let options else { return [] }
         var rows: [FastRow] = []
+        if excluding != .location, options.offers(.location) {
+            rows.append(FastRow(kind: .start(.location), icon: .mapPin, label: "I'm at home now", sub: "One tap.", tone: .sky))
+        }
         if excluding != .phone, options.offers(.phone) {
             rows.append(FastRow(kind: .start(.phone), icon: .smartphone, label: "Use my phone number", sub: "About a minute.", tone: .sky))
         }

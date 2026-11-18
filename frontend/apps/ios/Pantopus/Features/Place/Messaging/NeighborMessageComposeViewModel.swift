@@ -137,9 +137,8 @@ final class NeighborMessageComposeViewModel {
     }
 
     func load() async {
-        if addressSuggestions.near == nil {
-            addressSuggestions.near = await AddressSuggestions.homePoint(homeId: senderHomeId)
-        }
+        // Beside the notes' read, never in front of it.
+        addressSuggestions.findNear(homeId: senderHomeId)
         if case .loaded = state { return }
         state = .loading
         do {

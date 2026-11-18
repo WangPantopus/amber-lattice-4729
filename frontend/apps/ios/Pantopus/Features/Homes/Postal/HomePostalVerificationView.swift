@@ -81,6 +81,8 @@ struct HomePostalVerificationView: View {
             guard visible else { return }
             if phase == .active { Task { await viewModel.open() } } else { retire() }
         }
+        // A card's link opened while this screen shows: it takes the code instead of a second screen.
+        .onChange(of: PostcardLinkCode.shared.handed) { _, _ in viewModel.takeLinkCode() }
         .onChange(of: viewModel.isCurrent) { _, current in
             if !current { retire()
                 Task { await viewModel.open() }
