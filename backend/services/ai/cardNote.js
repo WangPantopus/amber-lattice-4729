@@ -52,13 +52,16 @@ function namesOf(to) {
   });
 }
 
-/** Who the note greets: one or two people by name; a longer list gets the same words, so no one's name. */
+/**
+ * Who the note greets: one person by name. Two or more each get their own card with the same words, and a list
+ * promises no one sees who else got one, so their notes name no one (founder, 2026-11-17) and don't count them:
+ * told "two people", the model wrote "you both" on every note.
+ */
 function toLine(names, count) {
   const people = Math.max(names.length, Number(count) || 0);
-  if (people > 2) return `To: ${people} people, each getting this same note (name no one)`;
-  if (names.length === 0) return people === 2 ? 'To: two people, not named (name no one)' : 'To: not named (name no one)';
-  if (names.length === 1 && people === 2) return 'To: two people, each getting this same note (name no one)';
-  return `To: ${names.join(' and ')}`;
+  if (people > 1) return `To: ${people} people, each getting their own card with this same note (name no one, and don't say how many people get it)`;
+  if (names.length === 0) return 'To: not named (name no one)';
+  return `To: ${names[0]}`;
 }
 
 /**
