@@ -327,8 +327,10 @@ final class HolidayCardFlowViewModel {
         Self.isEmail(email.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    /// "Dear Maya," on the back before anything's written.
+    /// "Dear Maya," on the back before anything's written; "Dear friends," on a card to two or more people, which names
+    /// no one.
     var placeholder: String {
+        if recipient?.entries != nil { return "Dear friends," }
         guard case let .person(_, name) = recipient else { return "Dear friend," }
         return "Dear \(HolidayCardWords.firstName(name)),"
     }
