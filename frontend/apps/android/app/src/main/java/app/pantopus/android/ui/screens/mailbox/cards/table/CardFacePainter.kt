@@ -701,6 +701,8 @@ internal class PenNote private constructor(
         val shift: Float,
         val turn: Float,
         val opacity: Float,
+        /** Which word of the note this is: a word wider than a line is broken between letters over several lines. */
+        val token: Int,
     )
 
     companion object {
@@ -757,13 +759,30 @@ internal class PenNote private constructor(
             for ((rules, pen) in SIZES) {
                 val placed = place(note, number, u * pen, u * 85f, paint)
                 if (placed.lines > rules * 2) continue
-                val first = min(rules, placed.lines - 2).coerceAtLeast(1)
+                val first = wholeWords(placed.words, min(rules, placed.lines - 2))
+                // A single word taller than the first leaf: the next pen, or one side.
+                if (first < 1) continue
                 val blank = placed.words.none { it.line == first }
+                val second = if (blank) first + 1 else first
+                // The second leaf can't hold what's left once a word moved over: the next pen.
+                if (placed.lines - second > rules) continue
                 val pitch = u * RULED / rules
-                val leaf = LeafBreak(first, if (blank) first + 1 else first)
-                return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch, leaf)
+                return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch, LeafBreak(first, second))
             }
             return null
+        }
+
+        /**
+         * Where the first leaf ends so that no word is split between the leaves (the design check of November 17): a
+         * word broken over several lines that would cross the break starts the second leaf instead.
+         */
+        private fun wholeWords(
+            words: List<PenWord>,
+            first: Int,
+        ): Int {
+            val crossing = words.firstOrNull { it.line >= first }?.token ?: return first
+            val start = words.filter { it.token == crossing }.minOf { it.line }
+            return min(first, start)
         }
 
         private class Placed(
@@ -783,6 +802,7 @@ internal class PenNote private constructor(
             val seed = CardSeed(number * 7 + 3)
             val out = ArrayList<PenWord>()
             var line = 0
+            var wordAt = 0
             note.split('\n').forEach { row ->
                 val backwards = row.isNotEmpty() && !Bidi(row, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT).baseIsLeftToRight()
                 var x = 0f
@@ -804,10 +824,11 @@ internal class PenNote private constructor(
                             x = 0f
                         }
                         val placedAt = if (backwards) width - x - pieceWidth else x
-                        out += PenWord(piece, placedAt, line, pieceWidth, shift, turn, opacity)
+                        out += PenWord(piece, placedAt, line, pieceWidth, shift, turn, opacity, wordAt)
                         x += pieceWidth
                         gap = false
                     }
+                    wordAt += 1
                 }
                 line += 1
             }
