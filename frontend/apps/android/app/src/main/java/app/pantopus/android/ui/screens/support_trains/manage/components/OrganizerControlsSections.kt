@@ -169,6 +169,7 @@ fun ManageDatesSection(
     onAdd: () -> Unit,
     onEdit: (ManageSlotRow) -> Unit,
     onRemove: (ManageSlotRow) -> Unit,
+    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainDatesSection"),
@@ -176,17 +177,19 @@ fun ManageDatesSection(
     ) {
         ManageSectionHeader(
             title = "Dates (${rows.size})",
-            actionLabel = "Add date",
+            actionLabel = if (readOnly) null else "Add date",
             actionTag = "manageTrainAddDateButton",
-            onAction = onAdd,
+            onAction = onAdd.takeIf { !readOnly },
         )
-        Text(
-            text =
-                "Add a new date, move an open one, or remove one you no longer need. " +
-                    "Reserved dates need their signup removed first. Completed dates stay in the train's history.",
-            color = PantopusColors.appTextSecondary,
-            fontSize = 12.5.sp,
-        )
+        if (!readOnly) {
+            Text(
+                text =
+                    "Add a new date, move an open one, or remove one you no longer need. " +
+                        "Reserved dates need their signup removed first. Completed dates stay in the train's history.",
+                color = PantopusColors.appTextSecondary,
+                fontSize = 12.5.sp,
+            )
+        }
         if (rows.isEmpty()) {
             ManageCard {
                 Text(text = "No dates added yet", color = PantopusColors.appTextMuted, fontSize = 13.sp)
@@ -211,7 +214,7 @@ fun ManageDatesSection(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                if (row.isEditable) {
+                if (!readOnly && row.isEditable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                         ManagePillButton(
                             label = "Edit",
@@ -229,7 +232,7 @@ fun ManageDatesSection(
                             onClick = { onRemove(row) },
                         )
                     }
-                } else {
+                } else if (!readOnly) {
                     Text(
                         text =
                             if (row.status == "completed") {
@@ -256,6 +259,7 @@ fun ManageHelpersSection(
     onShareAddress: (ManageHelperRow) -> Unit,
     onConfirm: (ManageHelperRow) -> Unit,
     onRemove: (ManageHelperRow) -> Unit,
+    readOnly: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainHelpersSection"),
@@ -318,7 +322,7 @@ fun ManageHelpersSection(
                             color = PantopusColors.appTextMuted,
                             fontSize = 11.5.sp,
                         )
-                    } else if (row.canShareAddress) {
+                    } else if (row.canShareAddress && !readOnly) {
                         ManagePillButton(
                             label = if (row.isGuest) "Email address" else "Share address",
                             icon = PantopusIcon.MapPin,
@@ -326,7 +330,7 @@ fun ManageHelpersSection(
                             isEnabled = !isBusy,
                             onClick = { onShareAddress(row) },
                         )
-                    } else if (row.status != "canceled") {
+                    } else if (row.status != "canceled" && !row.canShareAddress) {
                         Text(
                             text = if (row.isGuest) "Exact location sent" else "Exact location shared",
                             color = PantopusColors.success,
@@ -342,7 +346,7 @@ fun ManageHelpersSection(
                             onClick = { onConfirm(row) },
                         )
                     }
-                    if (row.canRemove) {
+                    if (row.canRemove && !readOnly) {
                         ManagePillButton(
                             label = "Remove",
                             icon = PantopusIcon.UserMinus,

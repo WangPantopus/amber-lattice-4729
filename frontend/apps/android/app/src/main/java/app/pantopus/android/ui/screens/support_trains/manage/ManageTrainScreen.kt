@@ -622,44 +622,47 @@ private fun LoadedBody(
                         onTap = { viewModel.showCloseSheet() },
                     )
                 }
-                ManageLifecycleSection(
-                    status = content.status,
-                    viewerRole = content.viewerRole,
-                    isBusy = ui.isSubmitting,
-                    onPublish = { viewModel.publishTrain() },
-                    onPause = { viewModel.pauseTrain() },
-                    onResume = { viewModel.resumeTrain() },
-                    onUnpublish = {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind = ManageConfirmKind.UnpublishTrain,
-                                title = "Unpublish this train?",
-                                message = "${content.title} goes back to draft, and everyone but its organizers stops seeing it.",
-                                confirmLabel = "Unpublish",
-                            ),
-                        )
-                    },
-                    onArchive = {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind = ManageConfirmKind.ArchiveTrain,
-                                title = "Archive this train?",
-                                message = "${content.title} moves out of your active list.",
-                                confirmLabel = "Archive",
-                            ),
-                        )
-                    },
-                    onDelete = {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind = ManageConfirmKind.DeleteTrain,
-                                title = "Delete ${content.title}?",
-                                message = "This permanently deletes the train, its dates, updates and invites.",
-                                confirmLabel = "Delete",
-                            ),
-                        )
-                    },
-                )
+                // A recipient_delegate can't publish, pause, resume or end the train (the server refuses them).
+                if (!content.isRecipientDelegate) {
+                    ManageLifecycleSection(
+                        status = content.status,
+                        viewerRole = content.viewerRole,
+                        isBusy = ui.isSubmitting,
+                        onPublish = { viewModel.publishTrain() },
+                        onPause = { viewModel.pauseTrain() },
+                        onResume = { viewModel.resumeTrain() },
+                        onUnpublish = {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind = ManageConfirmKind.UnpublishTrain,
+                                    title = "Unpublish this train?",
+                                    message = "${content.title} goes back to draft, and everyone but its organizers stops seeing it.",
+                                    confirmLabel = "Unpublish",
+                                ),
+                            )
+                        },
+                        onArchive = {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind = ManageConfirmKind.ArchiveTrain,
+                                    title = "Archive this train?",
+                                    message = "${content.title} moves out of your active list.",
+                                    confirmLabel = "Archive",
+                                ),
+                            )
+                        },
+                        onDelete = {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind = ManageConfirmKind.DeleteTrain,
+                                    title = "Delete ${content.title}?",
+                                    message = "This permanently deletes the train, its dates, updates and invites.",
+                                    confirmLabel = "Delete",
+                                ),
+                            )
+                        },
+                    )
+                }
             }
         }
         StickyCTA(
@@ -712,9 +715,13 @@ private fun OrganizerControls(
         }
     }
 
+    // A recipient_delegate edits the details for helpers, posts updates and confirms deliveries; the server refuses
+    // them dates, sharing the address, removing a signup, reminders and the fund, so those show read-only or not at all.
+    val delegate = content.isRecipientDelegate
     ManageDatesSection(
         rows = ui.slotRows,
         isBusy = ui.isSubmitting,
+        readOnly = delegate,
         onAdd = { viewModel.startAddSlot() },
         onEdit = { viewModel.startEditSlot(it) },
         onRemove = { row ->
@@ -732,6 +739,7 @@ private fun OrganizerControls(
     ManageHelpersSection(
         rows = ui.helperRows,
         addressAvailable = content.deliveryAddressAvailable,
+        readOnly = delegate,
         failed = ui.helpersFailed,
         isBusy = ui.isSubmitting,
         onShareAddress = { viewModel.shareExactAddress(it.id) },
@@ -772,21 +780,23 @@ private fun OrganizerControls(
         },
     )
 
-    ManageNudgeSection(
-        openSlotCount = content.slotsOpen,
-        hasDates = ui.slotRows.isNotEmpty(),
-        draft = ui.nudgeDraft,
-        draftNote = ui.nudgeDraftNote,
-        isBusy = ui.isSubmitting,
-        listScroll = listScroll,
-        onDraft = { viewModel.draftNudge() },
-        onEditDraft = { viewModel.updateNudgeDraft(it) },
-        onSend = { viewModel.sendNudge() },
-        onDiscard = { viewModel.discardNudge() },
-    )
+    if (!delegate) {
+        ManageNudgeSection(
+            openSlotCount = content.slotsOpen,
+            hasDates = ui.slotRows.isNotEmpty(),
+            draft = ui.nudgeDraft,
+            draftNote = ui.nudgeDraftNote,
+            isBusy = ui.isSubmitting,
+            listScroll = listScroll,
+            onDraft = { viewModel.draftNudge() },
+            onEditDraft = { viewModel.updateNudgeDraft(it) },
+            onSend = { viewModel.sendNudge() },
+            onDiscard = { viewModel.discardNudge() },
+        )
+    }
 
     // Launch cut #9: no app takes a contribution yet.
-    if (LaunchFeatures.giftFunds) {
+    if (LaunchFeatures.giftFunds && !delegate) {
         ManageFundSection(
             fund = ui.fund,
             canDisable = content.viewerRole == SupportTrainViewerRole.PRIMARY_ORGANIZER,
