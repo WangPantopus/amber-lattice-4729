@@ -293,6 +293,7 @@ class ManageTrainViewModel
         private val _state = MutableStateFlow(ManageTrainUiState(state = summary()))
         val state: StateFlow<ManageTrainUiState> = _state.asStateFlow()
         private var updateRequestId = java.util.UUID.randomUUID().toString()
+        private val closeRequestId = java.util.UUID.randomUUID().toString()
         private val session = sessionScopes.create(viewModelScope)
         private var active = true
         private var readVersion = 0L
@@ -610,9 +611,9 @@ class ManageTrainViewModel
         }
 
         /**
-         * Close first (A11): a refused close sends nobody a thank-you. The thank-you then goes to the train's group
-         * chat, because a closed train takes no more updates (B9). If only the note fails, the train stays closed and
-         * the organizer is told to post it in the chat.
+         * Only a close that can succeed starts (A11): the primary organizer, a live train. The thank-you goes first as
+         * an update to every helper, since an ended train takes no more updates (B9); it carries a request id, so
+         * trying again doesn't repeat it. The sheet stays open until both are confirmed.
          */
         fun confirmClose() {
             val current = _state.value
@@ -621,44 +622,53 @@ class ManageTrainViewModel
             val note = current.thankYouNote.trim()
             _state.update { it.copy(isSubmitting = true, actionError = null, toast = null) }
             viewModelScope.launch {
+                if (note.isNotEmpty()) {
+                    when (
+                        val result =
+                            checkedAction {
+                                repo.postUpdate(trainId, SupportTrainUpdateBody(body = note, clientRequestId = closeRequestId))
+                            } ?: return@launch
+                    ) {
+                        is NetworkResult.Success -> Unit
+                        is NetworkResult.Failure -> {
+                            _state.update {
+                                it.copy(
+                                    isSubmitting = false,
+                                    actionError = result.error.displayMessage("Couldn't send the thank-you note."),
+                                )
+                            }
+                            return@launch
+                        }
+                    }
+                }
                 when (val result = checkedAction { repo.complete(trainId) } ?: return@launch) {
-                    is NetworkResult.Success -> Unit
-                    is NetworkResult.Failure -> {
+                    is NetworkResult.Success ->
+                        _state.update {
+                            it.copy(
+                                isSubmitting = false,
+                                state =
+                                    if (canAct) {
+                                        ManageTrainState.Loaded(content.copy(isActive = false, status = "completed", canClose = false))
+                                    } else {
+                                        it.state
+                                    },
+                                sheetMode = ManageTrainSheetMode.CLOSED,
+                                thankYouNote = "",
+                                toast =
+                                    if (note.isEmpty()) {
+                                        "Train closed"
+                                    } else {
+                                        "Train closed · thanks sent to ${content.helpersValue} helpers"
+                                    },
+                            )
+                        }
+                    is NetworkResult.Failure ->
                         _state.update {
                             it.copy(
                                 isSubmitting = false,
                                 actionError = result.error.displayMessage("Couldn't close this train."),
                             )
                         }
-                        return@launch
-                    }
-                }
-                val thanksSent =
-                    note.isEmpty() || (checkedAction { repo.sendNudge(trainId, note) } ?: return@launch) is NetworkResult.Success
-                _state.update {
-                    it.copy(
-                        isSubmitting = false,
-                        state =
-                            if (canAct) {
-                                ManageTrainState.Loaded(content.copy(isActive = false, status = "completed", canClose = false))
-                            } else {
-                                it.state
-                            },
-                        sheetMode = ManageTrainSheetMode.CLOSED,
-                        thankYouNote = if (thanksSent) "" else it.thankYouNote,
-                        toast =
-                            when {
-                                note.isEmpty() -> "Train closed"
-                                thanksSent -> "Train closed · thanks posted in the group chat"
-                                else -> null
-                            },
-                        actionError =
-                            if (thanksSent) {
-                                null
-                            } else {
-                                "The train is closed, but your thank-you couldn't be posted. Post it in the train's group chat."
-                            },
-                    )
                 }
             }
         }
