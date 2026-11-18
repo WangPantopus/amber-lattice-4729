@@ -57,11 +57,13 @@ final class HolidayCardNoteHelp {
         canUndo(message) ? before ?? message : message
     }
 
-    /// Who the notes are for, in the sheet's first line.
+    /// Who the notes are for, in the sheet's first line. Only a card to one person found by name is written to them by
+    /// name: each person on a list gets a card of their own, and no one sees who else got one (Nov 17, second round).
     static func forLine(names: [String], count: Int) -> String {
         if count > 2 { return "One note for all \(count) people, so it names no one." }
-        if !names.isEmpty, names.count == count { return "For \(names.joined(separator: " and "))." }
-        return count == 2 ? "One note for both of them." : "A note for them."
+        if count == 2 { return "One note for both of them, so it names no one." }
+        if names.count == 1, let name = names.first { return "For \(name)." }
+        return "A note for them."
     }
 
     /// One picture and the people it's to, as the notes were written for them.

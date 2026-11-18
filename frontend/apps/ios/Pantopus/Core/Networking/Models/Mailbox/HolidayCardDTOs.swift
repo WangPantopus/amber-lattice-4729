@@ -891,7 +891,7 @@ public struct HolidayCardNoteHelpBody: Encodable, Sendable {
     public let design: String
     /// The first names the card is to, as the screen shows them (none for an address or a link).
     public let to: [String]
-    /// How many people the card goes to: past two, the note names no one.
+    /// How many people the card goes to: from two on, the note names no one.
     public let count: Int
     /// "Anything to mention?"
     public let hint: String?
