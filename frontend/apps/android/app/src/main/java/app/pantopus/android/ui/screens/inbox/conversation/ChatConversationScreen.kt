@@ -2709,7 +2709,7 @@ private fun AiWelcomeFrame(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.size(10.dp))
-        TrustPill(text = "Private to your account · never shared with neighbors")
+        TrustPill(text = "Private to your account · never shared with others")
         Spacer(modifier = Modifier.size(18.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),
