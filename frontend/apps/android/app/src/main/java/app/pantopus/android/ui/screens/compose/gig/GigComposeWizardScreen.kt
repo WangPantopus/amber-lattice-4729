@@ -59,6 +59,7 @@ import app.pantopus.android.data.analytics.Analytics
 import app.pantopus.android.data.analytics.AnalyticsEvent
 import app.pantopus.android.data.gigs.GigCameraPhotos
 import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
+import app.pantopus.android.ui.components.ListKeptAboveKeyboard
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.keepsKeyboard
 import app.pantopus.android.ui.components.rememberAddressSearchArea
@@ -361,7 +362,8 @@ private fun WhereSection(
                     placeholder = "123 Main St",
                     fieldTestTag = "composeGig_place_line1",
                 )
-                PlaceSuggestions(state, vm)
+                // The field sits low on the page: its list is kept above the keyboard (FASTVERIFY section 11).
+                ListKeptAboveKeyboard(rows = state.addressSuggestions, spacing = Spacing.s3) { PlaceSuggestions(state, vm) }
                 PantopusTextField(
                     label = "City",
                     value = state.form.placeAddress.city,
