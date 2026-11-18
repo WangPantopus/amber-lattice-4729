@@ -236,7 +236,7 @@ internal class CardFacePainter(
     fun twoLeaves(
         face: CardFaceWords,
         u: Float,
-    ): Boolean = face.leaves && !face.writing && penNote(face, u).twoLeaves
+    ): Boolean = face.leaves && !face.writing && face.letterTitle == null && penNote(face, u).twoLeaves
 
     /**
      * "over" in the pen with a short arrow, at the first leaf's foot (plan Part 9): the word 5.6u high in the pen's ink

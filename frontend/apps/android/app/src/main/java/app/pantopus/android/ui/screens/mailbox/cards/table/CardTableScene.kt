@@ -734,7 +734,10 @@ private fun TableCardLayer(
     val density = LocalDensity.current.density
     val painter = remember(faceArt, density) { faceArt?.let { CardFacePainter(it, density) } }
     // A long note goes over two leaves where the card can be turned: not while it's being sealed (plan Part 9).
-    val words = remember(state.card) { state.card.words(cardPaperColor(state.card.paper)).copy(leaves = state.sending == null) }
+    val words =
+        remember(state.card) {
+            state.card.words(cardPaperColor(state.card.paper)).copy(leaves = state.sending == null && !state.card.letter)
+        }
     LaunchedEffect(painter, words, g.cardWidth) {
         painter?.let { state.leavesLaid(it.twoLeaves(words, g.cardWidth / 100f)) }
     }
