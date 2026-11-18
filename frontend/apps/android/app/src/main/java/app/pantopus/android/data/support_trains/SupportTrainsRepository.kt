@@ -457,7 +457,7 @@ class SupportTrainsRepository
             safeApiCall {
                 actionsApi.disableFund(supportTrainId).close()
             }
-    
+
         // ─── Address, audience, household, invitations, a helper's own signup ───
 
         /** `PATCH /:id` — the audience or where help goes. The server's refusal reads as words. */

@@ -5,10 +5,10 @@ package app.pantopus.android.ui.screens.support_trains.manage
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.geo.NormalizedAddress
 import app.pantopus.android.data.api.models.support_trains.AddSupportTrainOrganizerBody
 import app.pantopus.android.data.api.models.support_trains.AddSupportTrainSlotBody
 import app.pantopus.android.data.api.models.support_trains.CancelReservationBody
-import app.pantopus.android.data.api.models.geo.NormalizedAddress
 import app.pantopus.android.data.api.models.support_trains.SupportTrainFundDto
 import app.pantopus.android.data.api.models.support_trains.SupportTrainUpdateBody
 import app.pantopus.android.data.api.models.support_trains.UpdateSupportTrainBody
