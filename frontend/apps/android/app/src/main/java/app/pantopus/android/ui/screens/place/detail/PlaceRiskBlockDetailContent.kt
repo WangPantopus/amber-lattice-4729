@@ -109,7 +109,11 @@ fun PlaceRiskDetailContent(
         PlaceSourceNote("Ready.gov · American Red Cross")
 
         PlaceDetailSectionLabel("Fridge card")
-        if (intel.tier == PlaceTier.T4) {
+        // Verified by a fast check: the card's headline is a mail-proven address, so it needs the mailed code.
+        val mailCode = LocalPlaceDetailMailCode.current
+        if (intel.tier == PlaceTier.T4 && mailCode != null) {
+            PlaceMailCodeCard("The 911-ready household card", PantopusIcon.HeartPulse, mailCode)
+        } else if (intel.tier == PlaceTier.T4) {
             LifecycleResumeEffect(Unit) {
                 viewModel.loadFridgeCards()
                 onPauseOrDispose { }

@@ -98,6 +98,12 @@ fun PlaceBlockFoundersSection(
         )
         return
     }
+    // Verified by a fast check: founding ranks and block invitations need the mailed code (the server refuses them).
+    val mailCode = LocalPlaceDetailMailCode.current
+    if (mailCode != null) {
+        PlaceMailCodeCard("Block founders", PantopusIcon.Ribbon, mailCode)
+        return
+    }
     LaunchedEffect(Unit) { viewModel.loadBlockFounders() }
     val state by viewModel.blockFounders.collectAsStateWithLifecycle()
     when (val current = state) {
