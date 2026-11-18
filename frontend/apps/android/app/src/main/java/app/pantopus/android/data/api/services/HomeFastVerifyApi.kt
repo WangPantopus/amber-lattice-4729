@@ -1,6 +1,10 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartResponse
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyResponse
 import app.pantopus.android.data.api.models.homes.PostcardReportRequest
 import app.pantopus.android.data.api.models.homes.PostcardReportResponse
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
@@ -39,4 +43,20 @@ interface HomeFastVerifyApi {
     suspend fun reportPostcard(
         @Body body: PostcardReportRequest,
     ): PostcardReportResponse
+
+    /** `POST /api/homes/:id/fast-check/phone/start`: texts a code (`home_fast_verify_phone`). */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/phone/start")
+    suspend fun startPhoneCheck(
+        @Path("id") homeId: String,
+        @Body body: PhoneCheckStartRequest,
+    ): PhoneCheckStartResponse
+
+    /** `POST /api/homes/:id/fast-check/phone/verify`: the code, then the records' match. */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/phone/verify")
+    suspend fun verifyPhoneCheck(
+        @Path("id") homeId: String,
+        @Body body: PhoneCheckVerifyRequest,
+    ): PhoneCheckVerifyResponse
 }

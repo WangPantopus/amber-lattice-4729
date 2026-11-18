@@ -415,6 +415,7 @@ import app.pantopus.android.ui.screens.place.today.TodayTabScreen
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_ADDRESS_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
+import app.pantopus.android.ui.screens.place.verify.PhoneCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyStatusScreen
 import app.pantopus.android.ui.screens.plans.PlansExternalRoutes
@@ -656,11 +657,12 @@ private object ChildRoutes {
         "place/{$PLACE_VERIFY_HOME_ID_KEY}/verify/{$PLACE_VERIFY_METHOD_KEY}" +
             "?$PLACE_VERIFY_ADDRESS_KEY={$PLACE_VERIFY_ADDRESS_KEY}"
 
+    /** Percent-encoded: the route's query is read back with URI decoding, which keeps a form-encoded "+" as is. */
     fun placeVerifyStatus(
         homeId: String,
         method: String,
         address: String,
-    ): String = "place/$homeId/verify/$method?$PLACE_VERIFY_ADDRESS_KEY=${java.net.URLEncoder.encode(address, "UTF-8")}"
+    ): String = "place/$homeId/verify/$method?$PLACE_VERIFY_ADDRESS_KEY=${android.net.Uri.encode(address)}"
 
     /** W7 D1 — compose a verified-neighbor heads-up (carries the address). */
     const val NEIGHBOR_COMPOSE =
@@ -2276,15 +2278,20 @@ private fun NavHostController.navigateToRootTab(
     }
 }
 
-/** A verify-sheet door opens its real flow (Wedge v2 D3); the Place dashboard and the Place detail pages share it. */
+/**
+ * A verify-sheet door opens its real flow (Wedge v2 D3); the Place dashboard and the Place detail pages share it. The
+ * fast checks (FASTVERIFY) open on the per-way verify route, with [address] for their words.
+ */
 private fun NavHostController.openPlaceVerify(
     method: PlaceVerifyMethod,
     homeId: String,
+    address: String = "",
 ) {
     when (method) {
         PlaceVerifyMethod.DOCUMENT -> navigate(ChildRoutes.verifyResidency(homeId))
         PlaceVerifyMethod.MAIL -> navigate(ChildRoutes.postcardVerification(homeId))
         PlaceVerifyMethod.LANDLORD -> navigate(ChildRoutes.verifyLandlord(homeId))
+        PlaceVerifyMethod.PHONE, PlaceVerifyMethod.LOCATION -> navigate(ChildRoutes.placeVerifyStatus(homeId, method.slug, address))
     }
 }
 
@@ -3829,12 +3836,31 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             },
                         ),
                 ) { entry ->
-                    PlaceVerifyStatusScreen(
-                        address = entry.arguments?.getString(PLACE_VERIFY_ADDRESS_KEY).orEmpty(),
-                        method = PlaceVerifyMethod.fromSlug(entry.arguments?.getString(PLACE_VERIFY_METHOD_KEY)),
-                        onBack = { navController.popBackStack() },
-                        onDone = { navController.popBackStack() },
-                    )
+                    val verifyHomeId = entry.arguments?.getString(PLACE_VERIFY_HOME_ID_KEY).orEmpty()
+                    val verifyAddress = entry.arguments?.getString(PLACE_VERIFY_ADDRESS_KEY).orEmpty()
+                    when (val method = PlaceVerifyMethod.fromSlug(entry.arguments?.getString(PLACE_VERIFY_METHOD_KEY))) {
+                        // Faster home verification's phone check (FASTVERIFY phase 3).
+                        PlaceVerifyMethod.PHONE ->
+                            PhoneCheckScreen(
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                                onOpenMethod = { other ->
+                                    navController.popBackStack()
+                                    navController.openPlaceVerify(other, verifyHomeId, verifyAddress)
+                                },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        else ->
+                            PlaceVerifyStatusScreen(
+                                address = verifyAddress,
+                                method = method,
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                            )
+                    }
                 }
                 composable(
                     route = ChildRoutes.NEIGHBOR_COMPOSE,
@@ -8367,7 +8393,7 @@ private fun PlaceDashboardDestination(
         onSwitchHome = onSwitchHome,
         onAddPlace = { navController.navigate(ChildRoutes.ADD_HOME) },
         // Wedge v2 D3: each door is a real flow, never a status mock-up.
-        onStartVerify = { method, _ -> navController.openPlaceVerify(method, homeId) },
+        onStartVerify = { method, address -> navController.openPlaceVerify(method, homeId, address) },
         // A residency document already in review: its status, not a second upload.
         onOpenVerificationStatus = { navController.navigate(ChildRoutes.waitingRoom(homeId)) },
         onOpenPulse = { navController.navigate(ChildRoutes.placePulse(homeId)) },
