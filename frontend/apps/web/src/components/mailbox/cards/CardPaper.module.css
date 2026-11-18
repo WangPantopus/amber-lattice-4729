@@ -50,3 +50,32 @@
   position: absolute; left: 0; right: 0; bottom: 3.2cqw; text-align: center; font: 1.9cqw/1 var(--card-serif);
   letter-spacing: 0.3em; color: #8a7f70;
 }
+
+/* A long note's first leaf (mail-cards-experience Part 9). It lies on the back (--leaf-lying) and lifts from its foot,
+   hinged along its top edge: 0° to 90° in 0.45 s, easing in, darkening by up to 22%, and not drawn past 90°. It comes
+   back without moving, while the card shows its picture. With reduced motion it fades out in 0.2 s. */
+.leaf {
+  transform: var(--leaf-lying, translateZ(0)); transform-origin: 50% 0; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.leafLifted {
+  transform: var(--leaf-lying, translateZ(0)) rotateX(90deg); visibility: hidden;
+  transition: transform 0.45s cubic-bezier(0.42, 0, 1, 1), visibility 0s linear 0.45s;
+}
+.leafShade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.leafLifted .leafShade { opacity: 0.22; transition: opacity 0.45s cubic-bezier(0.42, 0, 1, 1); }
+@media (prefers-reduced-motion: reduce) {
+  /* The app turns every transition off with reduced motion (globals.css); this fade is kept, as Part 9 asks. */
+  .leafLifted {
+    transform: var(--leaf-lying, translateZ(0)); opacity: 0;
+    transition-property: opacity, visibility !important; transition-duration: 0.2s, 0s !important;
+    transition-delay: 0s, 0.2s !important; transition-timing-function: ease, linear !important;
+  }
+  .leafLifted .leafShade { opacity: 0; transition: none; }
+}
+/* "over" at the first leaf's foot: the word 5.6cqw high in the pen's ink at 82%, turned 2° up to the right, its right
+   end 8cqw from the edge and its top 97.5cqw down; the arrow 8 by 3.2cqw. */
+.over {
+  position: absolute; right: 8cqw; top: 97.5cqw; display: flex; align-items: center; gap: 1.6cqw; color: #1b2a5c;
+  mix-blend-mode: multiply; opacity: 0.82; font-size: 5.6cqw; line-height: 1; transform: rotate(-2deg);
+}
+.over svg { display: block; width: 8cqw; height: 3.2cqw; flex: none; }

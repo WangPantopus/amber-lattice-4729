@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { launchFeatures } from '@/lib/featureFlags';
 import { INK, paperStyle, SERIF } from './cardArt';
 import { cardPen } from './cardFont';
-import { PaperBack, type NoteFit } from './CardPaper';
+import { PaperBack, type NoteFit, type NoteLeaves } from './CardPaper';
 import type { CardSignature } from '@pantopus/api';
 
 export const BACK_TEXT: CSSProperties = launchFeatures.cardTable ? {
@@ -59,6 +59,7 @@ export default function CardBack({
   year,
   message,
   signature,
+  leaves = null,
   children,
   className = '',
 }: {
@@ -71,11 +72,13 @@ export default function CardBack({
   message?: string;
   /** Signed beside FROM (design plan 8.2, card table only). */
   signature?: CardSignature | null;
+  /** A long note on two leaves (mail-cards-experience Part 9, card table only): this back is the second leaf. */
+  leaves?: NoteLeaves | null;
   children?: ReactNode;
   className?: string;
 }) {
   if (launchFeatures.cardTable) {
-    return <PaperBack number={number} paper={paper} fromName={fromName} year={year} note={message} writing={children} signature={signature} className={className} />;
+    return <PaperBack number={number} paper={paper} fromName={fromName} year={year} note={message} writing={children} signature={signature} leaves={leaves} className={className} />;
   }
   return (
     <div className={`relative h-full w-full overflow-hidden ${className}`} style={{ ...paperStyle(paper), containerType: 'inline-size' }}>

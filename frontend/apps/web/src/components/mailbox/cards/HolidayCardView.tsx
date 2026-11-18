@@ -15,6 +15,7 @@ import MailPiece from '../MailPiece';
 import CardFront from './CardFront';
 import CardBack from './CardBack';
 import CardFlip from './CardFlip';
+import { PaperLeaf, type NoteLeaves } from './CardPaper';
 import { inDays, SERIF, WAX } from './cardArt';
 
 const MOTION = `
@@ -82,6 +83,8 @@ export function CardFromEnvelope({
   opening,
   plays = 0,
   showBack,
+  leaves = null,
+  leafLifted = false,
   children,
 }: {
   piece: MailItemV2;
@@ -91,6 +94,9 @@ export function CardFromEnvelope({
   /** Each play starts the movement again from the beginning. */
   plays?: number;
   showBack: boolean;
+  /** A long note on two leaves (mail-cards-experience Part 9): the first lies on the back until it's lifted. */
+  leaves?: NoteLeaves | null;
+  leafLifted?: boolean;
   children?: ReactNode;
 }) {
   const card = piece.card!;
@@ -102,7 +108,18 @@ export function CardFromEnvelope({
         <CardFlip
           showBack={showBack}
           front={<CardFront design={card.design} caption={card.caption} paper={card.paper} year={card.year} mailedOn={piece.postmark?.date || piece.created_at} className="rounded-[3px] shadow-[0_14px_30px_rgba(60,40,10,0.28)]" />}
-          back={<CardBack number={card.number} paper={card.paper} fromName={from} year={card.year} message={piece.content || ''} signature={card.signature ?? null} className="rounded-[3px] shadow-[0_14px_30px_rgba(60,40,10,0.28)]" />}
+          back={<CardBack number={card.number} paper={card.paper} fromName={from} year={card.year} message={piece.content || ''} signature={card.signature ?? null} leaves={leaves} className="rounded-[3px] shadow-[0_14px_30px_rgba(60,40,10,0.28)]" />}
+          leaf={leaves ? (
+            <PaperLeaf
+              leaves={leaves}
+              paper={card.paper}
+              lifted={leafLifted}
+              lying="rotateY(180deg) translateZ(1px)"
+              soft
+              className="rounded-[3px]"
+              style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+            />
+          ) : null}
         />
       </div>
       {opening ? (

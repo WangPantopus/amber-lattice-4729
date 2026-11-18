@@ -28,7 +28,7 @@ import MailPiece from '../MailPiece';
 import { mailLoadMessage } from '../mailLoadMessage';
 import CardFront from './CardFront';
 import CardBack, { writingStyle } from './CardBack';
-import { useNoteFit } from './CardPaper';
+import { useNoteFit, useNoteLeaves } from './CardPaper';
 import { SignaturePad, sameSignature } from './cardSignature';
 import CardPrint from './CardPrint';
 import { canRecordGreeting, GreetingObject, greetingLength, recordingClock, useGreetingPlayer, useGreetingRecorder } from './CardGreeting';
@@ -864,6 +864,8 @@ function WriteStep({
   const count = letters(message);
   // The pen fits the note as it's typed (Part 1): the same measure the finished card uses.
   const noteStyle = writingStyle(useNoteFit(message));
+  // On the table a long note runs onto a second leaf (Part 9); the box stays as it is and says so under it.
+  const runsOnto = Boolean(useNoteLeaves(message, null, launchFeatures.cardTable));
   // Seal it waits until the photo is uploaded; a failed one is tried again or removed, never dropped.
   const photoWait = photo && photo.status !== 'ready'
     ? (photo.status === 'failed' ? 'The photo didn’t upload. Try again, or remove it.' : 'Waiting for the photo to finish uploading.')
@@ -919,6 +921,9 @@ function WriteStep({
         </button>
         <span aria-live="polite" className={`text-[13px] ${count >= limit ? `font-semibold ${onCloth ? 'text-[#ffb4a8]' : 'text-[#8b1d1d]'}` : quiet}`}>{count} of {limit} letters</span>
       </div>
+      <p aria-live="polite" data-testid="sendCardSecondLeaf" className={`mx-auto max-w-[420px] text-right text-[13px] leading-5 ${quiet} ${runsOnto ? 'mt-1' : ''}`}>
+        {runsOnto ? 'This note runs onto a second leaf.' : ''}
+      </p>
       {noteHelp ? (
         <>
           <CardNoteHelpRow help={help} ghost={ghost} quiet={quiet} />
