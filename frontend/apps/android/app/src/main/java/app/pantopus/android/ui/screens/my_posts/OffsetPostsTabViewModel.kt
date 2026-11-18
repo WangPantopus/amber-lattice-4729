@@ -39,6 +39,7 @@ import java.time.Instant
  * ([cards]), with the card's own controls: unsaving a post on Saved, or undoing a repost on Reposts, takes it off the
  * list once the server agrees.
  */
+@Suppress("TooManyFunctions") // The list's reads and paging, plus the cards' toast and the post a card's Save or Repost drops.
 abstract class OffsetPostsTabViewModel(
     private val postsRefresh: PulsePostsRefreshNotifier,
     postsRepository: PostsRepository,
