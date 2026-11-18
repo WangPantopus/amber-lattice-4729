@@ -79,6 +79,38 @@ struct HolidayCardPaperButton: View {
     }
 }
 
+/// The card screens' quiet button: underlined words, no fill ("Look it over" under "Seal and send").
+struct HolidayCardQuietButton: View {
+    let title: String
+    var isLoading = false
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Text(title)
+                    .underline(color: HolidayCardDesk.text(scheme).opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .opacity(isLoading ? 0 : 1)
+                if isLoading {
+                    ProgressView().tint(HolidayCardDesk.text(scheme))
+                }
+            }
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(HolidayCardDesk.text(scheme))
+            .padding(.horizontal, Spacing.s4)
+            .frame(minHeight: 44)
+            .opacity(isEnabled ? 1 : 0.5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(title)
+    }
+}
+
 /// The way in, at the top of Me in the Mailbox: a fan of three pictures and
 /// "Send a Christmas card", or today's card and how it comes.
 struct HolidayCardRow: View {
