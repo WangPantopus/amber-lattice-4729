@@ -11,8 +11,9 @@
 // Two tiers of pictures: the sample's 4096-wide ones first, then NASA's own 8192-wide Black Marble and Blue Marble
 // (tone-matched to the first; public/home/README.md), so the Earth stays sharp in the middle of the zoom. The second
 // tier loads only after the first is showing, is decoded off the main thread and uploaded before it is swapped in, and
-// only where it can be carried: a GPU that takes 8192-wide textures, a wide screen with a mouse or trackpad, and no
-// sign of a small memory or a data saver. Everywhere else the Earth stays as in the sample.
+// only where it can be carried: a GPU that takes 8192-wide textures, a wide screen with a mouse or trackpad, at least
+// 8 GB of memory where the browser reports it (the pair takes about 360 MB of GPU memory), and no data saver.
+// Everywhere else the Earth stays as in the sample.
 // ============================================================
 
 import {
@@ -181,7 +182,7 @@ export function createGlobe(canvas: HTMLCanvasElement, opts: { W: number; H: num
       R.capabilities.maxTextureSize >= 8192 &&
       wide &&
       window.matchMedia('(pointer: fine)').matches &&
-      (nav.deviceMemory ?? 8) >= 4 &&
+      (nav.deviceMemory ?? 8) >= 8 &&
       !nav.connection?.saveData &&
       typeof createImageBitmap === 'function';
     if (disposed || !canCarry) return;

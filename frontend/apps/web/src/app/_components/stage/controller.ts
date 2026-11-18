@@ -257,27 +257,34 @@ export function startHomeStage(els: StageElements): () => void {
     v.defaultMuted = true;
     if (reduced) v.controls = true;
   }
+  // The poster, and the source once (setting it later would cancel a play already asked for).
+  const attach = (v: HTMLVideoElement) => {
+    if (!v.getAttribute('poster') && v.dataset.poster) v.poster = v.dataset.poster;
+    if (!v.getAttribute('src') && v.dataset.src) {
+      v.src = v.dataset.src;
+      v.load();
+    }
+  };
   if ('IntersectionObserver' in window) {
     const near = new IntersectionObserver(
       (es) =>
         es.forEach((e) => {
           if (!e.isIntersecting) return;
-          const v = e.target as HTMLVideoElement;
-          if (!v.getAttribute('poster') && v.dataset.poster) v.poster = v.dataset.poster;
-          if (!v.getAttribute('src') && v.dataset.src) {
-            v.src = v.dataset.src;
-            v.load();
-          }
-          near.unobserve(v);
+          attach(e.target as HTMLVideoElement);
+          near.unobserve(e.target);
         }),
       { rootMargin: '700px 0px' },
     );
+    // Arriving by a link or a jump, both observers report in the same pass in either order, so the one that plays
+    // attaches first too.
     const seen = new IntersectionObserver(
       (es) =>
         es.forEach((e) => {
           const v = e.target as HTMLVideoElement;
-          if (e.isIntersecting && !reduced) v.play()?.catch(() => {});
-          else v.pause();
+          if (e.isIntersecting && !reduced) {
+            attach(v);
+            v.play()?.catch(() => {});
+          } else v.pause();
         }),
       { threshold: 0.3 },
     );
@@ -319,8 +326,7 @@ export function startHomeStage(els: StageElements): () => void {
     });
   } else {
     vids.forEach((v) => {
-      if (v.dataset.poster) v.poster = v.dataset.poster;
-      if (v.dataset.src) v.src = v.dataset.src;
+      attach(v);
       v.controls = true;
     });
   }
