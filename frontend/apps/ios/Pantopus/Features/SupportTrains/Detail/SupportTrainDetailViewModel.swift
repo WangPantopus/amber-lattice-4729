@@ -204,6 +204,8 @@ public final class SupportTrainDetailViewModel {
             state = .loaded(Self.project(dto))
             ownReservations = dto.myReservations ?? []
             slotDates = Dictionary(dto.liveSlots.compactMap { slot in slot.slotDate.map { (slot.id, $0) } }) { first, _ in first }
+            signupsChangeable = !["completed", "archived"].contains(dto.status ?? "")
+            trainTodayKey = dto.trainToday
             trainTimeZoneId = dto.timezone
             recipientDetailsAvailable = true
             if Self.viewerRole(dto) == .recipient {
@@ -282,10 +284,12 @@ public final class SupportTrainDetailViewModel {
     }
 
     /// The helper's own upcoming signup as the Edit signup form takes it, or nil when it can't be
-    /// edited (delivered, or read by an older server without its version).
+    /// edited (delivered, read by an older server without its version, or one the server refuses:
+    /// the train has ended or the date is behind the train's today).
     public func editableReservation(id: String?) -> SupportTrainReservationDTO? {
         guard let id, let own = ownReservations.first(where: { $0.id == id }),
-              own.status == "reserved", own.updatedAt != nil else { return nil }
+              own.status == "reserved", own.updatedAt != nil, signupsChangeable else { return nil }
+        if let date = slotDates[own.slotId ?? ""], date < trainTodayKey { return nil }
         return SupportTrainReservationDTO(
             id: own.id,
             slotId: own.slotId,
@@ -308,6 +312,9 @@ public final class SupportTrainDetailViewModel {
 
     /// Slot dates by id, from the last read.
     private var slotDates: [String: String] = [:]
+    /// Whether the last read train still takes a helper's change, and its today (`YYYY-MM-DD`).
+    private var signupsChangeable = true
+    private var trainTodayKey = ""
 
     /// Convenience accessor used by the dock-handler hook in the view.
     public var currentContent: SupportTrainDetailContent? {
