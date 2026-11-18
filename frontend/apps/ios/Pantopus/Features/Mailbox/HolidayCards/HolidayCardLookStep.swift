@@ -526,10 +526,26 @@ struct HolidayCardLookFooter: View {
 /// choices, the card), as Android shows it (design check, Nov 17).
 struct HolidayCardPinnedButton<Content: View>: View {
     let error: String?
+    /// A quiet button lies under the main one (step 4's "Look it over"): the page behind it is solid, the fade running
+    /// from clear at the top edge to full at the main button's middle, so no word of the page reads behind the quiet
+    /// one (the design session's re-check, Nov 17). Look it over's own page, with its one button, keeps its fade.
+    var quietUnder = false
     @ViewBuilder let button: Content
     @Environment(\.colorScheme) private var scheme
+    /// From the pinned area's top edge to the main button's middle (the main button is the 52 pt one on top).
+    @State private var toMainMiddle: CGFloat = 0
 
     var body: some View {
+        if quietUnder {
+            pinned
+                .holidayCardSolidUnder(scheme, atTable: LaunchFeatures.cardTable, fadeHeight: toMainMiddle)
+        } else {
+            pinned
+                .holidayCardButtonFade(scheme, atTable: LaunchFeatures.cardTable)
+        }
+    }
+
+    private var pinned: some View {
         VStack(spacing: Spacing.s2) {
             if let error {
                 Text(error)
@@ -546,15 +562,21 @@ struct HolidayCardPinnedButton<Content: View>: View {
                     .accessibilityIdentifier("sendCardError")
             }
             button
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(holidayCardPinnedArea)).minY + 26 } action: {
+                    toMainMiddle = $0
+                }
         }
         .frame(maxWidth: 560)
         .padding(.horizontal, Spacing.s4)
         .padding(.top, Spacing.s3)
         .padding(.bottom, Spacing.s1)
         .frame(maxWidth: .infinity)
-        .holidayCardButtonFade(scheme, atTable: LaunchFeatures.cardTable)
+        .coordinateSpace(.named(holidayCardPinnedArea))
     }
 }
+
+/// The pinned area's own coordinates, to place where its background turns solid.
+private let holidayCardPinnedArea = "holidayCardPinnedArea"
 
 // MARK: - The envelope, drawn another way
 

@@ -79,8 +79,7 @@ struct HolidayCardPaperButton: View {
     }
 }
 
-/// The card screens' quiet button: underlined words, no fill ("Look it over" under "Seal and send"). On the cloth its
-/// cream words carry a soft shadow, so they read where a pinned fade lets a cream slip show through behind them.
+/// The card screens' quiet button: underlined words, no fill ("Look it over" under "Seal and send").
 struct HolidayCardQuietButton: View {
     let title: String
     var isLoading = false
@@ -101,7 +100,6 @@ struct HolidayCardQuietButton: View {
             }
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(HolidayCardDesk.text(scheme))
-            .shadow(color: .black.opacity(scheme == .dark ? 0.75 : 0), radius: 4, x: 0, y: 1)
             .padding(.horizontal, Spacing.s4)
             .frame(minHeight: 44)
             .opacity(isEnabled ? 1 : 0.5)

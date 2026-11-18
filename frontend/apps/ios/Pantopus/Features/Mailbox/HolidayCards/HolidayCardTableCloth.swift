@@ -71,6 +71,22 @@ extension View {
         }
     }
 
+    /// Pinned buttons with a quiet one under the main one: the fade runs from clear at the top edge to the page's full
+    /// colour at the main button's middle (`fadeHeight` down), and from there to the screen's bottom it is solid, so
+    /// nothing on the page reads behind the quiet button. No box, no line.
+    func holidayCardSolidUnder(_ scheme: ColorScheme, atTable: Bool, fadeHeight: CGFloat) -> some View {
+        let base = atTable ? MailPaper.tableNight : HolidayCardDesk.background(scheme)
+        return background(alignment: .top) {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [base.opacity(0), base], startPoint: .top, endPoint: .bottom)
+                    .frame(height: max(1, fadeHeight))
+                base
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        }
+    }
+
     /// A pinned button's background (experience plan 5.2): no panel, only a soft fade into the page's colour, so what
     /// scrolls under it shows until it reaches the button.
     func holidayCardButtonFade(_ scheme: ColorScheme, atTable: Bool) -> some View {

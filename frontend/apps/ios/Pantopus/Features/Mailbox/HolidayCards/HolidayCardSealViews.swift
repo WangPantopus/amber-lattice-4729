@@ -175,7 +175,7 @@ struct HolidayCardSealFooter: View {
     /// "Seal and send" goes straight to the sealing table after the same check Look it over runs; "Look it over" under
     /// it shows exactly what they'll see first (experience plan 5.1). With no stamp left, the stamp books.
     var body: some View {
-        HolidayCardPinnedButton(error: viewModel.sealNotice) {
+        HolidayCardPinnedButton(error: viewModel.sealNotice, quietUnder: !viewModel.lookUnavailable) {
             VStack(spacing: Spacing.s1) {
                 HolidayCardWaxButton(
                     title: needsStamps ? "Get stamps to send" : sealTitle,
