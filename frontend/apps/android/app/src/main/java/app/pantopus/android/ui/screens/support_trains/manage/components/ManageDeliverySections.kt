@@ -272,14 +272,14 @@ fun ManageDetailsSheet(
             value = editor.allergies,
             placeholder = "e.g. peanuts, shellfish",
             testTag = "manageTrainDetailsAllergies",
-            onValueChange = { onChange(editor.copy(allergies = it.take(LIST_LIMIT))) },
+            onValueChange = { onChange(editor.copy(allergies = it.take(LIST_TEXT_LIMIT))) },
         )
         SheetField(
             label = "Diet",
             value = editor.diet,
             placeholder = "e.g. vegetarian, low salt",
             testTag = "manageTrainDetailsDiet",
-            onValueChange = { onChange(editor.copy(diet = it.take(LIST_LIMIT))) },
+            onValueChange = { onChange(editor.copy(diet = it.take(LIST_TEXT_LIMIT))) },
         )
         editor.listProblem?.let { Text(text = it, color = PantopusColors.error, fontSize = 12.5.sp) }
         Row(
@@ -318,7 +318,8 @@ fun ManageDetailsSheet(
     }
 }
 
-private const val LIST_LIMIT = 400
+/** What the server takes for a list: 50 items of 100 characters, plus the ", " between them. */
+private const val LIST_TEXT_LIMIT = 50 * 102
 
 /** The server keeps 2,000 characters of instructions (`special_instructions` max(2000)). */
 private const val INSTRUCTIONS_LIMIT = 2000

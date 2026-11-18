@@ -252,6 +252,7 @@ class StartSupportTrainViewModel
             val newStart = stripToStartOfDay(millis)
             val adjustedEnd = if (current.endDateMillis < newStart) newStart else current.endDateMillis
             _form.value = current.copy(startDateMillis = newStart, endDateMillis = adjustedEnd)
+            _launchError.value = null
         }
 
         fun setEndDate(millis: Long) {

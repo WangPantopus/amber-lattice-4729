@@ -162,6 +162,7 @@ fun StartSupportTrainWizardScreen(
                     form = form,
                     scheduleProblem = viewModel.scheduleProblem(),
                     householdSizeProblem = viewModel.householdSizeProblem(),
+                    launchError = launchError,
                     onStartDate = viewModel::setStartDate,
                     onEndDate = viewModel::setEndDate,
                     onToggleWeekday = viewModel::toggleWeekday,
@@ -637,6 +638,7 @@ internal fun WhatAndWhenStep(
     onDiet: (String) -> Unit,
     onContactless: (Boolean) -> Unit,
     onInstructions: (String) -> Unit,
+    launchError: String? = null,
 ) {
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
@@ -688,6 +690,8 @@ internal fun WhatAndWhenStep(
         SlotDurationRow(form.slotDuration, onSelectDuration)
 
         scheduleProblem?.let { ProblemLine(it, testTag = "startSupportTrainScheduleProblem") }
+        // A launch sent back here (the date had passed where the train is) says why on this step (B8 / round 3).
+        launchError?.let { LaunchErrorBanner(it) }
 
         HouseholdSection(
             form = form,
