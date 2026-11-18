@@ -382,44 +382,47 @@ public struct ManageTrainView: View {
                     }
                 }
 
-                ManageLifecycleSection(
-                    status: content.status,
-                    viewerRole: content.viewerRole,
-                    isBusy: viewModel.isSubmitting,
-                    onPublish: { Task { await viewModel.publishTrain() } },
-                    onPause: { Task { await viewModel.pauseTrain() } },
-                    onResume: { Task { await viewModel.resumeTrain() } },
-                    onUnpublish: {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind: .unpublishTrain,
-                                title: "Unpublish this train?",
-                                message: "\(content.title) goes back to a draft, and the link stops working until you publish again.",
-                                confirmLabel: "Unpublish"
+                // A recipient_delegate can't publish, pause, resume or end the train (the server refuses them).
+                if !viewModel.isRecipientDelegate {
+                    ManageLifecycleSection(
+                        status: content.status,
+                        viewerRole: content.viewerRole,
+                        isBusy: viewModel.isSubmitting,
+                        onPublish: { Task { await viewModel.publishTrain() } },
+                        onPause: { Task { await viewModel.pauseTrain() } },
+                        onResume: { Task { await viewModel.resumeTrain() } },
+                        onUnpublish: {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind: .unpublishTrain,
+                                    title: "Unpublish this train?",
+                                    message: "\(content.title) goes back to a draft, and the link stops working until you publish again.",
+                                    confirmLabel: "Unpublish"
+                                )
                             )
-                        )
-                    },
-                    onArchive: {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind: .archiveTrain,
-                                title: "Archive this train?",
-                                message: "\(content.title) moves out of your active list.",
-                                confirmLabel: "Archive"
+                        },
+                        onArchive: {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind: .archiveTrain,
+                                    title: "Archive this train?",
+                                    message: "\(content.title) moves out of your active list.",
+                                    confirmLabel: "Archive"
+                                )
                             )
-                        )
-                    },
-                    onDelete: {
-                        viewModel.requestConfirm(
-                            ManageDestructiveConfirm(
-                                kind: .deleteTrain,
-                                title: "Delete \(content.title)?",
-                                message: "This permanently deletes the train, its dates, updates and invites.",
-                                confirmLabel: "Delete"
+                        },
+                        onDelete: {
+                            viewModel.requestConfirm(
+                                ManageDestructiveConfirm(
+                                    kind: .deleteTrain,
+                                    title: "Delete \(content.title)?",
+                                    message: "This permanently deletes the train, its dates, updates and invites.",
+                                    confirmLabel: "Delete"
+                                )
                             )
-                        )
-                    }
-                )
+                        }
+                    )
+                }
             }
             .padding(.horizontal, Spacing.s4)
             .padding(.top, Spacing.s4)
@@ -458,7 +461,8 @@ public struct ManageTrainView: View {
                         confirmLabel: "Remove"
                     )
                 )
-            }
+            },
+            readOnly: viewModel.isRecipientDelegate
         )
 
         ManageHelpersSection(
@@ -480,7 +484,8 @@ public struct ManageTrainView: View {
                         confirmLabel: "Remove"
                     )
                 )
-            }
+            },
+            readOnly: viewModel.isRecipientDelegate
         )
 
         ManageOrganizersSection(
@@ -510,26 +515,29 @@ public struct ManageTrainView: View {
             content: { organizerPicker }
         )
 
-        ManageNudgeSection(
-            openSlotCount: content.slotsOpen,
-            hasDates: !viewModel.slotRows.isEmpty,
-            draft: viewModel.nudgeDraft,
-            draftNote: viewModel.nudgeDraftNote,
-            isBusy: viewModel.isSubmitting,
-            onDraft: { Task { await viewModel.draftNudge() } },
-            onEditDraft: { viewModel.nudgeDraft = $0 },
-            onSend: { Task { await viewModel.sendNudge() } },
-            onDiscard: { viewModel.discardNudge() }
-        )
-        .id(ManageReminderKeyboardReveal.nudgeSectionID)
-        .focused($focusedCardField, equals: .reminder)
-        // Kept only when the height changes: scrolling moves the frame on every frame.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-            if frame.height != nudgeSectionFrame.height { nudgeSectionFrame = frame }
+        // Reminders and the fund are the primary and co-organizers' (the server refuses a recipient_delegate).
+        if !viewModel.isRecipientDelegate {
+            ManageNudgeSection(
+                openSlotCount: content.slotsOpen,
+                hasDates: !viewModel.slotRows.isEmpty,
+                draft: viewModel.nudgeDraft,
+                draftNote: viewModel.nudgeDraftNote,
+                isBusy: viewModel.isSubmitting,
+                onDraft: { Task { await viewModel.draftNudge() } },
+                onEditDraft: { viewModel.nudgeDraft = $0 },
+                onSend: { Task { await viewModel.sendNudge() } },
+                onDiscard: { viewModel.discardNudge() }
+            )
+            .id(ManageReminderKeyboardReveal.nudgeSectionID)
+            .focused($focusedCardField, equals: .reminder)
+            // Kept only when the height changes: scrolling moves the frame on every frame.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                if frame.height != nudgeSectionFrame.height { nudgeSectionFrame = frame }
+            }
         }
 
         // Launch cut #9: no app takes a contribution yet.
-        if LaunchFeatures.giftFunds {
+        if LaunchFeatures.giftFunds, !viewModel.isRecipientDelegate {
             ManageFundSection(
                 fund: viewModel.fund,
                 canDisable: content.viewerRole == .primaryOrganizer,

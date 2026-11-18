@@ -862,7 +862,8 @@ private struct StartSupportTrainSuccessStep: View {
                 .foregroundStyle(Theme.Color.appText)
                 .accessibilityAddTraits(.isHeader)
             Text(
-                "\(viewModel.generatedSlots.count) slots are open and visible to " +
+                // The dates the server saved, not the ones the phone made (a passed one is skipped).
+                "\(viewModel.savedDateCount ?? viewModel.generatedSlots.count) slots are open and visible to " +
                     "\(viewModel.visibility.audience). " +
                     "Review who signs up from the new train's dashboard."
             )
