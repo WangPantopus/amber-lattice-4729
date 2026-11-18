@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.my_posts
 import app.pantopus.android.data.api.models.posts.MyPostDto
 import app.pantopus.android.data.api.models.posts.SavedPostsResponse
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.posts.PulsePostsRefreshNotifier
 import app.pantopus.android.data.store.Stored
@@ -27,7 +28,13 @@ class SavedPostsViewModel
     constructor(
         private val postsRepo: PostsRepository,
         postsRefresh: PulsePostsRefreshNotifier,
-    ) : OffsetPostsTabViewModel(postsRefresh) {
+        authRepo: AuthRepository,
+    ) : OffsetPostsTabViewModel(
+            postsRefresh = postsRefresh,
+            postsRepository = postsRepo,
+            viewerId = { (authRepo.state.value as? AuthRepository.State.SignedIn)?.user?.id },
+            keptBy = OffsetPostsTabViewModel.KeptBy.Save,
+        ) {
         override val tabId: String = MyPostsTab.SAVED
         override val loadFailedMessage: String = LOAD_FAILED
         override val loadMoreFailedMessage: String = LOAD_MORE_FAILED

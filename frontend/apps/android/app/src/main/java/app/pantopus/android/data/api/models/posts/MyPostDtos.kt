@@ -1,9 +1,15 @@
 package app.pantopus.android.data.api.models.posts
 
 import app.pantopus.android.data.api.models.feed.FeedPagination
+import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.pulse.PostLifecycleMetadata
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import com.squareup.moshi.Moshi
+import java.lang.reflect.Type
 
 /**
  * T5.3.3 — One row in `GET /api/posts/user/:userId` (route
@@ -82,6 +88,8 @@ data class SavedPostsPagination(
 data class SavedPostsResponse(
     val posts: List<MyPostDto> = emptyList(),
     val pagination: SavedPostsPagination? = null,
+    /** The same posts read as the feed's (the route uses the feed's serializer), drawn as Pulse cards. */
+    @Json(name = "feed_posts") val feedPosts: List<FeedPost> = emptyList(),
 )
 
 /** Envelope for `GET /api/posts/user/:userId`. */
@@ -89,7 +97,39 @@ data class SavedPostsResponse(
 data class MyPostsResponse(
     val posts: List<MyPostDto> = emptyList(),
     val pagination: FeedPagination? = null,
+    /** The same posts read as the feed's (the route uses the feed's serializer), drawn as Pulse cards. */
+    @Json(name = "feed_posts") val feedPosts: List<FeedPost> = emptyList(),
 )
+
+/**
+ * My posts' replies list each post once, under `posts`, in the feed's shape: they are read twice, as the screen's rows
+ * ([MyPostDto]) and, under `feed_posts`, as the feed's posts its Pulse cards draw. A saved copy of the reply keeps
+ * both, so it reads back the same. Registered in `NetworkModule.provideMoshi`.
+ */
+object FeedFormPostsAdapterFactory : JsonAdapter.Factory {
+    private val envelopes: Set<Type> = setOf(MyPostsResponse::class.java, SavedPostsResponse::class.java)
+
+    override fun create(
+        type: Type,
+        annotations: Set<Annotation>,
+        moshi: Moshi,
+    ): JsonAdapter<*>? {
+        if (annotations.isNotEmpty() || type !in envelopes) return null
+        val delegate = moshi.nextAdapter<Any>(this, type, annotations)
+        return object : JsonAdapter<Any>() {
+            override fun fromJson(reader: JsonReader): Any? {
+                if (reader.peek() != JsonReader.Token.BEGIN_OBJECT) return delegate.fromJson(reader)
+                val reply = reader.readJsonValue() as? Map<*, *> ?: return delegate.fromJsonValue(null)
+                return delegate.fromJsonValue(if ("feed_posts" in reply) reply else reply + ("feed_posts" to reply["posts"]))
+            }
+
+            override fun toJson(
+                writer: JsonWriter,
+                value: Any?,
+            ) = delegate.toJson(writer, value)
+        }
+    }
+}
 
 /** Response for `POST /api/posts/:id/archive` and `/unarchive`. */
 @JsonClass(generateAdapter = true)

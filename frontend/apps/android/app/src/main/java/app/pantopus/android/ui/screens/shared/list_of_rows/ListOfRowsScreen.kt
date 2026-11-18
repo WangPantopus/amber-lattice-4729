@@ -190,6 +190,11 @@ fun ListOfRowsScreen(
      */
     onOpenMenu: (() -> Unit)? = null,
     menuTestTag: String = "listOfRows.menu",
+    /**
+     * A screen's own view for a flat section's row, or null for the shell's (My posts draws each post as its Pulse
+     * card). With it the list runs edge to edge with no gaps, as Pulse does, and the shell's own rows keep their margins.
+     */
+    rowContent: ((RowModel) -> (@Composable () -> Unit)?)? = null,
 ) {
     val pullState =
         rememberPullRefreshState(
@@ -301,7 +306,16 @@ fun ListOfRowsScreen(
                 when (state) {
                     ListOfRowsUiState.Loading -> LoadingRows(top)
                     is ListOfRowsUiState.Loaded ->
-                        LoadedList(state, banner, listingContext, monoFooter, onEndReached, reservesFabSpace = fab != null, top = top)
+                        LoadedList(
+                            state,
+                            banner,
+                            listingContext,
+                            monoFooter,
+                            onEndReached,
+                            reservesFabSpace = fab != null,
+                            top = top,
+                            rowContent = rowContent,
+                        )
                     is ListOfRowsUiState.Empty ->
                         RefreshableFill(top) { minHeight ->
                             EmptyState(
@@ -949,8 +963,12 @@ private fun LoadedList(
     reservesFabSpace: Boolean = false,
     /** The bar and strips drawn over the top of the list: its first row starts below them. */
     top: Dp = 0.dp,
+    /** The screen's own view for a flat section's row (see [ListOfRowsScreen]); the list then runs edge to edge. */
+    rowContent: ((RowModel) -> (@Composable () -> Unit)?)? = null,
 ) {
     val listState = rememberLazyListState()
+    val edgeToEdge = rowContent != null
+    val sideMargin = if (edgeToEdge) 0.dp else Spacing.s4
     ScrollAwayHeaderPage(listState)
     // The remembered check reads the current list: a list first shown with no more pages that later
     // gains some (a refresh or a tab change while this screen stays open) must still page.
@@ -986,12 +1004,12 @@ private fun LoadedList(
         // With a FAB, the end of the list scrolls clear of it instead of sitting under it.
         contentPadding =
             PaddingValues(
-                start = Spacing.s4,
-                top = top + Spacing.s4,
-                end = Spacing.s4,
+                start = sideMargin,
+                top = if (edgeToEdge) top else top + Spacing.s4,
+                end = sideMargin,
                 bottom = if (reservesFabSpace) Spacing.s16 + Spacing.s4 else Spacing.s4,
             ),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+        verticalArrangement = Arrangement.spacedBy(if (edgeToEdge) 0.dp else Spacing.s2),
         modifier = Modifier.fillMaxSize(),
     ) {
         if (listingContext != null) {
@@ -1009,7 +1027,15 @@ private fun LoadedList(
             when (section.style) {
                 SectionStyle.Flat ->
                     items(section.rows, key = { it.id }) { row ->
-                        RowView(row = row, cardContext = RowCardContext.Standalone)
+                        val custom = rowContent?.invoke(row)
+                        when {
+                            custom != null -> custom()
+                            edgeToEdge ->
+                                Box(modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1)) {
+                                    RowView(row = row, cardContext = RowCardContext.Standalone)
+                                }
+                            else -> RowView(row = row, cardContext = RowCardContext.Standalone)
+                        }
                     }
                 SectionStyle.Card ->
                     item(key = "card_${section.id}") {
