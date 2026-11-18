@@ -822,7 +822,13 @@ internal fun WriteStep(
     var signing by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val count = message.letterCount()
-    val greeting = (to as? CardRecipient.Person)?.firstName ?: "friend"
+    // The grey example line: one person by first name; a list of two or more names no one.
+    val greeting =
+        when (to) {
+            is CardRecipient.Person -> to.firstName
+            is CardRecipient.Several -> "friends"
+            else -> "friend"
+        }
     val shape = RoundedCornerShape(3.dp)
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         HolidayCardFlip(

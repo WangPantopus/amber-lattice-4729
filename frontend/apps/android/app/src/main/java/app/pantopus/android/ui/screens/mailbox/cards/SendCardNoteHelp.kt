@@ -236,15 +236,18 @@ class CardNoteHelper(
             count: Int,
         ): String = "$design|${names.joinToString(",")}|$count"
 
-        /** Who the notes are for, in the sheet's first line. */
+        /**
+         * Who the notes are for, in the sheet's first line. Only a card to one person is written to a name: each person
+         * on a list gets their own card, so a note naming two would tell each that the other got one.
+         */
         fun forLine(
             names: List<String>,
             count: Int,
         ): String =
             when {
                 count > 2 -> "One note for all $count people, so it names no one."
-                names.isNotEmpty() && names.size == count -> "For ${names.joinToString(" and ")}."
-                count == 2 -> "One note for both of them."
+                count == 2 -> "One note for both of them, so it names no one."
+                names.size == 1 -> "For ${names.first()}."
                 else -> "A note for them."
             }
 
