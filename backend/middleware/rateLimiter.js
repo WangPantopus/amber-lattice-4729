@@ -471,12 +471,19 @@ const shareCardRenderLimiter = rateLimit({
 });
 
 /**
- * Limiter for Support Train organizer/helper write actions.
- * 30 requests per 5 minutes per user.
+ * Limiter for Support Train organizer/helper write actions: 120 per 5 minutes for a signed-in person, 30 for a caller
+ * with no account (keyed by IP; the guest sign-up route reaches this before sign-in is read).
+ *
+ * Founder 2026-11-18: raised from 30 for everyone. An organizer setting up a two-week Train date by date (~14 adds),
+ * filling in its details, publishing and then sharing the address with a dozen helpers makes ~30 writes in a few
+ * minutes, and fixing a few dates or removing signups adds more; 120 is four times that with room for a busy evening,
+ * and still stops a runaway client. Guest sign-ups keep their own 8-a-day limit.
  */
+const SUPPORT_TRAIN_WRITES_SIGNED_IN = 120;
+const SUPPORT_TRAIN_WRITES_NO_ACCOUNT = 30;
 const supportTrainWriteLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  limit: 30,
+  limit: (req) => (req.user?.id ? SUPPORT_TRAIN_WRITES_SIGNED_IN : SUPPORT_TRAIN_WRITES_NO_ACCOUNT),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
