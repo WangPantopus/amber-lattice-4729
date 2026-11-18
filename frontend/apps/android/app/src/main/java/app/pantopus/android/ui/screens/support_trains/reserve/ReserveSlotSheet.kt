@@ -193,7 +193,9 @@ fun ReserveSlotSheet(
     val selected = remember(slotId, options) { options.firstOrNull { it.id == slotId } }
     val selectedMode = remember(mode) { SupportTrainContributionMode.entries.firstOrNull { it.wire == mode } }
     // The ways this date takes (B3): a groceries date, groceries; a meal date, a meal or takeout.
-    val dateModes = selected?.modes?.takeIf { it.isNotEmpty() } ?: context.enabledModes
+    // A date whose own list is empty (a groceries date on a train with groceries off) takes no signup here; it never
+    // falls back to the train's ways, which the server would refuse.
+    val dateModes = selected?.modes ?: context.enabledModes
     val zone = remember(context.timezone) { trainZone(context.timezone) }
 
     // The page refreshed under the sheet (a date was taken, or passed): a chosen date that's gone sends the helper
@@ -270,6 +272,14 @@ fun ReserveSlotSheet(
 
                 ReserveStep.MODE -> {
                     StepTitle("How would you like to help?")
+                    if (dateModes.isEmpty()) {
+                        Text(
+                            text = "This date doesn't take signups right now. Pick another date.",
+                            color = PantopusColors.appTextSecondary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.testTag("supportTrainReserveNoModes"),
+                        )
+                    }
                     dateModes.forEach { option ->
                         SelectableCard(
                             isSelected = option.wire == mode,

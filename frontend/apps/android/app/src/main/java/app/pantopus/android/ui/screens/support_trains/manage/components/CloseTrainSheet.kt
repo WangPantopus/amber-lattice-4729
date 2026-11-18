@@ -62,6 +62,7 @@ fun CloseTrainSheet(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    thankYouSent: Boolean = false,
 ) {
     Column(
         modifier =
@@ -82,9 +83,22 @@ fun CloseTrainSheet(
         ThankYouBlock(
             value = thankYouNote,
             onValueChange = onUpdateThankYouNote,
-            enabled = enabled,
+            enabled = enabled && !thankYouSent,
         )
-        ActionRow(onCancel = onCancel, onConfirm = onConfirm, enabled = enabled, withThanks = thankYouNote.isNotBlank())
+        if (thankYouSent) {
+            Text(
+                text = "Your thank-you was sent to every helper. Close the train to finish.",
+                color = PantopusColors.appTextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.testTag("manageTrainCloseThankYouSent"),
+            )
+        }
+        ActionRow(
+            onCancel = onCancel,
+            onConfirm = onConfirm,
+            enabled = enabled,
+            withThanks = thankYouNote.isNotBlank() && !thankYouSent,
+        )
     }
 }
 

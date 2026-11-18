@@ -93,6 +93,15 @@ fun EditSignupFormScreen(
     ) {
         if (state.isMissingSeed) {
             MissingSeedBody(onClose = onClose)
+        } else if (state.loadFailed) {
+            EmptyState(
+                icon = PantopusIcon.AlertCircle,
+                headline = "Couldn't load your signup",
+                subcopy = "Check your connection and try again.",
+                ctaTitle = "Retry",
+                onCta = viewModel::load,
+                modifier = Modifier.testTag("editSignupLoadFailed"),
+            )
         } else if (state.isLoading && state.reservation == null) {
             Box(modifier = Modifier.fillMaxSize().testTag("editSignupLoading"), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = PantopusColors.primary600)

@@ -68,6 +68,8 @@ data class EditSignupUiState(
     val isMissingSeed: Boolean = false,
     /** The train is being read. */
     val isLoading: Boolean = false,
+    /** The first read failed (offline, server down): nothing to show yet, and a retry may work. */
+    val loadFailed: Boolean = false,
     /** The date the signup is for (`YYYY-MM-DD`), and the train's zone, where the drop-off time is read. */
     val slotDate: String? = null,
     val timezone: String? = null,
@@ -125,7 +127,7 @@ class EditSignupFormViewModel
 
         /** Reads the train and finds the viewer's own signup; only a reserved one (still ahead) can be edited. */
         fun load() {
-            _state.update { it.copy(isLoading = true) }
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
             viewModelScope.launch {
                 when (val result = repo.detail(trainId)) {
                     is NetworkResult.Success -> {
@@ -149,11 +151,15 @@ class EditSignupFormViewModel
                     }
                     is NetworkResult.Failure ->
                         _state.update {
-                            it.copy(
-                                isLoading = false,
-                                isMissingSeed = it.reservation == null,
-                                toast = EditSignupToastPayload(result.error.displayMessage("Couldn't load your signup."), isError = true),
-                            )
+                            if (it.reservation == null) {
+                                // Nothing loaded yet: say it couldn't load and offer Retry, not "can't be changed".
+                                it.copy(isLoading = false, loadFailed = true)
+                            } else {
+                                it.copy(
+                                    isLoading = false,
+                                    toast = EditSignupToastPayload(result.error.displayMessage("Couldn't load your signup."), isError = true),
+                                )
+                            }
                         }
                 }
             }

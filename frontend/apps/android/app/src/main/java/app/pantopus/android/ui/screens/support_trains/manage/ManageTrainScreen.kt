@@ -190,6 +190,7 @@ fun ManageTrainScreen(
                 CloseSheetOverlay(
                     content = content.close.copy(mealsDelivered = state.deliveredMeals?.toString() ?: "—"),
                     thankYouNote = state.thankYouNote,
+                    thankYouSent = state.thankYouSent,
                     isSubmitting = state.isSubmitting,
                     onUpdateNote = viewModel::updateThankYouNote,
                     onCancel = viewModel::hideCloseSheet,
@@ -279,7 +280,10 @@ fun ManageTrainScreen(
             text = { Text(confirm.message) },
             confirmButton = {
                 TextButton(onClick = { viewModel.performConfirm(confirm.kind) }) {
-                    Text(confirm.confirmLabel, color = PantopusColors.error)
+                    Text(
+                        confirm.confirmLabel,
+                        color = if (confirm.kind == ManageConfirmKind.ListNearby) PantopusColors.primary600 else PantopusColors.error,
+                    )
                 }
             },
             dismissButton = {
@@ -569,10 +573,11 @@ private fun LoadedBody(
                     canEdit = canEdit,
                     onEditAddress = viewModel::openAddressEditor,
                     onEditDetails = viewModel::openDetailsEditor,
+                    canEditAddress = canEdit && !content.isRecipientDelegate,
                 )
                 ManageAudienceSection(
                     sharingMode = content.sharingMode,
-                    canEdit = canEdit,
+                    canEdit = canEdit && !content.isRecipientDelegate,
                     isBusy = ui.isSubmitting,
                     invitedNames = ui.invitedNames,
                     invitesFailed = ui.invitesFailed,
@@ -859,6 +864,7 @@ private fun CloseSheetOverlay(
     content: CloseTrainSheetContent,
     isSubmitting: Boolean,
     thankYouNote: String,
+    thankYouSent: Boolean,
     onUpdateNote: (String) -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
@@ -885,6 +891,7 @@ private fun CloseSheetOverlay(
             CloseTrainSheet(
                 content = content,
                 thankYouNote = thankYouNote,
+                thankYouSent = thankYouSent,
                 enabled = !isSubmitting,
                 onUpdateThankYouNote = onUpdateNote,
                 onCancel = onCancel,

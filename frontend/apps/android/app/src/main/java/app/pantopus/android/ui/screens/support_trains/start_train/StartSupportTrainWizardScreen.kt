@@ -806,6 +806,7 @@ private fun HouseholdSection(
             onValueChange = onAllergies,
             testTag = "startSupportTrainAllergies",
         )
+        listItemProblem(form.allergies, "allergy")?.let { ProblemLine(it, testTag = "startSupportTrainAllergiesProblem") }
         LabeledField(
             label = "Diet",
             value = form.diet,
@@ -813,6 +814,7 @@ private fun HouseholdSection(
             onValueChange = onDiet,
             testTag = "startSupportTrainDiet",
         )
+        listItemProblem(form.diet, "diet")?.let { ProblemLine(it, testTag = "startSupportTrainDietProblem") }
         Row(
             modifier =
                 Modifier

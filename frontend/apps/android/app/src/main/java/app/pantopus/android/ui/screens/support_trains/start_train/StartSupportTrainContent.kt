@@ -369,6 +369,40 @@ internal fun formatDay(millis: Long): String {
 /** The server keeps at most this many allergies or diet items (`allergies` max(50) in routes/supportTrains.js). */
 private const val MAX_LIST_ITEMS = 50
 
-/** "peanuts, shellfish" → ["peanuts", "shellfish"]: one item per comma or line. */
-internal fun splitList(text: String): List<String> =
-    text.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_LIST_ITEMS)
+/** The server keeps each allergy or diet item to this many characters (`allergies` items max(100)). */
+internal const val MAX_LIST_ITEM_CHARS = 100
+
+/**
+ * "peanuts, shellfish" → ["peanuts", "shellfish"]: one item per comma, semicolon or line. A comma inside
+ * parentheses stays in its item, so "nuts (almond, cashew)" is one item.
+ */
+internal fun splitList(text: String): List<String> {
+    val items = mutableListOf<String>()
+    val current = StringBuilder()
+    var depth = 0
+    for (ch in text) {
+        when {
+            ch == '(' -> depth++
+            ch == ')' && depth > 0 -> depth--
+        }
+        if ((ch == ',' && depth == 0) || ch == ';' || ch == '\n') {
+            items += current.toString()
+            current.clear()
+        } else {
+            current.append(ch)
+        }
+    }
+    items += current.toString()
+    return items.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_LIST_ITEMS)
+}
+
+/** Said under an allergies or diet field when one typed item is longer than the server keeps. */
+internal fun listItemProblem(
+    text: String,
+    what: String,
+): String? =
+    if (splitList(text).any { it.length > MAX_LIST_ITEM_CHARS }) {
+        "Keep each $what to $MAX_LIST_ITEM_CHARS characters, and separate them with commas."
+    } else {
+        null
+    }

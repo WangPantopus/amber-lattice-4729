@@ -15,6 +15,7 @@ import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.mail_compose.MailComposeRepository
+import app.pantopus.android.data.support_trains.DATES_PASSED_WHERE_TRAIN_IS
 import app.pantopus.android.data.support_trains.SupportTrainRecipientDetails
 import app.pantopus.android.data.support_trains.SupportTrainsRepository
 import app.pantopus.android.ui.screens.shared.wizard.WizardChrome
@@ -388,7 +389,10 @@ class StartSupportTrainViewModel
             return if (size == null || size !in 1..MAX_HOUSEHOLD) "Enter a household size from 1 to 50." else null
         }
 
-        fun canAdvanceFromWhatAndWhen(): Boolean = scheduleProblem() == null && householdSizeProblem() == null
+        fun canAdvanceFromWhatAndWhen(): Boolean =
+            scheduleProblem() == null && householdSizeProblem() == null &&
+                listItemProblem(_form.value.allergies, "allergy") == null &&
+                listItemProblem(_form.value.diet, "diet") == null
 
         /** Mutual connections shared with the selected recipient, for the
          *  recipient card's micro-avatar strip. There is no mutuals lookup
@@ -647,8 +651,16 @@ class StartSupportTrainViewModel
                         when (val result = supportTrains.generateSlots(created.id, schedule, slots.size)) {
                             is NetworkResult.Success -> Unit
                             is NetworkResult.Failure -> {
-                                _launchError.value = launchFailure(result.error, "Couldn't add the dates. Try again.")
+                                val datePassed = (result.error as? NetworkError.Decoding)?.cause?.message == DATES_PASSED_WHERE_TRAIN_IS
+                                _launchError.value =
+                                    if (datePassed) {
+                                        "That date has already passed where the train is. Pick a later date and launch again."
+                                    } else {
+                                        launchFailure(result.error, "Couldn't add the dates. Try again.")
+                                    }
+                                // The half-built train goes, so the next launch makes exactly one; what was typed stays.
                                 discardDraft(created.id)
+                                if (datePassed) _form.value = _form.value.copy(step = StartSupportTrainStep.WhatAndWhen)
                                 return@launch
                             }
                         }

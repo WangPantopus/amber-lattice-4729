@@ -61,6 +61,7 @@ fun ManageDeliverySection(
     canEdit: Boolean,
     onEditAddress: () -> Unit,
     onEditDetails: () -> Unit,
+    canEditAddress: Boolean = canEdit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag("manageTrainDeliverySection"),
@@ -68,9 +69,9 @@ fun ManageDeliverySection(
     ) {
         ManageSectionHeader(
             title = "Deliver to",
-            actionLabel = if (canEdit) (if (address == null) "Add" else "Change") else null,
+            actionLabel = if (canEditAddress) (if (address == null) "Add" else "Change") else null,
             actionTag = "manageTrainEditAddressButton",
-            onAction = onEditAddress.takeIf { canEdit && !isBusy },
+            onAction = onEditAddress.takeIf { canEditAddress && !isBusy },
         )
         ManageCard {
             Text(
@@ -251,7 +252,7 @@ fun ManageDetailsSheet(
     ManageSheetFrame(
         title = "Details for helpers",
         saveLabel = if (isSubmitting) "Saving…" else "Save details",
-        canSave = editor.householdSizeProblem == null && !isSubmitting,
+        canSave = editor.householdSizeProblem == null && editor.listProblem == null && !isSubmitting,
         onSave = onSave,
         onCancel = onCancel,
         isSubmitting = isSubmitting,
@@ -280,6 +281,7 @@ fun ManageDetailsSheet(
             testTag = "manageTrainDetailsDiet",
             onValueChange = { onChange(editor.copy(diet = it.take(LIST_LIMIT))) },
         )
+        editor.listProblem?.let { Text(text = it, color = PantopusColors.error, fontSize = 12.5.sp) }
         Row(
             modifier =
                 Modifier
@@ -317,7 +319,8 @@ fun ManageDetailsSheet(
 }
 
 private const val LIST_LIMIT = 400
-private const val INSTRUCTIONS_LIMIT = 500
+/** The server keeps 2,000 characters of instructions (`special_instructions` max(2000)). */
+private const val INSTRUCTIONS_LIMIT = 2000
 
 @Composable
 private fun ManageSheetFrame(

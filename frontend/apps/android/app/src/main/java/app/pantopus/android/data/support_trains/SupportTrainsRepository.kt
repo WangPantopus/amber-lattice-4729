@@ -233,6 +233,10 @@ class SupportTrainsRepository
                 val saved = api.generateSlots(supportTrainId, body)
                 // The server skips a date that has already passed where the train is, which can be the phone's
                 // today when the train's zone is ahead of the phone's: one fewer date is still the schedule.
+                if (saved.count == 0 && expectedCount == 1) {
+                    // The only date had passed where the train is: say so, not "try again" (retrying can't help).
+                    throw JsonDataException(DATES_PASSED_WHERE_TRAIN_IS)
+                }
                 if (saved.count !in (expectedCount - 1).coerceAtLeast(1)..expectedCount) {
                     throw JsonDataException("Dates save could not be confirmed.")
                 }
@@ -514,3 +518,6 @@ class SupportTrainsRepository
             }
         }
     }
+
+/** [SupportTrainsRepository.generateSlots]'s failure when the train's only date has already passed where it is. */
+const val DATES_PASSED_WHERE_TRAIN_IS = "support_train_dates_passed"

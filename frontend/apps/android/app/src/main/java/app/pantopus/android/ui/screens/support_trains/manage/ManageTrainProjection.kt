@@ -70,6 +70,7 @@ object ManageTrainProjection {
                 ),
             status = dto.status ?: "",
             viewerRole = role,
+            isRecipientDelegate = dto.viewerSupportTrainRole == "recipient_delegate",
             deliveryAddressAvailable = !dto.address?.address.isNullOrBlank(),
             // Only the primary organizer closes a train, and only a live one (A11).
             canClose = role == SupportTrainViewerRole.PRIMARY_ORGANIZER && dto.status in listOf("published", "active", "paused"),
