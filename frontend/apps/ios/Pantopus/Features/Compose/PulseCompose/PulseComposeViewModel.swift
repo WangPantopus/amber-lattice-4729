@@ -142,7 +142,7 @@ public enum PulseComposeVisibility: String, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .neighbors: "Neighbors"
+        case .neighbors: "Nearby"
         case .connections: "Connections"
         case .publicFeed: "Public"
         }
@@ -179,7 +179,7 @@ public enum PulseAnnounceAudience: String, CaseIterable, Sendable, Hashable {
 
     public var label: String {
         switch self {
-        case .neighbors: "Neighbors"
+        case .neighbors: "Nearby"
         case .followers: "Followers"
         case .publicFeed: "Public"
         }
@@ -1630,7 +1630,7 @@ public final class PulseComposeViewModel {
         guard draft != aiConfirmedDraft else { return false }
         aiPostConfirmation = effectiveAudience == "connections"
             ? "Pantopus AI wrote parts of this post. Check that it's right before your connections see it."
-            : "Pantopus AI wrote parts of this post. Check that it's right before neighbors see it."
+            : "Pantopus AI wrote parts of this post. Check that it's right before others see it."
         return true
     }
 

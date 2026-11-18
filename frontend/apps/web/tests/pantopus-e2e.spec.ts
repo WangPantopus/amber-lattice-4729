@@ -682,7 +682,7 @@ test.describe('Pulse', () => {
 
     await expect(page.getByText('Read-only users can still browse this place')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('You can post to this place when you\'re there, live or work there, or attach a photo or video you took there.')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Share something with your neighborhood…')).toHaveCount(0);
+    await expect(page.getByText('Share something with people near you…')).toHaveCount(0);
 
     await page.getByRole('main').getByRole('button', { name: 'Map' }).click();
     await expect(page.getByText('You can post to this place when you\'re there, live or work there, or attach a photo or video you took there.')).toBeVisible({ timeout: 10000 });

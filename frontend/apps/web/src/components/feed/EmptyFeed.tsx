@@ -74,7 +74,7 @@ export default function EmptyFeed({
 
   const radiusHint = radiusMiles
     ? `Nothing found within ${radiusMiles} miles. Try expanding your area or be the first to post!`
-    : 'Be the first to share something with your neighbors!';
+    : 'Be the first to share something with people near you!';
 
   const placeMessages: Record<string, { icon: ReactNode; title: string; sub: string }> = {
     all: {
@@ -82,16 +82,16 @@ export default function EmptyFeed({
       title: locationLabel ? `No posts near ${locationLabel}` : 'Your Pulse is waiting',
       sub: radiusHint,
     },
-    ask_local: { icon: <MessageCircle className="w-5 h-5" />, title: 'No questions yet', sub: 'Got something on your mind? Ask your neighbors!' },
+    ask_local: { icon: <MessageCircle className="w-5 h-5" />, title: 'No questions yet', sub: 'Got something on your mind? Ask people near you!' },
     recommendation: { icon: <Star className="w-5 h-5" />, title: 'No recommendations yet', sub: 'Know a great local spot? Share it!' },
-    event: { icon: <Calendar className="w-5 h-5" />, title: 'No events posted', sub: 'Know about something happening nearby? Let neighbors know!' },
+    event: { icon: <Calendar className="w-5 h-5" />, title: 'No events posted', sub: 'Know about something happening nearby? Let people know!' },
     // An empty filter only means nobody posted one: never an all-clear.
-    lost_found: { icon: <Search className="w-5 h-5" />, title: 'No lost & found posts yet', sub: 'Lost or found something nearby? Post it so neighbors can help.' },
-    alert: { icon: <AlertTriangle className="w-5 h-5" />, title: 'No alerts posted', sub: "Neighbors haven't posted a safety alert here." },
-    deal: { icon: <Tag className="w-5 h-5" />, title: 'No deals yet', sub: 'Know about a local deal? Share it with neighbors!' },
-    local_update: { icon: <Newspaper className="w-5 h-5" />, title: 'No updates', sub: 'Have news about the neighborhood? Post an update.' },
+    lost_found: { icon: <Search className="w-5 h-5" />, title: 'No lost & found posts yet', sub: 'Lost or found something nearby? Post it so people near you can help.' },
+    alert: { icon: <AlertTriangle className="w-5 h-5" />, title: 'No alerts posted', sub: "No one has posted a safety alert here." },
+    deal: { icon: <Tag className="w-5 h-5" />, title: 'No deals yet', sub: 'Know about a local deal? Share it with people near you!' },
+    local_update: { icon: <Newspaper className="w-5 h-5" />, title: 'No updates', sub: 'Have local news? Post an update.' },
     neighborhood_win: { icon: <Trophy className="w-5 h-5" />, title: 'No wins yet', sub: 'Celebrate something great happening nearby!' },
-    requiresLocation: { icon: <MapPin className="w-5 h-5" />, title: 'Set an area to see local posts', sub: 'Use your location or search for a neighborhood to get started.' },
+    requiresLocation: { icon: <MapPin className="w-5 h-5" />, title: 'Set an area to see local posts', sub: 'Use your location or search for a place to get started.' },
   };
 
   const networkMessages: Record<string, { icon: ReactNode; title: string; sub: string }> = {

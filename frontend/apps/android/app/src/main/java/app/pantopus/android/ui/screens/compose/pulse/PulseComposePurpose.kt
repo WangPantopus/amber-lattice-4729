@@ -15,7 +15,7 @@ enum class PulseComposePurpose(
     Recommend("recommend", "Recommend", "recommendation", "recommend"),
     LostFound("lost_found", "Lost & Found", "lost_found", "lost_found"),
     LocalUpdate("local_update", "Local Update", "local_update", "local_update"),
-    NeighborhoodWin("neighborhood_win", "Neighborhood Win", "neighborhood_win", "neighborhood_win"),
+    NeighborhoodWin("neighborhood_win", "Local Win", "neighborhood_win", "neighborhood_win"),
     VisitorGuide("visitor_guide", "Visitor Guide", "visitor_guide", "visitor_guide"),
     Event("event", "Event", "event", "event"),
     Deal("deal", "Deal", "deal", "deal"),
@@ -29,8 +29,8 @@ enum class PulseComposePurpose(
                 HeadsUp -> "What should people nearby know?"
                 Recommend -> "What are you recommending?"
                 LostFound -> "Describe what was lost or found…"
-                LocalUpdate -> "Share a local update with your neighbors…"
-                NeighborhoodWin -> "Celebrate something great in your neighborhood…"
+                LocalUpdate -> "Share a local update with people near you…"
+                NeighborhoodWin -> "Celebrate something great near you…"
                 VisitorGuide -> "Share tips for visitors to the area…"
                 Event -> "Tell people about this event…"
                 Deal -> "Describe the deal and where to find it…"
