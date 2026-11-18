@@ -26,7 +26,7 @@
 //  Explore group pins the same way.
 //
 
-// swiftlint:disable line_length type_body_length file_length
+// swiftlint:disable type_body_length file_length
 
 import CoreLocation
 import MapKit
