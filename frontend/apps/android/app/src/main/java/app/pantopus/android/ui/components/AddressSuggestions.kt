@@ -287,11 +287,12 @@ fun ListKeptAboveKeyboard(
     LaunchedEffect(rows, keyboard) {
         if (keyboard <= 0) return@LaunchedEffect
         // One pass on a still page. A bar that slides away while the page scrolls (the tab bar) leaves the list lower
-        // than it was measured for: the page is then measured once more.
+        // than it was measured for: the page is then measured once more, when the bar has stopped.
         for (pass in 1..PASSES) {
             if (room == ROOM_UNMEASURED) {
-                // Two frames: the list is laid out with the keyboard's height of room before it is measured.
-                repeat(2) { withFrameNanos {} }
+                // The list is laid out with the keyboard's height of room before it is measured: two frames on a still
+                // page, longer while the page's end still moves.
+                awaitStillPage { placed }
                 placed?.takeIf { it.isAttached }?.let { roomThePageNeeds(it, keyboard) }?.let { needed ->
                     room = needed
                     repeat(2) { withFrameNanos {} }
@@ -320,6 +321,21 @@ fun ListKeptAboveKeyboard(
 private const val ROOM_UNMEASURED = -1
 private const val PASSES = 2
 private const val EDGE_SLACK = 2f
+private const val STILL_FRAMES = 30
+
+/**
+ * Waits until the page shows the same of the list and its room on two frames in a row ([placed] as last placed), for
+ * [STILL_FRAMES] frames at most: two frames on a still page, and the length of its slide while a bar moves away.
+ */
+private suspend fun awaitStillPage(placed: () -> LayoutCoordinates?) {
+    var shownBottom = Float.NaN
+    repeat(STILL_FRAMES) {
+        withFrameNanos {}
+        val now = placed()?.takeIf { it.isAttached }?.boundsInRoot()?.bottom
+        if (now != null && now == shownBottom) return
+        shownBottom = now ?: Float.NaN
+    }
+}
 
 /**
  * How much of the page the keyboard covers, from where the page cuts off the list and its room ([listAndRoom] as
