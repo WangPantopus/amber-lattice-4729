@@ -42,11 +42,20 @@ import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastKind
 import app.pantopus.android.ui.components.ToastMessage
+import app.pantopus.android.ui.components.rememberShareTextWithCompletion
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCard
+import app.pantopus.android.ui.screens.feed.pulse.PulsePostCardContent
+import app.pantopus.android.ui.screens.feed.pulse.PulseRepostChooserSheet
 import app.pantopus.android.ui.screens.profile.ProfilePinCopy
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
+import app.pantopus.android.ui.screens.profile.ProfilePostOptionsSheet
+import app.pantopus.android.ui.screens.profile.ProfilePostReportDialog
+import app.pantopus.android.ui.screens.profile.profilePostHasOptions
 import app.pantopus.android.ui.screens.shared.activity_filter_sheet.ActivityFilterSheet
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsScreen
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsTab
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsUiState
+import app.pantopus.android.ui.screens.shared.list_of_rows.RowModel
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -64,10 +73,10 @@ private const val TOAST_MILLIS = 2_500L
 /**
  * T5.3.3 — My posts. Thin wrapper around [ListOfRowsScreen]. Four tabs
  * (Active / Archived / Saved / Reposts), 52dp secondary-create FAB, filter
- * icon in the top-bar trailing slot, and per-row kebab → modal bottom sheet
- * (Archive / Restore + Delete) → confirmation alert (for the destructive
- * Delete action). Saved and Reposts list other people's posts
- * ([OffsetPostsTabViewModel]), each row with its one action.
+ * icon in the top-bar trailing slot. Each post is drawn as its Pulse card, as on the Pulse tab, with the card's
+ * controls; a post the build can't read as a card keeps the shell's row. Your own posts' ⋯ opens a modal bottom sheet
+ * (Edit, Pin, Archive / Restore + Delete) → confirmation alert (for the destructive Delete action). Saved and Reposts
+ * list other people's posts ([OffsetPostsTabViewModel]); their ⋯ is the profile's Post options (Share…, Report post).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +87,8 @@ fun MyPostsScreen(
     onEditPost: (MyPostDto) -> Unit = {},
     /** The tab to open on (`my-posts?tab=saved`, the "Saved." toast's View); null opens Active. */
     initialTab: String? = null,
+    /** "Repost with your words": the Pulse composer with the post quoted; null leaves that choice out. */
+    onQuotePost: ((String) -> Unit)? = null,
     viewModel: MyPostsViewModel = hiltViewModel(),
     savedViewModel: SavedPostsViewModel = hiltViewModel(),
     repostsViewModel: RepostedPostsViewModel = hiltViewModel(),
@@ -106,6 +117,8 @@ fun MyPostsScreen(
     val listToast by list.toastMessage.collectAsStateWithLifecycle()
     val savedToast by savedViewModel.toastMessage.collectAsStateWithLifecycle()
     val repostsToast by repostsViewModel.toastMessage.collectAsStateWithLifecycle()
+    val cardToast by list.cardToast.collectAsStateWithLifecycle()
+    val cards by list.cards.cards.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         viewModel.bindCallbacks(
@@ -150,6 +163,13 @@ fun MyPostsScreen(
         }
     }
 
+    LaunchedEffect(cardToast, list) {
+        if (cardToast != null) {
+            delay(TOAST_MILLIS)
+            list.dismissCardToast()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().testTag(MY_POSTS_TAG)) {
         ListOfRowsScreen(
             refreshNotice = listRefreshNotice,
@@ -167,6 +187,13 @@ fun MyPostsScreen(
             topBarAction = topBarAction.takeIf { list.isOwnPosts },
             fab = fab,
             onBack = onBack,
+            rowContent = { row ->
+                cards.firstOrNull { it.id == row.id }?.let { card ->
+                    @Composable {
+                        MyPostCard(card, row, list, onOwnPostOptions = viewModel::requestKebab, onOpenPost = viewModel::openPost)
+                    }
+                }
+            },
         )
         listToast?.let { message ->
             Toast(
@@ -174,7 +201,16 @@ fun MyPostsScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
             )
         }
+        // A card's Save, Repost or reaction, as on a profile.
+        cardToast?.takeIf { listToast == null }?.let { message ->
+            Toast(
+                message = ToastMessage(text = message, kind = ToastKind.Neutral),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
+            )
+        }
     }
+
+    MyPostCardSheets(list.cards, cards, ownPosts = list.isOwnPosts, onQuotePost = onQuotePost)
 
     val target = kebabTarget
     if (target != null) {
@@ -185,6 +221,7 @@ fun MyPostsScreen(
         ) {
             KebabSheetContent(
                 target = target,
+                onEdit = { viewModel.editPost(target.postId) },
                 onArchive = { viewModel.archive(target.postId) },
                 onRestore = { viewModel.unarchive(target.postId) },
                 onDelete = { viewModel.requestDelete(target.postId) },
@@ -256,6 +293,12 @@ private class MyPostsTabList(
     val refreshNotice: StateFlow<RefreshNotice?> = kept?.refreshNotice ?: own.refreshNotice
     val toastMessage: StateFlow<String?> = kept?.toastMessage ?: own.toastMessage
 
+    /** The tab's posts as Pulse cards. */
+    val cards: ProfilePostCards = kept?.cards ?: own.cards
+    val cardToast: StateFlow<String?> = kept?.cardToast ?: own.cardToast
+
+    fun dismissCardToast() = if (kept != null) kept.dismissCardToast() else own.dismissCardToast()
+
     fun load() = if (kept != null) kept.load() else own.load()
 
     fun refresh() = if (kept != null) kept.refresh() else own.refresh()
@@ -263,9 +306,97 @@ private class MyPostsTabList(
     fun loadMore() = if (kept != null) kept.loadMoreIfNeeded() else own.loadMoreIfNeeded()
 }
 
+/**
+ * One post as its Pulse card, with the controls the Pulse feed gives it. Your own posts' ⋯ opens this screen's menu
+ * ([onOwnPostOptions]); a saved or reposted post's opens Post options, as on a profile.
+ */
+@Composable
+private fun MyPostCard(
+    card: PulsePostCardContent,
+    row: RowModel,
+    list: MyPostsTabList,
+    onOwnPostOptions: (String) -> Unit,
+    onOpenPost: (String) -> Unit,
+) {
+    val model = list.cards
+    val postId = card.id
+    val going = { model.tapReaction(postId) }
+    val ownOptions: () -> Unit = { onOwnPostOptions(postId) }
+    val keptOptions: () -> Unit = { model.openOptions(postId) }
+    Box(modifier = Modifier.testTag("myPostsCard_$postId")) {
+        PulsePostCard(
+            content = card,
+            onTap = row.onTap,
+            onPrimaryReaction = going,
+            onRSVP = going.takeIf { card.attendees != null },
+            onReact = { emoji -> model.chooseReaction(postId, emoji) },
+            onOverflow = if (list.isOwnPosts) ownOptions else keptOptions.takeIf { profilePostHasOptions(card) },
+            onToggleSave = { model.toggleSave(postId) },
+            // ↻ opens the Repost chooser, as on every Pulse card.
+            onToggleRepost = { model.openRepostChooser(postId) },
+            onOpenQuoted = { quotedId ->
+                model.seedQuotedPost(quotedId)
+                onOpenPost(quotedId)
+            },
+        )
+    }
+}
+
+/**
+ * The menus behind the cards: the Repost chooser (Repost, or Repost with your words), and on Saved and Reposts the
+ * profile's Post options (Share…, Report post) with the report reasons.
+ */
+@Composable
+private fun MyPostCardSheets(
+    model: ProfilePostCards,
+    cards: List<PulsePostCardContent>,
+    ownPosts: Boolean,
+    onQuotePost: ((String) -> Unit)?,
+) {
+    val chooserId by model.repostChooserPostId.collectAsStateWithLifecycle()
+    val optionsId by model.optionsPostId.collectAsStateWithLifecycle()
+    val reportingId by model.reportingPostId.collectAsStateWithLifecycle()
+    val shareText = rememberShareTextWithCompletion()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    chooserId?.let { id -> cards.firstOrNull { it.id == id } }?.let { card ->
+        PulseRepostChooserSheet(
+            isReposted = card.actions.isReposted,
+            onToggleRepost = { model.toggleRepost(card.id) },
+            onQuote =
+                onQuotePost?.let { quote ->
+                    {
+                        model.prepareQuote(card.id)
+                        quote(card.id)
+                    }
+                },
+            onDismiss = { model.dismissRepostChooser() },
+        )
+    }
+    if (ownPosts) return
+    optionsId?.let { id -> cards.firstOrNull { it.id == id } }?.let { card ->
+        ProfilePostOptionsSheet(
+            card = card,
+            onShare = {
+                model.dismissOptions()
+                model.shareExternally(card.id) { url, onCompleted ->
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && shareText(url, onCompleted)
+                }
+            },
+            onReport = { model.beginReport(card.id) },
+            onDismiss = { model.dismissOptions() },
+            onToggleProfilePin = { model.toggleProfilePin(card.id) },
+            onOpenPlan = { model.openPlan(card.id) },
+        )
+    }
+    reportingId?.let { id ->
+        ProfilePostReportDialog(onReport = { reason -> model.report(id, reason) }, onDismiss = { model.cancelReport() })
+    }
+}
+
 @Composable
 private fun KebabSheetContent(
     target: MyPostsKebabTarget,
+    onEdit: () -> Unit,
     onArchive: () -> Unit,
     onRestore: () -> Unit,
     onDelete: () -> Unit,
@@ -287,6 +418,10 @@ private fun KebabSheetContent(
             color = PantopusColors.appText,
         )
 
+        if (!target.isArchived && !target.isPlanPost) {
+            // The row's Edit, now that each post is its Pulse card.
+            ActionRow(label = "Edit post", icon = PantopusIcon.Pencil, testTag = "kebab-edit", onClick = onEdit)
+        }
         if (target.isPlanPost) {
             // A plan's own post changes or is cancelled from its plan, which tells everyone; the server refuses
             // archiving or deleting it.

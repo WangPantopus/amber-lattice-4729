@@ -6697,6 +6697,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onCompose = { navController.navigate(ChildRoutes.composePost("")) },
                         onEditPost = { dto -> navController.navigate(ChildRoutes.editPost(dto.id)) },
                         initialTab = entry.arguments?.getString(ChildRoutes.MY_POSTS_TAB_KEY),
+                        onQuotePost = { postId -> navController.navigate(ChildRoutes.quotePost(postId)) },
                     )
                 }
                 composable(ChildRoutes.MENU) {

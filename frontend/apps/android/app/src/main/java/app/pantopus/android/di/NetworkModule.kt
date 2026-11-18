@@ -193,6 +193,8 @@ object NetworkModule {
             .add(app.pantopus.android.data.api.models.homes.UpdateMaintenanceRequestJsonAdapter())
             // A post edit's cleared event end goes out as explicit JSON null.
             .add(app.pantopus.android.data.api.models.posts.PostUpdateRequestJsonAdapter())
+            // My posts' replies: each post read as a row and as the feed's post its Pulse card draws.
+            .add(app.pantopus.android.data.api.models.posts.FeedFormPostsAdapterFactory)
             // How neighbors see you: "no photo" goes out as explicit JSON null.
             .add(app.pantopus.android.data.api.models.identity.LocalProfileUpdateRequestJsonAdapter())
             .add(app.pantopus.android.data.api.models.homes.PollOptionAdapter())
