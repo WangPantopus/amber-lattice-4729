@@ -207,7 +207,7 @@ public final class SupportTrainDetailViewModel {
             trainTimeZoneId = dto.timezone
             recipientDetailsAvailable = true
             if Self.viewerRole(dto) == .recipient {
-                await fetchRecipientDeliveries(read: read, cache: cache)
+                await fetchRecipientDeliveries(dto, read: read, cache: cache)
             }
         } catch {
             guard read == readGeneration, cache == store.generation,
@@ -481,12 +481,15 @@ public final class SupportTrainDetailViewModel {
 // MARK: - Projection (DTO → content)
 
 extension SupportTrainDetailViewModel {
-    private func fetchRecipientDeliveries(read: Int, cache: Int) async {
+    /// The person the train is for reads the signups list (the server lets them, as Android and
+    /// web do) to see who is coming by name and which deliveries wait for their confirmation.
+    private func fetchRecipientDeliveries(_ dto: SupportTrainDetailDTO, read: Int, cache: Int) async {
         do {
             let response: SupportTrainReservationsResponse = try await api.request(
                 SupportTrainsEndpoints.reservations(supportTrainId: trainId)
             )
             try requireCurrentRead(read, cache: cache)
+            state = .loaded(Self.project(dto, helpers: response.reservations))
             deliveryRows = response.reservations.filter { $0.status == "delivered" }.map { reservation in
                 let date = Self.parseSlotDate(reservation.slotDate)
                 return SlotRowContent(
@@ -494,6 +497,7 @@ extension SupportTrainDetailViewModel {
                     dayLabel: date.map { Self.format($0, "EEE") } ?? "",
                     dateLabel: date.map { Self.format($0, "d") } ?? "",
                     state: .covered,
+                    author: Self.helperAuthor(reservation),
                     title: reservation.dishTitle ?? reservation.restaurantName ?? "Contribution",
                     subtitle: "Awaiting your confirmation",
                     reservationId: reservation.id,
@@ -509,7 +513,11 @@ extension SupportTrainDetailViewModel {
 
     /// Pure mapping from the `GET /:id` payload to the render model.
     /// `nonisolated` so unit tests can assert it without an actor hop.
-    nonisolated static func project(_ dto: SupportTrainDetailDTO) -> SupportTrainDetailContent {
+    /// `helpers` is the signups list, read only for the person the train is for: it names who covers each date.
+    nonisolated static func project(
+        _ dto: SupportTrainDetailDTO,
+        helpers: [SupportTrainReservationDTO]? = nil
+    ) -> SupportTrainDetailContent {
         // A removed date is never shown or counted (A10); "today" is the train's own day (B4).
         let slots = dto.liveSlots
         let today = parseSlotDate(dto.trainToday) ?? localToday()
@@ -555,7 +563,14 @@ extension SupportTrainDetailViewModel {
             recipient: recipient(dto: dto, primaryName: primaryName),
             typeDates: typeDates,
             calendarDays: calendar(slots: slots, reservations: reservations, today: today),
-            sections: sections(slots: slots, reservations: reservations, today: today, zoneId: zoneId),
+            sections: sections(
+                slots: slots,
+                reservations: reservations,
+                // The person the train is for gets the "Who's coming" list (named once the signups load).
+                helpers: role == .recipient ? (helpers ?? []) : nil,
+                today: today,
+                zoneId: zoneId
+            ),
             hostedBy: hostedBy(primaryName: primaryName, primaryUserId: primary?.user?.id),
             // Organizers run the train from Manage; the person it is for isn't asked to sign up (B2).
             dock: role.isOrganizer ? .manage
@@ -813,6 +828,7 @@ extension SupportTrainDetailViewModel {
     private nonisolated static func sections(
         slots: [SupportTrainSlotDTO],
         reservations: [SupportTrainMyReservationDTO],
+        helpers: [SupportTrainReservationDTO]?,
         today: Date,
         zoneId: String?
     ) -> [SlotSection] {
@@ -851,13 +867,23 @@ extension SupportTrainDetailViewModel {
             }
             .sorted { ($0.slotDate ?? "") < ($1.slotDate ?? "") }
         if !sortedCovered.isEmpty {
-            let shown = Array(sortedCovered.prefix(4)).map { slotRow($0, covered: true) }
+            // With the signups list (the person the train is for), each date names its helper, as on
+            // Android and web; without it the row says only what is coming.
+            let mineIds = Set(reservations.map(\.id))
+            let helpersBySlot = Dictionary(grouping: (helpers ?? []).filter { helper in
+                !mineIds.contains(helper.id) && ["reserved", "delivered", "confirmed"].contains(helper.status ?? "")
+            }) { $0.slotId ?? "" }
+            let rows = sortedCovered.flatMap { slot in
+                helpersBySlot[slot.id].map { $0.map { helperRow($0, slot: slot, zoneId: zoneId) } }
+                    ?? [slotRow(slot, covered: true)]
+            }
+            let shown = Array(rows.prefix(4))
             sections.append(SlotSection(
                 id: "covered",
-                overline: "Already on the train",
-                actionLabel: sortedCovered.count > shown.count ? "See all \(sortedCovered.count)" : nil,
+                overline: helpers == nil ? "Already on the train" : "Who's coming",
+                actionLabel: rows.count > shown.count ? "See all \(rows.count)" : nil,
                 rows: shown,
-                moreRows: sortedCovered.dropFirst(shown.count).map { slotRow($0, covered: true) }
+                moreRows: Array(rows.dropFirst(shown.count))
             ))
         }
         return sections
@@ -876,6 +902,51 @@ extension SupportTrainDetailViewModel {
             subtitle: dropWindow(slot.endTime),
             mine: false,
             slotId: slot.id
+        )
+    }
+
+    /// Another helper's signup, named, for the person the train is for.
+    private nonisolated static func helperRow(
+        _ helper: SupportTrainReservationDTO,
+        slot: SupportTrainSlotDTO,
+        zoneId: String?
+    ) -> SlotRowContent {
+        let date = parseSlotDate(slot.slotDate)
+        let title = helper.dishTitle
+            ?? helper.restaurantName
+            ?? helper.contributionMode.map { SupportTrainContributionMode(rawValue: $0)?.label ?? $0.capitalized }
+            ?? slot.slotLabel
+            ?? "A contribution"
+        let status: String? = switch helper.status {
+        case "delivered": "Delivered — awaiting confirmation"
+        case "confirmed": "Delivery confirmed"
+        default: nil
+        }
+        let subtitle = [
+            status,
+            arrivalLabel(helper.estimatedArrivalAt, zoneId: zoneId).map { "Arriving \($0)" },
+            helper.noteToRecipient
+        ]
+        .compactMap { $0?.isEmpty == false ? $0 : nil }
+        .joined(separator: " · ")
+        return SlotRowContent(
+            id: "helper-\(helper.id)",
+            dayLabel: date.map { format($0, "EEE") } ?? "",
+            dateLabel: date.map { format($0, "d") } ?? "",
+            state: .covered,
+            author: helperAuthor(helper),
+            title: title,
+            subtitle: subtitle.isEmpty ? dropWindow(slot.endTime) : subtitle,
+            mine: false,
+            slotId: slot.id
+        )
+    }
+
+    nonisolated static func helperAuthor(_ helper: SupportTrainReservationDTO) -> SlotRowContent.SlotAuthor {
+        SlotRowContent.SlotAuthor(
+            initials: initials(from: helper.displayName),
+            displayName: helper.displayName,
+            tone: .personal
         )
     }
 
