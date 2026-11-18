@@ -4,15 +4,18 @@ package app.pantopus.android.ui.screens.my_posts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.feed.FeedPost
 import app.pantopus.android.data.api.models.posts.MyPostDto
 import app.pantopus.android.data.api.models.posts.SavedPostsResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.posts.PostsRepository
 import app.pantopus.android.data.posts.PulsePostsRefreshNotifier
 import app.pantopus.android.data.store.StoreKind
 import app.pantopus.android.data.store.Stored
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.screens.feed.pulse.PulseIntent
+import app.pantopus.android.ui.screens.profile.ProfilePostCards
 import app.pantopus.android.ui.screens.shared.list_of_rows.ListOfRowsUiState
 import app.pantopus.android.ui.screens.shared.list_of_rows.RowBodyEmphasis
 import app.pantopus.android.ui.screens.shared.list_of_rows.RowEngagement
@@ -32,11 +35,49 @@ import java.time.Instant
  * A My posts tab listing other people's posts the viewer kept, paged by an offset over the viewer's own actions: Saved
  * (`GET /api/posts/saved`, [SavedPostsViewModel]) and Reposts (`GET /api/posts/reposts`, [RepostedPostsViewModel]).
  * Both tabs read, page, recheck and draw their rows the same way; each row has one action that takes it off the list
- * (Remove, Undo repost). The rows reuse [MyPostsViewModel]'s row helpers.
+ * (Remove, Undo repost). The rows reuse [MyPostsViewModel]'s row helpers. Each post is drawn as its Pulse card
+ * ([cards]), with the card's own controls: unsaving a post on Saved, or undoing a repost on Reposts, takes it off the
+ * list once the server agrees.
  */
+@Suppress("TooManyFunctions") // The list's reads and paging, plus the cards' toast and the post a card's Save or Repost drops.
 abstract class OffsetPostsTabViewModel(
     private val postsRefresh: PulsePostsRefreshNotifier,
+    postsRepository: PostsRepository,
+    viewerId: () -> String?,
+    /** What keeps a post on this list: a card's Save or Repost undone takes it off. */
+    keptBy: KeptBy,
 ) : ViewModel() {
+    /** What lists a post on an [OffsetPostsTabViewModel]. */
+    enum class KeptBy { Save, Repost }
+
+    private val _cardToast = MutableStateFlow<String?>(null)
+
+    /** A card's Save, Repost or reaction says how it went ("Saved."), as on a profile. */
+    val cardToast: StateFlow<String?> = _cardToast.asStateFlow()
+
+    /** The posts as Pulse cards and what the viewer's taps did to them. */
+    val cards =
+        ProfilePostCards(
+            scope = viewModelScope,
+            posts = postsRepository,
+            viewerId = viewerId,
+            onToast = { _cardToast.value = it },
+            // As in Pulse: each author keeps their feed look.
+            profileColors = false,
+            onSaveSettled = { postId, saved -> if (keptBy == KeptBy.Save && !saved) drop(postId) },
+            onRepostSettled = { postId, reposted -> if (keptBy == KeptBy.Repost && !reposted) drop(postId) },
+        )
+
+    /** Each listed post as the feed's, for its card. */
+    private val feedById = mutableMapOf<String, FeedPost>()
+
+    /** The tap count when the read that just landed started; -1 when the cards' rows come from no new read. */
+    private var cardReadRevision = -1
+
+    fun dismissCardToast() {
+        _cardToast.value = null
+    }
+
     private val _state = MutableStateFlow<ListOfRowsUiState>(ListOfRowsUiState.Loading)
     val state: StateFlow<ListOfRowsUiState> = _state.asStateFlow()
 
@@ -126,6 +167,7 @@ abstract class OffsetPostsTabViewModel(
         if (!loadedOnce) {
             storedPage(PAGE_SIZE).data?.let { copy ->
                 posts = copy.posts
+                keep(copy)
                 nextOffset = nextOffsetAfter(copy)
                 loadedOnce = true
                 applyState()
@@ -133,6 +175,7 @@ abstract class OffsetPostsTabViewModel(
             if (!loadedOnce) _state.value = ListOfRowsUiState.Loading
         }
         val depth = (nextOffset ?: posts.size).coerceIn(PAGE_SIZE, MAX_REFRESH_DEPTH)
+        val revision = cards.actionRevision
         viewModelScope.launch {
             val result = readPage(limit = depth, offset = 0, force = force)
             if (gen != generation) return@launch
@@ -142,6 +185,8 @@ abstract class OffsetPostsTabViewModel(
             when (result) {
                 is NetworkResult.Success -> {
                     val retained = replaceRefreshedHead(result.data)
+                    keep(result.data)
+                    cardReadRevision = revision
                     loadedOnce = true
                     applyState()
                     if (retained > 0) recheckRetainedTail(result.data.posts, retained, gen)
@@ -217,6 +262,7 @@ abstract class OffsetPostsTabViewModel(
                 when (val page = readPage(limit = PAGE_SIZE, offset = offset, force = false)) {
                     is NetworkResult.Success -> {
                         tail += page.data.posts
+                        keep(page.data)
                         next = nextOffsetAfter(page.data)
                     }
                     is NetworkResult.Failure -> {
@@ -254,6 +300,7 @@ abstract class OffsetPostsTabViewModel(
                     val fresh = result.data.posts.filter { it.id !in seen }
                     addedRows = fresh.isNotEmpty()
                     posts = posts + fresh
+                    keep(result.data)
                     nextOffset = nextOffsetAfter(result.data)
                 }
                 is NetworkResult.Failure -> loadMoreFailed = true
@@ -271,17 +318,7 @@ abstract class OffsetPostsTabViewModel(
             val result = takeOff(postId)
             removing.remove(postId)
             when {
-                result is NetworkResult.Success && !result.data -> {
-                    removals++
-                    // A Pulse card still showing the old state would undo this on its next tap: lists refetch.
-                    postsRefresh.notifyPostsDidChange()
-                    if (posts.any { it.id == postId }) {
-                        posts = posts.filterNot { it.id == postId }
-                        // The rows after it move up one, so the next page starts one earlier or it would skip one.
-                        nextOffset = nextOffset?.let { maxOf(0, it - 1) }
-                        applyState()
-                    }
-                }
+                result is NetworkResult.Success && !result.data -> drop(postId)
                 // The toggle put it back (it had left elsewhere): re-read the list.
                 result is NetworkResult.Success -> load()
                 else -> _toastMessage.value = removeFailedMessage
@@ -290,11 +327,32 @@ abstract class OffsetPostsTabViewModel(
         }
     }
 
+    /** The post is no longer saved (or reposted): it leaves the list. */
+    private fun drop(postId: String) {
+        removals++
+        // A Pulse card still showing the old state would undo this on its next tap: lists refetch.
+        postsRefresh.notifyPostsDidChange()
+        if (posts.any { it.id == postId }) {
+            posts = posts.filterNot { it.id == postId }
+            // The rows after it move up one, so the next page starts one earlier or it would skip one.
+            nextOffset = nextOffset?.let { maxOf(0, it - 1) }
+            applyState()
+        }
+    }
+
+    /** Keeps a reply's posts as the feed's, for their cards. */
+    private fun keep(response: SavedPostsResponse) {
+        response.feedPosts.forEach { feedById[it.id] = it }
+    }
+
     fun dismissToast() {
         _toastMessage.value = null
     }
 
     private fun applyState() {
+        // The cards follow the rows: the same posts in the same order.
+        cards.show(posts.mapNotNull { feedById[it.id] }, cardReadRevision)
+        cardReadRevision = -1
         if (posts.isEmpty() && nextOffset != null) {
             if (loadMoreFailed) {
                 // Reading on failed, which isn't "nothing here": say so, with Try again.

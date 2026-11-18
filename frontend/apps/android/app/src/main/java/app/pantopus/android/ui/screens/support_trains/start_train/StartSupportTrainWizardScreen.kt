@@ -103,6 +103,7 @@ fun StartSupportTrainWizardScreen(
     val searchFailed by viewModel.beneficiarySearchFailed.collectAsStateWithLifecycle()
     val isEditingQuery by viewModel.isEditingBeneficiaryQuery.collectAsStateWithLifecycle()
     val launchError by viewModel.launchError.collectAsStateWithLifecycle()
+    val savedDateCount by viewModel.savedDateCount.collectAsStateWithLifecycle()
     val pendingEvent by viewModel.pendingEvent.collectAsStateWithLifecycle()
     val homeOptions by viewModel.homeOptions.collectAsStateWithLifecycle()
     val recipientNotLinked by viewModel.recipientNotLinked.collectAsStateWithLifecycle()
@@ -184,7 +185,9 @@ fun StartSupportTrainWizardScreen(
                 )
             StartSupportTrainStep.Success ->
                 SuccessStep(
-                    slotCount = viewModel.generatedSlots().size,
+                    // The dates the server saved, not the ones the phone made: a date that had passed where the
+                    // train is was skipped.
+                    slotCount = savedDateCount ?: viewModel.generatedSlots().size,
                     visibility = form.visibility,
                     recipientNotLinked = recipientNotLinked,
                 )

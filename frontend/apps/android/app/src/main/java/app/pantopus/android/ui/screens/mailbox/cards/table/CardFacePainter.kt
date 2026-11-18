@@ -57,6 +57,11 @@ internal data class CardFaceWords(
     val letterTitle: String? = null,
     /** The writing box draws [note] itself: the back draws only the rules it's sized for (plan Part 1). */
     val writing: Boolean = false,
+    /**
+     * A long note goes over two leaves (plan Part 9): where the card lies on a table and can be turned. Off: one side,
+     * as Part 1 fits it (the writing box, a shared picture, the sealing moment).
+     */
+    val leaves: Boolean = false,
 )
 
 /** The picture on a card, and how much of its edges to leave out (an older copy has its own border baked in). */
@@ -151,6 +156,14 @@ internal class CardFacePainter(
     private var edgeHeight = -1f
     private var edgeShaders: List<LinearGradient> = emptyList()
     private var noteCache: PenNote? = null
+    private var noteCacheLeaves = false
+    private val overInk =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+    private val overArrow = Path()
     private val letterInk = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val signatureInk = CardSignatureInk.paint()
     private var signatureCache: Pair<CardSignature, Path>? = null
@@ -189,11 +202,77 @@ internal class CardFacePainter(
         clipCard(canvas, width, u)
         canvas.drawColor(face.paper)
         drawRules(canvas, u, face)
-        drawNote(canvas, u, face)
+        // On two leaves the card's own back is the second leaf: the rest of the note, then FROM and the foot (plan Part 9).
+        drawNote(canvas, u, face, if (twoLeaves(face, u)) NotePart.Second else NotePart.Whole)
         drawFrom(canvas, u, face.from, face.signature?.takeIf { it.drawable })
         drawFoot(canvas, u, face.year)
         drawGrain(canvas, width, u, grain)
         drawEdges(canvas, width, u)
+        canvas.restoreToCount(restore)
+    }
+
+    /**
+     * The first leaf of a long note (plan Part 9), lying on the card's back: the same paper, size and rules, the note's
+     * first lines, and "over" with its arrow at the foot. No FROM, no signature, no foot line.
+     */
+    fun drawFirstLeaf(
+        canvas: Canvas,
+        width: Float,
+        face: CardFaceWords,
+        grain: Bitmap = art.paper,
+    ) {
+        val u = width / 100f
+        val restore = canvas.save()
+        clipCard(canvas, width, u)
+        canvas.drawColor(face.paper)
+        drawRules(canvas, u, face)
+        drawNote(canvas, u, face, NotePart.First)
+        drawOver(canvas, u)
+        drawGrain(canvas, width, u, grain)
+        drawEdges(canvas, width, u)
+        canvas.restoreToCount(restore)
+    }
+
+    /** [face]'s note goes over two leaves on a card [u] wide (plan Part 9). */
+    fun twoLeaves(
+        face: CardFaceWords,
+        u: Float,
+    ): Boolean = face.leaves && !face.writing && face.letterTitle == null && penNote(face, u).twoLeaves
+
+    /**
+     * "over" in the pen with a short arrow, at the first leaf's foot (plan Part 9): the word 5.6u high in the pen's ink
+     * at 82%, then the arrow 8u by 3.2u (the sample's 40 by 16 drawing, a 1.7-wide round stroke) 1.6u after it, the
+     * pair's right end 8u from the leaf's right edge and its top 97.5u down, turned 2° up to the right.
+     */
+    private fun drawOver(
+        canvas: Canvas,
+        u: Float,
+    ) {
+        val size = u * OVER_SIZE
+        textStyle(art.pen, size, PantopusColors.tablePen)
+        multiplyInk()
+        text.alpha = (OVER_INK * 255f).toInt()
+        val word = text.measureText(OVER)
+        val total = word + u * OVER_GAP + u * OVER_ARROW_WIDE
+        val left = u * (100f - OVER_RIGHT) - total
+        val top = u * OVER_TOP
+        val restore = canvas.save()
+        canvas.rotate(-OVER_TURN, left + total / 2f, top + size / 2f)
+        canvas.drawText(OVER, left, boxBaseline(top, size), text)
+        // The arrow sits on the word's middle, its own box 40 by 16.
+        val unit = u * OVER_ARROW_WIDE / OVER_BOX_WIDE
+        canvas.translate(left + word + u * OVER_GAP, top + (size - u * OVER_ARROW_HIGH) / 2f)
+        canvas.scale(unit, unit)
+        overInk.color = PantopusColors.tablePen.copy(alpha = OVER_INK).toArgb()
+        overInk.strokeWidth = OVER_STROKE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) overInk.blendMode = BlendMode.MULTIPLY
+        overArrow.reset()
+        overArrow.moveTo(2f, 9.5f)
+        overArrow.cubicTo(10f, 7.2f, 22f, 7f, 36f, 8f)
+        overArrow.moveTo(29.5f, 3.2f)
+        overArrow.lineTo(36.6f, 8f)
+        overArrow.lineTo(29f, 13f)
+        canvas.drawPath(overArrow, overInk)
         canvas.restoreToCount(restore)
     }
 
@@ -349,10 +428,14 @@ internal class CardFacePainter(
         }
     }
 
+    /** Which of the note's lines a face draws: all of them, or one leaf's (plan Part 9). */
+    private enum class NotePart { Whole, First, Second }
+
     private fun drawNote(
         canvas: Canvas,
         u: Float,
         face: CardFaceWords,
+        part: NotePart = NotePart.Whole,
     ) {
         if (face.note.isBlank() || face.writing) return
         val note = penNote(face, u)
@@ -362,8 +445,12 @@ internal class CardFacePainter(
         val baseline = (note.pitch - (metrics.descent - metrics.ascent)) / 2f - metrics.ascent
         val left = u * 8f
         val top = u * 9f
+        // Each word keeps the shift, turn and ink it has in the whole note; the lines are dealt to the leaves.
+        val from = if (part == NotePart.Second) note.secondFrom else 0
+        val until = if (part == NotePart.First) note.firstLeaf else Int.MAX_VALUE
         note.words.forEach { word ->
-            val lineTop = top + note.pitch * word.line
+            if (word.line < from || word.line >= until) return@forEach
+            val lineTop = top + note.pitch * (word.line - from)
             val restore = canvas.save()
             canvas.translate(0f, word.shift * note.size)
             canvas.rotate(word.turn, left + word.x + word.width / 2f, lineTop + note.pitch / 2f)
@@ -379,10 +466,14 @@ internal class CardFacePainter(
         u: Float,
     ): PenNote {
         val kept = noteCache
-        if (kept != null && kept.note == face.note && kept.number == face.number && kept.u == u) return kept
+        val leaves = face.leaves && !face.writing
+        if (kept != null && kept.note == face.note && kept.number == face.number && kept.u == u && noteCacheLeaves == leaves) return kept
         // Measured with what it's drawn with; a paint's reset keeps its alignment and letter spacing.
         textStyle(art.pen, u * 6f, PantopusColors.tablePen)
-        return PenNote.lay(face.note, face.number, u, text).also { noteCache = it }
+        return PenNote.lay(face.note, face.number, u, text, leaves).also {
+            noteCache = it
+            noteCacheLeaves = leaves
+        }
     }
 
     private fun drawFrom(
@@ -572,6 +663,9 @@ internal class CardSeed(
  * the largest of three sizes that holds the note (plan Part 1): 7.8u on 9 rules, 7u on 10, 6u on 11, the rules always
  * filling 83.6u. A word too long for a line breaks between letters. A line in a right-to-left script runs from the
  * right. Notes too long for the 11 rules get smaller, as before, so they never run into FROM.
+ *
+ * Laid with leaves (plan Part 9), a note that doesn't fit 9 lines at 7.8u or 10 at 7u goes over two leaves instead, at
+ * the first of 7.8u (9 lines a leaf), 7u (10) and 6u (11) that holds it; one of very many short lines keeps the above.
  */
 internal class PenNote private constructor(
     val note: String,
@@ -583,7 +677,23 @@ internal class PenNote private constructor(
     /** The ruled lines drawn under it, and their spacing. */
     val rules: Int,
     val rulePitch: Float,
+    private val leaf: LeafBreak? = null,
 ) {
+    /** Where a note on two leaves breaks: the first leaf's lines, and the second leaf's first line. */
+    private class LeafBreak(
+        val first: Int,
+        val secondFrom: Int,
+    )
+
+    /** It goes over two leaves. */
+    val twoLeaves: Boolean get() = leaf != null
+
+    /** The lines on the first leaf; 0 on one side. */
+    val firstLeaf: Int get() = leaf?.first ?: 0
+
+    /** The second leaf's first line: a blank line that would start it is left out. */
+    val secondFrom: Int get() = leaf?.secondFrom ?: 0
+
     class PenWord(
         val text: String,
         val x: Float,
@@ -592,6 +702,8 @@ internal class PenNote private constructor(
         val shift: Float,
         val turn: Float,
         val opacity: Float,
+        /** Which word of the note this is: a word wider than a line is broken between letters over several lines. */
+        val token: Int,
     )
 
     companion object {
@@ -601,19 +713,27 @@ internal class PenNote private constructor(
         /** The pen's three sizes (plan Part 1, D7): rules on the card, and the pen in u. 30, 27 and 23 pt on an iPhone 17. */
         private val SIZES = listOf(9 to 7.8f, 10 to 7f, RULES to 6f)
 
-        /** [note]'s lines and words at the largest size that holds it; every row counts, an empty last one too. */
+        /**
+         * [note]'s lines and words at the largest size that holds it; every row counts, an empty last one too. With
+         * [leaves] the smallest pen isn't used on one side: such a note goes over two leaves (plan Part 9).
+         */
         fun lay(
             note: String,
             number: Int,
             u: Float,
             paint: Paint,
+            leaves: Boolean = false,
         ): PenNote {
             var placed = Placed(emptyList(), 0)
             for ((rules, pen) in SIZES) {
                 placed = place(note, number, u * pen, u * 85f, paint)
                 val pitch = u * RULED / rules
-                if (placed.lines <= rules) return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch)
+                if (placed.lines <= rules) {
+                    if (leaves && rules == RULES) onTwoLeaves(note, number, u, paint)?.let { return it }
+                    return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch)
+                }
             }
+            if (leaves) onTwoLeaves(note, number, u, paint)?.let { return it }
             // Longer than the 11 rules: smaller and closer, as before, on the 11 rules.
             var size = u * 6f
             var pitch = u * 7.6f
@@ -625,6 +745,57 @@ internal class PenNote private constructor(
                 tries += 1
             }
             return PenNote(note, number, u, size, pitch, placed.words, RULES, u * RULED / RULES)
+        }
+
+        /**
+         * [note] over two leaves at the first pen that holds it in twice its rules; null for one of very many short
+         * lines. The first leaf takes the first lines as the pen wraps them, the second the rest, never fewer than two.
+         */
+        private fun onTwoLeaves(
+            note: String,
+            number: Int,
+            u: Float,
+            paint: Paint,
+        ): PenNote? {
+            for ((rules, pen) in SIZES) {
+                val placed = place(note, number, u * pen, u * 85f, paint)
+                val cut = leafBreak(placed, rules) ?: continue
+                val pitch = u * RULED / rules
+                return PenNote(note, number, u, u * pen, pitch, placed.words, rules, pitch, cut)
+            }
+            return null
+        }
+
+        /**
+         * Where [placed] breaks over two leaves of [rules] lines each, or null when this pen can't: the first leaf
+         * takes the first lines, the second the rest, never fewer than two. A blank line that would open the second
+         * leaf is left out, so a closing line after it may stand alone.
+         */
+        private fun leafBreak(
+            placed: Placed,
+            rules: Int,
+        ): LeafBreak? {
+            if (placed.lines > rules * 2) return null
+            val first = wholeWords(placed.words, min(rules, placed.lines - 2))
+            // A single word taller than the first leaf: the next pen, or one side.
+            if (first < 1) return null
+            val blank = placed.words.none { it.line == first }
+            val second = if (blank) first + 1 else first
+            // The second leaf can't hold what's left once a word moved over: the next pen.
+            return if (placed.lines - second > rules) null else LeafBreak(first, second)
+        }
+
+        /**
+         * Where the first leaf ends so that no word is split between the leaves (the design check of November 17): a
+         * word broken over several lines that would cross the break starts the second leaf instead.
+         */
+        private fun wholeWords(
+            words: List<PenWord>,
+            first: Int,
+        ): Int {
+            val crossing = words.firstOrNull { it.line >= first }?.token ?: return first
+            val start = words.filter { it.token == crossing }.minOf { it.line }
+            return min(first, start)
         }
 
         private class Placed(
@@ -644,6 +815,7 @@ internal class PenNote private constructor(
             val seed = CardSeed(number * 7 + 3)
             val out = ArrayList<PenWord>()
             var line = 0
+            var wordAt = 0
             note.split('\n').forEach { row ->
                 val backwards = row.isNotEmpty() && !Bidi(row, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT).baseIsLeftToRight()
                 var x = 0f
@@ -665,10 +837,11 @@ internal class PenNote private constructor(
                             x = 0f
                         }
                         val placedAt = if (backwards) width - x - pieceWidth else x
-                        out += PenWord(piece, placedAt, line, pieceWidth, shift, turn, opacity)
+                        out += PenWord(piece, placedAt, line, pieceWidth, shift, turn, opacity, wordAt)
                         x += pieceWidth
                         gap = false
                     }
+                    wordAt += 1
                 }
                 line += 1
             }
@@ -739,6 +912,19 @@ private const val LETTER_LINE_STEP = 8f
 private const val LETTER_LINE_WIDTH = 0.9f
 private const val LETTER_FOLD_Y = 80f
 private const val LETTER_FOLD_WIDTH = 0.6f
+
+// The first leaf's "over" (plan Part 9), in hundredths of the card's width; the arrow in its own 40 by 16 box.
+private const val OVER = "over"
+private const val OVER_SIZE = 5.6f
+private const val OVER_INK = 0.82f
+private const val OVER_TURN = 2f
+private const val OVER_RIGHT = 8f
+private const val OVER_TOP = 97.5f
+private const val OVER_GAP = 1.6f
+private const val OVER_ARROW_WIDE = 8f
+private const val OVER_ARROW_HIGH = 3.2f
+private const val OVER_BOX_WIDE = 40f
+private const val OVER_STROKE = 1.7f
 
 /** Each line of writing's length: a short last line, like the end of a paragraph. */
 private val LETTER_LINES = floatArrayOf(72f, 68f, 70f, 64f, 71f, 40f)

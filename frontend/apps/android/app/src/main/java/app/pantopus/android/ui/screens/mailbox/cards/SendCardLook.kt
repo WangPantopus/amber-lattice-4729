@@ -331,6 +331,8 @@ private fun CardComingOut(
 ) {
     val reduceMotion = rememberReduceMotion()
     var showBack by rememberSaveable { mutableStateOf(false) }
+    // A long note shows over two leaves, as the reader will see it (plan Part 9).
+    val leaves = rememberCardLeaves()
     // Each "Open it again" draws it coming out afresh; it doesn't play again when the screen comes back.
     var replays by remember { mutableIntStateOf(0) }
     // The card the desk's full width (the screen less 16 dp a side), as large as it will be in their hands.
@@ -344,6 +346,7 @@ private fun CardComingOut(
                 showBack = showBack,
                 opening = replays > 0 && !reduceMotion,
                 onOut = {},
+                leaves = leaves,
             )
         }
     }
@@ -353,11 +356,12 @@ private fun CardComingOut(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CardButton(
-            if (showBack) "Turn it back" else "Turn it over",
-            onClick = { showBack = !showBack },
+            leaves.turnLabel(showBack),
+            onClick = { leaves.press(showBack) { showBack = !showBack } },
             kind = CardButtonKind.Paper,
             fill = false,
             state = if (showBack) "Showing the back" else "Showing the picture",
+            spoken = leaves.turnSpoken(showBack),
             modifier = Modifier.testTag("sendCardLookTurn"),
         )
         if (LaunchFeatures.cardTable) {

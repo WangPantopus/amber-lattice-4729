@@ -64,6 +64,10 @@ class ProfilePostCards internal constructor(
     private val profileColors: Boolean = true,
     /** The button that goes with the next toast ("View" after "Saved."); called just before [onToast]. */
     private val onToastAction: (PulseToastActionFor) -> Unit = {},
+    /** The server answered a card's Save (post id, saved): My posts' Saved tab lets an unsaved post go. */
+    private val onSaveSettled: (String, Boolean) -> Unit = { _, _ -> },
+    /** The server answered a card's Repost (post id, reposted): My posts' Reposts tab lets an undone one go. */
+    private val onRepostSettled: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     private val _cards = MutableStateFlow<List<PulsePostCardContent>>(emptyList())
 
@@ -282,6 +286,7 @@ class ProfilePostCards internal constructor(
                         } else {
                             onToast(PulsePostCopy.UNSAVED)
                         }
+                        onSaveSettled(postId, result.data.saved)
                     }
                     is NetworkResult.Failure -> {
                         put(postId) { it.copy(isSaved = original) }
@@ -328,6 +333,7 @@ class ProfilePostCards internal constructor(
                             )
                         }
                         onToast(if (reposted) PulsePostCopy.REPOSTED else PulsePostCopy.REPOST_REMOVED)
+                        onRepostSettled(postId, reposted)
                     }
                     is NetworkResult.Failure -> {
                         put(postId) { it.copy(isReposted = original, shareCount = originalCount, repostLine = Line(originalLine)) }

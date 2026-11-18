@@ -634,6 +634,9 @@ private fun EditProfileSections(
             onClick = extras.onOpenCity,
         )
         val addressSuggestions = rememberAddressSuggestions()
+        // Discard and Save put the saved address back without a keystroke: the suggestions go with the change.
+        val addressChanged = fields[EditProfileField.Address]?.isDirty == true
+        LaunchedEffect(addressChanged) { if (!addressChanged) addressSuggestions?.dismiss() }
         TextRow(
             field = EditProfileField.Address,
             label = "Mailing address",

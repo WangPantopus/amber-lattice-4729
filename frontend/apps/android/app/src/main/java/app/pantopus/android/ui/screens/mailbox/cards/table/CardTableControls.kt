@@ -293,11 +293,11 @@ private fun ActionBlock(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary)
+                    TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
                     TablePill(READ_IT_IN_PRINT, away, "cardTableReadInPrint") { state.openPrint() }
                 }
             } else if (state.primaryLabel.isNotEmpty()) {
-                TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary)
+                TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
             }
             if (state.sending == null) {
                 // The line slot stays with the main button; under it, the reader's one quiet row (as on the web and iPhone).
@@ -319,6 +319,7 @@ private fun TablePill(
     words: String,
     away: Boolean,
     tag: String,
+    spoken: String? = null,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
@@ -332,6 +333,7 @@ private fun TablePill(
                 .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick))
                 .heightIn(min = 44.dp)
                 .padding(horizontal = 24.dp)
+                .then(if (spoken != null) Modifier.semantics { contentDescription = spoken } else Modifier)
                 .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
@@ -499,6 +501,10 @@ internal const val READ_THE_VERSE = "Read the verse"
 
 /** The note in plain type on the bookmark (plan Part 2). */
 internal const val READ_IT_IN_PRINT = "Read it in print"
+
+/** The main button on a long note's first leaf (plan Part 9), and what a screen reader hears for it. */
+internal const val READ_ON = "Read on"
+internal const val READ_ON_SPOKEN = "Read on, the note continues on a second leaf"
 
 /** Android's "larger text": font scale 1.15 or more (plan Part 2). */
 internal const val LARGE_TEXT_SCALE = 1.15f

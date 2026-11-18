@@ -64,6 +64,7 @@ import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardTimes
 import app.pantopus.android.ui.screens.mailbox.cards.SEND_THIS_CARD_AGAIN
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
 import app.pantopus.android.ui.screens.mailbox.cards.canSendAnother
+import app.pantopus.android.ui.screens.mailbox.cards.rememberCardLeaves
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardGreetingVoice
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardPrintPhoto
@@ -424,10 +425,13 @@ private fun ColumnScope.BothSides(
     forFirst: String = "you",
 ) {
     var showBack by rememberSaveable { mutableStateOf(false) }
+    // A long note goes over two leaves, as the reader sees it (plan Part 9).
+    val leaves = rememberCardLeaves()
     val shape = RoundedCornerShape(3.dp)
     val caption = card.caption?.takeIf { it.isNotBlank() } ?: "A Christmas picture"
     HolidayCardFlip(
         showBack = showBack,
+        leaves = leaves,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -453,16 +457,18 @@ private fun ColumnScope.BothSides(
                 message = card.note,
                 design = card.design,
                 signature = card.signature,
+                leaves = leaves,
                 modifier = Modifier.shadow(6.dp, shape).clip(shape),
             )
         },
     )
     CardButton(
-        if (showBack) "Turn it back" else "Turn it over",
-        onClick = { showBack = !showBack },
+        leaves.turnLabel(showBack),
+        onClick = { leaves.press(showBack) { showBack = !showBack } },
         kind = CardButtonKind.Paper,
         fill = false,
         state = if (showBack) "Showing the back" else "Showing the picture",
+        spoken = leaves.turnSpoken(showBack),
         modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = Spacing.s3).testTag("mailSentPieceTurn"),
     )
     CardNoteSide(card, from, modifier = Modifier.padding(vertical = Spacing.s4).rotate(1f))

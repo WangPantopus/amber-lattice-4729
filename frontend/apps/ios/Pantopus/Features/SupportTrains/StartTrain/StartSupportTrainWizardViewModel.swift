@@ -58,20 +58,16 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
     public var allergies: String = ""
     public var diet: String = ""
     public var contactless: Bool = false
-    /// Held to the 2,000 characters the server keeps (`special_instructions`).
-    public var instructions: String = "" {
-        didSet {
-            if instructions.count > Self.instructionsCharLimit {
-                instructions = String(instructions.prefix(Self.instructionsCharLimit))
-            }
-        }
-    }
+    /// Held to the 2,000 characters the server keeps (`special_instructions`), through `updateInstructions`.
+    public var instructions: String = ""
 
     public var visibility: StartSupportTrainVisibility = .linkOnly
     /// The person picked by account wasn't linked to the train (not a connection) (A13).
     public private(set) var recipientNotLinkedName: String?
     public private(set) var launchError: String?
     public private(set) var publishedTrainId: String?
+    /// How many dates the server saved: it skips a date that had passed where the train is.
+    public private(set) var savedDateCount: Int?
     /// A half-built draft a failed launch couldn't delete; the next launch removes it first.
     private var leftoverTrainId: String?
     /// The create's request id, kept until its reply arrives, so a retry reaches the same draft.
@@ -230,6 +226,11 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
 
     public func selectReason(_ value: StartSupportTrainReason) {
         selectedReason = value
+    }
+
+    /// Typing or pasting past 2,000 characters keeps the first 2,000 (the server's `special_instructions` limit).
+    public func updateInstructions(_ value: String) {
+        instructions = String(value.prefix(Self.instructionsCharLimit))
     }
 
     public func updateReason(_ value: String) {
@@ -494,7 +495,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
                 preferredDropoffWindow: window,
                 contactlessPreferred: contactless,
                 specialInstructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? nil : instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ? nil : String(instructions.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.instructionsCharLimit))
             ),
             title: derivedTitle,
             recipientUserId: selectedBeneficiary?.userId,
@@ -560,6 +561,7 @@ public final class StartSupportTrainWizardViewModel: WizardModel {
             as: GeneratedSlotsCount.self
         )
         if saved.count < 1 { throw LaunchProblem.datePassed }
+        savedDateCount = saved.count
     }
 
     private enum DraftDiscard { case deleted, live, failed }

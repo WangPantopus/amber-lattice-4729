@@ -222,13 +222,13 @@ class SupportTrainsRepository
 
         /**
          * `POST …/generate-slots` — the whole schedule in one request. Fails unless the server
-         * confirms [expectedCount] slots. Route `backend/routes/supportTrains.js:903`.
+         * confirms [expectedCount] slots (one fewer when a date had passed where the train is); answers the saved count. Route `backend/routes/supportTrains.js:903`.
          */
         suspend fun generateSlots(
             supportTrainId: String,
             body: GenerateSupportTrainSlotsBody,
             expectedCount: Int,
-        ): NetworkResult<Unit> =
+        ): NetworkResult<Int> =
             safeApiCall {
                 val saved = api.generateSlots(supportTrainId, body)
                 // The server skips a date that has already passed where the train is, which can be the phone's
@@ -240,7 +240,7 @@ class SupportTrainsRepository
                 if (saved.count !in (expectedCount - 1).coerceAtLeast(1)..expectedCount) {
                     throw JsonDataException("Dates save could not be confirmed.")
                 }
-                Unit
+                saved.count
             }
 
         /**

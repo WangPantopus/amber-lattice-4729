@@ -20,8 +20,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -52,6 +56,8 @@ import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardArt.agedEdges
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardArt.paperGrain
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableBack
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableFront
+import app.pantopus.android.ui.screens.mailbox.cards.table.READ_ON
+import app.pantopus.android.ui.screens.mailbox.cards.table.READ_ON_SPOKEN
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.rememberReduceMotion
 import coil.compose.AsyncImage
@@ -237,8 +243,10 @@ fun HolidayCardBack(
     design: String? = null,
     /** Signed beside FROM (plan 8.2, with the table only); null: the first name typed in the pen. */
     signature: CardSignature? = null,
+    /** A card that can be turned (with the table only): a long note goes over two leaves (plan Part 9). */
+    leaves: CardLeaves? = null,
 ) {
-    if (LaunchFeatures.cardTable) return CardTableBack(design, paper, fromName, year, message, writing, modifier, signature)
+    if (LaunchFeatures.cardTable) return CardTableBack(design, paper, fromName, year, message, writing, modifier, signature, leaves)
     val paperColor = remember(paper) { HolidayCardArt.paper(paper) }
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(paperColor)) {
         val scale = CardScale(constraints.maxWidth.toFloat(), LocalDensity.current)
@@ -304,9 +312,46 @@ fun HolidayCardBack(
 }
 
 /**
+ * A long note's two leaves on a card that can be turned off the table (plan Part 9): whether its back has them, and
+ * whether "Read on" has lifted the first. The back says whether it has them once the pen has laid the note out.
+ */
+@Stable
+class CardLeaves {
+    var two by mutableStateOf(false)
+        internal set
+    var lifted by mutableStateOf(false)
+        internal set
+
+    /** Note side up on the first leaf. */
+    fun onFirstLeaf(showBack: Boolean): Boolean = showBack && two && !lifted
+
+    /** The turn button's words: "Read on" on the first leaf. */
+    fun turnLabel(showBack: Boolean): String =
+        when {
+            onFirstLeaf(showBack) -> READ_ON
+            showBack -> "Turn it back"
+            else -> "Turn it over"
+        }
+
+    /** What a screen reader hears for the turn button; null: its words. */
+    fun turnSpoken(showBack: Boolean): String? = if (onFirstLeaf(showBack)) READ_ON_SPOKEN else null
+
+    /** The turn button: on the first leaf it lifts it; otherwise [turn] turns the card. */
+    fun press(
+        showBack: Boolean,
+        turn: () -> Unit,
+    ) {
+        if (onFirstLeaf(showBack)) lifted = true else turn()
+    }
+}
+
+@Composable
+fun rememberCardLeaves(): CardLeaves = remember { CardLeaves() }
+
+/**
  * A card you can turn over: the picture side, and the back laid over it at the same size. Turning takes half a
  * second; with animations off (Remove animations) the sides swap without turning. The side facing away is hidden
- * from screen readers.
+ * from screen readers. With [leaves], once the back has turned away its first leaf is in place again (plan Part 9).
  */
 @Composable
 fun HolidayCardFlip(
@@ -314,6 +359,7 @@ fun HolidayCardFlip(
     front: @Composable () -> Unit,
     back: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    leaves: CardLeaves? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val turn by animateFloatAsState(
@@ -323,6 +369,7 @@ fun HolidayCardFlip(
     )
     val density = LocalDensity.current.density
     val backUp = turn > 90f
+    if (leaves != null) LaunchedEffect(backUp) { if (!backUp) leaves.lifted = false }
     Box(
         modifier =
             modifier.graphicsLayer {

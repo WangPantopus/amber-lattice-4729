@@ -87,6 +87,10 @@ class StartSupportTrainViewModel
         private val _pendingEvent = MutableStateFlow<StartSupportTrainEvent?>(null)
         val pendingEvent: StateFlow<StartSupportTrainEvent?> = _pendingEvent.asStateFlow()
 
+        /** How many dates the server saved (it skips a date that had passed where the train is). */
+        private val _savedDateCount = MutableStateFlow(savedState.get<Int>(KEY_SAVED_DATES))
+        val savedDateCount: StateFlow<Int?> = _savedDateCount.asStateFlow()
+
         private val _publishedTrainId = MutableStateFlow(savedState.get<String>(KEY_PUBLISHED_ID))
         val publishedTrainId: StateFlow<String?> = _publishedTrainId.asStateFlow()
 
@@ -650,7 +654,10 @@ class StartSupportTrainViewModel
                                 weekdays = current.weekdays.sorted().takeIf { current.weekdays.size < ALL_DAYS },
                             )
                         when (val result = supportTrains.generateSlots(created.id, schedule, slots.size)) {
-                            is NetworkResult.Success -> Unit
+                            is NetworkResult.Success -> {
+                                _savedDateCount.value = result.data
+                                savedState[KEY_SAVED_DATES] = result.data
+                            }
                             is NetworkResult.Failure -> {
                                 val datePassed = (result.error as? NetworkError.Decoding)?.cause?.message == DATES_PASSED_WHERE_TRAIN_IS
                                 _launchError.value =
@@ -716,6 +723,8 @@ class StartSupportTrainViewModel
         private suspend fun discardDraft(trainId: String): DraftDiscard {
             _publishedTrainId.value = null
             savedState[KEY_PUBLISHED_ID] = null
+            _savedDateCount.value = null
+            savedState[KEY_SAVED_DATES] = null
             return when (val result = supportTrains.deleteTrain(trainId, draftOnly = true)) {
                 is NetworkResult.Success -> DraftDiscard.Deleted
                 is NetworkResult.Failure -> {
@@ -875,6 +884,7 @@ class StartSupportTrainViewModel
             const val KEY_INSTRUCTIONS = "startTrain.instructions"
             const val KEY_DELIVERY = "startTrain.delivery"
             const val KEY_BENEFICIARY = "startTrain.beneficiary"
+            const val KEY_SAVED_DATES = "startTrain.savedDates"
             const val KEY_PUBLISHED_ID = "startTrain.publishedId"
             const val KEY_NOT_LINKED = "startTrain.notLinked"
             const val KEY_LEFTOVER_ID = "startTrain.leftoverId"
