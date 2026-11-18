@@ -46,6 +46,7 @@ final class HomeVerifyOptionsStore {
                 return nil
             }
             entries[key] = .options(options)
+            AddHomeShortSwitch.remember(options.shortAddHome)
             return options
         } catch is CancellationError {
             return cached(homeId: homeId)

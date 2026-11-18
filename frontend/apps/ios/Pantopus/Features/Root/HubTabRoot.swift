@@ -1052,6 +1052,16 @@ public struct HubTabRoot: View {
         return model
     }
 
+    /// After Add Home in two steps: Your Place for the new Home, and its verify sheet once the sheet knows its rows.
+    @MainActor
+    private func openPlaceToVerify(homeId: String, street: String) {
+        openPlaceRoot(homeId: homeId)
+        Task { @MainActor in
+            await HomeVerifyOptionsStore.shared.load(homeId: homeId)
+            mailVerifyHome = MailVerifyHome(homeId: homeId, address: street.isEmpty ? "Your home" : street)
+        }
+    }
+
     /// "Verify your home" from the Mail tab: the verify sheet for that Home.
     @MainActor
     private func showVerifyHome(_ homeId: String) {
@@ -3959,7 +3969,9 @@ public struct HubTabRoot: View {
                 onOpenWaitingRoom: { homeId in
                     path.removeAll { $0.isHomeEntry }
                     path.append(.waitingRoom(homeId: homeId))
-                }
+                },
+                // Two steps (FASTVERIFY): Your Place for the new Home, then "Verify you live here".
+                onOpenHomeToVerify: mode == .hub ? { homeId, street in openPlaceToVerify(homeId: homeId, street: street) } : nil
             )
         case .findHome:
             FindHomeView(

@@ -14,8 +14,13 @@ struct AddressStep: View {
     @FocusState private var focusedField: AddressField?
 
     var body: some View {
-        HeadlineBlock("Where do you live?")
-        SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+        if viewModel.isShortAdd {
+            AddHomeShortLabel(text: "Your home")
+            HeadlineBlock("Find your home", subtitle: "Type your street address and pick it from the list.")
+        } else {
+            HeadlineBlock("Where do you live?")
+            SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+        }
         VStack(alignment: .leading, spacing: Spacing.s3) {
             AddHomeSearchField(
                 query: searchBinding,
