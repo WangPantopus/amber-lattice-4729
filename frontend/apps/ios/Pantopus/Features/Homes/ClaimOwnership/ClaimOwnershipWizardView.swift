@@ -19,6 +19,8 @@ public struct ClaimOwnershipWizardView: View {
     /// Someone else's verification already blocks this home — RN sends
     /// the user to `/homes/find` (`claim-owner/evidence.tsx:210`).
     private let onOpenFindHome: @MainActor () -> Void
+    /// A bill read at once verified the person (FASTVERIFY): B3's "Mail me a code" and "Go to your Place".
+    private let billVerified: BillVerifiedActions?
 
     init(
         homeId: String,
@@ -27,7 +29,8 @@ public struct ClaimOwnershipWizardView: View {
         verificationType: ClaimVerificationType = .owner,
         onClose: @escaping @MainActor () -> Void,
         onOpenClaimsList: @escaping @MainActor () -> Void,
-        onOpenFindHome: @escaping @MainActor () -> Void = {}
+        onOpenFindHome: @escaping @MainActor () -> Void = {},
+        billVerified: BillVerifiedActions? = nil
     ) {
         _viewModel = State(initialValue: ClaimOwnershipWizardViewModel(
             homeId: homeId,
@@ -38,9 +41,26 @@ public struct ClaimOwnershipWizardView: View {
         self.onClose = onClose
         self.onOpenClaimsList = onOpenClaimsList
         self.onOpenFindHome = onOpenFindHome
+        self.billVerified = billVerified
     }
 
     public var body: some View {
+        if viewModel.billResult == "verified", viewModel.currentStep == .success {
+            FastCheckVerifiedView(
+                kind: .bill,
+                address: billVerified?.address ?? viewModel.startContent.homeLabel,
+                isRenter: billVerified?.isRenter ?? false,
+                onMailCode: { (billVerified?.onMailCode ?? onClose)() },
+                onGoToPlace: { (billVerified?.onGoToPlace ?? onClose)() }
+            )
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+        } else {
+            wizard
+        }
+    }
+
+    private var wizard: some View {
         WizardShell(model: viewModel, scrollResetID: viewModel.currentStep) {
             stepContent
         }
@@ -148,4 +168,12 @@ public struct ClaimOwnershipWizardView: View {
         onClose: {},
         onOpenClaimsList: {}
     )
+}
+
+/// What B3 opens after a bill read at once verified the person (FASTVERIFY phase 4).
+struct BillVerifiedActions {
+    let address: String
+    let isRenter: Bool
+    let onMailCode: @MainActor () -> Void
+    let onGoToPlace: @MainActor () -> Void
 }
