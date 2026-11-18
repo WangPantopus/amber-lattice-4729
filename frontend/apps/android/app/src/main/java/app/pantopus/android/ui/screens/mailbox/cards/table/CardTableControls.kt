@@ -293,11 +293,11 @@ private fun ActionBlock(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary, state.primarySpoken)
+                    TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
                     TablePill(READ_IT_IN_PRINT, away, "cardTableReadInPrint") { state.openPrint() }
                 }
             } else if (state.primaryLabel.isNotEmpty()) {
-                TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary, state.primarySpoken)
+                TablePill(state.primaryLabel, away, "cardTablePrimary", spoken = state.primarySpoken, onClick = state::primary)
             }
             if (state.sending == null) {
                 // The line slot stays with the main button; under it, the reader's one quiet row (as on the web and iPhone).
@@ -319,8 +319,8 @@ private fun TablePill(
     words: String,
     away: Boolean,
     tag: String,
-    onClick: () -> Unit,
     spoken: String? = null,
+    onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
     Box(
