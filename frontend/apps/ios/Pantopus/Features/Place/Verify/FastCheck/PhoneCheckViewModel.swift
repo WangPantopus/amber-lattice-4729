@@ -145,8 +145,16 @@ final class PhoneCheckViewModel {
             default:
                 triesLeft = response.triesLeft
                 code = ""
-                error = triesLeft.map { $0 == 1 ? "That code didn't match. 1 try left." : "That code didn't match. \($0) tries left." }
-                    ?? "That code didn't match."
+                switch triesLeft {
+                case 0?:
+                    // The code is used up or expired: "Send again" right away, in the web's words.
+                    resendAvailableAt = nil
+                    error = "That code can't be used any more. Send a new one."
+                case let left?:
+                    error = left == 1 ? "That code didn't match. 1 try left." : "That code didn't match. \(left) tries left."
+                case nil:
+                    error = "That code didn't match. Check it and try again."
+                }
             }
         } catch {
             self.error = Self.message(for: error)
