@@ -147,6 +147,8 @@ fun SendCardScreen(
     val listLook = form.listPreview.takeIf { onSteps && form.to is CardRecipient.Several }
     // Look it over keeps only its button, over the page (plan 5.2); every other bar sits under the steps.
     val pinsOver = onSteps && form.step == SendCardStep.Look && (listLook != null || form.preview != null)
+    // "Seal it for the day" pins its two buttons too, so they show the moment it opens (the design check of November 17).
+    val sealTo = form.to.takeIf { onSteps && form.step == SendCardStep.Seal && season?.designOf(form.design) != null }
     val lookGround = lookGround(season, form)
     val density = LocalDensity.current
     // "Send this card to someone else" (plan Part 6): the same picture and signature, from Who it's for.
@@ -169,7 +171,7 @@ fun SendCardScreen(
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(scroll)
-                        .padding(bottom = if (pinsOver && LaunchFeatures.cardTable) 0.dp else Spacing.s6),
+                        .padding(bottom = if ((pinsOver || sealTo != null) && LaunchFeatures.cardTable) 0.dp else Spacing.s6),
             ) {
                 when (page) {
                     SendCardPage.Reading -> {
@@ -200,20 +202,10 @@ fun SendCardScreen(
                                 onTakeBack = { confirmTakeBack = true },
                                 onSeeInSent = onSeeInSent,
                                 stamps = stamps?.balance,
-                                onGetStamps = getStamps,
                                 onStampsForMedia = getStampsForMedia,
                                 onTakeBackFromList = { listTakeBack = it },
                                 onLarge = { largeDesign = it },
-                                sealingNow = sealFromStep4,
-                                onSealNow = {
-                                    sealFromStep4 = true
-                                    viewModel.look()
-                                },
-                                onLook = {
-                                    sealFromStep4 = false
-                                    viewModel.look()
-                                },
-                                endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver } ?: 0.dp,
+                                endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver || sealTo != null } ?: 0.dp,
                                 onSendAgain = sendAgain.takeIf { season.canSendAnother(stamps?.balance) },
                             )
                         }
@@ -236,6 +228,25 @@ fun SendCardScreen(
                     onSend = { sealing = true },
                     byLink = form.to is CardRecipient.Link,
                     stamps = stamps?.balance,
+                    onGetStamps = getStamps,
+                    ground = lookGround,
+                    modifier = pinned,
+                )
+            } else if (sealTo != null) {
+                SealFooter(
+                    to = sealTo,
+                    form = form,
+                    stamps = stamps?.balance,
+                    sealingNow = sealFromStep4,
+                    onSend = viewModel::send,
+                    onSealNow = {
+                        sealFromStep4 = true
+                        viewModel.look()
+                    },
+                    onLook = {
+                        sealFromStep4 = false
+                        viewModel.look()
+                    },
                     onGetStamps = getStamps,
                     ground = lookGround,
                     modifier = pinned,
@@ -429,20 +440,13 @@ private fun Steps(
     onSeeInSent: (String?) -> Unit,
     /** Digital stamps left (postage on, once read), for step 4 when it seals and sends itself. */
     stamps: StampBalance?,
-    onGetStamps: () -> Unit,
     /** The stamp books for the card's photo or greeting (no bought stamp left), saying why. */
     onStampsForMedia: () -> Unit,
     /** A card on a sent list: "Take it back" (asked first). */
     onTakeBackFromList: (SentHolidayCard) -> Unit,
     /** Pick a card: show this picture large. */
     onLarge: (String) -> Unit,
-    /** Step 4: the check running is "Seal and send"'s (plan Part 5). */
-    sealingNow: Boolean = false,
-    /** Step 4's "Seal and send": the look's check, then the sealing table. */
-    onSealNow: () -> Unit = viewModel::look,
-    /** Step 4's "Look it over". */
-    onLook: () -> Unit = viewModel::look,
-    /** Room at the end of Look it over for its pinned button. */
+    /** Room at the end of "Seal it for the day" and of Look it over for their pinned buttons. */
     endRoom: Dp = 0.dp,
     /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
     onSendAgain: (() -> Unit)? = null,
@@ -516,12 +520,8 @@ private fun Steps(
                         fromName,
                         form,
                         onArrival = viewModel::chooseArrival,
-                        onLook = onLook,
-                        onSend = viewModel::send,
-                        onSealNow = onSealNow,
-                        sealingNow = sealingNow,
                         stamps = stamps,
-                        onGetStamps = onGetStamps,
+                        endRoom = endRoom,
                     )
                 }
             }
