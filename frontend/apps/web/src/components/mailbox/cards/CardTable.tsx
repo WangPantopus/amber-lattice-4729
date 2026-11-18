@@ -574,9 +574,10 @@ export default function CardTable({
   const quietShare = Boolean(onShare) && !sendMoment && !isLetter && !sealed;
   // Under the line slot, ONE row of quiet buttons, at most two side by side, never a second row (the design check of
   // November 17, Fix 1): Open the next card when cards wait, then Write back (or You wrote back), then Send {first name}
-  // a card. Share this card fills the second place only when fewer than two of those apply, as before Part 3. The rest
-  // stay in the ⋯ menu. The row's room is kept while any of them can be offered, so the card never moves when they show.
-  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || writeBack || sendBack || quietShare);
+  // a card, as on the iPhone and Android. On a reader's card (it has a ⋯ menu) "Share this card" is never in the row: it
+  // keeps its corner button and its ⋯ line. The sender's own look at a card from Sent keeps it as its one quiet button.
+  // The row's room is kept while any of them can be offered, so the card never moves when they show.
+  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || writeBack || sendBack || (quietShare && !menu.length));
   const quietButtons = ([
     nextCard && nextShown ? {
       key: 'next', full: `Open the next card (${nextCard.count} more)`, short: `Next card (${nextCard.count} more)`,
@@ -590,7 +591,7 @@ export default function CardTable({
       key: 'send', full: sendBack.label, short: sendBack.short || sendBack.label, spoken: sendBack.spoken || sendBack.label,
       testId: 'cardTableSendBack', onSelect: sendBack.onSelect,
     } : null,
-    quietShare && turnedOver && !writeBack ? {
+    quietShare && turnedOver && !menu.length ? {
       key: 'share', full: 'Share this card', short: 'Share', spoken: 'Share this card', testId: 'cardTableShareQuiet', onSelect: () => onShare?.(),
     } : null,
   ].filter(Boolean) as QuietButton[]).slice(0, 2);
