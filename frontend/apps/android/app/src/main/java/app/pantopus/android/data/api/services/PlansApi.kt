@@ -11,7 +11,17 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
 import app.pantopus.android.data.api.models.plans.HostAsResponse
 import app.pantopus.android.data.api.models.plans.MyPlansResponse
+import app.pantopus.android.data.api.models.plans.PlanAmountBody
+import app.pantopus.android.data.api.models.plans.PlanBringAddBody
+import app.pantopus.android.data.api.models.plans.PlanBringInput
+import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanCancelReply
+import app.pantopus.android.data.api.models.plans.PlanCheckPayResponse
+import app.pantopus.android.data.api.models.plans.PlanCheckResponse
+import app.pantopus.android.data.api.models.plans.PlanChecksDto
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewBody
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
+import app.pantopus.android.data.api.models.plans.PlanDealUsedResponse
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanFeedbackBody
 import app.pantopus.android.data.api.models.plans.PlanGamesResponse
@@ -22,14 +32,24 @@ import app.pantopus.android.data.api.models.plans.PlanInviteLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
 import app.pantopus.android.data.api.models.plans.PlanInvitePeopleResponse
 import app.pantopus.android.data.api.models.plans.PlanInvitePlanResponse
+import app.pantopus.android.data.api.models.plans.PlanMyCheckResponse
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlacesResponse
 import app.pantopus.android.data.api.models.plans.PlanNextInviteResponse
+import app.pantopus.android.data.api.models.plans.PlanOccasionsResponse
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkBody
+import app.pantopus.android.data.api.models.plans.PlanOpenLinkResponse
 import app.pantopus.android.data.api.models.plans.PlanPinsResponse
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestionsResponse
+import app.pantopus.android.data.api.models.plans.PlanQuoteBody
+import app.pantopus.android.data.api.models.plans.PlanQuoteDto
+import app.pantopus.android.data.api.models.plans.PlanRemindResponse
 import app.pantopus.android.data.api.models.plans.PlanReportBody
 import app.pantopus.android.data.api.models.plans.PlanRequestsResponse
+import app.pantopus.android.data.api.models.plans.PlanSendCheckBody
 import app.pantopus.android.data.api.models.plans.PlanTeamsResponse
+import app.pantopus.android.data.api.models.plans.PlanTipBody
+import app.pantopus.android.data.api.models.plans.PlanTipConfirmDto
 import app.pantopus.android.data.api.models.plans.PlansListResponse
 import app.pantopus.android.data.api.models.plans.PublicPlanDto
 import app.pantopus.android.data.api.models.plans.StillComingBody
@@ -42,6 +62,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -172,6 +193,112 @@ interface PlansApi {
         @Path("id") id: String,
         @Body body: RequestBody,
     ): PlanDto
+
+    /**
+     * `PATCH /api/plans/:id` with a raw body (business track B1): `"deal": null` takes a business's deal off at any time,
+     * which [UpdatePlanBody] can't say (nulls are left out).
+     */
+    @PATCH("api/plans/{id}")
+    suspend fun updateRaw(
+        @Path("id") id: String,
+        @Body body: RequestBody,
+    ): PlanDto
+
+    /** `POST /api/plans/deal-preview` (business track B1, staff with plans.manage): the server's words; nothing is saved. */
+    @POST("api/plans/deal-preview")
+    suspend fun dealPreview(
+        @Body body: PlanDealPreviewBody,
+    ): PlanDealPreviewResponse
+
+    /** `POST /api/plans/:id/requests/:requestId/deal-used` (business track B1, staff): "Mark used"; no undo. */
+    @POST("api/plans/{id}/requests/{requestId}/deal-used")
+    suspend fun markDealUsed(
+        @Path("id") id: String,
+        @Path("requestId") requestId: String,
+    ): PlanDealUsedResponse
+
+    /** `POST /api/plans/:id/requests/quote` (business track B2): P1's amounts for a party; no side effect. */
+    @POST("api/plans/{id}/requests/quote")
+    suspend fun quote(
+        @Path("id") id: String,
+        @Body body: PlanQuoteBody,
+    ): PlanQuoteDto
+
+    /** `POST /api/plans/:id/requests/mine/confirm` (business track B2): the payment sheet closed; in once it went through. */
+    @POST("api/plans/{id}/requests/mine/confirm")
+    suspend fun confirmMine(
+        @Path("id") id: String,
+    ): PlanDto
+
+    /** `GET /api/plans/:id/checks/mine` (business track B5): the guest's open check, or the last paid one. */
+    @GET("api/plans/{id}/checks/mine")
+    suspend fun myCheck(
+        @Path("id") id: String,
+    ): PlanMyCheckResponse
+
+    /** `POST /api/plans/:id/checks/mine` (B5): a guest starts their own check (no deal on the bill). */
+    @POST("api/plans/{id}/checks/mine")
+    suspend fun startCheck(
+        @Path("id") id: String,
+        @Body body: PlanAmountBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/quote` (B5): the check's lines with a tip; no side effect. */
+    @POST("api/plans/{id}/checks/{checkId}/quote")
+    suspend fun quoteCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: PlanTipBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/pay` (B5): the payment for the shipped sheet, and the check as it will be paid. */
+    @POST("api/plans/{id}/checks/{checkId}/pay")
+    suspend fun payCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: PlanTipBody,
+    ): PlanCheckPayResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/confirm` (B5): the sheet closed; the check once paid. */
+    @POST("api/plans/{id}/checks/{checkId}/confirm")
+    suspend fun confirmCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+    ): PlanCheckResponse
+
+    /** `GET /api/plans/:id/checks` (B5, staff with plans.manage): the guest list with money (C3). */
+    @GET("api/plans/{id}/checks")
+    suspend fun checks(
+        @Path("id") id: String,
+    ): PlanChecksDto
+
+    /** `POST /api/plans/:id/checks` (B5, staff): send a guest a check. */
+    @POST("api/plans/{id}/checks")
+    suspend fun sendCheck(
+        @Path("id") id: String,
+        @Body body: PlanSendCheckBody,
+    ): PlanCheckResponse
+
+    /** `POST /api/plans/:id/checks/:checkId/refund` (B5, staff): all (`{}`) or `{ amount_cents }`; answers C3's list. */
+    @POST("api/plans/{id}/checks/{checkId}/refund")
+    suspend fun refundCheck(
+        @Path("id") id: String,
+        @Path("checkId") checkId: String,
+        @Body body: RequestBody,
+    ): PlanChecksDto
+
+    /** `POST /api/plans/:id/tip` (B6): a tip after a paid plan; answers the payment for the shipped sheet. */
+    @POST("api/plans/{id}/tip")
+    suspend fun tipLater(
+        @Path("id") id: String,
+        @Body body: PlanAmountBody,
+    ): PlanCheckPayResponse
+
+    /** `POST /api/plans/:id/tip/confirm` (B6): "You tipped $5.00" once it went through. */
+    @POST("api/plans/{id}/tip/confirm")
+    suspend fun confirmTip(
+        @Path("id") id: String,
+    ): PlanTipConfirmDto
 
     /** `POST /api/plans/:id/requests`: ask to join (idempotent per person). */
     @POST("api/plans/{id}/requests")
@@ -304,6 +431,77 @@ interface PlansApi {
     suspend fun declineInvite(
         @Path("id") id: String,
     ): PlanInvitePlanResponse
+
+    // ---- Plans for the holidays, H1 (contract 6.4; backend/routes/plans.js, services/plans/planGuests.js) ----
+
+    /**
+     * `POST /api/plans/:id/invites/open-link` (host): makes or returns the plan's one link for everyone, or changes "I
+     * say yes first". At a home the first time answers 409 `confirm_shares_address`.
+     */
+    @POST("api/plans/{id}/invites/open-link")
+    suspend fun openLink(
+        @Path("id") id: String,
+        @Body body: PlanOpenLinkBody,
+    ): PlanOpenLinkResponse
+
+    /** `DELETE /api/plans/:id/invites/open-link` (host): turns the link off; people who already answered stay. */
+    @DELETE("api/plans/{id}/invites/open-link")
+    suspend fun closeOpenLink(
+        @Path("id") id: String,
+    ): Unit
+
+    /** `POST /api/plans/:id/invites/:inviteId/ok` (host): lets a guest who waits in; their email goes. */
+    @POST("api/plans/{id}/invites/{inviteId}/ok")
+    suspend fun letIn(
+        @Path("id") id: String,
+        @Path("inviteId") inviteId: String,
+    ): PlanInviteListDto
+
+    /** `POST /api/plans/:id/invites/remind` (host): reminds everyone who hasn't answered, once a day. */
+    @POST("api/plans/{id}/invites/remind")
+    suspend fun remind(
+        @Path("id") id: String,
+    ): PlanRemindResponse
+
+    /** `POST /api/plans/:id/invites/maybe`: an invited account says Maybe; the ask or "Can't make it" replaces it later. */
+    @POST("api/plans/{id}/invites/maybe")
+    suspend fun maybeInvite(
+        @Path("id") id: String,
+    ): PlanInvitePlanResponse
+
+    /** `GET /api/plans/occasions` (Plans for the holidays, H3): the occasions in season, for the kind picker's strip. */
+    @GET("api/plans/occasions")
+    suspend fun occasions(): PlanOccasionsResponse
+
+    // ---- Plans for the holidays, H2: the bring list (contract 7; backend/services/plans/planBring.js) ----
+
+    /** `PUT /api/plans/:id/bring` (host): every item (kept ones by id) and whether guests can add; `409 bring_changed`. */
+    @PUT("api/plans/{id}/bring")
+    suspend fun putBring(
+        @Path("id") id: String,
+        @Body body: PlanBringInput,
+    ): PlanBringResponse
+
+    /** `POST /api/plans/:id/bring/:itemId/claim`: "I'll bring it"; `409 taken` when someone got to it first. */
+    @POST("api/plans/{id}/bring/{itemId}/claim")
+    suspend fun claimBring(
+        @Path("id") id: String,
+        @Path("itemId") itemId: String,
+    ): PlanBringResponse
+
+    /** `DELETE /api/plans/:id/bring/:itemId/claim`: "Give back". */
+    @DELETE("api/plans/{id}/bring/{itemId}/claim")
+    suspend fun giveBackBring(
+        @Path("id") id: String,
+        @Path("itemId") itemId: String,
+    ): PlanBringResponse
+
+    /** `POST /api/plans/:id/bring/items`: "Bring something else", claimed by the person adding it. */
+    @POST("api/plans/{id}/bring/items")
+    suspend fun addBring(
+        @Path("id") id: String,
+        @Body body: PlanBringAddBody,
+    ): PlanBringResponse
 
     /** `GET /api/plans/invites/next`: right after signing in, the newest invitation not opened yet. */
     @GET("api/plans/invites/next")

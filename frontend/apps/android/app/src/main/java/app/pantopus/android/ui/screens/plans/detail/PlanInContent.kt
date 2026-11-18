@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -26,7 +27,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -42,19 +42,19 @@ import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planKind
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
+import app.pantopus.android.ui.screens.plans.bring.PlanBringGuestCard
 import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
 import app.pantopus.android.ui.screens.plans.components.PlanBanner
 import app.pantopus.android.ui.screens.plans.components.PlanBannerTone
 import app.pantopus.android.ui.screens.plans.components.PlanIconTile
 import app.pantopus.android.ui.screens.plans.components.PlanLockLine
-import app.pantopus.android.ui.screens.plans.components.PlanPrivateChip
 import app.pantopus.android.ui.screens.plans.components.PlanStackButton
 import app.pantopus.android.ui.screens.plans.components.planCard
-import app.pantopus.android.ui.screens.plans.map.planH2
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatLine
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -68,6 +68,7 @@ import app.pantopus.android.ui.theme.Spacing
  * in. [reveal] slides "You're in" up 8 dp and fades it in (300 to 450 ms of the reveal; a crossfade under Reduce
  * Motion).
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun ColumnScope.PlanInBody(
     plan: PlanDto,
@@ -77,6 +78,14 @@ internal fun ColumnScope.PlanInBody(
     viewerId: String?,
     onStillComing: (Boolean) -> Unit,
     onOpenChat: () -> Unit,
+    /** Plans for the holidays (A8): "Change" on the banner opens the answer sheet (A7); null leaves it out. */
+    onChangeAnswer: (() -> Unit)? = null,
+    /** Plans for the holidays (A8 item 2): the bring list's actions; null leaves the list out. */
+    bring: PlanBringActions? = null,
+    /** Business track B5: "Pay at {business}" and the guest's check. */
+    payHere: PlanPayHereEntry? = null,
+    /** An extra changed the plan (the holidays' spots given back): read it again. */
+    onExtrasChanged: () -> Unit = {},
 ) {
     val context = LocalContext.current
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
@@ -84,13 +93,38 @@ internal fun ColumnScope.PlanInBody(
         // Board Online: the kind and "Online", the title, when and "Online · hosted from Camas", then "You're in" and
         // the link's card. No place, no map, no directions (Plans step 3).
         PlanTitleBlock(plan)
-        InBanner(plan, reveal, reduceMotion)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         PlanOnlineLinkCard(plan, hosting = false)
     } else {
-        InBanner(plan, reveal, reduceMotion)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
         InPlaceTitle(plan)
     }
+    // Business track B2: "Paid $18.00" and "Receipt" under the title, once the guest paid for the spot.
+    PlanPaidRow(plan)
+    // The holidays' one person pays for the group (board 31): the buyer's spots and link, or who paid a claimer's.
+    PlanGroupPayIfAny(plan, onChanged = onExtrasChanged)
+    // Business track B1 (D2): before a group deal settles (or after it fell short) D1's card; then "Your deal".
+    plan.deal?.let { deal ->
+        if (deal.isGroup && !deal.isUnlocked) PlanDealCard(plan, deal, onShare = rememberDealShare(plan))
+        deal.mine?.let { mine -> PlanYourDealCard(plan, deal, mine) }
+    }
+    if (payHere != null) PlanPayHereRow(plan, payHere)
+    // The holidays' chip in (extras section 3, board 27).
+    PlanChipInIfAny(plan)
+    // The holidays' gift exchange (extras section 4, board 28).
+    PlanGiftIfAny(plan, isHost = false)
     plan.place?.note?.takeIf(String::isNotBlank)?.let { note -> HostNote(plan, note) }
+    val list = plan.bring
+    if (list != null && bring != null) {
+        PlanBringGuestCard(
+            bring = list,
+            busy = bring.busy,
+            notice = bring.notice,
+            onClaim = { bring.onClaim(it.id) },
+            onGiveBack = { bring.onGiveBack(it.id) },
+            onAdd = bring.onAdd,
+        )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         if (!plan.isOnline) {
             PlanStackButton(title = "Directions", icon = PantopusIcon.Navigation, onClick = {
@@ -115,8 +149,8 @@ internal fun ColumnScope.PlanInBody(
 @Composable
 private fun InPlaceTitle(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (plan.isPrivate) PlanPrivateChip()
-        Text(text = plan.title, style = planH2, color = PantopusColors.appText, modifier = Modifier.semantics { heading() })
+        // The occasion's or kind's tag, as before answering (Plans for the holidays, 06-screens A3), then the title.
+        PlanHeading(plan)
         plan.place?.let { place ->
             Row(
                 modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
@@ -220,6 +254,7 @@ private fun InBanner(
     plan: PlanDto,
     reveal: Boolean,
     reduceMotion: Boolean,
+    onChangeAnswer: (() -> Unit)? = null,
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
@@ -238,22 +273,81 @@ private fun InBanner(
     // plan points at its link (board Online): "Sam let you in. The link is below."
     val rule = mine?.decidedBy == "rule"
     val said = if (rule) "You got in right away" else "${plan.hostFirst} said yes"
+    // Plans for the holidays (board 20, A8): the guest's numbers, "2 adults, 1 kid", with "Change".
+    val counts = if (onChangeAnswer != null && plan.answersWithCounts(invited = false)) myCounts(plan) else null
     val subtitle =
         when {
+            counts != null -> counts
             plan.isOnline && rule -> "You got in right away. The link is below."
             plan.isOnline -> "${plan.hostFirst} let you in. The link is below."
             else -> listOfNotNull(said, PlanFormat.ago(mine?.decidedAt)).joinToString(" · ")
         }
+    // Business track B1 (D2 item 1): a group deal that unlocked takes the banner's words; no second banner.
+    val unlocked = plan.deal?.takeIf { it.isUnlocked }?.stateText
     PlanBanner(
-        title = "You're in",
-        subtitle = subtitle,
+        title = unlocked ?: "You're in",
+        subtitle = if (unlocked != null) "Everyone who's in gets the deal" else subtitle,
         icon = PantopusIcon.Check,
         tone = PlanBannerTone.Ok,
+        trailing = if (counts != null && onChangeAnswer != null) ({ PlanBannerChange(onChangeAnswer) }) else null,
         modifier =
             Modifier.graphicsLayer {
                 alpha = progress.value
                 translationY = if (reduceMotion) 0f else (1f - progress.value) * 8.dp.toPx()
             },
+    )
+}
+
+/** What a guest can do on the bring list (A8 item 2), and the line under it. */
+internal data class PlanBringActions(
+    val busy: Boolean,
+    val notice: String?,
+    val onClaim: (String) -> Unit,
+    val onGiveBack: (String) -> Unit,
+    val onAdd: (String) -> Unit,
+)
+
+/** "2 adults, 1 kid" with kids welcome, else "Just you" or "3 people": the person's own answer (A8). */
+internal fun myCounts(plan: PlanDto): String {
+    val adults = plan.myRequest?.partySize ?: 1
+    val kids = plan.myRequest?.kidsCount ?: 0
+    return when {
+        plan.takesKids -> PlanFormat.people(adults, kids)
+        adults <= 1 -> "Just you"
+        else -> "$adults people"
+    }
+}
+
+/** "Change" on a banner (A8): opens the answer sheet. */
+@Composable
+internal fun PlanBannerChange(onClick: () -> Unit) {
+    Text(
+        text = "Change",
+        style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+        color = PantopusColors.primary600,
+        modifier =
+            Modifier
+                .heightIn(min = 44.dp)
+                .clip(RoundedCornerShape(Radii.pill))
+                .clickable(role = Role.Button, onClickLabel = "Change your answer", onClick = onClick)
+                .padding(horizontal = Spacing.s2, vertical = 11.dp)
+                .testTag("planAnswerChange"),
+    )
+}
+
+/** "You said maybe" (A8): a quiet banner with "Change"; no bring list and no place for someone who said maybe. */
+@Composable
+internal fun PlanMaybeBanner(
+    plan: PlanDto,
+    onChange: () -> Unit,
+) {
+    PlanBanner(
+        title = "You said maybe",
+        subtitle = "${plan.hostFirst} sees your answer",
+        icon = PantopusIcon.HelpCircle,
+        tone = PlanBannerTone.Neutral,
+        modifier = Modifier.testTag("planMaybeBanner"),
+        trailing = { PlanBannerChange(onChange) },
     )
 }
 
@@ -309,12 +403,15 @@ private fun PeopleLine(
     if (you !in names) names.add(if (people.firstOrNull()?.isHost == true) 1 else 0, you)
     val shown = names.take(4)
     val rest = names.size - shown.size
-    val line =
+    val nameList =
         when {
             rest > 0 -> shown.joinToString(", ") + " and $rest more"
             shown.size > 1 -> shown.dropLast(1).joinToString(", ") + " and " + shown.last()
             else -> shown.joinToString()
         }
+    // Plans for the holidays (A8 item 3): with kids welcome the line ends "· 3 kids".
+    val kids = plan.headcount?.kids?.takeIf { plan.takesKids && it > 0 }
+    val line = if (kids != null) "$nameList · $kids ${if (kids == 1) "kid" else "kids"}" else nameList
     // Each photo opens that person's profile; TalkBack offers the same as actions on the line.
     val openProfile = LocalPlanOpenProfile.current
     val shownPeople = people.take(4)

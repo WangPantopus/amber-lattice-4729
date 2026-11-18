@@ -32,6 +32,8 @@ import { getItemDetail, type MailboxApiError } from '@/lib/mailbox-api';
 import { mailboxKeys } from '@/lib/mailbox-queries';
 import { mailLoadMessage } from '@/components/mailbox/mailLoadMessage';
 import { detailAddress } from './sections';
+import { useVerifyOptions } from '../fastVerify/useVerifyOptions';
+import { FAST_VERIFY_WORDS, verifiedByFromOptions } from '../fastVerify/fastVerifyWords';
 import {
   StateProgramSection,
   MethodNote,
@@ -92,7 +94,37 @@ function verifiedTitle(roleBase: string | null): string {
   return 'Verified resident';
 }
 
-function VerifiedStatus({ name, address, roleBase, nonResident }: { name: string; address: string; roleBase: string | null; nonResident: boolean }) {
+function VerifiedStatus({ name, address, roleBase, nonResident, fast = null, onMailCode }: {
+  name: string; address: string; roleBase: string | null; nonResident: boolean;
+  /** FASTVERIFY: verified by a fast check; residency letters still need a mailed code. */
+  fast?: { byLine: string | null } | null; onMailCode?: () => void;
+}) {
+  if (fast) {
+    return (
+      <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-[18px]">
+        <div className="flex items-center gap-3.5">
+          <span className="w-14 h-14 rounded-2xl bg-app-home-bg border border-app-success-light flex items-center justify-center shrink-0">
+            <BadgeCheck size={30} strokeWidth={2} className="text-app-home" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Chip label={FAST_VERIFY_WORDS.verifiedChip} variant="success" icon={Check} />
+              {fast.byLine ? <span className="text-[13px] text-app-text-secondary">{fast.byLine}</span> : null}
+            </div>
+            <div className="text-[13.5px] text-app-text-secondary mt-1 truncate">{[name, address].filter(Boolean).join(' · ')}</div>
+          </div>
+        </div>
+        <div className="text-[13px] text-app-text-strong leading-5 mt-[15px] pt-[15px] border-t border-app-border-subtle">
+          {FAST_VERIFY_WORDS.needsMailLine}{' '}
+          {onMailCode ? (
+            <button type="button" onClick={onMailCode} className="font-semibold text-primary-600 dark:text-primary-300 hover:underline underline-offset-2">
+              {FAST_VERIFY_WORDS.mailMeACode}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-[18px]">
       <div className="flex items-center gap-3.5">
@@ -874,11 +906,15 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
   });
   const roleBase = access?.hasAccess ? access.role_base : null;
   const nonResident = roleBase === 'guest' || roleBase === 'service_provider';
+  // FASTVERIFY: verified by a fast check, residency letters and passes need a mailed code (null with the flags off).
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const verifyOptions = verify.data;
+  const fast = verified && verifyOptions?.level === 'fast' ? { byLine: verifiedByFromOptions(verifyOptions) } : null;
   const address = detailAddress(intelligence.place);
   const place = intelligence.place;
   const cityStateZip = [place.city, place.state].filter(Boolean).join(', ') + (place.postal_code ? ` ${place.postal_code}` : '');
 
-  if (letterOpen && verified && !nonResident && homeId) {
+  if (letterOpen && verified && !fast && !nonResident && homeId) {
     return (
       <ResidencyLetterLeaf
         facts={{ name: residentName, line1: place.line1 || place.label, cityStateZip }}
@@ -889,7 +925,7 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
     );
   }
 
-  if (claimsOpen && verified && !nonResident && homeId) {
+  if (claimsOpen && verified && !fast && !nonResident && homeId) {
     return (
       <ResidencyPassLeaf
         homeId={homeId}
@@ -909,12 +945,16 @@ export default function IdentityDetail({ intelligence, homeId, residentName }: {
       <DetailHeader title="Identity" address={address} />
       <div className="px-4 sm:px-5 pt-1 pb-16">
         <DetailSectionLabel>Verification</DetailSectionLabel>
-        {verified ? (
+        {verified && verify.loading ? (
+          // Until we know how this person was verified, offer no residency letter or pass (mail-level).
+          <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted" role="status">Loading…</div>
+        ) : verified ? (
           <>
-            <VerifiedStatus name={residentName} address={place.line1 || place.label} roleBase={roleBase} nonResident={nonResident} />
+            <VerifiedStatus name={residentName} address={place.line1 || place.label} roleBase={roleBase} nonResident={nonResident}
+              fast={fast} onMailCode={homeId ? () => router.push(`/app/homes/${homeId}/verify-postcard?return=place`) : undefined} />
             <SourceNote name="Address verification · Pantopus" asOf="active" />
 
-            {!nonResident && (
+            {!nonResident && !fast && (
               <>
                 <DetailSectionLabel>Residency letter</DetailSectionLabel>
                 <button

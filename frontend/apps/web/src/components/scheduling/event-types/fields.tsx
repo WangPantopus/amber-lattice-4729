@@ -9,6 +9,8 @@
 
 import { type ReactNode, useId } from "react";
 import clsx from "clsx";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { useMyHomeCenter } from "@/lib/myHomes";
 import {
   Briefcase,
   Check,
@@ -236,6 +238,46 @@ export function TextField({
         />
       </div>
       <FieldError>{error}</FieldError>
+    </div>
+  );
+}
+
+/**
+ * An address typed as one line (the "In person" location), with the app's address suggestions: the picked address
+ * is written back whole ("412 Elm St, Vancouver, WA 98660"), nearby addresses first (SPEC 11, FASTVERIFY). While
+ * the form is saving it is a plain disabled field, as before.
+ */
+export function AddressTextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  label?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const near = useMyHomeCenter();
+  if (disabled) return <TextField label={label} value={value} onChange={onChange} placeholder={placeholder} disabled />;
+  return (
+    <div>
+      {label && <FieldLabel htmlFor={id}>{label}</FieldLabel>}
+      <AddressAutocomplete
+        id={id}
+        value={value}
+        onChange={onChange}
+        onSelectNormalized={() => {}}
+        fillPicked={(n) => [n.address, n.city, [n.state, n.zipcode].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+        near={near}
+        placeholder={placeholder}
+        hintText={null}
+        quietUntilTyped
+        inputClassName={clsx(inputBase, "border-app-border focus:border-primary-600 focus:ring-primary-600/15")}
+      />
     </div>
   );
 }

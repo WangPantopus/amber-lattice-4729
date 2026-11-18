@@ -1,0 +1,80 @@
+package app.pantopus.android.data.api.services
+
+import app.pantopus.android.data.api.models.homes.HomeVerifyOptions
+import app.pantopus.android.data.api.models.homes.LocationChallengeResponse
+import app.pantopus.android.data.api.models.homes.LocationCheckRequest
+import app.pantopus.android.data.api.models.homes.LocationCheckResponse
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckStartResponse
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyRequest
+import app.pantopus.android.data.api.models.homes.PhoneCheckVerifyResponse
+import app.pantopus.android.data.api.models.homes.PostcardReportRequest
+import app.pantopus.android.data.api.models.homes.PostcardReportResponse
+import app.pantopus.android.data.api.models.plans.FeatureFlagResponse
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Headers
+import retrofit2.http.POST
+import retrofit2.http.Path
+
+/**
+ * Faster home verification (FASTVERIFY SPEC section 4). Every route answers 404 `FAST_CHECK_OFF` while
+ * `home_fast_verify` is off, and the apps then keep today's screens.
+ */
+interface HomeFastVerifyApi {
+    /** `GET /api/homes/:id/verify-options`: the person's level here and the ways to verify they have now. */
+    @Headers("Cache-Control: no-cache, no-store")
+    @GET("api/homes/{id}/verify-options")
+    suspend fun verifyOptions(
+        @Path("id") homeId: String,
+    ): HomeVerifyOptions
+
+    /**
+     * `GET /api/feature-flags/home_short_add` (`backend/routes/featureFlags.js:30`): Add Home in two steps. Read before
+     * any Home exists, so it can't come from [verifyOptions].
+     */
+    @Headers("Cache-Control: no-cache, no-store")
+    @GET("api/feature-flags/home_short_add")
+    suspend fun shortAddHomeFlag(): FeatureFlagResponse
+
+    /**
+     * `POST /api/public/postcard-report`: "This wasn't me" for a card someone else asked for (`home_postcard_scan`).
+     * Answers `{ recorded: true }` for any input; 404 while the flag is off.
+     */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/public/postcard-report")
+    suspend fun reportPostcard(
+        @Body body: PostcardReportRequest,
+    ): PostcardReportResponse
+
+    /** `POST /api/homes/:id/fast-check/phone/start`: texts a code (`home_fast_verify_phone`). */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/phone/start")
+    suspend fun startPhoneCheck(
+        @Path("id") homeId: String,
+        @Body body: PhoneCheckStartRequest,
+    ): PhoneCheckStartResponse
+
+    /** `POST /api/homes/:id/fast-check/phone/verify`: the code, then the records' match. */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/phone/verify")
+    suspend fun verifyPhoneCheck(
+        @Path("id") homeId: String,
+        @Body body: PhoneCheckVerifyRequest,
+    ): PhoneCheckVerifyResponse
+
+    /** `POST /api/homes/:id/fast-check/location/challenge` (`home_fast_verify_location`, apps only). */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/location/challenge")
+    suspend fun locationChallenge(
+        @Path("id") homeId: String,
+    ): LocationChallengeResponse
+
+    /** `POST /api/homes/:id/fast-check/location`: one reading and its device proof. */
+    @Headers("Cache-Control: no-cache, no-store")
+    @POST("api/homes/{id}/fast-check/location")
+    suspend fun checkLocation(
+        @Path("id") homeId: String,
+        @Body body: LocationCheckRequest,
+    ): LocationCheckResponse
+}

@@ -1281,7 +1281,12 @@ private fun ViewerHeader(
                     // Once it has ended, the header drops the time left ("This Moment has ended." is on screen).
                     val times =
                         listOfNotNull(
-                            agoLabel(moment?.createdAt ?: brief?.createdAt),
+                            // The Sky: a Moment shared later says "Earlier today" (or "Yesterday") in place of "12m ago".
+                            if (moment?.earlier == true) {
+                                earlierLabel(moment.createdAt)
+                            } else {
+                                agoLabel(moment?.createdAt ?: brief?.createdAt)
+                            },
                             leftLabel(moment?.expiresAt ?: brief?.expiresAt).takeIf { state.load != ViewerLoad.Ended },
                         ).joinToString(" · ")
                     // A long place name gives way; "2h ago · 4h left" always shows.

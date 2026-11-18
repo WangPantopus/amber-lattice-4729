@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type Picked = { city: string; state: string; zipcode: string };
 
@@ -26,6 +27,8 @@ export default function AddressField({
 }: AddressFieldProps) {
   const id = useId();
   const labelId = `${id}-label`;
+  // Nearby addresses first: around the person's own home (SPEC 11, FASTVERIFY).
+  const near = useMyHomeCenter();
   return (
     <div>
       <label id={labelId} htmlFor={id} className={labelClassName}>{label}</label>
@@ -39,6 +42,7 @@ export default function AddressField({
         hintText={null}
         inputClassName={inputClassName}
         streetOnly
+        near={near}
       />
     </div>
   );

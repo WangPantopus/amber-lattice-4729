@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -36,8 +37,10 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,15 +48,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -77,6 +85,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -766,6 +775,20 @@ private fun DesignTile(
 
 // ── Step 3: write on the back ────────────────────────────────
 
+/** Beside "Sign your name": what's beside FROM, or that the account couldn't keep the signature (founder, 2026-11-16). */
+private fun signHint(
+    signature: CardSignature?,
+    keeping: CardSignKeeping?,
+    fromName: String,
+): String =
+    when {
+        keeping?.state?.keepFailed == true ->
+            "This card is signed, but your signature couldn’t be kept for next time. Sign again to try once more."
+        signature != null && signature == keeping?.saved -> "Your saved signature is beside FROM."
+        signature != null -> "Signed beside FROM."
+        else -> "Or leave ${fromName.trim().substringBefore(' ')} typed."
+    }
+
 /** The back of the chosen card as the writing surface; "Turn it over" shows the picture; the letters counted. */
 @Composable
 internal fun WriteStep(
@@ -782,6 +805,8 @@ internal fun WriteStep(
     /** The server keeps signatures (`GET /api/mailbox/cards` `signature`, launch key `card_table`). */
     canSign: Boolean = false,
     onSignature: (CardSignature?) -> Unit = {},
+    /** The account keeps one signature for the next cards (`signature.saves`); null: no "Keep this signature" box. */
+    keeping: CardSignKeeping? = null,
     /** The card's own photo (memories plan step 4); "Add a photo" shows when [photos] can be added to this card. */
     photo: CardPhotoDraft? = null,
     photos: CardPhotoCalls? = null,
@@ -797,7 +822,13 @@ internal fun WriteStep(
     var signing by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val count = message.letterCount()
-    val greeting = (to as? CardRecipient.Person)?.firstName ?: "friend"
+    // The grey example line: one person by first name; a list of two or more names no one.
+    val greeting =
+        when (to) {
+            is CardRecipient.Person -> to.firstName
+            is CardRecipient.Several -> "friends"
+            else -> "friend"
+        }
     val shape = RoundedCornerShape(3.dp)
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         HolidayCardFlip(
@@ -819,6 +850,8 @@ internal fun WriteStep(
                     fromName = fromName,
                     year = year,
                     modifier = Modifier.shadow(10.dp, shape).clip(shape),
+                    // The note as it's typed sizes the pen and its rules (plan Part 1); the writing box draws the words.
+                    message = message,
                     design = design.id,
                     signature = signature,
                     writing = { style ->
@@ -884,6 +917,7 @@ internal fun WriteStep(
                     onClick = {
                         focusManager.clearFocus()
                         showBack = true
+                        keeping?.onOpened?.invoke()
                         signing = true
                     },
                     kind = CardButtonKind.Paper,
@@ -891,18 +925,19 @@ internal fun WriteStep(
                     modifier = Modifier.testTag("sendCardSign"),
                 )
                 Text(
-                    if (signature != null) "Signed beside FROM." else "Or leave ${fromName.trim().substringBefore(' ')} typed.",
+                    signHint(signature, keeping, fromName),
                     fontSize = 13.sp,
                     color = DeskInk.quiet,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("sendCardSignHint"),
                 )
             }
         }
         if (signing) {
             CardSignaturePad(
                 initial = signature,
-                onDone = {
-                    onSignature(it)
+                keeping = keeping,
+                onDone = { signed, keep ->
+                    if (keeping != null) keeping.onSigned(signed, keep) else onSignature(signed)
                     signing = false
                 },
                 onTyped = {
@@ -965,8 +1000,9 @@ private fun MediaUnderTheNote(
 // ── Step 4: seal it for the day ──────────────────────────────
 
 /**
- * The sealed envelope, when it arrives, until when it can be taken back, and "Look it over" (step 5, where it's sent
- * from; "Seal and send" here when the server can't show the look). Why it can't go on shows under the choices.
+ * The sealed envelope, when it arrives, and until when it can be taken back and what it costs (plan Part 5). Its two
+ * buttons are pinned under the page ([SealFooter]), so they show the moment the step opens; the page keeps [endRoom]
+ * at its end so the last line can scroll clear of them.
  */
 @Composable
 internal fun SealStep(
@@ -976,15 +1012,14 @@ internal fun SealStep(
     fromName: String,
     form: SendCardForm,
     onArrival: (String) -> Unit,
-    onLook: () -> Unit,
-    onSend: () -> Unit,
-    /** Digital stamps left (postage on, once read): when the look can't be shown, this step says what it costs. */
+    /** Digital stamps left (postage on, once read): this step says what it costs. */
     stamps: StampBalance? = null,
-    onGetStamps: () -> Unit = {},
+    /** Room at the end of the page for the pinned buttons. */
+    endRoom: Dp = 0.dp,
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val options = arrivalOptions(cards.arrivals, to, form.theirs)
-    val needsStamps = form.lookUnavailable && stamps?.available == 0
+    val several = (to as? CardRecipient.Several)?.entries?.size
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s2).rotate(1f)) {
             MailPiece(envelopePreview(design, fromName, to, sealed = form.arrival == "sealed_christmas"))
@@ -1023,41 +1058,123 @@ internal fun SealStep(
                     ) { onArrival(arrival) }
                 }
             }
-            form.sealNotice?.let {
-                Text(
-                    it,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PantopusColors.cardTextProblem,
-                    modifier =
-                        Modifier
-                            .padding(top = Spacing.s3)
-                            .semantics { liveRegion = LiveRegionMode.Assertive }
-                            .testTag("sendCardError"),
-                )
-            }
         }
-        // Before it's sent there's no knowing their clock; the sent card says the time on this one.
+        // Before it's sent there's no knowing their clock; the sent card says the time on this one. Both lines show here,
+        // so a sender who skips Look it over has read them (plan Part 5).
         DeskNote(sealNote(to), modifier = Modifier.padding(top = 14.dp))
-        if (form.lookUnavailable) StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3))
-        CardButton(
+        StampPostageLine(stamps, design = design.id, modifier = Modifier.padding(top = Spacing.s3), count = several ?: 1)
+        Spacer(Modifier.height(endRoom))
+    }
+}
+
+/**
+ * Step 4's buttons pinned at the bottom of "Seal it for the day" (the design check of November 17): "Seal and send", and
+ * under it the quiet "Look it over". No panel: the ground fades from clear at the top to its full colour at the main
+ * button's middle and stays full from there down, so no word of the page shows behind or under "Look it over" (the
+ * re-check of November 17). Why it can't go on shows as one line right above them.
+ */
+@Composable
+internal fun SealFooter(
+    to: CardRecipient,
+    form: SendCardForm,
+    /** Digital stamps left (postage on, once read): none left, the main button is "Get stamps to send". */
+    stamps: StampBalance?,
+    sealingNow: Boolean,
+    onSend: () -> Unit,
+    onSealNow: () -> Unit,
+    onLook: () -> Unit,
+    onGetStamps: () -> Unit,
+    /** What the page lies on under the buttons: the cloth's colour at the table, else the desk's. */
+    ground: Color,
+    modifier: Modifier = Modifier,
+) {
+    // The pinned area's top and the main button's middle, on the screen: the ground is full from that middle down.
+    var top by remember { mutableFloatStateOf(0f) }
+    var middle by remember { mutableFloatStateOf(0f) }
+    CompositionLocalProvider(LocalOnCloth provides LaunchFeatures.cardTable) {
+        Column(
+            modifier =
+                modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { top = it.positionInRoot().y }
+                    .drawBehind {
+                        val full = if (size.height > 0f) ((middle - top) / size.height).coerceIn(0.05f, 1f) else 1f
+                        drawRect(Brush.verticalGradient(0f to ground.copy(alpha = 0f), full to ground, 1f to ground))
+                    }.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s4)
+                    .testTag("sendCardSealPinned"),
+        ) {
+            form.sealNotice?.let { PinnedProblem(it) }
+            SealStepButtons(
+                to,
+                form,
+                needsStamps = stamps?.available == 0,
+                sealingNow,
+                onSend,
+                onSealNow,
+                onLook,
+                onGetStamps,
+                mainModifier = Modifier.onGloballyPositioned { middle = it.positionInRoot().y + it.size.height / 2f },
+            )
+        }
+    }
+}
+
+/**
+ * Step 4's two buttons (plan 5.1): "Seal and send" ("Seal it and get the link", "Seal and send 3 cards"; "Get stamps to
+ * send" with none left), and under it the quiet "Look it over", which isn't offered when the server can't show it.
+ */
+@Composable
+private fun SealStepButtons(
+    to: CardRecipient,
+    form: SendCardForm,
+    needsStamps: Boolean,
+    sealingNow: Boolean,
+    onSend: () -> Unit,
+    onSealNow: () -> Unit,
+    onLook: () -> Unit,
+    onGetStamps: () -> Unit,
+    /** The main button's place is read from here, for the ground behind the buttons. */
+    mainModifier: Modifier = Modifier,
+) {
+    val chosen = form.arrival != null
+    val busy = form.previewing || form.sending
+    CardButton(
+        sealNowLabel(to, needsStamps),
+        onClick =
             when {
-                needsStamps -> "Get stamps to send"
-                !form.lookUnavailable -> "Look it over"
-                to is CardRecipient.Link -> "Seal it and get the link"
-                else -> "Seal and send"
+                needsStamps -> onGetStamps
+                // The server can't show the look: it seals and sends from here, as before.
+                form.lookUnavailable && to !is CardRecipient.Several -> onSend
+                else -> onSealNow
             },
-            onClick =
-                when {
-                    needsStamps -> onGetStamps
-                    form.lookUnavailable -> onSend
-                    else -> onLook
-                },
-            enabled = form.arrival != null,
-            busy = !needsStamps && (form.previewing || form.sending),
-            modifier = Modifier.padding(top = Spacing.s5).testTag("sendCardSend"),
+        enabled = chosen && (needsStamps || !busy || sealingNow),
+        busy = !needsStamps && (form.sending || (form.previewing && sealingNow)),
+        modifier = mainModifier.heightIn(min = 52.dp).testTag("sendCardSend"),
+    )
+    if (!form.lookUnavailable) {
+        CardButton(
+            "Look it over",
+            onClick = onLook,
+            kind = CardButtonKind.Words,
+            enabled = chosen && !(busy && sealingNow),
+            busy = form.previewing && !sealingNow,
+            modifier = Modifier.padding(top = Spacing.s1).testTag("sendCardLookOver"),
         )
+    }
+}
+
+/** The main button's words on step 4: Look it over's own (plan 5.1). */
+private fun sealNowLabel(
+    to: CardRecipient,
+    needsStamps: Boolean,
+): String {
+    val several = (to as? CardRecipient.Several)?.entries?.size
+    return when {
+        needsStamps -> "Get stamps to send"
+        several == 1 -> "Seal and send 1 card"
+        several != null -> "Seal and send $several cards"
+        to is CardRecipient.Link -> "Seal it and get the link"
+        else -> "Seal and send"
     }
 }
 

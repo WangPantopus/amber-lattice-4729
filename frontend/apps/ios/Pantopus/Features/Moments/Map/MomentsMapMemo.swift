@@ -26,7 +26,7 @@ final class MomentsMapMemo {
     private var current: [MomentRingDTO]?
     private var markers: Markers?
 
-    /// The rings, the clock, what was watched or what was hidden changed: everything is worked out again.
+    /// The rings, the clock, what was watched or hidden, or the time filter changed: everything is worked out again.
     func reset() {
         current = nil
         markers = nil
@@ -39,11 +39,17 @@ final class MomentsMapMemo {
         return value
     }
 
-    /// Every ring read, with what was watched or hidden since, and only Moments still running.
-    static func running(_ rings: [MomentRingDTO], now: Date, watched: Set<String>, hidden: [String: Date]) -> [MomentRingDTO] {
+    /// Every ring read, with what was watched or hidden since, and only Moments still running and posted since `since`
+    /// (the time filter; nil for all of them).
+    static func running(
+        _ rings: [MomentRingDTO],
+        now: Date,
+        watched: Set<String>,
+        hidden: [String: Date],
+        since: Date? = nil
+    ) -> [MomentRingDTO] {
         rings.compactMap { ring in
-            guard hidden[ring.author.id] == nil else { return nil }
-            var ring = ring
+            guard hidden[ring.author.id] == nil, var ring = ring.posted(since: since) else { return nil }
             ring.moments = ring.moments.compactMap { moment in
                 if let end = moment.expiresAtDate, end <= now { return nil }
                 var moment = moment

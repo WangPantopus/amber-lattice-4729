@@ -20,12 +20,14 @@ public struct EditSignupFormView: View {
     public init(
         supportTrainId: String,
         reservation: SupportTrainReservationDTO,
+        timeZoneId: String? = nil,
         onClose: @escaping @MainActor () -> Void,
         onSaved: @escaping @MainActor (SupportTrainReservationDTO) -> Void = { _ in }
     ) {
         _viewModel = State(initialValue: EditSignupFormViewModel(
             supportTrainId: supportTrainId,
             reservation: reservation,
+            timeZoneId: timeZoneId,
             onSaved: onSaved
         ))
         self.onClose = onClose

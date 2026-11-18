@@ -11,6 +11,22 @@ import ErrorState from '@/components/ui/ErrorState';
 import { trainStatusLabel } from '@/components/support-trains/contributionLabels';
 import { SUPPORT_TRAIN_FRESH_MS } from '@/components/support-trains/supportTrainQueries';
 import { queryKeys } from '@/lib/query-keys';
+import { launchFeatures } from '@/lib/featureFlags';
+
+// How many trains a page of the list asks for; "Show more" asks for the next ones (B12).
+const PAGE = 50;
+
+function roleLabel(role: string): string {
+  switch (role) {
+    case 'primary':
+    case 'organizer': return 'Organizer';
+    case 'co_organizer': return 'Co-organizer';
+    case 'recipient_delegate': return 'Helps organize';
+    case 'helper': return 'Helper';
+    case 'recipient': return 'For you';
+    default: return 'On this train';
+  }
+}
 
 type RoleFilter = 'all' | 'organizer' | 'helper';
 
@@ -67,12 +83,31 @@ export default function SupportTrainsPage() {
   const trainsQuery = useQuery({
     queryKey: queryKeys.supportTrainsMine(roleFilter),
     queryFn: () => api.supportTrains.listMySupportTrains({
-      limit: 50, offset: 0, ...(roleFilter !== 'all' ? { role: roleFilter } : {}),
+      limit: PAGE, offset: 0, ...(roleFilter !== 'all' ? { role: roleFilter } : {}),
     }),
     enabled: signedIn,
     staleTime: SUPPORT_TRAIN_FRESH_MS,
   });
-  const trains: any[] = trainsQuery.data?.support_trains || [];
+  // Trains past the first page, read with "Show more"; a new tab or a refresh starts again.
+  const [more, setMore] = useState<any[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => { setMore([]); }, [roleFilter, trainsQuery.dataUpdatedAt]);
+  const firstPage: any[] = trainsQuery.data?.support_trains || [];
+  const trains: any[] = [...firstPage, ...more.filter((t) => !firstPage.some((f) => f.id === t.id))];
+  const total = trainsQuery.data?.total ?? trains.length;
+  const showMore = async () => {
+    setLoadingMore(true);
+    try {
+      const res = await api.supportTrains.listMySupportTrains({
+        limit: PAGE, offset: trains.length, ...(roleFilter !== 'all' ? { role: roleFilter } : {}),
+      });
+      setMore((prev) => [...prev, ...(res.support_trains || [])]);
+    } catch {
+      /* the button stays; trying again reads the same page */
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const error = !trainsQuery.data && trainsQuery.isError
     ? ((trainsQuery.error as { message?: string } | null)?.message || 'Failed to load Support Trains')
     : null;
@@ -126,7 +161,7 @@ export default function SupportTrainsPage() {
           icon={Heart}
           title={roleFilter === 'helper' ? 'Not helping on any trains yet' : roleFilter === 'organizer' ? 'No trains organized yet' : 'No Support Trains yet'}
           description={roleFilter === 'organizer'
-            ? 'Start a Support Train to coordinate meals, groceries, or gift funds for someone who needs it.'
+            ? `Start a Support Train to coordinate meals${launchFeatures.giftFunds ? ', groceries, or gift funds' : ' or groceries'} for someone who needs it.`
             : 'When you sign up to help on a Support Train, it will appear here.'
           }
           actionLabel={roleFilter !== 'helper' ? 'Start a Train' : undefined}
@@ -152,7 +187,7 @@ export default function SupportTrainsPage() {
                     {/* A pending invitation reads from its status badge alone. */}
                     {train.my_role !== 'invited' && (
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${roleBadgeClasses(train.my_role)}`}>
-                        {train.my_role === 'primary' || train.my_role === 'organizer' ? 'Organizer' : train.my_role === 'co_organizer' ? 'Co-organizer' : train.my_role === 'helper' ? 'Helper' : train.my_role === 'recipient' ? 'For you' : train.my_role}
+                        {roleLabel(train.my_role)}
                       </span>
                     )}
                   </div>
@@ -163,6 +198,15 @@ export default function SupportTrainsPage() {
               </div>
             </button>
           ))}
+          {trains.length < total && (
+            <button
+              onClick={showMore}
+              disabled={loadingMore}
+              className="w-full py-3 text-sm font-medium text-primary-600 hover:text-primary-700 disabled:opacity-60"
+            >
+              {loadingMore ? 'Loading…' : `Show more (${total - trains.length})`}
+            </button>
+          )}
         </div>
       )}
     </div>

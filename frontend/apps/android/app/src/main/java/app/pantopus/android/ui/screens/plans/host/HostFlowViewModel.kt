@@ -9,12 +9,17 @@ import app.pantopus.android.data.api.models.plans.CreatePlanBody
 import app.pantopus.android.data.api.models.plans.HostAsBusinessDto
 import app.pantopus.android.data.api.models.plans.HostAsLabelDto
 import app.pantopus.android.data.api.models.plans.HostAsLocationDto
+import app.pantopus.android.data.api.models.plans.PlanChipInInput
+import app.pantopus.android.data.api.models.plans.PlanDealPreviewResponse
 import app.pantopus.android.data.api.models.plans.PlanDetailsDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanGameDto
 import app.pantopus.android.data.api.models.plans.PlanGpsInput
 import app.pantopus.android.data.api.models.plans.PlanInviteCandidateDto
 import app.pantopus.android.data.api.models.plans.PlanNearbyPlaceDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionBringDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionDto
+import app.pantopus.android.data.api.models.plans.PlanOccasionFillsDto
 import app.pantopus.android.data.api.models.plans.PlanPlaceInput
 import app.pantopus.android.data.api.models.plans.PlanPlaceSuggestBody
 import app.pantopus.android.data.api.models.plans.PlansSportsDto
@@ -40,8 +45,11 @@ import app.pantopus.android.data.plans.PlansRepository
 import app.pantopus.android.data.plans.isOnline
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.planCode
+import app.pantopus.android.data.plans.planField
 import app.pantopus.android.data.plans.planMessage
 import app.pantopus.android.ui.screens.plans.PlansRoutes
+import app.pantopus.android.ui.screens.plans.bring.BringDraft
+import app.pantopus.android.ui.screens.plans.bring.BringDraftItem
 import app.pantopus.android.ui.screens.plans.repeat.PlanRepeatSetup
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -62,8 +70,11 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** The host flow's steps (boards H1, H2 to H5, H7) and the place picker (H6) over them. */
-enum class HostStep { Type, Details, Place, Preview }
+/**
+ * The host flow's steps (boards H1, H2 to H5, H7), the place picker (H6) over them, and a business's deal step between
+ * the details and the preview (Plans for the holidays, business track D3: "3 of 4").
+ */
+enum class HostStep { Type, Details, Deal, Place, Preview }
 
 /** A public place picked on H6 (or found by "You're here now" for a pickup game). */
 data class PickedPlace(
@@ -142,7 +153,39 @@ data class HostDraft(
     val foodKind: String = "dinner",
     val gameKind: String = "board_games",
     val outdoorKind: String = "hike",
+    /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1): guests say how many adults and kids. */
+    val kidsWelcome: Boolean = false,
+    /** "Bring list" in "Add to this plan" (Plans for the holidays, H2): the list made on A9; null while it's off. */
+    val bring: BringDraft? = null,
+    /** The occasion the plan was started from (Plans for the holidays, H3): its key, and its name for the title. */
+    val occasion: String? = null,
+    val occasionText: String? = null,
+    /** A business's deal (business track B1, D3); "No deal" until the business picks one. */
+    val deal: DealDraft = DealDraft(),
+    /** The deal's starting values were set (the first time the deal step opened). */
+    val dealStarted: Boolean = false,
+    /** Business track B2: "Price a spot" is on, and the amount as typed in dollars ($1 to $500). */
+    val priceOn: Boolean = false,
+    val priceDollars: String = "",
+    /** Business track B5: "Guests can pay their bill here", and "Take tips" (null: the kind's start, as the server's). */
+    val payHere: Boolean = false,
+    val tipsOn: Boolean? = null,
+    /** The holidays' chip in (extras section 3): the amount each person, what for, and the payment link; null while off. */
+    val chipIn: ChipInDraft? = null,
+    /** The holidays' find a date (extras section 2): the times offered, earliest first; null while off. */
+    val dateOptions: List<DateOptionDraft>? = null,
+    /** The holidays' gift exchange (extras section 4): how much each spends and when names are drawn; null while off. */
+    val gift: GiftDraft? = null,
 )
+
+/** "Chip in" as typed: dollars each person, what for, and the host's own Venmo, PayPal or Cash App link. */
+data class ChipInDraft(
+    val amount: String = "",
+    val note: String = "",
+    val link: String = "",
+) {
+    companion object
+}
 
 /** A private plan's preview: the people the host can invite before it exists (`GET /api/plans/invites/people`). */
 sealed interface HostInvitePeople {
@@ -191,6 +234,8 @@ data class HostUi(
     val posting: Boolean = false,
     val error: String? = null,
     val postedId: String? = null,
+    /** "Plan the next one with the same people" (the holidays' board 29): the posted plan's page opens, not the map. */
+    val postedOpensPlan: Boolean = false,
     /** H7's "Near Camas": the city of the plan's place (or home), looked up when the preview opens (as on iOS). */
     val previewArea: String? = null,
     /** The businesses this person may post for (`GET /api/plans/host-as`); "Host as" shows only when there are any. */
@@ -211,7 +256,93 @@ data class HostUi(
     val onlineOn: Boolean = false,
     /** `plans_kinds` is on for this person: the type picker shows nine kinds (Plans step 4). */
     val kindsOn: Boolean = false,
+    /** `plans_guest_answers` is on for this person (Plans for the holidays, H1): "Room for" and "Add to this plan". */
+    val guestAnswersOn: Boolean = false,
+    /** `plans_bring_list` is on for this person (Plans for the holidays, H2): the "Bring list" row. */
+    val bringOn: Boolean = false,
+    /** The bring list (A9) is open over the details. */
+    val bringOpen: Boolean = false,
+    /** `plans_occasions` is on for this person (Plans for the holidays, H3). */
+    val occasionsOn: Boolean = false,
+    /** The occasions in season (`GET /api/plans/occasions`); empty draws no strip. */
+    val occasions: List<PlanOccasionDto> = emptyList(),
+    /** The deal step's "Guests will read" and field errors (business track B1). */
+    val dealPreview: DealPreviewState = DealPreviewState(),
+    /** The deal step's "Preview" is asking the server about the deal. */
+    val dealChecking: Boolean = false,
+    /** `plans_chip_in` is on for this person (the holidays' extras, section 3): the "Chip in" row. */
+    val chipInOn: Boolean = false,
+    /** `plans_find_date` is on for this person (extras section 2): the "Let guests pick the date" row. */
+    val findDateOn: Boolean = false,
+    /** `plans_gift_exchange` is on for this person (extras section 4): the "Gift exchange" row. */
+    val giftOn: Boolean = false,
+    /** The server's sentence under a gift field it refused (`budget_cents` or `draw_at`). */
+    val giftErrors: Map<String, String> = emptyMap(),
+    /** The server's sentence under a chip-in field it refused (`amount_cents`, `note` or `link`). */
+    val chipInErrors: Map<String, String> = emptyMap(),
 ) {
+    /** A business that takes deals gets the deal step (business track B1, D3); a person's own plan never does. */
+    val showsDealStep: Boolean get() = business?.takesDeals == true
+
+    /** "Price a spot" shows on a business's form while its switch is on (host-as `can.price`, business track B2). */
+    val showsPrice: Boolean get() = business?.can?.price == true
+
+    /** "Guests can pay their bill here" shows on a business's form while its switch is on (host-as `can.pay_here`, B5). */
+    val showsPayHere: Boolean get() = business?.can?.payHere == true
+
+    /** The plan is posted taking the bill here: the row is on and the business can charge. */
+    val payHereOn: Boolean get() = showsPayHere && business?.payoutsReady == true && draft.payHere
+
+    /** "Take tips" as it shows: the business's choice, else on for a watch party and a walk or coffee (B5). */
+    val tipsShownOn: Boolean get() = draft.tipsOn ?: (draft.kind?.wire in TIPS_START_KINDS)
+
+    /** The spot's price in cents the plan is posted with: the row is on, the business can charge, the amount reads. */
+    val priceCents: Int?
+        get() = if (showsPrice && business?.payoutsReady == true && draft.priceOn) centsOf(draft.priceDollars) else null
+
+    /** How many steps the bar counts: "of 4" with deals on and a business chosen, else "of 3" (07-screens, settled). */
+    val stepTotal: Int get() = if ((business ?: chosenBusiness)?.takesDeals == true) DEAL_STEPS else PLAIN_STEPS
+
+    /**
+     * A private plan's room reads "Room for", to 100 (Plans for the holidays, board 3), for the kinds whose row says how
+     * many people: not a playdate (families) or a pickup game (players needed).
+     */
+    val showsRoomFor: Boolean get() = guestAnswersOn && isPrivate && draft.kind?.countsPeople == true
+
+    /** The most the room stepper allows: 100 for "Room for", 30 otherwise. */
+    val spotsMax: Int get() = if (showsRoomFor) ROOM_FOR_MAX else MAX_SPOTS
+
+    /** "Kids welcome" shows in the card (H1). */
+    val showsKidsWelcome: Boolean get() = showsRoomFor
+
+    /** "Bring list" shows in the card (H2): a private plan of a person's, for the kinds that count people. */
+    val showsBringRow: Boolean get() = bringOn && isPrivate && draft.kind?.countsPeople == true
+
+    /** The "Add to this plan" card shows (Plans for the holidays, board 3) while any of its rows does. */
+    val showsAddToPlan: Boolean get() = showsKidsWelcome || showsBringRow || showsChipIn || showsFindDate || showsGift
+
+    /** "Gift exchange" shows in the card (extras section 4): a private plan of a person's, never a playdate. */
+    val showsGift: Boolean get() = giftOn && isPrivate && business == null && draft.kind?.countsPeople == true
+
+    /** The plan is posted with a gift exchange: the row shows and is on. */
+    val postsGift: Boolean get() = showsGift && draft.gift != null
+
+    /**
+     * "Let guests pick the date" shows in the card (extras section 2): a private plan of a person's, never a playdate,
+     * and never one set to repeat (the server's own rule).
+     */
+    val showsFindDate: Boolean
+        get() = findDateOn && isPrivate && business == null && draft.kind?.countsPeople == true && repeat == null
+
+    /** The plan is posted with times to pick from: the row shows and is on. */
+    val postsFindDate: Boolean get() = showsFindDate && draft.dateOptions != null
+
+    /** "Chip in" shows in the card (extras section 3): a private plan of a person's, never a playdate. */
+    val showsChipIn: Boolean get() = chipInOn && isPrivate && business == null && draft.kind != PlanKind.PLAYDATE
+
+    /** The plan is posted with chip in: the row shows and is on. */
+    val postsChipIn: Boolean get() = showsChipIn && draft.chipIn != null
+
     /** The Repeats row shows: the switch is on and the plan is the person's own (a business's plan can't repeat). */
     val showsRepeats: Boolean get() = repeatOn && business == null
 
@@ -305,17 +436,35 @@ class HostFlowViewModel
                     repeatOn = feature.flags.value.repeatOn,
                     onlineOn = feature.flags.value.onlineOn,
                     kindsOn = feature.flags.value.kindsOn,
+                    guestAnswersOn = feature.flags.value.guestAnswersOn,
+                    bringOn = feature.flags.value.bringOn,
+                    occasionsOn = feature.flags.value.occasionsOn,
+                    chipInOn = feature.flags.value.chipInOn,
+                    findDateOn = feature.flags.value.findDateOn,
+                    giftOn = feature.flags.value.giftOn,
                 ),
             )
         val ui: StateFlow<HostUi> = _ui.asStateFlow()
+
+        /** "Plan the next one with the same people": the past plan this one copies, whose people are invited next. */
+        private var samePeopleFrom: String? = null
 
         init {
             val kind = PlanKind.from(savedStateHandle.get<String>(PlansRoutes.KIND_KEY))
             val gameId = savedStateHandle.get<String>(PlansRoutes.GAME_KEY)?.takeIf(String::isNotBlank)
             val again = savedStateHandle.get<String>(PlansRoutes.AGAIN_KEY)?.takeIf(String::isNotBlank)
+            // The holidays' board 29: copying a plan to invite the same people opens their list once it's posted.
+            samePeopleFrom = events.takeSamePeopleNext()?.takeIf { it == again }
             viewModelScope.launch {
                 loadContext(gameId)
                 if (again != null) copyFrom(again)
+            }
+            // The kind picker's "Coming up" (Plans for the holidays, H3): nothing is drawn until, or unless, it answers.
+            if (_ui.value.occasionsOn && again == null) {
+                viewModelScope.launch {
+                    val occasions = (repository.occasions() as? NetworkResult.Success)?.data?.occasions.orEmpty()
+                    _ui.update { it.copy(occasions = occasions.filter { o -> PlanKind.from(o.kind) != null }) }
+                }
             }
             // A newer kind only while its switch is on (Plans step 4); otherwise the type step shows, saying why.
             val switchedOff = kind?.isNew == true && !_ui.value.kindsOn
@@ -353,7 +502,8 @@ class HostFlowViewModel
             }
             // A private plan is hosted again as a private one, with nobody invited yet.
             val keepPrivate = plan.isPrivate && _ui.value.privateOn
-            val draft = copiedDraft(plan, kind, start, end, keepPrivate)
+            val roomMax = if (keepPrivate && _ui.value.guestAnswersOn && kind.countsPeople) ROOM_FOR_MAX else MAX_SPOTS
+            val draft = copiedDraft(plan, kind, start, end, keepPrivate, roomMax)
             _ui.update { it.copy(zone = zone, step = HostStep.Details, draft = draft, privateChoice = keepPrivate) }
             showCopy(plan)
         }
@@ -579,7 +729,109 @@ class HostFlowViewModel
         /** "Who can see this" (Plans step 1): anyone nearby, or only the people the host invites. */
         fun setPrivate(invitedOnly: Boolean) {
             if (!_ui.value.showsAudience) return
-            _ui.update { it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly), error = null) }
+            _ui.update {
+                // A plan anyone nearby can see keeps to 30 (Plans for the holidays: only a private plan has room for 100).
+                val spots = if (invitedOnly) it.draft.spots else it.draft.spots.coerceAtMost(MAX_SPOTS)
+                it.copy(privateChoice = invitedOnly, draft = it.draft.copy(isPrivate = invitedOnly, spots = spots), error = null)
+            }
+        }
+
+        /** "Kids welcome" in "Add to this plan" (Plans for the holidays, H1). */
+        fun setKidsWelcome(on: Boolean) = edit { it.copy(kidsWelcome = on) }
+
+        /** "Chip in" on or off (extras section 3); off forgets what was typed. */
+        fun setChipIn(on: Boolean) {
+            _ui.update {
+                val chip = if (on) it.draft.chipIn ?: ChipInDraft() else null
+                it.copy(draft = it.draft.copy(chipIn = chip), chipInErrors = emptyMap())
+            }
+        }
+
+        /** "Let guests pick the date" on or off (extras section 2): on, the form's own time is the first offered. */
+        fun setFindDate(on: Boolean) =
+            edit { draft ->
+                val start = draft.start
+                val end = draft.end
+                val first = if (start != null && end != null) listOf(DateOptionDraft(key = 1, start = start, end = end)) else emptyList()
+                draft.copy(dateOptions = if (on) draft.dateOptions ?: first else null)
+            }
+
+        /** "Add a time": the plan's own time follows the earliest offered (the server's rule). */
+        fun addDateOption(
+            start: LocalDateTime,
+            end: LocalDateTime,
+        ) = edit { draft -> draft.withDateOptions(draft.dateOptions.orEmpty().adding(start, end)) }
+
+        /** "Remove" on an offered time. */
+        fun removeDateOption(key: Int) = edit { draft -> draft.withDateOptions(draft.dateOptions.orEmpty().filter { it.key != key }) }
+
+        /** "Gift exchange" on (names drawn the day before at noon) or off (forgets what was set). */
+        fun setGift(on: Boolean) {
+            _ui.update {
+                val now = LocalDateTime.now(it.zone)
+                val gift = if (on) it.draft.gift ?: GiftDraft.startingFor(it.draft.start, now) else null
+                it.copy(draft = it.draft.copy(gift = gift), giftErrors = emptyMap())
+            }
+        }
+
+        /** A gift field changed; its refusal goes. */
+        fun editGift(
+            field: String,
+            transform: (GiftDraft) -> GiftDraft,
+        ) {
+            _ui.update { ui ->
+                val gift = ui.draft.gift ?: return@update ui
+                ui.copy(draft = ui.draft.copy(gift = transform(gift)), giftErrors = ui.giftErrors - field, error = null)
+            }
+        }
+
+        /** A chip-in field typed into; its refusal goes. */
+        fun editChipIn(
+            field: String,
+            transform: (ChipInDraft) -> ChipInDraft,
+        ) {
+            _ui.update { ui ->
+                val chip = ui.draft.chipIn ?: return@update ui
+                ui.copy(draft = ui.draft.copy(chipIn = transform(chip)), chipInErrors = ui.chipInErrors - field, error = null)
+            }
+        }
+
+        /**
+         * An occasion on the kind picker (Plans for the holidays, A2): its kind's form, with what it fills in (title,
+         * private, at home, kids welcome, a starter bring list, the time) and its name as the screen's title.
+         * Everything stays editable; a part whose switch is off for the host is left out.
+         */
+        fun chooseOccasion(occasion: PlanOccasionDto) {
+            val kind = PlanKind.from(occasion.kind) ?: return
+            choose(kind)
+            if (_ui.value.step != HostStep.Details) return
+            _ui.update { ui ->
+                ui.copy(draft = filledFrom(ui, occasion), privateChoice = ui.privateChoice || occasionIsPrivate(ui, occasion))
+            }
+        }
+
+        /** "Bring list" switched on opens the list (A9); off takes it away (Plans for the holidays, H2). */
+        fun setBringList(on: Boolean) {
+            _ui.update {
+                if (on) {
+                    it.copy(draft = it.draft.copy(bring = it.draft.bring ?: BringDraft()), bringOpen = true, error = null)
+                } else {
+                    it.copy(draft = it.draft.copy(bring = null), bringOpen = false, error = null)
+                }
+            }
+        }
+
+        /** Tapping the "Bring list" row while it's on opens the list. */
+        fun openBringList() {
+            if (_ui.value.draft.bring != null) _ui.update { it.copy(bringOpen = true) }
+        }
+
+        /** The list as the host edits it. */
+        fun editBringList(bring: BringDraft) = edit { it.copy(bring = bring) }
+
+        /** Done or Back on the list: back to the details, the list kept. */
+        fun closeBringList() {
+            _ui.update { it.copy(bringOpen = false) }
         }
 
         /** "Guests can bring a friend" on a private plan. */
@@ -870,6 +1122,10 @@ class HostFlowViewModel
                 _ui.update { it.copy(error = problem) }
                 return
             }
+            if (_ui.value.step == HostStep.Details && _ui.value.showsDealStep) {
+                openDealStep()
+                return
+            }
             _ui.update { it.copy(step = HostStep.Preview, error = null) }
             loadPreviewArea()
             if (_ui.value.isPrivate && _ui.value.invitePeople !is HostInvitePeople.Loaded) loadInvitePeople()
@@ -897,13 +1153,18 @@ class HostFlowViewModel
         }
 
         fun back(): Boolean {
+            if (_ui.value.bringOpen) {
+                closeBringList()
+                return true
+            }
             val step = _ui.value.step
             val previous =
                 when (step) {
                     HostStep.Type -> return false
                     HostStep.Details -> HostStep.Type
+                    HostStep.Deal -> HostStep.Details
                     HostStep.Place -> HostStep.Details
-                    HostStep.Preview -> HostStep.Details
+                    HostStep.Preview -> if (_ui.value.showsDealStep) HostStep.Deal else HostStep.Details
                 }
             _ui.update { it.copy(step = previous, error = null) }
             return true
@@ -927,7 +1188,12 @@ class HostFlowViewModel
                 val business = ui.business
                 val body =
                     if (business != null) {
-                        businessCreateBody(kind, draft, ui.zone, business)
+                        businessCreateBody(kind, draft, ui.zone, business, deal = draft.deal.toInput(ui.zone).takeIf { ui.showsDealStep })
+                            .copy(
+                                priceCents = ui.priceCents,
+                                payHere = true.takeIf { ui.payHereOn },
+                                tipsOn = ui.tipsShownOn.takeIf { ui.payHereOn },
+                            )
                     } else {
                         // A private plan can be anywhere: no fix is needed to prove the host is nearby.
                         val fix = if (ui.isPrivate) null else locations.gpsFix()
@@ -935,10 +1201,127 @@ class HostFlowViewModel
                     }
                 when (val result = repository.create(body)) {
                     is NetworkResult.Success -> {
-                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data))
-                        _ui.update { it.copy(posting = false, postedId = result.data.id) }
+                        // The holidays' board 29: the new plan's page opens, with its invite sheet on the past plan's people.
+                        val same = samePeopleFrom?.takeIf { ui.isPrivate }
+                        events.posted(result.data.id, then.takeIf { ui.isPrivate }, inviteNote(result.data), samePeopleFrom = same)
+                        _ui.update { it.copy(posting = false, postedId = result.data.id, postedOpensPlan = same != null) }
                     }
-                    is NetworkResult.Failure -> _ui.update { it.copy(posting = false, error = postError(result.error)) }
+                    is NetworkResult.Failure -> postFailed(result.error)
+                }
+            }
+        }
+
+        /** Posting refused: a deal's field goes back to the deal step with the server's sentence under it (D3). */
+        private fun postFailed(error: NetworkError) {
+            val field = error.planField
+            // A chip-in field: back to the form with the server's sentence under it (and over Post, should it be another).
+            if (field != null && field in CHIP_IN_FIELDS && _ui.value.postsChipIn) {
+                val message = error.planMessage
+                _ui.update { it.copy(posting = false, step = HostStep.Details, chipInErrors = mapOf(field to message), error = message) }
+                return
+            }
+            // A gift field: the same, under "Spend up to" or "Draw names".
+            if (field != null && field in GIFT_FIELDS && _ui.value.postsGift) {
+                val message = error.planMessage
+                _ui.update { it.copy(posting = false, step = HostStep.Details, giftErrors = mapOf(field to message), error = message) }
+                return
+            }
+            if (field != null && field in DEAL_FIELDS && _ui.value.showsDealStep) {
+                val errors = mapOf(field to error.planMessage)
+                _ui.update {
+                    it.copy(posting = false, step = HostStep.Deal, dealPreview = it.dealPreview.copy(errors = errors, checked = true))
+                }
+                return
+            }
+            _ui.update { it.copy(posting = false, error = postError(error)) }
+        }
+
+        // ---- Business track B1: the deal step (D3) ----
+
+        private var dealJob: Job? = null
+
+        /** Opens the deal step, with a group deal's starting values the first time. */
+        private fun openDealStep() {
+            _ui.update { ui ->
+                val draft = ui.draft
+                val deal =
+                    if (draft.dealStarted) {
+                        draft.deal
+                    } else {
+                        DealDraft.startingFor(draft.spots, draft.start, LocalDateTime.now(ui.zone))
+                    }
+                ui.copy(step = HostStep.Deal, error = null, draft = draft.copy(deal = deal, dealStarted = true))
+            }
+            askDealPreview(debounce = false)
+        }
+
+        /** A change on the deal step; the server is asked again what guests will read. */
+        fun editDeal(transform: (DealDraft) -> DealDraft) {
+            _ui.update { it.copy(draft = it.draft.copy(deal = transform(it.draft.deal)), error = null) }
+            askDealPreview(debounce = true)
+        }
+
+        private fun askDealPreview(debounce: Boolean) {
+            dealJob?.cancel()
+            val ui = _ui.value
+            if (ui.draft.deal.scope == DealScope.NONE) {
+                _ui.update { it.copy(dealPreview = DealPreviewState()) }
+                return
+            }
+            dealJob =
+                viewModelScope.launch {
+                    if (debounce) delay(DEAL_PREVIEW_DEBOUNCE_MS)
+                    readDealPreview()
+                }
+        }
+
+        /**
+         * Asks the server what guests will read for the deal as it is now; null when it couldn't be asked. [checked]: the
+         * step's "Preview" asked, so every error shows from now on.
+         */
+        private suspend fun readDealPreview(checked: Boolean = false): PlanDealPreviewResponse? {
+            val ui = _ui.value
+            val business = ui.business ?: return null
+            val facts = DealPlanFacts(spots = ui.draft.spots, start = ui.draft.start, priceCents = ui.priceCents, bill = ui.payHereOn)
+            val body = dealPreviewBody(business, ui.draft.deal, facts, ui.zone) ?: return null
+            _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = true, failed = null)) }
+            return when (val result = repository.dealPreview(body)) {
+                is NetworkResult.Success -> {
+                    val answer = result.data
+                    _ui.update {
+                        val shown = checked || it.dealPreview.checked
+                        val preview = DealPreviewState(answer = answer.takeIf { a -> a.ok }, errors = answer.errors, checked = shown)
+                        it.copy(dealPreview = preview)
+                    }
+                    answer
+                }
+                is NetworkResult.Failure -> {
+                    _ui.update { it.copy(dealPreview = it.dealPreview.copy(loading = false, failed = result.error.planMessage)) }
+                    null
+                }
+            }
+        }
+
+        /** The deal step's "Preview": on to the preview once the server accepts the deal (or with "No deal"). */
+        fun dealNext() {
+            val ui = _ui.value
+            if (ui.dealChecking) return
+            if (ui.draft.deal.scope == DealScope.NONE) {
+                dealJob?.cancel()
+                _ui.update { it.copy(step = HostStep.Preview, error = null, dealPreview = DealPreviewState()) }
+                loadPreviewArea()
+                return
+            }
+            dealJob?.cancel()
+            _ui.update { it.copy(dealChecking = true, error = null) }
+            viewModelScope.launch {
+                val answer = readDealPreview(checked = true)
+                _ui.update { it.copy(dealChecking = false) }
+                if (answer?.ok == true) {
+                    _ui.update { it.copy(step = HostStep.Preview) }
+                    loadPreviewArea()
+                } else if (answer == null) {
+                    _ui.update { it.copy(error = "Couldn't check the deal. Try again.") }
                 }
             }
         }
@@ -1034,6 +1417,18 @@ class HostFlowViewModel
                 audience = PlanAudience.INVITED.takeIf { invitedOnly },
                 guestsCanInvite = draft.guestsCanInvite.takeIf { invitedOnly },
                 inviteUserIds = draft.inviteIds.take(MAX_INVITES_AT_POST).takeIf { invitedOnly && it.isNotEmpty() },
+                // Plans for the holidays, H1: sent only while the card shows, so the body is as before without it.
+                kidsWelcome = draft.kidsWelcome.takeIf { ui.showsKidsWelcome },
+                // H2: the bring list made on A9, when it has something on it.
+                bring = draft.bring?.takeIf { ui.showsBringRow && it.items.isNotEmpty() }?.toInput(),
+                // H3: the occasion it was started from.
+                occasion = draft.occasion,
+                // Extras section 3: chip in; the server checks the amount, the note and the link, and says why in words.
+                chipIn = draft.chipIn?.takeIf { ui.showsChipIn }?.toInput(),
+                // Extras section 2: the times guests tick; the plan's own time above is the earliest of them.
+                dateOptions = draft.dateOptions?.takeIf { ui.postsFindDate }?.map { it.toInput(zone) },
+                // Extras section 4: the gift exchange; the server checks the budget and the draw time.
+                gift = draft.gift?.takeIf { ui.postsGift }?.toInput(zone),
             )
         }
 
@@ -1063,8 +1458,10 @@ class HostFlowViewModel
             val minutes = if (start != null && end != null) Duration.between(start, end).toMinutes() else 0
             val kindProblem = kindProblem(draft)
             val tooFar = tooFarAhead(draft, now)
+            val extras = extrasProblem(draft)
             return when {
                 draft.title.isBlank() -> "Give your plan a title."
+                extras != null -> extras
                 start == null || end == null -> "Pick when it starts and ends."
                 start.isBefore(now.minusMinutes(1)) -> "Pick a time that hasn't passed."
                 tooFar != null -> tooFar
@@ -1074,6 +1471,14 @@ class HostFlowViewModel
                 else -> placeProblem(draft)
             }
         }
+
+        /** What the holidays' extras still need: find a date's two times, the gift exchange's amount and draw time; else null. */
+        private fun extrasProblem(draft: HostDraft): String? =
+            when {
+                _ui.value.postsFindDate && draft.dateOptions.orEmpty().size < DATE_OPTIONS_FEWEST -> DATE_OPTIONS_TOO_FEW
+                _ui.value.postsGift && (draft.gift?.drawAt == null || centsOf(draft.gift.amount) == null) -> GIFT_INCOMPLETE
+                else -> null
+            }
 
         /** What Where still needs: an online plan's link (Plans step 3), the host's home, or a place; null when nothing. */
         private fun placeProblem(draft: HostDraft): String? =
@@ -1178,6 +1583,8 @@ private fun copiedDraft(
     start: LocalDateTime,
     end: LocalDateTime,
     keepPrivate: Boolean,
+    /** The most the copy's room may be: 100 for a private plan's "Room for" (Plans for the holidays), else 30. */
+    roomMax: Int = MAX_SPOTS,
 ): HostDraft {
     val place =
         plan.place?.takeIf { plan.placeKind != "home" }?.let { p ->
@@ -1196,7 +1603,7 @@ private fun copiedDraft(
         end = end,
         atHome = plan.placeKind == "home",
         place = place,
-        spots = plan.spots.coerceIn(1, 30),
+        spots = plan.spots.coerceIn(1, roomMax),
         approveEach = rules.none { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
         autoRule = rules.firstOrNull { r -> r == PlanAutoRule.VERIFIED || r == PlanAutoRule.ANYONE_NEARBY },
         hostedBefore = PlanAutoRule.HOSTED_BEFORE in rules,
@@ -1219,5 +1626,95 @@ private fun copiedDraft(
         foodKind = d?.foodKind ?: "dinner",
         gameKind = d?.gameKind ?: "board_games",
         outdoorKind = d?.outdoorKind ?: "hike",
+        kidsWelcome = keepPrivate && plan.kidsWelcome == true,
+        bring = copiedBring(plan, keepPrivate),
     )
 }
+
+/** The occasion asks for a private plan, and the host can post one. */
+private fun occasionIsPrivate(
+    ui: HostUi,
+    occasion: PlanOccasionDto,
+): Boolean = occasion.fills?.audience == PlanAudience.INVITED && ui.showsAudience
+
+/** The draft [choose] made, with what [occasion] fills in (Plans for the holidays, H3). */
+private fun filledFrom(
+    ui: HostUi,
+    occasion: PlanOccasionDto,
+): HostDraft {
+    val draft = ui.draft
+    val fills = occasion.fills
+    val (start, end) = occasionTimes(draft, fills, ui.zone)
+    val title = fills?.title?.takeIf(String::isNotBlank)
+    val isPrivate = occasionIsPrivate(ui, occasion) || draft.isPrivate
+    // The occasion's room (server #4227), within what this form allows once who it's for is set.
+    val privateHere = isPrivate && ui.showsAudience
+    val roomMax = if (ui.guestAnswersOn && privateHere && draft.kind?.countsPeople == true) ROOM_FOR_MAX else MAX_SPOTS
+    val spots = fills?.spots?.takeIf { it > 0 }?.coerceAtMost(roomMax) ?: draft.spots
+    return draft.copy(
+        title = title ?: draft.title,
+        titleEdited = title != null || draft.titleEdited,
+        isPrivate = isPrivate,
+        spots = spots,
+        atHome = (fills?.placeKind == "home" && ui.home != null) || draft.atHome,
+        start = start,
+        end = end,
+        kidsWelcome = fills?.kidsWelcome == true && ui.guestAnswersOn,
+        bring = occasionBring(ui, fills?.bring),
+        foodKind = occasion.details?.foodKind ?: draft.foodKind,
+        gameKind = occasion.details?.gameKind ?: draft.gameKind,
+        outdoorKind = occasion.details?.outdoorKind ?: draft.outdoorKind,
+        occasion = occasion.key,
+        occasionText = occasion.text.takeIf(String::isNotBlank),
+    )
+}
+
+/** An occasion's start and end on the host's clock; without an end, a new start keeps the draft's length. */
+private fun occasionTimes(
+    draft: HostDraft,
+    fills: PlanOccasionFillsDto?,
+    zone: ZoneId,
+): Pair<LocalDateTime?, LocalDateTime?> {
+    val start = fills?.startsAt?.let { localTime(it, zone) }
+    val end = fills?.endsAt?.let { localTime(it, zone) }
+    val length = if (draft.start != null && draft.end != null) Duration.between(draft.start, draft.end) else null
+    return (start ?: draft.start) to (end ?: start?.let { s -> length?.let { s.plus(it) } } ?: draft.end)
+}
+
+/** An occasion's starter bring list, while the host's form offers one (Plans for the holidays, H2). */
+private fun occasionBring(
+    ui: HostUi,
+    list: PlanOccasionBringDto?,
+): BringDraft? {
+    if (list == null || !ui.bringOn || list.items.isEmpty()) return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
+}
+
+/** An occasion's ISO time on the host's clock. */
+private fun localTime(
+    iso: String,
+    zone: ZoneId,
+): LocalDateTime? = runCatching { java.time.Instant.parse(iso).atZone(zone).toLocalDateTime() }.getOrNull()
+
+/** Host again keeps what was on the bring list, with nobody bringing anything yet (Plans for the holidays, H2). */
+private fun copiedBring(
+    plan: PlanDto,
+    keepPrivate: Boolean,
+): BringDraft? {
+    val list = plan.bring?.takeIf { keepPrivate && it.items.isNotEmpty() } ?: return null
+    val items = list.items.map { BringDraftItem(label = it.label, note = it.note.orEmpty()) }
+    return BringDraft(items = items, guestsCanAdd = list.guestsCanAdd)
+}
+
+/** The draft with these times offered, and its own time the earliest of them (as the server sets it). */
+private fun HostDraft.withDateOptions(options: List<DateOptionDraft>): HostDraft {
+    val first = options.minByOrNull { it.start } ?: return copy(dateOptions = options)
+    return copy(dateOptions = options.sortedBy { it.start }, start = first.start, end = first.end)
+}
+
+/** The fields a chip-in refusal names (`field`), 08-extras section 3. */
+internal val CHIP_IN_FIELDS = setOf(CHIP_IN_AMOUNT, CHIP_IN_NOTE, CHIP_IN_LINK)
+
+/** The chip in as the server takes it: cents each person (null when it isn't an amount: the server says so). */
+internal fun ChipInDraft.toInput(): PlanChipInInput = PlanChipInInput(amountCents = centsOf(amount), note = note.trim(), link = link.trim())

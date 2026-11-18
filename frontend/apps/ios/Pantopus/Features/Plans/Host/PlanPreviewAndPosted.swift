@@ -104,8 +104,8 @@ struct PlanPreviewScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             areaMap
             VStack(alignment: .leading, spacing: Spacing.s2) {
-                HStack(spacing: Spacing.s2) {
-                    PlanTypeTag(kind: model.kind)
+                PlanTagRow {
+                    PlanTypeTag(kind: model.kind, text: model.isBusiness ? nil : model.privacy.occasion?.text)
                     if model.isOnline { PlanOnlineChip() }
                 }
                 Text(model.effectiveTitle).planFont(.h3).foregroundStyle(Theme.Color.appText).fixedSize(horizontal: false, vertical: true)
@@ -189,6 +189,7 @@ struct PlanPostedScreen: View {
     let plan: PlanDetailDTO
     /// A private plan's preview asked for "Text a link" or "Email": the invite sheet opens over this screen.
     var opensInvite = false
+    var samePeopleFrom: String?
     /// A private plan posted with people chosen: the invitations that didn't go (the server's words, or how many).
     var inviteProblem: String?
     let onSeePlan: () -> Void
@@ -219,8 +220,10 @@ struct PlanPostedScreen: View {
         }
         .sensoryFeedback(.success, trigger: landed)
         .onAppear(perform: drop)
-        .task { if opensInvite, plan.card.invites?.canInvite == true { showsInvite = true } }
-        .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card) }
+        // The guidance card "Your plan is posted" follows on Plans once this closes, after the first plan.
+        .onAppear { GuidanceCenter.shared.pend(.doneFirstPlan) }
+        .task { if opensInvite || samePeopleFrom != nil, plan.card.invites?.canInvite == true { showsInvite = true } }
+        .sheet(isPresented: $showsInvite) { PlanInviteSheet(card: plan.card, samePeopleFrom: samePeopleFrom) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("planPosted")
     }
@@ -243,12 +246,13 @@ struct PlanPostedScreen: View {
             Annotation("", coordinate: point, anchor: .center) {
                 PlanPinView(look: PlanPinLook(
                     kind: plan.card.kind,
-                    tag: "Your plan · " + PlanFormat.pinTag(
+                    // Find a date: "Your plan · Picking a date" until the host picks one.
+                    tag: "Your plan · " + (plan.card.pickingText ?? PlanFormat.pinTag(
                         state: plan.card.state,
                         isFull: false,
                         startsAt: plan.card.startsAtDate,
                         dayPart: plan.card.dayPart
-                    ),
+                    )),
                     isSelected: true,
                     badge: .hosting
                 ))

@@ -205,7 +205,7 @@ public struct PulseTabRoot: View {
         }
     }
 
-    @ViewBuilder private var feedPage: some View {
+    @ViewBuilder private var feedPageContent: some View {
         if LaunchFeatures.pulseRedesign {
             // The Pulse page (Pulse S6) reads `GET /api/pulse/feed`.
             PulsePageView(
@@ -530,4 +530,23 @@ private final class PulseDetailModels {
     PulseTabRoot()
         .environment(AuthManager.previewSignedIn)
         .environment(RootTabModel())
+}
+
+// MARK: - Guidance cards
+
+private extension PulseTabRoot {
+    var feedPage: some View {
+        feedPageContent
+            // The Pulse tab's card and its pointers, once the feed has loaded.
+            .guidanceScreen(.pulse, ready: feedLoaded)
+    }
+
+    /// The feed has shown its posts or its empty state (the Pulse redesign's page loads on its own).
+    var feedLoaded: Bool {
+        if LaunchFeatures.pulseRedesign { return true }
+        switch feed.state {
+        case .loaded, .empty: return true
+        case .loading, .error: return false
+        }
+    }
 }

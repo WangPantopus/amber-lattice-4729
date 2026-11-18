@@ -475,6 +475,11 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
     case volumeX = "volume-x"
     /// Moments' camera: the front or back camera.
     case switchCamera = "switch-camera"
+    /// Plans for the holidays: the Birthday and New Year's Eve occasions.
+    case cake
+    case sparkle
+    /// Guidance cards: Today's "Around you" (local headlines).
+    case newspaper
 
     /// SF Symbol name used to render this icon. Chosen for closest visual
     /// parity with the Lucide source; designers can later swap the
@@ -858,6 +863,9 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
         case .volume2: "speaker.wave.2"
         case .volumeX: "speaker.slash"
         case .switchCamera: "arrow.triangle.2.circlepath.camera"
+        case .cake: "birthday.cake"
+        case .sparkle: "sparkle"
+        case .newspaper: "newspaper"
         }
     }
 }

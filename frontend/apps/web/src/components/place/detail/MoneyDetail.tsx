@@ -42,6 +42,8 @@ import { findPlaceSection, detailAddress } from './sections';
 import { usd, statusToState, apiErrorText } from './format';
 import { MoneyField, PrivacyNote, SkyButton, parseMoney, groupDigits } from './fields';
 import { useLocalDraft } from './useLocalDraft';
+import MailProofCard from '../fastVerify/MailProofCard';
+import { useVerifyOptions } from '../fastVerify/useVerifyOptions';
 
 const clampPct = (n: number) => Math.min(100, Math.max(0, n));
 
@@ -967,6 +969,13 @@ function RateWatchSection({ homeId, verified, canVerify }: { homeId: string; ver
     queryFn: () => api.recordWatch.getRecordWatch(homeId),
     enabled: verified,
   });
+  // FASTVERIFY: verified by a fast check, the home record watch needs a mailed code (null with the flags off).
+  const verify = useVerifyOptions(homeId, { enabled: verified });
+  const fastOnly = verify.data?.level === 'fast';
+  if (verified && verify.loading) {
+    return <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 text-[13.5px] text-app-text-muted">Loading your watch…</div>;
+  }
+  if (verified && fastOnly && !watchQuery.data) return <MailProofCard title="Rate watch" homeId={homeId} />;
 
   if (!verified) {
     return (

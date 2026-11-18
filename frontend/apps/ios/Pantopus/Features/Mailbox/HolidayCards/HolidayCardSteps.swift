@@ -542,7 +542,8 @@ struct HolidayCardWriteStep: View {
                     paper: design.paper,
                     fromName: viewModel.fromName,
                     year: cards.year,
-                    signature: viewModel.signature
+                    signature: viewModel.signature,
+                    noteText: viewModel.message
                 ) { width in
                     HolidayCardNoteText(
                         text: $viewModel.message,
@@ -568,6 +569,14 @@ struct HolidayCardWriteStep: View {
                     .foregroundStyle(count >= cards.messageLimit ? MailPaper.wax : HolidayCardDesk.muted(scheme))
                     .accessibilityIdentifier("sendCardCount")
             }
+            // A note the table writes over two leaves (plan Part 9).
+            if LaunchFeatures.cardTable, CardTableNoteLayout.leaves(viewModel.message) != nil {
+                Text("This note runs onto a second leaf.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(HolidayCardDesk.muted(scheme))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("sendCardSecondLeaf")
+            }
             if cards.noteHelp, let recipient = viewModel.recipient {
                 noteHelpRow(recipient)
             }
@@ -581,6 +590,8 @@ struct HolidayCardWriteStep: View {
                     attachments: attachments,
                     takesPhoto: onePerson && cards.takesPhoto,
                     takesVoice: onePerson && cards.takesVoice,
+                    takesLive: onePerson && cards.takesLivePhoto,
+                    liveMaxBytes: cards.livePhotoMaxBytes,
                     forName: viewModel.greetingFor,
                     gift: CardTableMood(number: design.number) == .reverence,
                     needsStamp: cards.mediaStamp == .buy
@@ -607,8 +618,11 @@ struct HolidayCardWriteStep: View {
         .sheet(isPresented: $signing) {
             CardTableSignPad(
                 initial: viewModel.signature,
-                onDone: { viewModel.signature = $0 },
-                onTyped: { viewModel.signature = nil }
+                onDone: { viewModel.signed($0, keep: $1) },
+                onTyped: { viewModel.signature = nil },
+                keeping: viewModel.signatureSaves
+                    ? CardTableSignPad.Keeping(saved: viewModel.savedSignature) { await viewModel.forgetSavedSignature() }
+                    : nil
             )
             .presentationDetents([.medium, .large])
             .presentationBackground(MailPaper.cardPaper(nil))
@@ -658,12 +672,21 @@ struct HolidayCardWriteStep: View {
                 signing = true
             }
             .accessibilityIdentifier("sendCardSign")
-            Text(signed ? "Signed beside FROM." : "Or leave \(HolidayCardWords.firstName(viewModel.fromName)) typed.")
+            Text(signHint)
                 .font(.system(size: 13))
                 .foregroundStyle(HolidayCardDesk.muted(scheme))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("sendCardSignHint")
             Spacer(minLength: 0)
         }
+    }
+
+    private var signHint: String {
+        if viewModel.keepSignatureFailed {
+            return "This card is signed, but your signature couldn't be kept for next time. Sign again to try once more."
+        }
+        if viewModel.signedWithSaved { return "Your saved signature is beside FROM." }
+        if viewModel.signature != nil { return "Signed beside FROM." }
+        return "Or leave \(HolidayCardWords.firstName(viewModel.fromName)) typed."
     }
 }

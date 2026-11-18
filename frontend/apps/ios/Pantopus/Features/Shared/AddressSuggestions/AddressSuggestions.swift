@@ -21,6 +21,8 @@ final class AddressSuggestions {
     /// Favor suggestions near this point, e.g. the person's own home when
     /// they type a neighbor's address.
     var near: (latitude: Double, longitude: Double)?
+    /// One of the person's homes' point, used while `near` isn't set (`findNear`).
+    private let homeArea = HomeSearchArea()
 
     private let streetOnly: Bool
     private let api: APIClient
@@ -51,7 +53,7 @@ final class AddressSuggestions {
 
     private func fetch(_ query: String) async {
         let response: GeoAutocompleteResponse? = try? await api.request(
-            GeoEndpoints.autocomplete(query: query, near: near, streetOnly: streetOnly)
+            GeoEndpoints.autocomplete(query: query, near: near ?? homeArea.point, streetOnly: streetOnly)
         )
         guard !Task.isCancelled else { return }
         suggestions = response?.suggestions ?? []
@@ -77,11 +79,73 @@ final class AddressSuggestions {
         suggestions = []
     }
 
+    /// Takes a suggestion as it reads, for a free-text location field that keeps the whole line (no resolve).
+    func accept(_ suggestion: GeoSuggestion) {
+        searchTask?.cancel()
+        pickedText = suggestion.label
+        suggestions = []
+    }
+
+    /// Favors suggestions near one of your homes (`homeId` nil: your default Home) without holding the screen up:
+    /// asked once, beside the screen's own reads, and used by the searches that come after the answer.
+    func findNear(homeId: String? = nil) {
+        guard near == nil else { return }
+        homeArea.find(homeId: homeId)
+    }
+
+    /// Your default Home's map point (else any of your homes'), for `near` on a screen that has no address of its
+    /// own yet; nil when none is known.
+    static func anyHomePoint() async -> (latitude: Double, longitude: Double)? {
+        guard let response = try? await HomesStoreReads.myHomes().value else { return nil }
+        return point(in: response, homeId: nil)
+    }
+
     /// One of your homes' map point, for `near`; nil when it isn't known.
     static func homePoint(homeId: String) async -> (latitude: Double, longitude: Double)? {
-        guard let homes = try? await HomesStoreReads.myHomes().value.homes,
-              let point = homes.first(where: { $0.home.id == homeId })?.location else { return nil }
+        guard let response = try? await HomesStoreReads.myHomes().value else { return nil }
+        return point(in: response, homeId: homeId)
+    }
+
+    /// That home's point in a list of your homes; with no `homeId`, your default Home's, else any home's.
+    fileprivate static func point(in response: MyHomesResponse, homeId: String?) -> (latitude: Double, longitude: Double)? {
+        let homes = response.homes
+        if let homeId {
+            guard let point = homes.first(where: { $0.home.id == homeId })?.location else { return nil }
+            return (point.latitude, point.longitude)
+        }
+        let preferred = response.defaultHomeId.flatMap { id in homes.first { $0.home.id == id } }
+        guard let point = preferred?.location ?? homes.compactMap(\.location).first else { return nil }
         return (point.latitude, point.longitude)
+    }
+}
+
+/// One of the person's homes' point as a search area, for a screen's address search. Nothing waits for it:
+/// `find` answers from the list of your homes the app already holds, and otherwise asks for that list beside the
+/// search, so `point` is nil until it is known and a search before that goes out without an area. Asked once
+/// per screen: "none" (no home with a point, or the list couldn't be read) is kept as the answer.
+@MainActor
+final class HomeSearchArea {
+    private(set) var point: (latitude: Double, longitude: Double)?
+    private var asked = false
+
+    nonisolated init() {}
+
+    /// `homeId` nil: your default Home (else any of your homes).
+    func find(homeId: String? = nil) {
+        guard !asked else { return }
+        asked = true
+        if let held = HomesStoreReads.peekMyHomes()?.value, let known = AddressSuggestions.point(in: held, homeId: homeId) {
+            point = known
+            return
+        }
+        Task { [weak self] in
+            let found: (latitude: Double, longitude: Double)? = if let homeId {
+                await AddressSuggestions.homePoint(homeId: homeId)
+            } else {
+                await AddressSuggestions.anyHomePoint()
+            }
+            self?.point = found
+        }
     }
 }
 
@@ -142,5 +206,24 @@ struct AddressSuggestionList: View {
         .padding(.vertical, Spacing.s2)
         .frame(minHeight: 48)
         .contentShape(Rectangle())
+    }
+}
+
+/// Suggestions under a free-text location field ("Where?", a meeting address): it asks as the text changes,
+/// nearby first, and a pick puts the suggestion's whole line in the field. The field stays the screen's own.
+struct LocationSuggestionList: View {
+    let text: String
+    /// Prefix for each row's accessibility identifier (`<prefix>.<index>`).
+    let identifier: String
+    let onPick: (String) -> Void
+    @State private var suggestions = AddressSuggestions(streetOnly: false)
+
+    var body: some View {
+        AddressSuggestionList(suggestions: suggestions, identifier: identifier) { suggestion in
+            suggestions.accept(suggestion)
+            onPick(suggestion.label)
+        }
+        .onChange(of: text) { _, value in suggestions.textChanged(value) }
+        .task { if suggestions.near == nil { suggestions.near = await AddressSuggestions.anyHomePoint() } }
     }
 }

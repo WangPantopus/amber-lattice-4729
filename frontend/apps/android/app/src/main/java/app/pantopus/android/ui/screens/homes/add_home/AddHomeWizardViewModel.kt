@@ -24,6 +24,7 @@ import app.pantopus.android.data.api.net.safeApiCall
 import app.pantopus.android.data.api.services.GeoApi
 import app.pantopus.android.data.homes.HomeCreationLimits
 import app.pantopus.android.data.homes.HomeCreationOutcome
+import app.pantopus.android.data.homes.HomeFastVerifyRepository
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.homes.PendingHomeCreation
 import app.pantopus.android.data.location.LocationProvider
@@ -129,6 +130,13 @@ data class AddHomeUiState(
     val lateDetailsAdded: Boolean = false,
     /** Optional access joins the protected atomic command and never reaches SavedStateHandle. */
     val accessItems: List<AddHomeAccessItem> = listOf(AddHomeAccessItem(id = "access-0")),
+    /**
+     * Add Home in two steps (FASTVERIFY, server flag `home_short_add`): find the home, then how you live there. The
+     * county record fills the home's details after it is created, and the verify sheet opens on Place.
+     */
+    val shortAdd: Boolean = false,
+    /** USPS confirmed the checked address as typed ("Confirmed with USPS" on the short form's card). */
+    val postalConfirmed: Boolean = false,
     /** Non-null while the Wi-Fi QR scanner is open; carries the target row. */
     val scannerTargetItemId: String? = null,
 ) {
@@ -242,6 +250,8 @@ open class AddHomeWizardViewModel
         private val locationProvider: LocationProvider,
         sessions: HomeClaimSessionScopeFactory,
         creations: HomeCreationFactory,
+        /** Faster home verification: the two-step switch. Last, so callers that build the wizard by position still do. */
+        private val fastVerify: HomeFastVerifyRepository? = null,
     ) : ViewModel(),
         WizardModel {
         private val session = sessions.create(viewModelScope)
@@ -253,6 +263,12 @@ open class AddHomeWizardViewModel
         private var homeTypeChosen = false
         private var addressJob: Job? = null
         private var propertyLookupJob: Job? = null
+
+        /**
+         * Where the address search looks first (FASTVERIFY section 11): the person's default Home, else their first Home
+         * with a point, rounded to about a kilometer. Null without one.
+         */
+        private var searchArea: Pair<Double, Double>? = null
 
         /** The search [applyInitialSearchQuery] ran: left untouched, it isn't progress to discard. */
         private var prefilledSearchQuery: String? = null
@@ -277,6 +293,24 @@ open class AddHomeWizardViewModel
 
         init {
             viewModelScope.launch { session.invalidated.collect { if (it) retireSession() } }
+            viewModelScope.launch {
+                val homes = runCatching { repository.myHomesStored().data?.homes }.getOrNull().orEmpty()
+                val home = homes.firstOrNull { it.isDefault == true && it.location != null } ?: homes.firstOrNull { it.location != null }
+                searchArea = home?.location?.let { roughly(it.latitude) to roughly(it.longitude) }
+            }
+            // Two steps when the server says so: the kept answer (or the restored draft's) at once, then a fresh read,
+            // which may still change the wizard while it is on its first step.
+            val short = savedStateHandle.get<Boolean>(KEY_SHORT) ?: fastVerify?.keptShortAddHome() ?: false
+            _state.update { it.copy(shortAdd = short) }
+            fastVerify?.let { repository ->
+                viewModelScope.launch {
+                    val on = repository.refreshShortAddHome()
+                    if (on != _state.value.shortAdd && _state.value.form.currentStep == AddHomeStep.Address) {
+                        _state.update { it.copy(shortAdd = on) }
+                        persist()
+                    }
+                }
+            }
         }
 
         // MARK: - WizardModel
@@ -403,7 +437,8 @@ open class AddHomeWizardViewModel
                 viewModelScope.launch {
                     findAddress(revision, "Address search is unavailable. Try again or enter your address manually.") {
                         delay(SEARCH_DEBOUNCE_MILLIS)
-                        val response = required(safeApiCall { geoApi.autocomplete(query.trim()) })
+                        val area = searchArea
+                        val response = required(safeApiCall { geoApi.autocomplete(query.trim(), lat = area?.first, lng = area?.second) })
                         if (!addressIsCurrent(revision)) return@findAddress
                         check(
                             response.suggestions.all { it.suggestionId.isNotBlank() && it.label.isNotBlank() } &&
@@ -457,7 +492,20 @@ open class AddHomeWizardViewModel
                             _state.update { it.copy(selectedHomeId = suggestion.suggestionId) }
                         }
                     }
+                    checkPickedAddress(revision)
                 }
+        }
+
+        /**
+         * Two steps: a picked address is checked at once, on the same step's card, with no Continue in between. The check
+         * runs in its own coroutine: it retires the address job this is called from, which would cancel it.
+         */
+        private fun checkPickedAddress(revision: Long) {
+            val current = _state.value
+            val ready = current.form.currentStep == AddHomeStep.Address && current.form.address.isComplete
+            if (current.shortAdd && addressIsCurrent(revision) && ready) {
+                viewModelScope.launch { advance() }
+            }
         }
 
         fun useCurrentLocation() {
@@ -477,6 +525,7 @@ open class AddHomeWizardViewModel
                         val response = required(safeApiCall { geoApi.reverse(coordinate.latitude, coordinate.longitude) })
                         if (addressIsCurrent(revision)) applyResolvedAddress(response.normalized)
                     }
+                    checkPickedAddress(revision)
                 }
         }
 
@@ -503,6 +552,28 @@ open class AddHomeWizardViewModel
                     form = it.form.copy(address = fields),
                     homeSearchQuery = fields.street,
                     searchResults = emptyList(),
+                    isManualEntry = true,
+                )
+            }
+            persist()
+        }
+
+        /** A suggestion picked under the manual street line: it fills the street, city, state and ZIP; the unit stays. */
+        fun applyManualSuggestion(address: NormalizedAddress) {
+            if (!session.isCurrent || address.address.isNullOrBlank()) return
+            invalidateAddress()
+            _state.update { current ->
+                val next =
+                    current.form.address.copy(
+                        street = address.address.orEmpty(),
+                        city = address.city.orEmpty().ifBlank { current.form.address.city },
+                        state = address.state.orEmpty().ifBlank { current.form.address.state },
+                        zipCode = address.zipcode.orEmpty().ifBlank { current.form.address.zipCode },
+                    )
+                current.copy(
+                    form = current.form.copy(address = next),
+                    homeSearchQuery = next.street,
+                    selectedHomeId = null,
                     isManualEntry = true,
                 )
             }
@@ -792,6 +863,11 @@ open class AddHomeWizardViewModel
                     runCheckAddress()
                 }
                 AddHomeStep.Confirm -> {
+                    // Two steps: a unit typed on the card is checked before moving on.
+                    if (_state.value.shortAdd && unitChangedSinceCheck()) {
+                        runCheckAddress()
+                        if (!_state.value.isGeocodeResolved || _state.value.errorMessage != null || _state.value.showsClaimedModal) return
+                    }
                     if (!_state.value.isCheckingAddress &&
                         _state.value.zipMismatch == null &&
                         !_state.value.showsClaimedModal
@@ -815,7 +891,12 @@ open class AddHomeWizardViewModel
                         transitionTo(AddHomeStep.Role)
                     }
                 }
-                AddHomeStep.Role -> if (_state.value.isClaimingExistingHome || validateAccessItems()) transitionTo(AddHomeStep.Review)
+                AddHomeStep.Role ->
+                    when {
+                        // Two steps: "Add home" saves it; a request to join a Home already here keeps its review.
+                        _state.value.shortAdd && !_state.value.isClaimingExistingHome -> submit()
+                        _state.value.isClaimingExistingHome || validateAccessItems() -> transitionTo(AddHomeStep.Review)
+                    }
                 AddHomeStep.Review -> submit()
                 AddHomeStep.Success -> {
                     _state.value.createdHomeId?.let { id ->
@@ -823,6 +904,28 @@ open class AddHomeWizardViewModel
                     }
                 }
             }
+        }
+
+        /** The short form's unit, typed after the check, differs from the checked one. */
+        private fun unitChangedSinceCheck(): Boolean {
+            val checked = _state.value.geocodedAddress?.unit ?: return false
+            return !_state.value.form.address.unit
+                .trim()
+                .equals(checked.trim(), ignoreCase = true)
+        }
+
+        /** Two steps: the card's "Apartment or unit" (checked again when the person moves on). */
+        fun updateShortUnit(value: String) {
+            if (!_state.value.shortAdd || _state.value.form.currentStep != AddHomeStep.Confirm) return
+            _state.update { it.copy(form = it.form.copy(address = it.form.address.copy(unit = value)), errorMessage = null) }
+            persist()
+        }
+
+        /** Two steps: typing in the card's search box again goes back to finding the home. */
+        fun searchAgain(query: String) {
+            if (!_state.value.shortAdd) return
+            transitionTo(AddHomeStep.Address)
+            updateSearchQuery(query)
         }
 
         private fun goBack() {
@@ -938,6 +1041,7 @@ open class AddHomeWizardViewModel
                             addressCheck = response,
                             validatedAddressId = addressId,
                             postalNotice = AddHomePostalNotice.forStatus(verdictStatus, address.line2 ?: fields.unit),
+                            postalConfirmed = verdictStatus == "OK",
                             geocodedAddress =
                                 AddHomeGeocodedAddress(
                                     street = response.residencyAddress?.line1 ?: address.line1,
@@ -954,7 +1058,8 @@ open class AddHomeWizardViewModel
                             isClaimingExistingHome = response.isFoundUnclaimed,
                         )
                     }
-                    if (!response.isAlreadyClaimed && !response.isFoundUnclaimed) loadPropertySuggestions()
+                    // Two steps leave the details to the county record after the Home is created (the server fills them).
+                    if (!response.isAlreadyClaimed && !response.isFoundUnclaimed && !_state.value.shortAdd) loadPropertySuggestions()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1298,7 +1403,8 @@ open class AddHomeWizardViewModel
                     addressId = _state.value.validatedAddressId,
                     latitude = _state.value.geocodedAddress?.latitude,
                     longitude = _state.value.geocodedAddress?.longitude,
-                    homeType = details.homeType.wireValue,
+                    // Two steps send no details: the server fills them from the county record (`home_short_add`).
+                    homeType = details.homeType.wireValue.takeUnless { _state.value.shortAdd },
                     // Movers first (Wedge v2 D5): today's date when the resident says they just moved.
                     moveInDate = if (details.justMoved) java.time.LocalDate.now().toString() else null,
                     // RN falls back to the street when no nickname is
@@ -1416,6 +1522,12 @@ open class AddHomeWizardViewModel
                         createdResidency = result.residencyHomeId != null,
                     )
                 }
+                // Two steps: a new Home opens on Place with the verify sheet, with no "Home saved" stop on the way.
+                val newHome = result.state == "completed" && result.residencyHomeId == null && result.home?.id != null
+                if (_state.value.shortAdd && newHome) {
+                    _state.update { it.copy(isSubmitting = false) }
+                    creationPrimary()
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: IllegalStateException) {
@@ -1473,7 +1585,12 @@ open class AddHomeWizardViewModel
                 }
                 if (outcome.state == "completed") {
                     val opened = _state.value
-                    pendingEvent.value = AddHomeOutboundEvent.OpenHomes(opened.createdHomeId.takeIf { opened.completionOpensYourPlace })
+                    pendingEvent.value =
+                        if (opened.shortAdd && !opened.createdResidency && opened.createdHomeId != null) {
+                            AddHomeOutboundEvent.OpenHomes(opened.createdHomeId, openVerify = true)
+                        } else {
+                            AddHomeOutboundEvent.OpenHomes(opened.createdHomeId.takeIf { opened.completionOpensYourPlace })
+                        }
                 } else if (form != null) {
                     invalidateAddress()
                     _state.update {
@@ -1522,6 +1639,7 @@ open class AddHomeWizardViewModel
             savedStateHandle[KEY_SCOPE] = identityHash
             val form = _state.value.form
             savedStateHandle[KEY_STEP] = form.step
+            savedStateHandle[KEY_SHORT] = _state.value.shortAdd
             savedStateHandle[KEY_STREET] = form.address.street
             savedStateHandle[KEY_UNIT] = form.address.unit
             savedStateHandle[KEY_CITY] = form.address.city
@@ -1595,13 +1713,13 @@ open class AddHomeWizardViewModel
                 )
             }
             val step = state.form.currentStep
-            val progress = progressLabel(step)
+            val progress = if (state.shortAdd) shortProgressLabel(step) else progressLabel(step)
             return WizardChrome(
-                title = title(step),
+                title = if (state.shortAdd) "Add your home" else title(step),
                 progressLabel = progress,
-                progressFraction = progressFraction(step),
+                progressFraction = if (state.shortAdd) shortProgressFraction(step) else progressFraction(step),
                 leading = leadingControl(step),
-                primaryCtaLabel = primaryCtaLabel(step),
+                primaryCtaLabel = if (state.shortAdd) shortPrimaryCtaLabel(state) else primaryCtaLabel(step),
                 primaryCtaEnabled =
                     state.isSessionCurrent && !state.isFindingAddress && primaryEnabled(state) &&
                         !state.isSubmitting &&
@@ -1645,6 +1763,28 @@ open class AddHomeWizardViewModel
                 AddHomeStep.Success -> if (_state.value.completionOpensYourPlace) "Open Your Place" else "View home"
             }
 
+        /** Two steps: "1 of 2" while finding the home, "2 of 2" from how you live there. */
+        private fun shortProgressLabel(step: AddHomeStep): WizardProgressLabel =
+            when (step) {
+                AddHomeStep.Address, AddHomeStep.Confirm -> WizardProgressLabel.StepOf(current = 1, total = SHORT_TOTAL)
+                AddHomeStep.Role, AddHomeStep.Review -> WizardProgressLabel.StepOf(current = 2, total = SHORT_TOTAL)
+                AddHomeStep.Success -> WizardProgressLabel.Hidden
+            }
+
+        private fun shortProgressFraction(step: AddHomeStep): Float? =
+            when (step) {
+                AddHomeStep.Address, AddHomeStep.Confirm -> 1f / SHORT_TOTAL
+                AddHomeStep.Role, AddHomeStep.Review -> 1f
+                AddHomeStep.Success -> null
+            }
+
+        private fun shortPrimaryCtaLabel(state: AddHomeUiState): String =
+            when (state.form.currentStep) {
+                AddHomeStep.Address, AddHomeStep.Confirm -> "This is my home"
+                AddHomeStep.Role -> if (state.isClaimingExistingHome) "Continue" else "Add home"
+                else -> primaryCtaLabel(state.form.currentStep)
+            }
+
         private fun secondaryCta(step: AddHomeStep): WizardSecondaryCta? =
             if (step == AddHomeStep.Success) {
                 WizardSecondaryCta(label = "Done", testTag = "addHomeBackToHub")
@@ -1680,6 +1820,7 @@ open class AddHomeWizardViewModel
             const val PRIVATE_HOME_MESSAGE =
                 "This address has a private Home on Pantopus. Ask someone in that household to send you an invitation."
             private val REFUSAL_CODES = setOf(400, 422, 429)
+            private const val SHORT_TOTAL = 2
             private const val MIN_SEARCH_CHARACTERS = 3
             private const val LOOKUP_BACKGROUND = "background"
             private const val LOOKUP_CHECK = "check"
@@ -1701,6 +1842,7 @@ open class AddHomeWizardViewModel
 
             private const val KEY_SCOPE = "addHome.sessionScope"
             private const val KEY_STEP = "addHome.step"
+            private const val KEY_SHORT = "addHome.short"
             private const val KEY_STREET = "addHome.street"
             private const val KEY_UNIT = "addHome.unit"
             private const val KEY_CITY = "addHome.city"
@@ -1757,6 +1899,9 @@ open class AddHomeWizardViewModel
                         current.description.ifEmpty { suggestions.description.orEmpty() },
                 )
             }
+
+            /** About a kilometer: a search area needs no more, and the exact point stays on the phone. */
+            private fun roughly(value: Double): Double = Math.round(value * 100) / 100.0
 
             /** "2.0" → "2", "2.5" → "2.5". */
             fun trimTrailingZero(value: Double): String = if (value == Math.floor(value)) value.toInt().toString() else value.toString()

@@ -413,7 +413,7 @@ function ItemDetailPage() {
               onDownload={bookletData.download_url ? () => { void api.mailboxV2P2.downloadBooklet(piece.id).catch(() => {}); } : undefined}
             />
           </div>
-        ) : piece.card && launchFeatures.cardTable && !piece.removed ? (
+        ) : (piece.card || piece.card_reply) && launchFeatures.cardTable && !piece.removed ? (
           <CardTablePiece
             key={piece.id}
             piece={piece}

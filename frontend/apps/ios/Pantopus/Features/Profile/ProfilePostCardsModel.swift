@@ -37,6 +37,10 @@ public final class ProfilePostCardsModel {
     /// Whose profile this is: their own posts wear their profile color, as
     /// the header above them does (`ProfileAvatarColor`).
     @ObservationIgnored var profileUserId: String?
+    /// The server answered a card's Save (post id, saved): My posts' Saved tab lets an unsaved post go.
+    @ObservationIgnored var onSaveSettled: (@MainActor (String, Bool) -> Void)?
+    /// The server answered a card's Repost (post id, reposted): My posts' Reposts tab lets an undone one go.
+    @ObservationIgnored var onRepostSettled: (@MainActor (String, Bool) -> Void)?
 
     @ObservationIgnored private var posts: [FeedPostDTO] = []
     @ObservationIgnored private var overrides: [String: Override] = [:]
@@ -173,6 +177,7 @@ public final class ProfilePostCardsModel {
             overrides[postId, default: Override()].isSaved = response.saved
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
             onToast?(response.saved ? "Saved." : "Removed from Saved.")
+            onSaveSettled?(postId, response.saved)
         } catch {
             overrides[postId, default: Override()].isSaved = original
             onToast?("Couldn't update Saved. Try again.")
@@ -200,6 +205,7 @@ public final class ProfilePostCardsModel {
             overrides[postId, default: Override()].shareCount = response.shareCount ?? originalCount
             store.markStale(topics: [ScreenTopic.posts, ScreenTopic.post(postId)])
             onToast?(reposted ? PulseFeedViewModel.repostedToast : "Repost removed.")
+            onRepostSettled?(postId, reposted)
             // On your own profile a post you reposted is there only because you did: undone, it leaves.
             if !reposted, post.repostedAt != nil, !isOwnPost(post), let viewerId, profileUserId == viewerId {
                 posts.removeAll { $0.id == postId }

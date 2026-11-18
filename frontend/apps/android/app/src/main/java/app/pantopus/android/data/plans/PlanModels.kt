@@ -44,6 +44,12 @@ enum class PlanKind(
     /** It can meet online (Plans step 3): not a playdate, a pickup game or an outdoor plan, which meet in person. */
     val canBeOnline: Boolean get() = this != PLAYDATE && this != PICKUP_GAME && this != OUTDOORS
 
+    /**
+     * Its room counts people (Plans for the holidays, "Room for"): not a playdate, which counts families, or a pickup
+     * game, which counts the players it needs.
+     */
+    val countsPeople: Boolean get() = this != PLAYDATE && this != PICKUP_GAME
+
     companion object {
         fun from(wire: String?): PlanKind? = entries.firstOrNull { it.wire == wire }
 
@@ -71,6 +77,9 @@ enum class PlanRequestStatus(
     LEFT("left"),
     REMOVED("removed"),
     EXPIRED("expired"),
+
+    /** Business track B2: the spot is held for 10 minutes while the guest pays. */
+    PAYING("paying"),
     ;
 
     companion object {
@@ -143,6 +152,9 @@ enum class PlanViewerStanding {
     DECLINED,
     REMOVED,
     LEFT,
+
+    /** Business track B2: paying for a held spot (Join reopens the payment). */
+    PAYING,
     ;
 
     companion object {
@@ -160,6 +172,7 @@ enum class PlanViewerStanding {
                         PlanRequestStatus.DECLINED, PlanRequestStatus.EXPIRED -> DECLINED
                         PlanRequestStatus.REMOVED -> REMOVED
                         PlanRequestStatus.LEFT, PlanRequestStatus.WITHDRAWN -> LEFT
+                        PlanRequestStatus.PAYING -> PAYING
                         null -> NONE
                     }
             }
@@ -187,6 +200,9 @@ object PlanAudience {
 /** A private plan (Plans step 1): only its host, the people invited and the people in see it. */
 val PlanDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
 
+/** The holidays' find a date: the host is still picking from the times offered (extras section 2). */
+val PlanDto.isPicking: Boolean get() = dates?.state == "picking"
+
 /** A private plan's pin. */
 val PlanPinDto.isPrivate: Boolean get() = audience == PlanAudience.INVITED
 
@@ -202,6 +218,37 @@ val PlanDto.isBusiness: Boolean get() = business != null
 
 /** A business's pin. */
 val PlanPinDto.isBusiness: Boolean get() = business != null
+
+/** The viewer's invitation, not answered yet. */
+val PlanDto.invitedNoAnswer: Boolean get() = standing == PlanViewerStanding.NONE && myInvite?.status == PlanInviteStatus.PENDING
+
+/**
+ * The viewer said Maybe to their invitation (Plans for the holidays, H1; sent only with `guests=1`). Saying Maybe after
+ * "I'm in" leaves the plan, so the request may read left or withdrawn: only being in, asking, waiting or hosting
+ * outranks it.
+ */
+val PlanDto.saidMaybe: Boolean
+    get() = myInvite?.status == PlanInviteStatus.MAYBE && standing !in OUTRANKS_MAYBE
+
+/** Standings that outrank an invitation's Maybe. */
+private val OUTRANKS_MAYBE =
+    setOf(PlanViewerStanding.HOSTING, PlanViewerStanding.IN, PlanViewerStanding.REQUESTED, PlanViewerStanding.WAITLISTED)
+
+/** A private plan whose guests say how many adults and kids (Plans for the holidays, H1). */
+val PlanDto.takesKids: Boolean get() = kidsWelcome == true && !isPlaydate
+
+/** `my_invite.status` values. */
+object PlanInviteStatus {
+    const val PENDING = "pending"
+    const val MAYBE = "maybe"
+}
+
+/**
+ * What a plan's tag reads in place of its kind's name: the occasion it was started from (Plans for the holidays, H3,
+ * "Thanksgiving dinner"), or what a business calls its plan ("Clinic"); null reads the kind's name.
+ */
+val PlanDto.tagLabel: String?
+    get() = occasion?.text?.takeIf(String::isNotBlank) ?: labelText.takeIf { isBusiness }
 
 val PlanDto.isPlaydate: Boolean get() = planKind == PlanKind.PLAYDATE
 val PlanDto.isAtHome: Boolean get() = placeKind == "home"

@@ -46,14 +46,13 @@ const PostComposer = dynamic(() => import('@/components/feed/PostComposer'), {
 });
 const MagicTaskComposerV2 = dynamic(() => import('@/components/magic-task-v2').then((m) => m.MagicTaskComposerV2), { ssr: false, loading: ComposerSkeleton });
 import FloatingChatWidget from '@/components/chat/FloatingChatWidget';
-import FloatingPromoModal from '@/components/ui/FloatingPromoModal';
 import NamePrompt from '@/components/profile/NamePrompt';
 import BriefingNotice from '@/components/BriefingNotice';
+import GuidanceHost from '@/components/guidance/GuidanceHost';
 import { toast } from '@/components/ui/toast-store';
 import useViewerHome from '@/hooks/useViewerHome';
 import { useTabScroll } from '@/hooks/useTabScroll';
 import { useSyncChanged } from '@/hooks/useSyncChanged';
-import usePromoTriggers from '@/hooks/usePromoTriggers';
 import { prefetchHomeTiles } from '@/utils/tilePrefetch';
 import {
   FEED_COMPOSER_OPEN_EVENT, MAGIC_TASK_OPEN_EVENT, notifyFeedPostCreated, type FeedComposerOpenDetail,
@@ -319,9 +318,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // A cold Messages inbox paints its rows first (lib/shellReads.ts).
   const shellReadsReleased = useShellReadsReleased();
   const { viewerHome } = useViewerHome({ enabled: shellReadsReleased });
-  // Promo cards wait while the one-time name prompt is open.
+  // The briefings notice and the guidance cards wait while the one-time name prompt is open.
   const [namePromptOpen, setNamePromptOpen] = useState(false);
-  usePromoTriggers(namePromptOpen ? null : user);
   useEffect(() => {
     if (viewerHome) {
       prefetchHomeTiles(viewerHome.lat, viewerHome.lng);
@@ -493,7 +491,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         {/* Mobile: hamburger + brand */}
         {isMobile && (
           <>
-            <button onClick={() => sidebarDispatch({ type: 'SET_MOBILE_OPEN', value: !mobileOpen })} className="shrink-0 p-[8px] hover-bg-app rounded-lg transition mr-[8px]" aria-label="Toggle menu" aria-expanded={mobileOpen} aria-controls="mobile-navigation">
+            <button onClick={() => sidebarDispatch({ type: 'SET_MOBILE_OPEN', value: !mobileOpen })} className="shrink-0 p-[8px] hover-bg-app rounded-lg transition mr-[8px]" aria-label="Toggle menu" aria-expanded={mobileOpen} aria-controls="mobile-navigation" data-testid="shell.menu">
               {mobileOpen ? <X className="w-[20px] h-[20px] text-app-muted" /> : <Menu className="w-[20px] h-[20px] text-app-muted" />}
             </button>
             {/* min-w-0 lets the wordmark truncate before the buttons move; mr-auto, not flex-1, keeps its tap
@@ -540,7 +538,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <NotificationBell mode="all" />
             )}
           </div>
-          <button onClick={() => router.push('/app/chat')} className="p-2 max-lg:p-[8px] hover-bg-app rounded-lg relative" aria-label="Messages">
+          <button onClick={() => router.push('/app/chat')} className="p-2 max-lg:p-[8px] hover-bg-app rounded-lg relative" aria-label="Messages" data-testid="shell.messages">
             <MessagesGlyph unread={chatUnread > 0} className="w-[1.375rem] h-[1.375rem] max-lg:w-[22px] max-lg:h-[22px]" />
             {chatUnread > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[11px] leading-[18px] text-center font-bold">{chatUnread > 99 ? '99+' : chatUnread}</span>}
           </button>
@@ -727,7 +725,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
       <FloatingChatWidget />
-      <FloatingPromoModal />
+      {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
+      <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
       {/* Asked once of an account with no name (sign-up didn't ask before October 2026). */}
       {user?.id && !namePromptOpen && !feedComposerOpen && !composerOpen && !placePreviewOpen && <BriefingNotice key={user.id} accountId={user.id} />}
       <NamePrompt

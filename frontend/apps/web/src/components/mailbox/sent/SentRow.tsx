@@ -60,7 +60,7 @@ export default function SentRow({
           recipientName={sentEnvelopeName(piece)}
           // Once the other person has it, the card shows its picture, taken out (design plan Part 4, launch key card_table).
           opened={theyHaveIt}
-          sentTo={theyHaveIt ? sentFirst(piece) : null}
+          sentTo={theyHaveIt || piece.card_reply ? sentFirst(piece) : null}
         />
         <span aria-hidden="true" className={`mt-2 flex items-center gap-2.5 ${piece.can_take_back ? 'pr-[124px]' : ''}`}>
           {piece.card.design ? (

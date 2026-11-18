@@ -19,6 +19,8 @@ struct PlanGoingSection: View {
     let onConfirm: (PlanConfirmation) -> Void
     /// A person's profile, from their photo in who's going.
     let onOpenProfile: (String) -> Void
+    /// Plans for the holidays (board 20): "Change" on the banner opens board 18's sheet.
+    var onAnswer: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var bannerShift: CGFloat = 0
@@ -27,12 +29,15 @@ struct PlanGoingSection: View {
     @State private var showsCalendar = false
 
     var body: some View {
-        PlanBanner(
-            tone: .success,
-            icon: .check,
-            title: "You're in",
-            message: yesLine
-        )
+        Group {
+            if card.answersWithNumbers {
+                PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), onChange: onAnswer)
+            } else if let unlocked = card.dealUnlockedBanner {
+                PlanDealUnlockedBanner(text: unlocked)
+            } else {
+                PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine)
+            }
+        }
         .offset(y: bannerShift)
         .opacity(bannerOpacity)
         .onChange(of: viewModel.revealToken) { _, _ in playBanner() }
@@ -56,6 +61,7 @@ struct PlanGoingSection: View {
             if let line = PlanRepeatCopy.line(card) { PlanRepeatLine(text: line, spoken: PlanRepeatCopy.spoken(card)) }
         }
         if card.isOnline, let place = viewModel.plan?.place { PlanOnlineLinkCard(card: card, place: place) } // board Online
+        PlanGoingExtraCards(viewModel: viewModel, card: card) // deals and paid (B1, B2), then the extras (chip in)
         if let note = viewModel.plan?.place?.note, !note.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.s1) {
                 HStack(spacing: Spacing.s2) {
@@ -71,6 +77,8 @@ struct PlanGoingSection: View {
             .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(card.kind.tint))
             .accessibilityElement(children: .combine)
         }
+        // Board 20: the bring list for someone who is in.
+        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring) }
         HStack(spacing: Spacing.s2) {
             if !card.isOnline { // nowhere to go for an online plan
                 Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
@@ -96,7 +104,9 @@ struct PlanGoingSection: View {
                 people: people,
                 myPartySize: viewModel.plan?.myRequest?.partySize ?? 1,
                 onOpenPerson: onOpenProfile,
-                business: card.business
+                business: card.business,
+                kidsWelcome: card.answersWithNumbers && card.kidsWelcome,
+                kidsTotal: true
             )
         }
         Color.clear.frame(height: 1)
@@ -200,6 +210,9 @@ struct PlanHostingSection: View {
     let onConfirm: (PlanConfirmation) -> Void
     /// A guest's profile, from their row.
     let onOpenProfile: (String) -> Void
+    /// Plans for the holidays (board 4): the counts and the people line open "Who's coming"; the bring card its list.
+    var onOpenGuests: () -> Void = {}
+    var onOpenBring: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -244,22 +257,17 @@ struct PlanHostingSection: View {
             }
             requests
             invite
-            going
-            HStack(spacing: 10) {
-                // A business's team isn't in its plan's chat yet (contract B7): no chat, no button.
-                if !(card.isBusiness && viewModel.plan?.chatRoomId == nil) {
-                    Button(action: onOpenChat) { PlanButtonLabel(title: "Message guests", icon: .messageCircle, kind: .secondary) }
-                        .planButton(.secondary, size: .small)
-                        .disabled(viewModel.plan?.chatRoomId == nil)
-                        .accessibilityIdentifier("planMessageGuests")
-                }
-                // A private plan is shared by invitation only: "Invite friends" above (Plans step 1).
-                if !card.isPrivate, let url = card.shareUrl.flatMap(URL.init(string:)) {
-                    ShareLink(item: url, message: Text(card.title)) {
-                        PlanButtonLabel(title: "Share", icon: .share, kind: .secondary)
-                    }
-                    .planButton(.secondary, size: .small)
-                }
+            // Board 4: on a plan that takes answers, the counts and the people line; "Who's coming" has every row.
+            if let answers = card.answerCounts {
+                PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
+            } else {
+                PlanHostGoingWithMoney(card: card) { going } // B5: the guest list's totals while guests pay here
+            }
+            PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
+            // Side by side; one under another when the words don't fit beside each other (the largest text).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { hostButtons }
+                VStack(spacing: 10) { hostButtons }
             }
             VStack(spacing: 0) {
                 Button(card.isOnline ? "Change the time or link" : "Change the time or place", action: onChange)
@@ -269,6 +277,30 @@ struct PlanHostingSection: View {
                     .planButton(.textDanger, size: .small)
                     .accessibilityIdentifier("planCancel")
             }
+        }
+    }
+
+    /// "Share link" (board 4), "Message guests" and, on a public plan, "Share".
+    @ViewBuilder private var hostButtons: some View {
+        // Board 4: "Share link" first, opening one link for everyone.
+        if card.takesOpenLink {
+            Button(action: onInvite) { PlanButtonLabel(title: "Share link", icon: .share, kind: .secondary) }
+                .planButton(.secondary, size: .small)
+                .accessibilityIdentifier("planShareLink")
+        }
+        // A business's team isn't in its plan's chat yet (contract B7): no chat, no button.
+        if !(card.isBusiness && viewModel.plan?.chatRoomId == nil) {
+            Button(action: onOpenChat) { PlanButtonLabel(title: "Message guests", icon: .messageCircle, kind: .secondary) }
+                .planButton(.secondary, size: .small)
+                .disabled(viewModel.plan?.chatRoomId == nil)
+                .accessibilityIdentifier("planMessageGuests")
+        }
+        // A private plan is shared by invitation only: "Invite friends" above (Plans step 1).
+        if !card.isPrivate, let url = card.shareUrl.flatMap(URL.init(string:)) {
+            ShareLink(item: url, message: Text(card.title)) {
+                PlanButtonLabel(title: "Share", icon: .share, kind: .secondary)
+            }
+            .planButton(.secondary, size: .small)
         }
     }
 
@@ -393,7 +425,7 @@ struct PlanHostingSection: View {
                                 .planFont(.rowTitle)
                                 .foregroundStyle(Theme.Color.appText)
                                 .lineLimit(1)
-                            Text(guestFacts(person))
+                            Text(PlanPersonMoney.facts(person, guestFacts(person)))
                                 .planFont(.footnote)
                                 .foregroundStyle(Theme.Color.appTextSecondary)
                                 .lineLimit(1)
@@ -406,6 +438,7 @@ struct PlanHostingSection: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Opens their profile")
                 .accessibilityIdentifier("planGuest_\(person.userId)")
+                PlanMarkUsedControl(card: card, person: person, onConfirm: onConfirm)
                 Menu {
                     if let requestId = viewModel.requestId(for: person) {
                         Button("Remove from plan", role: .destructive) {

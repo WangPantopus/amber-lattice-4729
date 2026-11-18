@@ -216,17 +216,46 @@ class MomentsMapViewModel
         /** Your photo, for your posting ring. */
         val avatarUrl: String? get() = (auth.state.value as? AuthRepository.State.SignedIn)?.user?.avatarUrl
 
+        /** The Sky: your own Moments waiting to share later, for your row (`MomentsScheduledCell.kt`). */
+        val scheduled = repository.scheduled
+
+        /** Deletes one before its time; [onDone] hears whether it went. */
+        fun deleteScheduled(
+            id: String,
+            onDone: (Boolean) -> Unit,
+        ) {
+            viewModelScope.launch { onDone(repository.delete(id) is NetworkResult.Success) }
+        }
+
         private val viewCenter = MutableStateFlow<Pair<Double, Double>?>(null)
 
-        /** The rings with what's been watched here, nearest the middle of the map first. */
+        private val _timeFilter = MutableStateFlow(MomentsTimeFilter.ALL)
+
+        /** How far back the map shows Moments from (`MomentsTimeFilter.kt`); kept while the app runs. */
+        val timeFilter: StateFlow<MomentsTimeFilter> = _timeFilter.asStateFlow()
+
+        /** The clock the time filter is read against, moved each minute while the map shows ([tick]). */
+        private val clock = MutableStateFlow(Instant.now())
+
+        /** The oldest posting time shown; null for all of them. */
+        private val since = combine(_timeFilter, clock) { filter, now -> filter.since(now) }
+
+        /** The rings with what's been watched here, nearest the middle of the map first, inside the time filter. */
         val rings: StateFlow<List<MomentRingUi>> =
-            combine(_state.map { it.rings }, repository.watched, repository.reported, viewCenter) { rings, watched, reported, center ->
+            combine(
+                _state.map { it.rings },
+                repository.watched,
+                repository.reported,
+                viewCenter,
+                since,
+            ) { rings, watched, reported, center, cutoff ->
                 val now = Instant.now()
-                rings.mapNotNull { ring ->
+                rings.mapNotNull { all ->
+                    val ring = all.postedSince(cutoff) ?: return@mapNotNull null
                     // A Moment leaves the moment its time is up, before the next read, and one you reported at once.
                     val live =
                         ring.moments.filter { brief ->
-                            brief.id !in reported && brief.expiresAt?.let { parseInstant(it)?.isAfter(now) } ?: true
+                            brief.id !in reported && brief.expiresAt?.let { parseMomentInstant(it)?.isAfter(now) } ?: true
                         }
                     if (live.isEmpty()) return@mapNotNull null
                     MomentRingUi(
@@ -348,6 +377,17 @@ class MomentsMapViewModel
         /** Reads the area in view again. */
         fun refresh() {
             viewport?.let(::fetch)
+        }
+
+        /** The time filter's menu. */
+        fun chooseTimeFilter(filter: MomentsTimeFilter) {
+            clock.value = Instant.now()
+            _timeFilter.value = filter
+        }
+
+        /** The minute moved on: with the time filter on, Moments that have grown too old leave the map. */
+        fun tick() {
+            clock.value = Instant.now()
         }
 
         private fun fetch(area: Viewport) {
@@ -529,11 +569,14 @@ class MomentsMapViewModel
             // The first read can come before the camera reports where it settled: wait for the one after.
             if (!looksAround || state.spot != null || !area.box.shows(center.latitude, center.longitude)) return
             looksAround = false
-            val nothingInView = rings.none { !it.noLocation && area.box.holds(it.latitude, it.longitude) }
+            // Only what the time filter shows counts, and is worth a move.
+            val cutoff = _timeFilter.value.since(Instant.now())
+            val nothingInView =
+                rings.none { !it.noLocation && area.box.holds(it.latitude, it.longitude) && it.postedSince(cutoff) != null }
             viewModelScope.launch {
                 val found =
                     lookAround(center.latitude, center.longitude, nothingInView, repository.watched.value) { box, zoom ->
-                        repository.lookAt(box.south, box.west, box.north, box.east, zoom)
+                        repository.lookAt(box.south, box.west, box.north, box.east, zoom)?.mapNotNull { it.postedSince(cutoff) }
                     }
                 // Unless the map was moved, a spot opened or the center changed while it looked.
                 val now = _state.value
@@ -562,8 +605,6 @@ class MomentsMapViewModel
             const val HEIGHTS_PREFS = "pantopus.moments.heights"
         }
     }
-
-private fun parseInstant(value: String): Instant? = runCatching { Instant.parse(value.replace("+00:00", "Z")) }.getOrNull()
 
 /** Great-circle distance in meters. */
 internal fun metersBetween(

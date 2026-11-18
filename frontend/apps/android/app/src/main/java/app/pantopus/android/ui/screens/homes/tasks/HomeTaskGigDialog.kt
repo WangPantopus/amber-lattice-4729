@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.pantopus.android.ui.components.closesKeyboardOnTapOrScroll
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
+import app.pantopus.android.ui.components.rememberAddressSearchArea
 import app.pantopus.android.ui.screens.compose.gig.GigComposeCategory
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.Spacing
@@ -55,6 +57,9 @@ fun HomeTaskGigDialog(
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     HomeTaskResumeEffect(controller::resume, controller::pause)
+    // "Find location" lists addresses near the person's home first (FASTVERIFY section 11).
+    val addressSearchArea = rememberAddressSearchArea()
+    LaunchedEffect(controller, addressSearchArea) { controller.addressSearchArea = addressSearchArea }
     DisposableEffect(controller) {
         onDispose {
             controller.close()

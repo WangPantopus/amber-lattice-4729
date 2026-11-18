@@ -45,6 +45,27 @@ export function useHomeCenter(homeId: string | null | undefined): { lat: number;
   }, [data, homeId]);
 }
 
+/**
+ * The point of the person's own home (the primary one, else the first with a point), for address suggestions
+ * that should list nearby addresses first. Null with no home or no point.
+ */
+export function useMyHomeCenter(options: { enabled?: boolean } = {}): { lat: number; lng: number } | null {
+  const { data } = useQuery({ ...myHomesQuery(), enabled: options.enabled ?? true });
+  return useMemo(() => {
+    const homes = data?.homes ?? [];
+    const primaryId = (data as { primary_home?: { id?: string } | null } | undefined)?.primary_home?.id;
+    const ordered = [...homes.filter((h) => h.id === primaryId), ...homes.filter((h) => h.id !== primaryId)];
+    for (const home of ordered) {
+      const point = home.location as unknown as { latitude?: unknown; longitude?: unknown } | null | undefined;
+      if (point?.latitude == null || point?.longitude == null) continue;
+      const lat = Number(point.latitude);
+      const lng = Number(point.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    }
+    return null;
+  }, [data]);
+}
+
 export type MyClaimsReply = Awaited<ReturnType<typeof api.homeOwnership.getMyOwnershipClaims>>;
 export type MyClaim = MyClaimsReply['claims'][number];
 

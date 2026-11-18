@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.homes.HomeResidencyAddressSnapshot
 import app.pantopus.android.data.api.models.homes.PersonalHomeResidencyProgress
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.homes.HomeFastVerifyRepository
 import app.pantopus.android.data.homes.HomePostalKind
 import app.pantopus.android.data.homes.HomePostalOutcome
 import app.pantopus.android.data.homes.HomePostalStatus
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 enum class HomePostalNavigation { Home, Residency, Ownership, AddHome, Document, AddressWrong }
@@ -67,9 +69,27 @@ data class HomePostalUiState(
     val codeInput: String = "",
     val confirmsMail: Boolean = false,
     val confirmsCancellation: Boolean = false,
-)
+    /** Faster home verification is on here (`verify-options` answered): the request is one tap ("Mail my postcard"). */
+    val oneTap: Boolean = false,
+    /** The card's QR picture and "This wasn't me" are on (`home_postcard_scan`). */
+    val postcardScan: Boolean = false,
+    /** A scanned card's code that this account has no card to enter it on: "Did you ask for this card?". */
+    val unmatchedScan: Boolean = false,
+    /**
+     * The server answered that this account has no card or place at the scanned card's home: the status can't be read
+     * by design, so the page shows no status error and no "Try again" (a failed connection still does).
+     */
+    val scanNotMine: Boolean = false,
+    /** "This wasn't me" went through. */
+    val reported: Boolean = false,
+    val reporting: Boolean = false,
+) {
+    /** One tap: the Home's saved address goes back as it came, with no form to fill. */
+    val showsOneTap: Boolean get() = oneTap && status?.canRequest == true && status.mailingAddress != null
+}
 
 @HiltViewModel
+@Suppress("TooManyFunctions") // Today's postal steps plus the one tap and the scanned card's report.
 class HomePostalViewModel
     @Inject
     constructor(
@@ -77,6 +97,7 @@ class HomePostalViewModel
         private val factory: HomePostalFactory,
         private val residency: HomeResidencyProgressRepository,
         sessions: HomeClaimSessionScopeFactory,
+        private val fastVerify: HomeFastVerifyRepository,
     ) : ViewModel() {
         val homeId = savedStateHandle.get<String>("homeId").orEmpty().lowercase()
         private val session = sessions.create(viewModelScope)
@@ -84,6 +105,12 @@ class HomePostalViewModel
         private var generation = 0L
         private var visible = false
         private var job: Job? = null
+
+        /** The code a scanned card's link carried (FASTVERIFY): filled in while this account has that card to enter. */
+        private var scannedCode: String? = ScannedPostcardCode.take(homeId)
+
+        /** "This wasn't me" went through. Kept here, as the scanned code is: the screen's state is cleared whenever it is left. */
+        private var scanReported = false
         private val _state = MutableStateFlow(HomePostalUiState())
         val state = _state.asStateFlow()
         val originalMailAddress: HomeResidencyAddressSnapshot? get() =
@@ -143,6 +170,34 @@ class HomePostalViewModel
             if (canRequestMail) _state.update { it.copy(confirmsMail = true) }
         }
 
+        /** "Mail my postcard": the saved address, sent as it came, with no second question (FASTVERIFY one tap). */
+        fun requestMailOneTap() {
+            if (!_state.value.showsOneTap || !canRequestMail) return
+            _state.update { it.copy(confirmsMail = true) }
+            requestMail()
+        }
+
+        /** "This wasn't me" for the scanned card: it is stopped and looked into; the answer says the same whatever. */
+        fun reportScannedCard() {
+            val code = scannedCode ?: return
+            if (_state.value.reporting || _state.value.reported) return
+            _state.update { it.copy(reporting = true) }
+            viewModelScope.launch {
+                val recorded = fastVerify.reportPostcard(homeId, code)
+                if (recorded) {
+                    scannedCode = null
+                    scanReported = true
+                }
+                _state.update {
+                    it.copy(
+                        reporting = false,
+                        reported = recorded,
+                        error = if (recorded) it.error else "Couldn't send that. Try again.",
+                    )
+                }
+            }
+        }
+
         fun dismissConfirmation() {
             _state.update { it.copy(confirmsMail = false, confirmsCancellation = false) }
         }
@@ -175,6 +230,8 @@ class HomePostalViewModel
             if (!canVerifyCode) return
             val postcard = _state.value.status?.postcard ?: return
             val code = _state.value.codeInput
+            // The scanned code is used once; a wrong one is typed again by hand.
+            scannedCode = null
             _state.update { it.copy(codeInput = "") }
             perform { revision ->
                 clearCurrent()
@@ -266,9 +323,25 @@ class HomePostalViewModel
             check(current(revision) && progress is NetworkResult.Success)
             // A request must repeat the Home's saved address, so an empty form starts from it.
             val saved = postal.mailingAddress?.takeIf { postal.canRequest }
+            // Faster home verification: one tap, and the scanned card's QR answers. Null keeps today's screen.
+            val options = fastVerify.refresh(homeId)
+            session.requireCurrent()
+            check(current(revision))
+            val scanned = scannedCode
             _state.update {
                 val address = if (saved != null && it.address.isBlank) HomePostalAddressForm(saved) else it.address
-                it.copy(status = postal, progress = progress.data, address = address)
+                it.copy(
+                    status = postal,
+                    progress = progress.data,
+                    address = address,
+                    oneTap = options != null,
+                    postcardScan = options?.postcardScan == true,
+                    // A scanned card fills the code field when this account has a card to enter it on.
+                    codeInput = if (scanned != null && postal.canVerify && it.codeInput.isEmpty()) scanned else it.codeInput,
+                    unmatchedScan = (scanned != null && !postal.canVerify) || scanReported,
+                    scanNotMine = false,
+                    reported = scanReported,
+                )
             }
         }
 
@@ -280,6 +353,27 @@ class HomePostalViewModel
                     outcome = coordinator.outcome,
                     storageFailed = coordinator.storageFailed,
                 )
+            }
+        }
+
+        /**
+         * An action failed. A scanned card this account can't open still offers "This wasn't me", and keeps its thanks
+         * after it. When the server [answered] (anything but a failed connection), the card's status is kept from this
+         * account on purpose, so there is no status error to show and nothing to try again.
+         */
+        private fun actionFailed(
+            revision: Long,
+            answered: Boolean,
+        ) {
+            if (!visible || revision != generation) return
+            _state.update {
+                val scan = (scannedCode != null || scanReported) && it.status == null
+                // Only the plain status error is left out: a changed sign-in, a storage failure or an attempt of
+                // this account's own still says so.
+                val plain = session.isCurrent && !coordinator.storageFailed && coordinator.pending == null
+                val notMine = scan && answered && plain
+                val words = HomePostalMessages.recovery(session.isCurrent, coordinator.storageFailed, coordinator.pending != null)
+                it.copy(unmatchedScan = scan, scanNotMine = notMine, reported = scanReported, error = words.takeUnless { notMine })
             }
         }
 
@@ -295,17 +389,10 @@ class HomePostalViewModel
                         action(revision)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
+                    } catch (_: IOException) {
+                        actionFailed(revision, answered = false)
                     } catch (_: Exception) {
-                        if (visible && revision == generation) {
-                            _state.update {
-                                it.copy(
-                                    error =
-                                        HomePostalMessages.recovery(
-                                            session.isCurrent, coordinator.storageFailed, coordinator.pending != null,
-                                        ),
-                                )
-                            }
-                        }
+                        actionFailed(revision, answered = true)
                     } finally {
                         if (visible && revision == generation) {
                             publishOriginal(revision)

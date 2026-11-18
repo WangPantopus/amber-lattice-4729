@@ -14,22 +14,40 @@ public struct HelpCenterView: View {
     private let onBack: @MainActor () -> Void
 
     @State private var showsEmailFallback = false
+    /// "Tips for each screen" is open (the guidance cards' list, GUIDE spec §4).
+    @State private var showsTips = false
 
     public init(onBack: @escaping @MainActor () -> Void) {
         self.onBack = onBack
     }
 
     public var body: some View {
-        ContentDetailShell(
-            title: "Help",
-            onBack: onBack,
-            header: { headerView },
-            body: { contentBody },
-            cta: { ctaBar }
-        )
-        .background(Theme.Color.appBg)
-        .accessibilityIdentifier("helpCenter")
+        ZStack {
+            if showsTips {
+                GuidanceTipsView { withAnimation(.easeOut(duration: 0.25)) { showsTips = false } }
+                    .transition(.move(edge: .trailing))
+            } else {
+                ContentDetailShell(
+                    title: "Help",
+                    onBack: onBack,
+                    header: { headerView },
+                    body: { contentBody },
+                    cta: { ctaBar }
+                )
+                .background(Theme.Color.appBg)
+                .accessibilityIdentifier("helpCenter")
+                .transition(.move(edge: .leading))
+            }
+        }
         .emailFallbackAlert(address: "support@pantopus.com", isPresented: $showsEmailFallback)
+    }
+
+    /// The first row of "Getting started" while the guidance cards are on: their list, to read again.
+    private var tipsRow: some View {
+        GuidanceTipRow(title: "Tips for each screen") {
+            withAnimation(.easeOut(duration: 0.25)) { showsTips = true }
+        }
+        .accessibilityIdentifier("helpCenter.tips")
     }
 
     private var headerView: some View {
@@ -55,6 +73,9 @@ public struct HelpCenterView: View {
                     Text(section.heading)
                         .pantopusTextStyle(.h3)
                         .foregroundStyle(Theme.Color.appText)
+                    if section.heading == Self.gettingStarted, GuidanceCenter.shared.tipsAvailable {
+                        tipsRow
+                    }
                     ForEach(section.items, id: \.question) { item in
                         VStack(alignment: .leading, spacing: Spacing.s1) {
                             Text(item.question)
@@ -105,6 +126,8 @@ public struct HelpCenterView: View {
         }
     }
 
+    private static let gettingStarted = "Getting started"
+
     private struct Section {
         let heading: String
         let items: [Item]
@@ -116,7 +139,7 @@ public struct HelpCenterView: View {
     }
 
     private static let sections: [Section] = [
-        Section(heading: "Getting started", items: [
+        Section(heading: gettingStarted, items: [
             Item(
                 question: "Why do I need to verify my email?",
                 answer: "Verifying your email unlocks posting, messaging, and trust signals other neighbors look for. " +

@@ -26,6 +26,9 @@ const planInvites = require('./planInvites');
 const planBusiness = require('./planBusiness');
 const planSeries = require('./planSeries');
 const businessActing = require('../businessActing');
+const planGuests = require('./planGuests');
+// Paid spots (B2); it requires this module, so it is read when called.
+const planPaid = () => require('./planPaid');
 const { findGame } = require('./planGames');
 const { validTimezone } = require('../../utils/timezone');
 
@@ -89,6 +92,11 @@ function auditBusinessPlan(plan, viewer, action, metadata = {}) {
   });
 }
 
+/** Seats taken now: accepted requests and guests without an account who said they're in (planGuests.js). */
+async function seatsNow(plan, requests) {
+  return planService.seatsTaken(plan, requests, await planGuests.guestSeats(plan.post_id));
+}
+
 async function activeRequests(postId) {
   const { data, error } = await supabaseAdmin
     .from('PlanRequest')
@@ -146,7 +154,7 @@ function partyLabel(name, partySize) {
 
 /** The response body after a write: PlanDetail or PlanCard for the person who wrote. */
 async function planBodyFor(postId, viewer) {
-  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more }, { gps: viewer.gps, point: viewer.origin });
+  const fresh = await loadViewer({ id: viewer.id, role: viewer.role, plansBiz: viewer.bizMarker, plansMore: viewer.more, plansGuests: viewer.guests, plansExtras: viewer.extras }, { gps: viewer.gps, point: viewer.origin });
   const { body } = await planService.getForViewer(postId, fresh);
   return body;
 }
@@ -486,8 +494,12 @@ async function checkedPlanInput(viewer, input, internal = {}) {
   validateTimes(input.starts_at, input.ends_at, hostAs ? { maxDaysAhead: rules.BUSINESS_LIMITS.maxDaysAhead }
     : series ? { maxDaysAhead: planSeries.LIMITS.maxDaysAhead }
       : isPrivate ? { maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead, isPrivate } : {});
+  // Room for up to 100 on a private plan a person hosts, with the switch on (H1); else 30.
+  const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(hostAs), guestAnswers: viewer.guestAnswersFlag });
   const spots = Number(input.spots);
-  if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+  if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
+  // Kids welcome (H1): guests say how many adults and kids. A person's plan, with the switch on; a playdate has its own.
+  const kidsWelcome = !hostAs && kind !== 'playdate' && viewer.guestAnswersFlag && bool(input.kids_welcome, 'Kids welcome') === true;
   // A business's plan is at one of its own locations: no home guard and no 3-mile rule.
   const place = hostAs ? hostAs.place : resolvePlace(viewer, kind, input.place, {
     isPrivate, details: input.details, seriesPoint: series ? series.point || null : null,
@@ -521,7 +533,7 @@ async function checkedPlanInput(viewer, input, internal = {}) {
   else await assertHostLimits(viewer.id, { isPrivate, seriesDate: Boolean(series) });
   const timezone = hostAs ? planPlace.timezoneFor(place.latitude, place.longitude)
     : placeTimezone(viewer, place, { keepTimezone: series ? series.timezone || null : null });
-  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone };
+  return { kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone, kidsWelcome };
 }
 
 /**
@@ -574,12 +586,22 @@ async function previewPlan(user, input) {
  */
 async function createPlan(user, input, internal = {}) {
   const viewer = await loadViewer(user, { gps: input.gps });
+  // Find a date (the extras, 08-extras section 2), while the host has its switch: 2 to 5 times instead of one. The
+  // plan's time is the earliest until the host picks. Never with a repeat.
+  let dateOptions = null;
+  if (input.date_options != null && input.host_as == null && !internal.series && (await require('./planDates').enabledFor(viewer.id))) {
+    if (input.repeat) fail(422, 'validation', 'A plan that repeats can’t let guests pick the date.', { field: 'date_options' });
+    const times = require('./planDates').checkedTimes(input.date_options);
+    input = { ...input, starts_at: times[0].starts_at, ends_at: times[0].ends_at };
+    dateOptions = require('./planDates').initialValue(times);
+  }
   // A second tap on the same "Post plan": a neighbor's is caught before the checks, as before; a business's
   // after them, once the person is known to post for that business.
   const secondTap = input.host_as == null && !internal.series ? await recentSamePlan(viewer.id, input, { more: viewer.more }) : null;
   if (secondTap) return planBodyFor(secondTap, viewer);
   const {
     kind, title, about, guestNote, spots, place, autoRules, joinRequirement, details, hostAs, audience, guestsCanInvite, repeat, timezone,
+    kidsWelcome,
   } = await checkedPlanInput(viewer, input, internal);
   // The host: the person, or the business they post for. The business's own account is the plan's host and its
   // post's author, so nothing a guest reads names the staff member (who is kept in posted_by_user_id).
@@ -589,6 +611,36 @@ async function createPlan(user, input, internal = {}) {
     if (again) return planBodyFor(again, viewer);
   }
 
+  // The occasion that started it (H3), while the host has its switch: a person's plan only.
+  let occasion = null;
+  if (!hostAs && input.occasion != null && (await require('./planOccasions').enabledFor(viewer.id))) {
+    occasion = require('./planOccasions').checkedKey(input.occasion);
+    if (!occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+  }
+  // The host form's bring list (H2, A3), while the host has its switch: a person's plan only.
+  const bringList = !hostAs && input.bring != null && (await require('./planBring').enabledFor(viewer.id))
+    ? require('./planBring').initialList(input.bring, { id: viewer.id, name: await hostFirstOf({ host_user_id: viewer.id }) })
+    : null;
+  // The gift exchange (the extras), while the host has its switch: a private plan of a person's, not a playdate.
+  const gift = !hostAs && input.gift != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planGift').enabledFor(viewer.id))
+    ? require('./planGift').initialValue(input.gift, input.starts_at) : null;
+  if (dateOptions && (audience !== 'invited' || kind === 'playdate')) {
+    fail(422, 'validation', 'Only a private plan can let guests pick the date.', { field: 'date_options' });
+  }
+  // Chip in (the extras, 08-extras section 3), while the host has its switch: a private plan of a person's, not a
+  // playdate. Checked before anything is saved.
+  const chipIn = !hostAs && input.chip_in != null && audience === 'invited' && kind !== 'playdate'
+    && (await require('./planChipIn').enabledFor(viewer.id))
+    ? require('./planChipIn').initialValue(input.chip_in) : null;
+  // The price of a spot (B2), while the business has the switch: only a business that may charge, never online.
+  const priceCents = await require('./planPaid').priceForNewPlan(hostAs, input, place);
+  // Guests pay their bill here, and tips (B5), while the business has the switch: needs payouts set up as a price does.
+  const payHere = await require('./planChecks').payHereForNewPlan(hostAs, input, kind);
+  // A business's plan's deal (B1), while the business has the switch: checked against its room, start, (B4, money
+  // off the spot) its price and (B5, money off the bill) whether guests pay here.
+  const deal = await require('./planDeals').dealForNewPlan(hostAs, input, { spots, startsAt: input.starts_at, priceCents,
+    payHere: Boolean(payHere?.pay_here) });
   // An online plan with no area is at 0, 0 and is called "Online"; any other plan's area is the jittered point.
   const area = place.noArea ? { latitude: 0, longitude: 0 } : planPlace.areaPointFor(kind, place.latitude, place.longitude);
   // What the area is called when the map can't name it: the host's own city, or for a business's plan the
@@ -654,7 +706,8 @@ async function createPlan(user, input, internal = {}) {
     } : {}),
     kind,
     spots,
-    auto_rules: autoRules,
+    // A paid plan lets guests in as they pay (approval on a paid plan comes later: Plans with businesses C7).
+    auto_rules: priceCents ? ['open'] : autoRules,
     join_requirement: joinRequirement,
     place_kind: place.kind,
     area_label: label,
@@ -669,6 +722,15 @@ async function createPlan(user, input, internal = {}) {
     place_ref: placeRef,
     // Only an online plan has a link (the table's plan_online_has_link).
     ...(place.kind === 'online' ? { online_link: place.link } : {}),
+    ...(kidsWelcome ? { kids_welcome: true } : {}),
+    ...(bringList ? { bring_list: bringList } : {}),
+    ...(chipIn ? { chip_in: chipIn } : {}),
+    ...(dateOptions ? { date_options: dateOptions } : {}),
+    ...(gift ? { gift } : {}),
+    ...(occasion ? { occasion } : {}),
+    ...(deal ? { deal } : {}),
+    ...(priceCents ? { price_cents: priceCents } : {}),
+    ...(payHere ? payHere : {}),
     timezone,
     status: 'open',
   });
@@ -681,8 +743,11 @@ async function createPlan(user, input, internal = {}) {
     plan_id: post.id, kind, ...(hostAs ? { business: true } : {}), ...(audience === 'invited' ? { private: true } : {}),
     ...(place.kind === 'online' ? { online: true } : {}),
     ...(repeat ? { repeats: repeat.freq, series_index: internal.series ? internal.series.index : 1 } : {}),
+    ...(occasion ? { occasion } : {}),
   } });
+  if (occasion && !internal.series) recordFunnelEvent('plan_occasion_started', { userId: viewer.id, meta: { plan_id: post.id, kind, occasion } });
   if (hostAs) {
+    if (deal) recordFunnelEvent('plan_deal_set', { userId: viewer.id, meta: { plan_id: post.id, kind, scope: deal.scope, deal_kind: deal.kind } });
     await auditBusinessPlan({ business_user_id: hostId, post_id: post.id }, viewer, 'plans.post', { kind, label: hostAs.label });
     return planBodyFor(post.id, viewer);
   }
@@ -736,6 +801,23 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   const reviewedGame = await checkedSportsRevision(viewer, plan, patch.sports_revision);
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over, so it can’t change.');
+  // The bring list's items are checked before anything is saved (H2).
+  if (patch.bring != null) require('./planBring').checkedItems(patch.bring);
+  // So is chip in (the extras), while the host has its switch on a plan that may have it.
+  const chipInChange = patch.chip_in !== undefined && require('./planExtras').takesExtras(plan)
+    && (await require('./planChipIn').enabledFor(plan.host_user_id));
+  if (chipInChange && patch.chip_in !== null) require('./planChipIn').checkedInput(patch.chip_in);
+  if (patch.gift && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    require('./planGift').checkedChange(plan, patch.gift, patch.starts_at || plan.post.event_date);
+  }
+  // Find a date: while the date is being picked the times offered change, not the plan's time.
+  const planDates = require('./planDates');
+  if (planDates.isPicking(plan)) {
+    if (patch.starts_at !== undefined || patch.ends_at !== undefined) {
+      fail(422, 'picking', 'Pick a date first, or change the times you offered.');
+    }
+    if (patch.date_options !== undefined) planDates.checkedTimes(patch.date_options);
+  }
 
   const postUpdate = {};
   const planUpdate = {};
@@ -831,11 +913,12 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
   }
 
   const requests = await activeRequests(postId);
-  const going = planService.seatsTaken(plan, requests);
+  const going = await seatsNow(plan, requests);
   let spotsGrew = false;
   if (patch.spots !== undefined) {
+    const maxSpots = rules.maxSpots({ isPrivate, business: Boolean(plan.business_user_id), guestAnswers: viewer.guestAnswersFlag });
     const spots = Number(patch.spots);
-    if (!Number.isInteger(spots) || spots < 1 || spots > 30) fail(422, 'validation', 'Spots can be 1 to 30.');
+    if (!Number.isInteger(spots) || spots < 1 || spots > maxSpots) fail(422, 'validation', `Spots can be 1 to ${maxSpots}.`);
     if (spots < going) fail(422, 'validation', `${going} ${going === 1 ? 'person is' : 'people are'} in, so spots can’t go below that.`);
     spotsGrew = spots > plan.spots;
     planUpdate.spots = spots;
@@ -870,6 +953,39 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       if (!plan.series_id) Object.assign(planUpdate, { series_id: plan.post_id, series_index: 1 });
     }
   }
+  // The price of a spot (B2): fixed once anyone is in or paying; a paid plan lets guests in as they pay.
+  const priceChange = await require('./planPaid').priceChange(plan, patch, { placeKind });
+  // A business's plan's deal (B1): set or changed while nobody is in, removed at any time (everyone in is told). Money
+  // off the spot (B4) is checked against the price the plan will have.
+  const priceAfter = priceChange ? priceChange.price_cents : (plan.price_cents ?? null);
+  // Guests pay their bill here, and tips (B5): either may change at any time.
+  const payHereChange = await require('./planChecks').payHereChange(plan, patch);
+  if (payHereChange) Object.assign(planUpdate, payHereChange);
+  const payHereAfter = payHereChange ? payHereChange.pay_here : Boolean(plan.pay_here);
+  const dealChange = await require('./planDeals').dealChange(plan, patch, {
+    going, spots: planUpdate.spots ?? plan.spots, startsAt: postUpdate.event_date || plan.post.event_date,
+    priceCents: priceAfter && (await require('./planPaid').enabledFor(plan.host_user_id)) ? priceAfter : null,
+    priceChanged: Boolean(priceChange),
+    payHere: payHereAfter && (await require('./planChecks').enabledFor(plan.host_user_id)),
+  });
+  if (dealChange) planUpdate.deal = dealChange.update;
+  if (priceChange) {
+    planUpdate.price_cents = priceChange.price_cents;
+    if (priceChange.price_cents) planUpdate.auto_rules = ['open'];
+  } else if (plan.price_cents && planUpdate.auto_rules && !planUpdate.auto_rules.includes('open')
+    && (await require('./planPaid').enabledFor(plan.host_user_id))) {
+    planUpdate.auto_rules = ['open'];
+  }
+  // The occasion (H3): another from the list, or null for none, with the switch on.
+  if (patch.occasion !== undefined && !plan.business_user_id && (await require('./planOccasions').enabledFor(viewer.id))) {
+    const occasion = patch.occasion === null ? null : require('./planOccasions').checkedKey(patch.occasion);
+    if (patch.occasion !== null && !occasion) fail(422, 'validation', 'Choose an occasion from the list.');
+    planUpdate.occasion = occasion;
+  }
+  // Kids welcome (H1): with the switch on, on a person's plan that isn't a playdate.
+  if (patch.kids_welcome !== undefined && viewer.guestAnswersFlag && !plan.business_user_id && plan.kind !== 'playdate') {
+    planUpdate.kids_welcome = bool(patch.kids_welcome, 'Kids welcome') === true;
+  }
   if (patch.join_requirement !== undefined && plan.kind !== 'playdate' && !plan.business_user_id && !isPrivate) {
     planUpdate.join_requirement = oneOf(patch.join_requirement, ['located', 'verified'], 'who can ask');
   }
@@ -893,6 +1009,21 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     if (newDay !== oldDay && newDay > rules.localParts(new Date(), tz).date) planUpdate.host_summary_sent_at = null;
   }
 
+  // A move to the host's home (H1, contract 6.8): "I say yes first" turns on, and guests from the open link who never
+  // had the host's own yes wait for it again. They are held before the plan row moves, so no key of theirs reads the
+  // home in between: a failure here leaves the plan where it was, and if saving the move fails after it, they stay
+  // waiting (the safe side) and the host can let them in.
+  // People with an account who came by the open link and whom the host never let in by hand wait too (6.9 item 7):
+  // out of the chat, their ask pending again, before the plan row moves.
+  const movingHome = placeChanged && planGuests.movesToHome(plan, placeKind);
+  let heldForHome = [];
+  let heldAsks = [];
+  if (movingHome) {
+    planUpdate.open_invite_ok_first = true;
+    heldForHome = await planGuests.holdForHome(postId);
+    heldAsks = await planGuests.holdAccountsForHome(plan, { io });
+  }
+
   const stamp = nowIso();
   if (Object.keys(postUpdate).length > 0) {
     const { error } = await supabaseAdmin.from('Post').update({ ...postUpdate, updated_at: stamp, is_edited: true, edited_at: stamp }).eq('id', postId);
@@ -902,11 +1033,35 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
     const { error } = await supabaseAdmin.from('Plan').update({ ...planUpdate, updated_at: stamp }).eq('post_id', postId);
     if (error) throw new Error(`Failed to save the change: ${error.message}`);
   }
+  if (movingHome) {
+    // Anyone from the open link who answered between the hold and the move waits too.
+    const later = await planGuests.holdForHome(postId)
+      .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
+    heldForHome = [...heldForHome, ...later.filter((r) => !heldForHome.some((h) => h.id === r.id))];
+    const laterAsks = await planGuests.holdAccountsForHome(plan, { io, strict: false })
+      .catch((err) => { logger.warn('plans.edit.hold_failed', { planId: postId, error: err.message }); return []; });
+    heldAsks = [...heldAsks, ...laterAsks.filter((r) => !heldAsks.some((h) => h.id === r.id))];
+  }
   if (postUpdate.title && postUpdate.title !== plan.post.title) await planChat.renameRoom(plan, postUpdate.title);
+  // The host form's bring list (H2, A3): replaced as PUT …/bring does, or taken away with null.
+  if (patch.bring !== undefined && !plan.business_user_id && (await require('./planBring').enabledFor(plan.host_user_id))) {
+    await require('./planBring').replaceFromForm(plan, patch.bring, await hostFirstOf(plan));
+  }
+  // The gift exchange: the budget and the draw time, or null to call it off.
+  if (patch.gift !== undefined && require('./planExtras').takesExtras(plan) && (await require('./planGift').enabledFor(plan.host_user_id))) {
+    await require('./planGift').replaceFromForm(await planService.loadPlanRow(postId), patch.gift);
+  }
+  // Find a date: the times offered (a removed time's ticks go, and nobody is told).
+  if (patch.date_options !== undefined && planDates.isPicking(plan) && (await planDates.enabledFor(plan.host_user_id))) {
+    await planDates.replaceFromForm(plan, patch.date_options);
+  }
+  // Chip in (the extras): replaced, keeping who paid, or taken away with null.
+  if (chipInChange) await require('./planChipIn').replaceFromForm(plan, patch.chip_in);
 
   const updated = await planService.loadPlanRow(postId);
   if (timeMoved || placeChanged) {
-    const accepted = requests.filter((r) => r.status === 'accepted');
+    // Not someone the move to a home made wait (6.9 item 7): they get their own notice.
+    const accepted = requests.filter((r) => r.status === 'accepted' && !heldAsks.some((h) => h.id === r.id));
     if (accepted.length > 0) {
       const { error } = await supabaseAdmin.from('PlanRequest')
         .update({
@@ -931,7 +1086,23 @@ async function editPlan(user, postId, patch, { io = null } = {}) {
       }
     }
   }
+  // Guests the move to a home made wait (6.8): one email each; people with an account (6.9): one notice each; and one
+  // notice to the host.
+  if (heldForHome.length > 0 || heldAsks.length > 0) {
+    await planGuests.movedToHome(updated, heldForHome, heldAsks).catch((err) => logger.warn('plans.edit.move_home_failed', { planId: postId, error: err.message }));
+  }
+  // Guests without an account who are in (H1): their page says what changed, and one email goes (not to a guest who
+  // waits, so a guest the move made wait gets only its own email).
+  if (timeMoved || placeChanged) {
+    await planGuests.planChanged(updated, { timeMoved, placeChanged }).catch((err) => logger.warn('plans.edit.guests_failed', { planId: postId, error: err.message }));
+  }
   if (spotsGrew) await offerOpenSpots(updated, { io });
+  if (dealChange?.removed) {
+    await require('./planDeals').notifyRemoved(updated, requests.filter((r) => r.status === 'accepted'), await hostFirstOf(updated))
+      .catch((err) => logger.warn('plans.edit.deal_removed_notice_failed', { planId: postId, error: err.message }));
+  } else if (dealChange?.update) {
+    recordFunnelEvent('plan_deal_set', { userId: viewer.id, meta: { plan_id: postId, kind: plan.kind, scope: dealChange.update.scope, deal_kind: dealChange.update.kind } });
+  }
   await auditBusinessPlan(plan, viewer, 'plans.edit', { fields: [...Object.keys(postUpdate), ...Object.keys(planUpdate)] });
   return planBodyFor(postId, viewer);
 }
@@ -988,6 +1159,15 @@ async function cancelOpenPlan(plan, { hostFirst, cancelNote }) {
     .eq('post_id', postId).in('status', ['pending', 'waitlisted']);
   if (expireError) logger.warn('plans.cancel.expire_failed', { postId, error: expireError.message });
 
+  // Holds on a paid plan end, and everyone who paid gets all of it back (B2).
+  const paying = requests.filter((r) => r.status === 'paying');
+  if (paying.length > 0) {
+    await supabaseAdmin.from('PlanRequest').update({ status: 'expired', updated_at: stamp }).in('id', paying.map((r) => r.id)).eq('status', 'paying');
+  }
+  if (plan.price_cents) {
+    await planPaid().onBusinessEnds(plan, requests.filter((r) => r.status === 'accepted' || r.status === 'paying').map((r) => r.id), 'cancelled')
+      .catch((err) => logger.warn('plans.cancel.refunds_failed', { postId, error: err.message }));
+  }
   if (plan.chat_room_id) {
     await planChat.systemLine(plan.chat_room_id, plan.host_user_id, `${hostFirst} cancelled the plan`);
   }
@@ -997,6 +1177,9 @@ async function cancelOpenPlan(plan, { hostFirst, cancelNote }) {
     await planNotify.cancelled({ plan: updated, request, hostFirst, note: cancelNote, wasIn: request.status === 'accepted' });
   }
   await planInvites.notifyCancelled(updated, hostFirst, cancelNote);
+  // Guests without an account who are in (H1): the one email about it.
+  await planGuests.planCancelled(updated, cancelNote)
+    .catch((err) => logger.warn('plans.cancel.guests_failed', { postId, error: err.message }));
   return true;
 }
 
@@ -1028,10 +1211,11 @@ async function enforceCapacity(plan) {
   const accepted = requests
     .filter((r) => r.status === 'accepted')
     .sort((a, b) => (new Date(a.decided_at || a.created_at) - new Date(b.decided_at || b.created_at)) || String(a.id).localeCompare(String(b.id)));
-  let seats = 0;
+  // Guests without an account hold their seats first: they have no waitlist to go back to.
+  let seats = await planGuests.guestSeats(plan.post_id);
   const overflow = [];
   for (const request of accepted) {
-    seats += rules.seatsFor(plan.kind, request.party_size);
+    seats += rules.seatsFor(plan, request.party_size, request.kids_count);
     if (seats > plan.spots) overflow.push(request.id);
   }
   if (overflow.length > 0) {
@@ -1076,22 +1260,22 @@ async function leaveChat(plan, userId, { io, message }) {
 }
 
 /** Let someone in: the chat, the grey line, the notice. When a rule did it, the host hears who is in. */
-async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false, rule = null }) {
+async function admit(plan, request, { byRule, hostFirst, io, viaWaitlist = false, rule = null, paidCents = null }) {
   const roomId = await planChat.ensureRoom(plan, { io });
   await planChat.addMember(roomId, request.user_id, { io });
   const names = await userNames([request.user_id]);
-  const who = partyLabel(names.get(String(request.user_id)), plan.kind === 'playdate' ? 1 : request.party_size);
+  const who = partyLabel(names.get(String(request.user_id)), rules.seatsFor(plan, request.party_size, request.kids_count));
   await planChat.systemLine(roomId, byRule ? request.user_id : plan.host_user_id,
     byRule ? `${who} ${who.includes(' + ') ? 'are' : 'is'} in` : `${hostFirst} let in ${who}`);
   if (viaWaitlist) {
     await planNotify.spotOpened({ plan, request, hostFirst, nowIn: true });
   } else {
-    await planNotify.accepted({ plan, request, hostFirst, byRule });
+    await planNotify.accepted({ plan, request, hostFirst, byRule, paidCents });
   }
   if (byRule) {
     await activeRequests(plan.post_id)
-      .then((requests) => planNotify.guestAutoJoined({
-        plan, request, guestName: who, rule, goingCount: planService.seatsTaken(plan, requests), viaWaitlist,
+      .then(async (requests) => planNotify.guestAutoJoined({
+        plan, request, guestName: who, rule, goingCount: await seatsNow(plan, requests), viaWaitlist,
       }))
       .catch((err) => logger.warn('plans.notify.auto_joined_failed', { planId: plan.post_id, error: err.message }));
   }
@@ -1107,12 +1291,22 @@ async function offerOpenSpots(plan, { io = null } = {}) {
   const hostFirst = await hostFirstOf(plan);
   for (let round = 0; round < 30; round += 1) {
     const requests = await activeRequests(plan.post_id);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
     if (spotsLeft <= 0) return;
-    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan.kind, r.party_size) <= spotsLeft);
+    const next = planService.waitlistOrder(requests).find((r) => rules.seatsFor(plan, r.party_size, r.kids_count) <= spotsLeft);
     if (!next) return;
-    const rule = await ruleFor(plan, next.user_id);
     const stamp = nowIso();
+    // A paid plan (B2): the spot is held 30 minutes for the first person waiting, who pays to take it; then the next.
+    if (plan.price_cents && plan.business_user_id && (await planPaid().enabledFor(plan.host_user_id))) {
+      const fields = await planPaid().payingFields(plan, next.user_id, next.way_in || null, { holdMs: planPaid().WAITLIST_HOLD_MS });
+      const { data: held } = await supabaseAdmin.from('PlanRequest')
+        .update({ ...fields, status: 'paying', payment_id: null, updated_at: stamp })
+        .eq('id', next.id).eq('status', 'waitlisted').select(planService.REQUEST_COLUMNS);
+      if (!held || held.length === 0) continue;
+      await planNotify.spotOpened({ plan, request: held[0], hostFirst, nowIn: false, price: planPaid().priceText(plan.price_cents) });
+      continue;
+    }
+    const rule = await ruleFor(plan, next.user_id);
     if (rule) {
       const { data: moved } = await supabaseAdmin.from('PlanRequest')
         .update({ status: 'accepted', decided_by: 'rule', decided_at: stamp, updated_at: stamp })
@@ -1136,7 +1330,11 @@ async function offerOpenSpots(plan, { io = null } = {}) {
 
 // ── Asking ───────────────────────────────────────────────────
 
-function cleanAsk(plan, body) {
+/**
+ * @param {{ guestAnswers?: boolean }} [opts]  the host has the switch (H1): a private plan takes up to 10 people in one
+ *   answer, and a plan with kids welcome takes adults (party_size) and kids (kids_count).
+ */
+function cleanAsk(plan, body, { guestAnswers = false } = {}) {
   const out = {};
   if (plan.kind === 'playdate') {
     out.party_size = 1;
@@ -1149,9 +1347,17 @@ function cleanAsk(plan, body) {
     out.kids_age_bands = rules.KIDS_AGE_BANDS.filter((b) => bands.includes(b));
     out.stays_with_kids = true;
   } else {
+    const max = guestAnswers && rules.isPrivate(plan) ? rules.PRIVATE_PARTY_MAX : rules.PARTY_MAX;
     const party = body.party_size === undefined ? 1 : Number(body.party_size);
-    if (!Number.isInteger(party) || party < 1 || party > 4) fail(422, 'validation', 'You can bring up to 3 people.');
+    if (!Number.isInteger(party) || party < 1 || party > max) fail(422, 'validation', `You can bring up to ${max - 1} people.`);
     out.party_size = party;
+    if (guestAnswers && plan.kids_welcome) {
+      const kids = body.kids_count === undefined || body.kids_count === null ? 0 : Number(body.kids_count);
+      if (!Number.isInteger(kids) || kids < 0 || kids > rules.PRIVATE_PARTY_MAX) fail(422, 'validation', 'Kids can be 0 to 10.');
+      // A public plan keeps one answer to 4 seats, kids included.
+      if (!rules.isPrivate(plan) && party + kids > rules.PARTY_MAX) fail(422, 'validation', 'You can bring up to 3 people.');
+      out.kids_count = kids > 0 ? kids : null;
+    }
   }
   out.note = cleanText(body.note, 280, 'Your hello');
   return out;
@@ -1178,25 +1384,81 @@ async function requestResult(postId, viewer, requestId) {
   const plan = await planBodyFor(postId, viewer);
   const request = plan?.my_request && plan.my_request.id === requestId ? plan.my_request : null;
   return {
-    request: request ? { id: request.id, status: request.status, waitlist_position: request.waitlist_position } : null,
+    request: request ? { id: request.id, status: request.status, waitlist_position: request.waitlist_position,
+      // A spot held while paying (B2): until when.
+      ...(request.hold_expires_at ? { hold_expires_at: request.hold_expires_at } : {}) } : null,
     plan,
   };
+}
+
+/**
+ * POST /api/plans/:id/requests/quote (B2, contract 10.2): what joining this paid plan costs for a party of this size,
+ * worked out by the server, with no side effect. Only on a priced business's plan while the business has the switch.
+ */
+async function quoteToJoin(user, postId, body = {}) {
+  const viewer = await loadViewer(user);
+  const plan = await loadVisiblePlan(postId, viewer);
+  if (!plan.price_cents || !plan.business_user_id || !(await planPaid().enabledFor(plan.host_user_id))) {
+    fail(404, 'not_found', "This plan isn't available.");
+  }
+  // A kids' plan is a price a family; any other counts adults and, where kids are welcome, kids.
+  const ask = plan.kind === 'playdate'
+    ? { party_size: 1, kids_count: null }
+    : cleanAsk(plan, { party_size: body.party_size, kids_count: body.kids_count }, { guestAnswers: await planGuests.switchFor(plan.host_user_id) });
+  // With deals on (B4): the deal's price for everyone, or the group price card while it is open or unlocked.
+  const dealsOn = Boolean(plan.deal) && (await require('./planDeals').enabledFor(plan.host_user_id));
+  const going = dealsOn && plan.deal?.scope === 'group'
+    ? planService.seatsTaken(plan, (await activeRequests(postId)).filter((r) => r.status === 'accepted')) : 0;
+  const unitCents = await planPaid().unitPriceNow(plan);
+  // One person pays for the group (the extras, `extras=1`, while the business has the switch): "I'll send a link"
+  // quotes every spot bought; any quote carries the sheet's "Who are they for?" choices.
+  const groupPay = require('./planGroupPay');
+  if (viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id))) {
+    const free = plan.spots - (await seatsNow(plan, await activeRequests(postId)));
+    if (body.for === 'link') return groupPay.quoteView(plan, groupPay.checkedSpots(body.spots, free), unitCents, free);
+    return { ...planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going }), group_pay: groupPay.choicesView(free) };
+  }
+  return planPaid().quoteFor(plan, ask, { unitCents, dealsOn, going });
 }
 
 async function askToJoin(user, postId, body, { io = null } = {}) {
   const viewer = await loadViewer(user, { gps: body.gps });
   const plan = await loadVisiblePlan(postId, viewer);
   if (planBusiness.runsPlan(plan, viewer)) fail(409, 'host', "You're hosting this plan.");
+  // Find a date: while the date is being picked, the invited tick times (PUT …/dates/mine) instead.
+  if (require('./planDates').isPicking(plan)) fail(409, 'picking', 'Tick the times that work for you.');
   // A business that may no longer host takes nobody new, and nobody waiting moves up by asking again.
   if (plan.business_user_id && !planBusiness.hostsNow(plan)) fail(409, 'ended', REASON_ERRORS.ended[1]);
   const ctx = await planService.loadCardContext([plan], viewer);
-  const mine = ctx.myRequestByPlan.get(postId) || null;
+  let mine = ctx.myRequestByPlan.get(postId) || null;
+  // A spot held while paying (B2): the same payment again while the hold lasts; after it, a fresh start.
+  if (mine && mine.status === 'paying') {
+    const { data: held } = await supabaseAdmin.from('PlanRequest')
+      .select(`${planService.REQUEST_COLUMNS}, payment_id, unit_price_cents, fee_basis, hold_expires_at`).eq('id', mine.id).maybeSingle();
+    if (held && new Date(held.hold_expires_at).getTime() > Date.now()) {
+      const payment = await planPaid().paymentFor(plan, held, viewer.id);
+      return { status: 200, body: { ...(await requestResult(postId, viewer, mine.id)), payment } };
+    }
+    const { data: lapsed } = await supabaseAdmin.from('PlanRequest').update({ status: 'expired', updated_at: nowIso() })
+      .eq('id', mine.id).eq('status', 'paying').select(planService.REQUEST_COLUMNS);
+    if (held?.payment_id) await require('../../stripe/stripeService').cancelAuthorization(held.payment_id).catch(() => null);
+    mine = lapsed?.[0] || { ...mine, status: 'expired' };
+  }
+  // A payment hold that ran out (B2) is not another ask: starting again keeps the count, so a guest whose payment
+  // took too long can always try again while there is room.
+  let holdLapsed = false;
+  if (mine && mine.status === 'expired' && plan.price_cents) {
+    const { data: was } = await supabaseAdmin.from('PlanRequest').select('unit_price_cents, paid_cents').eq('id', mine.id).maybeSingle();
+    holdLapsed = Boolean(was?.unit_price_cents && !was.paid_cents);
+  }
   const waiting = mine && (mine.status === 'pending' || mine.status === 'waitlisted');
-  // A second ask while waiting changes only what it sends; the rest stays as asked.
+  const isIn = Boolean(mine && mine.status === 'accepted');
+  // A second ask while waiting, or from someone already in, changes only what it sends; the rest stays as asked.
   const keep = (key) => (body[key] !== undefined ? body[key] : mine[key]);
-  const ask = cleanAsk(plan, waiting
+  const guestAnswers = await planGuests.switchFor(plan.host_user_id);
+  const ask = cleanAsk(plan, waiting || isIn
     ? { party_size: keep('party_size'), note: keep('note'), kids_count: keep('kids_count'), kids_age_bands: keep('kids_age_bands'), stays_with_kids: keep('stays_with_kids') }
-    : body);
+    : body, { guestAnswers });
   const stamp = nowIso();
 
   // Already in line: a second ask changes who's coming and the hello. It doesn't use an ask.
@@ -1205,10 +1467,10 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     if (error) throw new Error(`Failed to update your request: ${error.message}`);
     return { status: 200, body: await requestResult(postId, viewer, mine.id) };
   }
-  if (mine && mine.status === 'accepted') return { status: 200, body: await requestResult(postId, viewer, mine.id) };
+  if (isIn) return changeWhoIsComing(plan, mine, ask, body, { viewer, io });
 
   const requests = ctx.requestsByPlan.get(postId) || [];
-  const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
+  const spotsLeft = plan.spots - (await seatsNow(plan, requests));
   const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
   const eligibility = planService.askEligibility(plan, viewer, ctx, { myRequest: mine, spotsLeft, state });
   if (!eligibility.can_ask && eligibility.cannot_ask_reason !== 'full_use_waitlist') {
@@ -1219,7 +1481,13 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   // The host's invitation is their yes: in at once (the waitlist when it's full), or, for an email invite opened by
   // an account the address isn't verified for, an ordinary ask the host answers.
   const invite = ctx.myInviteByPlan.get(postId) || null;
-  const seats = rules.seatsFor(plan.kind, ask.party_size);
+  // One person pays for the group (the extras): "I'll send a link" buys `spots` (the buyer's own among them) in one
+  // payment. Only where the plan lets people in at once; never onto the waitlist.
+  const groupPay = require('./planGroupPay');
+  const linkBuy = body.for === 'link' && viewer.extras && groupPay.takes(plan) && (await groupPay.enabledFor(plan.host_user_id));
+  const spotsBought = linkBuy ? groupPay.checkedSpots(body.spots, spotsLeft) : null;
+  if (linkBuy) Object.assign(ask, { party_size: 1, kids_count: null });
+  const seats = linkBuy ? spotsBought : rules.seatsFor(plan, ask.party_size, ask.kids_count);
   let status = 'waitlisted';
   let decidedBy = null;
   let rule = null;
@@ -1232,6 +1500,13 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
       status = 'pending';
     }
   }
+  // A paid plan (B2): a spot is held for 10 minutes while the guest pays, and they are in once the payment succeeds.
+  const paid = Boolean(plan.price_cents && plan.business_user_id && (await planPaid().enabledFor(plan.host_user_id)));
+  if (paid && status === 'accepted') {
+    status = 'paying';
+    decidedBy = null;
+  }
+  if (linkBuy && status !== 'paying') fail(409, 'group_pay_not_now', 'Buying spots for a group works when the plan lets people in right away.');
   const row = {
     ...ask,
     status,
@@ -1249,13 +1524,16 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
     on_my_way_at: null,
     updated_at: stamp,
   };
+  if (status === 'paying') Object.assign(row, await planPaid().payingFields(plan, viewer.id, row.way_in || null), { payment_id: null });
+  if (linkBuy) Object.assign(row, { spots_bought: spotsBought, spots_token: require('crypto').randomBytes(32).toString('base64url'), paid_by_request_id: null });
+  else if (mine && (mine.spots_bought || mine.paid_by_request_id)) Object.assign(row, { spots_bought: null, spots_token: null, paid_by_request_id: null });
 
   let request;
   if (mine) {
     // Asking again after withdrawing, leaving or expiring; invited again after a no or a removal.
     const again = invite ? ['withdrawn', 'left', 'expired', 'declined', 'removed'] : ['withdrawn', 'left', 'expired'];
     const { data, error } = await supabaseAdmin.from('PlanRequest')
-      .update({ ...row, ask_count: Math.min(rules.LIMITS.asksPerPlan, (mine.ask_count || 1) + 1) })
+      .update({ ...row, ask_count: holdLapsed ? (mine.ask_count || 1) : Math.min(rules.LIMITS.asksPerPlan, (mine.ask_count || 1) + 1) })
       .eq('id', mine.id).in('status', again).select(planService.REQUEST_COLUMNS);
     if (error) throw new Error(`Failed to send your request: ${error.message}`);
     if (!data || data.length === 0) return { status: 200, body: await requestResult(postId, viewer, mine.id) };
@@ -1278,6 +1556,11 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   recordFunnelEvent('plan_requested', { userId: viewer.id, meta: {
     plan_id: postId, kind: plan.kind, status: request.status, ...(plan.business_user_id ? { business: true, way_in: row.way_in } : {}),
   } });
+  if (request.status === 'paying') {
+    const payment = await planPaid().paymentFor(plan, { ...request, unit_price_cents: row.unit_price_cents, fee_basis: row.fee_basis,
+      hold_expires_at: row.hold_expires_at, payment_id: null, spots_bought: row.spots_bought || null }, viewer.id);
+    return { status: mine ? 200 : 201, body: { ...(await requestResult(postId, viewer, request.id)), payment } };
+  }
   if (invite) await planInvites.markAccepted(plan, viewer.id, request);
   const names = await userNames([viewer.id]);
   const hostFirst = await hostFirstOf(plan);
@@ -1289,10 +1572,46 @@ async function askToJoin(user, postId, body, { io = null } = {}) {
   } else if (request.status === 'pending') {
     await planNotify.requestReceived({
       plan, request, hostFirst, requesterFirst: firstOf(names.get(viewer.id)),
-      invitedEmail: invite?.needs_host_ok ? invite.email : null,
+      // The address an email invitation went to (never a guest's own, from the open link: 6.9).
+      // An address invited from an earlier plan's guest is named, never shown (08-extras section 6).
+      invitedEmail: invite?.needs_host_ok && invite.channel === 'email' ? invite.known_name || invite.email : null,
     });
   }
   return { status: mine ? 200 : 201, body: await requestResult(postId, viewer, request.id) };
+}
+
+/**
+ * Someone already in changes who's coming (Plans for the holidays, the guest's "Change", 06-screens A8 and A7): new
+ * adults (party_size) and kids (kids_count), within the plan's limits for them. More seats are taken only while the
+ * plan has room for the difference: no new approval and no notice to the host, but `409 full` with the old numbers kept
+ * when there isn't. Fewer always save, and the seats they free are offered as any freed seats are. Anything else in
+ * the ask (the hello) stays as it was.
+ */
+async function changeWhoIsComing(plan, mine, ask, body, { viewer, io }) {
+  const result = async () => ({ status: 200, body: await requestResult(plan.post_id, viewer, mine.id) });
+  if (body.party_size === undefined && body.kids_count === undefined) return result();
+  // Kids are saved only where they are welcome; kids already counted keep their seats if the host turned that off.
+  const kids = ask.kids_count !== undefined ? ask.kids_count ?? null : mine.kids_count ?? null;
+  const before = rules.seatsFor(plan, mine.party_size, mine.kids_count);
+  const after = rules.seatsFor(plan, ask.party_size, kids);
+  if (ask.party_size === mine.party_size && kids === (mine.kids_count ?? null)) return result();
+  const state = rules.planState(plan, plan.post.event_date, plan.post.event_end_date);
+  if (state === 'ended' || state === 'cancelled') fail(409, 'ended', 'This plan is over.');
+  const full = () => fail(409, 'full', 'There’s no room for more people. Your answer stays as it was.');
+  if (after > before && after - before > plan.spots - (await seatsNow(plan, await activeRequests(plan.post_id)))) full();
+  const numbers = { party_size: ask.party_size, kids_count: kids };
+  const { data: changed, error } = await supabaseAdmin.from('PlanRequest')
+    .update({ ...numbers, updated_at: nowIso() }).eq('id', mine.id).eq('status', 'accepted').select('id');
+  if (error) throw new Error(`Failed to change who's coming: ${error.message}`);
+  if (!changed || changed.length === 0) return result();
+  if (after > before && (await seatsNow(plan, await activeRequests(plan.post_id))) > plan.spots) {
+    // Someone else took the last seats at the same moment: the old numbers stay.
+    await supabaseAdmin.from('PlanRequest')
+      .update({ party_size: mine.party_size, kids_count: mine.kids_count ?? null, updated_at: nowIso() }).eq('id', mine.id);
+    full();
+  }
+  if (after < before) await offerOpenSpots(plan, { io });
+  return result();
 }
 
 /** Withdraw (pending or waitlisted) or leave (accepted). */
@@ -1303,7 +1622,7 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
     .select(planService.REQUEST_COLUMNS).eq('post_id', postId).eq('user_id', viewer.id).maybeSingle();
   if (error) throw new Error(`Failed to load your request: ${error.message}`);
   if (!mine) fail(404, 'not_found', "You haven't asked to join this plan.");
-  if (!['pending', 'waitlisted', 'accepted'].includes(mine.status)) return requestResult(postId, viewer, mine.id);
+  if (!['pending', 'waitlisted', 'accepted', 'paying'].includes(mine.status)) return requestResult(postId, viewer, mine.id);
 
   const stamp = nowIso();
   const leaving = mine.status === 'accepted';
@@ -1313,15 +1632,23 @@ async function withdrawMine(user, postId, { io = null, reason = 'withdraw' } = {
   const { data: changed, error: updateError } = await supabaseAdmin.from('PlanRequest')
     .update(patch).eq('id', mine.id).eq('status', mine.status).select('id');
   if (updateError) throw new Error(`Failed to update your request: ${updateError.message}`);
+  // A paid spot (B2): its money back where the rules say so, or an unpaid hold released.
+  if (changed && changed.length > 0 && (leaving || mine.status === 'paying') && plan.price_cents) {
+    await planPaid().onLeave(plan, mine.id, { reason, wasStatus: mine.status });
+    if (mine.status === 'paying') await offerOpenSpots(plan, { io });
+  }
   if (changed && changed.length > 0 && leaving) {
+    // What they were bringing goes back on the list (H2).
+    await require('./planBring').clearClaims(postId, 'user', mine.id);
+    await require('./planGift').onLeave(postId, require('./planExtras').personKey(viewer.id));
     const names = await userNames([viewer.id]);
-    const who = partyLabel(names.get(viewer.id), mine.party_size);
+    const who = partyLabel(names.get(viewer.id), rules.seatsFor(plan, mine.party_size, mine.kids_count));
     if (plan.chat_room_id) {
       await planChat.systemLine(plan.chat_room_id, viewer.id, `${who} can't make it`);
     }
     // The host hears it before a spot goes to someone waiting (who then has their own notice).
     await activeRequests(postId)
-      .then((requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: planService.seatsTaken(plan, requests) }))
+      .then(async (requests) => planNotify.guestLeft({ plan, request: mine, guestName: who, goingCount: await seatsNow(plan, requests) }))
       .catch((err) => logger.warn('plans.notify.guest_left_failed', { planId: postId, error: err.message }));
     await offerOpenSpots(plan, { io });
   }
@@ -1346,7 +1673,7 @@ async function listRequests(user, postId) {
     // Connections are a person's: a business's team sees none.
     plan.business_user_id ? new Map() : planService.mutualConnectionCounts(viewer.id, userIds),
     userIds.length
-      ? supabaseAdmin.from('PlanInvite').select('invitee_user_id, channel, email, needs_host_ok')
+      ? supabaseAdmin.from('PlanInvite').select('invitee_user_id, channel, email, needs_host_ok, known_name')
         .eq('post_id', postId).in('invitee_user_id', userIds).neq('status', 'cancelled')
       : { data: [] },
   ]);
@@ -1379,11 +1706,13 @@ async function listRequests(user, postId) {
       },
       party_size: r.party_size,
       note: r.note || null,
-      kids_count: plan.kind === 'playdate' ? r.kids_count ?? null : null,
+      // A playdate's kids, or with kids welcome (H1, `guests=1`) how many kids come with them.
+      kids_count: plan.kind === 'playdate' || (viewer.guests && plan.kids_welcome) ? r.kids_count ?? null : null,
       kids_age_bands: plan.kind === 'playdate' ? r.kids_age_bands || [] : null,
       created_at: planService.iso(r.queued_at || r.created_at),
       invited: inviteByUser.has(id),
-      opened_invite_to: inviteByUser.get(id)?.needs_host_ok ? inviteByUser.get(id).email : null,
+      opened_invite_to: inviteByUser.get(id)?.needs_host_ok && inviteByUser.get(id).channel === 'email'
+        ? inviteByUser.get(id).known_name || inviteByUser.get(id).email : null,
     };
   };
   const byQueue = (a, b) => new Date(a.queued_at) - new Date(b.queued_at);
@@ -1411,8 +1740,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (!count) fail(409, 'confirm_shares_address', 'Accepting shares your address with them.');
     }
     const requests = await activeRequests(postId);
-    const spotsLeft = plan.spots - planService.seatsTaken(plan, requests);
-    if (rules.seatsFor(plan.kind, request.party_size) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
+    const spotsLeft = plan.spots - (await seatsNow(plan, requests));
+    if (rules.seatsFor(plan, request.party_size, request.kids_count) > spotsLeft) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
     const { data: moved, error } = await supabaseAdmin.from('PlanRequest')
       .update({ status: 'accepted', decided_by: 'host', decided_at: stamp, updated_at: stamp })
       .eq('id', request.id).in('status', ['pending', 'waitlisted']).select(planService.REQUEST_COLUMNS);
@@ -1421,6 +1750,8 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
     const overflow = await enforceCapacity(plan);
     if (overflow.has(request.id)) fail(409, 'full', 'This plan is full. They can stay on the waitlist.');
     await admit(plan, moved[0], { byRule: false, hostFirst, io });
+    // Someone from the open link (6.9): the host's own yes, kept as a guest's is.
+    await planInvites.recordHostYes(postId, request.user_id);
   } else if (action === 'decline') {
     if (request.status !== 'declined') {
       if (!['pending', 'waitlisted'].includes(request.status)) fail(409, 'not_waiting', 'This person is no longer waiting.');
@@ -1443,6 +1774,10 @@ async function decide(user, postId, requestId, action, body = {}, { io = null } 
       if (error) throw new Error(`Failed to remove: ${error.message}`);
       if (moved && moved.length > 0) {
         await planInvites.cancelForPerson(postId, request.user_id);
+        await require('./planBring').clearClaims(postId, 'user', request.id);
+        await require('./planGift').onLeave(postId, require('./planExtras').personKey(request.user_id));
+        // The business removed a guest who paid (B2): all of it back.
+        if (plan.price_cents) await planPaid().onBusinessEnds(plan, [request.id], 'removed');
         await planNotify.declined({ plan, request, hostFirst });
         await offerOpenSpots(plan, { io });
       }
@@ -1533,6 +1868,17 @@ async function reportPlan(user, postId, { reason, details }) {
 }
 
 module.exports = {
+  quoteToJoin,
+  // For the extras (planDates): the time checks and the answer after a write.
+  _validateTimes: validateTimes,
+  _planBodyFor: planBodyFor,
+  // For planPaid (paid spots): the same steps a join takes.
+  _activeRequests: activeRequests,
+  _seatsNow: seatsNow,
+  _admit: admit,
+  _hostFirstOf: hostFirstOf,
+  _offerOpenSpots: offerOpenSpots,
+  seatsNow,
   PlanError,
   hostFirstOf,
   cancelForGoneBusiness,

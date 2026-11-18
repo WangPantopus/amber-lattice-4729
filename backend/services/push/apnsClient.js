@@ -94,6 +94,8 @@ function buildPayload({ title, body, data } = {}) {
   if ([
     'PICKUP_REMINDER', 'TASK_REMINDER', 'TASK_REMINDER_DONE_ONLY',
     'PLAN_REQUEST', 'PLAN_REMINDER', 'PLAN_CHANGED', 'PLAN_INVITE',
+    // A guest waiting for the host's yes: Let in / Not this time (Plans for the holidays, H1).
+    'PLAN_GUEST_OK',
     'ASSISTANT_SUGGESTION', 'ASSISTANT_DONE', 'ASSISTANT_SOLVED', 'ASSISTANT_DONE_ONLY', 'ASSISTANT_SOLVED_ONLY',
   ].includes(data?.category)) {
     payload.aps.category = data.category;

@@ -23,6 +23,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.ui.guidance.GuidanceTarget
+import app.pantopus.android.ui.guidance.guidanceAnchor
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -40,7 +42,10 @@ fun NavigationMenuButton(
     testTag: String,
     modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, modifier = modifier.size(Spacing.s12).testTag(testTag)) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(Spacing.s12).guidanceAnchor(GuidanceTarget.Menu, inset = Spacing.s1).testTag(testTag),
+    ) {
         PantopusIconImage(
             icon = PantopusIcon.Menu,
             contentDescription = "Menu",
@@ -78,7 +83,10 @@ fun MessagesButton(
     val label = if (entry.unread > 0) "Messages, ${entry.unread} unread" else "Messages"
     IconButton(
         onClick = entry.open,
-        modifier = modifier.size(Spacing.s12).testTag(testTag).semantics { contentDescription = label },
+        modifier =
+            modifier.size(
+                Spacing.s12,
+            ).guidanceAnchor(GuidanceTarget.Messages, inset = Spacing.s1).testTag(testTag).semantics { contentDescription = label },
     ) {
         Box {
             MessagesGlyph(unread = entry.unread > 0)

@@ -27,6 +27,7 @@ import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.tableCard
  * second press sends nothing more). A refusal lifts the seal and says why. Once it's gone, "Done" shows the card sent
  * underneath, with every word and rule it had before.
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SealByHand(
     cards: HolidayCardsResponse,
@@ -38,6 +39,8 @@ internal fun SealByHand(
     /** Done (or ✕) once it's sent: back to the Mailbox. */
     onFinished: () -> Unit,
     onTakeBack: () -> Unit,
+    /** "Send this card to someone else" once it's sent, while another card can go (plan Part 6). */
+    onSendAgain: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     // Read once, from the look: sending clears it.
@@ -76,10 +79,12 @@ internal fun SealByHand(
             refusals > 0 -> SealAnswer.Refused(form.sendError ?: form.sealError, refusals)
             else -> null
         }
+    val again =
+        onSendAgain?.takeIf { form.step == SendCardStep.Sent }?.let { listOf(CardTableSendBack(SEND_THIS_CARD_AGAIN, onClick = it)) }
     val goneActions =
         goneActions(form, onTable.fromFirst, onTakeBack) { link, copy ->
             if (copy) copyLink(context, link) else shareLink(context, link, onTable.fromFirst)
-        }
+        } + again.orEmpty()
     val isSent = form.step == SendCardStep.Sent
     CardTableDialog(
         card = onTable,
@@ -105,7 +110,7 @@ private fun goneActions(
     return when {
         sent.byLink && link != null && fromFirst.isNotEmpty() ->
             listOf(CardTableSendBack("Copy link") { onLink(link, true) }, CardTableSendBack("Share") { onLink(link, false) })
-        sent.canTakeBack && form.to !is CardRecipient.Several -> listOf(CardTableSendBack("Take it back", onTakeBack))
+        sent.canTakeBack && form.to !is CardRecipient.Several -> listOf(CardTableSendBack("Take it back", onClick = onTakeBack))
         else -> emptyList()
     }
 }

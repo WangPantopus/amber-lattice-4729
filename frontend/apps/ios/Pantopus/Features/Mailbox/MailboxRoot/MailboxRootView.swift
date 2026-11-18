@@ -129,6 +129,13 @@ public struct MailboxRootView: View {
             Analytics.track(.screenMailboxRootViewed)
             viewModel.showSentIfPending()
         }
+        // The Mail tab's card, on the tab's own Mailbox once it has loaded (after Face ID when the lock is on).
+        .guidanceScreen(
+            .mail,
+            ready: viewModel.state.showsContent,
+            variants: GuidanceVariants(writesLetters: viewModel.fab != nil, sentAny: viewModel.sentSummary?.any == true),
+            active: showsMenuButton
+        )
     }
 
     private var accountId: String {
@@ -246,6 +253,12 @@ private struct MailboxPieceList: View {
             .padding(.top, Spacing.s5)
         } else {
             VStack(alignment: .leading, spacing: Spacing.s0) {
+                // The mantel (experience plan Part 7): this season's opened cards, first in your own mail.
+                let mantel = viewModel.mantelCards
+                if !mantel.isEmpty {
+                    HolidayCardMantel(cards: mantel) { viewModel.openMail($0) }
+                        .padding(.bottom, Spacing.s1)
+                }
                 // Christmas cards (holiday_cards): the way in, at the top of your own mail.
                 if viewModel.showsChristmasCardRow, let cards = viewModel.christmasCards {
                     HolidayCardRow(cards: cards) { viewModel.openChristmasCards() }

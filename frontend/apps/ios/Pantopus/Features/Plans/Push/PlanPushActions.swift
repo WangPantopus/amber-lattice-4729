@@ -13,20 +13,23 @@
 
 import UserNotifications
 
-/// What a Plans push carries (`type`, `link`, `plan_id`, `request_id`, `recipient_user_id`).
+/// What a Plans push carries (`type`, `link`, `plan_id`, `request_id`, `recipient_user_id`; a guest's `invite_id` and
+/// `guest_name`, Plans for the holidays).
 struct PlanPushPayload {
     let category: String
     let planId: String?
     let requestId: String?
     let recipient: String?
     let requesterName: String?
+    let inviteId: String?
 
     init(category: String, userInfo: [AnyHashable: Any]) {
         self.category = category
         planId = userInfo["plan_id"] as? String ?? userInfo["planId"] as? String
         requestId = userInfo["request_id"] as? String ?? userInfo["requestId"] as? String
         recipient = userInfo["recipient_user_id"] as? String
-        requesterName = userInfo["requester_name"] as? String
+        requesterName = userInfo["requester_name"] as? String ?? userInfo["guest_name"] as? String
+        inviteId = userInfo["invite_id"] as? String ?? userInfo["inviteId"] as? String
     }
 }
 
@@ -38,12 +41,15 @@ enum PlanPushActions {
     nonisolated static let cantMakeIt = "PLAN_CANT_MAKE_IT"
     nonisolated static let stillComing = "PLAN_STILL_COMING"
     nonisolated static let imIn = "PLAN_IM_IN"
+    /// Plans for the holidays: a guest from the open link waits for the host's yes.
+    nonisolated static let letIn = "PLAN_LET_IN"
+    nonisolated static let notThisTime = "PLAN_NOT_THIS_TIME"
 
-    static let all: Set<String> = [accept, decline, onMyWay, cantMakeIt, stillComing, imIn]
+    static let all: Set<String> = [accept, decline, onMyWay, cantMakeIt, stillComing, imIn, letIn, notThisTime]
 
     /// PLAN_REQUEST (Accept, Decline), PLAN_REMINDER (On my way, Can't make
     /// it), PLAN_CHANGED (Still coming, Can't make it), PLAN_INVITE (I'm in,
-    /// Can't make it; never for a playdate, which asks the kids' ages).
+    /// Can't make it; never for a playdate, which asks the kids' ages), PLAN_GUEST_OK (Let in, Not this time).
     nonisolated static var categories: [UNNotificationCategory] {
         let request = UNNotificationCategory(
             identifier: "PLAN_REQUEST",
@@ -81,7 +87,16 @@ enum PlanPushActions {
             intentIdentifiers: [],
             options: []
         )
-        return [request, reminder, changed, invite]
+        let guest = UNNotificationCategory(
+            identifier: "PLAN_GUEST_OK",
+            actions: [
+                UNNotificationAction(identifier: letIn, title: "Let in", options: [.authenticationRequired]),
+                UNNotificationAction(identifier: notThisTime, title: "Not this time", options: [.authenticationRequired, .destructive])
+            ],
+            intentIdentifiers: [],
+            options: []
+        )
+        return [request, reminder, changed, invite, guest]
     }
 
     /// Runs a button. Only for the account the push was for, only with Plans
@@ -97,19 +112,23 @@ enum PlanPushActions {
         AppLockManager.shared.configure(userID: user.id)
         let scope = HomeClaimSessionScope(api: .shared)
         guard !AppLockManager.shared.isLocked, scope.isCurrent else {
-            open(planId: planId, toRequests: action == accept || action == decline, note: nil)
+            open(planId: planId, action: action, note: nil)
             return
         }
         do {
             try await perform(action, payload: payload, planId: planId)
             PlansStoreReads.changed(planId: planId)
         } catch {
-            open(planId: planId, toRequests: action == accept || action == decline, note: failure(action, payload: payload, error: error))
+            open(planId: planId, action: action, note: failure(action, payload: payload, error: error))
         }
     }
 
     private static func perform(_ action: String, payload: PlanPushPayload, planId: String) async throws {
         let api = APIClient.shared
+        if guestActions.contains(action) {
+            try await answerGuest(action, payload: payload, planId: planId)
+            return
+        }
         switch action {
         case accept:
             guard let requestId = payload.requestId else { throw CancellationError() }
@@ -143,6 +162,17 @@ enum PlanPushActions {
         }
     }
 
+    private static let guestActions: Set = [letIn, notThisTime]
+
+    /// "Let in" and "Not this time" on a guest waiting from the open link (PLAN_GUEST_OK), by the invitation's id.
+    private static func answerGuest(_ action: String, payload: PlanPushPayload, planId: String) async throws {
+        guard let inviteId = payload.inviteId else { throw CancellationError() }
+        let endpoint = action == letIn
+            ? PlansEndpoints.letIn(planId: planId, inviteId: inviteId)
+            : PlansEndpoints.cancelInvite(planId: planId, inviteId: inviteId)
+        _ = try await APIClient.shared.request(endpoint, as: EmptyResponse.self)
+    }
+
     /// The honest sentence the plan shows when a button didn't go through, in
     /// the words Android's notification uses: "Couldn't accept Priya. This
     /// plan is full. They can stay on the waitlist."
@@ -155,6 +185,8 @@ enum PlanPushActions {
         case onMyWay: return "Couldn't send \u{201C}On my way\u{201D}. \(reason)"
         case stillComing: return "Couldn't send \u{201C}Still coming\u{201D}. \(reason)"
         case imIn: return "Couldn't say you're in. \(reason)"
+        case letIn: return "Couldn't let \(who) in. \(reason)"
+        case notThisTime: return "Couldn't answer \(who). \(reason)"
         default: return "Couldn't tell the host you can't make it. \(reason)"
         }
     }
@@ -179,8 +211,14 @@ enum PlanPushActions {
     /// Refusals that mean the host must first agree that accepting shares their address (H10).
     private static let addressCodes: Set = ["confirm_shares_address", "confirm_shares_address_required", "needs_address_confirmation"]
 
-    private static func open(planId: String, toRequests: Bool, note: String?) {
+    /// The plan, its requests (Accept, Decline) or "Who's coming" (Let in, Not this time).
+    private static func open(planId: String, action: String, note: String?) {
         PlansNavigator.shared.notice = note
-        DeepLinkRouter.shared.handle(path: toRequests ? "/plans/\(planId)/requests" : "/plans/\(planId)")
+        let path = switch action {
+        case accept, decline: "/plans/\(planId)/requests"
+        case letIn, notThisTime: "/plans/\(planId)/guests"
+        default: "/plans/\(planId)"
+        }
+        DeepLinkRouter.shared.handle(path: path)
     }
 }

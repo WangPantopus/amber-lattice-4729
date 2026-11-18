@@ -51,7 +51,7 @@ struct PlaceBlockDetailContent: View {
 
             PlaceDetailSectionLabel(text: "Block founders")
             if intel.tier == .t4 {
-                PlaceBlockFoundersSection(vm: founders)
+                PlaceBlockFoundersSection(vm: founders, onMailCode: vm.mailCodeAction)
                     .task { await founders.load() }
             } else {
                 PlaceLockedCard(

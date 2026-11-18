@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.sp
 import app.pantopus.android.R
 import app.pantopus.android.data.moments.MomentHeight
 import app.pantopus.android.ui.screens.moments.components.MomentSelfFace
+import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusElevation
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -88,6 +89,7 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.log2
 import kotlin.math.pow
 
 /** The four durations (board P3), in hours. */
@@ -111,12 +113,14 @@ fun MomentsPostSheet(
     onFindPlace: () -> Unit = {},
     onNoLocation: (Boolean) -> Unit = {},
     onShowHeight: (Boolean) -> Unit = {},
+    sky: MomentsSkyActions = MomentsSkyActions(),
 ) {
     // A venue picked in the place picker moves the pin off the home (the server checks its point again).
     val venue = state.pickedVenue
     // "Don't show where": no pin, no map, connections only.
     val unplaced = state.noLocationOn
-    val atHome = state.place?.atHome == true && venue == null && !unplaced
+    // Under the Sky the home has its own note ([SkyHomeNote]): the Moment shows only its area there whatever is picked.
+    val atHome = !state.sky && state.place?.atHome == true && venue == null && !unplaced
     val density = LocalDensity.current
     val keyboardPx = WindowInsets.ime.getBottom(density)
     val belowPx = WindowInsets.navigationBars.getBottom(density)
@@ -144,17 +148,22 @@ fun MomentsPostSheet(
                 )
             }
             state.pin?.takeIf { !unplaced }?.let { pin ->
+                // The Sky: at home the map shows the area's disc around the area's own point.
+                val disc = state.place?.area?.takeIf { state.sky && state.floats }
+                val atVenue = state.venuePoint(pin.latitude, pin.longitude)
                 PinMap(
-                    latitude = venue?.latitude ?: pin.latitude,
-                    longitude = venue?.longitude ?: pin.longitude,
-                    area = state.showArea,
+                    latitude = disc?.latitude ?: atVenue?.first ?: pin.latitude,
+                    longitude = disc?.longitude ?: atVenue?.second ?: pin.longitude,
+                    area = state.floats,
                     avatarUrl = avatarUrl,
+                    discRadiusM = disc?.radiusM,
                 )
             }
             // The place others will read: the venue's name (or the one picked), or the town with "Show the area instead".
             val label =
                 when {
                     unplaced -> NO_LOCATION
+                    state.sky -> state.skyLine
                     atHome && !state.showArea -> "Your home"
                     state.showArea -> state.place?.areaLabel ?: state.place?.placeLabel ?: "Your area"
                     else -> venue?.name ?: state.pickedPlace?.label ?: state.place?.placeLabel ?: "Where you are"
@@ -227,7 +236,10 @@ fun MomentsPostSheet(
                     }
                 }
             }
-            if (!unplaced) {
+            // The Sky: the note at home, and "Pin it at a place" in place of "Show the area instead".
+            if (state.skyAtHome) SkyHomeNote()
+            if (!unplaced && state.sky) SkyPinRow(state = state, onPinAtPlace = sky.onPinAtPlace, onFindPlace = onFindPlace)
+            if (!unplaced && !state.sky) {
                 Row(
                     modifier =
                         Modifier
@@ -274,7 +286,13 @@ fun MomentsPostSheet(
             }
             NoLocationRow(state = state, onNoLocation = onNoLocation)
             state.heightFeet?.takeIf { state.offersHeight }?.let { feet ->
-                HeightRow(feet = feet, on = state.showHeight, onShowHeight = onShowHeight)
+                // The Sky: a floating Moment's height is "About 4,400 ft above sea level".
+                val line = if (state.sky && state.floats) SkyWords.aboutHeight(feet) else MomentHeight.line(feet)
+                HeightRow(line = line, on = state.showHeight, onShowHeight = onShowHeight)
+            }
+            if (state.greysHeight && !state.offersHeight) SkyGreyHeightRow()
+            if (state.shareLaterChoices.isNotEmpty()) {
+                SkyShareLaterRow(state = state, onShareLater = sky.onShareLater, onChoice = sky.onShareLaterChoice)
             }
             SectionLabel("How long")
             Row(
@@ -405,6 +423,7 @@ fun MomentsPostSheet(
             )
         }
         Spacer(Modifier.height(14.dp))
+        val sharesAt = state.sharesAt
         SheetPrimaryButton(
             label =
                 when {
@@ -415,6 +434,8 @@ fun MomentsPostSheet(
                     state.pickedTogether > 1 -> "Post ${state.pickedAt} of ${state.pickedTogether}"
                     // A video longer than one Moment posts as several, one after another (contract v3.11).
                     state.videoParts > 1 -> "Post as ${state.videoParts} Moments"
+                    // The Sky's "Share later": "Share at 6:40 pm · shows for 24 hours".
+                    sharesAt != null -> SkyWords.shareAtButton(sharesAt, state.hours)
                     else -> "Post · shows for ${if (state.hours == 1) "1 hour" else "${state.hours} hours"}"
                 },
             onClick = onPost,
@@ -470,7 +491,7 @@ private fun PlaceRow(
                 icon =
                     when {
                         state.noLocationOn -> PantopusIcon.MapPinOff
-                        atHome && !state.showArea -> PantopusIcon.Home
+                        atHome && !state.showArea || state.skyAtHome -> PantopusIcon.Home
                         else -> PantopusIcon.MapPin
                     },
                 contentDescription = null,
@@ -491,6 +512,7 @@ private fun PlaceRow(
                 text =
                     when {
                         state.noLocationOn -> "Not on the map"
+                        state.sky -> if (state.floats) SkyWords.AREA else SkyWords.EXACT
                         state.showArea -> "Area"
                         else -> "Exact spot"
                     },
@@ -659,11 +681,10 @@ private fun NoLocationRow(
  */
 @Composable
 private fun HeightRow(
-    feet: Int,
+    line: String,
     on: Boolean,
     onShowHeight: (Boolean) -> Unit,
 ) {
-    val line = MomentHeight.line(feet)
     Row(
         modifier =
             Modifier
@@ -721,10 +742,15 @@ private fun PinMap(
     longitude: Double,
     area: Boolean,
     avatarUrl: String?,
+    // The Sky: the area's disc, in metres; the map zooms out so it fills about three quarters of its height.
+    discRadiusM: Double? = null,
 ) {
     val target = LatLng(latitude, longitude)
-    val zoom = MINI_ZOOM
-    val camera = rememberCameraPositionState(key = "$latitude,$longitude,$area") { position = CameraPosition.fromLatLngZoom(target, zoom) }
+    val zoom = discRadiusM?.let { discZoom(it, latitude) } ?: MINI_ZOOM
+    val camera =
+        rememberCameraPositionState(key = "$latitude,$longitude,$area,$discRadiusM") {
+            position = CameraPosition.fromLatLngZoom(target, zoom)
+        }
     val options = remember { GoogleMapOptions().liteMode(true) }
     val context = LocalContext.current
     // The same quiet map as the Moments tab's.
@@ -762,7 +788,7 @@ private fun PinMap(
             // Drawn over the map rather than on it, so it shows whatever the tiles do.
             val metersPerDp = EQUATOR_METERS_PER_DP * cos(latitude * PI / 180.0) / 2.0.pow(zoom.toDouble())
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val radius = (AREA_RADIUS_M / metersPerDp).dp.toPx()
+                val radius = ((discRadiusM ?: AREA_RADIUS_M) / metersPerDp).dp.toPx()
                 drawCircle(color = PantopusColors.primary600.copy(alpha = 0.16f), radius = radius)
                 drawCircle(color = PantopusColors.primary600.copy(alpha = 0.55f), radius = radius, style = Stroke(1.5.dp.toPx()))
             }
@@ -797,6 +823,15 @@ private fun PinMap(
         }
     }
 }
+
+/** The zoom at which a disc of [radiusM] metres spans about three quarters of the 150 dp map's height. */
+private fun discZoom(
+    radiusM: Double,
+    latitude: Double,
+): Float = log2(EQUATOR_METERS_PER_DP * cos(latitude * PI / 180.0) * DISC_DP / radiusM).toFloat().coerceAtMost(MINI_ZOOM)
+
+/** The disc's radius on the 150 dp map: about three quarters of its height across. */
+private const val DISC_DP = 54.0
 
 private val SheetShadow = PantopusElevation(Color.Black, 0.30f, 24.dp, 0.dp, (-6).dp)
 private val SegmentShadow = PantopusElevation(Color.Black, 0.12f, 3.dp, 0.dp, 1.dp)

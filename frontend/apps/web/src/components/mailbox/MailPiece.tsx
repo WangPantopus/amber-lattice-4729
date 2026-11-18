@@ -80,6 +80,10 @@ export function pieceSentence(item: MailItemV2, opened: boolean): string {
     const state = item.card.sealed ? ', sealed until Christmas morning' : opened ? ', opened' : ', in its envelope';
     return `Christmas card from ${item.sender_display || 'someone'}${state}`;
   }
+  if (item.card_reply) {
+    // Write back (mail-cards-experience Part 3): a reply to your card.
+    return `${(item.sender_display || 'Someone').trim().split(/\s+/)[0]} wrote back to your Christmas card${opened ? ', opened' : ''}`;
+  }
   const what = item.special_delivery ? `Special delivery ${KIND_WORDS[kind].toLowerCase()}` : KIND_WORDS[kind];
   const from = item.sender_display || 'an unknown sender';
   // Pantopus's own mail is already "from Pantopus": no trust words after it.
@@ -263,6 +267,41 @@ export default function MailPiece({ item, recipientName, recipientLine, opened, 
             {recipientLine ? <div className="truncate">{recipientLine}</div> : null}
           </div>
           {postDate ? <div className="absolute bottom-2 left-3"><Postmark town={town} date={postDate} size={40} lines={false} /></div> : null}
+        </div>
+      </div>
+    );
+  } else if (item.card_reply && launchFeatures.cardTable && envelope) {
+    // A reply (Part 3): the opened-card row, the card leaning out of its red envelope, with a cream slip across it that
+    // says "{First name} wrote back" in the pen.
+    const pen = `${cardPen.style.fontFamily}, ui-serif, Georgia, serif`;
+    const [month = '', date = ''] = postDate.split(' ');
+    const who = (from.trim().split(/\s+/)[0]) || 'Someone';
+    const reply = item.card_reply;
+    body = (
+      <div
+        className="relative h-[150px] rounded-md"
+        style={{ backgroundColor: '#9f2f28', backgroundImage: `url(${TABLE_ART}env-front.webp)`, backgroundSize: 'cover', backgroundPosition: '50% 12%', boxShadow: SHADOW }}
+        data-testid="mailPieceReply"
+      >
+        <div
+          className="absolute -top-[14px] left-4 w-[125px] -rotate-3 rounded-[2px]"
+          style={{ aspectRatio: '5 / 6', backgroundColor: reply.paper || '#f7f0e2', boxShadow: '0 6px 14px rgba(40, 8, 6, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3)' }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {reply.design ? <img src={cardPicture(reply.design, 'thumb')} alt="" className="absolute left-[2px] right-[2px] top-[2px] h-[86%] w-[calc(100%-4px)] rounded-[1px] object-cover" /> : null}
+        </div>
+        <div
+          className="absolute left-2.5 top-[106px] w-[200px] rotate-[-3deg] rounded-[2px] px-3 py-1 text-[21px] leading-[26px] text-[#1b2a5c]"
+          style={{ fontFamily: pen, backgroundColor: '#f6ecd9', backgroundImage: `url(${TABLE_ART}paper.webp)`, backgroundSize: '160px', backgroundBlendMode: 'multiply', boxShadow: '0 5px 12px rgba(40, 8, 6, 0.42)' }}
+        >
+          <span className="block truncate">{sentTo ? 'You wrote back' : `${who} wrote back`}</span>
+        </div>
+        <div className="absolute left-[158px] right-3 top-[18px] text-[#f4e2bf]">
+          <div className="truncate text-[22px] leading-[26px]" style={{ fontFamily: pen }}>{sentTo ? `To ${sentTo.trim().split(/\s+/)[0]}` : `From ${who}`}</div>
+          <div className="mt-1 line-clamp-2 text-[15px] italic leading-[19px] text-[#fbeed2]" style={{ fontFamily: SERIF }}>{reply.caption || 'A Christmas card'}</div>
+          <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#d8b76f]" style={{ fontFamily: SERIF }}>
+            {month} {date}{opened ? ' · Opened' : ''}
+          </div>
         </div>
       </div>
     );

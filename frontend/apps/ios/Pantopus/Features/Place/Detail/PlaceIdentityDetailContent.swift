@@ -218,6 +218,23 @@ struct PlaceIdentityDetailContent: View {
         intel.tier == .t4
     }
 
+    /// Verified by a fast check (FASTVERIFY): letters and passes still need the mailed code, and the server refuses
+    /// them (`MAIL_PROOF_REQUIRED`), so the page offers the postcard instead of a form. Nil options (the switch
+    /// off, or not read yet) keep today's page.
+    private var lettersNeedMail: Bool {
+        HomeVerifyOptionsStore.shared.cached(homeId: vm.homeId)?.needsMail == true
+    }
+
+    private func mailCodeCard(icon: PantopusIcon, title: String) -> some View {
+        PlaceLockedCard(
+            icon: icon,
+            title: title,
+            reason: "This needs a mailed code. Ask for the postcard in Place.",
+            cta: "Mail me a code",
+            onTap: vm.mailCodeAction
+        )
+    }
+
     private var hasIssuedClaims: Bool {
         if case let .loaded(claims) = pass.state { return !claims.isEmpty }
         return false
@@ -227,7 +244,9 @@ struct PlaceIdentityDetailContent: View {
     @ViewBuilder
     private var residencySections: some View {
         PlaceDetailSectionLabel(text: "Residency letter")
-        if isVerified {
+        if isVerified, lettersNeedMail {
+            mailCodeCard(icon: .fileText, title: "Verified residency letter")
+        } else if isVerified {
             ResidencyLetterSection(vm: letters)
                 .task { await letters.load() }
         } else {
@@ -243,7 +262,9 @@ struct PlaceIdentityDetailContent: View {
         }
 
         PlaceDetailSectionLabel(text: "Residency Pass")
-        if isVerified {
+        if isVerified, lettersNeedMail {
+            mailCodeCard(icon: .idCard, title: "Prove residency without sharing your address")
+        } else if isVerified {
             PlaceResidencyPassSection(vm: pass)
                 .task { await pass.load() }
         } else {

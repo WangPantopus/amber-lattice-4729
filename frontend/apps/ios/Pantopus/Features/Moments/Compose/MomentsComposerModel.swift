@@ -81,6 +81,11 @@ final class MomentsComposerModel {
     var choseNoLocation = false
     /// "Show elevation" (board H1, `+Height`): the Moment says how high above sea level it was made.
     var showHeight = false
+    /// The Sky (`+Sky`, while the preview answers `sky: true`): "Pin it at a place" is on; off, the Moment is where
+    /// it was taken.
+    var pinsAtPlace = false
+    /// The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); nil posts now.
+    var shareLaterKey: String?
     /// When the album photo or video was taken (any time); nil for the camera, a text card, or a file that never said.
     private(set) var takenAt: Date?
     /// The rest of what was picked together in the library, in the order picked (`+Several`): each takes the sheet
@@ -197,6 +202,8 @@ final class MomentsComposerModel {
                 longitude: longitude
             ))
             place = reply
+            // A new spot starts where it was taken: a place is always picked for the spot on the sheet.
+            pinsAtPlace = false
             if let has = reply.hasConnections { hasConnections = has }
             // A picked name stays only while it still fits the pin.
             if let placeKey, !reply.places.contains(where: { $0.key == placeKey }) { self.placeKey = nil }
@@ -391,11 +398,15 @@ final class MomentsComposerModel {
         placeKey = nil
         venue = MomentVenue(placeId: id, name: tag.name, latitude: tag.latitude, longitude: tag.longitude, around: basePin)
         findsPlace = false
+        // The Sky: a place picked turns "Pin it at a place" on.
+        if place?.sky != nil { pinsAtPlace = true }
     }
 
     /// "Remove location" in the place picker: back to the name the spot gets by itself.
     func clearVenue() {
         venue = nil
         findsPlace = false
+        // The Sky: with no place picked the Moment is where it was taken again.
+        pinsAtPlace = false
     }
 }

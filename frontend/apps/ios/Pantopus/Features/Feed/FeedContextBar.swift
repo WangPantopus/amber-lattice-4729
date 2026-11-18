@@ -319,6 +319,8 @@ struct FeedContextBar: View {
                 RoundedRectangle(cornerRadius: Radii.lg, style: .continuous)
                     .stroke(Theme.Color.appBorder, lineWidth: 1)
             )
+            // The guidance pointer "Your area" (on the Pulse tab's feed: `GuidanceCardID.pointerVisit`).
+            .guidanceAnchor(.tipPulseArea, cornerRadius: Radii.lg)
             .hitArea(vertical: 3)
         }
         .buttonStyle(.plain)

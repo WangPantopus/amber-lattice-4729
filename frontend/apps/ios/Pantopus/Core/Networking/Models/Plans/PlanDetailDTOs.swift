@@ -54,9 +54,20 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
     public let newToPantopus: Bool
     /// Host only: asked "Still coming?" and hasn't answered.
     public let reconfirmNeeded: Bool
-    /// Host only, playdates: how many kids come and their age bands (never names).
+    /// Host only, playdates: how many kids come and their age bands (never names). With `guests=1` on a plan with
+    /// kids welcome, everyone's kids.
     public let kidsCount: Int?
     public let kidsAgeBands: [PlanKidsAgeBand]?
+    /// Plans for the holidays H1 (`guests=1`): a guest without an account who is in. No profile; `userId` is
+    /// "guest:" and their invitation's id.
+    public let isGuest: Bool
+    public let guestId: String?
+    /// Plans for the holidays B1, staff only: the guest's free thing, ready or used ("Mark used").
+    public let deal: PlanPersonDealDTO?
+    /// B2, staff only: what the guest paid and who brought them.
+    public let paid: PlanPersonPaidDTO?
+    /// Chip in (08-extras section 3), the host only: whether they marked it and the key "Mark paid" sends.
+    public let chipIn: PlanPersonChipInDTO?
 
     public var id: String {
         userId
@@ -78,11 +89,21 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
         case reconfirmNeeded = "reconfirm_needed"
         case kidsCount = "kids_count"
         case kidsAgeBands = "kids_age_bands"
+        case isGuest = "guest"
+        case guestId = "guest_id"
+        case deal, paid
+        case chipIn = "chip_in"
     }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        userId = try container.decode(String.self, forKey: .userId)
+        guestId = try container.decodeIfPresent(String.self, forKey: .guestId)
+        isGuest = try (container.decodeIfPresent(Bool.self, forKey: .isGuest) ?? false) && guestId != nil
+        if isGuest, let guestId {
+            userId = try container.decodeIfPresent(String.self, forKey: .userId) ?? "guest:\(guestId)"
+        } else {
+            userId = try container.decode(String.self, forKey: .userId)
+        }
         displayName = try container.decode(String.self, forKey: .displayName)
         avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         partySize = try container.decodeIfPresent(Int.self, forKey: .partySize) ?? 1
@@ -97,6 +118,9 @@ public struct PlanPersonDTO: Codable, Sendable, Hashable, Identifiable {
         reconfirmNeeded = try container.decodeIfPresent(Bool.self, forKey: .reconfirmNeeded) ?? false
         kidsCount = try container.decodeIfPresent(Int.self, forKey: .kidsCount)
         kidsAgeBands = try? container.decodeIfPresent([PlanKidsAgeBand].self, forKey: .kidsAgeBands)
+        deal = try? container.decodeIfPresent(PlanPersonDealDTO.self, forKey: .deal)
+        paid = try? container.decodeIfPresent(PlanPersonPaidDTO.self, forKey: .paid)
+        chipIn = try? container.decodeIfPresent(PlanPersonChipInDTO.self, forKey: .chipIn)
     }
 }
 

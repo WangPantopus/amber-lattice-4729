@@ -40,6 +40,8 @@ import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planKind
 import app.pantopus.android.data.plans.planState
 import app.pantopus.android.data.plans.repeats
+import app.pantopus.android.data.plans.tagLabel
+import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenBusiness
@@ -178,7 +180,8 @@ internal fun PlanHeading(plan: PlanDto) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             // A business's plan shows what it calls it ("Clinic") in the kind's colors (board G3).
-            plan.planKind?.let { PlanTypeTag(it, label = plan.labelText.takeIf { plan.isBusiness }) }
+            // An occasion's name in place of the kind's (Plans for the holidays, A6 item 1).
+            plan.planKind?.let { PlanTypeTag(it, label = plan.tagLabel) }
             if (plan.isPrivate) PlanPrivateChip()
             // Board Online (Plans step 3).
             if (plan.isOnline) PlanOnlineChip()
@@ -275,6 +278,8 @@ internal fun ColumnScope.PlanBeforeInBody(
     PlanTitleBlock(plan)
     afterTitle?.invoke()
     PlanHostCard(plan)
+    // Business track B1 (D1): a business's deal, under its name, with "Share" while a group deal is counting.
+    plan.deal?.let { deal -> PlanDealCard(plan, deal, onShare = rememberDealShare(plan)) }
     PlanSpots(plan, note = if (plan.isPlaydate) null else "Names show once you're in")
     plan.about?.takeIf(String::isNotBlank)?.let { Text(text = it, style = PantopusTextStyle.body, color = PantopusColors.appText) }
     detailsLine(plan)?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary) }
@@ -292,7 +297,10 @@ internal fun ColumnScope.PlanBeforeInBody(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PlanInfoLine(PantopusIcon.Users, PlanFormat.howPeopleGetIn(plan))
-            PlanInfoLine(PantopusIcon.ShieldCheck, "Free, and for adults")
+            // Plans for the holidays: a plan with kids welcome doesn't say it's for adults. A price (business track B2)
+            // reads the server's line in place of "Free" ("$18 a person, and for adults").
+            val cost = plan.price?.line?.takeIf(String::isNotBlank) ?: "Free"
+            PlanInfoLine(PantopusIcon.ShieldCheck, if (plan.takesKids) "$cost, and kids are welcome" else "$cost, and for adults")
         }
     }
 }
@@ -327,6 +335,9 @@ internal fun askFooter(plan: PlanDto): AskFooter {
                 enabled = true,
                 caption =
                     when {
+                        // A priced plan (B2, G28): the price's line under "Join"; with a deal (D1 item 5), the deal's.
+                        plan.isBusiness && !plan.hostApproves && !plan.price?.joinText.isNullOrBlank() -> plan.price?.joinText
+                        plan.isBusiness && !plan.hostApproves && !plan.deal?.joinText.isNullOrBlank() -> plan.deal?.joinText
                         // A business's plan (board G3): "Join", in right away; or the business approves each person.
                         plan.isBusiness && !plan.hostApproves -> "You're in right away. No approval needed."
                         plan.isBusiness -> approves ?: "$host approves each person"
@@ -433,6 +444,9 @@ private fun YourRequestCard(plan: PlanDto) {
                 val kids = mine.kidsCount ?: 1
                 listOfNotNull("You + $kids ${if (kids == 1) "kid" else "kids"}", KidsAgeBand.rangeLabel(mine.kidsAgeBands))
                     .joinToString(" · ")
+            } else if (plan.takesKids) {
+                // Plans for the holidays (A11): the adults and kids the person asked with, "2 adults, 1 kid".
+                myCounts(plan)
             } else {
                 val size = mine.partySize ?: 1
                 if (size <= 1) "Just you" else "You + ${size - 1}"
@@ -626,13 +640,21 @@ internal fun ColumnScope.PlanClosedBody(
     onOpenChat: (() -> Unit)?,
 ) {
     val cancelled = plan.planState == PlanState.CANCELLED
+    // The holidays' photos afterwards (board 29): "This was Saturday, Nov 21" / "12 people came", when it has them.
+    val photos = plan.photos?.takeIf { !cancelled }
     PlanBanner(
-        title = if (cancelled) "This plan was cancelled" else "This plan has ended",
-        subtitle = if (cancelled) cancelledBy(plan.hostFirst, plan.cancelNote) else null,
+        title = if (cancelled) "This plan was cancelled" else photos?.banner ?: "This plan has ended",
+        subtitle = if (cancelled) cancelledBy(plan.hostFirst, plan.cancelNote) else photos?.cameText,
         icon = if (cancelled) PantopusIcon.XCircle else PantopusIcon.CheckCircle,
         tone = PlanBannerTone.Neutral,
     )
     PlanTitleBlock(plan)
+    // Business track B1 (D1 states): the deal card stays as it was last.
+    plan.deal?.let { deal -> PlanDealCard(plan, deal) }
+    // Business track B6 (C4): a tip after a paid plan, while the server offers it (7 days, once).
+    plan.tipLater?.takeIf { !cancelled }?.let { tip -> PlanTipLaterHost(plan, tip) }
+    // The holidays' photos afterwards (extras section 5, board 29), for the people who were in.
+    PlanPhotosIfAny(plan)
     // The chat stays to read for people who were in (the server sends its room only to them), as on iOS.
     onOpenChat?.let { GhostButton(title = "Read the group chat", onClick = it) }
 }

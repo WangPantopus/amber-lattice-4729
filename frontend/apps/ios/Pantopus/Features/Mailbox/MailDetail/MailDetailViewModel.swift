@@ -128,6 +128,8 @@ public final class MailDetailViewModel {
     private(set) var cardTableWasShown = false
     /// The person closed the table, and the page is on its way back.
     var cardTableClosed = false
+    /// A reply to a Christmas card opens as the joined card (experience plan Part 3); nil until it's read.
+    var replyPair: CardReplyPair?
     /// Where the booklet's reader is, and how far the page is scrolled, for
     /// the page a fold's new layout draws (the Mail tab keeps this model
     /// across folds). Not drawn from here.
@@ -207,6 +209,7 @@ public final class MailDetailViewModel {
             needsProof = false
             isNotFound = false
             prepareCardTable(content)
+            if content.letter?.cardReply != nil, LaunchFeatures.cardTable { await readReplyPair() }
             state = .loaded(content)
             if content.letter?.kind == .bundle { await loadBundle() }
             // Certified mail is read like any letter (Received → Read); its

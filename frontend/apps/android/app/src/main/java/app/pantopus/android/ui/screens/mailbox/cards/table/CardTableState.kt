@@ -87,6 +87,9 @@ data class CardOnTable(
     /** Its picture is read for the table: not while it's sealed (the server keeps it), and a letter has none. */
     val hasPicture: Boolean get() = !sealed && !letter
 
+    /** Its note can open in plain type on the bookmark (plan Part 2): not while it's sealed, and not a letter's. */
+    val printable: Boolean get() = !sealed && !letter && note.isNotBlank()
+
     /** The words and printing on its two faces. */
     internal fun words(paperColor: Int): CardFaceWords =
         CardFaceWords(
@@ -141,25 +144,44 @@ internal class TableSpring(
     }
 }
 
-/** How the moment fits this screen, in pixels (`layout()` in the sample). */
+/**
+ * How the moment fits this screen, in pixels (`layout()` in the sample, and since November 16 the founder's larger
+ * card). The card is as wide as the phone (9 dp of table at each side), kept clear of the round buttons above it and of
+ * the buttons below it. The open envelope lies behind it with its pocket ending at the card's lower edge, so its flap
+ * rises 0.406 card widths above the card and, where the card nearly fills the screen, runs off the top. A card with
+ * its own photo or voice greeting has two places: under the whole flap while its picture is up ([cardTop]), and higher
+ * once it's turned over ([cardTopBack]), which leaves [mediaRoom] of table under it for them.
+ */
 @Immutable
 internal class TableGeometry(
     val width: Float,
     val height: Float,
     val safeTop: Float,
+    /** What the buttons take at the bottom, with the gap kept above them. */
     val bottomRoom: Float,
     val density: Float,
     wordsBottom: Float,
-    /** The room kept under the card for its own photo once it's turned over (memories plan; in [bottomRoom]); 0: none. */
-    val mediaRoom: Float = 0f,
+    /** The card's own photo or greeting lies under it once it's turned over (memories plan). */
+    keepsMediaRoom: Boolean = false,
+    /** The reader's quiet row, part of [bottomRoom]: it shows only once the card is out and turned over. */
+    quietRoom: Float = 0f,
 ) {
     val cardWidth: Float
     val cardHeight: Float
     val envelopeWidth: Float
     val envelopeHeight: Float
     val flapDepth: Float
+
+    /** Laid down, picture side up. */
     val cardTop: Float
+
+    /** Laid down, note side up: higher when its photo or greeting lies under it. */
+    val cardTopBack: Float
     val envelopeTopFinal: Float
+    val envelopeTopFinalBack: Float
+
+    /** The table kept under the turned-over card for its photo and greeting; 0 without them. */
+    val mediaRoom: Float
     val envelopeX: Float
     val envelopeY: Float
     val cardX: Float
@@ -170,29 +192,56 @@ internal class TableGeometry(
     init {
         val d = density
         val topGap = safeTop + 6f * d
+        // The round buttons reach 50 dp below the safe area; 8 between, and 4 for the card's small turn.
+        val underButtons = safeTop + UNDER_TOP_BUTTONS * d
         val room = height - topGap - bottomRoom
         val wide = width / d >= 600f
         val side = (if (width / d < 560f) 9f else 14f) * d
-        // The open envelope lies lower than the card on a tight screen: its bottom (the card's top + 1.606 cw at the
-        // least peek) must clear the button too, so it's the envelope that limits the card there. Tablets and wide
-        // windows go to 640 dp where the height allows (plan 6.3).
-        var cw = min(min(width - side * 2f, (if (wide) 640f else 470f) * d), room / ENVELOPE_REACH)
-        var peek = room - cw * 1.2f
-        val minPeek = cw * 0.13f
-        val maxPeek = cw * 0.47f
-        if (peek < minPeek) {
-            cw = min(cw, room / (1.2f + 0.13f))
-            peek = cw * 0.13f
-        }
-        peek = min(peek, maxPeek)
-        val spare = max(0f, room - cw * 1.2f - peek)
+        // Tablets and wide windows go to 640 dp where the height allows (plan 6.3).
+        val widest = min(width - side * 2f, (if (wide) 640f else 470f) * d)
+        // Shut, the envelope sits at least 88 dp below the safe area and clear of the buttons; the quiet row isn't there yet.
+        val shutLimit = (height - safeTop - (bottomRoom - quietRoom) - 88f * d) / ENVELOPE_TALL
+
+        fun fitted(above: Float): Float =
+            max(
+                0f,
+                min(
+                    min(widest, shutLimit),
+                    min((room - above) / (1.2f + LEAST_PEEK), (height - underButtons - bottomRoom - above) / 1.2f),
+                ),
+            )
+        // The card comes first: its photo and greeting get what a full-size card leaves under it, up to 160 dp (a tap
+        // opens the photo over the whole screen, so its print can be small). Only where the least isn't left does the
+        // card give way.
+        val least = (if (height / d < 720f) 110f else 124f) * d
+        mediaRoom =
+            if (keepsMediaRoom) {
+                (height - underButtons - bottomRoom - fitted(0f) * 1.2f).coerceIn(least, 160f * d)
+            } else {
+                0f
+            }
+        val cw = fitted(mediaRoom)
         cardWidth = cw
         cardHeight = cw * 1.2f
-        cardTop = topGap + spare * 0.46f + peek
         envelopeWidth = cw * 1.012f
         envelopeHeight = envelopeWidth * 1392f / 1200f
         flapDepth = envelopeWidth * 512f / 1200f
-        envelopeTopFinal = cardTop - peek + flapDepth
+        // How far the flap's tip is above the card when the pocket ends at the card's lower edge.
+        val flapAbove = (ENVELOPE_REACH - 1.2f) * cw
+
+        // The card's top and the flap's tip, laid down in this much room.
+        fun laid(space: Float): Pair<Float, Float> {
+            val peek = (space - cw * 1.2f).coerceIn(cw * LEAST_PEEK, cw * 0.47f)
+            val spare = max(0f, space - cw * 1.2f - peek)
+            val top = max(topGap + spare * 0.46f + peek, underButtons)
+            return top to top - max(peek, flapAbove)
+        }
+        val front = laid(room)
+        val back = laid(room - mediaRoom)
+        cardTop = front.first
+        cardTopBack = back.first
+        envelopeTopFinal = front.second + flapDepth
+        envelopeTopFinalBack = back.second + flapDepth
         // Shut, it sits a little above the middle of the free space, under the words.
         val free = height - safeTop - bottomRoom
         envelopeY = max(safeTop + max(88f * d, (free - envelopeHeight) * 0.56f), wordsBottom)
@@ -202,10 +251,24 @@ internal class TableGeometry(
         envelopeTopOut = min(height - envelopeHeight * 0.5f, cardHeight * 0.8f + 8f * d)
         cardTopOut = envelopeTopOut - cardHeight * 1.02f - 8f * d
     }
+
+    /** The laid-down card's top for how far it's turned over: 0 picture side up, 1 note side up. */
+    fun cardTop(turnedOver: Float): Float = cardTop + (cardTopBack - cardTop) * turnedOver
+
+    fun envelopeTopFinal(turnedOver: Float): Float = envelopeTopFinal + (envelopeTopFinalBack - envelopeTopFinal) * turnedOver
 }
 
-/** From the card's top at its least peek to the open envelope's bottom, in card widths: flap 0.432 + pocket 1.174. */
+/** From the flap's tip to the open envelope's bottom, in card widths: flap 0.432 + pocket 1.174. */
 private const val ENVELOPE_REACH = 1.606f
+
+/** The envelope's height in card widths. */
+private const val ENVELOPE_TALL = 1.012f * 1392f / 1200f
+
+/** The least of the open flap that shows above the laid-down card, as a share of the card's width. */
+private const val LEAST_PEEK = 0.13f
+
+/** How far below the safe area the laid-down card's top stays, in dp: clear of the round buttons. */
+private const val UNDER_TOP_BUTTONS = 62f
 
 /** A second tap within this long, on the same spot, is a double-tap; one tap turns the card after it. */
 private const val DOUBLE_TAP_MS = 300L
@@ -268,7 +331,15 @@ internal class CardTableState(
     val drop = TableSpring(58f, if (mood == CardMood.Santa) 9.6f else 11.5f, start = 0f)
 
     /** The card enlarged (plan 6.1). */
-    val zoom = TableZoom(reduceMotion, onEnlarged = { mark() }, wake = { wake() })
+    val zoom =
+        TableZoom(
+            reduceMotion,
+            onEnlarged = {
+                if (enlarged) enlargedOnce = true
+                mark()
+            },
+            wake = { wake() },
+        )
     private val springs = listOf(envelopeTurn, pull, lay, turn, lightX, lightY, drop) + zoom.springs
 
     var geometry by mutableStateOf<TableGeometry?>(null)
@@ -300,6 +371,21 @@ internal class CardTableState(
     /** "Read the verse" has the bookmark up over the table (plan 6.2). */
     var verseOpen by mutableStateOf(false)
 
+    /** "Read it in print" has the note's bookmark up over the table (plan Part 2). */
+    var printOpen by mutableStateOf(false)
+
+    /** Its note can be read in print (plan Part 2): a card being read, not sealed, with a note; never a letter. */
+    val printable: Boolean get() = sending == null && card.printable
+
+    /** "Read it in print" shows now: the card lies out note side up and isn't enlarged. */
+    val readsInPrint: Boolean get() = printable && step == TableStep.Out && backUp && !enlarged
+
+    /** Puts the note's bookmark up over the table. */
+    fun openPrint() {
+        menuOpen = false
+        printOpen = true
+    }
+
     /** Called the first time the card leaves its envelope on this visit: it's opened. */
     var onOpened: () -> Unit = {}
     var onTap: (TableTap) -> Unit = {}
@@ -319,6 +405,9 @@ internal class CardTableState(
     val sendBackShows: Boolean get() = step == TableStep.Out && turnedOnce && !card.sealed
     private var envelopeTurnedOnce = false
     private var heldOnce = false
+
+    /** The card has been enlarged once, so its hint has done its job. */
+    private var enlargedOnce = false
     private var openedReported = false
     private var drag: TableDrag? = null
     private var lastTapMs = 0L
@@ -434,6 +523,7 @@ internal class CardTableState(
                     when {
                         enlarged -> "double-tap to bring it back"
                         !turnedOnce -> "or swipe it"
+                        !enlargedOnce -> "double-tap the card to enlarge it"
                         !heldOnce && !sensorLive && !reduceMotion -> "press and hold, then move your finger: the light moves"
                         else -> ""
                     }
@@ -806,7 +896,7 @@ internal class CardTableState(
     ): Boolean {
         val g = geometry ?: return false
         // Enlarged, it covers more of the table.
-        return zoom.covers(g, g.cardX + g.cardWidth / 2f, g.cardTop + g.cardHeight / 2f, x, y)
+        return zoom.covers(g, g.cardX + g.cardWidth / 2f, g.cardTop(if (backUp) 1f else 0f) + g.cardHeight / 2f, x, y)
     }
 
     /** A second tap soon after on the same spot enlarges it (or brings it back); one tap turns it, a moment later. */
@@ -1022,7 +1112,7 @@ internal class CardTableState(
     val envelopeTurnZ: Float get() = envelopeBaseTurn - drop.x * 6f
 
     private fun envelopeTop(g: TableGeometry): Float =
-        lerp(lerp(lerp(g.envelopeY, g.envelopeYOpen, flapProgress), g.envelopeTopOut, rise), g.envelopeTopFinal, lay.x)
+        lerp(lerp(lerp(g.envelopeY, g.envelopeYOpen, flapProgress), g.envelopeTopOut, rise), g.envelopeTopFinal(turnedOver), lay.x)
 
     /** Falling onto the table as it arrives, or (sent) sliding up and off it. */
     private fun arrival(g: TableGeometry): Float = drop.x * (g.height * 0.9f) + (sending?.away?.x ?: 0f) * (g.height * 1.15f)
@@ -1040,9 +1130,16 @@ internal class CardTableState(
     /** The card's top; it grows from its top edge. */
     fun cardY(g: TableGeometry): Float {
         val inside = envelopeTop(g) + g.envelopeHeight * 0.02f
-        val top = lerp(lerp(inside, g.cardTopOut, rise), g.cardTop, lay.x)
+        val top = lerp(lerp(inside, g.cardTopOut, rise), g.cardTop(turnedOver), lay.x)
         return top + lightY.x * 5f * g.density - arrival(g) + g.cardHeight * (cardScale() - 1f) / 2f
     }
+
+    /**
+     * How far the card is turned over, as the finger or the spring has it: 0 picture side up, 1 note side up, easing
+     * through the turn. Laid down, the card and its envelope move up the table with it where the card's own photo or
+     * greeting needs the room under it.
+     */
+    val turnedOver: Float get() = ((1.0 - cos(Math.toRadians(turn.x.toDouble()))) / 2.0).toFloat()
 
     /** The card's angle over its own upright axis, with the tilt. */
     val cardAngleY: Float get() = turn.x + lightX.x * 3.2f
@@ -1079,6 +1176,7 @@ internal class CardTableState(
             if (cracked) 1 else 0,
             if (controlsHidden) 1 else 0,
             if (openedReported) 1 else 0,
+            if (enlargedOnce) 1 else 0,
         )
 
     private fun restore(saved: List<Int>) {
@@ -1089,6 +1187,7 @@ internal class CardTableState(
         cracked = saved[5] == 1
         controlsHidden = saved[6] == 1
         openedReported = saved[7] == 1
+        enlargedOnce = saved.getOrNull(8) == 1
         drop.jump(0f)
         when (step) {
             TableStep.Front -> Unit

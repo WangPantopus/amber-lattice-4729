@@ -248,6 +248,7 @@ object HolidayCardTimes {
     private val longDayFormat = DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.US)
     private val fullDateFormat = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US)
     private val postmarkFormat = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+    private val monthDayFormat = DateTimeFormatter.ofPattern("MMMM d", Locale.US)
 
     fun zone(timeZone: String?): ZoneId = timeZone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
@@ -338,6 +339,12 @@ object HolidayCardTimes {
             .coerceAtLeast(0)
             .toInt()
     }
+
+    /** "November 17", from a time or a calendar day (empty without one). */
+    fun monthDay(
+        value: String?,
+        zone: ZoneId,
+    ): String = localDay(value, zone)?.format(monthDayFormat).orEmpty()
 
     /** "OCT 30" for the postmark, from a calendar day ("2026-10-30") or a time. */
     fun postmarkDay(

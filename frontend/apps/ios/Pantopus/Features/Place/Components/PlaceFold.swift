@@ -103,6 +103,8 @@ struct PlaceFoldRow<Leading: View, Content: View>: View {
     var summary: String?
     @Binding var isOpen: Bool
     let identifier: String
+    /// The guidance pointer that rings this row's + (the first "Your home at a glance" row).
+    var guidanceAnchor: GuidanceCardID?
     @ViewBuilder var leading: Leading
     @ViewBuilder var content: Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -129,6 +131,11 @@ struct PlaceFoldRow<Leading: View, Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Icon(isOpen ? .minus : .plus, size: 16, strokeWidth: 2.25, color: Theme.Color.appTextMuted)
                         .accessibilityHidden(true)
+                        .background {
+                            if let guidanceAnchor {
+                                Color.clear.frame(width: 40, height: 40).guidanceAnchor(guidanceAnchor, when: !isOpen)
+                            }
+                        }
                 }
                 .padding(.vertical, 13)
                 .frame(minHeight: 44)

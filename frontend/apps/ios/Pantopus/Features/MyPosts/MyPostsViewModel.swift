@@ -25,6 +25,11 @@
 //        highlight:    .archived on the Archived tab
 //    - Active row tap → push pulse post detail
 //    - Empty states per tab.
+//    - Each post is drawn as its Pulse card (`cards`, the profile's card
+//      model), as on the Pulse tab: photos, reactions, Save, Repost. The
+//      card's ⋯ opens this screen's own menu (Edit, Pin, Archive or
+//      Restore, Delete); the rows above stand in for a post the build
+//      can't read as a card.
 //
 //  Backend:
 //    - GET    /api/posts/user/:userId            (posts.js:3016, active set)
@@ -156,6 +161,14 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     /// The Reposts tab's list (the posts you reposted, paged by repost offset).
     public let reposts: PostCollectionModel
 
+    /// Your posts as Pulse cards and what your taps on them did.
+    public let cards: ProfilePostCardsModel
+
+    /// The selected tab's cards: your posts, or the Saved or Reposts tab's.
+    public var visibleCards: ProfilePostCardsModel {
+        collection?.cards ?? cards
+    }
+
     /// The Saved or Reposts tab's list, while one of them is selected.
     private var collection: PostCollectionModel? {
         switch selectedTab {
@@ -276,6 +289,8 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     // MARK: - Local data
 
     private var posts: [MyPostDTO] = []
+    /// The same posts read as the feed's, for the cards.
+    private var feedPosts: [FeedPostDTO] = []
     /// Per-post optimistic override that wins over the wire `archivedAt`.
     /// Survives across `rebuild` calls but is wiped on `refresh()` (the
     /// backend doesn't surface archived state today). When the future
@@ -338,8 +353,14 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         selectedTab = [MyPostsTab.active, MyPostsTab.archived, MyPostsTab.saved, MyPostsTab.reposts]
             .contains(initialTab) ? initialTab : MyPostsTab.active
         store = ScreenStore.store(for: api)
-        saved = PostCollectionModel(kind: .saved, api: api, onOpenPost: onOpenPost, now: now)
-        reposts = PostCollectionModel(kind: .reposts, api: api, onOpenPost: onOpenPost, now: now)
+        let viewerId = currentUserId()
+        saved = PostCollectionModel(kind: .saved, api: api, viewerId: viewerId, onOpenPost: onOpenPost, now: now)
+        reposts = PostCollectionModel(kind: .reposts, api: api, viewerId: viewerId, onOpenPost: onOpenPost, now: now)
+        cards = ProfilePostCardsModel(viewerId: viewerId, client: api, store: store)
+        // A card's Saved, Repost or reaction says how it went, as on a profile.
+        for model in [cards, saved.cards, reposts.cards] {
+            model.onToast = { [weak self] message in self?.showCardToast(message) }
+        }
         showStoredCopy()
     }
 
@@ -395,11 +416,13 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
     private func showStoredCopy() {
         guard let userId = currentUserId(),
               let copy = store.peek(listEndpoint(userId: userId), as: MyPostsResponse.self) else { return }
-        apply(copy.value)
+        apply(copy.value, readRevision: -1)
     }
 
-    private func apply(_ response: MyPostsResponse) {
+    private func apply(_ response: MyPostsResponse, readRevision: Int) {
         posts = response.posts
+        feedPosts = response.feedPosts
+        cards.show(feedPosts, readRevision: readRevision)
         nextPage = Self.nextPage(after: response)
         loadedAtLeastOnce = true
         rebuild()
@@ -416,6 +439,8 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
             // this VM is only reachable from the You/Me tab which requires
             // authentication.
             posts = []
+            feedPosts = []
+            cards.show([], readRevision: -1)
             nextPage = nil
             loadingMore = false
             loadedAtLeastOnce = true
@@ -425,6 +450,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         // Keep the rows already paged in (bounded) rather than collapsing
         // the list to its first page on every return and refresh.
         let depth = min(max(Self.pageSize, posts.count), Self.maxRefreshDepth)
+        let readRevision = cards.actionRevision
         do {
             let response = try await store.load(
                 listEndpoint(userId: userId, depth: depth),
@@ -435,7 +461,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
             ).value
             guard generation == fetchGeneration else { return }
             loadingMore = false
-            apply(response)
+            apply(response, readRevision: readRevision)
         } catch {
             guard generation == fetchGeneration else { return }
             loadingMore = false
@@ -465,6 +491,9 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         guard generation == fetchGeneration else { return false }
         let known = Set(posts.map(\.id))
         posts += response.posts.filter { !known.contains($0.id) }
+        let knownCards = Set(feedPosts.map(\.id))
+        feedPosts += response.feedPosts.filter { !knownCards.contains($0.id) }
+        cards.show(feedPosts, readRevision: -1)
         nextPage = Self.nextPage(after: response)
         rebuild()
         return true
@@ -656,6 +685,36 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         )
     }
 
+    /// A post card's ⋯ on Active or Archived: this screen's menu for that post.
+    public func requestKebab(postId: String) {
+        guard let dto = posts.first(where: { $0.id == postId }) else { return }
+        requestKebab(dto)
+    }
+
+    /// "Edit post" in the menu: the compose flow with the post filled in (the old row's Edit).
+    public func editPost(postId: String) {
+        kebabTarget = nil
+        guard let dto = posts.first(where: { $0.id == postId }) else { return }
+        onEditPost(dto)
+    }
+
+    /// One of your archived posts a moderator removed: it can't be restored.
+    public func isRemovedByModerator(postId: String) -> Bool {
+        guard let dto = posts.first(where: { $0.id == postId }) else { return false }
+        return isArchived(dto) && dto.isRemovedByModerator
+    }
+
+    /// Opens a post's page by id (a card's quoted post).
+    public func openPost(postId: String) {
+        onOpenPost(posts.first { $0.id == postId } ?? MyPostDTO(id: postId, userId: "", createdAt: ""))
+    }
+
+    /// A card's toast ("Saved.", "Couldn't update your reaction."), shown as the profile shows it.
+    private func showCardToast(_ message: String) {
+        toastMessage = message
+        toastKind = .neutral
+    }
+
     /// Dismiss the kebab sheet without doing anything.
     public func cancelKebab() {
         kebabTarget = nil
@@ -724,8 +783,11 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
         guard let target = presented ?? deleteTarget else { return }
         deleteTarget = nil
         let previousPosts = posts
+        let previousFeedPosts = feedPosts
         let previousOverrides = localArchiveOverrides
         posts.removeAll { $0.id == target.postId }
+        feedPosts.removeAll { $0.id == target.postId }
+        cards.show(feedPosts, readRevision: -1)
         localArchiveOverrides.removeValue(forKey: target.postId)
         rebuild()
         do {
@@ -733,6 +795,8 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
             PulsePostsRefresh.notifyPostsDidChange()
         } catch {
             posts = previousPosts
+            feedPosts = previousFeedPosts
+            cards.show(feedPosts, readRevision: -1)
             localArchiveOverrides = previousOverrides
             rebuild()
             toastMessage = "Couldn't delete the post"

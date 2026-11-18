@@ -31,11 +31,11 @@ type Help =
 
 const letters = (text: string) => [...text].length;
 
-/** Who the notes are for, in the panel's first line. */
+/** Who the notes are for, in the panel's first line: only a card to one person names them. */
 function forLine(names: string[], count: number): string {
   if (count > 2) return `One note for all ${count} people, so it names no one.`;
-  if (names.length === count && names.length > 0) return `For ${names.join(' and ')}.`;
-  return count === 2 ? 'One note for both of them.' : 'A note for them.';
+  if (count === 2) return 'One note for both of them, so it names no one.';
+  return names.length === 1 ? `For ${names[0]}.` : 'A note for them.';
 }
 
 /** The helper's state for one card: `use` puts a note on the card and remembers what was there, for Undo. */

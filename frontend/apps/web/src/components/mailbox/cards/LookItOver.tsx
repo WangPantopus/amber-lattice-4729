@@ -27,6 +27,7 @@ import { cardMood, daysAway, emailGoesAt, longDay, SERIF } from './cardArt';
 import CardPrint from './CardPrint';
 import CardGreeting from './CardGreeting';
 import CardTable from './CardTable';
+import { useNoteLeaves } from './CardPaper';
 import { launchFeatures } from '@/lib/featureFlags';
 
 // Their morning mail comes at 7 a.m. where they live: that's when it's in their Mailbox.
@@ -76,6 +77,8 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
                 alt={photo.alt}
                 datedOn={mood === 'nostalgia' ? (piece.postmark?.date || piece.created_at) : null}
                 className="w-full"
+                opens
+                live={photo.live ? { own: photo.live.file_id } : null}
               />
             </div>
           ) : null}
@@ -130,6 +133,10 @@ export default function LookItOver({
   const addressee = piece.recipient_name || toName;
   const { stage, plays, open } = useCardOpening(false);
   const [showBack, setShowBack] = useState(false);
+  // A long note on two leaves, as the reader will see it (mail-cards-experience Part 9): Turn it over, Read on, Turn it back.
+  const leaves = useNoteLeaves(piece.content || '', card.number, launchFeatures.cardTable);
+  const [leafLifted, setLeafLifted] = useState(false);
+  const readOn = showBack && Boolean(leaves) && !leafLifted;
   const [onTable, setOnTable] = useState(false);
   // On Christmas morning the seal is off: the card leaves its envelope the way an unsealed one does.
   const unsealed: MailItemV2 = sealed ? { ...piece, card: { ...card, sealed: false } } : piece;
@@ -290,15 +297,20 @@ export default function LookItOver({
                 : `A Christmas card from ${from.replace(/\.$/, '')}. It slides out of the envelope picture side up.`}
             </p>
             <div className={launchFeatures.cardTable ? 'mt-4' : 'mx-auto mt-4 max-w-[300px]'}>
-              <CardFromEnvelope piece={unsealed} recipientName={addressee} opening={stage === 'opening'} plays={plays} showBack={showBack}>
+              <CardFromEnvelope piece={unsealed} recipientName={addressee} opening={stage === 'opening'} plays={plays} showBack={showBack} leaves={leaves} leafLifted={leafLifted}>
                 <div className="mt-[18px] flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowBack((back) => !back)}
-                    aria-pressed={showBack}
+                    onClick={() => {
+                      // Turned over, it always starts at the first leaf; Read on lifts it; then it turns back.
+                      if (!showBack) { setLeafLifted(false); setShowBack(true); } else if (readOn) setLeafLifted(true); else setShowBack(false);
+                    }}
+                    aria-pressed={readOn ? undefined : showBack}
+                    aria-label={readOn ? 'Read on, the note continues on a second leaf' : undefined}
+                    data-testid="sendCardLookTurn"
                     className={`${button} border border-[#d6cbb6] bg-[#fffdf8] text-[#374151] hover:bg-[#f5efe3]`}
                   >
-                    {showBack ? 'Turn it back' : 'Turn it over'}
+                    {!showBack ? 'Turn it over' : readOn ? 'Read on' : 'Turn it back'}
                   </button>
                   {launchFeatures.cardTable ? (
                     <button

@@ -445,15 +445,18 @@ ${words.footer[1]}
 /**
  * The words of a Plans invitation email (services/plans/planInvites.js). The plan's card only: what, when and the
  * area, never an address. A playdate keeps its title in the app and its time a part of the day, as everywhere else.
- * @param {Object} words - { hostFirst, noun, icon, title, when, where, playdate }
+ * While the host picks a date (`picking`) it names none: "Sam invited you to a dinner. Tick the times that work for
+ * you." as the subject and the lead, and `when` reads "Picking a date".
+ * @param {Object} words - { hostFirst, noun, icon, title, when, where, playdate, picking, ask }
  * @param {string} toEmail - the invited address, so the person signs up with it
  */
 function planInviteEmailContent(words, toEmail) {
   const invitedTo = words.noun === 'coffee' ? 'invited you for coffee' : `invited you to a ${words.noun}`;
   return {
-    subject: `${words.hostFirst} ${invitedTo}${words.playdate || !words.when ? '' : ` on ${words.when}`}`,
+    subject: words.picking ? `${words.hostFirst} ${invitedTo}. ${words.ask}`
+      : `${words.hostFirst} ${invitedTo}${words.playdate || !words.when ? '' : ` on ${words.when}`}`,
     heading: 'You’re invited',
-    lead: ` ${invitedTo}.`,
+    lead: words.picking ? ` ${invitedTo}. ${words.ask}` : ` ${invitedTo}.`,
     facts: [
       words.title || (words.playdate ? 'A playdate' : null),
       words.when ? words.when[0].toUpperCase() + words.when.slice(1) : null,
@@ -548,6 +551,216 @@ Don’t send me invitations: ${unsubscribeLink}
     subject: content.subject,
     html,
     text,
+    headers: {
+      'List-Unsubscribe': `<${oneClickUnsubscribeLink}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  });
+}
+
+// ============================================================
+//  PLANS: EMAILS TO A GUEST WITHOUT AN ACCOUNT
+// ============================================================
+
+/**
+ * The words of the three emails a guest without an account gets for a plan (Plans for the holidays, H1;
+ * docs/product/plans-holidays/06-screens.md, "The emails"): You're in, one reminder, and a change or cancellation;
+ * and, to a guest a move to the host's home makes wait (contract 6.8), the move.
+ * Never an address: the guest's own link opens the page that shows it.
+ * @param {'in'|'reminder'|'changed'|'moved_home'|'cancelled'} kind
+ * @param {Object} words - { hostFirst, title, icon, when, people, day, openCount, changed, newPlace, cancelNote }
+ *   people: "2 adults and 1 kid"; day: 'Today' | 'Tomorrow'; changed: 'time' | 'place' | 'both'.
+ */
+function planGuestEmailContent(kind, words) {
+  const title = words.title || 'your plan';
+  const footer = `You got this because you answered ${words.hostFirst}’s invitation on Pantopus.`;
+  if (kind === 'in') {
+    return {
+      subject: `You’re in: ${title}`,
+      heading: 'You’re in',
+      lines: [`${words.hostFirst} has you down for ${words.people}.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['The address and the bring list are on that page. This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  // Find a date (Plans for the holidays, the extras): the host picked the time, or a guest's ticks are saved.
+  if (kind === 'date_in') {
+    return {
+      subject: `${title} is ${words.when}. You’re in.`,
+      heading: 'You’re in',
+      lines: [`${words.hostFirst} has you down for ${words.people}.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['The address and the bring list are on that page. This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'date_ask') {
+    return {
+      subject: `${title} is ${words.when}. Can you make it?`,
+      heading: 'Can you make it?',
+      lines: [],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  // The gift exchange (the extras): never the name, only that it is on their invitation.
+  if (kind === 'gift_drawn' || kind === 'gift_redrawn') {
+    const again = kind === 'gift_redrawn';
+    return {
+      subject: again ? `Names were drawn again for ${title}` : `Names are drawn for ${title}`,
+      heading: again ? 'Names were drawn again' : 'Names are drawn',
+      lines: [`${again ? 'Names were drawn again' : 'Names are drawn'} for ${title}. Open your invitation to see who you’re giving to.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'date_full') {
+    return {
+      subject: `${title} is ${words.when}`,
+      heading: `${title} is full right now`,
+      lines: [`It’s ${words.when}, a time you ticked, but it filled up with people who answered first. You’re down as Maybe, so ${words.hostFirst} sees you’d still like to come. You can change that from your invitation.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'dates_saved') {
+    return {
+      subject: `Your times for ${title}`,
+      heading: 'Your times are saved',
+      lines: [`${words.hostFirst} is picking a date. You’ll hear when ${words.hostFirst} chooses one.`],
+      facts: [title],
+      button: 'Open your invitation',
+      after: ['This link is yours; please don’t forward it.'],
+      footer,
+    };
+  }
+  if (kind === 'reminder') {
+    const open = Number(words.openCount) || 0;
+    return {
+      subject: `${words.day === 'Today' ? 'Today' : 'Tomorrow'}: ${title}`,
+      heading: words.day === 'Today' ? 'Today' : 'Tomorrow',
+      lines: [],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: open > 0 ? [`${open} ${open === 1 ? 'thing is' : 'things are'} still open on the bring list.`] : [],
+      footer,
+    };
+  }
+  if (kind === 'changed') {
+    const what = words.changed === 'both' ? 'the time and place' : words.changed === 'place' ? 'the place' : 'the time';
+    return {
+      subject: `${words.hostFirst} changed ${what} of ${title}`,
+      heading: `${words.hostFirst} changed ${what}`,
+      lines: [],
+      facts: [title, words.changed !== 'place' ? words.when : null, words.changed !== 'time' ? words.newPlace : null].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  if (kind === 'moved_home') {
+    // The plan moved to the host's home and this guest now waits for the host's yes: no address, only that it comes.
+    return {
+      subject: `${words.hostFirst} changed the place of ${title}`,
+      heading: `${words.hostFirst} changed the place`,
+      lines: [`${title} is now at ${words.hostFirst}’s home. ${words.hostFirst} lets each guest in. When ${words.hostFirst} says yes, the address comes to this email.`],
+      facts: [title, words.when].filter(Boolean),
+      button: 'Open your invitation',
+      after: [],
+      footer,
+    };
+  }
+  return {
+    subject: `${words.hostFirst} cancelled ${title}`,
+    heading: `${words.hostFirst} cancelled`,
+    lines: words.cancelNote ? [words.cancelNote] : [],
+    facts: [title, words.when].filter(Boolean),
+    button: null,
+    after: [],
+    footer,
+  };
+}
+
+/**
+ * Send one email to a guest without an account, in the invitation email's frame with its unsubscribe link and the
+ * mail app's one-click unsubscribe header. `link` is the guest's own link (null for a cancellation).
+ * @param {Object} opts - { toEmail, kind, words, link, unsubscribeLink, oneClickUnsubscribeLink }
+ */
+async function sendPlanGuestEmail({ toEmail, kind, words, link, unsubscribeLink, oneClickUnsubscribeLink }) {
+  const content = planGuestEmailContent(kind, words);
+  const [title, ...otherFacts] = content.facts;
+  const paragraph = (text) => `<p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 20px;">${escapeHtml(text)}</p>`;
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f9fafb; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:480px; margin:40px auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+
+    <!-- Header -->
+    <div style="background:#111827; padding:32px 32px 24px; text-align:center;">
+      <div style="font-size:32px; margin-bottom:8px;">${escapeHtml(words.icon || '📅')}</div>
+      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">${escapeHtml(content.heading)}</h1>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:32px;">
+      ${content.lines.map(paragraph).join('\n      ')}
+
+      <!-- The plan's card -->
+      <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px 18px;">
+        <p style="color:#111827; font-size:16px; font-weight:600; line-height:1.4; margin:0 0 6px;">${escapeHtml(title || '')}</p>
+        ${otherFacts.map((fact) => `<p style="color:#4b5563; font-size:14px; line-height:1.5; margin:0;">${escapeHtml(fact)}</p>`).join('\n        ')}
+      </div>
+
+      ${link && content.button ? `<!-- CTA -->
+      <div style="text-align:center; margin:28px 0;">
+        <a href="${escapeHtml(link)}" style="display:inline-block; background:#111827; color:#ffffff; font-size:15px; font-weight:600; padding:14px 32px; border-radius:10px; text-decoration:none;">
+          ${escapeHtml(content.button)}
+        </a>
+      </div>` : '<div style="height:20px;"></div>'}
+
+      ${content.after.map((text) => `<p style="color:#6b7280; font-size:13px; line-height:1.5; text-align:center; margin:0 0 8px;">${escapeHtml(text)}</p>`).join('\n      ')}
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
+      <p style="color:#9ca3af; font-size:11px; margin:0;">
+        ${escapeHtml(content.footer)}
+      </p>
+      <p style="color:#d1d5db; font-size:10px; margin:8px 0 0;">
+        <a href="${escapeHtml(unsubscribeLink)}" style="color:#9ca3af; text-decoration:underline;">Don’t send me invitations</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = [
+    ...content.lines,
+    content.facts.join('\n'),
+    link && content.button ? `${content.button}: ${link}` : null,
+    ...content.after,
+    `${content.footer}\nDon’t send me invitations: ${unsubscribeLink}`,
+  ].filter(Boolean).join('\n\n');
+
+  return sendEmail({
+    to: toEmail,
+    subject: content.subject,
+    html,
+    text: `\n${text}\n`,
     headers: {
       'List-Unsubscribe': `<${oneClickUnsubscribeLink}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -932,6 +1145,10 @@ Unsubscribe: ${unsubUrl}
  * @param {string} opts.supportTrainId
  * @param {boolean} [opts.isReminder=false] - reuse this receipt for an upcoming-slot reminder
  */
+// The address a signup gives is the helper's own only once they have opened the link in their signup email
+// (`confirmed`). Until then these emails use fixed wording: nothing a person typed (a name, the train's title, a
+// dish) is put in them, and the page behind the link has the details. `confirmUrl`: the signup email's link, which
+// records that the address was opened and then shows the train.
 async function sendGuestReservationConfirmationEmail({
   toEmail,
   guestName,
@@ -947,14 +1164,26 @@ async function sendGuestReservationConfirmationEmail({
   restaurantName,
   guestAddressSharedAt,
   addressLabel,
+  confirmed = false,
+  confirmUrl = null,
+  cancelUrl = null,
 }) {
   const modeLabels = { cook: 'Home-cooked meal', takeout: 'Takeout', groceries: 'Groceries' };
   const modeLabel = modeLabels[contributionMode] || contributionMode;
-  const appUrl = `${APP_URL}/support-trains/${supportTrainId}`;
+  const appUrl = (!isReminder && confirmUrl) || `${APP_URL}/support-trains/${supportTrainId}`;
+  // A reminder to a confirmed address reads as it always has; everything else is fixed wording.
+  const typed = isReminder && confirmed === true;
 
   const daySuffix = ['tomorrow', 'today'].includes(reminderDay) ? ` ${reminderDay}` : '';
-  const subject = isReminder ? `Reminder: ${trainTitle}${daySuffix}` : `You're signed up to help: ${trainTitle}`;
-  const contributionDetail = isReminder ? (contributionMode === 'takeout' ? restaurantName : dishTitle) : null;
+  const subject = typed ? `Reminder: ${trainTitle}${daySuffix}`
+    : isReminder ? `Reminder: your Support Train sign-up${daySuffix}` : "You're signed up to help with a Support Train";
+  const contributionDetail = typed ? (contributionMode === 'takeout' ? restaurantName : dishTitle) : null;
+  const greetingHtml = typed
+    ? `Hi <strong>${escapeHtml(guestName)}</strong>, this is a reminder about your upcoming help with <strong>${escapeHtml(trainTitle)}</strong>.`
+    : `Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up on Pantopus.' : 'thank you for signing up to help with a Support Train on Pantopus.'}`;
+  const greetingText = typed ? `Hi ${guestName}, this is a reminder about your upcoming slot.`
+    : `Hi, ${isReminder ? 'this is a reminder about your upcoming Support Train sign-up.' : 'thank you for signing up to help with a Support Train!'}`;
+  const slotLine = typed ? `${slotLabel} · ${slotDate}` : slotDate;
   // A reminder can repeat an address only after this reservation's share receipt.
   const sharedAddress = isReminder && guestAddressSharedAt ? addressLabel : null;
 
@@ -975,11 +1204,11 @@ async function sendGuestReservationConfirmationEmail({
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi <strong>${escapeHtml(guestName)}</strong>, ${isReminder ? 'this is a reminder about your upcoming help with' : 'thank you for signing up to help with'} <strong>${escapeHtml(trainTitle)}</strong>.
+        ${greetingHtml}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
-        <div style="font-size:15px; font-weight:600; color:#111827;">📅 ${escapeHtml(slotLabel)} · ${escapeHtml(slotDate)}</div>
+        <div style="font-size:15px; font-weight:600; color:#111827;">📅 ${escapeHtml(slotLine)}</div>
         ${slotTime ? `<div style="font-size:13px; color:#6b7280; margin-top:4px;">⏰ ${escapeHtml(slotTime)}</div>` : ''}
         <div style="font-size:13px; color:#6b7280; margin-top:4px;">🍽 ${escapeHtml(modeLabel)}</div>${contributionDetail ? `\n        <div style="font-size:13px; color:#6b7280; margin-top:4px;">${escapeHtml(contributionDetail)}</div>` : ''}
       </div>
@@ -999,13 +1228,17 @@ async function sendGuestReservationConfirmationEmail({
         <a href="${appUrl}" style="display:inline-block; background:#111827; color:#ffffff; font-size:15px; font-weight:600; padding:14px 32px; border-radius:10px; text-decoration:none;">
           View Support Train
         </a>
-      </div>
+      </div>${cancelUrl ? `
+
+      <p style="color:#374151; font-size:14px; line-height:1.6; margin:0; text-align:center;">
+        Can't make it? <a href="${escapeHtml(cancelUrl)}" style="color:#1d4ed8;">Cancel your sign-up</a> so someone else can take the date.
+      </p>` : ''}
     </div>
 
     <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
       <p style="color:#9ca3af; font-size:11px; margin:0;">Pantopus — Your household, organized.</p>
       <p style="color:#d1d5db; font-size:10px; margin:8px 0 0;">
-        If you didn't sign up for this, you can safely ignore this email.
+        ${cancelUrl ? `If you didn't sign up for this, <a href="${escapeHtml(cancelUrl)}" style="color:#9ca3af;">cancel the sign-up</a> to free the date.` : "If you didn't sign up for this, you can safely ignore this email."}
       </p>
     </div>
   </div>
@@ -1015,9 +1248,9 @@ async function sendGuestReservationConfirmationEmail({
   const text = `
 ${subject}
 
-Hi ${guestName}, ${isReminder ? 'this is a reminder about your upcoming slot.' : 'thank you for signing up!'}
+${greetingText}
 
-${slotLabel} · ${slotDate}${slotTime ? `\nTime: ${slotTime}` : ''}
+${slotLine}${slotTime ? `\nTime: ${slotTime}` : ''}
 Type: ${modeLabel}${contributionDetail ? `\nBring: ${contributionDetail}` : ''}
 
 ${sharedAddress ? `Drop-off address:\n${sharedAddress}` : 'The organizer will share exact delivery details with you closer to the date.'}
@@ -1025,7 +1258,7 @@ ${sharedAddress ? `Drop-off address:\n${sharedAddress}` : 'The organizer will sh
 Want a better experience? Download the Pantopus app for one-tap signups, real-time updates, and direct chat with the organizer.
 
 View Support Train: ${appUrl}
-`;
+${cancelUrl ? `\nCan't make it? Cancel your sign-up so someone else can take the date: ${cancelUrl}\n` : ''}`;
 
   return sendEmail({ to: toEmail, subject, html, text });
 }
@@ -1040,12 +1273,23 @@ async function sendGuestReservationReminderEmail(options) {
  * "Fri, Oct 9") are no longer needed: the organizer closed the Train, or (`removed`) took this
  * signup off it, with their optional reason.
  */
-async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, slots, removed = false, reason = null }) {
-  const subject = removed ? `Signup removed: ${trainTitle}` : `No longer needed: ${trainTitle}`;
+// `confirmed`: the address opened the link in its signup email. Until then the email uses fixed wording, as the signup
+// and reminder emails do: no name, title or reason anyone typed (C6).
+async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, slots, removed = false, reason = null, confirmed = false }) {
+  const typed = confirmed === true;
+  const subject = typed
+    ? (removed ? `Signup removed: ${trainTitle}` : `No longer needed: ${trainTitle}`)
+    : (removed ? 'Your Support Train sign-up was removed' : 'Your Support Train sign-up is no longer needed');
   const heading = removed ? 'Your signup was removed' : 'This Support Train has closed';
   const what = removed ? 'an organizer removed your signup for' : 'the organizer closed';
-  const reasonText = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+  const reasonText = typed && typeof reason === 'string' && reason.trim() ? reason.trim() : null;
   const slotRows = (slots || []).map((s) => `${s.slotLabel} · ${s.slotDate}`);
+  const greetingHtml = typed
+    ? `Hi <strong>${escapeHtml(guestName)}</strong>, ${what} <strong>${escapeHtml(trainTitle)}</strong>. You don't need to bring anything for:`
+    : `Hi, ${removed ? 'an organizer removed your sign-up for a Support Train on Pantopus' : 'the organizer closed a Support Train you signed up for on Pantopus'}. You don't need to bring anything for:`;
+  const greetingText = typed
+    ? `Hi ${guestName}, ${what} ${trainTitle}. You don't need to bring anything for:`
+    : `Hi, ${removed ? 'an organizer removed your sign-up for a Support Train on Pantopus' : 'the organizer closed a Support Train you signed up for on Pantopus'}. You don't need to bring anything for:`;
 
   const html = `
 <!DOCTYPE html>
@@ -1064,7 +1308,7 @@ async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, sl
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi <strong>${escapeHtml(guestName)}</strong>, ${what} <strong>${escapeHtml(trainTitle)}</strong>. You don't need to bring anything for:
+        ${greetingHtml}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
@@ -1091,7 +1335,7 @@ ${reasonText ? `
   const text = `
 ${subject}
 
-Hi ${guestName}, ${what} ${trainTitle}. You don't need to bring anything for:
+${greetingText}
 
 ${slotRows.join('\n')}
 ${reasonText ? `\nReason: ${reasonText}\n` : ''}
@@ -1130,10 +1374,12 @@ async function sendGuestReservationAddressEmail({
   deliveryInstructions,
   specialInstructions,
   supportTrainId,
+  replacesEarlier = false,
 }) {
   const appUrl = `${APP_URL}/support-trains/${supportTrainId}`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLabel)}`;
-  const subject = `Delivery location for ${trainTitle}`;
+  // replacesEarlier: the organizer changed where help goes after this guest had the address.
+  const subject = replacesEarlier ? `New delivery location for ${trainTitle}` : `Delivery location for ${trainTitle}`;
   const instructions = [
     deliveryInstructions ? `Delivery instructions: ${deliveryInstructions}` : null,
     specialInstructions ? `Special instructions: ${specialInstructions}` : null,
@@ -1150,12 +1396,12 @@ async function sendGuestReservationAddressEmail({
   <div style="max-width:480px; margin:40px auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
 
     <div style="background:#111827; padding:32px 32px 24px; text-align:center;">
-      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">Delivery Location</h1>
+      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">${replacesEarlier ? 'New Delivery Location' : 'Delivery Location'}</h1>
     </div>
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi <strong>${escapeHtml(guestName)}</strong>, the organizer has shared the exact delivery location for <strong>${escapeHtml(trainTitle)}</strong>.
+        Hi <strong>${escapeHtml(guestName)}</strong>, ${replacesEarlier ? 'the delivery location changed' : 'the organizer has shared the exact delivery location'} for <strong>${escapeHtml(trainTitle)}</strong>.${replacesEarlier ? ' This replaces the address we sent you earlier.' : ''}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
@@ -1203,9 +1449,9 @@ async function sendGuestReservationAddressEmail({
 </html>`;
 
   const text = `
-Delivery location for ${trainTitle}
+${subject}
 
-Hi ${guestName}, the organizer has shared the exact delivery location.
+Hi ${guestName}, ${replacesEarlier ? 'the delivery location changed. This replaces the address we sent you earlier.' : 'the organizer has shared the exact delivery location.'}
 
 ${slotLabel} · ${slotDate}${slotTime ? `\nTime: ${slotTime}` : ''}
 
@@ -1482,6 +1728,8 @@ module.exports = {
   sendCardWaitingEmail,
   planInviteEmailContent,
   sendPlanInviteEmail,
+  planGuestEmailContent,
+  sendPlanGuestEmail,
   sendPasswordResetEmail,
   sendVerificationEmail,
   sendMonthlyReceipt,

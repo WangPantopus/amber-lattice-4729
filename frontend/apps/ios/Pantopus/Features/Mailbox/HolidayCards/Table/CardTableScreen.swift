@@ -21,15 +21,20 @@ struct CardTableScreen: View {
     var closeLabel = "Back to the Mailbox"
     /// Off where there's nothing to share yet (Look it over).
     var canShare = true
+    /// "Share this card" as a quiet button too (plan 11.1); off on a reader's card, where the quiet row holds the
+    /// design check's three (Nov 17) and Share keeps its corner and its ⋯ line.
+    var sharesQuietly = true
     let onClose: () -> Void
 
     @State private var wordsHeight: CGFloat = 0
     @State private var actHeight: CGFloat = 0
+    /// With larger text: "Turn it back" and "Read it in print" side by side, or one under the other (plan Part 2).
+    @State private var printActHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .title3) private var wordsSize: CGFloat = 18
     @ScaledMetric(relativeTo: .subheadline) private var primarySize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 12.5
+    @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 15
 
     var body: some View {
         GeometryReader { geo in
@@ -46,9 +51,11 @@ struct CardTableScreen: View {
                 screen: screen,
                 trailingStrip: strip,
                 safeTop: insets.top,
-                // The card's own photo keeps room under the card on a phone (memories plan step 4).
-                bottomControls: actHeight + insets.bottom + 8
-                    + CardTableMediaLayer.room(for: model.content, screen: screen, strip: strip, fold: fold),
+                bottomControls: max(actHeight, model.largerText ? printActHeight : 0) + insets.bottom + 8,
+                // The card's own photo and greeting keep room under the turned-over card on a phone (memories plan
+                // step 4); nothing lies there while a card is being sealed.
+                keepsMediaRoom: model.sending == nil
+                    && CardTableMediaLayer.liesUnderCard(model.content, screen: screen, strip: strip, fold: fold),
                 wordsBottom: insets.top + 54 + wordsHeight
             )
             ZStack(alignment: .topLeading) {
@@ -89,6 +96,13 @@ struct CardTableScreen: View {
             .onChange(of: fold, initial: true) { _, new in model.setFold(new) }
         }
         .background(MailPaper.tableNight.ignoresSafeArea())
+        // The card's own photo, opened from its print: over the table and its buttons.
+        .overlay {
+            if let photo = model.openedPhoto {
+                CardPhotoViewer(photo: photo) { model.openedPhoto = nil }
+                    .accessibilityAddTraits(.isModal)
+            }
+        }
         .statusBarHidden(false)
         .preferredColorScheme(.dark)
         .accessibilityElement(children: .contain)
@@ -100,7 +114,7 @@ struct CardTableScreen: View {
             }
         }
         .onAppear {
-            model.offersShare = canShare
+            model.offersShare = canShare && sharesQuietly
             model.reduceMotion = reduceMotion
             model.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
             model.setShowing(true)
@@ -142,7 +156,16 @@ struct CardTableScreen: View {
                             width: layout.cardWidth,
                             height: layout.cardHeight
                         ))
-                        model.fingerLifted(at: value.location, layout: layout, isOnCard: card.contains(value.location))
+                        // The open Duo's note page, where a long note's first leaf lies (plan Part 9).
+                        let scale = pose.cardScale * pose.pageScale
+                        let notePage = CGRect(
+                            x: pose.notePageX,
+                            y: pose.notePageY,
+                            width: layout.cardWidth * scale,
+                            height: layout.cardHeight * scale
+                        )
+                        let onCard = card.contains(value.location) || (model.fold.isSpread && notePage.contains(value.location))
+                        model.fingerLifted(at: value.location, layout: layout, isOnCard: onCard)
                     }
             )
             // Two fingers enlarge the card (plan 6.1).
@@ -167,11 +190,24 @@ struct CardTableScreen: View {
                 hint: "or swipe it, the way you’d turn it in your hand",
                 primarySize: primarySize,
                 hintSize: hintSize,
-                reservesSecondary: model.reservesSecondary
+                reservesSecondary: model.reservesSecondary || model.reservesNext,
+                oneRow: true
             ) {}
                 .frame(width: max(0, width - 32))
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { actHeight = $0 }
+            CardTableAct(
+                title: "Turn it back",
+                hint: "",
+                primarySize: primarySize,
+                hintSize: hintSize,
+                reservesSecondary: model.reservesSecondary || model.reservesNext,
+                oneRow: true,
+                beside: CardTableMenuItem(title: CardTableBookmark.print.title, identifier: "") {}
+            ) {}
+                .frame(width: max(0, width - 32))
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { printActHeight = $0 }
         }
         .hidden()
         .accessibilityHidden(true)

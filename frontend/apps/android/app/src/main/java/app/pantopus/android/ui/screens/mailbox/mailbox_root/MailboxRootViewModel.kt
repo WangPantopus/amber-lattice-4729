@@ -22,6 +22,7 @@ import app.pantopus.android.data.network.NetworkMonitor
 import app.pantopus.android.ui.screens.mailbox.components.MailAddressBook
 import app.pantopus.android.ui.screens.mailbox.components.MailKind
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceMapper
+import app.pantopus.android.ui.screens.mailbox.components.MailPieceModel
 import app.pantopus.android.ui.screens.mailbox.components.MailSection
 import app.pantopus.android.ui.screens.mailbox.components.MailboxHeroState
 import app.pantopus.android.ui.screens.mailbox.components.MappedMail
@@ -216,6 +217,9 @@ class MailboxRootViewModel
 
         private var onOpenMail: (String) -> Unit = {}
 
+        /** A Christmas card opened from the list, with the other cards waiting, oldest first (plan Part 4). */
+        private var onOpenCard: (String, List<String>) -> Unit = { id, _ -> onOpenMail(id) }
+
         private var book = MailAddressBook(personName = null)
 
         /** The server listed the person's Homes (`homes`), so the Home drawer can say why it's empty. */
@@ -272,11 +276,31 @@ class MailboxRootViewModel
             }
         }
 
-        fun configureNavigation(onOpenMail: (String) -> Unit) {
+        fun configureNavigation(
+            onOpenMail: (String) -> Unit,
+            onOpenCard: ((String, List<String>) -> Unit)? = null,
+        ) {
             this.onOpenMail = onOpenMail
+            this.onOpenCard = onOpenCard ?: { id, _ -> onOpenMail(id) }
         }
 
-        fun openMail(mailId: String) = onOpenMail(mailId)
+        /**
+         * A piece opened from the list. A Christmas card takes along the other cards that can be opened now (delivered,
+         * not opened, not sealed or its seal lifted), oldest first, for "Open the next card" (plan Part 4).
+         */
+        fun openMail(mailId: String) {
+            val opened = loadedMail.firstOrNull { it.piece.id == mailId }
+            // A reply (plan Part 3) opens as its joined card, with no cards in tow.
+            val card = opened?.piece?.card
+            if (card == null || card.replyFrom != null) return onOpenMail(mailId)
+            val waiting =
+                loadedMail
+                    .filter { it.piece.id != mailId && it.piece.waitsToBeOpened }
+                    .sortedBy { MailPieceMapper.deliveredAt(it.row) ?: Instant.MAX }
+                    .map { it.piece.id }
+                    .distinct()
+            onOpenCard(mailId, waiting)
+        }
 
         fun load() {
             if (_state.value is MailboxUiState.Loaded && loadedMail.isNotEmpty()) return
@@ -675,3 +699,7 @@ class MailboxRootViewModel
             const val MAX_PAGE = 100
         }
     }
+
+/** A Christmas card that can be opened now (delivered, not opened, not sealed or its seal lifted); a reply is not one. */
+private val MailPieceModel.waitsToBeOpened: Boolean
+    get() = !opened && card?.let { !it.sealed && it.replyFrom == null } == true

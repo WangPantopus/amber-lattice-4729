@@ -6,9 +6,10 @@
 //  `/app/mailbox/cards`), opened from the row at the top of Me in the
 //  Mailbox. The whole screen is the cream desk the card sits on: Back, the
 //  step's title and five step dots, then who it's for → pick a card → write
-//  on the back → seal it for the day → look it over, with "Seal and send"
-//  pinned under it. Once today's card is sent it shows that card instead,
-//  with Take it back until the pickup.
+//  on the back → seal it for the day ("Seal and send", or "Look it over"
+//  first) → look it over, with only "Seal and send" pinned under it. Once
+//  today's card is sent it shows that card instead, with Take it back until
+//  the pickup.
 //
 
 import SwiftUI
@@ -73,9 +74,18 @@ struct HolidayCardFlowView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Spacing.s3) {
                         content
-                        if postageOn, viewModel.step == .sent, viewModel.sent != nil || viewModel.listResults != nil {
-                            HolidayCardPaperButton(title: "Send another card", fullWidth: true) { viewModel.startOver() }
-                                .accessibilityIdentifier("sendAnotherCard")
+                        if viewModel.step == .sent, viewModel.sent != nil || viewModel.listResults != nil {
+                            if postageOn {
+                                HolidayCardPaperButton(title: "Send another card", fullWidth: true) { viewModel.startOver() }
+                                    .accessibilityIdentifier("sendAnotherCard")
+                            }
+                            // The fastest second card (experience plan Part 6).
+                            if viewModel.canSendAnother, viewModel.design != nil {
+                                HolidayCardPaperButton(title: "Send this card to someone else", fullWidth: true) {
+                                    viewModel.sendThisCardAgain()
+                                }
+                                .accessibilityIdentifier("sendThisCardAgain")
+                            }
                         }
                     }
                     .frame(maxWidth: 560)
@@ -198,11 +208,15 @@ struct HolidayCardFlowView: View {
         return viewModel.recipient
     }
 
-    /// What's pinned under the page: Look it over's footer (a list's, or one card's), step 1's button on with a list,
-    /// or Pick a card's bar.
+    /// What's pinned under the page: step 4's buttons, Look it over's footer (a list's, or one card's), step 1's button
+    /// on with a list, or Pick a card's bar.
     @ViewBuilder
     private var footer: some View {
-        if viewModel.cards != nil, viewModel.step == .look, let entries = viewModel.recipient?.entries, let look = viewModel.listPreview {
+        if viewModel.step == .seal, viewModel.today == nil, let cards = viewModel.cards, cards.open, viewModel.design != nil,
+           let recipient = viewModel.recipient {
+            HolidayCardSealFooter(viewModel: viewModel, cards: cards, recipient: recipient)
+        } else if viewModel.cards != nil, viewModel.step == .look, let entries = viewModel.recipient?.entries,
+                  let look = viewModel.listPreview {
             HolidayCardListLookFooter(viewModel: viewModel, entries: entries, look: look)
         } else if let recipient = lookRecipient {
             HolidayCardLookFooter(viewModel: viewModel, byEmail: recipient.isEmail)
@@ -308,6 +322,7 @@ struct HolidayCardFlowView: View {
                 HolidayCardListLookStep(viewModel: viewModel, cards: cards, design: design, look: look)
             } else if let design = viewModel.design, let recipient = viewModel.recipient, let preview = viewModel.preview {
                 HolidayCardLookStep(viewModel: viewModel, cards: cards, design: design, recipient: recipient, preview: preview)
+                HolidayCardLookEnd(viewModel: viewModel, byEmail: recipient.isEmail)
             }
         case .sent:
             EmptyView()

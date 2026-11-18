@@ -170,8 +170,29 @@ final class AddHomeWizardViewModel: WizardModel {
     private(set) var createdHomeId: String?
     /// The created entry is a residency request, not a Home the person can open yet.
     private(set) var createdResidency = false
+    /// The new Home's street, for the verify sheet that opens after two steps (kept past `finishDraft`).
+    private(set) var createdStreet = ""
     /// Started from the Place tab: finishing opens Your Place for the new Home.
     let completionOpensPlace: Bool
+
+    // MARK: - Address suggestions (founder 2026-11-17: "everywhere … as users typing")
+
+    /// Suggestions under "Street address" when the address is typed by hand. A rural route, military or Puerto
+    /// Rico address still types in full: picking is never required.
+    let manualStreetSuggestions: AddressSuggestions
+    /// Nearby first: the person's own home's point, when they have one.
+    private var searchArea: (latitude: Double, longitude: Double)?
+
+    // MARK: - Two steps (FASTVERIFY, `home_short_add`)
+
+    /// Add Home in two steps: find and check the address, then how you live there. The server fills the Home's
+    /// type, size and year built from the county record, and Wi-Fi and door codes stay in Home tools. Decided on
+    /// the first step only, so a switch flipped mid-way never changes the steps under the person.
+    private(set) var isShortAdd = false
+    /// The apartment or unit typed on the two-step address screen, checked again before going on.
+    var shortUnitInput = ""
+    /// USPS confirmed the checked address as typed ("Confirmed with USPS").
+    private(set) var uspsConfirmed = false
 
     // MARK: - Existing-home (address already claimed) branch
 
@@ -254,6 +275,7 @@ final class AddHomeWizardViewModel: WizardModel {
         completionOpensPlace: Bool = false
     ) {
         self.api = api
+        manualStreetSuggestions = AddressSuggestions(api: api)
         self.completionOpensPlace = completionOpensPlace
         self.requiredHomeId = requiredHomeId?.lowercased()
         self.initialSearchQuery = initialSearchQuery?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -282,6 +304,39 @@ final class AddHomeWizardViewModel: WizardModel {
 
     /// The saved address "Set up a Home" came from: searched once on first appearance,
     /// unless a restored draft already filled the form. The person still picks the match.
+    /// Reads `home_short_add` (the last answer first) while the person is still on the first step.
+    func loadShortAdd() async {
+        guard requiredHomeId == nil, currentStep == .address, !showsCreationRecovery else { return }
+        if let cached = AddHomeShortSwitch.cached { isShortAdd = cached }
+        let on = await AddHomeShortSwitch.load(api: api)
+        guard currentStep == .address, isCurrent else { return }
+        isShortAdd = on
+    }
+
+    /// The search area for address suggestions (the person's home, if any).
+    func loadSearchArea() async {
+        guard searchArea == nil, let point = await AddressSuggestions.anyHomePoint() else { return }
+        searchArea = point
+        manualStreetSuggestions.near = point
+    }
+
+    /// A suggestion picked under the typed street fills street, city, state and ZIP; the unit stays as typed.
+    func chooseManualStreet(_ suggestion: GeoSuggestion) async {
+        guard isCurrent, let address = await manualStreetSuggestions.choose(suggestion) else { return }
+        let unit = form.address.unit
+        invalidateAddress()
+        form.address = AddHomeAddressFields(
+            street: address.address ?? form.address.street,
+            unit: unit,
+            city: address.city ?? form.address.city,
+            state: address.state ?? form.address.state,
+            zipCode: address.zipcode ?? form.address.zipCode
+        )
+        selectedHomeID = nil
+        homeSearchQuery = form.address.street
+        isManualEntry = true
+    }
+
     func applyInitialSearchQuery() {
         guard let query = initialSearchQuery, !query.isEmpty else { return }
         initialSearchQuery = nil
@@ -428,6 +483,7 @@ final class AddHomeWizardViewModel: WizardModel {
         addressCheck = nil
         geocodedAddress = nil
         postalNotice = nil
+        uspsConfirmed = false
         offersNoUnitAttestation = false
         unitChoices = []
         noUnitAttested = false
@@ -471,7 +527,7 @@ final class AddHomeWizardViewModel: WizardModel {
             do {
                 try await Task.sleep(for: .milliseconds(300))
                 try scope.requireCurrent()
-                let response: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: text))
+                let response: GeoAutocompleteResponse = try await api.request(GeoEndpoints.autocomplete(query: text, near: searchArea))
                 guard addressIsCurrent(revision) else { return }
                 guard response.suggestions.allSatisfy({ !$0.suggestionId.isEmpty && !$0.label.isEmpty }),
                       Set(response.suggestions.map(\.suggestionId)).count == response.suggestions.count else {
@@ -509,6 +565,7 @@ final class AddHomeWizardViewModel: WizardModel {
                 guard addressIsCurrent(revision) else { return }
                 try applyResolvedAddress(response.normalized)
                 selectedHomeID = suggestion.suggestionId
+                continueShortAfterPick()
             } catch {
                 guard addressIsCurrent(revision) else { return }
                 addressSearchError = "Could not load that address. Try again or enter it manually."
@@ -538,11 +595,19 @@ final class AddHomeWizardViewModel: WizardModel {
                 )
                 guard addressIsCurrent(revision) else { return }
                 try applyResolvedAddress(response.normalized)
+                continueShortAfterPick()
             } catch {
                 guard addressIsCurrent(revision) else { return }
                 addressSearchError = "Could not find your address here. Try again or enter it manually."
             }
         }
+    }
+
+    /// Two steps: a picked address goes straight to its check, on the same "1 of 2" screen. Outside the address
+    /// task, which the check cancels when it starts.
+    private func continueShortAfterPick() {
+        guard isShortAdd, currentStep == .address else { return }
+        Task { @MainActor [weak self] in await self?.advance() }
     }
 
     private func applyResolvedAddress(_ address: NormalizedAddress) throws {
@@ -577,7 +642,9 @@ final class AddHomeWizardViewModel: WizardModel {
     func update(_ field: AddressField, to value: String) {
         invalidateAddress()
         switch field {
-        case .street: form.address.street = value
+        case .street:
+            form.address.street = value
+            manualStreetSuggestions.textChanged(value)
         case .unit: form.address.unit = value
         case .city: form.address.city = value
         case .state: form.address.state = value
@@ -824,6 +891,7 @@ final class AddHomeWizardViewModel: WizardModel {
             await runCheckAddress()
         case .confirm:
             guard !isCheckingAddress, zipMismatch == nil, !showsClaimedModal else { return }
+            if isShortAdd, await recheckShortUnit() { return }
             guard let address = geocodedAddress, validatedAddressId != nil else { return }
             form.address = .init(
                 street: address.street,
@@ -834,6 +902,11 @@ final class AddHomeWizardViewModel: WizardModel {
             )
             transition(to: .role)
         case .role:
+            // Two steps: "Add home" saves at once; there's no review step and no codes to check.
+            if isShortAdd {
+                await submit()
+                return
+            }
             guard isClaimingExistingHome || validateAccessItems() else { return }
             transition(to: .review)
         case .review:
@@ -862,6 +935,15 @@ final class AddHomeWizardViewModel: WizardModel {
                 )
             )
         }
+    }
+
+    /// Two steps: a unit typed after the check is checked too. True while that check holds the person here.
+    private func recheckShortUnit() async -> Bool {
+        let typed = shortUnitInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard typed != form.address.unit.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        form.address.unit = typed
+        await runCheckAddress()
+        return errorMessage != nil || validatedAddressId == nil || showsClaimedModal || zipMismatch != nil
     }
 
     // MARK: - API calls
@@ -928,6 +1010,7 @@ final class AddHomeWizardViewModel: WizardModel {
                 return
             }
             postalNotice = AddHomePostalNotice(status: status, unit: address.line2 ?? fields.unit)
+            uspsConfirmed = status == "OK"
             await applyAddressCheck(response, address: address, addressId: addressId)
         } catch {
             guard addressIsCurrent(revision) else { return }
@@ -964,12 +1047,14 @@ final class AddHomeWizardViewModel: WizardModel {
             isMultiUnit: response.isMultiUnit
         )
         existingHomeId = response.homeId
+        shortUnitInput = geocodedAddress?.unit ?? ""
         if response.isAlreadyClaimed {
             showsClaimedModal = true
         } else if response.isFoundUnclaimed {
             isClaimingExistingHome = true
         }
-        if !showsClaimedModal, !isClaimingExistingHome { await loadPropertySuggestions() }
+        // Two steps: the server fills the details from the county record after the Home is made.
+        if !showsClaimedModal, !isClaimingExistingHome, !isShortAdd { await loadPropertySuggestions() }
     }
 
     static let privateHomeMessage =
@@ -1289,10 +1374,12 @@ final class AddHomeWizardViewModel: WizardModel {
         // Networks & codes only exist on the create path; validate them
         // before we make a Home row we can't attach them to
         // (RN `useHomeForm.ts:450`).
+        if isShortAdd { accessItems = [] }
         guard validateAccessItems() else { return }
         isSubmitting = true
         defer { isSubmitting = false }
         let details = form.details
+        let short = isShortAdd
         let trimmedNickname = details.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedDescription = details.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = CreateHomeRequest(
@@ -1306,23 +1393,24 @@ final class AddHomeWizardViewModel: WizardModel {
             // supplied them.
             latitude: geocodedAddress?.latitude,
             longitude: geocodedAddress?.longitude,
-            homeType: details.homeType.rawValue,
+            // Two steps leave the details out: the server fills them from the county record.
+            homeType: short ? nil : details.homeType.rawValue,
             // RN falls back to the street when no nickname is typed
             // (`useHomeForm.ts:302`).
-            name: trimmedNickname.isEmpty ? form.address.street : trimmedNickname,
-            description: trimmedDescription.isEmpty ? nil : trimmedDescription,
-            bedrooms: Int(details.bedrooms),
-            bathrooms: Double(details.bathrooms),
-            sqFt: Int(details.sqFt),
-            lotSqFt: Int(details.lotSqFt),
-            yearBuilt: Int(details.yearBuilt),
+            name: trimmedNickname.isEmpty || short ? form.address.street : trimmedNickname,
+            description: trimmedDescription.isEmpty || short ? nil : trimmedDescription,
+            bedrooms: short ? nil : Int(details.bedrooms),
+            bathrooms: short ? nil : Double(details.bathrooms),
+            sqFt: short ? nil : Int(details.sqFt),
+            lotSqFt: short ? nil : Int(details.lotSqFt),
+            yearBuilt: short ? nil : Int(details.yearBuilt),
             isOwner: role == .owner,
             role: role.claimedRole,
-            moveInDate: details.justMoved ? Self.isoToday() : nil,
+            moveInDate: details.justMoved && !short ? Self.isoToday() : nil,
             noUnitAttestation: noUnitAttested ? true : nil,
             addressId: validatedAddressId,
-            floorPlanAnswer: propertySuggestions?.floorPlan?.prompt == nil ? nil : floorPlanAnswer,
-            countyChecked: propertySuggestions?.countyCheck != nil && countyChecked ? true : nil
+            floorPlanAnswer: propertySuggestions?.floorPlan?.prompt == nil || short ? nil : floorPlanAnswer,
+            countyChecked: propertySuggestions?.countyCheck != nil && countyChecked && !short ? true : nil
         )
         do {
             try scope.requireCurrent()
@@ -1330,6 +1418,11 @@ final class AddHomeWizardViewModel: WizardModel {
             try creation.prepare(request: request, form: form, accessItems: accessItems)
             accessItems = []
             await resolveCreation(.submit)
+            // Two steps: a saved Home opens Your Place and its verify sheet at once.
+            if short, creation.outcome?.state == .completed {
+                isSubmitting = false
+                await creationPrimaryTapped()
+            }
         } catch {
             creationReadFailed = true
             errorMessage = error.localizedDescription
@@ -1413,6 +1506,7 @@ final class AddHomeWizardViewModel: WizardModel {
             if result.state == .completed {
                 createdHomeId = result.residencyHomeId ?? result.home?.id
                 createdResidency = result.residencyHomeId != nil
+                createdStreet = form.address.street
             }
         } catch {
             guard isCurrent, revision == creationRevision else { return }
@@ -1459,13 +1553,24 @@ final class AddHomeWizardViewModel: WizardModel {
     // MARK: - Chrome derivation
 
     private func progressLabel(for step: AddHomeStep) -> WizardProgressLabel {
+        if isShortAdd, let number = shortStepNumber(step) { return .stepOfWords(current: number, total: 2) }
         if let stepNumber = step.stepNumber {
             return .stepOf(current: stepNumber, total: AddHomeStep.progressTotal)
         }
         return .hidden
     }
 
+    /// Two steps: finding and checking the address is "1 of 2", how you live there "2 of 2".
+    private func shortStepNumber(_ step: AddHomeStep) -> Int? {
+        switch step {
+        case .address, .confirm: 1
+        case .role, .review: 2
+        case .success: nil
+        }
+    }
+
     private func progressFraction(for step: AddHomeStep) -> Double? {
+        if isShortAdd { return shortStepNumber(step).map { Double($0) / 2 } }
         guard let stepNumber = step.stepNumber else { return nil }
         return Double(stepNumber) / Double(AddHomeStep.progressTotal)
     }
@@ -1478,14 +1583,23 @@ final class AddHomeWizardViewModel: WizardModel {
     }
 
     private func title(for step: AddHomeStep) -> String {
-        switch step {
+        if isShortAdd, step != .success { return "Add your home" }
+        return switch step {
         case .address: "Find your home"
         default: "Add home"
         }
     }
 
     private func primaryCTALabel(for step: AddHomeStep) -> String {
-        switch step {
+        if isShortAdd {
+            switch step {
+            // One name through "1 of 2": finding the address, then its check.
+            case .address, .confirm: return "This is my home"
+            case .role, .review: return isClaimingExistingHome ? "Submit claim" : "Add home"
+            case .success: break
+            }
+        }
+        return switch step {
         case .address, .confirm, .role: "Continue"
         case .review: isClaimingExistingHome ? "Submit claim" : "Submit"
         case .success: completionOpensYourPlace ? "Open Your Place" : "Open My Homes"

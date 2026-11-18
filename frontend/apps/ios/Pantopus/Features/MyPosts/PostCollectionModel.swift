@@ -10,6 +10,9 @@
 //  offset) with a different row action; the rows reuse that model's row
 //  helpers, and `MyPostsViewModel` hands the list shell to the selected
 //  tab's model. One model, two kinds: the tabs are built the same way.
+//  Each post is drawn as its Pulse card (`cards`), with the card's own
+//  controls: unsaving a post on Saved, or undoing a repost on Reposts,
+//  takes it off the list once the server agrees.
 //
 
 import Foundation
@@ -81,6 +84,8 @@ public final class PostCollectionModel {
     public private(set) var loadMoreError: String?
     /// A failed row action says so; the row stays.
     public var toastMessage: String?
+    /// The posts as Pulse cards and what the viewer's taps did to them.
+    public let cards: ProfilePostCardsModel
 
     public let kind: PostCollectionKind
     private let api: APIClient
@@ -89,6 +94,8 @@ public final class PostCollectionModel {
     private let onOpenPost: @MainActor (MyPostDTO) -> Void
     private let now: @Sendable () -> Date
     private var posts: [MyPostDTO] = []
+    /// The same posts read as the feed's, for the cards.
+    private var feedPosts: [FeedPostDTO] = []
     private var nextOffset: Int?
     private var loadedOnce = false
     private var loadingMore = false
@@ -101,6 +108,7 @@ public final class PostCollectionModel {
     init(
         kind: PostCollectionKind,
         api: APIClient,
+        viewerId: String?,
         onOpenPost: @escaping @MainActor (MyPostDTO) -> Void,
         now: @escaping @Sendable () -> Date
     ) {
@@ -109,6 +117,18 @@ public final class PostCollectionModel {
         store = ScreenStore.store(for: api)
         self.onOpenPost = onOpenPost
         self.now = now
+        cards = ProfilePostCardsModel(viewerId: viewerId, client: api, store: store)
+        // Unsaved on Saved, or the repost undone on Reposts: the post leaves this list.
+        switch kind {
+        case .saved:
+            cards.onSaveSettled = { [weak self] postId, saved in
+                if !saved { Task { await self?.drop(postId: postId) } }
+            }
+        case .reposts:
+            cards.onRepostSettled = { [weak self] postId, reposted in
+                if !reposted { Task { await self?.drop(postId: postId) } }
+            }
+        }
     }
 
     private var firstPage: Endpoint {
@@ -120,10 +140,11 @@ public final class PostCollectionModel {
     func load() async {
         generation += 1
         let current = generation
+        let readRevision = cards.actionRevision
         loadingMore = false
         loadMoreError = nil
         if !loadedOnce, let copy = store.peek(firstPage, as: SavedPostsResponse.self) {
-            await apply(copy.value)
+            await apply(copy.value, readRevision: -1)
             guard current == generation else { return }
         }
         if !loadedOnce { state = .loading }
@@ -136,7 +157,7 @@ public final class PostCollectionModel {
                 force: true
             ).value
             guard current == generation else { return }
-            await apply(response)
+            await apply(response, readRevision: readRevision)
         } catch {
             guard current == generation else { return }
             // A failed read is not an empty list: keep what's shown, or say so.
@@ -148,8 +169,10 @@ public final class PostCollectionModel {
         }
     }
 
-    private func apply(_ response: SavedPostsResponse) async {
+    private func apply(_ response: SavedPostsResponse, readRevision: Int) async {
         posts = response.posts
+        feedPosts = response.feedPosts
+        cards.show(feedPosts, readRevision: readRevision)
         nextOffset = Self.nextOffset(after: response)
         loadedOnce = true
         await rebuild()
@@ -166,6 +189,9 @@ public final class PostCollectionModel {
             guard current == generation else { return }
             let seen = Set(posts.map(\.id))
             posts += response.posts.filter { !seen.contains($0.id) }
+            let seenCards = Set(feedPosts.map(\.id))
+            feedPosts += response.feedPosts.filter { !seenCards.contains($0.id) }
+            cards.show(feedPosts, readRevision: -1)
             nextOffset = Self.nextOffset(after: response)
         } catch {
             guard current == generation else { return }
@@ -207,15 +233,21 @@ public final class PostCollectionModel {
                 await load()
                 return
             }
-            if posts.contains(where: { $0.id == postId }) {
-                posts.removeAll { $0.id == postId }
-                // The ones after it move up one, so the next page starts one earlier or it would skip one.
-                nextOffset = nextOffset.map { max(0, $0 - 1) }
-                await rebuild()
-            }
+            await drop(postId: postId)
         } catch {
             toastMessage = kind.removeFailure
         }
+    }
+
+    /// The post is no longer saved (or reposted): it leaves the list.
+    private func drop(postId: String) async {
+        guard posts.contains(where: { $0.id == postId }) || feedPosts.contains(where: { $0.id == postId }) else { return }
+        posts.removeAll { $0.id == postId }
+        feedPosts.removeAll { $0.id == postId }
+        cards.show(feedPosts, readRevision: -1)
+        // The ones after it move up one, so the next page starts one earlier or it would skip one.
+        nextOffset = nextOffset.map { max(0, $0 - 1) }
+        await rebuild()
     }
 
     private func rebuild() async {

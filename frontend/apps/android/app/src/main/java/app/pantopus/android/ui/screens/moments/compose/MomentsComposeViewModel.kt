@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "TooManyFunctions", "TooGenericExceptionCaught")
+@file:Suppress("MagicNumber", "TooManyFunctions", "TooGenericExceptionCaught", "LargeClass")
 
 package app.pantopus.android.ui.screens.moments.compose
 
@@ -154,6 +154,10 @@ data class MomentsComposeUiState(
     val videoParts: Int = 1,
     /** Post is waiting for the video to be made ready: how far along, 0 to 1; null while it isn't waiting. */
     val readying: Float? = null,
+    /** The Sky (`MomentsComposeSky.kt`, while the preview answers `sky: true`): "Pin it at a place" is on. */
+    val pinsAtPlace: Boolean = false,
+    /** The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); null posts now. */
+    val shareLaterKey: String? = null,
 ) {
     val kind: String
         get() =
@@ -179,7 +183,7 @@ data class MomentsComposeUiState(
     val placeChoices: List<MomentPlaceChoiceDto> get() = place?.places.orEmpty()
 
     /** More than one name fits an exact pin away from home: the place row opens the list. */
-    val canPickPlace: Boolean get() = !showArea && !noLocationOn && place?.atHome != true && placeChoices.size > 1
+    val canPickPlace: Boolean get() = !sky && !showArea && !noLocationOn && place?.atHome != true && placeChoices.size > 1
 
     /** The picked name, while it is still one of [placeChoices]. */
     val pickedPlace: MomentPlaceChoiceDto? get() = placeKey?.let { key -> placeChoices.firstOrNull { it.key == key } }
@@ -189,6 +193,9 @@ data class MomentsComposeUiState(
 
     /** A venue picked stays only while the Moment pins at the same spot, like [placeKeyFor]. */
     fun venueFor(newPin: ComposePin?): MomentVenue? = venue?.takeIf { samePin(newPin) }
+
+    /** The Sky's "Pin it at a place" stays on only while the Moment pins at the same spot, like [venueFor]. */
+    fun pinsAtPlaceFor(newPin: ComposePin?): Boolean = pinsAtPlace && samePin(newPin)
 
     private fun samePin(newPin: ComposePin?): Boolean =
         pin != null && newPin != null && pin.latitude == newPin.latitude && pin.longitude == newPin.longitude
@@ -200,7 +207,7 @@ data class MomentsComposeUiState(
     val noLocationLocked: Boolean get() = pin == null
 
     /** An exact pin can name a venue from the place picker (around the photo's spot, or where you are). */
-    val canFindPlace: Boolean get() = !showArea && pin != null && !noLocationOn
+    val canFindPlace: Boolean get() = (if (sky) place?.canPin == true else !showArea) && pin != null && !noLocationOn
 
     /** The venue that names the Moment: only for an exact pin. */
     val pickedVenue: MomentVenue? get() = venue?.takeIf { !showArea }
@@ -212,13 +219,14 @@ data class MomentsComposeUiState(
     val takenLine: String? get() = takenAt?.takeIf { media != null && takenLongAgo(it) }?.let { takenLabel(it) }
 
     /** The feet the "Show elevation" row shows and everyone will read; null with no reading the server would keep. */
-    val heightFeet: Int? get() = pin?.height?.let { MomentHeight.feet(it.meters, it.accuracyMeters, it.speedMps) }
+    val heightFeet: Int?
+        get() = pin?.height?.let { MomentHeight.feet(it.meters, it.accuracyMeters, it.speedMps, step = if (sky && floats) 100 else 10) }
 
     /**
      * The "Show elevation" row is on the sheet: only where the server allows it (heights are on for you and the spot
      * isn't your home), for an exact pin, with a reading. Never for an area or with no location.
      */
-    val offersHeight: Boolean get() = place?.canShowHeight == true && !showArea && !noLocationOn && heightFeet != null
+    val offersHeight: Boolean get() = place?.canShowHeight == true && (sky || !showArea) && !noLocationOn && heightFeet != null
 
     /** What goes with the post: the reading, only while the row is on the sheet and switched on. */
     val shownHeight: MomentAltitudeBody?
@@ -407,6 +415,7 @@ class MomentsComposeViewModel
                     place = current.herePlace,
                     placeKey = it.placeKeyFor(current.here),
                     venue = it.venueFor(current.here),
+                    pinsAtPlace = it.pinsAtPlaceFor(current.here),
                     takenAt = takenAt,
                     step = ComposeStep.Review,
                     caption = "",
@@ -596,6 +605,7 @@ class MomentsComposeViewModel
                         hasConnections = place?.hasConnections ?: it.hasConnections,
                         placeKey = it.placeKeyFor(pin),
                         venue = it.venueFor(pin),
+                        pinsAtPlace = it.pinsAtPlaceFor(pin),
                         takenAt = takenAt,
                         step = ComposeStep.Review,
                         caption = "",
@@ -645,6 +655,7 @@ class MomentsComposeViewModel
                         place = place,
                         placeKey = it.placeKeyFor(pin),
                         venue = it.venueFor(pin),
+                        pinsAtPlace = it.pinsAtPlaceFor(pin),
                         takenAt = it.takenAt ?: located.capturedAt,
                     )
                 }
@@ -669,6 +680,7 @@ class MomentsComposeViewModel
                     place = it.herePlace,
                     placeKey = it.placeKeyFor(it.here),
                     venue = it.venueFor(it.here),
+                    pinsAtPlace = it.pinsAtPlaceFor(it.here),
                     takenAt = null,
                     step = ComposeStep.Review,
                     notice = null,
@@ -701,6 +713,13 @@ class MomentsComposeViewModel
 
         fun setShowArea(on: Boolean) = _state.update { it.copy(showArea = on) }
 
+        /** The Sky's rows (`MomentsComposeSky.kt`). */
+        fun setPinAtPlace(on: Boolean) = _state.update { it.withPinAtPlace(on) }
+
+        fun setShareLater(on: Boolean) = _state.update { it.withShareLater(on) }
+
+        fun pickShareLater(key: String) = _state.update { it.copy(shareLaterKey = key) }
+
         fun setShowHeight(on: Boolean) = _state.update { it.copy(showHeight = on) }
 
         /** A name from the place list: the first (automatic) one goes back to no pick. */
@@ -719,12 +738,12 @@ class MomentsComposeViewModel
         fun pickVenue(tag: PostPlaceTag) {
             val id = tag.placeId?.takeIf { it.startsWith("osm:") } ?: return
             _state.update {
-                it.copy(venue = MomentVenue(id, tag.name, tag.latitude, tag.longitude), placeKey = null, findingPlace = false)
+                it.withVenue(MomentVenue(id, tag.name, tag.latitude, tag.longitude))
             }
         }
 
         /** "Remove location" in the picker: back to the name the spot gets by itself. */
-        fun clearVenue() = _state.update { it.copy(venue = null, findingPlace = false) }
+        fun clearVenue() = _state.update { it.copy(venue = null, findingPlace = false, pinsAtPlace = false) }
 
         fun setCaption(caption: String) = _state.update { it.copy(caption = caption.take(MAX_CAPTION)) }
 
@@ -761,7 +780,9 @@ class MomentsComposeViewModel
                         kind = current.kind,
                         hours = current.hours,
                         audience = current.audience,
-                        showArea = current.showArea,
+                        // Under the Sky a Moment at home says so too: should the server's switch go off meanwhile, it still
+                        // shows only its area.
+                        showArea = current.floats,
                         caption = current.caption.trim().takeIf { it.isNotEmpty() && current.media != null },
                         text = current.text.trim().takeIf { current.media == null },
                         background = current.background.wire.takeIf { current.media == null },
@@ -778,9 +799,12 @@ class MomentsComposeViewModel
                         placeKey = current.pickedPlace?.key?.takeIf { current.canPickPlace && current.pickedVenue == null },
                         // An album item pinned where you are says when it was taken (a capture pin carries its own).
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null && !usable.capture },
-                        venueId = current.pickedVenue?.placeId,
+                        venueId = current.pickedVenue?.placeId?.takeIf { !current.sky || current.pinsHere },
                         // The height of the pin that is sent, while "Show elevation" is on the sheet and switched on.
                         altitude = current.copy(pin = usable).shownHeight,
+                        // The Sky: pin at the place (the venue picked, else the one naming the spot), and "Share later".
+                        pin = "place".takeIf { current.pinsHere },
+                        shareLater = current.shareLaterChoice?.key,
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -946,6 +970,7 @@ class MomentsComposeViewModel
                         location = MomentLocationBody(source = "none"),
                         clientRequestId = requestId,
                         takenAt = current.takenAt?.toString()?.takeIf { current.media != null },
+                        shareLater = current.shareLaterChoice?.key,
                     )
                 if (publish(body, current, videos, pinned = null, retried = true)) {
                     choices.edit().putInt("$accountId.hours", current.hours).apply()
@@ -975,6 +1000,8 @@ class MomentsComposeViewModel
                         _state.update { it.copy(notice = NO_FIX) }
                     }
                 "PLACE_NOT_NEARBY" -> _state.update { it.copy(venue = null, notice = FAR_PLACE) }
+                // The Sky: no public place to pin at here (the switch goes back off), or "Tonight at 8" after 7 pm.
+                "NO_PLACE_HERE", "SHARE_TIME_PASSED" -> _state.update { it.skyRefused(error.serverCode) }
                 "NO_CONNECTIONS" -> _state.update { it.copy(hasConnections = false, noLocation = false, notice = NEEDS_CONNECTION) }
                 "MOMENTS_DAILY_LIMIT" ->
                     _state.update { it.copy(notice = "You've posted ${it.limits.dailyLimit} Moments today. Try again tomorrow.") }

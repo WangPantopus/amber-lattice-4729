@@ -51,6 +51,11 @@ final class PlaceDashboardViewModel {
     private(set) var canAddTasks = false
     /// This Home is the person's default Home, the one the Today tab shows.
     private(set) var isTodayHome = false
+    /// Faster verification (FASTVERIFY): the person's level here and the ways to verify. Nil while the switch is
+    /// off (the server answers 404), and Place stays as it was.
+    private(set) var verifyOptions: HomeVerifyOptions?
+    /// A mailed card is waiting for its code (FASTVERIFY): Place offers "Enter mailed code", as the card says.
+    private(set) var hasPendingPostcard = false
     private var taskAccess: HomeTaskAccess?
     /// What changed since the last visit, newest first, and how many in all.
     private(set) var changes: [PlaceChange] = []
@@ -135,6 +140,7 @@ final class PlaceDashboardViewModel {
         self.onOpenHubHome = onOpenHubHome
         self.onOpenHomeShortcut = onOpenHomeShortcut
         self.onOpenNotifications = onOpenNotifications
+        verifyOptions = HomeVerifyOptionsStore.shared.cached(homeId: homeId)
         // An owner's or household member's last copy is the first frame, as a
         // Home's is; `load()` re-checks it when the screen activates.
         if let copy = PlaceStoreReads.peek(homeId: homeId) {
@@ -153,9 +159,11 @@ final class PlaceDashboardViewModel {
         reloadPending = false
         async let claimRead: Void = refreshClaim()
         async let shortcuts: Void = refreshHomeShortcuts()
+        async let options: Void = refreshVerifyOptions()
         await fetch(force: force)
         await claimRead
         await shortcuts
+        await options
         // Tasks and changes don't depend on each other.
         async let tasksRead: Void = refreshTasks()
         async let changesRead: Void = refreshChanges(again: false)
@@ -175,10 +183,12 @@ final class PlaceDashboardViewModel {
         async let unread: Void = refreshUnread()
         async let claimRead: Void = refreshClaim(force: true)
         async let shortcuts: Void = refreshHomeShortcuts()
+        async let options: Void = refreshVerifyOptions()
         await fetch(force: true)
         await unread
         await claimRead
         await shortcuts
+        await options
         async let tasksRead: Void = refreshTasks()
         async let changesRead: Void = refreshChanges(again: true)
         await tasksRead
@@ -337,6 +347,29 @@ final class PlaceDashboardViewModel {
         state = .loading
         moveInDate = nil
         return true
+    }
+
+    /// The server's verify-options answer (FASTVERIFY); the verify sheet reads the same copy.
+    private func refreshVerifyOptions() async {
+        verifyOptions = await HomeVerifyOptionsStore.shared.load(homeId: homeId)
+        // A location check waiting for its second day is checked again quietly, when location is already allowed.
+        if let options = verifyOptions {
+            let id = homeId
+            Task { [weak self] in
+                guard await LocationRecheck.runIfDue(options, homeId: id) else { return }
+                self?.verifyOptions = await HomeVerifyOptionsStore.shared.load(homeId: id)
+            }
+        }
+        guard verifyOptions != nil else {
+            hasPendingPostcard = false
+            return
+        }
+        // Only while the switch is on: today's Place never reads the card's status.
+        if let raw: JSONValue = try? await api.request(Endpoint(
+            method: .get, path: "/api/homes/\(homeId)/postcard-status", cachePolicy: .reloadIgnoringLocalCacheData
+        )) {
+            hasPendingPostcard = HomePostalStatus(value: raw).canVerify
+        }
     }
 
     private func fetch(force: Bool) async {

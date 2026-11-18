@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -82,6 +83,14 @@ import app.pantopus.android.ui.components.OfflineBannerHost
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.composeEmail
 import app.pantopus.android.ui.components.shareText
+import app.pantopus.android.ui.guidance.GuidanceAction
+import app.pantopus.android.ui.guidance.GuidanceFlags
+import app.pantopus.android.ui.guidance.GuidancePlaceShows
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
+import app.pantopus.android.ui.guidance.GuidanceTipsScreen
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens._internal.TokenGalleryScreen
 import app.pantopus.android.ui.screens.audience_profile.AudienceProfileScreen
 import app.pantopus.android.ui.screens.audience_profile.AudienceProfileViewModel
@@ -250,6 +259,7 @@ import app.pantopus.android.ui.screens.homes.polls.START_POLL_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.polls.StartPollFormScreen
 import app.pantopus.android.ui.screens.homes.postal.HomePostalNavigation
 import app.pantopus.android.ui.screens.homes.postal.HomePostalScreen
+import app.pantopus.android.ui.screens.homes.postal.ScannedPostcardCode
 import app.pantopus.android.ui.screens.homes.property_correction.PROPERTY_CORRECTION_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.property_correction.PropertyCorrectionScreen
 import app.pantopus.android.ui.screens.homes.property_details.PropertyDetailsScreen
@@ -308,6 +318,7 @@ import app.pantopus.android.ui.screens.listings.MyListingsScreen
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasMenuRow
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasToday
+import app.pantopus.android.ui.screens.mailbox.cards.SEND_CARD_SAME_PICTURE_KEY
 import app.pantopus.android.ui.screens.mailbox.cards.SendCardScreen
 import app.pantopus.android.ui.screens.mailbox.cards.SendCardViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.WaitingCardLandingViewModel
@@ -401,9 +412,12 @@ import app.pantopus.android.ui.screens.place.privacy.PlacePrivacyMirrorScreen
 import app.pantopus.android.ui.screens.place.pulse.PLACE_PULSE_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.pulse.PlacePulseScreen
 import app.pantopus.android.ui.screens.place.today.TodayTabScreen
+import app.pantopus.android.ui.screens.place.verify.BillVerifiedScreen
+import app.pantopus.android.ui.screens.place.verify.LocationCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_ADDRESS_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
+import app.pantopus.android.ui.screens.place.verify.PhoneCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyStatusScreen
 import app.pantopus.android.ui.screens.plans.PlansExternalRoutes
@@ -584,7 +598,10 @@ private object ChildRoutes {
     const val POSTCARD_VERIFICATION =
         "homes/{$POSTCARD_VERIFICATION_HOME_ID_KEY}/verify-postcard"
     const val MAILBOX_SEARCH = "mailbox/search"
-    const val MAILBOX_ITEM_DETAIL = "mailbox/item/{$MAILBOX_ITEM_DETAIL_MAIL_ID_KEY}"
+
+    /** A Christmas card opened from the Mailbox list: the other cards waiting, oldest first, comma-separated (plan Part 4). */
+    const val MAILBOX_NEXT_CARDS_KEY = "nextCards"
+    const val MAILBOX_ITEM_DETAIL = "mailbox/item/{$MAILBOX_ITEM_DETAIL_MAIL_ID_KEY}?$MAILBOX_NEXT_CARDS_KEY={$MAILBOX_NEXT_CARDS_KEY}"
 
     /**
      * Send a Christmas card, or today's card once it's sent (launch keys `holiday_cards` + `mailbox`), with a picture
@@ -593,7 +610,8 @@ private object ChildRoutes {
     const val MAILBOX_CARDS =
         "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}={${SendCardViewModel.SEND_CARD_DESIGN_KEY}}" +
             "&${SendCardViewModel.SEND_CARD_TO_USER_KEY}={${SendCardViewModel.SEND_CARD_TO_USER_KEY}}" +
-            "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}={${SendCardViewModel.SEND_CARD_TO_NAME_KEY}}"
+            "&${SendCardViewModel.SEND_CARD_TO_NAME_KEY}={${SendCardViewModel.SEND_CARD_TO_NAME_KEY}}" +
+            "&$SEND_CARD_SAME_PICTURE_KEY={$SEND_CARD_SAME_PICTURE_KEY}"
 
     /** A card the person sent, opened from Sent in the Mailbox (launch key `mailbox`). */
     const val MAILBOX_SENT_CARD = "mailbox/sent/{$MAIL_SENT_CARD_ID_KEY}"
@@ -641,11 +659,12 @@ private object ChildRoutes {
         "place/{$PLACE_VERIFY_HOME_ID_KEY}/verify/{$PLACE_VERIFY_METHOD_KEY}" +
             "?$PLACE_VERIFY_ADDRESS_KEY={$PLACE_VERIFY_ADDRESS_KEY}"
 
+    /** Percent-encoded: the route's query is read back with URI decoding, which keeps a form-encoded "+" as is. */
     fun placeVerifyStatus(
         homeId: String,
         method: String,
         address: String,
-    ): String = "place/$homeId/verify/$method?$PLACE_VERIFY_ADDRESS_KEY=${java.net.URLEncoder.encode(address, "UTF-8")}"
+    ): String = "place/$homeId/verify/$method?$PLACE_VERIFY_ADDRESS_KEY=${android.net.Uri.encode(address)}"
 
     /** W7 D1 — compose a verified-neighbor heads-up (carries the address). */
     const val NEIGHBOR_COMPOSE =
@@ -1181,6 +1200,9 @@ private object ChildRoutes {
     /** P8 / T6.2c — Settings → Help (static FAQ + contact CTA). */
     const val SETTINGS_HELP = "settings/help"
 
+    /** Help's “Tips for each screen” (guidance cards, spec §4): the tab cards, each shown again on a tap. */
+    const val GUIDANCE_TIPS = "settings/help/tips"
+
     /** P8 / T6.2c — Settings → Legal (TOC). */
     const val SETTINGS_LEGAL = "settings/legal"
 
@@ -1599,14 +1621,24 @@ private object ChildRoutes {
         billId: String,
     ): String = "homes/$homeId/bills/$billId/edit"
 
-    /** Build the concrete path for a mailbox item detail. */
-    fun mailboxItemDetail(id: String): String = "mailbox/item/$id"
+    /** Build the concrete path for a mailbox item detail; a card from the list carries the cards waiting after it. */
+    fun mailboxItemDetail(
+        id: String,
+        nextCards: List<String> = emptyList(),
+    ): String {
+        if (nextCards.isEmpty()) return "mailbox/item/$id"
+        return "mailbox/item/$id?$MAILBOX_NEXT_CARDS_KEY=${Uri.encode(nextCards.joinToString(","))}"
+    }
 
     fun mailboxSentCard(id: String): String = "mailbox/sent/$id"
 
     /** The steps of sending a card, with [design] chosen when there is one. */
     fun mailboxCards(design: String?): String =
         if (design == null) "mailbox/cards" else "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}=$design"
+
+    /** "Send this card to someone else" from Sent (plan Part 6): Who it's for, then straight to the note, this picture kept. */
+    fun mailboxCardsAgain(design: String): String =
+        "mailbox/cards?${SendCardViewModel.SEND_CARD_DESIGN_KEY}=${Uri.encode(design)}&$SEND_CARD_SAME_PICTURE_KEY=true"
 
     /** The steps of sending a card to this person, from Pick a card ("Send Hazel a card"). */
     fun mailboxCardsTo(
@@ -2248,15 +2280,20 @@ private fun NavHostController.navigateToRootTab(
     }
 }
 
-/** A verify-sheet door opens its real flow (Wedge v2 D3); the Place dashboard and the Place detail pages share it. */
+/**
+ * A verify-sheet door opens its real flow (Wedge v2 D3); the Place dashboard and the Place detail pages share it. The
+ * fast checks (FASTVERIFY) open on the per-way verify route, with [address] for their words.
+ */
 private fun NavHostController.openPlaceVerify(
     method: PlaceVerifyMethod,
     homeId: String,
+    address: String = "",
 ) {
     when (method) {
         PlaceVerifyMethod.DOCUMENT -> navigate(ChildRoutes.verifyResidency(homeId))
         PlaceVerifyMethod.MAIL -> navigate(ChildRoutes.postcardVerification(homeId))
         PlaceVerifyMethod.LANDLORD -> navigate(ChildRoutes.verifyLandlord(homeId))
+        PlaceVerifyMethod.PHONE, PlaceVerifyMethod.LOCATION -> navigate(ChildRoutes.placeVerifyStatus(homeId, method.slug, address))
     }
 }
 
@@ -2485,6 +2522,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val todayReselects = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     val nearbyReselects = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     var ballotHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Add Home in two steps (FASTVERIFY) lands on the new Home's Place with its verify sheet open, once.
+    var verifyHomeId by rememberSaveable { mutableStateOf<String?>(null) }
     // Place's "Next step: Add radon test information": Today opens its home setup on this Home's radon question once,
     // then clears it (as on iPhone).
     var radonHomeId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -2646,6 +2685,17 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     )
     val briefingNoticeShowing by briefingNotice.preferences.collectAsStateWithLifecycle()
     SuggestionsNotice(waiting = briefingNoticeShowing != null || !noticesMayShow)
+    // Guidance cards (founder 2026-11-16) wait while the side menu is open, and on Place and Today until the briefings
+    // notice has decided and closed, and while the name question is deciding or open.
+    val briefingNoticeChecked by briefingNotice.checked.collectAsStateWithLifecycle()
+    val guidance = LocalGuidance.current
+    val guidanceNoticesBusy =
+        briefingNoticeShowing != null ||
+            (topRoute in NOTICE_ROUTES && !briefingNoticeChecked) ||
+            namePromptDeciding ||
+            namePromptForm != null
+    val drawerBusy = navDrawerState.isOpen || navDrawerState.isAnimationRunning
+    SideEffect { guidance?.reportRoot(drawerOpen = drawerBusy, noticesBusy = guidanceNoticesBusy) }
 
     // Consume pending deep links — when the host activity (or a
     // notification tap) routed a URL or path through DeepLinkRouter,
@@ -2923,6 +2973,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.PostcardVerification -> {
+                // A scanned card's code (FASTVERIFY) reaches the screen in memory, never in the route.
+                pending.code?.let { ScannedPostcardCode.put(pending.id, it) }
                 navController.navigate(ChildRoutes.postcardVerification(pending.id))
                 DeepLinkRouter.consume()
             }
@@ -3118,11 +3170,19 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
             // top, so Back lands on Plans; while the `plans` flag is off it opens Pulse (Nearby with the Pulse redesign
             // off) instead.
             is DeepLinkRouter.Destination.Plan -> {
-                openPlansLink(PlansRoutes.plan(pending.id, invite = pending.invite))
+                openPlansLink(PlansRoutes.plan(pending.id, invite = pending.invite, open = pending.open, spot = pending.spot))
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.PlanRequests -> {
                 openPlansLink(PlansRoutes.requests(pending.id))
+                DeepLinkRouter.consume()
+            }
+            is DeepLinkRouter.Destination.PlanGuests -> {
+                openPlansLink(PlansRoutes.guests(pending.id))
+                DeepLinkRouter.consume()
+            }
+            is DeepLinkRouter.Destination.PlanCheck -> {
+                openPlansLink(PlansRoutes.check(pending.id))
                 DeepLinkRouter.consume()
             }
             DeepLinkRouter.Destination.NewPlan -> {
@@ -3276,6 +3336,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onBallotOpened = { ballotHomeId = null },
                         onOpenMenu = openMenu,
                         onOpenTodayRadon = openTodayRadon,
+                        verifyHomeId = verifyHomeId,
+                        onVerifyOpened = { verifyHomeId = null },
                     )
                 }
                 // ── The bar (founder decision 2026-11-13: Mail is third): Place · Today · Mail · Pulse · Moments · Plans
@@ -3342,6 +3404,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // Moments (the map of what people are posting where they are) is a tab only while the `moments` flag
                     // is on. With it off there is nothing to show here: the switch watch above moves a person to Pulse.
                     if (momentsOn) {
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Moments))
                         MomentsMapScreen(
                             actions =
                                 MomentsMapActions(
@@ -3372,6 +3435,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // redesign on or off (founder, 2026-10-17). With it off there is nothing to show here: the switch
                     // watch above moves a person standing here to Pulse (Nearby with the redesign off).
                     if (plansFlags.plans) {
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Plans))
                         PlansMapScreen(
                             actions =
                                 PlansMapActions(
@@ -3456,6 +3520,17 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             askPantopus = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                             openProfile = { userId -> navController.navigate(ChildRoutes.publicProfile(userId)) },
                             openBusiness = { businessId -> navController.navigate(ChildRoutes.businessProfile(businessId)) },
+                            openMessage = { userId, name ->
+                                navController.navigate(
+                                    ChildRoutes.chatConversationFromPicker(
+                                        userId = userId,
+                                        displayName = name,
+                                        initials = name.trim().take(1).uppercase(),
+                                        verified = false,
+                                        locality = null,
+                                    ),
+                                )
+                            },
                         ),
                 )
                 composable(PantopusRoute.Mail.path) {
@@ -3463,6 +3538,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     if (!LaunchFeatures.mailbox) {
                         // Opened by the chat button: Back returns to the tab it was opened from.
                         androidx.activity.compose.BackHandler(onBack = closeMessages)
+                        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Messages))
                         return@composable InboxScreen(
                             onOpenConversation = { row -> navController.navigate(ChildRoutes.chatConversation(row)) },
                             onCompose = { navController.navigate(ChildRoutes.NEW_MESSAGE) },
@@ -3479,6 +3555,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         MailboxRootScreen(
                             onOpenMail = { mailId ->
                                 navController.navigate(ChildRoutes.mailboxItemDetail(mailId))
+                            },
+                            onOpenCard = { mailId, next ->
+                                navController.navigate(ChildRoutes.mailboxItemDetail(mailId, next))
                             },
                             onOpenSearch = { navController.navigate(ChildRoutes.MAILBOX_SEARCH) },
                             onOpenVacationHold = { navController.navigate(ChildRoutes.MAILBOX_VACATION) },
@@ -3564,6 +3643,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     // Messages while Mailbox is on: the conversation list, opened by the chat button (founder decision
                     // 2026-11-08). Back returns to the tab it was opened from.
                     androidx.activity.compose.BackHandler(onBack = closeMessages)
+                    // The conversation list, for the guidance cards: card 21 (the first connection).
+                    GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Messages))
                     InboxScreen(
                         onOpenConversation = { row ->
                             navController.navigate(ChildRoutes.chatConversation(row))
@@ -3757,12 +3838,54 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             },
                         ),
                 ) { entry ->
-                    PlaceVerifyStatusScreen(
-                        address = entry.arguments?.getString(PLACE_VERIFY_ADDRESS_KEY).orEmpty(),
-                        method = PlaceVerifyMethod.fromSlug(entry.arguments?.getString(PLACE_VERIFY_METHOD_KEY)),
-                        onBack = { navController.popBackStack() },
-                        onDone = { navController.popBackStack() },
-                    )
+                    val verifyHomeId = entry.arguments?.getString(PLACE_VERIFY_HOME_ID_KEY).orEmpty()
+                    val verifyAddress = entry.arguments?.getString(PLACE_VERIFY_ADDRESS_KEY).orEmpty()
+                    when (val method = PlaceVerifyMethod.fromSlug(entry.arguments?.getString(PLACE_VERIFY_METHOD_KEY))) {
+                        // Faster home verification's phone check (FASTVERIFY phase 3).
+                        PlaceVerifyMethod.PHONE ->
+                            PhoneCheckScreen(
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                                onOpenMethod = { other ->
+                                    navController.popBackStack()
+                                    navController.openPlaceVerify(other, verifyHomeId, verifyAddress)
+                                },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        // A bill read at once (FASTVERIFY phase 4): "You're verified".
+                        PlaceVerifyMethod.DOCUMENT ->
+                            BillVerifiedScreen(
+                                onDone = { navController.popBackStack() },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        // The location check (FASTVERIFY phase 5), apps only.
+                        PlaceVerifyMethod.LOCATION ->
+                            LocationCheckScreen(
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                                onOpenMethod = { other ->
+                                    navController.popBackStack()
+                                    navController.openPlaceVerify(other, verifyHomeId, verifyAddress)
+                                },
+                                onMailCode = {
+                                    navController.popBackStack()
+                                    navController.navigate(ChildRoutes.postcardVerification(verifyHomeId))
+                                },
+                            )
+                        else ->
+                            PlaceVerifyStatusScreen(
+                                address = verifyAddress,
+                                method = method,
+                                onBack = { navController.popBackStack() },
+                                onDone = { navController.popBackStack() },
+                            )
+                    }
                 }
                 composable(
                     route = ChildRoutes.NEIGHBOR_COMPOSE,
@@ -5359,6 +5482,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 nullable = true
                                 defaultValue = null
                             },
+                            navArgument(SEND_CARD_SAME_PICTURE_KEY) {
+                                type = NavType.BoolType
+                                defaultValue = false
+                            },
                         ),
                 ) {
                     // Launch cut #12 (Christmas cards), with #10 (Mailbox).
@@ -5383,18 +5510,38 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 ) {
                     // Launch cut #10 (Mailbox): Sent is part of it.
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
-                    MailSentCardScreen(onBack = { navController.popBackStack() })
+                    MailSentCardScreen(
+                        onBack = { navController.popBackStack() },
+                        onSendAgain =
+                            { design: String -> navController.navigate(ChildRoutes.mailboxCardsAgain(design)) }
+                                .takeIf { LaunchFeatures.holidayCards },
+                    )
                 }
                 mailComposable(
                     navController,
                     route = ChildRoutes.MAILBOX_ITEM_DETAIL,
-                    arguments = listOf(navArgument(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY) { type = NavType.StringType }),
+                    arguments =
+                        listOf(
+                            navArgument(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY) { type = NavType.StringType },
+                            navArgument(ChildRoutes.MAILBOX_NEXT_CARDS_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
                 ) { entry ->
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
                     // T6.5b (P20) — generic A17.1 mail detail. P21-P23 will
                     // add package / coupon / booklet / certified variants on
                     // top of the same shared shell.
                     val mailId = entry.arguments?.getString(MAILBOX_ITEM_DETAIL_MAIL_ID_KEY).orEmpty()
+                    // Opened from the Mailbox list: the cards waiting after this one (none from a notice or a link).
+                    val nextCards =
+                        entry.arguments
+                            ?.getString(ChildRoutes.MAILBOX_NEXT_CARDS_KEY)
+                            ?.split(',')
+                            ?.filter { it.isNotBlank() }
+                            .orEmpty()
                     MailDetailScreen(
                         onBack = { navController.popBackStack() },
                         onOpenSenderProfile = { userId ->
@@ -5435,6 +5582,12 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenPiece = { pieceId -> navController.navigate(ChildRoutes.mailboxItemDetail(pieceId)) },
                         onStartVerify = { homeId, method -> navController.openPlaceVerify(method, homeId) },
                         onOpenVerificationStatus = { homeId -> navController.navigate(ChildRoutes.waitingRoom(homeId)) },
+                        // "Open the next card": this card's page gives way to the next one's (Back still goes to the Mailbox).
+                        nextCards = nextCards,
+                        onOpenNextCard = { id, rest ->
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.mailboxItemDetail(id, rest))
+                        },
                         // A card's "Send Hazel a card": the send flow over the card, at Pick a card; Back returns to it.
                         onSendCard =
                             if (LaunchFeatures.holidayCards) {
@@ -6329,6 +6482,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     val feedIntent = PulseIntent.entries.firstOrNull { it.key == raw }
                     PulseComposeFlowScreen(
                         onBack = { navController.popBackStack() },
+                        // A post made here: Pulse's "Post to Pulse" pointer has nothing more to teach.
+                        onPosted = { guidance?.note(GuidanceFlags.POSTED) },
                         prefillFeedIntent = feedIntent,
                         prefillDraft = PulseComposeDraftFields.decode(entry.arguments?.getString(ChildRoutes.COMPOSE_DRAFT_FIELDS_KEY)),
                         // "Before you ask": the post opens on top; back returns to the draft.
@@ -6655,10 +6810,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onEmailSupport = {
                             showsEmailFallback = !context.openMailto("mailto:support@pantopus.com?subject=Help")
                         },
+                        onOpenTips = { navController.navigate(ChildRoutes.GUIDANCE_TIPS) }.takeIf { guidance?.tipsAvailable() == true },
                     )
                     if (showsEmailFallback) {
                         EmailFallbackDialog("support@pantopus.com") { showsEmailFallback = false }
                     }
+                }
+                composable(ChildRoutes.GUIDANCE_TIPS) {
+                    GuidanceTipsScreen(onBack = { navController.popBackStack() })
                 }
                 composable(ChildRoutes.SETTINGS_LEGAL) {
                     LegalIndexScreen(
@@ -7858,6 +8017,21 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             }
                         },
                         completionOpensPlace = opensPlace,
+                        // Two steps: the new Home's Place, its verify sheet open (FASTVERIFY section 9.2).
+                        onOpenVerify = { homeId ->
+                            navController.popBackStack()
+                            val host = currentPlaceHost
+                            if (host != null) {
+                                verifyHomeId = homeId
+                                host.landOnAddedHome(homeId)
+                                navController.openTabRoot(PantopusRoute.Place)
+                            } else {
+                                navController.navigate(ChildRoutes.MY_HOMES) {
+                                    popUpTo(ChildRoutes.MY_HOMES) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                         onOpenClaimOwnership = { homeId ->
                             navController.popBackStack()
                             navController.navigate(ChildRoutes.claimOwnership(homeId))
@@ -7934,7 +8108,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                 defaultValue = "residency"
                             },
                         ),
-                ) {
+                ) { entry ->
+                    val residencyHomeId = entry.arguments?.getString(CLAIM_OWNERSHIP_HOME_ID_KEY).orEmpty()
                     ClaimOwnershipWizardScreen(
                         onDismiss = { navController.popBackStack() },
                         onOpenClaimsList = {
@@ -7944,6 +8119,11 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenFindHome = {
                             navController.popBackStack()
                             navController.navigate(ChildRoutes.FIND_HOME)
+                        },
+                        // The Bill check read the bill (FASTVERIFY phase 4): "You're verified" in the wizard's place.
+                        onBillVerified = {
+                            navController.popBackStack()
+                            navController.navigate(ChildRoutes.placeVerifyStatus(residencyHomeId, PlaceVerifyMethod.DOCUMENT.slug, ""))
                         },
                     )
                 }
@@ -8038,7 +8218,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
  * waits on verification. The arrival step (keep a looked-up address privately) shows over it until it is finished.
  */
 @Composable
-@Suppress("LongMethod")
+@Suppress("LongMethod", "LongParameterList")
 private fun PlaceTabRoot(
     navController: NavHostController,
     scrollToTop: Flow<Unit>,
@@ -8046,6 +8226,8 @@ private fun PlaceTabRoot(
     onBallotOpened: () -> Unit,
     onOpenMenu: () -> Unit,
     onOpenTodayRadon: (homeId: String) -> Unit = {},
+    verifyHomeId: String? = null,
+    onVerifyOpened: () -> Unit = {},
     host: HomeTabHostViewModel = hiltViewModel(),
 ) {
     val root by host.landing.collectAsStateWithLifecycle()
@@ -8062,6 +8244,7 @@ private fun PlaceTabRoot(
         host.refreshUnread()
     }
     val openNotifications = { navController.navigate(ChildRoutes.NOTIFICATIONS) }
+    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController)
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,
@@ -8103,6 +8286,8 @@ private fun PlaceTabRoot(
                         scrollToTop = scrollToTop,
                         scrollToBallot = ballotHomeId == current.homeId,
                         onBallotOpened = onBallotOpened,
+                        openVerify = verifyHomeId == current.homeId,
+                        onVerifyOpened = onVerifyOpened,
                         onOpenTodayRadon = { onOpenTodayRadon(current.homeId) },
                         // A new default changes where Place lands next time, not the Home on screen now.
                         onDefaultHomeChange = { host.switchHome(current.homeId) },
@@ -8159,11 +8344,57 @@ private fun PlaceTabRoot(
                         onSignIn = {},
                         onCreateAccount = {},
                         onSavePreview = host::openArrival,
-                        embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu),
+                        embedded = PlaceLaunchEmbedding(unreadCount, openNotifications, onOpenMenu, addressFocus),
                     )
                 }
         }
     }
+}
+
+/**
+ * Guidance cards on Place's root: what it shows (cards 1, 2, 8, 11, 12 and 16–27), not ready while it loads, fails or
+ * the arrival step covers it; and a reminder's button (24, 25 and 27), its next step on what Place shows (26 is Your
+ * Place's own). Returns the address box's focus, for 24.
+ */
+@Composable
+private fun rememberPlaceGuidance(
+    root: HomeLanding,
+    arrivalOpen: Boolean,
+    navController: NavHostController,
+): FocusRequester {
+    val shows =
+        when (root) {
+            HomeLanding.FirstRun -> GuidancePlaceShows.FirstRun
+            is HomeLanding.SavedPlace -> GuidancePlaceShows.SavedPlace
+            is HomeLanding.Home -> GuidancePlaceShows.Home
+            is HomeLanding.Claim -> GuidancePlaceShows.Claim
+            HomeLanding.Homes -> GuidancePlaceShows.Homes
+            else -> null
+        }
+    GuidanceSpot(
+        GuidanceSpotFacts(
+            GuidanceScreen.Place,
+            ready = shows != null && !arrivalOpen,
+            place = shows,
+            homeId = (root as? HomeLanding.Home)?.homeId,
+            savedAt = (root as? HomeLanding.SavedPlace)?.place?.createdAt,
+        ),
+    )
+    val guidance = LocalGuidance.current
+    LaunchedEffect(shows) { if (shows == GuidancePlaceShows.SavedPlace) guidance?.note(GuidanceFlags.SAVED_ADDRESS) }
+    val addressFocus = remember { FocusRequester() }
+    LaunchedEffect(guidance?.action, root) {
+        val host = guidance ?: return@LaunchedEffect
+        when (root) {
+            HomeLanding.FirstRun -> if (host.takeAction(GuidanceAction.AddAddress)) runCatching { addressFocus.requestFocus() }
+            is HomeLanding.SavedPlace ->
+                if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(root.place.label))
+            is HomeLanding.Home ->
+                if (host.takeAction(GuidanceAction.Invite)) navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+            else -> Unit
+        }
+    }
+    return addressFocus
 }
 
 /** Your Place for one Home, with the same doors whether it is the Place tab's root or pushed on top by a link. */
@@ -8180,6 +8411,8 @@ private fun PlaceDashboardDestination(
     scrollToBallot: Boolean = false,
     onBallotOpened: () -> Unit = {},
     onOpenTodayRadon: (() -> Unit)? = null,
+    openVerify: Boolean = false,
+    onVerifyOpened: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val inviteShare: InviteShareViewModel = hiltViewModel()
@@ -8191,7 +8424,7 @@ private fun PlaceDashboardDestination(
         onSwitchHome = onSwitchHome,
         onAddPlace = { navController.navigate(ChildRoutes.ADD_HOME) },
         // Wedge v2 D3: each door is a real flow, never a status mock-up.
-        onStartVerify = { method, _ -> navController.openPlaceVerify(method, homeId) },
+        onStartVerify = { method, address -> navController.openPlaceVerify(method, homeId, address) },
         // A residency document already in review: its status, not a second upload.
         onOpenVerificationStatus = { navController.navigate(ChildRoutes.waitingRoom(homeId)) },
         onOpenPulse = { navController.navigate(ChildRoutes.placePulse(homeId)) },
@@ -8223,6 +8456,8 @@ private fun PlaceDashboardDestination(
         onBallotOpened = onBallotOpened,
         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
         onOpenTodayRadon = onOpenTodayRadon,
+        openVerify = openVerify,
+        onVerifyOpened = onVerifyOpened,
     )
 }
 

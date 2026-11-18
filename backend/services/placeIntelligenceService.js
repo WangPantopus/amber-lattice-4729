@@ -29,7 +29,7 @@ const { encodeGeohash } = require('../utils/geohash');
 const { NON_RESIDENT_ROLES, UNPROVEN_SOURCES, resolveHomeRole } = require('../utils/homeAccessPolicy');
 const claimsConfig = require('../config/householdClaims');
 const claimsPolicy = require('./homeClaimRoutingService');
-const { checkHomePermission } = require('../utils/homePermissions');
+const { checkHomePermission, fastVerified, fastVerifyOn } = require('../utils/homePermissions');
 const homeListService = require('./homeListService');
 const mailVendorService = require('./addressValidation/mailVendorService');
 const {
@@ -88,11 +88,14 @@ const DENSITY_LABELS = {
 // ── Trust tier from the caller's home access (§3) ────────────
 // The endpoint requires home access, so the caller is claimed (T3+);
 // a verified occupancy lifts them to T4.
-function resolveTier(access) {
+// `fast` is homePermissions.fastVerified(access.occupancy), looked up by the caller (it is async): a claim with a
+// standing fast check is Verified (FASTVERIFY), so it reads as T4 here, as isVerified says.
+function resolveTier(access, fast = false) {
   if (!access || !access.hasAccess) return 'T1';
   const vs = access.occupancy && access.occupancy.verification_status;
   // Household consent and claims are verified household access, not address proof (T3, "Claimed").
   if (vs === 'verified' && !UNPROVEN_SOURCES.has(access.occupancy.verification_source)) return 'T4';
+  if (fast === true) return 'T4';
   return 'T3';
 }
 
@@ -123,9 +126,18 @@ const VERIFY_BY_MAIL_REASONS = {
   exemption_check: 'Verify your address by mail to check for property-tax exemptions.',
   real_rent: 'Verify your address by mail to see what your block actually pays.',
 };
+// With home_fast_verify on for the viewer (FASTVERIFY), a fast check opens these, so the words don't say mail.
+const VERIFY_FAST_REASONS = {
+  your_home: "Verify you live here to see your home's details.",
+  home_systems: "Verify you live here to keep your home's maintenance record.",
+  bill_benchmark: 'Verify you live here to compare your bills with others near you.',
+  exemption_check: 'Verify you live here to check for property-tax exemptions.',
+  real_rent: 'Verify you live here to see what others near you pay.',
+};
 // While postcards can't go out (a hosted server without Lob), the locks don't promise mail.
 const NOT_BY_MAIL_REASON = 'Available once your address is verified.';
-const verifyReason = (id) => (mailVendorService.canSendPostcards() ? VERIFY_BY_MAIL_REASONS[id] : NOT_BY_MAIL_REASON);
+const verifyReason = (id, fastWords = false) => (fastWords ? VERIFY_FAST_REASONS[id]
+  : mailVendorService.canSendPostcards() ? VERIFY_BY_MAIL_REASONS[id] : NOT_BY_MAIL_REASON);
 const OWNERSHIP_PENDING_REASON = 'Available once your ownership is confirmed.';
 const CLAIM_REVIEW_REASON = 'Available once your claim is approved.';
 const VALUE_FIELDS = ['estimated_value', 'value_low', 'value_high', 'assessed_value', 'value_source', 'value_title', 'value_card'];
@@ -1412,12 +1424,12 @@ async function withShownColumns(home, recordRow) {
 //              what the Block Founders meter and its invite CTA read;
 //   ready    — the quartile band, plus the viewer's own standing when
 //              they have contributed.
-async function composeRealRent(home, tier, userId, canVerify = true) {
+async function composeRealRent(home, tier, userId, canVerify = true, fastWords = false) {
   const access = bandAccess('D', tier);
   if (access === 'locked') {
     return [serializePlaceSection('real_rent', {
       access: 'locked',
-      unavailableReason: canVerify ? verifyReason('real_rent') : 'Shared with the verified residents of this block.',
+      unavailableReason: canVerify ? verifyReason('real_rent', fastWords) : 'Shared with the verified residents of this block.',
     })];
   }
   try {
@@ -1570,7 +1582,7 @@ const COMPOSER_SECTIONS = [
   { ids: ['bill_benchmark'], run: ({ home, access, userId }) => composeBillBenchmark(home, access, userId) },
   { ids: ['exemption_check'], budget: true, run: ({ home, tier, wantsRecordVocabulary, recordRow, attomReads }) => composeExemptionCheck(home, tier, wantsRecordVocabulary, recordRow, attomReads) },
   { ids: ['rent_band'], budget: true, run: async ({ rentHome }) => placeSectionAdapters.composeRentBand(await rentHome) },
-  { ids: ['real_rent'], run: async ({ rentHome, tier, userId, access }) => composeRealRent(await rentHome, tier, userId, !nonResidentViewer(access)) },
+  { ids: ['real_rent'], run: async ({ rentHome, tier, userId, access, fastWords }) => composeRealRent(await rentHome, tier, userId, !nonResidentViewer(access), fastWords) },
   { ids: ['civic_districts'], budget: true, run: ({ home, ballot }) => placeSectionAdapters.composeCivicDistricts(home, { ballot }) },
   { ids: ['civic_election'], budget: true, run: ({ home, ballot, budgetMs }) => placeSectionAdapters.composeCivicElection(home, { ballot, budgetMs }) },
 ];
@@ -1656,7 +1668,9 @@ async function composeHomeIntelligence({ homeId, userId, access, sectionIds, bal
   // Your home and the exemption check read the Home's ATTOM copies once between them.
   const attomReads = new Map();
 
-  const tier = resolveTier(access);
+  // FASTVERIFY: a claim with a standing fast check is Verified (T4) (no lookup without one).
+  const fast = access && access.hasAccess ? await fastVerified(access.occupancy) : false;
+  const tier = resolveTier(access, fast);
   const viewer = resolveViewer(access, tier, await ownershipPending);
   // Sections that can't apply to this viewer are left out entirely.
   const requested = new Set(
@@ -1667,6 +1681,9 @@ async function composeHomeIntelligence({ homeId, userId, access, sectionIds, bal
   // their providers (ATTOM, the household's bills) aren't asked at all.
   const setupLocked = viewer.stage === 'setup'
     ? Object.keys(VERIFY_BY_MAIL_REASONS).filter((id) => requested.has(id)) : [];
+  // With home_fast_verify on for the viewer, the locked sections say "Verify you live here" instead of "by mail"
+  // (FASTVERIFY). Read only when a lock that names a way to verify can show.
+  const fastWords = (setupLocked.length > 0 || (tier !== 'T4' && requested.has('real_rent'))) && await fastVerifyOn(userId);
 
   // Compose only the composers that produce a requested section — plus the
   // home's privacy toggles — in parallel; each composer is self-contained
@@ -1746,7 +1763,7 @@ async function composeHomeIntelligence({ homeId, userId, access, sectionIds, bal
   const [privacy, ...groups] = await Promise.all([
     getHomePrivacy(homeId).catch(() => ({ address_precision: true })),
     ...runs.map(({ ids, budget, run }) => {
-      const compose = () => run({ home: subject, rentHome, userId, tier, hubPromise, access, ballot: ballotOn, wantsRecordVocabulary, claimant, countyReads, budgetMs, recordRow, attomReads });
+      const compose = () => run({ home: subject, rentHome, userId, tier, hubPromise, access, ballot: ballotOn, wantsRecordVocabulary, claimant, countyReads, budgetMs, recordRow, attomReads, fastWords });
       if (!budget) return compose();
       let over = false;
       // A section past its budget keeps running to fill its cache; its real
@@ -1782,7 +1799,7 @@ async function composeHomeIntelligence({ homeId, userId, access, sectionIds, bal
   for (const env of groups.flat()) composed[env.id] = env;
   const teaser = await teaserRead;
   for (const id of setupLocked) {
-    const reason = claimant ? CLAIM_REVIEW_REASON : verifyReason(id);
+    const reason = claimant ? CLAIM_REVIEW_REASON : verifyReason(id, fastWords);
     composed[id] = serializePlaceSection(id, { access: 'locked', unavailableReason: id === 'your_home' && teaser ? `${teaser} ${reason}` : reason });
   }
   if (viewer.ownership === 'pending' && composed.exemption_check && !setupLocked.includes('exemption_check')) {

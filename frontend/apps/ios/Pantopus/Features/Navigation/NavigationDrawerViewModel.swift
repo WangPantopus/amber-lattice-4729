@@ -81,6 +81,8 @@ enum NavigationDrawerDestination: Equatable {
     case myBeacon
     case myListings
     case myPulse
+    /// The viewer's Support Trains (the ones they organize, are for, or help on) and Start a Support Train.
+    case supportTrains
     case myTasks
     case myBids
     case offersAndBids
@@ -126,7 +128,9 @@ enum NavigationDrawerDestination: Equatable {
         // Launch cut #3 (Marketplace).
         case .myListings: LaunchFeatures.marketplace
         // Launch cut #4 (Open gigs): bids, gig offers and open task posting.
-        case .myBids, .offersAndBids, .postTask, .businessPostTask: LaunchFeatures.openGigs
+        // My Tasks (the gigs you posted) is off in the menu too (founder,
+        // 2026-11-17); the home's own Tasks row stays.
+        case .myTasks, .myBids, .offersAndBids, .postTask, .businessPostTask: LaunchFeatures.openGigs
         // Launch cuts #6 + #4 + #3: "Discover Neighbors" opens the Discover
         // hub (business, open-task and listing rails), not people search.
         case .discoverNeighbors: LaunchFeatures.businessDirectory && LaunchFeatures.openGigs && LaunchFeatures.marketplace
@@ -283,6 +287,7 @@ final class NavigationDrawerViewModel {
                 item(.radio, "My Beacon", .myBeacon),
                 item(.tag, "My Listings", .myListings),
                 item(.fileText, "My Pulse", .myPulse),
+                item(.utensils, "Support Trains", .supportTrains),
                 item(.listChecks, "My Tasks", .myTasks),
                 item(.hand, "My Bids", .myBids),
                 item(.gavel, "Offers & Bids", .offersAndBids),

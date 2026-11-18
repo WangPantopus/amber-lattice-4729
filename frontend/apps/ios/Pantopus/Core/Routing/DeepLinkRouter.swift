@@ -75,7 +75,8 @@ final class DeepLinkRouter {
         case verifyLandlord(id: String)
         /// `pantopus://homes/:id/verify-postcard` — opens the A12.7
         /// sibling status screen directly.
-        case postcardVerification(id: String)
+        /// `code` is the card's code from a scanned link's `#c=` fragment (FASTVERIFY), filled into the code field.
+        case postcardVerification(id: String, code: String? = nil)
         case conversation(id: String)
         case user(id: String)
         /// `pantopus://persona/:handle` or `/@handle` — public Beacon profile.
@@ -263,9 +264,15 @@ final class DeepLinkRouter {
         /// `/plans/:id` — a Nearby Plan (share links, plan pushes). Opens in
         /// the Plans tab's stack; dropped while the `plans` flag is off.
         /// `?invite=` carries an email or text invitation for the plan to open.
-        case plan(id: String, invite: String?)
+        /// `?invite=`: an email or text invitation; `?open=`: the plan's one link for everyone (contract 6.9).
+        /// `?spot=`: a spot someone bought for whoever opens the link (one person pays for the group).
+        case plan(id: String, invite: String?, open: String? = nil, spot: String? = nil)
         /// `/plans/:id/requests` — the host's requests (H10).
         case planRequests(id: String)
+        /// `/plans/:id/guests` — the host's "Who's coming" (Plans for the holidays; the two H1 notices open it).
+        case planGuests(id: String)
+        /// `/plans/:id/check` — the guest's check at the place (Plans for the holidays B5; the check's notices open it).
+        case planCheck(id: String)
         /// `/plans/new` — the host composer (H1).
         case planNew
         case unknown(URL)
@@ -621,12 +628,29 @@ final class DeepLinkRouter {
             // `/moments` (the tab) and `/moments/:id` (that Moment in the viewer).
             guard let id = segments.dropFirst().first, !id.isEmpty else { return .moments }
             return .moment(id: id)
+        case "plan-link":
+            // `/plan-link/:id?open=` or `?spot=` (the web's address for the open link and a buyer's link): the plan.
+            guard let id = segments.dropFirst().first, !id.isEmpty, segments.count == 2 else { return .unknown(url) }
+            let open = queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            let spot = queryValue("spot", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            guard open != nil || spot != nil else { return .unknown(url) }
+            return .plan(id: id, invite: nil, open: open, spot: open == nil ? spot : nil)
         case "plans", "plan":
             // `/plans` (the tab), `/plans/new`, `/plans/:id`, `/plans/:id/requests`.
             guard let id = segments.dropFirst().first, !id.isEmpty else { return .plans }
             if id == "new" { return .planNew }
             if segments.dropFirst(2).first == "requests" { return .planRequests(id: id) }
-            return .plan(id: id, invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 })
+            if segments.dropFirst(2).first == "guests" { return .planGuests(id: id) }
+            if segments.dropFirst(2).first == "check" { return .planCheck(id: id) }
+            // `?open=`: the plan's one link for everyone (Plans for the holidays, contract 6.9), from the browser
+            // page's "Open app" (`pantopus:///plans/<id>?open=`) or `https://…/plans/<id>?open=`: claimed for this
+            // account. Signed out it waits through sign-in like any plan link.
+            return .plan(
+                id: id,
+                invite: queryValue("invite", in: comps).flatMap { $0.isEmpty ? nil : $0 },
+                open: queryValue("open", in: comps).flatMap { $0.isEmpty ? nil : $0 },
+                spot: queryValue("spot", in: comps).flatMap { $0.isEmpty ? nil : $0 }
+            )
         case "notifications":
             return .notifications
         case "support-trains", "support_train":
@@ -833,7 +857,17 @@ final class DeepLinkRouter {
     /// `/<username>`, which has no native route (unknown paths are
     /// deliberately discarded); rewrite just those types to the native short
     /// profile form `/u/<username>`.
-    nonisolated static func notificationPath(type: String?, link: String?) -> String? {
+    nonisolated static func notificationPath(type: String?, link: String?, opens: String? = nil) -> String? {
+        // Plans for the holidays: a notice about the host's guests (`opens: whos_coming`: a guest answered, one waits
+        // for the host's yes, guests wait after a move to a home) opens "Who's coming" over its plan.
+        let aboutGuests = opens == "whos_coming" || type == "plan_guest_answered" || type == "plan_guest_waiting"
+        if aboutGuests, let link, link.hasPrefix("/plans/"), !link.contains("?"), link.split(separator: "/").count == 2 {
+            return link + "/guests"
+        }
+        // B5: a check's notices (`opens: check`: the check sent, a refund of it) open the check over its plan.
+        if opens == "check", let link, link.hasPrefix("/plans/"), !link.contains("?"), link.split(separator: "/").count == 2 {
+            return link + "/check"
+        }
         guard type == "new_follower" || type == "connection_accepted", let link else { return link }
         let trimmed = link.hasPrefix("/") ? String(link.dropFirst()) : link
         let segments = trimmed.split(separator: "/", omittingEmptySubsequences: true)
@@ -937,7 +971,8 @@ final class DeepLinkRouter {
             return .verifyLandlord(id: id)
         }
         if trailing.first == "verify-postcard" || trailing.first == "verify_postcard" {
-            return .postcardVerification(id: id)
+            // The card's QR link carries its code in the fragment, which never reaches a server.
+            return .postcardVerification(id: id, code: PostcardLinkCode.sanitized(fragmentParam(url.fragment, name: "c")))
         }
         // B1.6 — `pantopus://homes/:id/waiting-room` opens the A18.4 room.
         if trailing.first == "waiting-room" || trailing.first == "waiting_room" {

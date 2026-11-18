@@ -33,6 +33,8 @@ const rules = require('./planRules');
 const DEFAULT_QUIET = { start: 21 * 60, end: 8 * 60 };
 const NEAR_PLAN_MS = 2 * 60 * 60 * 1000;
 const BUNDLE_WINDOW_MS = 10 * 60 * 1000;
+// Guests without an account who say they're in: several in an hour become one push.
+const GUEST_BUNDLE_WINDOW_MS = 60 * 60 * 1000;
 
 const CATEGORY_BY_TYPE = {
   plan_request: 'PLAN_REQUEST',
@@ -42,6 +44,8 @@ const CATEGORY_BY_TYPE = {
   plan_still_coming_reminder: 'PLAN_CHANGED',
   // I'm in / Can't make it. Not for a playdate: saying you're in needs the kids' ages.
   plan_invite: 'PLAN_INVITE',
+  // A guest without an account waits for the host's yes: Let in / Not this time (Plans for the holidays, H1).
+  plan_guest_waiting: 'PLAN_GUEST_OK',
 };
 
 const ICON_BY_KIND = {
@@ -401,16 +405,19 @@ async function requestReceivedBy(hostId, { plan, request, hostFirst, requesterFi
   });
 }
 
-async function accepted({ plan, request, hostFirst, byRule }) {
+async function accepted({ plan, request, hostFirst, byRule, paidCents = null }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), { long: true });
   const where = placePhrase(plan, hostFirst);
-  const body = byRule
-    ? `${capitalized(noun(plan))}, ${when} ${where}.`
-    : `${hostFirst} said yes. ${capitalized(when)} ${where}.`;
+  // A paid spot (B2): "You're in: {title}. Paid $18.00."
+  const body = paidCents
+    ? `Paid $${(paidCents / 100).toFixed(2)}. ${capitalized(when)} ${where}.`
+    : byRule
+      ? `${capitalized(noun(plan))}, ${when} ${where}.`
+      : `${hostFirst} said yes. ${capitalized(when)} ${where}.`;
   return notify({
     userId: request.user_id,
     type: 'plan_accepted',
-    title: "You're in",
+    title: paidCents ? `You're in: ${plan.post.title}` : "You're in",
     body: body.replace(/\s+\./g, '.'),
     link: `/plans/${plan.post_id}`,
     plan,
@@ -468,11 +475,13 @@ async function cancelled({ plan, request, hostFirst, note, wasIn }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan), {
     long: true, hideTime, dayPart: rules.dayPart(plan.post.event_date, rules.timezoneForPlan(plan)),
   });
+  // Still picking its date (08-extras section 2): no date, "Sam cancelled {title}." in place of "{when} is off.".
+  const picking = await require('./planDates').invitesWhilePicking(plan);
   return notify({
     userId: request.user_id,
     type: 'plan_cancelled',
     title: `${hostFirst} cancelled the ${noun(plan)}`,
-    body: note ? `“${note}”` : `${capitalized(when)} is off.`,
+    body: note ? `“${note}”` : picking ? `${hostFirst} cancelled ${plan.post.title}.` : `${capitalized(when)} is off.`,
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: wasIn,
@@ -495,13 +504,15 @@ async function expired({ plan, request, hostFirst }) {
   });
 }
 
-async function spotOpened({ plan, request, hostFirst, nowIn }) {
+async function spotOpened({ plan, request, hostFirst, nowIn, price = null }) {
   const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
   return notify({
     userId: request.user_id,
     type: 'plan_spot_opened',
     title: 'A spot opened up',
-    body: nowIn ? `You're in: ${plan.post.title}, ${when}.` : `${hostFirst} will let you know soon.`,
+    // A paid plan (B2): the spot is held 30 minutes for them to pay.
+    body: price ? `${plan.post.title}, ${when}. It's yours for 30 minutes: join for ${price}.`
+      : nowIn ? `You're in: ${plan.post.title}, ${when}.` : `${hostFirst} will let you know soon.`,
     link: `/plans/${plan.post_id}`,
     plan,
     recipientIsIn: nowIn,
@@ -652,23 +663,33 @@ function invitedTitle(plan, hostFirst) {
 
 /**
  * The host invited someone on Pantopus: the push has I'm in / Can't make it (not for a playdate, which asks the
- * kids' ages first). Like every notice, the area only; a playdate's title stays in the app.
+ * kids' ages first). Like every notice, the area only; a playdate's title stays in the app. While the host picks a
+ * date (08-extras section 2) it names no date: "Sam invited you to a dinner. Tick the times that work for you.",
+ * "{title} · Picking a date · {area}", and no buttons (the plan takes ticks, not an answer).
  */
-async function invited({ plan, invite, userId, hostFirst, series = false }) {
+async function invited({ plan, invite, userId, hostFirst, series = false, reminder = false }) {
   const tz = rules.timezoneForPlan(plan);
   const playdate = plan.kind === 'playdate';
-  const when = whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
+  const planDates = require('./planDates');
+  const picking = !series && (await planDates.invitesWhilePicking(plan));
+  const when = picking ? planDates.PICKING_TEXT
+    : whenText(plan.post.event_date, tz, { hideTime: playdate, dayPart: rules.dayPart(plan.post.event_date, tz) });
   // The next date of a repeating plan, to someone who came before: "Thursday's walk is posted".
   const weekday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(new Date(plan.post.event_date));
   return notify({
     userId,
     type: 'plan_invite',
-    title: series ? `${weekday}’s ${noun(plan)} is posted` : invitedTitle(plan, hostFirst),
+    title: series ? `${weekday}’s ${noun(plan)} is posted`
+      : picking ? `${invitedTitle(plan, hostFirst)}. ${planDates.PICKING_ASK}` : invitedTitle(plan, hostFirst),
     body: [playdate ? null : plan.post.title, playdate ? capitalized(when) : when, placePhrase(plan, hostFirst)].filter(Boolean).join(' · '),
     link: `/plans/${plan.post_id}`,
     plan,
-    metadata: { invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(plan.kind === 'playdate' ? { category: null } : {}) },
-    idempotencyKey: `plan_invite:${invite.id}`,
+    metadata: {
+      invite_id: invite.id, host_name: hostFirst, ...(series ? { series: true } : {}), ...(reminder ? { reminder: true } : {}),
+      ...(plan.kind === 'playdate' || picking ? { category: null } : {}),
+    },
+    // The host's "Remind" (H1) sends the same notice once more, once.
+    idempotencyKey: reminder ? `plan_invite_reminder:${invite.id}` : `plan_invite:${invite.id}`,
   });
 }
 
@@ -714,6 +735,114 @@ async function inviteDeclined({ plan, userId, guestName, goingCount }) {
   });
 }
 
+// ── Guests without an account (planGuests.js, Plans for the holidays H1) ──
+
+/** "2 adults, 1 kid" (with `and`: "2 adults and 1 kid"); "3 adults" with no kids; "1 adult". */
+function peopleText(adults, kids, { and = false } = {}) {
+  const a = Math.max(1, Number(adults) || 1);
+  const k = Math.max(0, Number(kids) || 0);
+  const parts = [`${a} ${a === 1 ? 'adult' : 'adults'}`];
+  if (k > 0) parts.push(`${k} ${k === 1 ? 'kid' : 'kids'}`);
+  return parts.join(and ? ' and ' : ', ');
+}
+
+/**
+ * A guest without an account said they're in (or the host let them in from the open link's wait). To the host:
+ * "Dana Lee is in: 2 adults, 1 kid." The first in an hour pushes at once; later ones in that hour wait for the
+ * hour to close and go as one push (jobs/planJobs.js). Opens the plan's "Who's coming" (metadata.opens).
+ */
+async function guestAnswered({ plan, invite }) {
+  const hostId = plan.host_user_id;
+  const hourAgo = new Date(Date.now() - GUEST_BUNDLE_WINDOW_MS).toISOString();
+  const { data: recent } = await supabaseAdmin
+    .from('Notification')
+    .select('id, created_at, metadata')
+    .eq('user_id', hostId)
+    .eq('type', 'plan_guest_answered')
+    .gte('created_at', hourAgo)
+    .contains('metadata', { plan_id: plan.post_id })
+    .order('created_at', { ascending: true })
+    .limit(20);
+  const head = (recent || []).find((n) => !n.metadata?.bundled);
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  return notify({
+    userId: hostId,
+    type: 'plan_guest_answered',
+    title: `${invite.guest_name} is in: ${peopleText(invite.guest_adults, invite.guest_kids)}.`,
+    body: [plan.post.title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: {
+      invite_id: invite.id, guest_name: invite.guest_name, opens: 'whos_coming',
+      ...(head ? { bundled: true, bundle_head_id: head.id } : {}),
+    },
+    holdUntil: head ? new Date(new Date(head.created_at).getTime() + GUEST_BUNDLE_WINDOW_MS) : null,
+  });
+}
+
+/**
+ * Someone answered "I'm in" from the open link and waits for the host's yes. To the host, with Let in and Not this
+ * time (category PLAN_GUEST_OK, which act on invite_id without opening the app): "Dana Lee wants to come. Let them in?"
+ */
+async function guestWaiting({ plan, invite }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_guest_waiting',
+    title: `${invite.guest_name} wants to come. Let them in?`,
+    body: [peopleText(invite.guest_adults, invite.guest_kids), plan.post.title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: { invite_id: invite.id, guest_name: invite.guest_name, opens: 'whos_coming' },
+    idempotencyKey: `plan_guest_waiting:${invite.id}:${new Date(invite.answered_at || Date.now()).toISOString()}`,
+  });
+}
+
+/**
+ * The host moved the plan to their home and guests from the open link now wait for their yes (contract 6.8). Once a
+ * move, to the host, opening Who's coming, with no buttons (each guest has Let in and Not this time there):
+ * "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes."
+ */
+async function guestsWaitAfterMove({ plan, count }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  const title = plan.post.title;
+  return notify({
+    userId: plan.host_user_id,
+    type: 'plan_moved_home',
+    title: count === 1
+      ? `You moved ${title} to your home. 1 guest from your link is waiting for your yes.`
+      : `You moved ${title} to your home. ${count} guests from your link are waiting for your yes.`,
+    body: [title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    recipientIsIn: true,
+    metadata: { opens: 'whos_coming', count },
+    idempotencyKey: `plan_moved_home:${plan.post_id}:${new Date(plan.updated_at || Date.now()).toISOString()}`,
+  });
+}
+
+/**
+ * To a person with an account from the open link whom the move to a home made wait (contract 6.9 item 7): "Maya moved
+ * Friendsgiving to a home. Maya lets each guest in, and you'll hear when Maya says yes." Opens the plan, in its
+ * waiting state. Once a move. Their yes comes as the ordinary "You're in" (accepted).
+ */
+async function waitAfterMove({ plan, request, hostFirst }) {
+  const when = whenText(plan.post.event_date, rules.timezoneForPlan(plan));
+  const title = plan.post.title;
+  return notify({
+    userId: request.user_id,
+    type: 'plan_moved_home_wait',
+    title: `${hostFirst} moved ${title} to a home. ${hostFirst} lets each guest in, and you'll hear when ${hostFirst} says yes.`,
+    body: [title, when].filter(Boolean).join(' · '),
+    link: `/plans/${plan.post_id}`,
+    plan,
+    metadata: { request_id: request.id, opens: 'plan' },
+    idempotencyKey: `plan_moved_home_wait:${request.id}:${new Date(plan.updated_at || Date.now()).toISOString()}`,
+  });
+}
+
 /**
  * "Still coming?" again, for a guest who hasn't answered: once per change (the change's
  * reconfirm_requested_at is in the key), with the same buttons as the first ask.
@@ -746,6 +875,7 @@ module.exports = {
   BUNDLE_WINDOW_MS,
   noun,
   whenText,
+  timeText,
   heldPushText,
   bandText,
   areaPhrase,
@@ -772,4 +902,10 @@ module.exports = {
   stillComingReminder,
   invited,
   inviteDeclined,
+  peopleText,
+  guestAnswered,
+  guestWaiting,
+  guestsWaitAfterMove,
+  waitAfterMove,
+  GUEST_BUNDLE_WINDOW_MS,
 };

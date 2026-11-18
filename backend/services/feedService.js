@@ -10,6 +10,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { GeoCache } = require('../utils/geoCache');
 const { aroundYouEnabled } = require('../utils/featureFlags');
+const { isUuid, isIsoTime, invalidPosition } = require('../utils/pagingValues');
 const { personaPostVisibleToViewer } = require('../utils/personaPostVisibility');
 const {
   applyLocationPrecision,
@@ -22,6 +23,7 @@ const { readablePosts, postScopeAccess } = require('./pulse/readAccess');
 const { unpublishedBusinessIds } = require('../utils/visibilityPolicy');
 const { localDisplayNames } = require('../utils/identityProfiles');
 const { reactionSummary, shownReaction } = require('../utils/postReaction');
+const { taggedPlaceKind } = require('../utils/postPlaceTag');
 const {
   SAFE_CREATOR_SELECT,
   serializeAudienceProfileForViewer,
@@ -118,6 +120,7 @@ const FEED_POST_SELECT = `
   visibility, visibility_scope, location_precision, tags, read_scope, area_id, allow_external_share, moderation_state,
   like_count, comment_count, share_count, save_count, is_pinned, is_global_pin, is_edited, created_at, updated_at,
   home_id, latitude, longitude, effective_latitude, effective_longitude, location_name, location_address,
+  geocode_place_id, geocode_accuracy,
   post_as, audience, business_id, business_author_id, target_place_id,
   resolved_at, archived_at, archive_reason, is_story, story_expires_at,
   distribution_targets, broadcast_channel_id, target_tier_rank, delivered_count, read_count,
@@ -174,6 +177,9 @@ function normalizeAlignedMediaUrls(mediaUrls) {
 
 function normalizeFeedPostRow(row, likedPostIds = new Set(), savedPostIds = new Set()) {
   return {
+    // What the row's place tag names, for the privacy read (postPrecisionForOthers); a symbol, so no answer carries it
+    // and the tag's id never leaves.
+    [TAG_KIND]: taggedPlaceKind(row.geocode_place_id, row.geocode_accuracy),
     id: row.id,
     user_id: row.user_id,
     author_user_id: row.author_user_id || row.user_id,
@@ -289,12 +295,52 @@ function placeLabelForOthers(post) {
   return STREET_LINE_LABEL.test(post.location_name) ? null : post.location_name;
 }
 
+const TAG_KIND = Symbol('placeTagKind');
+
+// The Sky (phase A): whether `sky_places` is on for everyone, kept for a minute. Posts already made follow the venue-only
+// rule (postPrecisionForOthers) only then, since that read doesn't depend on who is reading. Reads that can wait for it
+// await refreshSkyEverywhere(); the rest use the last answer (off until the first one).
+const skyEverywhereRead = { on: false, at: 0, job: null };
+function refreshSkyEverywhere() {
+  if (skyEverywhereRead.job) return skyEverywhereRead.job;
+  if (Date.now() - skyEverywhereRead.at < 60 * 1000) return Promise.resolve();
+  skyEverywhereRead.job = require('./featureFlagService').getFlag('sky_places')
+    .then((flag) => { skyEverywhereRead.on = Boolean(flag?.enabled_globally); }, () => {})
+    .finally(() => { skyEverywhereRead.at = Date.now(); skyEverywhereRead.job = null; });
+  return skyEverywhereRead.job;
+}
+function skyEverywhere() {
+  refreshSkyEverywhere();
+  return skyEverywhereRead.on;
+}
+
+/** A floating post (the Sky): it stores only its area's point and post_metadata.area. */
+function isAreaPost(post) {
+  return Boolean(post?.post_metadata?.area);
+}
+
+/** The disc a floating post's point stands for, { radius_m }, or null. */
+function areaOf(post) {
+  const radius = Number(post?.post_metadata?.area?.radius_m);
+  return isAreaPost(post) ? { radius_m: Number.isFinite(radius) ? radius : null } : null;
+}
+
+/** What a row's place tag names ('venue' | 'address' | 'area' | null), from the row or its normalized copy. */
+function placeTagKind(post) {
+  if (post && post.geocode_place_id !== undefined) return taggedPlaceKind(post.geocode_place_id, post.geocode_accuracy);
+  return post?.[TAG_KIND] ?? null;
+}
+
 // A post its author's own photo or video placed (post_metadata.location_basis, set only by POST /api/posts) shows
 // everyone the exact spot when it was stored as exact: a tagged venue, or where the photo was taken when the tag was a
 // town. Every other post has a floor of approx_area for everyone but its author (docs/location-privacy-matrix.md).
+// With the Sky's places on for everyone, only a venue tag keeps that exact pin (an address may be someone's home); the
+// rest show as an area, and a floating post (isAreaPost) shows its stored area point as it is.
 function postPrecisionForOthers(post) {
+  if (isAreaPost(post)) return 'approx_area';
   const stored = post.location_precision || 'approx_area';
-  if (stored === 'exact_place' && post.post_metadata?.location_basis === 'photo') return 'exact_place';
+  if (stored === 'exact_place' && post.post_metadata?.location_basis === 'photo'
+    && (!skyEverywhere() || placeTagKind(post) === 'venue')) return 'exact_place';
   return leastPrecise(stored, 'approx_area');
 }
 
@@ -305,17 +351,33 @@ function applyPostLocationPrivacy(post, viewerUserId) {
   const effectivePrecision = isAuthor
     ? (post.location_precision || 'approx_area')
     : postPrecisionForOthers(post);
+  // A floating post's stored point is its area's: shown as it is, to everyone, its author included.
+  const floating = isAreaPost(post);
 
-  applyLocationPrecision(post, effectivePrecision, isAuthor);
+  if (floating) {
+    post.locationUnlocked = false;
+    post.area = areaOf(post);
+    post.location_address = null;
+    post.exact_address = null;
+  } else {
+    applyLocationPrecision(post, effectivePrecision, isAuthor);
+  }
 
   if (!isAuthor) {
     // The denormalized effective point (a place tag, the author's position or the
     // home's coordinates) gets the same floor; the raw PostGIS point never leaves.
-    applyLocationPrecision(post, effectivePrecision, false, {
-      latField: 'effective_latitude', lngField: 'effective_longitude', setUnlockedFlag: false, stripAddress: false,
-    });
+    if (!floating) {
+      applyLocationPrecision(post, effectivePrecision, false, {
+        latField: 'effective_latitude', lngField: 'effective_longitude', setUnlockedFlag: false, stripAddress: false,
+      });
+    }
     delete post.location;
-    post.locationUnlocked = effectivePrecision === 'exact_place';
+    post.locationUnlocked = !floating && effectivePrecision === 'exact_place';
+    // The Sky, on for everyone: a photo post that no longer shows its exact spot doesn't say "Photo taken here".
+    if (!post.locationUnlocked && post.post_metadata?.location_basis === 'photo' && skyEverywhere()) {
+      post.location_basis = null;
+      post.photo_taken_at = null;
+    }
     if (post.location_name) post.location_name = placeLabelForOthers(post);
     if (post.home) {
       post.home = {
@@ -390,6 +452,7 @@ function displayedPoint(post, viewerUserId, { orEffective = false } = {}) {
     longitude: post.longitude,
     effective_latitude: post.effective_latitude,
     effective_longitude: post.effective_longitude,
+    [TAG_KIND]: placeTagKind(post),
   }, viewerUserId);
   if (shown.latitude != null && shown.longitude != null) {
     return { latitude: shown.latitude, longitude: shown.longitude };
@@ -589,6 +652,7 @@ async function loadReactionSummaries(posts) {
 // Callers should NOT also call applyPostLocationPrivacy.
 async function enrichWithUserStatus(posts, userId) {
   if (!posts.length) return posts;
+  await refreshSkyEverywhere();
   // The matched businesses' state, the reaction counts and the viewer's likes, saves and reposts don't depend on each
   // other.
   const [[{ data: likes }, { data: saves }, { data: reposts }, { data: pinned }], reactionSummaries] = await Promise.all([
@@ -876,6 +940,8 @@ function onlyShownPosts(query) {
 
 function applyCursorCondition(query, cursorCreatedAt, cursorId) {
   if (!cursorCreatedAt || !cursorId) return query;
+  // Routes check the position they were sent and answer 400; this keeps any other value out of the filter.
+  if (!isIsoTime(cursorCreatedAt) || !isUuid(cursorId)) throw invalidPosition();
   return query.or(
     `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${cursorId})`
   );
@@ -885,6 +951,7 @@ function applyPinnedCursorCondition(query, cursorCreatedAt, cursorId, cursorIsPi
   if (!cursorCreatedAt || !cursorId || cursorIsPinned == null) {
     return applyCursorCondition(query, cursorCreatedAt, cursorId);
   }
+  if (!isIsoTime(cursorCreatedAt) || !isUuid(cursorId)) throw invalidPosition();
 
   if (cursorIsPinned) {
     return query.or(
@@ -2235,6 +2302,9 @@ module.exports = {
   attachQuotedPosts,
   loadReactionSummaries,
   applyPostLocationPrivacy,
+  placeLabelForOthers,
+  areaOf,
+  refreshSkyEverywhere,
   sortMatchedBusinessesByRating,
   dropUnpublishedMatches,
   applyCursorCondition,

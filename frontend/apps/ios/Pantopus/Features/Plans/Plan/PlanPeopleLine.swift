@@ -16,6 +16,10 @@ struct PlanPeopleLine: View {
     var onOpenPerson: ((String) -> Void)?
     /// A business hosts the plan: the host is the business, by its whole name and shape (Plans with businesses).
     var business: PlanBusinessDTO?
+    /// Plans for the holidays: each name with its numbers ("Dana + 2 kids", "Priya + 1"); `kidsTotal` adds
+    /// "· 3 kids" at the end (a guest's page, board 20).
+    var kidsWelcome = false
+    var kidsTotal = false
 
     var body: some View {
         HStack(spacing: Spacing.s3) {
@@ -33,7 +37,7 @@ struct PlanPeopleLine: View {
         .accessibilityElement(children: .combine)
         .accessibilityActions {
             if let onOpenPerson {
-                ForEach(people.prefix(4)) { person in
+                ForEach(people.prefix(4).filter { !$0.isGuest }) { person in
                     Button("Open \(person.displayName)'s profile") { onOpenPerson(person.userId) }
                 }
             }
@@ -59,7 +63,8 @@ struct PlanPeopleLine: View {
     private func personPhoto(_ person: PlanPersonDTO) -> some View {
         let avatar = PlanAvatar(name: person.displayName, url: person.avatarUrl, size: 30)
             .overlay(Circle().stroke(Theme.Color.appSurface, lineWidth: 2))
-        if let onOpenPerson {
+        // A guest without an account has no profile to open.
+        if let onOpenPerson, !person.isGuest {
             Button { onOpenPerson(person.userId) } label: { avatar }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("planPersonPhoto_\(person.userId)")
@@ -73,18 +78,36 @@ struct PlanPeopleLine: View {
         var names: [String] = []
         for person in people {
             if person.userId == me {
-                names.append(myPartySize > 1 ? "you + \(myPartySize - 1)" : "you")
+                names.append(kidsWelcome ? withNumbers("you", person) : myPartySize > 1 ? "you + \(myPartySize - 1)" : "you")
             } else {
                 // A business is named in full ("Lacamas Pickleball Club (host)"), a neighbor by first name.
                 let first = person.isHost && business != nil ? person.displayName : PlanCardLines.firstName(person.displayName)
-                let name = person.isHost ? "\(first) (host)" : person.partySize > 1 ? "\(first) + \(person.partySize - 1)" : first
+                let name = person.isHost ? "\(first) (host)" : kidsWelcome ? withNumbers(first, person)
+                    : person.partySize > 1 ? "\(first) + \(person.partySize - 1)" : first
                 names.append(name)
             }
         }
         let shown = names.prefix(4)
         let more = names.count - shown.count
-        if more > 0 { return shown.joined(separator: ", ") + " and \(more) more" }
-        guard shown.count > 1 else { return shown.first ?? "" }
-        return shown.dropLast().joined(separator: ", ") + " and " + (shown.last ?? "")
+        let line: String = if more > 0 {
+            shown.joined(separator: ", ") + " and \(more) more"
+        } else if shown.count > 1 {
+            shown.dropLast().joined(separator: ", ") + " and " + (shown.last ?? "")
+        } else {
+            shown.first ?? ""
+        }
+        let kids = people.reduce(0) { $0 + ($1.kidsCount ?? 0) }
+        guard kidsTotal, kidsWelcome, kids > 0 else { return line }
+        return line + " · \(kids) kid\(kids == 1 ? "" : "s")"
+    }
+
+    /// "Dana + 1 + 2 kids", "Priya + 1", "Sam + 2 kids", "Sam": the other adults, then the kids.
+    private func withNumbers(_ first: String, _ person: PlanPersonDTO) -> String {
+        let adults = max(person.partySize - 1, 0)
+        let kids = person.kidsCount ?? 0
+        var name = first
+        if adults > 0 { name += " + \(adults)" }
+        if kids > 0 { name += " + \(kids) kid\(kids == 1 ? "" : "s")" }
+        return name
     }
 }

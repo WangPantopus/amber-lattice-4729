@@ -23,8 +23,10 @@ const momentChat = require('../services/moments/momentChat');
 const { adultStatus, confirmAdult } = require('../services/adultAttestation');
 const momentUpload = require('../services/moments/momentUpload');
 const momentNotify = require('../services/moments/momentNotify');
+const momentSchedule = require('../services/moments/momentSchedule');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
+const { haversineMeters } = require('../utils/trustState');
 
 const router = express.Router();
 router.use(verifyToken, requireFeatureFlag('moments', { error: "Moments aren't available.", code: 'MOMENTS_UNAVAILABLE' }));
@@ -98,6 +100,11 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * exact pin (`places`; the first is the label), the home notice, whether "Show height" may be offered
  * (`can_show_height`), the 18+ state, and whether the author has a connection (`has_connections`: a Moment with no
  * location needs one). With no point (location off) it answers only the last two (and `can_show_height: false`).
+ * With the Sky on for the caller (`sky_places`) it adds `sky: true`, the area a Moment at home shows (`area`: its town,
+ * the street spot it stands over and its disc), the public place that may take a pin there (`place`), whether one may
+ * be pinned (`can_pin`) and
+ * the "Share later" times on offer now (`share_later`); `pick_within_m` (how far a place picked by name may be) is
+ * a mile where the spot is most built up, up to two miles in open country (momentPlace.pickWithinM).
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
@@ -105,8 +112,10 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       latitude: Joi.number().min(-90).max(90), longitude: Joi.number().min(-180).max(180),
     }).and('latitude', 'longitude'), req.body);
     const placed = at.latitude != null;
-    const [labels, atHome, heights, adult, connections] = await Promise.all([
-      placed ? momentPlace.labelsAt(at.latitude, at.longitude) : { place_label: null, area_label: null, places: [] },
+    const sky = await store.skyOn(req.user);
+    const [labels, atHome, heights, adult, connections, pickWithin] = await Promise.all([
+      placed ? momentPlace.labelsAt(at.latitude, at.longitude, { pinnableOnly: sky })
+        : { place_label: null, area_label: null, places: [] },
       placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude) : false,
       placed ? store.heightsOn(req.user) : false,
       adultStatus(req.user.id),
@@ -115,6 +124,7 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
         logger.warn('moments.connections_read_failed', { error: error.message });
         return null;
       }),
+      sky && placed ? momentPlace.pickWithinM(at.latitude, at.longitude) : momentPlace.PICK_PLACE_M,
     ]);
     // pick_within_m: how far from the pin the place picker's venues may be (POST / takes a venue_id within it).
     res.json({
@@ -124,13 +134,84 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       // it when the author picks one). POST / decides again.
       can_show_height: heights && !atHome,
       adult_confirmed: Boolean(adult.attestedAt) && !adult.ineligible,
-      pick_within_m: momentPlace.PICK_PLACE_M,
+      pick_within_m: pickWithin,
       ...(connections ? { has_connections: connections.length > 0 } : {}),
+      ...(sky ? await skyPreview(req.user.id, at, atHome) : {}),
     });
   } catch (error) {
     sendError(res, error, 'place_preview');
   }
 });
+
+/**
+ * The Sky's part of the preview: the area the point is in, which a Moment at home shows (momentPlace.closeArea: its
+ * town, read at the area's own point so the words depend on the area only; the spot it stands over; its disc), the
+ * place "Pin it at a place" starts with, and whether a pin is possible (never at home), and the "Share later" choices
+ * on offer now in the author's time zone (`tonight` only before 7 pm), each with the time it would share. Away from
+ * home the area is asked for briefly (only a sheet from before November 17 draws it there), so the sheet never waits
+ * on the streets.
+ */
+const PREVIEW_AREA_WAIT_MS = 600;
+async function skyPreview(userId, at, atHome) {
+  const shareLater = momentSchedule.choices(Date.now(), await momentSchedule.zoneFor(userId, at.latitude, at.longitude));
+  if (at.latitude == null) return { sky: true, area: null, place: null, can_pin: false, share_later: shareLater };
+  const area = await momentPlace.closeArea(at.latitude, at.longitude, atHome ? {} : { waitMs: PREVIEW_AREA_WAIT_MS });
+  const [label, place] = await Promise.all([
+    momentPlace.townAt(area.latitude, area.longitude),
+    momentPlace.namingPlace(at.latitude, at.longitude),
+  ]);
+  return {
+    sky: true,
+    area: { label, latitude: area.latitude, longitude: area.longitude, radius_m: area.radius_m },
+    place: place ? { key: place.key, label: place.label } : null,
+    can_pin: !atHome,
+    share_later: shareLater,
+  };
+}
+
+/**
+ * Where a new Moment goes with the Sky on for its author (founder 2026-11-17): where it was taken, unless its author
+ * pins it at a public place close by, picked by name ("Pin it at a place"). `venue` ({ latitude, longitude, label })
+ * for a pin at a place, `area` (momentPlace.closeArea of the Moment's own point: over a street close by) for one that
+ * shows only its area, neither for one where it was taken. A Moment at the author's home shows only its area whatever
+ * was asked, and so does one sent with `show_area` (the "Show the area instead" of an app from before the Sky, and a
+ * Post sheet from before November 17, which showed the area unless a place was picked).
+ *
+ * A place is picked with `pin: "place"`, a `venue_id` or a venue's `place_key`. It may be no farther from the spot
+ * than momentPlace.pickWithinM says (422 PLACE_NOT_NEARBY for a `venue_id` that is, or that nobody finds), and
+ * `pin: "place"` with no place named and none at the spot is 422 NO_PLACE_HERE. Schools and preschools take a pin
+ * like any place (founder 2026-11-17); a place right by the author's home leaves the Moment where it was taken. A
+ * place whose own point is farther off than that (the middle of a big park the photo was taken in) names the Moment,
+ * and the pin stays where it was taken: no pin is ever farther from the photo than a place may be picked. With no
+ * place named (the one at the spot itself) "that" is the shorter distance from before November 17, 2026
+ * (pickWithinM's `picked: false`), so that pin moves no farther than it did.
+ */
+async function skyPlacement(userId, body) {
+  const { latitude, longitude } = body.location;
+  const atHome = await momentPlace.isAtHome(userId, latitude, longitude);
+  if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
+  const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
+  if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
+  const within = await momentPlace.pickWithinM(latitude, longitude, { picked: Boolean(body.venue_id || venueKey) });
+  let venue = null;
+  if (body.venue_id) {
+    const found = await momentPlace.venueNear(body.venue_id, latitude, longitude, within);
+    if (!found) {
+      throw store.fail(422, 'PLACE_NOT_NEARBY', "That place is too far from this Moment's pin. Pick one nearby.");
+    }
+    venue = found.pinnable ? found : null;
+  } else if (venueKey) {
+    venue = await momentPlace.venueForKey(latitude, longitude, venueKey);
+  } else {
+    venue = await momentPlace.namingPlace(latitude, longitude);
+    if (!venue) throw store.fail(422, 'NO_PLACE_HERE', 'There is no public place to pin this Moment at here.');
+  }
+  if (venue && await momentPlace.isAtHome(userId, venue.latitude, venue.longitude)) venue = null;
+  if (venue && haversineMeters(latitude, longitude, venue.latitude, venue.longitude) > within) {
+    venue = { ...venue, latitude, longitude };
+  }
+  return { atHome, venue, area: null };
+}
 
 /**
  * GET /limits — what a Moment may be, for the apps to shape a video before it goes up: the longest one Moment's video
@@ -177,6 +258,12 @@ const createSchema = Joi.object({
   client_request_id: Joi.string().uuid().allow(null),
   // The Post sheet's pick among place-preview's `places` (optional): a key, never the place's words.
   place_key: Joi.string().max(40).pattern(/^[a-z0-9_]+$/).allow('', null),
+  // The Sky (optional; used while `sky_places` is on for the author): pin the Moment at a public place: the one named
+  // by `venue_id` or a venue's `place_key`, else the one naming the spot (place-preview's `place`).
+  pin: Joi.string().valid('place').allow(null),
+  // The Sky (optional; while `sky_places` is on for the author): hold the Moment until then; only its author sees it
+  // before (momentSchedule.js).
+  share_later: Joi.string().valid(...momentSchedule.KEYS).allow(null),
   // "Show height" (optional; behind the `moment_heights` flag): how high above sea level the phone, or the album
   // photo, says the Moment was made, in metres, with how far off that may be and how fast the phone was moving when
   // it knows. Sent only when the author turned the switch on; everyone reads feet rounded to 10 (store.shownAltitude).
@@ -223,28 +310,51 @@ router.post('/', createLimiter, async (req, res) => {
     const unplaced = body.location.source === 'none';
     if (unplaced) Object.assign(body, { audience: 'connections', show_area: false, venue_id: null, place_key: null });
     await store.checkPostingRules(req.user, body);
+    // With the Sky on for the author, skyPlacement decides where the Moment goes; off, the rules from before it do.
+    const skyFor = await store.skyOn(req.user);
+    const sky = !unplaced && skyFor;
+    // "Share later" (with the Sky on, a Moment with no place too): the time it shares, worked out now.
+    const shareAt = skyFor && body.share_later
+      ? momentSchedule.shareAtFor(body.share_later, Date.now(),
+        await momentSchedule.zoneFor(req.user.id, body.location.latitude, body.location.longitude))
+      : null;
+    const placed = sky ? await skyPlacement(req.user.id, body) : null;
     // A venue picked in the place picker moves the pin to it and names it; found again here by its id near the pin.
-    const venue = body.venue_id && !body.show_area
+    const venue = sky ? placed.venue : body.venue_id && !body.show_area
       ? await momentPlace.venueNear(body.venue_id, body.location.latitude, body.location.longitude)
       : null;
-    if (body.venue_id && !body.show_area && !venue) {
+    if (!sky && body.venue_id && !body.show_area && !venue) {
       throw store.fail(422, 'PLACE_NOT_NEARBY', "That place is too far from this Moment's pin. Pick one nearby.");
     }
+    const area = sky ? placed.area : null;
     const location = venue ? { ...body.location, latitude: venue.latitude, longitude: venue.longitude } : body.location;
     const { latitude, longitude } = location;
-    const [found, atHome] = unplaced
-      ? [{ place_label: null, area_label: null, places: [] }, false]
-      : await Promise.all([
+    let found;
+    let atHome;
+    if (unplaced) {
+      [found, atHome] = [{ place_label: null, area_label: null, places: [] }, false];
+    } else if (sky && (venue || area)) {
+      // A pin at a place says the place's name; a Moment over its area the area's town, read at the area's point.
+      const town = area ? await momentPlace.townAt(area.latitude, area.longitude) : null;
+      [found, atHome] = [{ place_label: venue ? venue.label : town, area_label: town, places: [] }, placed.atHome];
+    } else if (sky) {
+      // Where it was taken: the names that fit the spot, as before the Sky (only places that can take a pin).
+      [found, atHome] = [await momentPlace.labelsAt(latitude, longitude, { pinnableOnly: true }), false];
+    } else {
+      [found, atHome] = await Promise.all([
         momentPlace.labelsAt(latitude, longitude),
         momentPlace.isAtHome(req.user.id, latitude, longitude),
       ]);
+    }
     // The name the author picked for this point, worked out again here; an area or at-home Moment says the town.
     const labels = venue
       ? { ...found, place_label: venue.label, places: [{ key: 'venue', label: venue.label }, ...found.places] }
       : { ...found, place_label: momentPlace.pickedLabel(found, body.place_key) || found.place_label };
-    const shown = body.show_area || atHome ? labels.area_label : labels.place_label;
-    // The height is kept only for an exact pin away from home, and only while heights are on for the author.
-    const reading = store.shownAltitude(body.altitude, { atHome, showArea: body.show_area, unplaced });
+    const showArea = sky ? Boolean(area) : body.show_area;
+    const shown = showArea || atHome ? labels.area_label : labels.place_label;
+    // The height is kept only away from home, and only while heights are on for the author: an exact pin's rounded to
+    // 10 ft, a floating Moment's to 100 ft.
+    const reading = store.shownAltitude(body.altitude, { atHome, showArea, unplaced, floating: Boolean(area) });
     const altitude = reading && (await store.heightsOn(req.user)) ? reading : null;
     const { row, created } = await store.insertMoment(store.newMomentRow({
       userId: req.user.id,
@@ -252,23 +362,27 @@ router.post('/', createLimiter, async (req, res) => {
       kind: body.kind,
       hours: body.hours,
       audience: body.audience,
-      showArea: body.show_area,
+      showArea,
       atHome,
       caption: body.caption || null,
       text: body.text || null,
       background: body.background || 'teal',
       location,
       labels,
-      labelKind: unplaced ? 'none' : momentPlace.labelKind(labels, shown),
+      labelKind: unplaced ? 'none' : sky && venue ? 'place' : momentPlace.labelKind(labels, shown),
       takenAt: store.takenAtShown(body.location.source === 'capture' ? body.location.taken_at : body.taken_at),
-      venueId: venue ? body.venue_id : null,
+      venueId: venue && body.venue_id ? body.venue_id : null,
       altitude,
       series: body.series || null,
+      area,
+      shareAt,
     }), id);
-    logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience });
+    logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
+      ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
-    // A text card is live now: its author's connections hear of it (a photo or video when its check finishes). After
-    // the answer, and on its own: it never slows or fails the post.
+    // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
+    // later at its time, from jobs/momentsShareLater.js). After the answer, and on its own: it never slows or fails the
+    // post.
     if (created && body.kind === 'text') momentNotify.notifyConnections(row);
   } catch (error) {
     sendError(res, error, 'create');
@@ -367,10 +481,18 @@ router.get('/map', async (req, res) => {
     const box = parseBody(mapSchema, req.query);
     if (box.south >= box.north || box.west >= box.east) throw store.fail(400, 'MOMENT_INVALID', 'Send a map area with south < north and west < east.');
     // `unplaced`: connections' Moments with no location (and the caller's own), for the row of faces, whatever the box.
-    const [rings, unplaced, heights, float] = await Promise.all([
+    const [rings, unplaced, heights, float, sky] = await Promise.all([
       store.mapRings(req.user.id, box), store.unplacedRings(req.user.id), store.heightsOn(req.user), store.floatOn(req.user),
+      store.skyOn(req.user),
     ]);
     const answer = { rings, unplaced, heights_on: heights, float_on: float };
+    // The Sky (share later): the caller's own Moments waiting for their time, for their own row ("Shares at 6:40 pm"),
+    // soonest first. Never anyone else's, never on the map; only while the Sky is on for the caller.
+    if (sky) {
+      answer.scheduled = (await store.ownMoments(req.user.id))
+        .filter((moment) => moment.state === 'scheduled')
+        .sort((a, b) => String(a.share_at).localeCompare(String(b.share_at)));
+    }
     if (float) answer.sun = sunPosition((box.south + box.north) / 2, (box.west + box.east) / 2);
     res.json(answer);
   } catch (error) {

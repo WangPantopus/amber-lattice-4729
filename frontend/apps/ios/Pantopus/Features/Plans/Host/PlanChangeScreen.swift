@@ -32,6 +32,14 @@ struct PlanChangeScreen: View {
     @State private var repeating: PlanRepeatDraft?
     /// An online plan's new link (Plans step 3), nil while it's the same.
     @State private var newLink: String?
+    /// Plans for the holidays: a private plan's room and "Kids welcome", sent only when changed.
+    @State private var room = PlanRoomChange()
+    /// The extras: chip in as the plan has it and as changed here (08-extras section 3).
+    @State private var chipIn = PlanChipInEdit()
+    /// Find a date: the offered times while the plan is picking (08-extras section 2).
+    @State private var times = PlanTimesEdit()
+    /// The gift exchange as the plan has it and as changed here (08-extras section 4).
+    @State private var gift = PlanGiftEdit()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,12 +47,19 @@ struct PlanChangeScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s5) {
                     if let card = plan?.card {
-                        when(card)
+                        if times.isPicking { PlanChangeTimesCard(edit: $times) } else { when(card) }
                         if card.isBusiness {
                             businessPlace(card)
+                            PlanChangeMoneyRows(card: card, business: business) // B2's price, B5's pay rows
+                            PlanChangeDealRow(card: card, business: business)
                         } else if card.isOnline {
                             PlanChangeOnlineLink(current: plan?.place?.link, newLink: $newLink)
                         } else if card.placeKind != .home { place(card) }
+                        if card.changesRoom { PlanChangeRoomRows(room: $room, seatsTaken: card.goingCount) }
+                        if card.changesChipIn { PlanChipInFormCard(draft: $chipIn.draft, identifierPrefix: "planChangeChipIn") }
+                        if card.changesGift {
+                            PlanGiftFormCard(draft: $gift.draft, start: start, isDrawn: gift.isDrawn, identifierPrefix: "planChangeGift")
+                        }
                         if asksStillComing(card) { warning(card) }
                         if asksStillComing(card) { preview(card) }
                     } else {
@@ -138,20 +153,6 @@ struct PlanChangeScreen: View {
         }
     }
 
-    private func load() async {
-        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
-        guard plan == nil else { return }
-        guard let detail = try? await PlansStoreReads.detail(id: planId) else {
-            error = "We couldn't load this plan."
-            return
-        }
-        if let owner = detail.card.business { business = await PlanComposerHostAs.business(owner.userId) }
-        plan = detail
-        start = detail.card.startsAtDate ?? Date()
-        end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
-        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
-    }
-
     private func when(_ card: PlanCardDTO) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
             Text.planOverline("When")
@@ -219,56 +220,6 @@ struct PlanChangeScreen: View {
         return abs(original.timeIntervalSince(start)) > 30 * 60
     }
 
-    /// Board H11: one sentence beside a warning glyph (as on Android).
-    private func warning(_ card: PlanCardDTO) -> some View {
-        let going = goingCount(card)
-        let asks = !placeChanged
-            ? "Moving the time by more than 30 minutes asks each of them \u{201C}Still coming?\u{201D}"
-            : "Changing the \(newLink == nil ? "place" : "link") asks each of them \u{201C}Still coming?\u{201D}"
-        return HStack(alignment: .top, spacing: Spacing.s3) {
-            Icon(.alertTriangle, size: 22, color: Theme.Color.warning)
-            Text("\(going) \(going == 1 ? "person is" : "people are") in. \(asks)")
-                .planFont(.small)
-                .foregroundStyle(Theme.Color.appTextStrong)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Spacing.s3)
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.warningBg))
-        .accessibilityElement(children: .combine)
-    }
-
-    private func preview(_ card: PlanCardDTO) -> some View {
-        let push = pushWords(card)
-        return VStack(alignment: .leading, spacing: Spacing.s2) {
-            Text.planOverline("What they'll get")
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Pantopus · now").planFont(.footnote).foregroundStyle(Theme.Color.appTextSecondary)
-                Text(push.title).planFont(.smallStrong).foregroundStyle(Theme.Color.appText)
-                Text(push.body)
-                    .planFont(.small)
-                    .foregroundStyle(Theme.Color.appText)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, Spacing.s3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.Color.appSurfaceRaised))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
-            VStack(spacing: 0) {
-                Text("Still coming").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 13)
-                Divider().overlay(Theme.Color.appBorder)
-                Text("Can't make it").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 13)
-            }
-            .planFont(.body)
-            .foregroundStyle(Theme.Color.appText)
-            .padding(.horizontal, Spacing.s4)
-            .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurfaceRaised))
-            .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     private func footer(_ card: PlanCardDTO) -> some View {
         VStack(spacing: Spacing.s2) {
             // A refusal shows over Save: under the warning and the push preview it would be below the fold.
@@ -279,7 +230,7 @@ struct PlanChangeScreen: View {
             .planButton(.primary)
             .disabled(isSaving)
             .accessibilityIdentifier("planChangeSave")
-            if let original = card.startsAtDate {
+            if let original = card.startsAtDate, !times.isPicking {
                 Button("Keep \(PlanFormat.time(original, calendar: PlanFormat.calendar(for: card.timezone)))", action: onBack)
                     .planButton(.text, size: .extraSmall)
             }
@@ -296,7 +247,7 @@ struct PlanChangeScreen: View {
         error = nil
         var body = UpdatePlanBody()
         // The times go only when they changed: a change to how it repeats alone moves nothing.
-        if start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
+        if !times.isPicking, start != plan?.card.startsAtDate || end != plan?.card.endsAtDate {
             body.startsAt = PlanTime.string(start)
             body.endsAt = PlanTime.string(end)
         }
@@ -313,6 +264,22 @@ struct PlanChangeScreen: View {
             )
         }
         body.businessLocationId = newLocationId
+        if let card = plan?.card { room.apply(to: &body, card: card) }
+        if let problem = times.apply(to: &body) {
+            isSaving = false
+            error = problem
+            return
+        }
+        if plan?.card.changesGift == true, let problem = gift.apply(to: &body) {
+            isSaving = false
+            error = problem
+            return
+        }
+        if plan?.card.changesChipIn == true, let problem = chipIn.apply(to: &body) {
+            isSaving = false
+            error = problem
+            return
+        }
         if let newLink {
             // The server's check first, with its sentence.
             guard let parsed = PlanOnlineLink.parse(newLink) else {
@@ -343,6 +310,56 @@ struct PlanChangeScreen: View {
 }
 
 private extension PlanChangeScreen {
+    /// Board H11: one sentence beside a warning glyph (as on Android).
+    func warning(_ card: PlanCardDTO) -> some View {
+        let going = goingCount(card)
+        let asks = !placeChanged
+            ? "Moving the time by more than 30 minutes asks each of them \u{201C}Still coming?\u{201D}"
+            : "Changing the \(newLink == nil ? "place" : "link") asks each of them \u{201C}Still coming?\u{201D}"
+        return HStack(alignment: .top, spacing: Spacing.s3) {
+            Icon(.alertTriangle, size: 22, color: Theme.Color.warning)
+            Text("\(going) \(going == 1 ? "person is" : "people are") in. \(asks)")
+                .planFont(.small)
+                .foregroundStyle(Theme.Color.appTextStrong)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, Spacing.s3)
+        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.warningBg))
+        .accessibilityElement(children: .combine)
+    }
+
+    func preview(_ card: PlanCardDTO) -> some View {
+        let push = pushWords(card)
+        return VStack(alignment: .leading, spacing: Spacing.s2) {
+            Text.planOverline("What they'll get")
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Pantopus · now").planFont(.footnote).foregroundStyle(Theme.Color.appTextSecondary)
+                Text(push.title).planFont(.smallStrong).foregroundStyle(Theme.Color.appText)
+                Text(push.body)
+                    .planFont(.small)
+                    .foregroundStyle(Theme.Color.appText)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, Spacing.s3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.Color.appSurfaceRaised))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
+            VStack(spacing: 0) {
+                Text("Still coming").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 13)
+                Divider().overlay(Theme.Color.appBorder)
+                Text("Can't make it").frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 13)
+            }
+            .planFont(.body)
+            .foregroundStyle(Theme.Color.appText)
+            .padding(.horizontal, Spacing.s4)
+            .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(Theme.Color.appSurfaceRaised))
+            .overlay(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1))
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     /// The push the server sends, word for word (board H11; Android shows the same).
     func pushWords(_ card: PlanCardDTO) -> (title: String, body: String) {
         let calendar = PlanFormat.calendar(for: card.timezone)
@@ -367,5 +384,28 @@ private struct PlanChangeErrorLine: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("planChangeError")
+    }
+}
+
+// MARK: - Reading
+
+extension PlanChangeScreen {
+    /// Reads the plan once and starts each field from it.
+    func load() async {
+        // Once: coming back from the Repeats screen runs `.task` again, and the times and the pattern stay as edited.
+        guard plan == nil else { return }
+        guard let detail = try? await PlansStoreReads.detail(id: planId) else {
+            error = "We couldn't load this plan."
+            return
+        }
+        if let owner = detail.card.business { business = await PlanComposerHostAs.business(owner.userId) }
+        plan = detail
+        start = detail.card.startsAtDate ?? Date()
+        end = detail.card.endsAtDate ?? start.addingTimeInterval(7200)
+        repeating = PlanRepeatDraft.forChange(card: detail.card, start: start)
+        room = PlanRoomChange(card: detail.card)
+        chipIn = PlanChipInEdit(card: detail.card)
+        times = PlanTimesEdit(card: detail.card)
+        gift = PlanGiftEdit(card: detail.card)
     }
 }

@@ -146,4 +146,10 @@ data class MailPieceCard(
     val caption: String? = null,
     val paper: String? = null,
     val sentTo: String? = null,
+    /** The picture's number (its seed), the card's year and when it was opened: what the mantel needs (plan Part 7). */
+    val number: Int? = null,
+    val year: Int? = null,
+    val openedAt: String? = null,
+    /** A reply to this card (plan Part 3): who wrote back, on a cream slip across the opened card's row. */
+    val replyFrom: String? = null,
 )

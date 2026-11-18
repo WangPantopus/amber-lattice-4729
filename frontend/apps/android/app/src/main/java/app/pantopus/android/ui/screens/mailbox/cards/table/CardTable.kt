@@ -29,6 +29,7 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,10 +97,20 @@ internal fun CardTableDialog(
     goneActions: List<CardTableSendBack> = emptyList(),
     /** A letter (plan Part 10): what opens once its folded sheet is out ("Read the letter"); null for a card. */
     onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" once this one has been turned over (plan Part 4); null with no list in hand. */
+    next: CardTableNext? = null,
+    /**
+     * The reply's quiet button, first under the main one once the card has been turned over (plan Part 3): "Write back
+     * to Hazel", or "You wrote back · {day}"; "Share this card" then keeps its round button and a line in ⋯.
+     */
+    reply: CardTableSendBack? = null,
+    /** Laid over the table in its own window: the reply's sheet, or the joined card. */
+    overlay: (@Composable () -> Unit)? = null,
 ) {
     FullScreenWindow(onDismissRequest = onClose) {
-        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut)
+        val sender = TableSending(sending, sealAnswer, goneActions, onLetterOut, next = next, reply = reply)
         CardTable(card, firstOpen, onClose, onOpened, menu, message, mine, canShare, sendBack, sender)
+        overlay?.invoke()
     }
 }
 
@@ -110,7 +121,37 @@ private class TableSending(
     val goneActions: List<CardTableSendBack>,
     /** A letter's sheet out of its envelope opens the letter page (plan Part 10). */
     val onLetterOut: (() -> Unit)? = null,
+    /** "Open the next card" for a card being read (plan Part 4). */
+    val next: CardTableNext? = null,
+    /** The reply's quiet button (plan Part 3). */
+    val reply: CardTableSendBack? = null,
 )
+
+/**
+ * The reader's ⋯ holds every quiet button, since the quiet row shows at most two (the design check of November 17):
+ * "Open the next card (2 more)" and "Write back to Hazel" or "You wrote back" first, then the page's own lines, and
+ * "Share this card" (its round button stays). The sender's moment keeps its menu as it is.
+ */
+private fun tableMenu(
+    menu: List<CardTableMenuItem>,
+    sending: TableSending,
+    canShare: Boolean,
+    onShare: () -> Unit,
+): List<CardTableMenuItem> {
+    if (sending.calls != null) return menu
+    return buildList {
+        sending.next?.let { add(CardTableMenuItem(openTheNextCard(it.waiting), "cardTableMenuNext", it.onClick)) }
+        sending.reply?.let { add(CardTableMenuItem(it.title, "cardTableMenuReply", it.onClick)) }
+        addAll(menu)
+        if (canShare) add(CardTableMenuItem(SHARE_THIS_CARD, "cardTableMenuShare", onShare))
+    }
+}
+
+/** The reader's quiet row has something in it once the card is turned over: the table keeps it room from the start. */
+private fun TableSending.hasQuietRow(sendBack: CardTableSendBack?): Boolean {
+    if (calls != null) return false
+    return next != null || reply != null || sendBack != null
+}
 
 @Composable
 private fun CardTable(
@@ -143,13 +184,14 @@ private fun CardTable(
     BackHandler(enabled = state.enlarged) { state.resetZoom() }
     BackHandler(enabled = state.menuOpen) { state.menuOpen = false }
     BackHandler(enabled = state.verseOpen) { state.verseOpen = false }
+    BackHandler(enabled = state.printOpen) { state.printOpen = false }
 
     // The sheet stands over the table, and the table rests under it.
     var sharing by rememberSaveable(card.id) { mutableStateOf(false) }
-    LaunchedEffect(state, sharing) {
-        state.paused = sharing
-        if (!sharing) state.wake()
-    }
+    // The card's own photo, opened over the whole screen from its print: the table rests under it too, and Back closes
+    // it first.
+    val openedPhoto = remember(card.id) { mutableStateOf<CardPhotoOpened?>(null) }
+    TableRests(state, sharing, openedPhoto)
 
     val art = rememberCardTableArt(letter = card.letter)
     val faceArt = rememberCardFaceArt()
@@ -190,7 +232,7 @@ private fun CardTable(
                 safeTop,
                 safeBottom,
                 density,
-                quietButton = hasQuietLine(sendBack, canShare),
+                quietRow = sending.hasQuietRow(sendBack),
                 sending = calls != null,
             )
         SideEffect { state.geometry = geometry }
@@ -224,12 +266,12 @@ private fun CardTable(
             )
         }
         PictureProblem(state, picture)
-        TableMedia(state, card, geometry, reduceMotion)
+        TableMedia(state, card, geometry, reduceMotion, onOpenPhoto = { openedPhoto.value = it })
         val insets =
             with(density) {
                 PaddingValues(top = safeTop.toDp(), bottom = safeBottom.toDp())
             }
-        val allItems = rememberMenu(menu, state)
+        val allItems = rememberMenu(tableMenu(menu, sending, canShare) { sharing = true }, state)
         // Once the sent card is gone: Take it back, and Share this card.
         val gone = remember(sending.goneActions) { sending.goneActions + CardTableSendBack("Share this card") { sharing = true } }
         CardTableControls(
@@ -243,9 +285,34 @@ private fun CardTable(
             onShare = { sharing = true },
             sendBack = sendBack,
             gone = gone,
+            next = sending.next.takeIf { calls == null },
+            reply = sending.reply.takeIf { calls == null },
         )
+        OpenedPhoto(openedPhoto)
     }
     if (sharing) CardShareSheet(card, mine || calls != null, onClose = { sharing = false })
+}
+
+/** The table rests under the share sheet and under its opened photo; Back closes the photo first. */
+@Composable
+private fun TableRests(
+    state: CardTableState,
+    sharing: Boolean,
+    openedPhoto: MutableState<CardPhotoOpened?>,
+) {
+    BackHandler(enabled = openedPhoto.value != null) { openedPhoto.value = null }
+    val covered = sharing || openedPhoto.value != null
+    LaunchedEffect(state, covered) {
+        state.paused = covered
+        if (!covered) state.wake()
+    }
+}
+
+/** The card's own photo over the whole screen, opened from its print on the table. */
+@Composable
+private fun OpenedPhoto(openedPhoto: MutableState<CardPhotoOpened?>) {
+    val photo = openedPhoto.value ?: return
+    CardPhotoViewer(photo, onClose = { openedPhoto.value = null })
 }
 
 /** The table's state: a reader's is kept across a turn of the phone; the sender's moment starts afresh each time. */
@@ -314,8 +381,8 @@ private fun PictureProblem(
 }
 
 /**
- * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the quiet
- * second button when there is one ([quietButton]).
+ * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the
+ * reader's one quiet row when there is one ([quietRow]).
  */
 @Composable
 private fun rememberTableGeometry(
@@ -324,7 +391,7 @@ private fun rememberTableGeometry(
     safeTop: Float,
     safeBottom: Float,
     density: Density,
-    quietButton: Boolean,
+    quietRow: Boolean,
     /** The sender's moment: its words stay over the open envelope, so the table starts below them. */
     sending: Boolean = false,
 ): TableGeometry {
@@ -332,17 +399,35 @@ private fun rememberTableGeometry(
     val width = constraints.maxWidth
     val height = constraints.maxHeight
     val readsVerse = card.verse != null && !sending
-    // The card's own photo lies under it once it's turned over (wave 4 drawing 3): the table keeps room for it.
+    // "Read it in print" under the button once the note side is up (plan Part 2), or a full button beside it at large text.
+    val readsInPrint = card.printable && !sending
+    // The card's own photo and greeting lie under it once it's turned over (wave 4 drawing 3): the table keeps them room.
     val media = card.hasMedia && !sending
-    return remember(width, height, safeTop, safeBottom, density, card.fromFirst, card.sealed, quietButton, sending, readsVerse, media) {
+    return remember(
+        width,
+        height,
+        safeTop,
+        safeBottom,
+        density,
+        card.fromFirst,
+        card.sealed,
+        quietRow,
+        sending,
+        readsVerse,
+        readsInPrint,
+        media,
+    ) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
             val hintWidth = Constraints(maxWidth = textWidth.coerceAtLeast(1))
             val hintHeight =
                 HINTS.maxOf { hint -> measurer.measure(hint, tableHintStyle, constraints = hintWidth).size.height }.let { hints ->
-                    // A verse card's hint slot also holds "Read the verse", 44 dp to touch (plan 6.2).
-                    if (readsVerse) {
-                        val link = measurer.measure(READ_THE_VERSE, tableVerseLinkStyle).size.height + 12.dp.roundToPx()
+                    // The hint slot also holds "Read the verse" (plan 6.2) or "Read it in print" (Part 2), 44 dp to touch.
+                    if (readsVerse || readsInPrint) {
+                        val link =
+                            listOf(READ_THE_VERSE, READ_IT_IN_PRINT).maxOf {
+                                measurer.measure(it, tableVerseLinkStyle, constraints = hintWidth).size.height
+                            } + 12.dp.roundToPx()
                         maxOf(hints, 44.dp.roundToPx(), link)
                     } else {
                         hints
@@ -350,22 +435,27 @@ private fun rememberTableGeometry(
                 }
             val primaryHeight = measurer.measure("Take the card out", tablePrimaryStyle).size.height
             val pillHeight = max(48.dp.toPx(), primaryHeight + 12.dp.toPx())
+            // At large text "Read it in print" is a full button beside "Turn it back"; one under the other when they don't fit.
+            val printRow =
+                if (readsInPrint && fontScale >= LARGE_TEXT_SCALE) {
+                    val turn = measurer.measure("Turn it back", tablePrimaryStyle).size.width
+                    val print = measurer.measure(READ_IT_IN_PRINT, tablePrimaryStyle).size.width
+                    if (turn + print + (2 * 48 + 8).dp.roundToPx() > textWidth) pillHeight + 2.dp.toPx() else 0f
+                } else {
+                    0f
+                }
+            // One row of quiet buttons, never a second (the design check of November 17): one line of their words.
             val quietHeight =
-                if (quietButton && !card.sealed) {
-                    val send = measurer.measure("Send ${card.fromFirst} a card", tableQuietStyle).size
-                    val share = measurer.measure(SHARE_THIS_CARD, tableQuietStyle).size
-                    // Side by side when both fit the line (plan 11.1), else one under the other at large text.
-                    val lines = if (send.width + share.width + 64.dp.roundToPx() > textWidth) 2 else 1
-                    (max(48.dp.toPx(), send.height + 12.dp.toPx()) + 2.dp.toPx()) * lines
+                if (quietRow && !card.sealed) {
+                    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle, maxLines = 1).size.height
+                    max(48.dp.toPx(), words + 12.dp.toPx()) + 2.dp.toPx()
                 } else {
                     0f
                 }
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            // As the web keeps it: a third of the width, 112 to 176 dp.
-            val mediaRoom = if (media) (width * 0.34f).coerceIn(112.dp.toPx(), 176.dp.toPx()) else 0f
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + gap + mediaRoom
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height
@@ -380,7 +470,9 @@ private fun rememberTableGeometry(
                 bottomRoom = bottomRoom,
                 density = this.density,
                 wordsBottom = wordsBottom,
-                mediaRoom = mediaRoom,
+                // The geometry keeps what a full-size card leaves under it, once it's turned over.
+                keepsMediaRoom = media,
+                quietRoom = quietHeight,
             )
         }
     }
@@ -593,9 +685,3 @@ private fun LetterOpens(
 
 private const val LETTER_OPENS_MS = 1_100L
 private const val LETTER_OPENS_AT_ONCE_MS = 300L
-
-/** The reader's quiet line under the button: "Send … a card" and, where it can be shared, "Share this card" (plan 11.1). */
-private fun hasQuietLine(
-    sendBack: CardTableSendBack?,
-    canShare: Boolean,
-): Boolean = sendBack != null || canShare

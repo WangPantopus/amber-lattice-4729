@@ -26,6 +26,8 @@ import app.pantopus.android.data.api.models.place.PlaceSectionEnvelope
 import app.pantopus.android.data.api.models.place.PlaceSectionId
 import app.pantopus.android.data.api.models.place.PlaceSectionStatus
 import app.pantopus.android.data.plans.PlanFormat
+import app.pantopus.android.ui.guidance.GuidanceFlags
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
 import app.pantopus.android.ui.screens.ballot.BallotSeasonBlock
 import app.pantopus.android.ui.screens.place.components.PlaceEvidenceLine
@@ -140,6 +142,7 @@ internal fun PlaceGlanceSection(
                 else -> sectionsByGlance.getValue(g).any { it.sections.isNotEmpty() }
             }
         }
+    val guidance = LocalGuidance.current
     Column(modifier = modifier.fillMaxWidth().testTag("place.glance")) {
         PlaceGlanceHeading(Modifier.padding(bottom = 8.dp))
         if (unavailable >= UNAVAILABLE_NOTE_FROM) {
@@ -160,8 +163,13 @@ internal fun PlaceGlanceSection(
                     title = group.title,
                     summary = glanceSummary(group, intel, sections, zone, actions),
                     open = group.key in openGroups,
-                    onToggle = { onToggle(group.key) },
+                    onToggle = {
+                        // Opening a row: the guidance pointer "See more" (card 12) has nothing left to show.
+                        if (group.key !in openGroups) guidance?.note(GuidanceFlags.PLACE_ROW_OPENED)
+                        onToggle(group.key)
+                    },
                     testTag = "place.glance.${group.key}",
+                    guidancePlus = index == 0,
                 ) {
                     GlanceGroupBody(group, intel, sections, zone, actions)
                 }

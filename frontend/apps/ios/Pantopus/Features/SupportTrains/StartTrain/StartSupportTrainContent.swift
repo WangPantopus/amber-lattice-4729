@@ -273,9 +273,9 @@ public enum StartSupportTrainVisibility: String, CaseIterable, Sendable, Identif
 
     public var title: String {
         switch self {
-        case .neighbors: "Nearby neighbors"
+        case .neighbors: "People near you"
         case .connections: "My connections"
-        case .linkOnly: "Link only"
+        case .linkOnly: "Anyone with the link"
         }
     }
 
@@ -283,7 +283,7 @@ public enum StartSupportTrainVisibility: String, CaseIterable, Sendable, Identif
         switch self {
         case .neighbors: "Anyone within 25 mi can find and sign up."
         case .connections: "Only people you're connected to can find this."
-        case .linkOnly: "Hidden — share the link with people you trust."
+        case .linkOnly: "Not listed anywhere. Share the link with people you trust."
         }
     }
 
@@ -307,7 +307,7 @@ public enum StartSupportTrainVisibility: String, CaseIterable, Sendable, Identif
     /// Who the success screen says can find the new train.
     public var audience: String {
         switch self {
-        case .neighbors: "nearby neighbors"
+        case .neighbors: "people near you"
         case .connections: "your connections"
         case .linkOnly: "people you share the link with"
         }
@@ -376,6 +376,8 @@ public enum StartSupportTrainSlotGenerator {
         endDate: Date,
         durationMinutes: Int,
         startHour: Int,
+        startMinute: Int = 0,
+        weekdays: Set<Int> = Set(0...6),
         calendar: Calendar = .current
     ) -> [StartSupportTrainSlot] {
         let cal = calendar
@@ -396,10 +398,13 @@ public enum StartSupportTrainSlotGenerator {
         let cap = min(dayCount + 1, 90)
         for i in 0..<cap {
             guard let day = cal.date(byAdding: .day, value: i, to: start) else { continue }
+            // Only the picked days of the week (0 = Sunday).
+            guard weekdays.contains(cal.component(.weekday, from: day) - 1) else { continue }
             let dateKey = dateFmt.string(from: day)
             let dayLabel = dayFmt.string(from: day)
             let range = timeRange(
                 startHour: startHour,
+                startMinute: startMinute,
                 durationMinutes: durationMinutes
             )
             slots.append(
@@ -424,9 +429,10 @@ public enum StartSupportTrainSlotGenerator {
 
     private static func timeRange(
         startHour: Int,
+        startMinute: Int = 0,
         durationMinutes: Int
     ) -> TimeRange {
-        let startMinutes = max(0, min(23 * 60 + 59, startHour * 60))
+        let startMinutes = max(0, min(23 * 60 + 59, startHour * 60 + startMinute))
         let endMinutes = min(23 * 60 + 59, startMinutes + max(0, durationMinutes))
         let startStr = wireString(forMinutes: startMinutes)
         let endStr = wireString(forMinutes: endMinutes)

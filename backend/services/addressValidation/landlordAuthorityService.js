@@ -55,10 +55,12 @@ class LandlordAuthorityService {
    * @param {string} subjectId
    * @param {string} homeId
    * @param {string} evidenceType  - e.g. 'deed', 'lease', 'utility_bill'
-   * @param {object} [evidence]    - { storage_ref, metadata } for document upload
+   * @param {boolean} [withClaim]  - also open the landlord's claim and note the kind of proof named. The
+   *   document itself is uploaded to that claim (routes/homeClaimEvidenceRoutes.js); nothing about a file is
+   *   taken from the request.
    * @returns {Promise<{success: boolean, error?: string, authority?: object, claim?: object}>}
    */
-  async requestAuthority(subjectType, subjectId, homeId, evidenceType, evidence) {
+  async requestAuthority(subjectType, subjectId, homeId, evidenceType, withClaim) {
     // ── 1. Verify home exists ─────────────────────────────────
     const { data: home } = await supabaseAdmin
       .from('Home')
@@ -113,9 +115,9 @@ class LandlordAuthorityService {
       return { success: false, error: 'Failed to create authority request' };
     }
 
-    // ── 4. If evidence provided, create claim + evidence ──────
+    // ── 4. If proof was named, create claim + the note of its kind ──
     let claim = null;
-    if (evidence) {
+    if (withClaim) {
       const { data: claimData, error: claimErr } = await supabaseAdmin
         .from('HomeOwnershipClaim')
         .insert({
@@ -169,10 +171,10 @@ class LandlordAuthorityService {
           .insert({
             claim_id: claim.id,
             evidence_type: evidenceType,
-            provider: evidence.provider || 'manual',
+            provider: 'manual',
             status: 'pending',
-            storage_ref: evidence.storage_ref || null,
-            metadata: evidence.metadata || {},
+            storage_ref: null,
+            metadata: {},
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -183,7 +185,7 @@ class LandlordAuthorityService {
     await writeAuditLog(homeId, subjectId, 'AUTHORITY_REQUESTED', 'HomeAuthority', authority.id, {
       subject_type: subjectType,
       evidence_type: evidenceType,
-      has_evidence: !!evidence,
+      has_evidence: !!withClaim,
     });
 
     logger.info('LandlordAuthorityService.requestAuthority: created', {

@@ -321,7 +321,7 @@ async function checkWeather(plan, now) {
   const better = betterTime(forecast, plan, tz, { hourly, now });
   const betterWhen = better ? planNotify.whenText(new Date(better.startMs).toISOString(), tz, { long: true, at: true }) : null;
   const requests = await planActions.activeRequests(plan.post_id);
-  const going = planService.seatsTaken(plan, requests);
+  const going = await planActions.seatsNow(plan, requests);
 
   const expiresAt = new Date(startMs);
   const message = plan.chat_room_id && going > 0
@@ -384,7 +384,7 @@ async function checkRequestsWaiting(plan, now) {
   const closes = rules.askingClosesAt(plan.kind, plan.post.event_date, plan.post.event_end_date);
   if (closes.getTime() <= now || closes.getTime() > now + ASKING_CLOSES_WITHIN_MS) return null;
   const requests = await planActions.activeRequests(plan.post_id);
-  if (plan.spots - planService.seatsTaken(plan, requests) <= 0) return null;
+  if (plan.spots - (await planActions.seatsNow(plan, requests)) <= 0) return null;
   const waiting = await planActions.waitingRequests(plan, requests);
   if (!waiting.some((r) => Date.parse(r.queued_at || r.created_at) <= now - WAITED_MS)) return null;
   const checkpoint = `closes@${startKey(closes.toISOString())}`;
@@ -541,7 +541,7 @@ const thanksText = (kind, seats) => {
 /** One ended plan's follow-up: thank everyone, or host it again a week later. */
 async function checkAfter(plan) {
   const requests = await planActions.activeRequests(plan.post_id);
-  const seats = planService.seatsTaken(plan, requests);
+  const seats = await planActions.seatsNow(plan, requests);
   if (seats === 0 || !(await hostWouldHear(plan, 'plan_after', 'after'))) return null;
   const expiresAt = new Date(Date.parse(plan.ended_at || plan.post.event_end_date) + CHAT_OPEN_AFTER_END_MS);
   // Hosting it again is offered only when they haven't already posted another of its kind.

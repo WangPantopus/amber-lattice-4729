@@ -644,7 +644,7 @@ private fun EditProfileSections(
                 addressSuggestions?.onTextChanged(value)
             },
         )
-        AddressSuggestionList(addressSuggestions, testTagPrefix = "field_address.suggestion") { picked ->
+        AddressSuggestionList(addressSuggestions, testTagPrefix = "field_address.suggestion", keepAboveKeyboard = true) { picked ->
             picked.address?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.Address, it) }
             picked.city?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.City, it) }
             picked.state?.takeIf { it.isNotBlank() }?.let { onUpdate(EditProfileField.State, it) }

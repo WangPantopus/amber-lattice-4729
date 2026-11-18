@@ -99,6 +99,8 @@ final class PlaceRateWatchViewModel {
 
 struct RateWatchSection: View {
     let vm: PlaceRateWatchViewModel
+    /// Opens the postcard screen for someone verified by a fast check (the watch needs a mailed code).
+    var onMailCode: (() -> Void)?
 
     var body: some View {
         switch vm.state {
@@ -114,12 +116,7 @@ struct RateWatchSection: View {
                     Text(message)
                         .font(.system(size: 13.5))
                         .foregroundStyle(Theme.Color.appTextMuted)
-                    Button("Try again") {
-                        Task { await vm.load() }
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Color.primaryInk)
-                    .buttonStyle(.plain)
+                    PlaceMailCodeRetry(homeId: vm.homeId, onMailCode: onMailCode) { await vm.load() }
                 }
             }
         case .none:

@@ -42,7 +42,9 @@ extension CardTableModel {
         case .pulling:
             nil
         case .out:
-            content.isLetter ? "Read the letter" : fold.isSpread ? nil : (cardBackIsUp ? "Turn it back" : "Turn it over")
+            // A long note's first leaf: Read on, on the open Duo's note page too (plan Part 9).
+            content.isLetter ? "Read the letter" : readsOn ? "Read on"
+                : fold.isSpread ? nil : (cardBackIsUp ? "Turn it back" : "Turn it over")
         }
     }
 
@@ -58,25 +60,52 @@ extension CardTableModel {
         case .pulling:
             ""
         case .out:
-            content.isLetter ? "" : readsVerse ? "Read the verse" : restingHint
+            content.isLetter ? "" : hintLink?.title ?? (readsInPrint ? "" : restingHint)
         }
     }
 
-    /// A Christmas with Jesus Christ card out of its envelope: the hint is the link "Read the verse" (plan 6.2).
+    /// A Christmas with Jesus Christ card out of its envelope with the picture side up (or on the open Duo): "Read the
+    /// verse" (plan 6.2).
     var readsVerse: Bool {
         step == .out && sending == nil && !content.sealed && !(content.verse ?? "").isEmpty
+            && (!cardBackIsUp || fold.isSpread)
     }
 
-    /// The quiet buttons under the main one: "Send {first name} a card" and "Share this card" (plan 11.1), once the
-    /// reader has turned the card over (on the open Duo both sides show, so at once). Never on a sealed card; the
-    /// corner's share stays.
+    /// The note side up, out of its envelope, not sealed and not enlarged (on the open Duo the note's page shows): the
+    /// note can be read in plain type that follows the phone's text size (plan Part 2).
+    var readsInPrint: Bool {
+        step == .out && sending == nil && !content.sealed && !content.isLetter && !isZoomed
+            && !content.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (cardBackIsUp || fold.isSpread)
+    }
+
+    /// "Read it in print" as a full button beside "Turn it back", in place of the line, when larger text is set.
+    var printIsButton: Bool {
+        readsInPrint && largerText
+    }
+
+    /// The bookmark the hint opens, when the hint is a link: "Read it in print" in place of "double-tap the card to
+    /// enlarge it" on the note side, "Read the verse" on the picture side. The open Duo shows both sides; a verse card
+    /// keeps its verse link there.
+    var hintLink: CardTableBookmark? {
+        if readsInPrint, !largerText, !(fold.isSpread && readsVerse) { return .print }
+        return readsVerse ? .verse : nil
+    }
+
+    /// The quiet buttons that may show under the main one once the card has been turned over (on the open Duo both
+    /// sides show, so at once), in the design check's order (Nov 17): "Open the next card (2 more)" when cards wait;
+    /// "Write back to {first name}" or "You wrote back"; "Send {first name} a card". Only the first two show, side by
+    /// side; all of them are in the ⋯ menu too. "Share this card" (plan 11.1) is a quiet button only on the sender's
+    /// own look at their card; on a reader's card it keeps its corner and its ⋯ line. Never on a sealed card.
     var secondaries: [CardTableMenuItem] {
         if let sending { return sending == .gone ? goneButtons : [] }
         guard step == .out, !content.sealed, turnedOnce || fold.isSpread else { return [] }
         var items: [CardTableMenuItem] = []
+        if let nextCard { items.append(nextCard) }
+        if let writeBack { items.append(writeBack) }
         if let sendBack { items.append(sendBack) }
         if offersShare {
-            items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableShareQuiet") { [weak self] in
+            items.append(CardTableMenuItem(title: "Share this card", identifier: "cardTableShareQuiet", short: "Share") { [weak self] in
                 self?.isSharing = true
             })
         }
@@ -115,15 +144,20 @@ extension CardTableModel {
         }
     }
 
-    /// Where the open Duo's pages must end: above the buttons when one can show under them (plan 1.7).
+    /// Where the open Duo's pages must end: above the buttons when one can show under them (plan 1.7), or when the
+    /// hint is a link to read ("Read it in print", "Read the verse").
     func pagesBottomRoom(_ layout: CardTableLayout) -> CGFloat? {
-        reservesSecondary ? layout.bottomControls + 12 : nil
+        reservesSecondary || reservesNext || hintLink != nil || printIsButton ? layout.bottomControls + 12 : nil
     }
 
     /// Once the card is on the table.
     private var restingHint: String {
-        if fold.isSpread || reduceMotion { return "" }
-        if !turnedOnce { return "or swipe it" }
+        // Enlarging works with Reduce Motion and on the closed Duo too, so its hint comes first.
+        if isZoomed { return "double-tap to bring it back" }
+        if fold.isSpread { return "" }
+        if !turnedOnce { return reduceMotion ? "" : "or swipe it" }
+        if !zoomedOnce { return "double-tap the card to enlarge it" }
+        if reduceMotion { return "" }
         return heldOnce ? "" : "press and hold, then move your finger: the light moves"
     }
 
@@ -135,6 +169,16 @@ extension CardTableModel {
 
     var cardBackIsUp: Bool {
         cos(springs.card.t * .pi / 180) < 0
+    }
+
+    /// How far a card at this angle is turned over: 0 picture side up, 1 note side up, easing through the turn.
+    nonisolated static func turned(_ angle: Double) -> Double {
+        (1 - cos(angle * .pi / 180)) / 2
+    }
+
+    /// How far the card is turned over right now, as the finger or the spring has it.
+    var cardTurned: Double {
+        Self.turned(springs.card.x)
     }
 
     /// "Not yet. 12 days until Christmas morning."

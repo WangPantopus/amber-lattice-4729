@@ -43,7 +43,7 @@ import app.pantopus.android.ui.screens.plans.components.PlanTextButton
 import app.pantopus.android.ui.screens.plans.components.PlanTile
 import app.pantopus.android.ui.screens.plans.components.PlanWhenCard
 import app.pantopus.android.ui.screens.plans.detail.PlanPlainScaffold
-import app.pantopus.android.ui.screens.plans.host.BusinessWhereField
+import app.pantopus.android.ui.screens.plans.host.ChangeOfferedTimes
 import app.pantopus.android.ui.screens.plans.host.PlacePickerState
 import app.pantopus.android.ui.screens.plans.host.PublicPlacePicker
 import app.pantopus.android.ui.screens.plans.host.placeCaption
@@ -71,6 +71,11 @@ fun PlanChangeScreen(
         ChangePlacePicker(ui, viewModel)
         return
     }
+    // Business track B1: D3's form over this one; Back keeps nothing, Done keeps the deal for Save.
+    if (ui.deal.open) {
+        ChangeDealForm(ui, viewModel)
+        return
+    }
     // The Repeats screen (Plans step 2) over this one; Back and Done come back here, and Save sends the choice.
     val repeatSetup = ui.repeatSetup
     if (ui.repeatsOpen && repeatSetup != null) {
@@ -91,7 +96,8 @@ fun PlanChangeScreen(
                 isEnabled = ui.changed && !ui.saving,
                 modifier = Modifier.height(50.dp),
             )
-            if (was != null) PlanTextButton(title = "Keep $was", onClick = onDone)
+            // While a plan is picking its date it has no one time to keep.
+            if (was != null && !ui.times.isPicking) PlanTextButton(title = "Keep $was", onClick = onDone)
         },
     ) {
         if (ui.plan == null) {
@@ -104,10 +110,11 @@ fun PlanChangeScreen(
         }
         ChangeWhenField(ui, viewModel, was)
         if (ui.canChangePlace) WhereField(ui, viewModel)
-        // A business's plan: one of its own locations (board B2), never a place picked here.
-        ui.business?.takeIf { ui.canChangeLocation }?.let { business ->
-            BusinessWhereField(business, ui.newLocationId ?: ui.currentLocationId, onPick = viewModel::pickLocation)
-        }
+        // A business's plan: one of its own locations (board B2) and its deal (business track B1).
+        ChangeBusinessFields(ui, viewModel)
+        // Plans for the holidays: a private plan's room and "Kids welcome", as the host form draws them.
+        // The holidays' chip in sits in its "Add to this plan" card (PlanChangeChipIn.kt).
+        ChangeRoomRows(ui, viewModel)
         ui.error?.let { Text(text = it, style = PantopusTextStyle.small, color = PantopusColors.error) }
         if (ui.asksStillComing) {
             StillComingWarning(
@@ -127,6 +134,11 @@ private fun ChangeWhenField(
     viewModel: PlanChangeViewModel,
     was: String?,
 ) {
+    // The holidays' find a date: while picking, the times offered take the place of the one time.
+    if (ui.times.isPicking) {
+        ChangeOfferedTimes(ui.times.options, ui.zone, onAdd = viewModel::addTime, onRemove = viewModel::removeTime)
+        return
+    }
     PlanField(label = "When") {
         PlanWhenCard(
             start = ui.start,

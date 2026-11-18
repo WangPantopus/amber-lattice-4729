@@ -31,7 +31,7 @@ export default function HomeCreationRecoveryView({ recovery, onContinue }: {
     {input && <div className="space-y-1 rounded-xl border border-app-border bg-app-surface p-4 break-words">
       <p className="font-semibold">{input.address}{input.unit_number ? ` · ${unitText(input.unit_number)}` : ''}</p>
       <p>{input.city}, {input.state} {input.zip_code}</p>
-      <p className="text-sm text-app-text-secondary">{input.role === 'owner' ? 'Owner' : 'Renter'} · Check verification in My Homes</p>
+      <p className="text-sm text-app-text-secondary">{input.role === 'owner' ? 'Owner' : input.role === 'household' ? 'Household member' : 'Renter'} · Check verification in My Homes</p>
     </div>}
     {residency && <div className="space-y-1 rounded-xl border border-app-border bg-app-surface p-4 break-words">
       <p className="font-semibold">{residency.address.line1}{residency.address.line2 ? ` · ${residency.address.line2}` : ''}</p>

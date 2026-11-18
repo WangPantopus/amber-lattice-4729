@@ -64,6 +64,8 @@ internal object PlanInviteCopy {
         return when {
             invite.status == "declined" -> "You said you can't make it. If that changes, tap I'm in."
             plan.isFull -> "Full for now. If a spot opens, we'll tell you right away."
+            // Opened from the plan's one link for everyone with "I say yes first" (Plans for the holidays, A10 item 5).
+            invite.needsHostOk && invite.via == "open" -> "$host says yes to each person who uses this link"
             invite.needsHostOk -> "This invitation went to another address, so $host says yes first."
             else -> "$host invited you, so you're in as soon as you say so."
         }

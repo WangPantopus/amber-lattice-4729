@@ -14,13 +14,20 @@ struct AddressStep: View {
     @FocusState private var focusedField: AddressField?
 
     var body: some View {
-        HeadlineBlock("Where do you live?")
-        SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+        if viewModel.isShortAdd {
+            AddHomeShortLabel(text: "Your home")
+            HeadlineBlock("Find your home", subtitle: "Type your street address and pick it from the list.")
+        } else {
+            HeadlineBlock("Where do you live?")
+            SubcopyBlock("Enter your address. We'll check the address before you choose how to join or set up your Home.")
+        }
         VStack(alignment: .leading, spacing: Spacing.s3) {
             AddHomeSearchField(
                 query: searchBinding,
                 onClear: viewModel.clearSearchQuery
             )
+            // Two steps: the line is about the address being typed, so it is here while the person types.
+            if viewModel.isShortAdd { AddHomeShortPrivacyLine() }
             if viewModel.isFindingAddress {
                 ProgressView("Finding your address…")
             }
@@ -57,7 +64,25 @@ struct AddressStep: View {
             .disabled(viewModel.isFindingAddress || !viewModel.isCurrent)
             ManualAddressButton(action: viewModel.addManuallyTapped)
             if viewModel.isManualEntry {
-                manualField("Street address", .street, viewModel.form.address.street)
+                // The typed street sits low on the page: when suggestions appear it moves to the top of what the
+                // keyboard and the pinned button leave, so they show under it instead of behind the button.
+                ScrollViewReader { proxy in
+                    VStack(alignment: .leading, spacing: Spacing.s3) {
+                        manualField("Street address", .street, viewModel.form.address.street)
+                        AddressSuggestionList(
+                            suggestions: viewModel.manualStreetSuggestions,
+                            identifier: "addHome_streetSuggestion"
+                        ) { item in
+                            endTyping()
+                            Task { await viewModel.chooseManualStreet(item) }
+                        }
+                    }
+                    .id(Self.manualStreetId)
+                    .onChange(of: viewModel.manualStreetSuggestions.suggestions.isEmpty) { _, empty in
+                        guard !empty else { return }
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.manualStreetId, anchor: .top) }
+                    }
+                }
                 manualField("Unit or apartment (optional)", .unit, viewModel.form.address.unit)
                 manualField("City", .city, viewModel.form.address.city)
                 manualField("State", .state, viewModel.form.address.state)
@@ -65,6 +90,8 @@ struct AddressStep: View {
             }
         }
     }
+
+    private static let manualStreetId = "addHome.manualStreetWithSuggestions"
 
     private func manualField(_ label: String, _ field: AddressField, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s1) {

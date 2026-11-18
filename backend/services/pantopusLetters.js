@@ -38,9 +38,13 @@ async function send(key, letter) {
   if (readError || markerError) throw new Error((readError || markerError).message);
   if (existing || marker?.length) { made.add(key); return { id, created: false }; }
   const now = new Date();
+  // `from_user` ({ id, name }): the letter is that person's own, shown as from them, without Pantopus's mark.
+  const sender = letter.from_user?.id
+    ? { sender_user_id: letter.from_user.id, sender_display: letter.from_user.name, sender_business_name: null, sender_trust: 'pantopus_user' }
+    : SENDER;
   const row = {
     id,
-    ...SENDER,
+    ...sender,
     recipient_user_id: letter.recipient_user_id || null,
     recipient_home_id: letter.recipient_home_id || null,
     drawer: letter.drawer || 'personal',
@@ -60,7 +64,7 @@ async function send(key, letter) {
     ...(letter.category ? { category: letter.category } : {}),
     tags: ['pantopus-letter'],
     mail_extracted: {
-      from_pantopus: true,
+      ...(letter.from_user?.id ? {} : { from_pantopus: true }),
       pantopus_letter: key,
       summary: letter.summary,
       summary_source: 'sender',

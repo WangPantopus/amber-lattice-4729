@@ -205,18 +205,21 @@ struct MailPieceModel: Identifiable, Hashable {
     /// In its sender's Sent, a card the other person has (delivered or
     /// claimed, not sealed): drawn taken out, as they see it (plan Part 4).
     var cardIsWithThem = false
+    /// A reply (experience plan Part 3): `card` is the card it answers, drawn taken out under "Nora wrote back".
+    var replySlip: String?
 
     /// With `card_table` on, an opened card (or one they have, in Sent) is
     /// drawn taken out of its envelope, its picture leaning over the top edge
     /// (plan Part 4). Never a sealed one.
     var showsCardTakenOut: Bool {
         guard LaunchFeatures.cardTable, let card, !card.sealed else { return false }
-        return isOpened || cardIsWithThem
+        return isOpened || cardIsWithThem || replySlip != nil
     }
 
     /// One sentence: "Bill from Alder Creek Water, verified utility, sealed,
     /// $42.10 due Fri, Nov 7."
     var accessibilityLabel: String {
+        if let replySlip { return "\(replySlip) to your Christmas card\(isOpened ? ", opened" : "")." }
         if let card {
             let state = card.sealed ? ", sealed until Christmas morning" : isOpened ? ", opened" : ", in its envelope"
             return "Christmas card from \(from)\(state)."
@@ -303,12 +306,14 @@ extension MailPieceModel {
         // Mail from before today that's been read (or never sealed) fades;
         // a sealed envelope stays bright until it's opened. A Christmas card
         // keeps its full red once opened, as on Android (plan 1.4).
-        isFaded = ageDays >= 1 && isOpened && item.card == nil
-        stamp = item.card?.number.map(MailStampArt.forCard(number:)) ?? MailStampArt.forPiece(item.id)
+        let replied = item.cardReply.map(MailCard.init(reply:))
+        isFaded = ageDays >= 1 && isOpened && item.card == nil && replied == nil
+        stamp = (item.card?.number ?? replied?.number).map(MailStampArt.forCard(number:)) ?? MailStampArt.forPiece(item.id)
         // An opened card shows its picture over the torn top, not a line.
-        peekLine = isOpened && kind.isEnvelope && item.card == nil ? subject : nil
+        peekLine = isOpened && kind.isEnvelope && item.card == nil && replied == nil ? subject : nil
         self.meta = meta
-        card = item.card
+        card = item.card ?? replied
+        replySlip = replied == nil ? nil : CardReplyWords.slip(from)
     }
 
     private static func note(kind: MailPieceKind, item: MailItem, subject: String?) -> String? {
@@ -398,101 +403,5 @@ extension MailPieceMeta {
     /// The parts and the due text as one line.
     var line: String {
         (parts + [due].compactMap(\.self)).joined(separator: " · ")
-    }
-}
-
-/// Date reading and the postal date words.
-enum MailDates {
-    static func parse(_ iso: String?) -> Date? {
-        guard let iso, !iso.isEmpty else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-    }
-
-    /// A calendar day ("2026-11-07"), at noon so no zone moves it a day.
-    static func parseDay(_ day: String) -> Date? {
-        let parts = day.prefix(10).split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3 else { return nil }
-        var components = DateComponents()
-        components.year = parts[0]
-        components.month = parts[1]
-        components.day = parts[2]
-        components.hour = 12
-        return Calendar.current.date(from: components)
-    }
-
-    static func daysBetween(_ start: Date, _ end: Date, calendar: Calendar) -> Int {
-        let from = calendar.startOfDay(for: start)
-        let to = calendar.startOfDay(for: end)
-        return calendar.dateComponents([.day], from: from, to: to).day ?? 0
-    }
-
-    /// "OCT 27".
-    static func postmarkDay(_ date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter.string(from: date).uppercased()
-    }
-
-    /// "7:42 a.m." today, "Mon" within the week, "Oct 12" before that.
-    static func arrivalLabel(_ date: Date, now: Date, calendar: Calendar) -> String {
-        let days = daysBetween(date, now, calendar: calendar)
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US")
-        switch days {
-        case ..<1:
-            return time(date, calendar: calendar)
-        case 1..<7:
-            formatter.dateFormat = "EEE"
-        default:
-            formatter.dateFormat = "MMM d"
-        }
-        return formatter.string(from: date)
-    }
-
-    /// "7:42 a.m."
-    static func time(_ date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
-            .replacingOccurrences(of: "AM", with: "a.m.")
-            .replacingOccurrences(of: "PM", with: "p.m.")
-    }
-
-    /// "Fri, Nov 7".
-    static func dueDay(_ date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter.string(from: date)
-    }
-
-    /// "$184.00".
-    static func money(cents: Int, currency: String?) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = (currency ?? "usd").uppercased()
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter.string(from: NSNumber(value: Double(cents) / 100)) ?? "$\(cents / 100)"
-    }
-
-    /// The list's day sections, newest first.
-    static func sectionTitle(for date: Date, now: Date, calendar: Calendar) -> (id: String, title: String) {
-        switch daysBetween(date, now, calendar: calendar) {
-        case ..<1: ("today", "Today")
-        case 1: ("yesterday", "Yesterday")
-        case 2..<7: ("week", "This past week")
-        default: ("earlier", "Earlier")
-        }
     }
 }

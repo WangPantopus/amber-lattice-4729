@@ -134,6 +134,16 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         LaunchFeatures.holidayCardMemories && media?.photo?.usable == true && mediaStamp != .unavailable
     }
 
+    /// A Live Photo keeps its moving part (the server takes one now).
+    var takesLivePhoto: Bool {
+        takesPhoto && media?.photo?.live?.usable == true
+    }
+
+    /// The most bytes a Live Photo's moving part can be.
+    var livePhotoMaxBytes: Int {
+        media?.photo?.live?.maxBytes ?? 15_728_640
+    }
+
     /// "Record a greeting" shows.
     var takesVoice: Bool {
         LaunchFeatures.holidayCardMemories && media?.voice?.usable == true && mediaStamp != .unavailable
@@ -153,16 +163,39 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
 }
 
 /// `signature` on `GET /api/mailbox/cards`: the box a signature is drawn in (400 × 100) and the most bytes it can take
-/// as compact JSON (2048).
+/// as compact JSON (2048). `saves`: the account can keep one signature for the next cards (founder, 2026-11-16;
+/// `PUT`/`DELETE /api/mailbox/cards/signature`), and `saved` is the one it keeps (nil: none, or an older server).
 public struct HolidayCardSignatureSpec: Decodable, Sendable, Hashable {
     public let width: Int
     public let height: Int
     public let maxBytes: Int
+    public let saves: Bool
+    public let saved: CardSignature?
 
     private enum CodingKeys: String, CodingKey {
         case width = "w"
         case height = "h"
         case maxBytes = "max_bytes"
+        case saves, saved
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        width = try c.decode(Int.self, forKey: .width)
+        height = try c.decode(Int.self, forKey: .height)
+        maxBytes = try c.decode(Int.self, forKey: .maxBytes)
+        saves = (try? c.decodeIfPresent(Bool.self, forKey: .saves)) == true
+        // A saved signature this app can't read leaves the card unsigned, never the signing itself.
+        saved = try? c.decodeIfPresent(CardSignature.self, forKey: .saved)
+    }
+}
+
+/// `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept.
+public struct CardSignatureBody: Codable, Sendable, Hashable {
+    public let signature: CardSignature
+
+    public init(signature: CardSignature) {
+        self.signature = signature
     }
 }
 
@@ -376,12 +409,15 @@ public struct SendHolidayCardBody: Encodable, Sendable {
     public let photo: String?
     public let photoAlt: String?
     public let voice: String?
+    /// The photo's moving part when it goes as a Live Photo; left out for a still.
+    public let photoLive: String?
 
     private enum CodingKeys: String, CodingKey {
         case design, message, arrival, to, signature, photo, voice
         case requestId = "request_id"
         case useStamp = "use_stamp"
         case photoAlt = "photo_alt"
+        case photoLive = "photo_live"
     }
 
     public enum Recipient: Encodable, Sendable {
@@ -426,6 +462,7 @@ public struct SendHolidayCardBody: Encodable, Sendable {
         photo = media.photo
         photoAlt = media.photo == nil ? nil : media.photoAlt
         voice = media.voice
+        photoLive = media.photo == nil ? nil : media.photoLive
     }
 }
 
@@ -745,6 +782,26 @@ public struct MailCard: Decodable, Sendable, Hashable {
         case sealedUntil = "sealed_until"
     }
 
+    /// The card a reply answers (experience plan Part 3), drawn with that card's picture in the reply's row.
+    init(reply: CardReplyCard) {
+        design = reply.design
+        number = reply.number
+        caption = reply.caption
+        paper = reply.paper
+        height = reply.height
+        holiday = "christmas"
+        year = reply.year
+        arrival = nil
+        sealedUntil = nil
+        sealed = false
+        slug = reply.slug
+        table = reply.table
+        verse = nil
+        signature = reply.signature
+        photo = nil
+        voice = nil
+    }
+
     /// A card not sent yet, as its envelope is drawn while it's being sealed.
     init(design: HolidayCardDesign, year: Int, sealed: Bool) {
         self.design = design.id
@@ -834,7 +891,7 @@ public struct HolidayCardNoteHelpBody: Encodable, Sendable {
     public let design: String
     /// The first names the card is to, as the screen shows them (none for an address or a link).
     public let to: [String]
-    /// How many people the card goes to: past two, the note names no one.
+    /// How many people the card goes to: from two on, the note names no one.
     public let count: Int
     /// "Anything to mention?"
     public let hint: String?

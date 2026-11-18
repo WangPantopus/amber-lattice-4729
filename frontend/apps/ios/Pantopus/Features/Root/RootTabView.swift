@@ -168,6 +168,9 @@ public final class RootTabModel {
     public var messagesBadge: Int = 0
     /// The Place stack is on its root (kept current by `HubTabRoot`).
     public var placeAtRoot = false
+    /// Place is opening or showing "Verify you live here" for a Home just added in two steps (kept current by
+    /// `HubTabRoot`): the first-run notices wait until it is closed, or they would take its place.
+    public var placeVerifySheetUp = false
     /// Changes each time the Place tab is tapped again while already on its
     /// root, so the root scrolls back to the top.
     public var placeReselectedAtRoot: UUID?
@@ -299,6 +302,9 @@ public struct RootTabView: View {
                 // Every invite shares the person's own link; read it before anyone taps one.
                 await PersonalInviteLink.shared.load(account: signedInUserID)
             }
+            // The guidance cards for new accounts (founder, 2026-11-16): this account's, read on each sign-in.
+            .task(id: signedInUserID) { await GuidanceCenter.shared.start(account: signedInUserID) }
+            .onChange(of: model.showsNavigationMenu) { _, open in GuidanceCenter.shared.sideMenuOpen = open }
             .onChange(of: signedInUserName, initial: true) { _, name in
                 drawerModel.updateContext(.personal(name: name))
             }
@@ -339,6 +345,8 @@ public struct RootTabView: View {
                 model.messagesBadge = unread
             }
             .onChange(of: router.pending) { _, pending in
+                // No guidance card over a link or notification that is opening.
+                GuidanceCenter.shared.noteLinkOpening()
                 consumeInviteDeepLinkIfNeeded(pending: pending)
             }
             .onChange(of: model.profileCoverDestination) { _, destination in
@@ -482,10 +490,11 @@ public struct RootTabView: View {
         // stack. While the `plans` switch is off the link is dropped.
         case .plans:
             openPlansTab()
-        case let .plan(id, invite):
-            openPlans(.plan(id: id, intent: invite.map { .invite(token: $0) } ?? .view))
+        case let .plan(id, invite, open, spot):
+            openPlans(.plan(id: id, intent: PlanOpenIntent(invite: invite, open: open, spot: spot)))
         case let .planRequests(id):
             openPlans(.requests(planId: id))
+        case .planGuests, .planCheck: openPlans(PlansRoute.screen(over: pending))
         case .planNew:
             openPlans(nil)
         // The Moments tab, and one Moment in the viewer over it (the "added a
@@ -627,10 +636,10 @@ public struct RootTabView: View {
 
     /// The briefings notice waits until nothing else is asking: the Place tab
     /// on its own root (not under "Keep this address handy", nor a plan or post
-    /// opened by a link), or Today.
+    /// opened by a link, nor the verify sheet a new Home opens with), or Today.
     private var briefingNoticeMayShow: Bool {
         switch model.selected {
-        case .place: model.placeAtRoot
+        case .place: model.placeAtRoot && !model.placeVerifySheetUp
         case .today: true
         default: false
         }

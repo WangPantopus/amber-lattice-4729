@@ -333,6 +333,19 @@ private struct CardTableCardView: View {
                 .rotationEffect(.degrees(isOpen ? 0 : pose.cardRotation))
                 .offset(x: isOpen ? pose.notePageX : pose.cardX, y: isOpen ? pose.notePageY : pose.cardY)
                 .opacity(backUp ? 1 : 0)
+            if model.drawsFirstLeaf {
+                firstLeaf(content, perspective: perspective)
+                    .projectionEffect(isOpen ? notePageTurn : .cardTableTurn(
+                        rotateY: pose.cardAngle + 180,
+                        rotateX: pose.cardTiltX,
+                        perspective: perspective,
+                        anchor: center
+                    ))
+                    .scaleEffect(pose.cardScale * pose.pageScale, anchor: anchor)
+                    .rotationEffect(.degrees(isOpen ? 0 : pose.cardRotation))
+                    .offset(x: isOpen ? pose.notePageX : pose.cardX, y: isOpen ? pose.notePageY : pose.cardY)
+                    .opacity(backUp ? 1 : 0)
+            }
             face(frontDrawing(content))
                 .projectionEffect(isOpen ? ProjectionTransform() : .cardTableTurn(
                     rotateY: pose.cardAngle,
@@ -360,10 +373,33 @@ private struct CardTableCardView: View {
                 fromName: content.firstName,
                 year: content.year,
                 number: content.number,
-                signature: content.signature
+                signature: content.signature,
+                leaf: model.noteLeaves == nil ? .whole : .second
             )
             .equatable()
         }
+    }
+
+    /// A long note's first leaf, lying on the back (plan Part 9). Read on lifts it from its foot about its top edge,
+    /// 0° to 90° easing in, with the card's own depth, darkening up to 22%; past 90° it's gone. With Reduce Motion it
+    /// fades instead.
+    private func firstLeaf(_ content: CardTableContent, perspective: CGFloat) -> some View {
+        let fades = model.reduceMotion
+        let turned = fades ? 0 : CardTableModel.leafEase(model.leafLift)
+        let leaf = CardTableBack(
+            paperGrain: art.paper,
+            paper: content.paper,
+            note: content.note,
+            fromName: content.firstName,
+            year: content.year,
+            number: content.number,
+            signature: content.signature,
+            leaf: .first
+        )
+        .equatable()
+        return face(leaf, darken: 0.22 * turned)
+            .projectionEffect(.cardTableTurn(rotateX: 90 * turned, perspective: perspective, anchor: CGPoint(x: cardWidth / 2, y: 0)))
+            .opacity(fades ? 1 - model.leafLift : 1)
     }
 
     @ViewBuilder
@@ -391,13 +427,13 @@ private struct CardTableCardView: View {
         return .cardTableTurn(rotateX: -pose.notePageTurn, perspective: cardWidth * 5.2, anchor: CGPoint(x: cardWidth / 2, y: 0))
     }
 
-    /// A face, with the sheen that slides as the light moves and the shade as it turns.
-    private func face(_ drawing: some View) -> some View {
+    /// A face, with the sheen that slides as the light moves and the shade as it turns (and a lifting leaf's own).
+    private func face(_ drawing: some View, darken: Double = 0) -> some View {
         ZStack(alignment: .topLeading) {
             drawing
                 .frame(width: cardWidth, height: cardHeight)
             CardTableSheen(width: cardWidth, height: cardHeight, x: pose.sheenX, y: pose.sheenY)
-            Color.black.opacity(pose.turnShade)
+            Color.black.opacity(pose.turnShade + darken)
         }
         .frame(width: cardWidth, height: cardHeight, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: cardWidth * 0.007, style: .continuous))

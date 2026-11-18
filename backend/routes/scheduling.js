@@ -25,7 +25,8 @@ const packages = require('../services/scheduling/packageService');
 const notificationService = require('../services/notificationService');
 const emailService = require('../services/emailService');
 const { isBlocked } = require('../services/blockService');
-const { resolveOwner, assertCanManageOwner, ownerColumns, normalizeEmail, generateToken } = require('../services/scheduling/schedulingShared');
+const { resolveOwner, assertCanManageOwner, ownerColumns, normalizeEmail, generateToken, requireSchedulingOn, schedulingOn } = require('../services/scheduling/schedulingShared');
+const { bookingNudgeLimiter } = require('../middleware/rateLimiter');
 
 router.use(verifyToken);
 
@@ -152,7 +153,7 @@ const pageUpdateSchema = Joi.object({
   branding: Joi.object().unknown(true),
 });
 
-router.put('/booking-page', withOwner('edit'), validate(pageUpdateSchema), asyncHandler(async (req, res) => {
+router.put('/booking-page', requireSchedulingOn, withOwner('edit'), validate(pageUpdateSchema), asyncHandler(async (req, res) => {
   const page = await ensurePage(req.scheduling, req.user.id);
   const patch = { ...req.body, updated_at: new Date().toISOString() };
   delete patch.owner_type;
@@ -168,7 +169,7 @@ const slugSchema = Joi.object({
   slug: Joi.string().trim().lowercase().pattern(/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/).required(),
 });
 
-router.put('/booking-page/slug', withOwner('edit'), validate(slugSchema), asyncHandler(async (req, res) => {
+router.put('/booking-page/slug', requireSchedulingOn, withOwner('edit'), validate(slugSchema), asyncHandler(async (req, res) => {
   const page = await ensurePage(req.scheduling, req.user.id);
   const { data, error } = await supabaseAdmin
     .from('BookingPage')
@@ -205,7 +206,7 @@ router.get('/booking-page/check-slug', withOwner('view'), asyncHandler(async (re
 }));
 
 // Danger zone — regenerate the public slug (invalidates the old link).
-router.post('/booking-page/reset-slug', withOwner('edit'), asyncHandler(async (req, res) => {
+router.post('/booking-page/reset-slug', requireSchedulingOn, withOwner('edit'), asyncHandler(async (req, res) => {
   const page = await ensurePage(req.scheduling, req.user.id);
   let newSlug;
   let updated;
@@ -1150,7 +1151,7 @@ const oneOffSchema = Joi.object({
     .max(50),
 });
 
-router.post('/booking-page/one-off-links', withOwner('edit'), validate(oneOffSchema), asyncHandler(async (req, res) => {
+router.post('/booking-page/one-off-links', requireSchedulingOn, withOwner('edit'), validate(oneOffSchema), asyncHandler(async (req, res) => {
   const et = await bookingService.getEventTypeById(req.body.event_type_id);
   if (!et || et.owner_type !== req.scheduling.ownerType || et.owner_id !== req.scheduling.ownerId) {
     return res.status(404).json({ error: 'EVENT_TYPE_NOT_FOUND' });
@@ -1301,7 +1302,8 @@ router.get('/insights/team', withOwner('view'), asyncHandler(async (req, res) =>
 router.get('/invoices', withOwner('view'), asyncHandler(async (req, res) => {
   if (req.scheduling.ownerType !== 'business') return res.json({ invoices: [] });
   const { data } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('business_user_id', req.scheduling.ownerId).order('created_at', { ascending: false }).limit(200);
-  res.json({ invoices: data || [] });
+  // A check at a plan (Plans for the holidays B5) is on the plan's guest list, never an invoice here.
+  res.json({ invoices: (data || []).filter((invoice) => !invoice.plan_post_id) });
 }));
 router.get('/invoices/:id', withOwner('view'), asyncHandler(async (req, res) => {
   const { data } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('id', req.params.id).maybeSingle();
@@ -1315,7 +1317,8 @@ const invoiceSendSchema = Joi.object({
 });
 router.post('/invoices/:id/send', validate(invoiceSendSchema), withOwner('edit'), asyncHandler(async (req, res) => {
   const { data: inv } = await supabaseAdmin.from('BusinessInvoice').select('*').eq('id', req.params.id).maybeSingle();
-  if (!inv || inv.business_user_id !== req.scheduling.ownerId) return res.status(404).json({ error: 'NOT_FOUND' });
+  // A check at a plan (B5) is never sent as an invoice (it would deliver a bill to Mail).
+  if (!inv || inv.business_user_id !== req.scheduling.ownerId || inv.plan_post_id) return res.status(404).json({ error: 'NOT_FOUND' });
   // Same rule as creating the invoice: someone who has blocked the business
   // (or whom it has blocked) can't be sent it, and a failed check refuses.
   if (inv.recipient_user_id) {
@@ -1498,17 +1501,19 @@ router.get('/my-bookings', asyncHandler(async (req, res) => {
 // ============================================================
 // BOOKING extras: nudge, propose-reschedule, apply-credit, recurring
 // ============================================================
-router.post('/bookings/:id/nudge', validate(Joi.object({ message: Joi.string().max(1000).allow('', null) })), asyncHandler(async (req, res) => {
+// A note about a booking. The host's own words reach only an invitee who is a member, in the app; an invitee known only
+// by an email address gets fixed wording. At most three notes a day for one booking (bookingNudgeLimiter).
+router.post('/bookings/:id/nudge', requireSchedulingOn, bookingNudgeLimiter, validate(Joi.object({ message: Joi.string().max(1000).allow('', null) })), asyncHandler(async (req, res) => {
   const booking = await loadOwnedBooking(req);
   await assertCanManageOwner(booking.owner_type, booking.owner_id, req.user.id, 'edit');
-  const msg = req.body.message || 'A reminder about your upcoming booking.';
+  const fixed = 'A reminder about your upcoming booking.';
   if (booking.invitee_user_id) {
     // The host detail is owner-only; the invitee's destination is My bookings.
     const link = booking.invitee_user_id === booking.host_user_id
       ? hostBookingLink(booking) : '/app/scheduling/my-bookings';
-    await notificationService.createNotification({ userId: booking.invitee_user_id, type: 'booking_nudge', title: 'A note about your booking', body: msg, icon: '📅', link, metadata: { booking_id: booking.id }, context: 'personal' });
+    await notificationService.createNotification({ userId: booking.invitee_user_id, type: 'booking_nudge', title: 'A note about your booking', body: req.body.message || fixed, icon: '📅', link, metadata: { booking_id: booking.id }, context: 'personal' });
   } else if (booking.invitee_email) {
-    await emailService.sendEmail({ to: booking.invitee_email, subject: 'A note about your booking', html: `<p>${msg.replace(/</g, '&lt;')}</p>` });
+    await emailService.sendEmail({ to: booking.invitee_email, subject: 'A note about your booking', html: `<p>${fixed}</p>` });
   }
   res.json({ ok: true });
 }));
@@ -1602,7 +1607,7 @@ router.post('/waitlist/:id/promote', asyncHandler(async (req, res) => {
   await supabaseAdmin.from('SchedulingWaitlist').update({ status: 'promoted', notified_at: new Date().toISOString() }).eq('id', entry.id);
   if (entry.invitee_user_id) {
     await notificationService.createNotification({ userId: entry.invitee_user_id, type: 'waitlist_promoted', title: 'A slot opened up', body: 'A spot is now available — book it before it fills.', icon: '🎟️', metadata: { event_type_id: entry.event_type_id }, context: 'personal' });
-  } else if (entry.invitee_email) {
+  } else if (entry.invitee_email && schedulingOn()) {
     await emailService.sendEmail({ to: entry.invitee_email, subject: 'A slot opened up', html: '<p>A spot is now available — book it before it fills.</p>' });
   }
   res.json({ ok: true });

@@ -386,6 +386,8 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
     implementation(libs.play.services.location)
+    // Faster home verification: Play Integrity binds a location reading to a real copy of the app (FASTVERIFY phase 5).
+    implementation(libs.play.integrity)
 
     // Block Store — persistent login across delete + reinstall (account hint
     // + single-use resume grant; see data/auth/AccountHintStore.kt). No-op

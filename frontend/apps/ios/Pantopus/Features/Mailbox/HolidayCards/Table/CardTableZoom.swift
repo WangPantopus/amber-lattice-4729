@@ -36,7 +36,7 @@ extension CardTableModel {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard let self, !Task.isCancelled else { return }
             pendingCardTap = nil
-            if !isZoomed { turnCard() }
+            if !isZoomed { turnOrReadOn() }
         }
     }
 
@@ -46,6 +46,7 @@ extension CardTableModel {
             setZoom(1, offset: .zero)
         } else {
             guard canZoom else { return }
+            zoomedOnce = true
             let scale = Self.tapZoom
             let center = cardCenter(layout)
             // The point tapped stays under the finger.
@@ -76,6 +77,7 @@ extension CardTableModel {
         let scale = min(Self.maxZoom, max(1, (pinchStartZoom ?? 1) * magnification))
         zoom = scale
         zoomOffset = clampedOffset(zoomOffset, zoom: scale, layout: layout)
+        if scale > 1.12 { zoomedOnce = true }
     }
 
     func pinchEnded() {
@@ -99,7 +101,10 @@ extension CardTableModel {
 
     /// The laid-down card's middle, which it grows from.
     func cardCenter(_ layout: CardTableLayout) -> CGPoint {
-        CGPoint(x: layout.cardX + layout.cardWidth / 2, y: layout.cardTop + layout.cardHeight / 2)
+        CGPoint(
+            x: layout.cardX + layout.cardWidth / 2,
+            y: layout.cardTop(turned: cardBackIsUp ? 1 : 0) + layout.cardHeight / 2
+        )
     }
 
     /// Where the enlarged card lies, to tell a tap on it from one on the cloth.

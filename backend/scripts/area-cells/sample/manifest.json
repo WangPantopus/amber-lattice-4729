@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "version": "census2020-r1",
+  "built_at": "2026-11-16T08:41:34.862Z",
+  "source": "US Census Bureau, 2020 Census: TIGER/Line tabulation blocks (HOUSING20 at INTPTLAT20, INTPTLON20)",
+  "min_homes": 100,
+  "step_cells": [
+    1,
+    2,
+    4,
+    10,
+    20
+  ],
+  "states": [
+    "53"
+  ],
+  "bbox": {
+    "south": 45.54,
+    "west": -122.8,
+    "north": 45.98,
+    "east": -122.24
+  },
+  "homes": 202320,
+  "dir": "tiles/census2020-r1",
+  "tiles": [
+    "45_-123"
+  ]
+}

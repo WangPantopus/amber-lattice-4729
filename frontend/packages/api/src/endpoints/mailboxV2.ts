@@ -115,6 +115,8 @@ export interface MailItemV2 {
   page_count?: number | null;
   /** A Christmas card (launch key holiday_cards): its picture, caption and year, and whether it's still sealed. */
   card?: MailCard | null;
+  /** A reply to one ("Write back", server key card_replies): the card it answers, on the same picture. */
+  card_reply?: MailCardReply | null;
   /** Detail only: this load opened it (the first time). */
   just_opened?: boolean;
 }
@@ -143,8 +145,29 @@ export interface MailCard {
   slug?: string | null;
   table?: string | null;
   /** The card's own photo and voice (launch key holiday_card_memories) on an opened piece and Look it over; null while sealed. */
-  photo?: { file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean } | null;
+  photo?: {
+    file_id: string; width: number | null; height: number | null; alt: string | null; covered: boolean;
+    /** A Live Photo's moving part (contract section 13). */
+    live?: { file_id: string; mime_type: string | null; duration_ms: number | null } | null;
+  } | null;
   voice?: { file_id: string; duration_ms: number | null } | null;
+}
+
+/** A reply to a Christmas card on a piece (`card` stays null): the card it answers and that card's picture. Note only. */
+export interface MailCardReply {
+  card_id: string;
+  design: string | null;
+  number: number | null;
+  caption: string | null;
+  paper: string;
+  height?: number | null;
+  slug?: string | null;
+  table?: string | null;
+  year: number;
+  /** The replier's signature beside FROM (detail reads); null: their typed first name. */
+  signature?: { w: number; h: number; strokes: number[][] } | null;
+  photo: null;
+  voice: null;
 }
 
 export interface MailPackage {

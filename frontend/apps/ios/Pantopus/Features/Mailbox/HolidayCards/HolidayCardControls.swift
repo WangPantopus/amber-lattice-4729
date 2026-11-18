@@ -16,6 +16,7 @@ struct HolidayCardWaxButton: View {
     var isLoading = false
     var isEnabled = true
     var fullWidth = true
+    var height: CGFloat = 48
     let action: () -> Void
 
     var body: some View {
@@ -31,7 +32,7 @@ struct HolidayCardWaxButton: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(MailPaper.waxText)
             .padding(.horizontal, Spacing.s5)
-            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 48)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: height)
             .background(MailPaper.wax, in: RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
             .opacity(isEnabled ? 1 : 0.5)
             .contentShape(Rectangle())
@@ -75,6 +76,38 @@ struct HolidayCardPaperButton: View {
         .disabled(isLoading)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isPressed ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// The card screens' quiet button: underlined words, no fill ("Look it over" under "Seal and send").
+struct HolidayCardQuietButton: View {
+    let title: String
+    var isLoading = false
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Text(title)
+                    .underline(color: HolidayCardDesk.text(scheme).opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .opacity(isLoading ? 0 : 1)
+                if isLoading {
+                    ProgressView().tint(HolidayCardDesk.text(scheme))
+                }
+            }
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(HolidayCardDesk.text(scheme))
+            .padding(.horizontal, Spacing.s4)
+            .frame(minHeight: 44)
+            .opacity(isEnabled ? 1 : 0.5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(title)
     }
 }
 

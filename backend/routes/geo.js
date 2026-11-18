@@ -412,11 +412,13 @@ router.get('/places/nearby', verifyToken, geocodeLimiter, async (req, res) => {
 });
 
 // ── GET /geo/places/search?q=..&lat=..&lng=.. ────────────────
-// Place-tag picker search: venues near the point whose name matches (services/geo/venues.js) first, then
-// Mapbox's towns, addresses and any points of interest it still has. lat/lng are optional proximity hints;
-// without them only Mapbox answers.
+// Place-tag picker search: the first venues near the point whose name matches (services/geo/venues.js), then
+// Mapbox's towns, addresses and any points of interest it still has, then the rest of the venues. lat/lng are
+// optional proximity hints; without them only Mapbox answers.
 
 const SAME_PLACE_M = 150;
+// How many venues a search lists ahead of Mapbox's towns and addresses (all a search listed until November 17, 2026).
+const VENUES_BEFORE_MAPBOX = 8;
 
 function metersApart(a, b) {
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -492,7 +494,11 @@ router.get('/places/search', verifyToken, geocodeLimiter, async (req, res) => {
       place.kind === 'poi' && venueRows.some((venue) => venue.name.toLowerCase() === String(place.name).toLowerCase()
         && metersApart(venue.center, place.center) < SAME_PLACE_M)))
       .map((place) => (place.kind === 'address' ? { ...place, category: 'Address', icon: 'address' } : place));
-    const responseBody = { places: [...venueRows, ...mapboxRows] };
+    // The first venues, then Mapbox's rows, then the rest of the venues: a town or an address stays where it was
+    // while a search listed 8 venues at most ("camas" finds 25 venues, and the town itself must not be row 26).
+    const responseBody = {
+      places: [...venueRows.slice(0, VENUES_BEFORE_MAPBOX), ...mapboxRows, ...venueRows.slice(VENUES_BEFORE_MAPBOX)],
+    };
     if (venueRows.length > 0) responseBody.attribution = named.value.attribution;
     geoCache.set(cacheKey, responseBody, 60_000); // 60s TTL
 

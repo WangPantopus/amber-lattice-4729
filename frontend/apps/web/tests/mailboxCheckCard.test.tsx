@@ -96,7 +96,7 @@ describe('existing residency letter cards', () => {
       issued_at: '2026-01-01T00:00:00Z', expires_at: active ? '2099-04-01T00:00:00Z' : '2026-04-01T00:00:00Z', revoked_at: null, pdf_sha256: 'synthetic',
     }]);
     renderIdentity();
-    fireEvent.click(screen.getByRole('button', { name: /Generate a verified residency letter/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Generate a verified residency letter/ }));
     await screen.findByText('ABCD-EFGH-JKLM-NPQR');
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'PDF' })).toBeEnabled();

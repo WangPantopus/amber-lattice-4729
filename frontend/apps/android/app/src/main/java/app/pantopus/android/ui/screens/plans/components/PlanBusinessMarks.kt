@@ -162,6 +162,36 @@ fun PlanPriceChip(
     }
 }
 
+/**
+ * A deal's tag (business track B1): a tag glyph and the server's short words ("Deal", "20% off") on the sky tint, as on
+ * the deal card ("Deal", "Group deal") and in a list row in place of the count.
+ */
+@Composable
+fun PlanDealTag(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .heightIn(min = 24.dp)
+                .clip(RoundedCornerShape(Radii.pill))
+                .background(PantopusColors.primary100)
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+                .testTag("planDealTag"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+    ) {
+        PantopusIconImage(icon = PantopusIcon.Tag, contentDescription = null, size = 12.dp, tint = PantopusColors.primary700)
+        Text(
+            text = text,
+            style = PantopusTextStyle.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = PantopusColors.primary700,
+            maxLines = 1,
+        )
+    }
+}
+
 /** "Free": what a business's plan with no price reads (the chip, and TalkBack). */
 const val PLAN_FREE = "Free"
 
@@ -169,6 +199,7 @@ const val PLAN_FREE = "Free"
  * "What guests see" (boards B2 preview and B3): a business's plan as its card reads, label and "Free", title, when and
  * spots, and its place with the street address (public for a business's plan).
  */
+@Suppress("LongParameterList")
 @Composable
 fun PlanGuestsSeeCard(
     kind: PlanKind,
@@ -178,6 +209,8 @@ fun PlanGuestsSeeCard(
     spots: Int,
     place: String,
     modifier: Modifier = Modifier,
+    /** Business track B2: the price's chip ("$18"); "Free" without one. */
+    price: String = PLAN_FREE,
 ) {
     Column(
         modifier = modifier.fillMaxWidth().planCard().padding(Spacing.s4).semantics(mergeDescendants = true) {},
@@ -186,7 +219,7 @@ fun PlanGuestsSeeCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlanTypeTag(kind, label = label)
             Spacer(modifier = Modifier.weight(1f))
-            PlanPriceChip()
+            PlanPriceChip(text = price)
         }
         Text(text = title, style = PantopusTextStyle.h3, color = PantopusColors.appText)
         Text(

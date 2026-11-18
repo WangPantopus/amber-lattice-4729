@@ -31,6 +31,7 @@ import app.pantopus.android.core.security.StepUpHost
 import app.pantopus.android.data.auth.AuthRepository
 import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
+import app.pantopus.android.ui.guidance.GuidanceRoot
 import app.pantopus.android.ui.screens.RootViewModel
 import app.pantopus.android.ui.screens.auth.AuthNavHost
 import app.pantopus.android.ui.screens.auth.ContinueAsScreen
@@ -126,7 +127,8 @@ fun PantopusNavHost(viewModel: RootViewModel = hiltViewModel()) {
                         onSignOut = { viewModel.signOutFromAppLock() },
                     ) {
                         // The tabs' headers slide away while a page scrolls down (founder request 2026-11-07).
-                        ProvideScrollAwayHeaders { RootTabScreen() }
+                        // The guidance cards for new users (founder 2026-11-16) sit over the tabs.
+                        ProvideScrollAwayHeaders { GuidanceRoot(content = { RootTabScreen() }) }
                         // One-time "What should we call you?" for an account with no name.
                         NamePromptHost(userId = state.user.id)
                         // Step-up coordinator (device_key biometric / password

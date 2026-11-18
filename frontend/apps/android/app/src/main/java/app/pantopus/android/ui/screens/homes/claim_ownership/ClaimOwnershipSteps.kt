@@ -231,6 +231,9 @@ sealed interface ClaimOwnershipOutboundEvent {
      * `claim-owner/evidence.tsx:210` (`router.replace('/homes/find')`).
      */
     data object OpenFindHome : ClaimOwnershipOutboundEvent
+
+    /** The Bill check read the bill and the person is Verified now: "You're verified" (FASTVERIFY phase 4). */
+    data object BillVerified : ClaimOwnershipOutboundEvent
 }
 
 /**

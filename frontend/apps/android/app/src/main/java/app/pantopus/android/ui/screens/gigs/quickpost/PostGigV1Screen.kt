@@ -71,6 +71,7 @@ import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
 import app.pantopus.android.ui.components.PantopusFieldState
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSearchArea
 import app.pantopus.android.ui.screens.gigs.GigsCategory
 import app.pantopus.android.ui.screens.shared.form.FormFieldGroup
 import app.pantopus.android.ui.screens.shared.form.FormShell
@@ -100,6 +101,9 @@ fun PostGigV1Screen(
     val content = state as? PostGigV1UiState.Content
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // The location lists addresses near the person's home first (FASTVERIFY section 11).
+    val addressSearchArea = rememberAddressSearchArea()
+    LaunchedEffect(addressSearchArea) { viewModel.addressSearchArea = addressSearchArea }
 
     // P0.3 — real Material3 date + time pickers behind the date field.
     var showDateTimePicker by remember { mutableStateOf(false) }

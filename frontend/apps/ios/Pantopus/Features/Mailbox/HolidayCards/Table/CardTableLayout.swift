@@ -2,10 +2,16 @@
 //  CardTableLayout.swift
 //  Pantopus
 //
-//  Fitting the card to the screen (launch key `card_table`): the card nearly as
-//  wide as the phone, room below it for the buttons (at least 12 pt clear of
-//  any paper), and above it the open flap peeking out by between 13% and 47% of
-//  the card's width. If the screen is too short, the card shrinks. Open on the iPhone Duo, the two pages of the
+//  Fitting the card to the screen (launch key `card_table`): the card as wide
+//  as the phone (9 pt of table at each side), kept clear of the round buttons
+//  above it and the buttons below it (at least 12 pt clear of any paper). The
+//  open envelope lies behind it, its flap rising above the card by at least 13%
+//  of the card's width; on a phone the flap's tip may run off the top of the
+//  screen, as an envelope bigger than the screen would. If the screen is too
+//  short, the card shrinks. A card with its own photo or voice greeting lies
+//  lower while its picture is up and moves up as it's turned over, which leaves
+//  the table under it for them: what a full-size card leaves, at least 124 pt
+//  (110 on a short screen). Open on the iPhone Duo, the two pages of the
 //  folded card meet at the hinge.
 //
 
@@ -21,11 +27,16 @@ struct CardTableLayout: Equatable {
     let safeTop: CGFloat
     /// What the buttons take at the bottom, with the safe area.
     let bottomControls: CGFloat
+    /// The table kept under the turned-over card for its own photo and voice greeting; 0 without them.
+    let mediaRoom: CGFloat
     /// The card.
     let cardWidth: CGFloat
     let cardHeight: CGFloat
     let cardX: CGFloat
+    /// Laid down, picture side up.
     let cardTop: CGFloat
+    /// Laid down, note side up: higher when its photo or greeting lies under it.
+    let cardTopBack: CGFloat
     /// The card just out of the envelope, before it's laid down.
     let cardTopOut: CGFloat
     /// The envelope.
@@ -39,8 +50,9 @@ struct CardTableLayout: Equatable {
     let envelopeTopOpen: CGFloat
     /// Sunk as the card rises out.
     let envelopeTopOut: CGFloat
-    /// Laid down behind the card.
+    /// Laid down behind the card: picture side up, and note side up.
     let envelopeTopFinal: CGFloat
+    let envelopeTopFinalBack: CGFloat
 
     /// The widest the card gets in this much width: 470 on a phone, 560 from 560 wide, growing to 640 on tablets and
     /// wide windows (plan 6.3), so the open Duo upright gets one card about 600 wide (plan 6.4). The height can make it
@@ -49,13 +61,32 @@ struct CardTableLayout: Equatable {
         width < 560 ? 470 : min(640, max(560, (width * 0.9).rounded()))
     }
 
+    /// The least of the open flap that shows above the laid-down card, as a share of the card's width.
+    static let leastPeek: CGFloat = 0.13
+    /// How far the round buttons at the top reach below the safe area (10 + 40), the gap under them, and 4 for the
+    /// card's small turn, which lifts a corner.
+    static let underTopButtons: CGFloat = 62
+    /// The least and the most table kept under a turned-over card for its own photo and greeting: a little less on a
+    /// short screen, where the card needs every point.
+    static func mediaRoom(height: CGFloat) -> ClosedRange<CGFloat> {
+        (height < 720 ? 110 : 124)...160
+    }
+
     /// - Parameters:
     ///   - screen: the whole screen.
     ///   - trailingStrip: the system strip down one side (the closed Duo's), to keep clear of.
     ///   - safeTop: the top of the safe area.
     ///   - bottomControls: how much the buttons take at the bottom, with the safe area.
+    ///   - keepsMediaRoom: the card's own photo or voice greeting lies under it once it's turned over.
     ///   - wordsBottom: how far down the words at the top reach, from the screen's top.
-    init(screen: CGSize, trailingStrip: CGFloat, safeTop: CGFloat, bottomControls: CGFloat, wordsBottom: CGFloat) {
+    init(
+        screen: CGSize,
+        trailingStrip: CGFloat,
+        safeTop: CGFloat,
+        bottomControls: CGFloat,
+        keepsMediaRoom: Bool = false,
+        wordsBottom: CGFloat
+    ) {
         self.screen = screen
         self.safeTop = safeTop
         self.bottomControls = bottomControls
@@ -67,35 +98,46 @@ struct CardTableLayout: Equatable {
         // envelope's and the card's small turns, which lower a corner.
         let bottom = bottomControls + 12 + 4
         let topGap = safeTop + 6
+        let underButtons = safeTop + Self.underTopButtons
         let room = height - topGap - bottom
         let side: CGFloat = width < 560 ? 9 : 14
-        // Laid down, the envelope reaches from the flap's tip (`cardTop − peek`) down 1.606 card widths
-        // (flap and body), lower than the card itself while the peek is under 0.406. Shut, it sits at least
-        // 88 pt below the safe area. If the screen is too short for either, the card shrinks. (Under the words
-        // when there's room; at the largest text sizes the words get their own glass instead.)
-        let laidReach: CGFloat = 1.012 * (512 + 1392) / 1200
-        let shutRoom = height - safeTop - bottom - 88
+        // The card is as wide as the screen lets it be. Turned over, with its photo or greeting under it, it needs
+        // its own height below the round buttons and the least of the flap above it. Shut, the envelope sits at least
+        // 88 pt below the safe area (under the words when there's room; at the largest text sizes the words get their
+        // own glass instead), with nothing under it but the buttons. If the screen is too short for any of these, the
+        // card shrinks.
         let widest = min(width - side * 2, Self.cardCap(width: width))
+        let shutRoom = height - safeTop - bottom - 88
         let shutLimit = shutRoom / (1.012 * 1392 / 1200)
-        var cardWidth = max(0, min(widest, room / laidReach, shutLimit))
-        // A tall wide page (the open Duo upright and flat, about 669 × 951) would give a card of only about 440 that
-        // way. There the envelope lies with its body wholly behind the card and its open flap running up past the top
-        // of the screen, so only the card and 13% of flap above it need the room: about 570-600 (plan 6.4).
-        let flapRunsOff = width >= 560 && height > width && cardWidth < widest
-        if flapRunsOff {
-            cardWidth = max(0, min(widest, room / 1.33, shutLimit))
+        func fitted(above mediaRoom: CGFloat) -> CGFloat {
+            max(0, min(
+                widest,
+                (room - mediaRoom) / (1.2 + Self.leastPeek),
+                (height - underButtons - bottom - mediaRoom) / 1.2,
+                shutLimit
+            ))
         }
-        var peek = room - cardWidth * 1.2
-        let minPeek = cardWidth * 0.13
-        let maxPeek = cardWidth * 0.47
-        peek = min(max(peek, minPeek), maxPeek)
-        let spare = max(0, room - cardWidth * 1.2 - peek)
-        let cardTop = topGap + spare * 0.46 + peek
-        if flapRunsOff {
-            // The flap's tip is 0.406 card widths above the card when the body ends at the card's lower edge; the rest
-            // of the flap runs off the top. Where the room is enough for the whole envelope, this is where it was.
-            peek = max(peek, laidReach * cardWidth - cardWidth * 1.2)
+        // The card comes first: its photo and greeting get what a full-size card leaves under it, up to 160 pt (a
+        // tap opens the photo over the whole screen, so its print can be small). Only where the least isn't left does
+        // the card give way.
+        let kept = Self.mediaRoom(height: height)
+        let mediaRoom = keepsMediaRoom
+            ? min(kept.upperBound, max(kept.lowerBound, height - underButtons - bottom - fitted(above: 0) * 1.2))
+            : 0
+        self.mediaRoom = mediaRoom
+        let cardWidth = fitted(above: mediaRoom)
+        // Laid down, the envelope's body ends at the card's lower edge, so its flap rises 0.406 card widths above the
+        // card: past the top of the screen where the card nearly fills it. With more room than that (a small card on
+        // a tall screen), the card lies lower and all of the flap shows, up to 47% of the card's width above it.
+        let flapAbove = (1.012 * (512 + 1392) / 1200 - 1.2) * cardWidth
+        func laid(in room: CGFloat) -> (card: CGFloat, envelopeTip: CGFloat) {
+            let peek = min(max(room - cardWidth * 1.2, cardWidth * Self.leastPeek), cardWidth * 0.47)
+            let spare = max(0, room - cardWidth * 1.2 - peek)
+            let top = max(topGap + spare * 0.46 + peek, underButtons)
+            return (top, top - max(peek, flapAbove))
         }
+        let front = laid(in: room)
+        let back = laid(in: room - mediaRoom)
         let envelopeWidth = cardWidth * 1.012
         let envelopeHeight = envelopeWidth * 1392 / 1200
         let flapDepth = envelopeWidth * 512 / 1200
@@ -105,7 +147,8 @@ struct CardTableLayout: Equatable {
         self.cardWidth = cardWidth
         cardHeight = cardWidth * 1.2
         cardX = (width - cardWidth) / 2
-        self.cardTop = cardTop
+        cardTop = front.card
+        cardTopBack = back.card
         cardTopOut = envelopeTopOut - cardWidth * 1.2 * 1.02 - 8
         self.envelopeWidth = envelopeWidth
         self.envelopeHeight = envelopeHeight
@@ -114,7 +157,13 @@ struct CardTableLayout: Equatable {
         self.envelopeTop = envelopeTop
         envelopeTopOpen = max(envelopeTop, safeTop + flapDepth * 0.9 + 4)
         self.envelopeTopOut = envelopeTopOut
-        envelopeTopFinal = cardTop - peek + flapDepth
+        envelopeTopFinal = front.envelopeTip + flapDepth
+        envelopeTopFinalBack = back.envelopeTip + flapDepth
+    }
+
+    /// The laid-down card's top edge for how far it's turned over: 0 picture side up, 1 note side up.
+    func cardTop(turned: CGFloat) -> CGFloat {
+        cardTop + (cardTopBack - cardTop) * turned
     }
 }
 

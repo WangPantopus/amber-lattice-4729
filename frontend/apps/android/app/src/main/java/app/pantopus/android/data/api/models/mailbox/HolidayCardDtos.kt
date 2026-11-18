@@ -120,6 +120,16 @@ data class CardPhoto(
     val height: Int? = null,
     val alt: String? = null,
     val covered: Boolean = false,
+    /** The photo is a Live Photo: its few seconds of video (contract section 13), covered whenever the photo is. */
+    val live: CardLive? = null,
+)
+
+/** A Live Photo's moving part: an MP4 or QuickTime clip of at most 10 seconds, read from the same routes as its photo. */
+@JsonClass(generateAdapter = true)
+data class CardLive(
+    @Json(name = "file_id") val fileId: String,
+    @Json(name = "mime_type") val mimeType: String? = null,
+    @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
 /** A card's voice greeting (memories plan step 7): its file and its length as the server measured it. */
@@ -136,7 +146,7 @@ data class CardMediaUploaded(
     @Json(name = "expires_at") val expiresAt: String? = null,
 )
 
-/** A stored photo (upright, at most 1600 px on its long side, no metadata) or voice greeting. */
+/** A stored photo (upright, at most 2400 px on its long side, no metadata) or voice greeting. */
 @JsonClass(generateAdapter = true)
 data class CardMediaFile(
     @Json(name = "file_id") val fileId: String,
@@ -146,12 +156,24 @@ data class CardMediaFile(
     @Json(name = "duration_ms") val durationMs: Long? = null,
 )
 
-/** Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. */
+/**
+ * Where `GET /api/mailbox/cards` keeps signatures: a [w] × [h] box, at most [maxBytes] as compact JSON. [saves]: the
+ * account can keep one signature for the next cards (founder, 2026-11-16; `PUT`/`DELETE /api/mailbox/cards/signature`),
+ * and [saved] is the one it keeps (null: none, or an older server).
+ */
 @JsonClass(generateAdapter = true)
 data class CardSignatureBox(
     val w: Int = CardSignature.WIDTH,
     val h: Int = CardSignature.HEIGHT,
     @Json(name = "max_bytes") val maxBytes: Int = CardSignature.MAX_BYTES,
+    val saves: Boolean = false,
+    val saved: CardSignature? = null,
+)
+
+/** `PUT /api/mailbox/cards/signature`: the signature to keep, and back as kept. */
+@JsonClass(generateAdapter = true)
+data class CardSignatureBody(
+    val signature: CardSignature,
 )
 
 /**
@@ -565,6 +587,8 @@ data class SentCard(
     @Json(name = "email_send_at") val emailSendAt: String? = null,
     /** The address the sender typed, whole, so a mistake in it shows (only with [emailStatus]). */
     @Json(name = "email_to") val emailTo: String? = null,
+    /** A reply this person wrote back to a card (plan Part 3): the card it answers; a letter otherwise. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
 )
 
 /** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */

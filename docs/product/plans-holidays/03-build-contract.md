@@ -132,6 +132,10 @@ Checks:
 | `guest_key_hashes` | `text[]`, default empty, at most 6 | The hashes of the guest's keys (K3). A GIN index serves the lookup by one hash |
 | `address_sent_at` | `timestamptz` | When the email with the guest's link went |
 | `reminded_at` | `timestamptz` | The one reminder |
+| `email_sent_times` | `timestamptz[]`, default empty, at most 20 | The time of each email to the row after the invitation's first, newest last. The day's limit counts by these (6.6). Added November 15 by the server session |
+| `host_ok_at` | `timestamptz` | When the host let this guest in by hand (6.8). Null: the host has not. Added with 6.8; rows from before it are not filled in |
+| `guest_emails` | `integer`, default 0 | How many of the plan's three emails the guest has had (6.6). Added by the server session |
+| `changed_at`, `changed_reason` | `timestamptz`, `text` (`time`, `place`, `both`) | The plan's time or place changed since the guest answered: their page says so, and the one change email goes once. Added by the server session |
 
 Checks widened:
 
@@ -169,8 +173,20 @@ family.
   text invitation's token (exists), or the plan's open link.
 - **A guest's key** reads the private parts. One is made when a guest answers;
   the web app keeps it in an HttpOnly cookie for that plan and sends it as
-  `guest`. One more is made for each email to the guest that carries their link
-  (You're in, the reminder, a change). Only hashes are saved.
+  `guest`. One more is made for each email to the guest (You're in, the
+  reminder, a change, their link sent again, the cancellation). Only hashes are
+  saved, so an old key cannot be put into a new email.
+- **The cancellation email carries no link to the invitation.** Its "Don't send
+  me invitations" link still needs a key to say whose address it is, so it
+  carries one of its own, which joins the guest's keys like any other.
+- **On a plan that is cancelled or over, no key reads the place, the host's
+  note, who is going or the bring list.** It reads the card and the guest's own
+  answer, so the page can say what happened. The bring list's guest routes
+  refuse there.
+- **The emailed link is `/plan-invitation/<id>?key=…`**, a web route that
+  keeps the key in the cookie and opens `/plans/<id>` without it. It is not
+  under `/plans/` because the iPhone app claims that path; the Android app
+  claims every path and hands a page it has no screen for to the browser.
 - **A guest may hold several keys, and none replaces another.** The link in the
   first email still works after the reminder goes out, and the browser's cookie
   does not stop working because an email was sent. On the day, people look for
@@ -178,6 +194,19 @@ family.
 - **All of a guest's keys stop working together** when the host removes the
   guest, the invitation is cancelled, or the plan is deleted. Nothing else ends
   one. At most 6 a guest; a seventh drops the oldest.
+- **An invitation's own link says who is answering** (settled November 17,
+  after the two-phone check found a second invitee's link showing the first
+  guest's answer in one browser). When a request carries an email or text
+  invitation's token and a guest's key (sent, or the browser's cookie) that
+  belongs to a different invitation row of the plan, the key is not used for
+  that read or that answer: the page's `answer.mine` and `for_guest` are that
+  invitation's own (empty until it answers), the answer and the times are
+  saved on that invitation, and when it answers away from a home the
+  browser's cookie becomes that invitation's key. The open link names nobody,
+  so with it the cookie's guest stays, as before; a key of the token's own
+  row works as before. The routes that take only a key (the bring list's,
+  chip in's, the gift exchange's, the photos', and a change of answer) carry
+  no token and read the key's own row as before.
 
 ### 6.2 Reading
 
@@ -242,6 +271,14 @@ address its link, at a home or not. Otherwise anyone who knows a guest's email
 could take over their answer from the open link. With a valid key, the answer
 changes the row.
 
+- **Maybe and Can't make it at a home** answer `maybe` and `cant` with no key
+  and no email. Only "I'm in" answers `check_email`.
+- **An address that said "don't send me invitations"** gets no email, so at a
+  home it could never see the address and "Check your email" would not be
+  true. Wherever the form asks for an email, an answer with such an address is
+  refused: `409 email_opted_out`, "This address asked Pantopus not to email it.
+  Use another one." Nothing is saved. A guest changing their own answer, with
+  the address already on their row, is not checked again.
 - `in` when the room is full: refused `409 full`, with `can_maybe: true`.
 - `in` from the open link with `open_invite_ok_first`: saved with
   `needs_host_ok = true`. The seats are held (K5). The host is told. The guest's
@@ -258,7 +295,7 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
 
 - `POST /api/plans/:id/invites/open-link` with
   `{ "host_says_yes_first": true, "rotate": false }` makes or returns the link:
-  `{ "url": "…/plans/<id>?open=<token>", "message": "…", "host_says_yes_first":
+  `{ "url": "…/plan-link/<id>?open=<token>", "message": "…", "host_says_yes_first":
   true }`. At a home `host_says_yes_first` starts true, and the call needs the
   address confirmation that inviting already needs
   (`assertSharesAddressConfirmed`, exists). `rotate` replaces the token; answers
@@ -272,13 +309,25 @@ Errors use the Plans shape `{ "error": "<code>", "message": "…" }`:
   "url": "…", "host_says_yes_first": true }`. A guest's email is never in it.
 - `POST /api/plans/:id/invites/:inviteId/ok` lets a waiting guest in and sends
   their email. `DELETE /api/plans/:id/invites/:inviteId` (exists) removes a
-  guest; their key stops working and they are told once.
+  guest; their keys stop working and their page says "This invitation is no
+  longer open." No email goes, as none goes today to a person with an account
+  the host removes. (Corrected November 15: this line said "told once", with
+  no words fixed anywhere.)
 - `POST /api/plans/:id/invites/remind` reminds everyone who has not answered,
   the way each was invited: a push to an account, an email to an address.
   Unopened text invitations have nobody to remind. Once a plan a day, once a
   person (K6). Answers `{ "reminded": 3, "skipped": 1 }`.
 - `POST /api/plans/:id/invites/maybe`: an invited account says Maybe. The
   ordinary ask or decline replaces it later.
+- A person who is in can change their numbers with the ordinary ask: the new
+  `party_size` and `kids_count` are saved when the plan has room for the
+  difference, with no new approval; with no room for a larger party it is
+  refused `409 full`, "There's no room for more people. Your answer stays as
+  it was.", and the old numbers stay. Fewer always save and free their seats.
+  No notice goes to the host. (Added November 15: the first build kept the
+  first numbers. Built in #4198.)
+- The "wants to come" notice carries its two buttons on iPhone as well: its
+  category, `PLAN_GUEST_OK`, is one the push sender passes on.
 - Creating and changing a plan take `kids_welcome` and, for a private plan,
   `spots` up to 100. The ask takes `party_size` up to 10 on a private plan and
   `kids_count` where kids are welcome.
@@ -292,16 +341,37 @@ in: `"headcount": { "adults": 6, "kids": 3 }`. For the host only:
 
 ### 6.6 Emails to a guest without an account
 
-At most three a plan, each with the unsubscribe link invitation emails already
-carry:
+Every one carries the unsubscribe link invitation emails already carry.
+
+**The plan's three.** At most three a plan count against a guest:
 
 1. "You're in" with their link (and, at a home, after the host's yes).
 2. One reminder, at the time people who are in are reminded today
    (`rules.reminderAt`).
-3. A change of time or place, or a cancellation.
+3. The first change of time or place.
 
-They follow the limits that exist: 5 emails an address a day from every host
-together, and an address that said "don't send me invitations" gets none.
+**Outside the three** (made precise on November 15, after the server session's
+build showed a cancellation could be held back):
+
+- **The cancellation.** One a plan, to each guest who is in. A guest still
+  waiting for the host's yes gets none, as with a change. It is never held by
+  the plan's three: it is the one email a guest must not miss.
+- **Their link again**, sent when an answer comes for an address that already
+  has a row without that row's key (6.3). It does not use one of the guest's
+  three, so answering again from a second device costs the guest nothing, and
+  nobody holding the open link can use up another guest's emails. It goes only
+  if no email went to that guest for that plan in the last 24 hours; otherwise
+  nothing is sent and the answer is the same `check_email`.
+
+- **A move to a home** (6.8): the one email to a guest it makes wait.
+- **"You're in" after the host's own yes.** It counts as one of the three when
+  it is the guest's first, and it is never held by them: a guest the host lets
+  in after a move gets it even with three emails behind them.
+
+**The limits that exist hold for all of them**, the cancellation included: 5
+emails an address a day from every host together, each counted by its own time
+(`email_sent_times`), and an address that said "don't send me invitations" gets
+none.
 
 ### 6.7 Limits
 
@@ -311,6 +381,153 @@ together, and an address that said "don't send me invitations" gets none.
 | Rows made by a plan's open link | The room plus 20 |
 | Invitations a plan (exists: 60) | 160 for a private plan with room over 30 |
 | A guest's name | 1 to 100 characters, cleaned as plan text is |
+
+### 6.8 A plan that moves to a home
+
+Decided by the founder on November 15 ("Yes, they wait"). Away from a home, a
+guest from the open link is in without the host's yes. When an edit changes
+the place of a plan that takes answers from anywhere else to a home:
+
+1. `open_invite_ok_first` turns on. The host can turn it off again.
+2. Each guest without an account who came by the open link (`channel =
+   'open'`), is in, and never had the host's own yes goes back to waiting:
+   `needs_host_ok = true`. Their seats stay held (K5) and their bring-list
+   claims stay. While they wait, none of their keys reads the place, the note,
+   who is going or the bring list, as for any waiting guest.
+3. The host's own yes is recorded when the host lets a guest in
+   (`host_ok_at`). A guest the host already let in by hand is not asked again.
+   "Let in before" means this and nothing else: a guest made to wait by the
+   move does not get back in by changing to Maybe and back, by answering
+   again, or because a "You're in" email once went to them.
+4. Guests the host invited by email or by a text invitation stay in. So does
+   everyone with an account; they are asked "Still coming?" as today.
+5. Each guest made to wait gets one email, outside the plan's three (6.6), so
+   nobody goes to the old place: "{Host} changed the place of {title}", and in
+   the body "{title} is now at {Host}'s home. {Host} lets each guest in. When
+   {Host} says yes, the address comes to this email.", with their link, which
+   opens the waiting page. Guests who stay in get the ordinary change email.
+6. The host gets one notice: "You moved {title} to your home. {n} guests from
+   your link are waiting for your yes." It opens Who's coming, where each has
+   "Let in" and "Not this time".
+7. "Let in" sends "You're in" with the guest's link (6.6). "Not this time"
+   removes the guest; no email goes (6.4).
+8. `answer.mine` carries `changed` (`time`, `place`, `both`) for a waiting
+   guest too, so their page can say the place changed.
+
+A move between two places away from a home, between two homes, or from a home
+to somewhere else makes nobody wait.
+
+### 6.9 The open link, for a person who has the app
+
+Decided by the founder on November 15 ("Yes, go ahead"). Boards 21 to 23. The
+open link was built for a guest without an account, in a browser. A person who
+has the app must be able to answer it as themselves, and no build of either
+app may land on a plan it cannot show.
+
+**Why the address changes.** The iPhone opens a web address in the app when
+the site's `apple-app-site-association` lists its path, for every build of the
+app at once; it lists `/plans/*`. The store builds do not know an open link,
+so `…/plans/<id>?open=<token>` would open them on a private plan the person
+was not invited to by name. The Android app claims every path and hands a page
+it has no screen for to the browser (`WebLinkFallback`, in store builds since
+October 20).
+
+1. **The open link's address is `…/plan-link/<id>?open=<token>`.**
+   `POST /api/plans/:id/invites/open-link` answers that `url`. `/plan-link/`
+   is never added to `apple-app-site-association`.
+2. **The web serves the guest's page at `/plan-link/<id>`** (W1, W2, W3): the
+   same page the plan's page draws today for `open` and for a guest's cookie.
+   It does not redirect to `/plans/`. `/plan-invitation/<id>?key=…` (the
+   emailed link) now keeps the key in the cookie and opens `/plan-link/<id>`,
+   for the same reason: on Android a browser may pass a `/plans/` address
+   back to the app. `/plans/<id>?open=…` keeps working in a browser.
+3. **"Open app" carries the link.** On a page opened with a live `open` token,
+   the bar's "Open app" (exists) opens `pantopus://plans/<id>?open=<token>`,
+   with the store fallback and the copied link it has today. Nothing is added
+   to the page.
+4. **The apps read `open`.** `pantopus://plans/<id>?open=<token>` and
+   `https://…/plans/<id>?open=<token>` on both; `https://…/plan-link/<id>?open=<token>`
+   on Android, which is how a new Android build opens the link straight in
+   the app. Signed in: the app claims it (5) and shows the plan the claim
+   answers. Signed out: an `https` arrival on Android goes on to the browser;
+   a `pantopus://` arrival, where the person chose the app, is kept through
+   sign-in or sign-up as plan links are today, then claimed. `/plan-link/`
+   without `open` goes on to the browser. While Plans is off for the person,
+   as any plan link.
+5. **Claiming.** `POST /api/plans/:id/invites/claim` (exists, takes `token`)
+   also takes `{ "open": "<token>" }`, while the host has
+   `plans_guest_answers` and the plan has a live open link with that token.
+   It answers the plan as the person now sees it, as it does for `token`.
+
+   | The person | What happens |
+   | --- | --- |
+   | Runs the plan | Nothing is made |
+   | Already has a live invitation or an ask on this plan | Nothing is made |
+   | Was removed or turned down by the host on this plan | `404 invite_unavailable` |
+   | Is on either side of a block with the host, or could not be invited on Pantopus for any reason `assertInvitable` gives | `404 invite_unavailable` |
+   | The link is off, rotated or wrong; the plan is over or cancelled | `404 invite_unavailable` |
+   | The open link's rows are at their limit (6.7; accounts count) | `404 invite_unavailable` |
+   | Has a verified email that answered this plan in a browser | That answer becomes theirs (8) |
+   | Anyone else | An invitation row is made: `channel = 'open'`, `invitee_user_id`, `status = 'pending'`, `needs_host_ok = open_invite_ok_first`, `claimed_at`, `opened_at` |
+
+   From there it is an invitation like any other. "I'm in" is the shipped ask:
+   in at once, or, with `needs_host_ok`, an ask the host accepts, exactly as an
+   email invitation opened by another account waits today. Maybe is
+   `…/invites/maybe`. Can't make it is the shipped decline. `my_invite` gains
+   `via: "open"` so the app can say why the host says yes first.
+6. **What the host sees.** In the host's list a row from the open link with an
+   account carries `via: "open"`, the person's shipped name and picture, and
+   the id of their ask. Waiting for the host's yes (`asked`) it sits with the
+   guests who wait; "Let in" is the shipped accept of that ask, with its
+   address confirmation the first time at a home, and "Not this time" the
+   shipped decline. The shipped notices for an ask tell the host.
+7. **A move to a home (6.8) covers them.** A person with an account whose
+   invitation came by the open link, who is in, and whose ask the host never
+   accepted by hand goes back to waiting when the plan moves to a home: the
+   ask returns to pending, `needs_host_ok` turns on, they leave the plan's
+   chat as anyone who is no longer in does, and they read no address. They get
+   one notice: "{Host} moved {title} to a home. {Host} lets each guest in, and
+   you'll hear when {Host} says yes." They count in the host's one notice.
+8. **A browser answer follows the person into the app.** A row answered in a
+   browser whose email is a verified email of an account becomes that
+   account's, with the answer: when that account claims the open link, when it
+   claims an email invitation's token (this replaces "answers anew", which is
+   how it was built), and where signing in already attaches email invitations
+   (`attachEmailInvites`). In becomes an accepted ask with `party_size` the
+   adults and `kids_count` the kids, so the seats do not change; waiting
+   becomes a pending ask with `needs_host_ok`; Maybe and Can't make it stay
+   what they are. `host_ok_at` is kept as the host's yes. Their bring-list
+   claims become the account's. The guest's keys end; their old links then
+   read what a signed-out stranger reads. Only a verified email does this:
+   an address someone typed is not proof.
+
+**Made precise by the build** (the server session's choices on #4196,
+confirmed by the designer):
+
+- "I say yes first" also governs a link row whose person has not asked yet:
+  the row follows the host's switch, and turns on at a move to a home, so
+  nobody who claimed a link at a cafe is in at the home without the yes.
+- A person the host let in by hand is not asked again after a Maybe and back.
+- The account's verified email is kept on its open-link row and never shown
+  to the host. An answer from that address in a browser is told to answer in
+  the app, and a person the host removed cannot come back through a browser
+  with it.
+- Nothing moves into an account that already has its own answer, invitation
+  or refusal on the plan.
+- The notice to a person the move makes wait has the type
+  `plan_moved_home_wait`.
+- "Open app" opens `pantopus:///plans/<id>?open=<token>`, the form the share
+  page already uses.
+- Every refusal of a claim answers the same `404 invite_unavailable`.
+- `accessTokenVerifier` treated an address Supabase had not confirmed as
+  confirmed on one path (it read a missing `email_confirmed_at` as present).
+  It is fixed. Its only readers are `verifyToken` and Plans' own check of
+  whose an email invitation is, so nothing outside Plans changes; inside
+  Plans an unconfirmed address no longer counts as the invited person's.
+
+**Data.** No new column. `plan_invite_channel_fields` is widened so an `open`
+row may carry an account and no email. One additive migration
+(`20261116020000_plans_open_link_accounts`).
 
 ## 7. The bring list (H2)
 
@@ -370,6 +587,10 @@ A plan among friends only. A business's plan has no bring list.
   December 10 to December 31; Birthday always.
 - The app draws the "Coming up" strip from that answer and opens the host form
   with the values filled in. Everything stays editable.
+- **An occasion fills in its room too** (added November 16, after the
+  two-phone check: the form started at 6 and the first "Let in" met a full
+  plan). `spots`: 12 for Thanksgiving dinner, Friendsgiving, Gift exchange and
+  Birthday; 20 for Holiday party and New Year's Eve.
 - A plan saves `occasion`. A card adds `"occasion": { "key": "thanksgiving",
   "text": "Thanksgiving dinner" }`, which the plan's tag reads in place of its
   kind's name. The kind, its color and its pin are unchanged.
@@ -384,19 +605,19 @@ A plan among friends only. A business's plan has no bring list.
 ```json
 { "scope": "group", "kind": "free_item", "item": "appetizer for the table",
   "group_size": 12, "group_by": "2026-11-20T01:00:00Z",
-  "if_short": "none", "state": "open", "settled_at": null }
+  "if_short": null, "state": "open", "settled_at": null }
 ```
 
 | Field | Values |
 | --- | --- |
 | `scope` | `everyone`, `group` |
-| `kind` | `free_item` in this step. `percent`, `amount`, `two_for_one` come with money (10.4, 11) |
+| `kind` | `free_item` in this step. `percent` and `amount` come with money (10.4, 11). `two_for_one` is not built |
 | `item` | 1 to 40 characters, for `free_item` |
 | `value` | The percent (5 to 50) or cents, for the money kinds |
 | `applies_to` | For the money kinds: `spot`, `food`, `no_alcohol` |
 | `group_size` | 2 to the plan's spots |
 | `group_by` | Between now and the plan's start |
-| `if_short` | `none`, or a smaller deal of the same shape with `scope: "everyone"` |
+| `if_short` | `null`, or a smaller deal of the same shape with `scope: "everyone"`. Always an object or null, never a word |
 | `state` | `on` (a deal for everyone), `open`, `unlocked`, `short` |
 
 `PlanRequest` gains `deal_used_at timestamptz` and `deal_cents integer`.
@@ -418,8 +639,36 @@ A plan among friends only. A business's plan has no bring list.
 
   `text` is written by the server from the fixed kinds. `mine` is there for a
   guest who is in; `ready` once the deal is on or unlocked.
+- **Every word of a deal is the server's** (settled November 16 with the
+  Android session: an app never composes "20% off"). The card's `deal` also
+  carries:
+
+  | Field | Example | Where it shows |
+  | --- | --- | --- |
+  | `tag` | "Deal", "20% off" | The one tag on a list row |
+  | `short` | "A free appetizer", "20% off food" | "Your deal" |
+  | `condition_text` | "if 12 people are in by Friday at 5:00 PM" | Under the sentence, for a group deal |
+  | `group.left_text` | "2 days left", "3 hours left", "Closes at 5:00 PM" | The time left |
+  | `if_short_text` | "If it doesn't get to 12, the night still happens, without the deal." | Under the count, while open |
+  | `state_text` | "Unlocked: 14 are in", "It didn't get to 12. The night still happens." | The banner or the card, once settled. The count is the people in now, so it can fall after the unlock: "Unlocked: 1 is in" for one, and "Unlocked" alone when nobody is in (settled November 16 after Android's check read "Unlocked: 1 are in"; the server says it since #4283) |
+  | `join_text` | "Free to join. Show your deal there." | Under the join button |
+  | `mine.text` | "Show this to your server." | "Your deal" |
+  | `mine.name` | "Dana" | "Your deal" for something free, so staff can match the person (K8) |
+  | `known_going` | first names of people the viewer knows who are in | The faces line; as the Plans with businesses contract, 5.4 |
+
+- `POST /api/plans/deal-preview` takes `{ "business_user_id", "deal", "spots",
+  "starts_at" }` and answers `{ "text", "condition_text", "if_short_text",
+  "claim_text", "errors": { "<field>": "<words>" } }`.
+- The answer that lists who a person may host as carries, for each business,
+  `"can": { "deals": true, "price": false, "pay_here": false }` and
+  `"payouts_ready": false`, so the form knows which rows to draw and when to
+  offer the payout setup.
 - Posting and changing a business's plan take `deal`. A deal cannot change once
   anyone is in, except to be removed, which tells everyone.
+- `POST /api/plans/deal-preview` (staff with `plans.manage` for the business)
+  takes a `deal` and the plan's spots and start, and answers the sentence a
+  guest will read, the line on how it is claimed, and any field's error. The
+  form shows it; nothing is saved.
 - `POST /api/plans/:id/requests/:requestId/deal-used` (staff with
   `plans.manage`) marks a "something free" pass used. It cannot be undone by
   staff.
@@ -456,6 +705,12 @@ priceSale({ businessUserId, soldType, amountCents, basis })
 - Where the business pays the card fee, its share is fixed when the charge has
   succeeded and the card company has reported the charge's fee (K9):
   `amount_to_payee = amount_total − platform fee − card fee`.
+- **When the card company reports no fee** (found November 16: the test
+  platform reports 0 on every charge, which is what an account billed its fees
+  separately does): the card fee is the payments design's standard rate, 2.9%
+  of the amount, rounded, plus 30 cents. The payment records which was used,
+  `card_fee_source`: `reported` or `standard_rate`. Whether production reports
+  a fee is the founder's to look at in the payment company's dashboard.
 - A payout waits for `payout_after`. A plan sets it to 48 hours after the plan
   ends.
 
@@ -477,8 +732,36 @@ captured at once with `payment_type = 'plan_payment'`, the request made
 - Refunds follow [02-payments.md](02-payments.md), section 8, through
   `paymentRefundService`. `PlanRequest.refund_until` is the plan's start less 24
   hours.
-- A card adds `"price": { "cents": 1800, "text": "$18" }` and, for a guest who
-  paid, `"paid": { "cents": 1800, "refund_until": "…", "receipt_url": "…" }`.
+- A card adds `"price": { "cents": 1800, "text": "$18", "line": "$18 a person",
+  "join_text": "$18 a person. Full refund until Friday at 10:00 AM." }` and,
+  for a guest who paid, `"paid": { "cents": 1800, "text": "Paid $18.00",
+  "refund_until": "…", "leave_back_cents": 1800, "leave_text": "You'll get
+  $18.00 back.", "receipt": { "link": "…" } }`. `leave_text` is what the
+  person gets back if they leave now, worked out by the server (it differs
+  from `refund_until` after a group price fell short or a part was refunded).
+  `receipt.link` is a link the apps already open, to the receipt in Mail.
+  Once a part has come back and the guest is still in, `text` says both
+  amounts, "Paid $18.00 · $4.00 back" (`cents` stays what was charged and
+  `refunded_cents` what came back), so the row agrees with the card statement
+  and with "You'll get $14.00 back." Settled November 16 after Android's check
+  read "Paid $18.00" beside a $4.00 return; the server says it since #4283.
+  The apps draw `text` as it comes, so neither needs a change. A guest of a
+  plan the business cancelled, with everything returned, reads "Paid $25.00 ·
+  $25.00 back"; that stays (the designer's call, November 16).
+- **A quote before joining.** `POST /api/plans/:id/requests/quote` with
+  `{ "party_size", "kids_count" }` answers what the sheet shows, with no side
+  effect: `{ "spots", "each_text", "total_cents", "total_text", "group":
+  { "in", "size", "text": "If 10 are in by Thursday at 6:00 PM, everyone pays
+  $14 and $4.00 comes back to your card." } | null, "refund_text" }`. An app
+  never multiplies a price.
+- **A charge that succeeds after the 10-minute hold ended.** If the plan still
+  has room for the party, the person is in. If it filled meanwhile, the whole
+  payment is refunded at once and `confirm` answers `409 full`, "This filled
+  while you were paying. Your {$18.00} is on its way back."
+- **What may change after posting.** `pay_here` and `tips_on` at any time. A
+  price only while nobody is in or paying.
+- One error code for a business that may not charge: `409
+  payout_account_needed`.
 
 ### 10.3 Paying from the web page (B3)
 
@@ -500,6 +783,65 @@ Pay. It calls the same routes as the apps. No account-less payment.
   the unlock is charged the group price.
 - A group price that falls short: every guest may leave with a full refund
   until the plan starts, whatever `refund_until` says.
+- **Paying out a payment that was refunded in part** (settled November 16 with
+  the server session). Today the payout job and its database functions release
+  only a payment with nothing refunded, and a partial refund of an invoice is
+  refused. A group price coming back, and a staff refund of part of a bill
+  (11.2), are partial refunds of a payment not yet paid out. For `plan_spot`
+  and `plan_bill` only, the business's share is re-priced at the refund on what
+  the guest paid in the end, and such a payment is released with that amount.
+  It is done with a new function that only these payments reach where that is
+  possible; the functions that pay gigs and invoices are replaced only if it is
+  not, and then with every existing branch as it is, shown by comparing the
+  same payments before and after. Every other payment kind keeps today's rule.
+- **A second refund on the same payment must work, and an owed refund is never
+  dropped** (added November 16, after the Android session's check found it
+  broken on its own setup in test mode: a guest whose group price had come
+  back, $4.00 of $18.00, then left inside the refund window; they were out of
+  the plan and the remaining $14.00 was not sent, because the refund records
+  refused a second refund on a payment already refunded in part). The rule: a
+  plan payment can be refunded in part more than once, and then in full, each
+  refund re-pricing the business's share on what the guest paid in the end. A
+  refund that is owed (a leave in time, a cancellation, spots nobody took) and
+  cannot complete at that moment is kept as owed and tried again on the Plans
+  tick until the payment company confirms it; a guest is never left out of a
+  plan with their money unsent. No paid switch is turned on anywhere before
+  this is fixed and these are seen on a rig to the cent, with the payout after
+  each: a group price comes back and the guest then leaves; two refunds in
+  part; a staff refund after money off a spot.
+
+  Fixed on `dev` the same day (server PR 4252, which the coordinator read line
+  by line). The cause: after a refund in part the plan code re-prices the
+  business's share, which changed the payment's fingerprint that the first
+  refund had been recorded against, so re-checking that first refund before a
+  second one failed. The fix is one filter in the refund service's
+  reconciliation, for plan payments only: a refund already recorded exactly
+  and final is left out of the re-check. Gig, invoice and booking payments
+  are reconciled exactly as before, and no database function or payout code
+  changed. An owed refund is kept on its payment
+  (`metadata.plan_refund_owed`) and asked again on every Plans tick with the
+  same request key, whatever the switches say; the guest's notice goes when
+  it is confirmed. Seen on the server session's setup in test mode, to the
+  cent: $4.00 then $14.00 back with the guest who stayed paid out at 1266;
+  two staff refunds in part on a check, paid out at 2814; the payment
+  company made to fail, the refund kept as owed and sent whole by the next
+  tick, once. Not verified: the payment company's call-back, live mode, and
+  a rerun on each phone.
+- **Two worked examples for a group price** (added November 16; a $18 spot,
+  group price $14, the card company's reported fee on the $18 charge $0.82).
+  The business bears the card fee in proportion to what the guest paid in the
+  end; Pantopus absorbs the rest. (02-payments' "about 12 cents" was an
+  estimate; this is the rule.)
+
+  | | A guest Pantopus brought | The business's own guest |
+  | --- | --- | --- |
+  | Charged, then returned | $18.00, $4.00 back | $18.00, $4.00 back |
+  | Paid in the end | $14.00 | $14.00 |
+  | Pantopus's cut | 15% of $14.00 = $2.10 | 5% of $14.00 = $0.70 |
+  | Card fee borne by the business | none | round($0.82 × 14 ÷ 18) = $0.64 |
+  | The business gets | $11.90 | $12.66 |
+  | Pantopus, after the card fee it pays | $2.10 − $0.82 = $1.28 | $0.70 − $0.18 = $0.52 |
+
 - A card's `deal` adds `"price_cents": 1400` and, for a guest,
   `"mine": { "back_cents": 400, "back_at": "…" }`.
 
@@ -546,8 +888,34 @@ guest's Receipts as a paid invoice is today.
 - The payment: `sold_type = 'plan_bill'`, `amountCents` to `priceSale` is the
   subtotal less the discount, `tip_cents` beside it, `payout_after` as a paid
   spot's.
-- A payment that succeeds reaches the staff's list over the socket the plan's
-  guests already use, and the guest's app shows board 13.
+- A payment that succeeds reaches the staff's list within a few seconds (the
+  socket the plan's guests use, or the list asked again every 5 seconds while
+  it is open), and the guest's app shows board 13.
+- **Totals are the server's** (settled November 16). `GET …/checks/mine`
+  carries the lines as text and cents and, when tips are on, `"tip_choices":
+  [{ "label": "18%", "tip_cents", "tip_text": "$8.64", "total_cents",
+  "total_text": "$47.04" }, …]` and `"no_tip": { "total_cents", "total_text" }`.
+  For another amount, `POST …/checks/:checkId/quote` with `{ "tip_cents" }`
+  answers the lines and the total, with no side effect.
+- **The line under the tip choices**, `tip_base_text`: "Percent of {$48.00},
+  before the deal" on a check with a discount, and "Percent of {$25.00}" on
+  one without (settled November 16 after the iPhone's check read "before the
+  deal" on a check with no deal; on the server since 4309).
+- **Pay shows what will be charged** (settled November 16 after the
+  coordinator's read of the iPhone's build): the pay button is enabled only
+  while the amount on it is the server's quote for the tip that `…/pay` will
+  send. While a quote is asked, or after one failed, it is off, and a failed
+  quote clears the choice.
+- **Learning that it is paid.** `POST …/checks/:checkId/confirm`, as a paid
+  spot has: it answers the paid check, `{ "state": "paid", "paid_text": "Fri,
+  Nov 20 · 8:52 PM", "payer": "Dana L.", "method_text": "Apple Pay", the
+  lines, "total_text", "receipt": { "link" } }`, and is safe to call twice.
+  `GET …/checks/mine` answers the same after a relaunch.
+- **A check is never an ordinary invoice to the guest.** It does not list in
+  Wallet's received invoices or in Mail as a bill, and the invoice pay route
+  refuses it; it is paid only through its own route, with its deal and tip.
+- The check's notice links to the plan with `metadata.opens: "check"`.
+- A second check to a guest who used their deal carries no discount.
 
 ### 11.3 The tip's share of the card fee
 
@@ -565,10 +933,18 @@ plan's chat.
 
 - `POST /api/plans/:id/tip` with `{ "amount_cents" }`: a guest who paid for a
   spot, on a plan with `tips_on`, once, until 7 days after the plan ends. A
-  separate charge with `sold_type = 'plan_tip'`.
-- The statement is the shared one (`GET /api/businesses/:businessId/statement`).
-  Its `by_feature` gains `plan_bill` and `plan_tip`, and `totals` gains
-  `tips_cents`, `tip_card_fee_cents` and `deal_cents`.
+  separate charge with `sold_type = 'plan_tip'`. The card carries, while it may
+  be given, `"tip_later": { "until": "…", "choices": [{ "label": "18%",
+  "tip_cents", "tip_text" }, …] }`; the route answers the payment sheet's
+  values, and its `confirm` answers `{ "state": "paid", "text": "You tipped
+  $5.00" }`.
+- The statement is the shared one (`GET /api/businesses/:businessId/statement`,
+  the business graph's shared contract 5.4). It is not built yet: this step
+  builds the route, behind `business_statement` (off), for staff with
+  `finance.view`. Its `by_feature` carries `plan_spot`, `plan_bill` and
+  `plan_tip`, and `totals` carries `tips_cents`, `tip_card_fee_cents` and
+  `deal_cents`. No screen is built here: the statement's screens are the
+  business graph's own phase D.
 
 ## 12. Notices
 
@@ -578,6 +954,7 @@ Sent through `planNotifications.js`, held for quiet hours as Plans notices are.
 | --- | --- | --- |
 | A guest without an account answers | The host | "Dana Lee is in: 2 adults, 1 kid." Several in an hour become one |
 | An answer waits for the host's yes | The host | "Dana Lee wants to come. Let them in?" with Let in and Not this time |
+| The host moved a plan to a home and guests from the link now wait (6.8) | The host | "You moved Friendsgiving to your home. 3 guests from your link are waiting for your yes." For one: "1 guest from your link is waiting for your yes." Once a move. Type `plan_moved_home`, no buttons |
 | Bring-list items are claimed | The host | At most one in 30 minutes: "3 things are taken. 2 are still open." |
 | Items are still open two days before | People in who claimed nothing | "2 things are still open for Thanksgiving dinner." Once |
 | A group deal is close | People in, and people who opened the plan and did not join | "2 more and trivia is 20% off. It closes at 5:00 PM." Once, in the last day |
@@ -593,6 +970,9 @@ Sent through `planNotifications.js`, held for quiet hours as Plans notices are.
   the form, the three answers, and after answering the guest's part. It keeps
   the guest's key in an HttpOnly cookie and never puts it in a link the page
   shows.
+- The same guest's page is served at `/plan-link/<id>`, which is where the
+  open link and the emailed link now lead (6.9). "Open app" on it carries the
+  open link into the app.
 - With the switch off, or for a plan that takes no answers, it is today's page.
 - B3 adds sign-in and payment for a business's plan.
 - Every state in light and dark, at phone width first.
@@ -609,6 +989,9 @@ Both send `guests=1` once they draw H1.
 | B1 | The deal form (board 9); "Mark used" on the guest list | The deal card (board 7); the pass for something free |
 | B2, B4 | The price row; who paid, on the guest list | Join and pay (board 11); the receipt; leaving with a refund; money back |
 | B5, B6 | "Send a check", refund (board 14) | The check, the tip, pay (board 12); Paid (board 13) |
+
+With H1 both apps also read an open link (6.9, boards 21 to 23): the person
+claims it and answers as an invited person; the host sees them in Who's coming.
 
 The Plans tab gains the "Yours" section above "This week nearby" (board 1) with
 H1. Its map, sheet, rows and tab bar are otherwise as shipped. The side menu
@@ -647,8 +1030,57 @@ Each step is checked in the real apps against a local stack and backend, as
   address gets an email with its link.
 - At a home, an email invitation and a text invitation answered in a browser
   return `check_email` and no key.
+- A guest who already got "You're in", the reminder and a change still gets
+  the cancellation. A guest waiting for the host's yes gets none.
+- The cancellation email has no link to the invitation, and its "Don't send me
+  invitations" link works. With any of the guest's keys, a cancelled plan's
+  page shows no address, note, names or bring list.
+- A second answer for the same address inside a day, without its key, sends
+  nothing and answers the same. A guest's reminder still goes after their link
+  was sent again.
+- An address that asked not to be emailed is refused at the form with its own
+  words, and nothing is saved.
+- A plan at a cafe with three guests from the open link, one of them let in by
+  hand while "I say yes first" was on, and one guest invited by email, moves
+  to a home: the two never let in wait and every link of theirs shows no
+  address; the other two stay in; "I say yes first" is on; the host gets the
+  one notice.
+- A guest made to wait by the move changes to Maybe and back to I'm in, and
+  answers again from the open link: still waiting.
+- Each guest made to wait got the one email, a guest with three emails behind
+  them included. After "Let in", "You're in" arrives and that link and their
+  older links show the address.
+- A move from one cafe to another, and from a home to a cafe, makes nobody
+  wait.
 - With `plans_guest_answers` off, the page and every Plans answer are today's.
 - An app build without `guests=1` still opens the plan and its invitation list.
+
+**H1, the open link with the app (6.9)**:
+
+- The host's "Share a link" gives a `/plan-link/` address.
+- On an iPhone with the store build and with the new build, and on an Android
+  phone with the store build, tapping the open link in Messages ends on the
+  browser page with the form. So does the emailed "You're in" link, with the
+  address. Neither ends on the app's page for a private plan.
+- On Android with the new build, signed in, the open link opens the plan in
+  the app. Signed out, it opens the browser page.
+- "Open app" on the browser page opens the new build on that plan, with
+  "{Host} invited you".
+- Without "I say yes first", "I'm in" puts the person in and the place shows.
+  With it, they wait; the host sees them under "Waiting for you" with their
+  name and picture; after "Let in" the address shows.
+- A person the host removed, and a person on either side of a block, get
+  "This invitation isn't available anymore."
+- A guest who answered in a browser with the email their account has verified
+  signs in to the app: the plan is under "Yours" with the same answer and
+  numbers and their bring-list claim; the host's list has one row for them,
+  and the seats did not change. With an email the account has not verified,
+  nothing moves.
+- After a move to a home, a person with an account from the open link who
+  never had the host's yes waits, reads no address and is out of the chat;
+  one the host accepted by hand stays in.
+- A store build on either phone still opens its plans and invitations as
+  before.
 
 **H2**: two guests claim the same item within a second; one gets it and the
 other sees it taken. A guest in a browser claims and gives back. Leaving clears
@@ -659,13 +1091,41 @@ started from one posts, and an app build from before H3 opens it as its kind.
 
 **B1**: a group deal with a deadline five minutes ahead unlocks on the tick with
 enough people in and falls short without; each notice arrives once; "Mark used"
-shows on the guest's phone.
+shows on the guest's phone. Also:
+
+- A person's own plan, and a business without `plans.manage`, cannot carry a
+  deal. A deal cannot be changed once anyone is in; removing it tells them.
+- Someone who joins after an unlock has the deal; someone who was in when it
+  fell short keeps their place.
+- A row in the list carries one tag; the filter shows only once the list holds
+  a business's plan.
+- With `plans_deals` off, every Plans answer and screen is today's, with and
+  without `biz=1`.
 
 **B2 to B6**: in the payment company's test mode, with a business whose test
 payout account is enabled: the four worked examples of
 [02-payments.md](02-payments.md) come out to the cent in `Payment`, in the
 refund, and in the statement; a refund before the plan returns everything; the
-payout is not sent before `payout_after`.
+payout is not sent before `payout_after`. Also:
+
+- B0: a $160 invoice paid in test mode pays the crew exactly what it does
+  today, on the web, iPhone and Android; every existing payment kind prices as
+  it did (compare before and after on the same payments).
+- B2: a business without verification or without its own enabled payout
+  account cannot set a price; an online plan cannot have one; a place is held
+  for 10 minutes while paying and freed after; leaving before `refund_until`
+  returns everything and after it nothing.
+- B3: a person with no account joins and pays from the web page after signing
+  in, with Apple Pay or Google Pay in test mode.
+- B4: a group price that unlocks returns the difference once to each guest who
+  paid more; one that falls short lets every guest leave with a full refund
+  until the plan starts.
+- B5: with a deal on the bill only staff start a check; the part marked as not
+  covered gets no discount; the guest's app never sends a discount or a total;
+  the staff's list shows the payment within a few seconds; a refund by staff
+  works until 48 hours after the plan ends and not after.
+- B6: one tip after a paid plan, within 7 days, once.
+- Every paid step with its switch off: every answer and screen is today's.
 
 ## 17. Open questions
 
@@ -679,3 +1139,16 @@ payout is not sent before `payout_after`.
    guest who clears cookies and has no email on file (a text invitation).
 5. The date the Gift exchange, Find a date and Chip in extras are drawn; each
    needs its own boards before a contract.
+6. Decided November 15: a plan that moves to a home makes guests from the open
+   link wait for the host's yes (6.8).
+7. A guest held by the day's five gets "Check your email" and no email until
+   they answer again a day later. Nothing tells them. Left as it is.
+8. Decided November 15: a person who has the app answers the open link as
+   themselves (6.9).
+9. Whether a browser on Android hands a `/plans/` address reached by a
+   redirect back to the app. 6.9 keeps guests off `/plans/` so it cannot
+   matter; the Android session checks it on a phone with the store build.
+10. On iPhone the open link opens the browser first, also for a new build. It
+    can open the app directly once `/plan-link/*` is added to
+    `apple-app-site-association`, which sends every build there: only after
+    the store builds that do not know it are rare.

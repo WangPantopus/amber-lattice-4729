@@ -128,8 +128,16 @@ final class CardTableModel {
     var turnedOnce = false
     var envelopeTurnedOnce = false
     var heldOnce = false
+    /// The card has been enlarged once, so its hint has done its job.
+    var zoomedOnce = false
     /// "Send {first name} a card" (plan Part 3), set by the reader's page once the server says a card can go to them.
     var sendBack: CardTableMenuItem?
+    /// "Write back to {first name}", or "You wrote back" (experience plan Part 3), set by the reader's page.
+    var writeBack: CardTableMenuItem?
+    /// "Open the next card (2 more)" (experience plan Part 4), set by the reader's page when the Mailbox list it came
+    /// from has other cards waiting; `reservesNext` keeps the quiet row's room from the start.
+    var nextCard: CardTableMenuItem?
+    var reservesNext = false
     /// The quiet buttons may come (Send {first name} a card, or step 5's): the buttons keep room for them from the
     /// start, so the card doesn't move.
     var reservesSecondary = false
@@ -157,8 +165,15 @@ final class CardTableModel {
     /// Enlarged on the table (plan 6.1, `CardTableZoom.swift`): 1 to 3 times, moved this far from its place.
     var zoom: CGFloat = 1
     var zoomOffset: CGSize = .zero
-    /// "Read the verse" (plan 6.2): the bookmark is up.
-    var showsVerse = false
+    /// The cream bookmark that's up: the verse (plan 6.2) or the note in print (plan Part 2).
+    var bookmark: CardTableBookmark?
+    /// A long note's first leaf (plan Part 9, `CardTableModel+Leaf.swift`): Read on was pressed, and how far the leaf
+    /// has gone, 0 lying on the back to 1 gone.
+    var leafLifted = false
+    var leafLift = 0.0
+    @ObservationIgnored var leavesFor: (note: String, leaves: CardTableNoteLayout.Leaves?)?
+    /// Larger text than the default is set on the phone: "Read it in print" is a full button (plan Part 2).
+    var largerText = false
     @ObservationIgnored var pinchStartZoom: CGFloat?
     /// One tap on the card waits 0.3 s for a second (a double-tap enlarges it) before it turns the card.
     @ObservationIgnored var pendingCardTap: Task<Void, Never>?
@@ -282,8 +297,14 @@ final class CardTableModel {
         didSet { refreshRunning() }
     }
 
+    /// The card's own photo, opened over the whole screen from its print. Kept here for the same reason; the mail
+    /// holds still under it too.
+    var openedPhoto: CardPhotoOpened? {
+        didSet { if (openedPhoto == nil) != (oldValue == nil) { refreshRunning() } }
+    }
+
     func refreshRunning() {
-        guard isShowing, !isPaused, !isSharing else {
+        guard isShowing, !isPaused, !isSharing, openedPhoto == nil else {
             ticker.stop()
             motion.stop()
             return
@@ -323,6 +344,7 @@ final class CardTableModel {
         let wasSpread = self.fold.isSpread
         self.fold = fold
         resetZoom()
+        putLeafBack()
         // Closing the phone goes back to the picture side.
         if wasSpread, !fold.isSpread {
             springs.card.jump(to: 0)
@@ -347,7 +369,7 @@ final class CardTableModel {
 
     /// Tells the clock something moved.
     func wake() {
-        guard isShowing, !isPaused, !isSharing else { return }
+        guard isShowing, !isPaused, !isSharing, openedPhoto == nil else { return }
         if !ticker.isRunning { lastFrame = CACurrentMediaTime() }
         ticker.start()
     }
@@ -417,6 +439,7 @@ final class CardTableModel {
         if next.advanceFree(step: slice, count: count) { moving = true }
         springs = next
         if sending != nil, advanceSending(elapsed: elapsed) { moving = true }
+        if advanceLeaf(elapsed: elapsed) { moving = true }
         // Once it has cleared the envelope, the card is laid down in front of it.
         if step == .pulling, springs.pull.x > 0.985 {
             didCardLand()

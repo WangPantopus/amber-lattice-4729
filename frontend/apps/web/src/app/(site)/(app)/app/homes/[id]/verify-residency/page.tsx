@@ -4,17 +4,19 @@
 // claim-owner/evidence: a claim of type `resident`, residency documents
 // only, no challenge routing, and honest latency copy.
 
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, FileText, Upload, X } from 'lucide-react';
+import { ChevronLeft, FileText, Upload, X, Info, Lock, Camera } from 'lucide-react';
 import * as api from '@pantopus/api';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClaimUploadSession } from '@/components/home/useClaimUploadSession';
 import { openInfoRequest } from '@/components/homes/ClaimApprovalChecklist';
 import ClaimInfoRequestNote from '@/components/homes/ClaimInfoRequestNote';
 import { myClaimsQuery } from '@/lib/myHomes';
 import { toast } from '@/components/ui/toast-store';
+import { useVerifyOptions, invalidateVerifyOptions } from '@/components/place/fastVerify/useVerifyOptions';
+import { FAST_VERIFY_WORDS } from '@/components/place/fastVerify/fastVerifyWords';
 
 type EvidenceType = 'utility_bill' | 'lease';
 
@@ -55,6 +57,17 @@ export default function VerifyResidencyPage() {
   const savedClaim = useRef<string | undefined>(undefined);
   const existingClaimId = searchParams?.get('claimId') || undefined;
   const returnQuery = searchParams?.get('return') === 'place' ? '?return=place' : '';
+  const queryClient = useQueryClient();
+  // FASTVERIFY phase 4: someone holding a claim, with the bill read at once on (home_fast_verify_document), gets the
+  // Bill check: one photo, read at once; anything unsure goes to today's review. Off (or an answer to a reviewer's
+  // request): today's upload, unchanged.
+  const verifyOptions = useVerifyOptions(homeId).data;
+  const [billOutcome, setBillOutcome] = useState<'review' | 'unreadable' | null>(null);
+  // Once the Bill check has answered it stays on screen (the refreshed options then say the document is in review).
+  const documentOption = verifyOptions?.options.find((o) => o.id === 'document');
+  const billMode = billOutcome !== null || (!existingClaimId && documentOption?.available === true
+    // The server says whether the photo is read at once; older answers had no hint (a claim then meant yes).
+    && (documentOption.fast ?? verifyOptions?.level === 'added'));
 
   // What a Pantopus reviewer asked for on this claim (Request info), until a document answers it.
   const myClaims = useQuery(myClaimsQuery());
@@ -71,8 +84,13 @@ export default function VerifyResidencyPage() {
     savedClaim.current = undefined; uploadOperation.current = null;
     setPickedFile(null); setSelectedDoc(null);
   }, [homeId, existingClaimId, uploadSession.scope?.actor_id, uploadSession.scope?.session_scope]);
+  // The Bill check reads a bill (or a lease): no type to pick.
+  useEffect(() => { if (billMode && !selectedDoc) setSelectedDoc('utility_bill'); }, [billMode, selectedDoc]);
+  const preview = useMemo(() => (pickedFile && pickedFile.type.startsWith('image/') ? URL.createObjectURL(pickedFile) : null), [pickedFile]);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
   const pickDocument = useCallback(() => {
+    setBillOutcome((o) => (o === 'unreadable' ? null : o));
     if (uploadSession.scope) fileInputRef.current?.click();
   }, [uploadSession.scope]);
 
@@ -158,9 +176,33 @@ export default function VerifyResidencyPage() {
         uploadOperation.current = { file: pickedFile, type: selectedDoc, id: crypto.randomUUID() };
       }
       setUploading(true);
-      await api.upload.uploadOwnershipEvidence(homeId, claimId, pickedFile, selectedDoc, uploadOperation.current.id, uploadSession.scope.session_scope);
+      const uploaded = await api.upload.uploadOwnershipEvidence(homeId, claimId, pickedFile, selectedDoc, uploadOperation.current.id, uploadSession.scope.session_scope);
       await uploadSession.assertCurrent();
       setUploading(false);
+
+      // The Bill check's answer: verified at once (B3), or a person reviews it as today.
+      const read = billMode ? uploaded?.fast_check?.result : undefined;
+      if (read === 'verified') {
+        await Promise.all([
+          invalidateVerifyOptions(queryClient, homeId),
+          queryClient.invalidateQueries({ queryKey: ['place'] }),
+          queryClient.invalidateQueries({ queryKey: ['hub'] }),
+        ]);
+        router.replace(`/app/place?verified=1&home=${encodeURIComponent(homeId)}`);
+        return;
+      }
+      if (read === 'needs_review') {
+        void invalidateVerifyOptions(queryClient, homeId);
+        setBillOutcome('review');
+        return;
+      }
+      if (read === 'unreadable') {
+        // Nothing could be read: ask for another photo (the person may also verify another way).
+        uploadOperation.current = null;
+        setPickedFile(null);
+        setBillOutcome('unreadable');
+        return;
+      }
 
       const submittedPath = `/app/homes/${homeId}/verify-residency/submitted${returnQuery}`;
       router.push(submittedPath);
@@ -171,10 +213,95 @@ export default function VerifyResidencyPage() {
       submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [homeId, existingClaimId, selectedDoc, pickedFile, uploadSession, router, returnQuery]);
+  }, [homeId, existingClaimId, selectedDoc, pickedFile, uploadSession, router, returnQuery, billMode, queryClient]);
 
   if (!uploadSession.scope) return <div className="p-6"><p role="status">{uploadSession.error || 'Verifying your current session…'}</p>
     {uploadSession.error && <button type="button" onClick={uploadSession.retry}>Retry</button>}</div>;
+
+  if (billMode) {
+    const back = returnQuery ? '/app/place' : `/app/homes/${homeId}/dashboard`;
+    const fileInput = (
+      <input ref={fileInputRef} type="file" accept={ACCEPT_TYPES} onChange={handleFileChange} className="hidden" />
+    );
+    return (
+      <div className="min-h-screen bg-app-surface-raised">
+        <main className="max-w-xl mx-auto px-4 py-6 space-y-5 text-app-text" data-testid="bill-check">
+          <div className="grid grid-cols-[44px_1fr_44px] items-center">
+            <Link href={back} aria-label="Back" className="w-11 h-11 -ml-2 flex items-center justify-center rounded-full hover:bg-app-hover">
+              <ChevronLeft className="w-[22px] h-[22px]" />
+            </Link>
+            <p className="text-center text-[17px] font-semibold">Bill check</p>
+            <span />
+          </div>
+          {billOutcome === 'review' ? (
+            <>
+              <p role="status" className="rounded-2xl border border-app-border bg-app-surface p-5 text-[15px] leading-[22px]">
+                We couldn&apos;t read this clearly, so a person will review it. You can also verify another way.
+              </p>
+              <Link href={`/app/homes/${homeId}/verify-postcard${returnQuery}`} className="w-full min-h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold flex items-center justify-center">
+                {FAST_VERIFY_WORDS.mailMeACode}
+              </Link>
+              <Link href={`/app/homes/${homeId}/verify-residency/submitted${returnQuery}`} className="w-full min-h-[48px] rounded-xl text-primary-600 dark:text-primary-300 font-semibold flex items-center justify-center hover:bg-app-hover">
+                {FAST_VERIFY_WORDS.notNow}
+              </Link>
+            </>
+          ) : (
+            <>
+              {billOutcome === 'unreadable' ? (
+                <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                  We couldn&apos;t read this photo. Take another one, or verify another way.
+                </p>
+              ) : null}
+              <div>
+                <h1 className="text-[26px] font-bold -tracking-[0.02em]">Take a photo of a bill</h1>
+                <p className="mt-1 text-[15px] text-app-text-secondary">A utility bill, bank statement or lease from the last 90 days.</p>
+              </div>
+              {fileInput}
+              {pickedFile ? (
+                <div className="rounded-2xl border border-app-border bg-app-surface p-4 flex items-center gap-4">
+                  {preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={preview} alt="Your photo" className="w-24 h-32 rounded-lg object-cover border border-app-border" />
+                  ) : (
+                    <span className="w-24 h-32 rounded-lg border border-dashed border-app-border flex items-center justify-center"><FileText className="w-8 h-8 text-app-text-muted" /></span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{pickedFile.name}</p>
+                    <p className="text-xs text-app-text-secondary">{formatFileSize(pickedFile.size)}</p>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={pickDocument} className="w-full rounded-2xl border-2 border-dashed border-app-border bg-app-surface py-10 flex flex-col items-center gap-2 hover:bg-app-hover">
+                  <Camera className="w-9 h-9 text-app-text-muted" aria-hidden />
+                  <span className="text-[15px] font-semibold">Take a photo of a bill</span>
+                  <span className="text-xs text-app-text-muted">PDF, JPG, PNG — max {MAX_SIZE_MB} MB</span>
+                </button>
+              )}
+              <p className="flex items-start gap-2 rounded-xl bg-primary-50 dark:bg-primary-950/30 px-3.5 py-3 text-[13.5px] text-primary-800 dark:text-primary-200">
+                <Info size={16} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />You&apos;re verified as soon as you use this photo. A person at Pantopus also reviews it afterwards.
+              </p>
+              <p className="flex items-start gap-2 text-[13px] text-app-text-secondary">
+                <Lock size={15} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />Cover account numbers if you like. We only read the name, address and date.
+              </p>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!pickedFile || submitting}
+                className="w-full min-h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold"
+              >
+                {submitting ? 'Reading…' : 'Use this photo'}
+              </button>
+              {pickedFile ? (
+                <button type="button" onClick={() => { removeFile(); pickDocument(); }} disabled={submitting} className="w-full min-h-[48px] rounded-xl text-primary-600 dark:text-primary-300 font-semibold hover:bg-app-hover">
+                  Retake
+                </button>
+              ) : null}
+            </>
+          )}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-app-surface-raised">

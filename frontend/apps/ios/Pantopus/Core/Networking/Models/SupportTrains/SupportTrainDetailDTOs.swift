@@ -62,6 +62,10 @@ public struct SupportTrainDetailDTO: Decodable, Sendable {
     /// The train's chat room — only for someone in it (organizers, the
     /// recipient, helpers with a signup).
     public let chatThreadId: String?
+    /// The train's IANA zone and today's date there (`YYYY-MM-DD`): "today",
+    /// passed dates and arrival times follow the train, not the phone.
+    public let timezone: String?
+    public let today: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, story, status, slots, updates, organizers
@@ -86,6 +90,34 @@ public struct SupportTrainDetailDTO: Decodable, Sendable {
         case specialInstructions = "special_instructions"
         case activityVisibility = "activity_visibility"
         case chatThreadId = "chat_thread_id"
+        case timezone, today
+    }
+
+    /// The train's zone, or the phone's when an older reply has none.
+    public var trainTimeZone: TimeZone {
+        timezone.flatMap(TimeZone.init(identifier:)) ?? .current
+    }
+
+    /// Today's date (`YYYY-MM-DD`) where the train is.
+    public var trainToday: String {
+        if let today, !today.isEmpty { return today }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = trainTimeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    /// The dates still on the train: a removed (canceled) date is never shown
+    /// or counted, even from an older server that still sends it.
+    public var liveSlots: [SupportTrainSlotDTO] {
+        (slots ?? []).filter { $0.status != "canceled" }
+    }
+
+    /// The person the train is for.
+    public var viewerIsRecipient: Bool {
+        viewerLevel == "recipient"
     }
 
     /// `primary` / `co_organizer` / `recipient_delegate` hold organizer
@@ -175,9 +207,12 @@ public struct SupportTrainSlotDTO: Decodable, Sendable, Identifiable, Hashable {
     public let status: String?
     public let filledCount: Int?
     public let capacity: Int?
+    /// The date has passed where the train is (server-computed).
+    public let isPast: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, status, capacity
+        case isPast = "is_past"
         case slotDate = "slot_date"
         case slotLabel = "slot_label"
         case supportMode = "support_mode"
@@ -206,10 +241,15 @@ public struct SupportTrainMyReservationDTO: Decodable, Sendable, Identifiable, H
     public let restaurantName: String?
     public let estimatedArrivalAt: String?
     public let noteToRecipient: String?
+    public let privateNoteToOrganizer: String?
     public let createdAt: String?
+    /// The signup's version, sent back when the helper edits it.
+    public let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status
+        case privateNoteToOrganizer = "private_note_to_organizer"
+        case updatedAt = "updated_at"
         case slotId = "slot_id"
         case contributionMode = "contribution_mode"
         case dishTitle = "dish_title"

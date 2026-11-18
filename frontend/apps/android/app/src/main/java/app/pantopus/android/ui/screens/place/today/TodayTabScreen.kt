@@ -54,6 +54,9 @@ import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.StatusChip
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
 import app.pantopus.android.ui.screens.homes.waitingLabel
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
@@ -173,6 +176,10 @@ fun TodayTabScreen(
     val keptAround = remember(aroundPlace) { viewModel.keptAround(aroundPlace) }
     val aroundPage = (around ?: keptAround)?.takeIf { it.showsSwitch && aroundPlace != null }
     val showsAround = half == TodayHalf.Around && aroundPage != null
+    // The Today tab (the side menu marks it), for the guidance cards: card 3, its third line only with the switch.
+    if (onOpenMenu != null) {
+        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Today, ready = state != TodayTabUiState.Loading, showsAroundYou = aroundPage != null))
+    }
     LaunchedEffect(scrollToTop) { scrollToTop?.collect { scroll.animateScrollTo(0) } }
     LaunchedEffect(radonHomeId, state) {
         val shown = state

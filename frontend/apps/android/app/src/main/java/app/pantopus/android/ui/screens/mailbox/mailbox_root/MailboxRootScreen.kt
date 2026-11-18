@@ -64,9 +64,14 @@ import app.pantopus.android.data.mailbox.HolidayCardsRepository
 import app.pantopus.android.data.mailbox.MailboxRepository
 import app.pantopus.android.ui.components.NavigationMenuButton
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
+import app.pantopus.android.ui.guidance.GuidanceScreen
+import app.pantopus.android.ui.guidance.GuidanceSpot
+import app.pantopus.android.ui.guidance.GuidanceSpotFacts
 import app.pantopus.android.ui.screens.ceremonial_mail_open.MailWelcomePorch
+import app.pantopus.android.ui.screens.mailbox.cards.CardMantel
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardRow
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
+import app.pantopus.android.ui.screens.mailbox.cards.mantelCards
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardOnTable
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardSoundsSetting
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableDialog
@@ -101,6 +106,8 @@ import java.time.ZoneId
 @Composable
 fun MailboxRootScreen(
     onOpenMail: (String) -> Unit,
+    /** A Christmas card from the list, with the other cards waiting, oldest first ("Open the next card", plan Part 4). */
+    onOpenCard: ((mailId: String, next: List<String>) -> Unit)? = null,
     onOpenSearch: () -> Unit = {},
     onOpenVacationHold: () -> Unit = {},
     onOpenStamps: () -> Unit = {},
@@ -145,7 +152,7 @@ fun MailboxRootScreen(
     var confirmTakeBack by remember { mutableStateOf<SentCard?>(null) }
 
     LaunchedEffect(Unit) {
-        viewModel.configureNavigation(onOpenMail = onOpenMail)
+        viewModel.configureNavigation(onOpenMail = onOpenMail, onOpenCard = onOpenCard)
         viewModel.load()
         Analytics.track(AnalyticsEvent.ScreenMailboxRootViewed)
     }
@@ -156,6 +163,10 @@ fun MailboxRootScreen(
     SentReads(selectedDrawer, zone, sentList)
     // Back on the Mailbox after a while (or the next morning, or from paying a bill): today's mail, not what was read before.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshIfStale() }
+    // The Mail tab's first screen (the side menu marks it), for the guidance cards: card 4, pointer 15 and card 22.
+    if (onOpenMenu != null) {
+        GuidanceSpot(GuidanceSpotFacts(GuidanceScreen.Mail, ready = state !is MailboxUiState.Loading, sentAny = sent?.any == true))
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailboxRoot")) {
         // The mailbox and the mail scroll under the header, which slides away while they scroll down and comes back
@@ -370,6 +381,7 @@ private fun MailboxList(
         if (selectedDrawer == MailboxDrawer.Home) {
             waiting.firstOrNull()?.let { home -> item(key = "homeWaiting") { MailHomeWaitingBanner(home) { onVerify(home) } } }
         }
+        mantelItem(state, selectedDrawer, selectedTab, viewModel::openMail)
         holidayCardItem(cards, selectedDrawer, selectedTab, emptyDayCard, onOpenCards)
         when (selectedTab) {
             MailboxTab.Incoming -> incomingItems(state, viewModel)
@@ -429,6 +441,23 @@ private fun LazyListScope.holidayCardItem(
     if (drawer != MailboxDrawer.Me || tab != MailboxTab.Incoming || emptyDayCard) return
     val open = cards?.takeIf { HolidayCardsRepository.cardsOpen(it) } ?: return
     item(key = "holidayCards") { HolidayCardRow(open, onOpen) }
+}
+
+/**
+ * The mantel (plan Part 7): this season's opened Christmas cards standing on a shelf, the first thing in your own mail
+ * (Me, Incoming) once the list holds one. It scrolls away with the list.
+ */
+private fun LazyListScope.mantelItem(
+    state: MailboxUiState,
+    drawer: MailboxDrawer,
+    tab: MailboxTab,
+    onOpen: (String) -> Unit,
+) {
+    if (!LaunchFeatures.holidayCards || drawer != MailboxDrawer.Me || tab != MailboxTab.Incoming) return
+    val loaded = state as? MailboxUiState.Loaded ?: return
+    val cards = mantelCards(loaded.sections.flatMap { it.pieces })
+    if (cards.isEmpty()) return
+    item(key = "mantel") { CardMantel(cards, onOpen, modifier = Modifier.padding(bottom = 4.dp)) }
 }
 
 /** Incoming: the pieces by the day they came. */

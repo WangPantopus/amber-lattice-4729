@@ -442,6 +442,8 @@ app.use('/api', (req, res, next) => dbTiming.resume(req.dbLedger, next));
 
 // Calendarly public booking flow (own per-route limiters) — mounted before the generic public
 // router so /book and /booking paths use bookingWriteLimiter, not the read previewLimiter.
+// "This wasn't me" for a verify postcard (FASTVERIFY; its own limiters by IP and by home).
+app.use('/api/public', require('./routes/postcardReport'));
 app.use('/api/public', require('./routes/schedulingPublic'));
 
 // Public preview endpoints (no auth, rate-limited by IP)
@@ -482,6 +484,7 @@ app.use('/api/homes', require('./routes/mailboxCheck'));  // Mailbox reality che
 app.use('/api/homes', require('./routes/homeRecordWatch')); // Rate watch (/:id/record-watch)
 app.use('/api/homes', require('./routes/blockFounders')); // Founding ranks + postcard invites (/:id/block-founders)
 app.use('/api/homes', require('./routes/realRent')); // Real Rent Benchmark contribution (/:id/rent-report)
+app.use('/api/homes', require('./routes/homeFastCheck')); // Faster home verification (/:id/verify-options, /:id/fast-check/*)
 app.use('/api/homes', require('./routes/unlisted')); // Unlisted removal tracking (/:id/unlisted)
 app.use('/api/homes', require('./routes/addressCalendar')); // Address calendar + pickup day (/:id/calendar)
 app.use('/api/scout', require('./routes/scout')); // Before-You-Sign Scout (T1, no home)

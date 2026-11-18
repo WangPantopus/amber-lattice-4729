@@ -112,6 +112,7 @@ and `locationUnlocked: true`. Authors can list grants (`GET`) and revoke them
 | Author              | exact (always)                              | `true`             |
 | Other viewers, photo-placed post stored `exact_place` | exact | `true` |
 | Other viewers, any other post | **Minimum `approx_area`** (permanent blur)  | `false`   |
+| Everyone, the author included, a floating post (the Sky, below) | its stored area point, unmoved, with `area: { radius_m }` | `false` |
 
 Default `location_precision`: **`approx_area`**
 Home-place posts forced to: **`approx_area`** (enforced at creation time)
@@ -137,6 +138,45 @@ when the author asked for less.
 Only `POST /api/posts` sets the basis (it drops a client's copy of either key);
 an edit that moves the post or leaves it no photo or video clears the basis and
 any exact pin, and an edit can't raise a post to `exact_place`.
+
+**The Sky's places (phase A; `sky_places` flag, off everywhere until the founder
+turns it on; accepted 2026-11-14).** With the flag on for the author, a personal
+place post keeps an exact pin only at a **tagged venue where its own photo or
+video was taken** (looked up again by its picker id), and not when that venue
+is within ~60 m of a home the author lives at. Schools and preschools take a pin
+like any venue: the founder reversed call C9 on 2026-11-17 ("schools and
+preschools should be allowed as a pin").
+Everything else floats over its area ([Areas of at least 100 homes](#areas-of-at-least-100-homes)):
+an address or town tag, a bare photo, no photo, a venue with no photo, and every
+Home post (`POST /api/posts`, the Pulse-mode composer in `services/pulse/compose.js`,
+and an edit that moves a post, `PATCH /api/posts/:id`). A floating post stores
+**only the area's point** (`latitude`, `longitude`, the effective pair, and so
+the PostGIS `location`), `approx_area`, no `location_address`, no
+`location_basis`, an address tag's id removed, and `post_metadata.area =
+{ v: 1, step, radius_m }`. Its `location_name` is what others read: a venue's or
+town's name or the home's city, never a street line, else the area's town; at
+home always the town. A post asked for with `neighborhood_only` or `none` keeps
+that. The GPS fix and the photos' points are read as evidence and never stored.
+Readers get the stored area point unmoved (`applyPostLocationPrivacy`,
+`distanceText.displayedPoint`), the author too. The composers' place check
+(`GET /api/posts/place-eligibility`) adds `sky: true` and `area: { label,
+latitude, longitude, radius_m }` for a caller with the flag on, for their
+"Floating over …" line; the label is the town at the area's own point.
+In the apps (web, iPhone, Android; 2026-11-16) the composer's "Posting to …"
+line becomes "Floating over Camas, WA" with a "Pin it at a place" button that
+opens the place picker, and "At Esther Short Park" only when a venue is tagged
+and one of the draft's photos was taken within 5 km of it (the server's rule);
+the photo note says "The post floats over the area" otherwise. The web asks the
+route once per place picked, a device spot included, for that line. With no
+`sky` in the answer the composers are as before.
+
+**Posts made before (the Sky on for everyone).** Old rows keep their exact
+points (the founder decides any clean-up). Once `sky_places` is on for everyone,
+`postPrecisionForOthers` shows an old photo-placed `exact_place` post exactly
+only when its tag is a venue (`utils/postPlaceTag.js`: `geocode_place_id`,
+`geocode_accuracy`, now in the feed's select but never in an answer); an address
+tag or a photo with a town tag or none shows as an approximate-area point, without
+"Photo taken here". The author still sees their own exact point.
 
 A post made with the composer's "current location" target stores the device's
 GPS fix, which differs by a few metres from post to post. Non-authors see the
@@ -198,6 +238,64 @@ taken. Others see only what the author chose on the Post sheet, which shows the 
 | "Show the area instead" | the grid-cell point under [Approximate-area points](#approximate-area-points) | the town |
 | Posted within ~60 m of the author's own home | as chosen (the Post sheet warns first) | the town |
 
+**With the Sky's places on for the author** (`sky_places` flag; the Sky design's phase A, accepted 2026-11-14, with
+the rule the founder set on 2026-11-17 after trying it: a Moment is where it was taken, not at the middle of an
+area), the server decides, whatever an app's sheet says:
+
+| Moment | Point stored and seen (author included) | Place label |
+|--------|-----------------------------------------|-------------|
+| Where it was taken (the default) | the exact point | a named place (a school or a preschool too, since 2026-11-17), else the street's name without a number, else the town |
+| "Pin it at a place": a public place close by, picked by name | the place's own point (from the venues index); the photo's own point when the place's is farther off than a place may be picked (the middle of a big park) | the place's name |
+| Within ~60 m of the author's own home, always | only its area's spot: a public street close to the middle of the quarter-mile cell the home is in (below), never the home | the town at that spot |
+| "Don't show where" | none | none |
+
+- **How close a picked place must be** depends on how built-up the spot is, from the same homes file as the areas
+  (`momentPlace.pickWithinM`): a mile (1,600 m) on the two most built-up steps (a quarter-mile cell with 100 homes or
+  more, downtown, Manhattan, and the next), a mile and a half (2,400 m) on the middle step, and two miles (3,200 m)
+  on the two most open; a mile where nobody counted the homes (abroad). The founder set these on 2026-11-17 in the
+  evening ("when users pick a spot, we can allow a bit more further distance places to be searched, although still
+  not too far"); before that they were 400 m, 800 m, 1,600 m, 2,400 m and 3,200 m. The preview's `pick_within_m`
+  says it and the apps' place picker lists and finds no place farther. A place whose outline holds the spot is 0 m
+  away. A `venue_id` farther off, or one nobody finds, is `422 PLACE_NOT_NEARBY`. So no pin is ever farther from
+  where the photo was taken than that distance. A place nobody picked ("Pin it at a place" with nothing picked: the
+  place at the spot itself) keeps the earlier distances: its pin moves to the place's own point only within 400 m,
+  800 m, 1,600 m, 2,400 m or 3,200 m by the same steps, else it stays where the photo was taken.
+- **A place is picked** with `pin: "place"`, a `venue_id` from the place picker, or a venue's `place_key`. A place
+  within ~60 m of the author's home takes no pin: the Moment stays where it was taken. Schools and preschools take a
+  pin like any place (founder 2026-11-17, reversing call C9 of the Sky design).
+- **A Moment at home floats over a street close by** (founder 2026-11-17: at home it stays an area, but a very
+  close one, never miles off). Its spot is worked out from the cell only (`momentPlace.closeArea`): the 0.005° cell
+  holding the home (about 0.35 by 0.25 mile), then the point on a public street (OpenStreetMap: residential to
+  primary roads, no driveways or footpaths) closest to the cell's middle and within 200 m of it; with no street
+  there, or none found in time, the cell's middle. Every home in the cell shows the same spot, so many Moments never
+  narrow it down, and it is at most about a third of a mile from the home. This is closer than the 100-homes areas
+  Pulse posts use: in the countryside a cell holds few homes. The street spot is looked up once per cell and kept
+  for a month (`services/geo/streets.js`).
+- **At home the phone's point is never written:** `latitude`, `longitude` and the effective pair hold that spot,
+  with `location_precision` `approx_area`, `show_area` true (so apps from before draw an area) and
+  `post_metadata.area = { v: 1, step: 1, radius_m }` (`radius_m` reaches the whole cell from the spot). The exact
+  point is used only while the request is handled (the home check). The same goes for a Moment sent with
+  `show_area: true`: the "Show the area instead" of an app from before the Sky, and a Post sheet built between
+  November 16 and 17, which showed the area unless a place was picked.
+- **On the map a Moment over its area floats:** its ring says `floating: true` and the apps draw the disc with no
+  pointer, low over its spot with a soft shadow under it, by day and by night, so it never reads as an exact pin.
+- **Height:** a Moment over its area away from home (one sent with `show_area`) keeps feet rounded to 100; a pin
+  keeps 10; at home, none.
+- **The preview** (`POST /api/moments/place-preview`) adds `sky`, `area` (the town, the street spot and
+  `radius_m`: what a Moment at home shows), `place` (the public place a pin would use) and `can_pin` (false at home)
+  for a caller with the flag on; its names include schools and preschools (since 2026-11-17).
+- **Share later** (`share_later: "1h" | "3h" | "tonight"`): the Moment is made at once but until its time only its
+  author can read it (`state: "scheduled"`, `share_at`); it is on no map, in no ring and in no push. At its time its
+  `created_at` becomes the time it went live, so nobody reads when its author was there; new apps say "Earlier today"
+  (or "Yesterday") for it (`earlier: true`).
+- **In the apps** (iPhone and Android, 2026-11-17): the Post sheet draws the Sky only when the preview answers `sky:
+  true`: the name of where it was taken with the exact pin and "Exact" by default; "Pin it at a place" (the place
+  naming the spot, else the place picker, schools and preschools included since 2026-11-17) sends `pin: "place"` and shows "At
+  Esther Short Park"; at home "Around Washougal, WA" with the area's disc and a note, with the pin and the elevation
+  greyed out; "Share later" sends `share_later`. A Moment at home also sends `show_area: true`, so it shows only its
+  area even if the flag went off meanwhile.
+- Area Moments made before the flag keep the grid read below until they end (48 hours at most).
+
 - **No live location, no trail:** only the posted point is stored; nothing joins one Moment to the next.
 - **The author may pick the name, never write it:** the Post sheet lists the names that fit an exact pin
   (`places` on `POST /api/moments/place-preview`: the places at or within about 100 m, then the street's name
@@ -207,8 +305,8 @@ taken. Others see only what the author chose on the Post sheet, which shows the 
   street's name, "In" a town; an area or at-home Moment always says the town), the same label everyone reads, with
   no picture, caption or card text (`backend/services/moments/momentNotify.js`). It goes only to accepted
   connections who could open the Moment and whose app has Moments.
-- **Rings group by what viewers see:** an exact pin's ring is its 0.005° cell, an area pin's ring its displayed
-  point, so grouping never places an area Moment more precisely than its own point.
+- **Rings group by what viewers see:** an exact pin's ring is its 0.005° cell, an area pin's ring (a floating
+  Moment's too) its displayed point, so grouping never places an area Moment more precisely than its own point.
 - **Map queries filter on displayed points:** `GET /api/moments/map` reads stored points in a box widened by
   `MAX_DISPLAY_OFFSET_DEGREES` on whole neighborhood cells, then keeps the Moments whose displayed point is in view.
 - **Height is the author's choice, and never at home:** with "Show height" on (behind the `moment_heights` flag),
@@ -255,6 +353,19 @@ leastPrecise(a, b)
 - If `precision === 'approx_area'` → grid-cell point (below), strip address, `locationUnlocked: false`
 - If `precision === 'neighborhood_only'` → round to 2 decimals (~1km), strip address, `locationUnlocked: false`
 - If `precision === 'none'` → null out lat/lng, strip address and location_name, `locationUnlocked: false`
+
+#### Areas of at least 100 homes
+
+A floating post (the Sky, behind `sky_places`) stores and shows `areaPoint(lat, lng)` from
+`backend/utils/areaCells.js`: the centre of a square of whole 0.005° cells in one of five sizes (0.005°, 0.01°, 0.02°,
+0.05°, 0.1°; each aligned to multiples of its size), rounded to 5 decimals, with no secret offset, and `radius_m`,
+half the square's diagonal rounded up to 10 m, for the disc apps draw. The size is the smallest whose square holds
+at least 100 homes counting only the places that share that square at that size (so a post shown over a square
+always stands for 100 homes), read from a file built from the 2020 Census housing counts by block
+(`backend/scripts/area-cells/build.cjs`). The file ships with the server (`backend/data/area-cells`, the whole US), so
+every server reads the same areas with nothing to publish or set; `AREA_CELLS_URL` points a server elsewhere. Where
+that isn't so even at 0.05°, abroad, and if the file can't be read, it is 0.1° (about 7 by 5 miles). The answer depends on the place only, so many posts from
+one spot show one area and never narrow it down.
 
 #### Approximate-area points
 

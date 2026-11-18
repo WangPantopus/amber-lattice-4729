@@ -19,6 +19,7 @@ const { loadViewer } = require('../services/plans/planViewer');
 const planService = require('../services/plans/planService');
 const planActions = require('../services/plans/planActions');
 const planInvites = require('../services/plans/planInvites');
+const planGuests = require('../services/plans/planGuests');
 const planGames = require('../services/plans/planGames');
 const planPlaces = require('../services/plans/planPlaces');
 const { suggestPlaces } = require('../services/ai/planPlaceSuggest');
@@ -29,12 +30,17 @@ router.use(verifyToken, requireFeatureFlag('plans'));
 // `biz=1` on a request: this app can draw a business's plan (Plans with businesses). Without it, on every
 // route here, a business's plan does not exist, which is what keeps one from reaching an older app that would
 // draw it as a neighbor's. `more=1`: this app can draw an online plan and the four newer kinds; without it those
-// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. Read by
-// services/plans/planViewer.js.
+// don't exist either, since older apps decode `kind` and `place_kind` as closed lists. `guests=1`: this app can
+// draw guests without an account, Maybe, adults and kids, and room over 30 (Plans for the holidays, H1); without it
+// the server answers as it did before. Read by services/plans/planViewer.js.
 router.use((req, _res, next) => {
   if (req.user) {
     req.user.plansBiz = req.query.biz === '1';
     req.user.plansMore = req.query.more === '1';
+    req.user.plansGuests = req.query.guests === '1';
+    // `extras=1`: this app can draw the extras of Plans for the holidays (08-extras.md); without it a plan reads
+    // without their fields, and a plan still picking its date doesn't exist.
+    req.user.plansExtras = req.query.extras === '1';
   }
   next();
 });
@@ -231,6 +237,21 @@ router.post('/places/suggest', aiDraftLimiter, async (req, res) => {
   }
 });
 
+// GET /api/plans/occasions: the occasions in season (Plans for the holidays H3), each with what it fills in on the host
+// form: { occasions: [{ key, text, kind, details, fills }] }. 404 while plans_occasions is off; none without the newer
+// kinds (`more=1` and plans_kinds), whose kinds they start.
+router.get('/occasions', async (req, res) => {
+  try {
+    const planOccasions = require('../services/plans/planOccasions');
+    if (!(await planOccasions.enabledFor(req.user))) return fail(res, 404, 'not_found', "This isn't available right now.");
+    const viewer = await loadViewer(req.user, { point: pointFromQuery(req.query), gps: gpsFromQuery(req.query) });
+    if (!viewer.kindsFlag) return res.json({ occasions: [] });
+    return res.json(await planOccasions.inSeason(viewer));
+  } catch (err) {
+    return serverError(res, err, 'occasions', req);
+  }
+});
+
 // GET /api/plans/invites/people[?q=]: the people this person can invite, before the plan exists (a private plan's
 // preview): { people: [{ user_id, display_name, avatar_url, reason }] }.
 router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, res) => {
@@ -238,6 +259,24 @@ router.get('/invites/people', requireFeatureFlag('plans_invites'), async (req, r
     return res.json(await planInvites.peopleBeforePosting(req.user, req.query.q));
   } catch (err) {
     return serverError(res, err, 'invites_people_before', req);
+  }
+});
+
+// The same people again (Plans for the holidays, 08-extras section 6), behind plans_same_people: 404 while it is off.
+// GET /api/plans/past-people: the host's last ten ended plans that had anyone in, { plans: [{ post_id, title, kind,
+// date_text, count }] }. GET /api/plans/past-people/:postId: who was in on one, a name each, never an address.
+router.get('/past-people', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planSamePeople').pastPlans(req.user));
+  } catch (err) {
+    return serverError(res, err, 'past_people', req);
+  }
+});
+router.get('/past-people/:postId', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planSamePeople').pastPlanPeople(req.user, req.params.postId));
+  } catch (err) {
+    return serverError(res, err, 'past_people_plan', req);
   }
 });
 
@@ -275,6 +314,15 @@ router.get('/:id', async (req, res) => {
 function body(req) {
   return req.body && typeof req.body === 'object' ? req.body : {};
 }
+
+// POST /api/plans/deal-preview (B1): what a guest will read about a deal the business is choosing; nothing is saved.
+router.post('/deal-preview', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').previewFor(req.user, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'deal_preview', req);
+  }
+});
 
 // POST /api/plans: host a plan. Returns PlanDetail (201).
 router.post('/', contentCreationLimiter, async (req, res) => {
@@ -329,6 +377,89 @@ router.delete('/:id/requests/mine', async (req, res) => {
     return res.json(await planActions.withdrawMine(req.user, req.params.id, { io: req.app.get('io') }));
   } catch (err) {
     return serverError(res, err, 'withdraw', req);
+  }
+});
+
+// POST /api/plans/:id/requests/quote (B2): { party_size, kids_count } → what joining costs, with no side effect.
+router.post('/:id/requests/quote', async (req, res) => {
+  try {
+    return res.json(await planActions.quoteToJoin(req.user, req.params.id, req.body || {}));
+  } catch (err) {
+    return serverError(res, err, 'paid_quote', req);
+  }
+});
+
+// POST /api/plans/:id/requests/mine/confirm (B2): the payment sheet closed; in once the payment company says it went
+// through. Answers the plan (PlanDetail), or 409 payment_not_complete, full (it filled while they paid: refunded) or
+// ended (it takes nobody now: refunded).
+router.post('/:id/requests/mine/confirm', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPaid').confirmMine(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'paid_confirm', req);
+  }
+});
+
+// ── One person pays for the group (the extras, 08-extras section 7; services/plans/planGroupPay.js): 404 while
+// plans_group_pay is off for the plan's business. Buying is POST …/requests with { for: "link", spots }.
+// POST /api/plans/:id/requests/claim-spot { token }: in, free, while the buyer's link has spots left. Answers the plan.
+router.post('/:id/requests/claim-spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').claim(req.user, req.params.id, req.body || {}, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_claim', req);
+  }
+});
+
+// POST /api/plans/:id/requests/mine/give-back-spots: the buyer gives back the spots nobody took now. Answers the plan.
+router.post('/:id/requests/mine/give-back-spots', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').giveBack(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_give_back', req);
+  }
+});
+
+// GET /api/plans/:id/spot?token=: what the link shows ("{Chris} got you a spot", spots left), signed in.
+router.get('/:id/spot', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planGroupPay').readLink(req.params.id, req.query.token));
+  } catch (err) {
+    return serverError(res, err, 'group_pay_link', req);
+  }
+});
+
+// The bill at the place (B5, contract 11.2), behind plans_pay_here. Every amount is the server's.
+const planChecks = () => require('../services/plans/planChecks');
+const checkRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+// Staff with plans.manage: send a guest a check { request_id, amount_cents, no_deal_cents }, and the guest list.
+checkRoute('post', '/:id/checks', 'check_send', (req) => planChecks().sendCheck(req.user, req.params.id, req.body || {}));
+checkRoute('get', '/:id/checks', 'check_list', (req) => planChecks().staffList(req.user, req.params.id));
+// A guest who is in: their open check (or the last paid one), and starting their own { amount_cents } (no deal on the bill).
+checkRoute('get', '/:id/checks/mine', 'check_mine', (req) => planChecks().mine(req.user, req.params.id));
+checkRoute('post', '/:id/checks/mine', 'check_start', (req) => planChecks().startMine(req.user, req.params.id, req.body || {}));
+// The guest: another tip's total (no side effect), the payment sheet's values, and confirm after the sheet closes.
+checkRoute('post', '/:id/checks/:checkId/quote', 'check_quote', (req) => planChecks().quote(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/pay', 'check_pay', (req) => planChecks().pay(req.user, req.params.id, req.params.checkId, req.body || {}));
+checkRoute('post', '/:id/checks/:checkId/confirm', 'check_confirm', (req) => planChecks().confirm(req.user, req.params.id, req.params.checkId));
+// A tip after a paid plan (B6): { amount_cents } answers the payment sheet's values; confirm answers "You tipped $5.00".
+checkRoute('post', '/:id/tip', 'tip_later', (req) => planChecks().tipLater(req.user, req.params.id, req.body || {}));
+checkRoute('post', '/:id/tip/confirm', 'tip_confirm', (req) => planChecks().tipConfirm(req.user, req.params.id));
+// Staff: refund all or { amount_cents }, until 48 hours after the plan ends.
+checkRoute('post', '/:id/checks/:checkId/refund', 'check_refund', (req) => planChecks().refund(req.user, req.params.id, req.params.checkId, req.body || {}));
+
+// POST /api/plans/:id/requests/:requestId/deal-used (B1): staff with plans.manage mark a guest's free thing used.
+router.post('/:id/requests/:requestId/deal-used', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDeals').markUsedFor(req.user, req.params.id, req.params.requestId));
+  } catch (err) {
+    return serverError(res, err, 'deal_used', req);
   }
 });
 
@@ -409,10 +540,199 @@ router.post('/:id/invites/link', requireFeatureFlag('plans_invites'), async (req
   }
 });
 
-// POST /api/plans/:id/invites/claim { token }: the person opened an email or text invitation.
+// POST /api/plans/:id/invites/from-plan { from_post_id, skip?, confirm_shares_address? }: the same people again. Each
+// person who was in there is invited the way they were reached; answers the host's list and a result a person.
+router.post('/:id/invites/from-plan', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.status(201).json(await require('../services/plans/planSamePeople').inviteFromPlan(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'invite_from_plan', req);
+  }
+});
+
+// ── Plans for the holidays, H1 (services/plans/planGuests.js): 404 while plans_guest_answers is off for the host ──
+
+// POST /api/plans/:id/invites/open-link { host_says_yes_first?, rotate?, confirm_shares_address? }: the plan's one
+// link for everyone. Answers { url, message, host_says_yes_first }.
+router.post('/:id/invites/open-link', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.makeOpenLink(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link', req);
+  }
+});
+
+// DELETE /api/plans/:id/invites/open-link: turns the link off. Answers already given stay.
+router.delete('/:id/invites/open-link', async (req, res) => {
+  try {
+    return res.json(await planGuests.closeOpenLink(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_open_link_off', req);
+  }
+});
+
+// POST /api/plans/:id/invites/remind: everyone who hasn't answered, the way each was invited; once a plan a day.
+router.post('/:id/invites/remind', requireFeatureFlag('plans_invites'), async (req, res) => {
+  try {
+    return res.json(await planGuests.remind(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'invite_remind', req);
+  }
+});
+
+// POST /api/plans/:id/invites/maybe: an invited person says Maybe.
+router.post('/:id/invites/maybe', async (req, res) => {
+  try {
+    return res.json(await planGuests.sayMaybe(req.user, req.params.id, { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'invite_maybe', req);
+  }
+});
+
+// POST /api/plans/:id/invites/:inviteId/ok { confirm_shares_address? }: the host lets in a guest waiting from the open
+// link; their email goes. (A guest who took that answer into the app: the ordinary accept of their ask.)
+router.post('/:id/invites/:inviteId/ok', async (req, res) => {
+  try {
+    return res.json(await planGuests.letIn(req.user, req.params.id, req.params.inviteId, body(req), { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'invite_ok', req);
+  }
+});
+
+// ── Find a date (the extras, 08-extras section 2; services/plans/planDates.js): 404 while plans_find_date is off ──
+
+// PUT /api/plans/:id/dates/mine { options: ["a","b"], party_size, kids_count }: an invited person's ticks ([] is "none
+// of these"). Answers the plan.
+router.put('/:id/dates/mine', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDates').tickMine(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'dates_mine', req);
+  }
+});
+
+// POST /api/plans/:id/dates/pick { option_id } (the host): sets the time and settles everyone, once. Answers the plan
+// with `settled: { in, waiting, waitlisted, asked }`.
+router.post('/:id/dates/pick', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planDates').pick(req.user, req.params.id, body(req), { io: req.app.get('io') }));
+  } catch (err) {
+    return serverError(res, err, 'dates_pick', req);
+  }
+});
+
+// ── Photos afterwards (the extras, 08-extras section 5; services/plans/planPhotos.js): 404 while plans_photos is off
+// or no private bucket is set. Each answers the grid: { photos: [{ id, url, thumb_url, w, h, by_name, mine,
+// can_remove }], count, text, can_add, note, expires_in } with links signed for minutes.
+const photoUpload = require('multer')({
+  storage: require('multer').memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, parts: 6, fieldSize: 1024, fieldNameSize: 100 },
+}).single('file');
+function receivePhoto(req, res, next) {
+  photoUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === 'LIMIT_FILE_SIZE') return fail(res, 413, 'too_large', 'This photo is too large to add.');
+    return fail(res, 400, 'validation', 'Send one picture as "file".');
+  });
+}
+router.get('/:id/photos', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').list(req.user, req.params.id));
+  } catch (err) {
+    return serverError(res, err, 'photos', req);
+  }
+});
+router.post('/:id/photos', contentCreationLimiter, receivePhoto, async (req, res) => {
+  try {
+    return res.status(201).json(await require('../services/plans/planPhotos').add(req.user, req.params.id, req.file || null));
+  } catch (err) {
+    return serverError(res, err, 'photos_add', req);
+  }
+});
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planPhotos').remove(req.user, req.params.id, req.params.photoId));
+  } catch (err) {
+    return serverError(res, err, 'photos_remove', req);
+  }
+});
+
+// ── The gift exchange (the extras, 08-extras section 4; services/plans/planGift.js): 404 while plans_gift_exchange is
+// off. Each answers { gift }; whom someone drew is in their own answer only.
+const giftRoute = (method, path, label, handler) => router[method](path, async (req, res) => {
+  try {
+    return res.json(await handler(req));
+  } catch (err) {
+    return serverError(res, err, label, req);
+  }
+});
+giftRoute('post', '/:id/gift/join', 'gift_join', (req) => require('../services/plans/planGift').join(req.user, req.params.id, body(req)));
+giftRoute('patch', '/:id/gift/mine', 'gift_wish', (req) => require('../services/plans/planGift').setWish(req.user, req.params.id, body(req)));
+giftRoute('delete', '/:id/gift/mine', 'gift_leave', (req) => require('../services/plans/planGift').leave(req.user, req.params.id));
+// The host: "Draw names now", or "Draw again" after someone who drew left. 409 too_few with fewer than three.
+giftRoute('post', '/:id/gift/draw', 'gift_draw', (req) => require('../services/plans/planGift').drawNow(req.user, req.params.id));
+
+// ── Chip in (the extras, 08-extras section 3; services/plans/planChipIn.js): 404 while plans_chip_in is off ──
+
+// POST | DELETE /api/plans/:id/chip-in/paid [{ who }]: someone in says they paid the host (or takes it back); the host
+// marks someone who paid another way ({ who: "p:<user id>" | "g:<guest id>" }, or ?who= on DELETE). Answers { chip_in }.
+router.post('/:id/chip-in/paid', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planChipIn').markPaid(req.user, req.params.id, { who: body(req).who || null }, true));
+  } catch (err) {
+    return serverError(res, err, 'chip_in_paid', req);
+  }
+});
+router.delete('/:id/chip-in/paid', async (req, res) => {
+  try {
+    const who = body(req).who || (typeof req.query.who === 'string' ? req.query.who : null);
+    return res.json(await require('../services/plans/planChipIn').markPaid(req.user, req.params.id, { who }, false));
+  } catch (err) {
+    return serverError(res, err, 'chip_in_unpaid', req);
+  }
+});
+
+// ── The bring list, H2 (services/plans/planBring.js): 404 while plans_bring_list is off for the host ──
+
+// PUT /api/plans/:id/bring { items: [{ id?, label, note?, mine? }], guests_can_add? } (the host). Answers { bring }.
+router.put('/:id/bring', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').replace(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_replace', req);
+  }
+});
+
+// POST /api/plans/:id/bring/items { label, note? }: someone in adds one thing they'll bring (when guests may add).
+router.post('/:id/bring/items', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').add(req.user, req.params.id, body(req)));
+  } catch (err) {
+    return serverError(res, err, 'bring_add', req);
+  }
+});
+
+// POST | DELETE /api/plans/:id/bring/:itemId/claim: someone in (or the host) claims an item, or gives it back.
+router.post('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').claim(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_claim', req);
+  }
+});
+router.delete('/:id/bring/:itemId/claim', async (req, res) => {
+  try {
+    return res.json(await require('../services/plans/planBring').giveBack(req.user, req.params.id, req.params.itemId));
+  } catch (err) {
+    return serverError(res, err, 'bring_give_back', req);
+  }
+});
+
+// POST /api/plans/:id/invites/claim { token } | { open }: the person opened an email or text invitation, or (Plans for
+// the holidays, contract 6.9) the plan's open link.
 router.post('/:id/invites/claim', async (req, res) => {
   try {
-    return res.json(await planInvites.claimInvite(req.user, req.params.id, body(req).token));
+    return res.json(await planInvites.claimInvite(req.user, req.params.id, body(req).token, { open: body(req).open }));
   } catch (err) {
     return serverError(res, err, 'invite_claim', req);
   }

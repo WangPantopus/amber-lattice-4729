@@ -16,8 +16,10 @@ enum PlanRowTrailing: Equatable {
     case chevron
     case text(String)
     case status(String, PantopusIcon?)
-    /// A business's plan: "Free" (Plans with businesses, board G2).
-    case price
+    /// A business's plan: "Free" (Plans with businesses, board G2), or its price ("$18", B2).
+    case price(String)
+    /// Plans for the holidays B1: a business's plan with a deal shows the deal's one tag ("Deal", "20% off").
+    case deal(String)
 }
 
 struct PlanRowModel: Identifiable, Equatable {
@@ -46,7 +48,7 @@ struct PlanRowModel: Identifiable, Equatable {
                 kind: card.kind,
                 title: card.title,
                 subtitle: [when, business.name].compactMap { $0 }.joined(separator: " · "),
-                trailing: trailing ?? .price,
+                trailing: trailing ?? card.deal?.tag.map { .deal($0) } ?? .price(card.price?.text ?? "Free"),
                 accessibilityLabel: spoken(card, now: now),
                 isBusiness: true
             )
@@ -56,7 +58,16 @@ struct PlanRowModel: Identifiable, Equatable {
         // an online plan.
         let area = card.areaWord.hasPrefix("Near ") ? String(card.areaWord.dropFirst(5)) : card.areaWord
         var parts: [String] = []
-        if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
+        if let picking = card.pickingText {
+            // Find a date: "Picking a date" where the time shows, until the host picks one.
+            parts.append(contentsOf: [picking, area])
+        } else if let when = PlanFormat.rowWhen(
+            state: card.state,
+            start: card.startsAtDate,
+            end: card.endsAtDate,
+            now: now,
+            calendar: calendar
+        ) {
             parts.append(when)
             // A later day names the area too ("Sun 1:25 PM · Downtown · about 2 mi").
             if card.state != .live, let start = card.startsAtDate, !calendar.isDate(start, inSameDayAs: now) {
@@ -91,12 +102,51 @@ struct PlanRowModel: Identifiable, Equatable {
         )
     }
 
-    /// A row in "Your plans": hosting, asked, waitlisted or in.
+    /// A row in "Yours" (Plans for the holidays, board 1): the plans this person hosts, is in, is waiting on, or
+    /// is invited to. The second line is when, then the person's part ("You're hosting", "You're in", "You said
+    /// maybe", "Invited"); on the right one count: "{n} coming" where the plan has a headcount, else the shipped
+    /// count (a host's waiting requests first, as before).
+    @MainActor
     static func mine(_ card: PlanCardDTO, requestsCount: Int?, now: Date = Date()) -> PlanRowModel {
+        PlansFlags.shared.guestAnswers
+            ? yours(card, requestsCount: requestsCount, now: now)
+            : shippedMine(card, requestsCount: requestsCount, now: now)
+    }
+
+    private static func yours(_ card: PlanCardDTO, requestsCount: Int?, now: Date) -> PlanRowModel {
+        let row = listed(card, now: now)
+        let part = yourPart(card)
+        let requests = requestsCount ?? 0
+        let trailing: PlanRowTrailing = if card.viewer?.isHost == true, requests > 0 {
+            .status("\(requests) request\(requests == 1 ? "" : "s")", .bell)
+        } else if let headcount = card.headcount, headcount.total > 0 {
+            .text("\(headcount.total) coming")
+        } else if card.viewer?.isHost == true {
+            .text("\(card.goingCount) going")
+        } else {
+            row.trailing
+        }
+        return PlanRowModel(
+            id: row.id,
+            kind: row.kind,
+            title: row.title,
+            subtitle: [yourWhen(card, now: now), part].joined(separator: " · "),
+            trailing: trailing,
+            accessibilityLabel: (part == "Invited" ? "\(PlanCardLines.hostName(card)) invited you" : part) + ". " + row.accessibilityLabel,
+            isBusiness: row.isBusiness,
+            isPrivate: row.isPrivate,
+            repeatLine: row.repeatLine
+        )
+    }
+
+    /// A row in "Your plans" as before Plans for the holidays (`plans_guest_answers` off): hosting, asked,
+    /// waitlisted or in, with the status on the right.
+    private static func shippedMine(_ card: PlanCardDTO, requestsCount: Int?, now: Date = Date()) -> PlanRowModel {
         let viewer = card.viewer
         if viewer?.isHost == true {
             let calendar = PlanFormat.calendar(for: card.timezone)
-            let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar)
+            let when = card.pickingText
+                ?? PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar)
             let trailing: PlanRowTrailing = (requestsCount ?? 0) > 0
                 ? .status("\(requestsCount ?? 0) request\(requestsCount == 1 ? "" : "s")", .bell)
                 : .text("\(card.goingCount) going")
@@ -135,6 +185,30 @@ struct PlanRowModel: Identifiable, Equatable {
         default: .status("Requested", .clock)
         }
         return listed(card, trailing: status, now: now)
+    }
+
+    /// The person's part in one of their own plans, as the end of its row's second line.
+    static func yourPart(_ card: PlanCardDTO) -> String {
+        let viewer = card.viewer
+        if viewer?.isHost == true { return "You're hosting" }
+        switch viewer?.requestStatus {
+        case .accepted: return "You're in"
+        case .waitlisted: return waitlistLabel(viewer?.waitlistPosition)
+        case .pending: return "Requested"
+        default: break
+        }
+        if card.myInvite?.status == .maybe { return "You said maybe" }
+        return card.myInvite == nil ? "Requested" : "Invited"
+    }
+
+    /// When, as a list row says it; a playdate before you're in says the part of the day.
+    private static func yourWhen(_ card: PlanCardDTO, now: Date) -> String {
+        if let picking = card.pickingText { return picking }
+        let calendar = PlanFormat.calendar(for: card.timezone)
+        if let when = PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, now: now, calendar: calendar) {
+            return when
+        }
+        return PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, now: now, calendar: calendar)
     }
 
     /// "On the waitlist · 1st".
@@ -184,6 +258,8 @@ struct PlanRowModel: Identifiable, Equatable {
         var parts = [card.isPrivate ? "Private \(card.kind.spokenTitle.lowercased())" : card.kind.spokenTitle, card.title]
         if card.state == .live {
             parts.append("happening now")
+        } else if let picking = card.pickingText {
+            parts.append(picking)
         } else if let start = card.startsAtDate {
             parts.append(PlanFormat.spokenWhen(start, now: now, calendar: calendar))
         } else {
@@ -195,7 +271,7 @@ struct PlanRowModel: Identifiable, Equatable {
         if card.kind == .studyGroup { parts.append(contentsOf: PlanCardLines.study(card.details)) }
         parts.append(card.isFull ? "full" : "\(card.spotsLeft) spot\(card.spotsLeft == 1 ? "" : "s") left")
         if let line = PlanRepeatCopy.spoken(card) { parts.append("repeats \(line.prefix(1).lowercased() + line.dropFirst())") }
-        if card.isBusiness { parts.append("Free") }
+        if card.isBusiness { parts.append(card.price?.text ?? "Free") }
         return parts.joined(separator: ", ")
     }
 }
@@ -280,14 +356,16 @@ struct PlanRow: View {
                 .lineLimit(1)
         case let .status(text, icon):
             StatusChip(text, variant: .neutral, icon: icon).accessibilityLabel(text)
-        case .price:
-            PlanPriceChip()
+        case let .price(text):
+            PlanPriceChip(text: text)
+        case let .deal(text):
+            PlanDealTag(text: text).accessibilityIdentifier("planDealTag")
         }
     }
 
     private var trailingSpoken: String {
         switch model.trailing {
-        case let .status(text, _): ". \(text)"
+        case let .status(text, _), let .deal(text): ". \(text)"
         case .chevron, .text, .price: ""
         }
     }

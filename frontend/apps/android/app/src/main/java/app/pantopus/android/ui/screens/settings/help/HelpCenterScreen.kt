@@ -3,20 +3,27 @@
 package app.pantopus.android.ui.screens.settings.help
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.ui.components.PrimaryButton
+import app.pantopus.android.ui.guidance.GUIDANCE_TIPS_TITLE
 import app.pantopus.android.ui.screens.shared.content_detail.ContentDetailShell
 import app.pantopus.android.ui.theme.PantopusColors
+import app.pantopus.android.ui.theme.PantopusIcon
+import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
@@ -31,6 +38,8 @@ import app.pantopus.android.ui.theme.Spacing
 fun HelpCenterScreen(
     onBack: () -> Unit = {},
     onEmailSupport: () -> Unit = {},
+    /** “Tips for each screen” (guidance cards, spec §4): the first row of “Getting started”; null hides it. */
+    onOpenTips: (() -> Unit)? = null,
 ) {
     ContentDetailShell(
         title = "Help",
@@ -75,6 +84,7 @@ fun HelpCenterScreen(
                             style = PantopusTextStyle.h3,
                             color = PantopusColors.appText,
                         )
+                        if (section === Sections.first() && onOpenTips != null) TipsRow(onOpenTips)
                         section.items.forEach { item ->
                             Column(
                                 modifier =
@@ -120,6 +130,31 @@ fun HelpCenterScreen(
             }
         },
     )
+}
+
+/** “Tips for each screen”: opens the list of the tab cards, each shown again on a tap. */
+@Composable
+private fun TipsRow(onOpen: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.lg))
+                .background(PantopusColors.appSurface)
+                .clickable(role = Role.Button, onClick = onOpen)
+                .testTag("helpCenter.tips")
+                .padding(Spacing.s4),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        Text(
+            text = GUIDANCE_TIPS_TITLE,
+            style = PantopusTextStyle.body,
+            color = PantopusColors.appText,
+            modifier = Modifier.weight(1f),
+        )
+        PantopusIconImage(PantopusIcon.ChevronRight, contentDescription = null, size = Spacing.s4, tint = PantopusColors.appTextMuted)
+    }
 }
 
 private data class Section(val heading: String, val items: List<Item>)

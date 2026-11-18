@@ -788,7 +788,7 @@ internal fun HostPreviewStep(
     val invitedOnly = ui.isPrivate && privateActions != null
     HostStepScaffold(
         title = "Preview",
-        step = "3 of 3",
+        step = "${ui.stepTotal} of ${ui.stepTotal}",
         leadingClose = false,
         onLeading = onBack,
         footer = {
@@ -841,6 +841,7 @@ private fun BusinessPreview(
             whenText = PlanFormat.whenLine(start.atZone(ui.zone), draft.end?.atZone(ui.zone), long = true),
             spots = draft.spots,
             place = listOfNotNull(locationTitle(business, ui.location), ui.location?.address).joinToString(" · "),
+            price = previewPriceText(ui.priceCents),
         )
         PlanLockLine(
             if (draft.approveEach) "You approve each person who asks." else "Anyone gets in right away, until the spots fill.",
@@ -993,7 +994,8 @@ private fun NeighborsCard(
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                PlanTypeTag(kind)
+                // An occasion's name, as the posted card's tag reads it (Plans for the holidays, A6 item 1).
+                PlanTypeTag(kind, label = draft.occasionText)
                 if (ui.isOnline) PlanOnlineChip()
             }
             Text(text = draft.title.ifBlank { kind.label }, style = planH3, color = PantopusColors.appText)

@@ -489,9 +489,34 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
         onOpenVacationHoldHandler()
     }
 
-    /// A piece tapped in the list.
+    /// The mantel at the top of the personal list (experience plan Part 7): this season's opened Christmas cards the
+    /// list has loaded; none on other drawers and tabs, in Sent, and after January 6.
+    var mantelCards: [HolidayCardMantel.Card] {
+        guard LaunchFeatures.cardTable, isLive, selectedDrawer == .me, currentTab == .incoming, !showsSent else { return [] }
+        return HolidayCardMantel.cards(in: loadedMail, viewed: viewedMailIds)
+    }
+
+    /// A piece tapped in the list. A Christmas card takes the list's other waiting cards with it, for "Open the next
+    /// card" (experience plan Part 4).
     public func openMail(_ mailId: String) {
+        HolidayCardWaiting.hand(from: mailId, waiting: waitingCardIds)
         onOpenMail(mailId)
+    }
+
+    /// The cards in the list that can be opened now: delivered, not opened, and not sealed (a seal that has lifted
+    /// counts), oldest first.
+    private var waitingCardIds: [String] {
+        loadedMail
+            .filter { mail in
+                guard let card = mail.item.card, !card.sealed else { return false }
+                return !mail.item.viewed && !viewedMailIds.contains(mail.id)
+            }
+            .sorted { first, second in
+                let one = MailDates.parse(first.item.deliveredAt) ?? MailDates.parse(first.item.createdAt) ?? .distantPast
+                let two = MailDates.parse(second.item.deliveredAt) ?? MailDates.parse(second.item.createdAt) ?? .distantPast
+                return one < two
+            }
+            .map(\.id)
     }
 
     /// The header's search: every piece this person can read, on the server.

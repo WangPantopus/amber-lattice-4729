@@ -37,7 +37,7 @@ struct PlaceMoneyDetailContent: View {
         VStack(alignment: .leading, spacing: 0) {
             PlaceDetailSectionLabel(text: "Rate watch")
             if intel.tier == .t4 {
-                RateWatchSection(vm: rateWatch)
+                RateWatchSection(vm: rateWatch, onMailCode: vm.mailCodeAction)
                     .task { await rateWatch.load() }
             } else {
                 PlaceLockedCard(

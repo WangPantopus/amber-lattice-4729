@@ -42,7 +42,8 @@ const text = (value: unknown, min: number, max: number) => typeof value === 'str
 export function validHomeCreationInput(value: unknown): value is HomeCreationInput {
   if (!object(value) || !uuid(value.address_id) || !text(value.address, 5, 255)
     || !text(value.city, 2, 100) || !text(value.state, 2, 50) || !text(value.zip_code, 3, 20)
-    || !['owner', 'renter'].includes(String(value.role)) || value.is_owner !== (value.role === 'owner')
+    // 'household' (lives there with family or friends) comes only from Add Home in two steps (home_short_add).
+    || !['owner', 'renter', 'household'].includes(String(value.role)) || value.is_owner !== (value.role === 'owner')
     || typeof value.latitude !== 'number' || !Number.isFinite(value.latitude) || Math.abs(value.latitude) > 90
     || typeof value.longitude !== 'number' || !Number.isFinite(value.longitude) || Math.abs(value.longitude) > 180) return false;
   for (const [key, max] of Object.entries({ unit_number: 50, name: 120, description: 2000,
@@ -50,7 +51,9 @@ export function validHomeCreationInput(value: unknown): value is HomeCreationInp
     if (value[key] !== undefined && !text(value[key], 0, max)) return false;
   }
   if (!!value.wifi_name !== !!value.wifi_password) return false;
-  if (!['house', 'apartment', 'condo', 'townhouse', 'studio', 'rv', 'mobile_home', 'trailer', 'multi_unit', 'other'].includes(String(value.home_type))) return false;
+  // Add Home in two steps leaves the type out: the server fills it from the county record.
+  if (value.home_type !== undefined
+    && !['house', 'apartment', 'condo', 'townhouse', 'studio', 'rv', 'mobile_home', 'trailer', 'multi_unit', 'other'].includes(String(value.home_type))) return false;
   for (const key of ['bedrooms', 'bathrooms', 'sq_ft', 'lot_sq_ft', 'year_built']) {
     const n = value[key];
     if (n !== undefined && (typeof n !== 'number' || !Number.isFinite(n) || n < 0

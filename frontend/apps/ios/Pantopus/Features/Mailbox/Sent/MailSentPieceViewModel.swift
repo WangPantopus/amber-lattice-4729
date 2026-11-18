@@ -40,6 +40,12 @@ final class MailSentPieceViewModel {
     /// was given up on says its stamp comes back when it's taken back.
     private(set) var postage: Bool
     private var didReadPostage = false
+    /// Another card can go now (a stamp left, or without stamps today's card not used): "Send this card to someone
+    /// else" shows (experience plan Part 6).
+    private(set) var canSendAnother = false
+    /// The card and its reply, once a reply has come or been written (experience plan Part 3), and the joined card up.
+    private(set) var replyPair: CardReplyPair?
+    var joined: CardReplyPair?
 
     private let api: APIClient
 
@@ -69,6 +75,8 @@ final class MailSentPieceViewModel {
             let detail: MailSentDetail = try await HolidayCardFlowViewModel.answer(MailSentEndpoints.piece(id: id), api: api)
             state = .loaded(detail.item)
             if detail.item.emailStatus == .failed { await readPostageOnce() }
+            if !detail.item.isLetter { await readCanSendAnother() }
+            if LaunchFeatures.holidayCardMemories, !detail.item.isLetter || detail.item.cardReply != nil { await readReplyPair() }
         } catch {
             let sentence = HolidayCardFlowViewModel.refusal(
                 error,
@@ -84,6 +92,22 @@ final class MailSentPieceViewModel {
         }
     }
 
+    /// The joined card for this card or reply; none without a reply (or when it can't be read).
+    private func readReplyPair() async {
+        let exchange: HolidayCardExchange? = try? await api.request(HolidayCardEndpoints.exchange(cardId: id))
+        replyPair = exchange.flatMap(CardReplyPair.init)
+    }
+
+    /// Whether another card can go now; a failure hides the button.
+    private func readCanSendAnother() async {
+        let cards: HolidayCardsResponse? = try? await api.request(HolidayCardEndpoints.cards())
+        guard let cards, cards.open else {
+            canSendAnother = false
+            return
+        }
+        canSendAnother = cards.postageEnabled ? (cards.stamps?.available ?? 0) > 0 : HolidayCardWords.today(cards) == nil
+    }
+
     /// After "Take your card back?". True when it's gone; too late, the
     /// server's sentence shows and the card stays, read again.
     func takeBack() async -> Bool {
@@ -93,6 +117,14 @@ final class MailSentPieceViewModel {
         takeBackError = nil
         defer { takingBack = false }
         do {
+            if piece?.cardReply != nil {
+                // A reply (experience plan Part 3) comes back through its own route.
+                let _: CardReplyTakeBack = try await HolidayCardFlowViewModel.answer(
+                    HolidayCardEndpoints.takeBackReply(cardId: id),
+                    api: api
+                )
+                return true
+            }
             let _: TakeBackHolidayCardResponse = try await HolidayCardFlowViewModel.answer(
                 HolidayCardEndpoints.takeBack(cardId: id),
                 api: api

@@ -39,10 +39,12 @@ import app.pantopus.android.data.plans.PlanViewerStanding
 import app.pantopus.android.data.plans.hasPrivatePart
 import app.pantopus.android.data.plans.isBusiness
 import app.pantopus.android.data.plans.isOnline
+import app.pantopus.android.data.plans.isPicking
 import app.pantopus.android.data.plans.isPlaydate
 import app.pantopus.android.data.plans.isPrivate
 import app.pantopus.android.data.plans.placeShownToInvitee
 import app.pantopus.android.data.plans.planState
+import app.pantopus.android.data.plans.saidMaybe
 import app.pantopus.android.data.plans.seriesContinues
 import app.pantopus.android.data.plans.standing
 import app.pantopus.android.ui.components.ErrorState
@@ -53,7 +55,9 @@ import app.pantopus.android.ui.components.ToastController
 import app.pantopus.android.ui.components.ToastHost
 import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.plans.components.PlanTextButton
+import app.pantopus.android.ui.screens.plans.guests.PlanGuestsUi
 import app.pantopus.android.ui.screens.plans.map.PlanRowsSkeleton
+import app.pantopus.android.ui.screens.plans.map.askWord
 import app.pantopus.android.ui.screens.plans.repeat.PlanSeriesActions
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -90,6 +94,14 @@ fun PlanDetailScreen(
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
     /** A repeating plan's next date, opened in place of the date its host just skipped (Plans step 2). */
     onOpenNextDate: (String) -> Unit = onOpenPlan,
+    /** Who's coming (Plans for the holidays, A5), from the host's counts and people line. */
+    onOpenGuests: (String) -> Unit = {},
+    /** The bring list for the host (Plans for the holidays, A9). */
+    onOpenBring: (String) -> Unit = {},
+    /** Business track B5: the guest's check (C1, C2). */
+    onOpenCheck: (String) -> Unit = {},
+    /** Business track B5: the business's guest list with money (C3). */
+    onOpenChecks: (String) -> Unit = {},
     viewModel: PlanDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -152,6 +164,10 @@ fun PlanDetailScreen(
                     onBack = onBack,
                     onOpenPlan = onOpenPlan,
                     onOpenRequests = { onOpenRequests(state.plan.id) },
+                    onOpenGuests = { onOpenGuests(state.plan.id) },
+                    onOpenBring = { onOpenBring(state.plan.id) },
+                    onOpenCheck = { onOpenCheck(state.plan.id) },
+                    onOpenChecks = { onOpenChecks(state.plan.id) },
                     onChange = { onChange(state.plan.id) },
                     onHost = onHost,
                     onOpenChat = { room -> onOpenChat(room, PlanFormat.shortTitle(state.plan), state.plan.id) },
@@ -172,6 +188,10 @@ private fun PlanReady(
     onBack: () -> Unit,
     onOpenPlan: (String) -> Unit,
     onOpenRequests: () -> Unit,
+    onOpenGuests: () -> Unit,
+    onOpenBring: () -> Unit,
+    onOpenCheck: () -> Unit,
+    onOpenChecks: () -> Unit,
     onChange: () -> Unit,
     onHost: (String?, String?) -> Unit,
     onOpenChat: (String) -> Unit,
@@ -180,8 +200,10 @@ private fun PlanReady(
     onAskPantopus: ((AIScreenContext) -> Unit)? = null,
 ) {
     val standing = plan.standing
-    // Invited again after a no or a removal: the invitation, not "Didn't work out".
-    if ((standing == PlanViewerStanding.DECLINED || standing == PlanViewerStanding.REMOVED) && plan.openInvite == null) {
+    // Invited again after a no or a removal: the invitation, not "Didn't work out". A paid spot's hold that ran out
+    // (business track B2) may join again: the plan, not "Didn't work out".
+    val notThisTime = standing == PlanViewerStanding.DECLINED || standing == PlanViewerStanding.REMOVED
+    if (notThisTime && plan.openInvite == null && !plan.holdRanOut) {
         PlanNotThisTime(
             plan = plan,
             others = ui.others,
@@ -194,6 +216,10 @@ private fun PlanReady(
     }
     val context = LocalContext.current
     val reduceMotion = rememberReduceMotion()
+    // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
+    val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${plan.id}")
+    val spot by spotVm.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(plan.id) { spotVm.readOffer() }
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
             if (results.values.any { it }) viewModel.useMyLocation()
@@ -233,7 +259,20 @@ private fun PlanReady(
         // A private plan is never shared by link (Plans step 1): its host invites, a guest may bring a friend.
         onShare = if (plan.shareUrl != null && !closed && !plan.isPrivate) ({ context.sharePlan(plan) }) else null,
         menu = menu,
-        footer = footerFor(plan, ui, closed, viewModel, onSeeAllPlans, onVerify, askLocation) { confirmLeave = it },
+        footer =
+            footerFor(
+                plan,
+                ui,
+                closed,
+                viewModel,
+                onSeeAllPlans,
+                onVerify,
+                askLocation,
+                // While a spot link's offer is being read, live, or couldn't be read: its own action, never the paid "Join".
+                spotFooter =
+                    spotFooter(spot, onClaim = { spotVm.claim(viewModel::load) }, onRetry = spotVm::retry)
+                        .takeIf { spot.spot.holdsFooter },
+            ) { confirmLeave = it },
         onAsk = onAskPantopus?.let { ask -> { ask(AIScreenContext.plan(plan.id, PlanFormat.shortTitle(plan), hosting)) } },
     ) {
         when {
@@ -249,6 +288,8 @@ private fun PlanReady(
                     onChange = onChange,
                     onCancel = viewModel::openCancel,
                     onRemove = { person -> person.requestId?.let(viewModel::removeGuest) },
+                    // Business track B1: staff mark a guest's free thing used.
+                    onMarkUsed = { person -> person.requestId?.let(viewModel::markDealUsed) },
                     series =
                         PlanSeriesActions(
                             onSkip = viewModel::skipDate,
@@ -256,6 +297,21 @@ private fun PlanReady(
                             onStop = viewModel::stopRepeating,
                             busy = ui.busy || (ui.state as? PlanDetailUiState.Ready)?.fresh != true,
                         ),
+                    guests = ui.guests,
+                    onOpenGuests = onOpenGuests,
+                    onOpenBring = onOpenBring,
+                    checks = PlanChecksEntry(ui.checks, onOpenChecks),
+                    onExtrasChanged = viewModel::load,
+                    // The holidays' board 29: Host again, then the invite sheet on this plan's people.
+                    onPlanNext =
+                        if (viewModel.offersSamePeopleNext(plan)) {
+                            {
+                                viewModel.planNextWithSamePeople()
+                                onHost(null, plan.id)
+                            }
+                        } else {
+                            null
+                        },
                 )
             closed -> PlanClosedBody(plan, onOpenChat = plan.chatRoomId?.let { room -> { onOpenChat(room) } })
             standing == PlanViewerStanding.IN && plan.hasPrivatePart -> {
@@ -267,6 +323,19 @@ private fun PlanReady(
                     viewerId = ui.viewerId,
                     onStillComing = { coming -> if (coming) viewModel.stillComing(true) else confirmLeave = LeaveKind.Plan },
                     onOpenChat = { plan.chatRoomId?.let(onOpenChat) },
+                    // Plans for the holidays (A8): "Change" opens the answer sheet with the guest's numbers.
+                    onChangeAnswer = viewModel::openAsk,
+                    // Business track B5: "Pay at {business}", or the paid check and its receipt.
+                    payHere = PlanPayHereEntry(ui.myCheck, onOpenCheck),
+                    bring =
+                        PlanBringActions(
+                            busy = ui.bringBusy,
+                            notice = ui.bringNotice,
+                            onClaim = viewModel::claimBring,
+                            onGiveBack = viewModel::giveBackBring,
+                            onAdd = viewModel::addBring,
+                        ),
+                    onExtrasChanged = viewModel::load,
                 )
                 PlanFriendInviteRow(
                     plan = plan,
@@ -276,14 +345,23 @@ private fun PlanReady(
             standing == PlanViewerStanding.REQUESTED -> PlanRequestedBody(plan)
             standing == PlanViewerStanding.WAITLISTED -> PlanWaitlistBody(plan)
             // A private plan's invitation goes under its title (board Invited, Plans step 1).
+            // Plans for the holidays (A8): someone who said maybe sees a quiet "You said maybe" with "Change".
+            // The holidays' find a date (board 24): the times to tick take the answer's place while the host is picking.
+            plan.isPicking -> PlanBeforeInBody(plan, afterTitle = { PlanDatesGuest(plan) })
+            plan.isPrivate && plan.saidMaybe ->
+                PlanBeforeInBody(plan, afterTitle = { PlanMaybeBanner(plan, onChange = viewModel::openAsk) })
             plan.isPrivate && plan.openInvite != null -> PlanBeforeInBody(plan, afterTitle = { PlanPrivateInviteBanner(plan) })
             else -> {
                 plan.openInvite?.let { invite -> PlanInviteBanner(plan, invite) }
-                PlanBeforeInBody(plan)
+                // The holidays' one person pays for the group: opened from a spot link, "{Chris} got you a spot".
+                PlanBeforeInBody(plan, afterTitle = { PlanSpotCard(spot) })
             }
         }
     }
-    if (ui.askOpen) {
+    if (ui.askOpen && plan.paysToJoin) {
+        // Business track B2 (P1): a priced plan's "Join" pays for the spot through the shipped payment sheet.
+        PlanPayHost(plan = plan, onClose = viewModel::closeAsk, onDone = viewModel::paidDone)
+    } else if (ui.askOpen) {
         PlanAskSheet(
             plan = plan,
             draft = ui.ask,
@@ -291,13 +369,23 @@ private fun PlanReady(
             onSend = viewModel::sendAsk,
             onClose = viewModel::closeAsk,
             invited = plan.openInvite?.needsHostOk == false && plan.standing != PlanViewerStanding.REQUESTED,
+            // Plans for the holidays (A7): Maybe and Can't make it beside I'm in.
+            onMaybe = viewModel::maybeInvite,
+            onDecline = {
+                viewModel.closeAsk()
+                viewModel.declineInvite()
+            },
         )
     }
-    if (inviting) {
+    // The holidays' board 29: a plan just posted to invite a past plan's people opens its invite sheet on them.
+    val pastFrom = ui.invitePastFrom?.takeIf { hosting && (ui.state as? PlanDetailUiState.Ready)?.fresh == true }
+    if (inviting || pastFrom != null) {
         PlanInviteSheet(
             plan = plan,
+            pastFrom = pastFrom,
             onDismiss = {
                 inviting = false
+                viewModel.invitePastShown()
                 viewModel.load()
             },
         )
@@ -380,6 +468,7 @@ private fun footerFor(
     onSeeAll: () -> Unit,
     onVerify: () -> Unit,
     onLocation: () -> Unit,
+    spotFooter: (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)?,
     confirm: (LeaveKind) -> Unit,
 ): (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? {
     val standing = plan.standing
@@ -387,14 +476,27 @@ private fun footerFor(
     val busy = ui.busy || !ready
     return when {
         // An online plan's host joins the call from here too (Plans step 3); nothing else for a host, as before.
-        standing == PlanViewerStanding.HOSTING -> if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened)
+        // Plans for the holidays (A6 item 5): "Remind the {n} who haven't answered" while anyone can be reminded.
+        standing == PlanViewerStanding.HOSTING ->
+            if (closed) null else onlineJoinFooter(plan, viewModel::linkUnopened) ?: remindFooter(ui, viewModel)
         closed -> {
             { GhostButton(title = "See other plans", onClick = onSeeAll, modifier = Modifier.height(50.dp)) }
         }
         // Board Online: "Join" for someone in, with "Can't make it" under it.
         standing == PlanViewerStanding.IN ->
             onlineJoinFooter(plan, viewModel::linkUnopened, leave = { confirm(LeaveKind.Plan) }, busy = busy)
-                ?: leaveFooter(busy, confirm)
+                ?: leaveFooter(busy, confirm, dealReady = plan.dealReady)
+        // Business track B2: a held spot being paid for: "Join" opens P1 again, with the same payment.
+        standing == PlanViewerStanding.PAYING -> {
+            {
+                PrimaryButton(
+                    title = askWord(plan),
+                    onClick = viewModel::openAsk,
+                    isEnabled = !busy,
+                    modifier = Modifier.height(50.dp).testTag("planPayAgain"),
+                )
+            }
+        }
         standing == PlanViewerStanding.REQUESTED -> {
             {
                 GhostButton(
@@ -414,6 +516,10 @@ private fun footerFor(
                 waitlistCaption(plan)?.let { PlanFooterCaption(it) }
             }
         }
+        // The holidays' one person pays for the group: a spot link's free "I'm in" (or "Try again"), never the paid "Join".
+        spotFooter != null -> spotFooter
+        // The holidays' find a date (board 24): "Save my times" in place of the answer buttons while the host is picking.
+        plan.isPicking -> datesFooter(plan, viewModel::load)
         plan.openInvite != null &&
             (plan.viewer?.canAsk == true || plan.viewer?.cannotAskReason == PlanCannotAsk.FULL_USE_WAITLIST) ->
             inviteFooterContent(plan, requireNotNull(plan.openInvite), busy, viewModel)
@@ -421,12 +527,53 @@ private fun footerFor(
     }
 }
 
-/** J7's footer: "Can't make it". */
+/** Board 24's footer, read again after saving. */
+private fun datesFooter(
+    plan: PlanDto,
+    onSaved: () -> Unit,
+): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = { PlanDatesFooter(plan, onSaved) }
+
+/**
+ * The host's reminder (Plans for the holidays, board 4): "Remind the {3} who haven't answered" and "One reminder each,
+ * by the way they were invited"; "Reminded today" once used. Null when nobody can be reminded (the shipped page then).
+ */
+private fun remindFooter(
+    ui: PlanDetailUi,
+    viewModel: PlanDetailViewModel,
+): (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? {
+    val list = ui.guests ?: return null
+    val plan = (ui.state as? PlanDetailUiState.Ready)?.plan ?: return null
+    val guests = PlanGuestsUi(plan = plan, list = list, remindedToday = ui.remindedToday)
+    val n = guests.remindable
+    val reminded = guests.remindedTodayNow
+    if (!guests.showsRemind) return null
+    return {
+        PrimaryButton(
+            title =
+                when {
+                    reminded -> "Reminded today"
+                    n == 1 -> "Remind the 1 who hasn't answered"
+                    else -> "Remind the $n who haven't answered"
+                },
+            onClick = viewModel::remind,
+            isLoading = ui.reminding,
+            isEnabled = !ui.reminding && !reminded,
+            modifier = Modifier.height(50.dp).testTag("planRemind"),
+        )
+        PlanFooterCaption("One reminder each, by the way they were invited")
+    }
+}
+
+/** J7's footer: "Can't make it", with "Leaving gives up your deal" while a business's deal is ready (business track D2). */
 private fun leaveFooter(
     busy: Boolean,
     confirm: (LeaveKind) -> Unit,
+    dealReady: Boolean = false,
 ): @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit =
-    { PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy) }
+    {
+        PlanTextButton(title = "Can't make it", onClick = { confirm(LeaveKind.Plan) }, danger = true, enabled = !busy)
+        if (dealReady) PlanFooterCaption("Leaving gives up your deal")
+    }
 
 /** J1 and J2's footer: "Ask to join" (or why not) and its caption. */
 private fun askFooterContent(
@@ -468,7 +615,9 @@ private fun LeaveDialog(
                 Triple(
                     "Can't make it?",
                     "We'll tell ${plan.hostFirst}, and your spot goes to the next person waiting. " +
-                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat.",
+                        "You'll lose ${if (plan.isOnline) "the link" else "the exact place"}, the note and the chat." +
+                        // Business track B2: what leaving now gives back, in the server's words.
+                        plan.paid?.leaveText?.let { " $it" }.orEmpty(),
                     "I can't make it",
                 )
         }

@@ -1,7 +1,12 @@
 package app.pantopus.android.data.api.services
 
 import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
+import app.pantopus.android.data.api.models.mailbox.CardExchange
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
+import app.pantopus.android.data.api.models.mailbox.CardReplyBody
+import app.pantopus.android.data.api.models.mailbox.CardReplyResponse
+import app.pantopus.android.data.api.models.mailbox.CardReplyTakenBack
+import app.pantopus.android.data.api.models.mailbox.CardSignatureBody
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
@@ -26,9 +31,11 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -57,6 +64,22 @@ interface HolidayCardsApi {
     /** `GET /api/mailbox/cards` — route `backend/routes/mailbox.js:1776`: the season's pictures and today's card. */
     @GET("api/mailbox/cards")
     suspend fun cards(): HolidayCardsResponse
+
+    /**
+     * `PUT /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`): keeps this signature
+     * on the account for the next cards, replacing any saved one; answers `{ signature }` as kept.
+     */
+    @PUT("api/mailbox/cards/signature")
+    suspend fun saveSignature(
+        @Body body: CardSignatureBody,
+    ): CardSignatureBody
+
+    /**
+     * `DELETE /api/mailbox/cards/signature` — route `backend/routes/mailbox.js` (next to `GET /cards`): forgets the saved
+     * signature (cards already sent keep theirs). Answers 204.
+     */
+    @DELETE("api/mailbox/cards/signature")
+    suspend fun forgetSignature(): Response<Unit>
 
     /**
      * `GET /api/mailbox/cards/arrivals?to=` — route `backend/routes/mailbox.js:1809`: when a card to this person can
@@ -164,6 +187,31 @@ interface HolidayCardsApi {
     suspend fun takeBack(
         @Path("id") id: String,
     ): TakeBackHolidayCardResponse
+
+    /**
+     * `GET /api/mailbox/cards/:id/exchange` — route `backend/routes/mailbox.js` (plan Part 3): the joined card, `:id` the
+     * card or its reply; needs only `mailbox`. 404 for anyone but the two people.
+     */
+    @GET("api/mailbox/cards/{id}/exchange")
+    suspend fun exchange(
+        @Path("id") id: String,
+    ): CardExchange
+
+    /**
+     * `POST /api/mailbox/cards/:id/reply` — the same route file (plan Part 3; `mailbox` + `holiday_card_memories` +
+     * `card_replies`): one reply per card, from the person it went to; 201, or 200 for the same request again.
+     */
+    @POST("api/mailbox/cards/{id}/reply")
+    suspend fun reply(
+        @Path("id") id: String,
+        @Body body: CardReplyBody,
+    ): CardReplyResponse
+
+    /** `POST /api/mailbox/cards/:id/reply/take-back` — the writer's waiting reply, until the 7 a.m. pickup. */
+    @POST("api/mailbox/cards/{id}/reply/take-back")
+    suspend fun takeBackReply(
+        @Path("id") id: String,
+    ): CardReplyTakenBack
 
     /**
      * `POST /api/mailbox/cards/:id/email-again` — the same route file (after take-back): one more try at a card by

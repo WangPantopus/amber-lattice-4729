@@ -147,7 +147,9 @@ function maxStrength(a, b) {
   return CLAIM_STRENGTH_RANK[b] > CLAIM_STRENGTH_RANK[a] ? b : a;
 }
 
-async function deriveClaimStrength(claimId, { includeUnverified = false } = {}) {
+// `includeUnverified`: also count proof still waiting for review. `uploadedOnly` narrows that to proof with a
+// document uploaded to the claim (private_upload_id); a row with no file behind it counts only once it is verified.
+async function deriveClaimStrength(claimId, { includeUnverified = false, uploadedOnly = false } = {}) {
   const { data: claim, error: claimError } = await supabaseAdmin
     .from('HomeOwnershipClaim')
     .select('id, claim_type')
@@ -159,15 +161,16 @@ async function deriveClaimStrength(claimId, { includeUnverified = false } = {}) 
 
   const { data: evidenceRows, error: evidenceError } = await supabaseAdmin
     .from('HomeVerificationEvidence')
-    .select('evidence_type, status')
+    .select('evidence_type, status, private_upload_id')
     .eq('claim_id', claimId);
 
   if (evidenceError) throw evidenceError;
 
   let claimStrength = null;
   for (const evidence of evidenceRows || []) {
-    if (!includeUnverified && evidence.status !== 'verified') {
-      continue;
+    if (evidence.status !== 'verified') {
+      if (!includeUnverified) continue;
+      if (uploadedOnly && (!evidence.private_upload_id || evidence.status !== 'pending')) continue;
     }
 
     const derived = deriveStrengthFromEvidence({

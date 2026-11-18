@@ -94,6 +94,25 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
     /// Describes the pending manual submission without implying verification.
     private(set) var submissionOutcomeNote: String?
 
+    // MARK: - A bill read at once (FASTVERIFY phase 4)
+
+    /// "Bill check": the residency upload as a photo of a bill, read at once by the server, while the server offers
+    /// the bill check here (`verify-options`, `home_fast_verify_document`). Off: today's upload, unchanged.
+    let isBillCheck: Bool
+    /// The server's read of the uploaded bill: `verified`, `needs_review` or `unreadable`.
+    private(set) var billResult: String?
+
+    /// The success step's note after an upload. A bill the server couldn't read at all: the sheet offers another
+    /// photo (the web's words); one it wasn't sure of goes to a person (SPEC 6).
+    static func outcomeNote(isBillCheck: Bool, billResult: String?) -> String {
+        switch (isBillCheck, billResult) {
+        case (true, "unreadable"?): "We couldn't read this photo. Take another one, or verify another way."
+        case (true, .some(_)): "We couldn't read this clearly, so a person will review it. You can also verify another way."
+        default: "Your private document is saved as pending evidence. "
+            + "A reviewer must inspect it before making a separate claim decision."
+        }
+    }
+
     /// The server routing classification is retained through a retry.
     private var routingClassification: String?
     /// True once the user tapped "Continue" on the routing warning, so a
@@ -207,13 +226,15 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
         self.makeUploadId = makeUploadId
         self.verificationType = verificationType
         self.isOnlineProvider = isOnlineProvider
+        isBillCheck = verificationType == .residency
+            && HomeVerifyOptionsStore.shared.cached(homeId: homeId)?.option(.document).map { $0.available && $0.fast == true } == true
         self.startContent = startContent ?? ClaimOwnershipStartContent(homeLabel: "This home", contestedClaim: nil)
         for slot in ClaimEvidenceSlot.allCases {
             storedSlots[slot] = .empty
         }
         currentStep = verificationType.steps.first ?? .start
-        // Residency requires an explicit document choice; ownership defaults to a deed.
-        selectedDocumentType = verificationType == .owner ? "deed" : nil
+        // Residency requires an explicit document choice; ownership defaults to a deed. A bill check is a bill.
+        selectedDocumentType = verificationType == .owner ? "deed" : (isBillCheck ? "utility_bill" : nil)
     }
 
     /// Slots this run requires — `verificationType.slots`.
@@ -280,15 +301,16 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
             )
         case .upload:
             WizardChrome(
-                title: verificationType.wizardTitle,
+                title: isBillCheck ? "Bill check" : verificationType.wizardTitle,
                 progressLabel: .stepOf(current: stepIndex, total: stepTotal),
                 progressFraction: Double(stepIndex) / Double(stepTotal),
                 // Residency starts on Upload, so there is nothing to go
                 // back to — the leading control closes the wizard.
                 leading: verificationType.steps.first == .upload ? .close : .back,
-                primaryCTALabel: verificationType == .residency ? "Submit" : "Submit claim",
+                primaryCTALabel: isBillCheck ? "Use this photo" : (verificationType == .residency ? "Submit" : "Submit claim"),
                 primaryCTAEnabled: canSubmit && !isSubmitting,
-                secondaryCTA: nil,
+                secondaryCTA: isBillCheck && anySlotHasFile && !isSubmitting
+                    ? WizardSecondaryCTA(label: "Retake", identifier: "billCheck_retake") : nil,
                 isSubmitting: isSubmitting,
                 footerHint: isSubmitting ? "Waiting for upload to finish" : nil,
                 dirty: anySlotHasFile || !note.isEmpty,
@@ -447,7 +469,11 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
     }
 
     func secondaryTapped() {
-        // Only fires on success — "Back to home".
+        // A bill check's "Retake" clears the photo; on success it's "Back to home".
+        if currentStep == .upload, isBillCheck {
+            remove(.residency)
+            return
+        }
         pendingEvent = .dismiss
     }
 
@@ -571,8 +597,9 @@ final class ClaimOwnershipWizardViewModel: WizardModel {
                 }
             }
             try client.requireCurrent()
-            submissionOutcomeNote = "Your private document is saved as pending evidence. "
-                + "A reviewer must inspect it before making a separate claim decision."
+            billResult = isBillCheck ? client.lastFastCheck : nil
+            if billResult == "verified" { HomeVerifyOptionsStore.shared.forget(homeId: homeId) }
+            submissionOutcomeNote = Self.outcomeNote(isBillCheck: isBillCheck, billResult: billResult)
             currentStep = .success
             Analytics.track(.ctaClaimOwnershipSubmit(result: .success))
         } catch {

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.data.moments.MomentPosting
+import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
@@ -54,10 +55,12 @@ internal fun rowTitle(
     failed: Boolean,
     people: List<MomentStripPerson>,
     posts: List<MomentPosting>,
+    waiting: Boolean = false,
 ): String =
     when {
         failed -> "Couldn't load Moments"
         people.isNotEmpty() -> "Not on the map"
+        posts.isEmpty() && waiting -> SkyWords.SCHEDULED_ROW_TITLE
         posts.any { it.stage == MomentPosting.Stage.FAILED } && posts.none { it.stage.inProgress } -> "Your Moment didn't post"
         posts.any { it.stage != MomentPosting.Stage.DONE } -> "Posting your Moment"
         else -> "Your Moment is live"

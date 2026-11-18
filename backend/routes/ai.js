@@ -34,6 +34,7 @@ const verifyToken = require('../middleware/verifyToken');
 const validate = require('../middleware/validate');
 const { aiChatLimiter, aiDraftLimiter } = require('../middleware/rateLimiter');
 const { asyncHandler } = require('../errorHandler');
+const { checkDraftBudget } = require('../services/ai/assistantBudget');
 const agentService = require('../services/ai/agentService');
 const { getAuthorizedMail } = require('../services/ai/mailAccess');
 const { storeSummary } = require('../services/mailSummaries');
@@ -56,6 +57,14 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { checkHomePermission } = require('../utils/homePermissions');
 const { getRequestSessionScope } = require('../utils/requestSessionScope');
+
+// Drafts stop with the assistant's off switch and at their daily ceilings (services/ai/assistantBudget.js). Runs
+// before a draft's upload is read, so a refused draft costs nothing.
+const draftBudget = asyncHandler(async (req, res, next) => {
+  const blocked = await checkDraftBudget(req.user.id);
+  if (blocked) return res.status(blocked.error === 'AI_DISABLED' ? 503 : 429).json(blocked);
+  return next();
+});
 
 function aiErrorStatus(errorCode) {
   if (errorCode === 'AI_UNAVAILABLE') return 503;
@@ -225,7 +234,7 @@ router.post('/chat', verifyToken, aiChatLimiter, validate(chatSchema), asyncHand
 
 // ─── Single-turn Draft: Gig ─────────────────────────────────────────────────
 
-router.post('/draft/gig', verifyToken, aiDraftLimiter, validate(draftGigSchema), asyncHandler(async (req, res) => {
+router.post('/draft/gig', verifyToken, aiDraftLimiter, draftBudget, validate(draftGigSchema), asyncHandler(async (req, res) => {
   const { text, coarseLocation, context } = req.body;
   const result = await agentService.draftGig({
     text,
@@ -243,7 +252,7 @@ router.post('/draft/gig', verifyToken, aiDraftLimiter, validate(draftGigSchema),
 
 // ─── Single-turn Draft: Listing ─────────────────────────────────────────────
 
-router.post('/draft/listing', verifyToken, aiDraftLimiter, validate(draftListingSchema), asyncHandler(async (req, res) => {
+router.post('/draft/listing', verifyToken, aiDraftLimiter, draftBudget, validate(draftListingSchema), asyncHandler(async (req, res) => {
   const { text, coarseLocation } = req.body;
   const result = await agentService.draftListing({
     text,
@@ -260,7 +269,7 @@ router.post('/draft/listing', verifyToken, aiDraftLimiter, validate(draftListing
 
 // ─── Single-turn Draft: Listing Vision (Snap & Sell) ────────────────────────
 
-router.post('/draft/listing-vision', verifyToken, aiDraftLimiter, validate(draftListingVisionSchema), asyncHandler(async (req, res) => {
+router.post('/draft/listing-vision', verifyToken, aiDraftLimiter, draftBudget, validate(draftListingVisionSchema), asyncHandler(async (req, res) => {
   const { images, text, latitude, longitude } = req.body;
   const result = await agentService.draftListingFromImages({
     images,
@@ -279,7 +288,7 @@ router.post('/draft/listing-vision', verifyToken, aiDraftLimiter, validate(draft
 
 // ─── Single-turn Draft: Post ────────────────────────────────────────────────
 
-router.post('/draft/post', verifyToken, aiDraftLimiter, validate(draftPostSchema), asyncHandler(async (req, res) => {
+router.post('/draft/post', verifyToken, aiDraftLimiter, draftBudget, validate(draftPostSchema), asyncHandler(async (req, res) => {
   const { text, surface, coarseLocation } = req.body;
   const result = await agentService.draftPost({
     text,
@@ -335,7 +344,7 @@ const draftPostSuggestionSchema = Joi.object({
   placeAddress: Joi.string().max(500).allow('').optional(),
 });
 
-router.post('/draft/post-suggestion', verifyToken, aiDraftLimiter, postPhotosUpload, validate(draftPostSuggestionSchema), asyncHandler(async (req, res) => {
+router.post('/draft/post-suggestion', verifyToken, aiDraftLimiter, draftBudget, postPhotosUpload, validate(draftPostSuggestionSchema), asyncHandler(async (req, res) => {
   const files = req.files || [];
   if (!files.length && !postSuggestion.hasWords(req.body)) {
     return res.status(400).json({ error: 'NOTHING_TO_GO_ON', message: 'Add a photo or a few words first.' });
@@ -356,7 +365,7 @@ const draftPickupScheduleSchema = Joi.object({
   text: Joi.string().max(1000),
 }).or('images', 'text');
 
-router.post('/draft/pickup-schedule', verifyToken, aiDraftLimiter, validate(draftPickupScheduleSchema), asyncHandler(async (req, res) => {
+router.post('/draft/pickup-schedule', verifyToken, aiDraftLimiter, draftBudget, validate(draftPickupScheduleSchema), asyncHandler(async (req, res) => {
   const { images, text } = req.body;
   const result = await agentService.readPickupSchedule({ images, text, userId: req.user.id });
   if (result.error) {
@@ -384,7 +393,7 @@ function radonReportUpload(req, res, next) {
   });
 }
 
-router.post('/draft/radon-result', verifyToken, aiDraftLimiter, radonReportUpload, asyncHandler(async (req, res) => {
+router.post('/draft/radon-result', verifyToken, aiDraftLimiter, draftBudget, radonReportUpload, asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'NO_FILE', message: 'Choose a photo or a PDF of your radon report.' });
   }
@@ -407,7 +416,7 @@ const draftMailOpeningSchema = Joi.object({
   body: Joi.string().max(2000).optional().allow(''),
 });
 
-router.post('/draft/mail-opening', verifyToken, aiDraftLimiter, validate(draftMailOpeningSchema), asyncHandler(async (req, res) => {
+router.post('/draft/mail-opening', verifyToken, aiDraftLimiter, draftBudget, validate(draftMailOpeningSchema), asyncHandler(async (req, res) => {
   const { intent, ink, recipientName, body } = req.body;
   const result = await agentService.draftMailOpening({
     intent,
@@ -437,7 +446,7 @@ const draftCardNoteSchema = Joi.object({
   // The picture they picked (a design id from GET /api/mailbox/cards).
   design: Joi.string().max(64).required(),
   // The first names the card is to, as the app shows them (none for an address or a link), and how many people it
-  // goes to in all: a list gets one note, so past two people no one is named.
+  // goes to in all: a list gets one note, so past one person no one is named.
   to: Joi.array().items(Joi.string().trim().min(1).max(cardNote.NAME_LIMIT)).max(20).default([]),
   count: Joi.number().integer().min(0).max(20).optional(),
   // "Anything to mention?"
@@ -451,7 +460,7 @@ const draftCardNoteSchema = Joi.object({
 router.post('/draft/card-note', verifyToken, (req, res, next) => {
   if (!cardNoteHelpOn()) return res.status(404).json({ error: 'Not found' });
   return next();
-}, aiDraftLimiter, validate(draftCardNoteSchema), asyncHandler(async (req, res) => {
+}, aiDraftLimiter, draftBudget, validate(draftCardNoteSchema), asyncHandler(async (req, res) => {
   const { to, count, hint, note, passed_over: passedOver } = req.body;
   const design = holidayCards.designById(req.body.design);
   if (!design) return res.status(400).json({ error: 'CARD_DESIGN_UNKNOWN', message: 'Pick a card first.' });
@@ -471,7 +480,7 @@ router.post('/draft/card-note', verifyToken, (req, res, next) => {
 
 // ─── Mail Summarization ─────────────────────────────────────────────────────
 
-router.post('/summarize/mail', verifyToken, aiDraftLimiter, validate(summarizeMailSchema), asyncHandler(async (req, res) => {
+router.post('/summarize/mail', verifyToken, aiDraftLimiter, draftBudget, validate(summarizeMailSchema), asyncHandler(async (req, res) => {
   const { mailItemId } = req.body;
   // A piece's summary is made once and kept (Mail tab, SRV-2): a second ask answers the kept one, with no AI call.
   const kept = await getAuthorizedMail({ mailItemId, userId: req.user.id, select: 'mail_extracted' });
@@ -493,7 +502,7 @@ router.post('/summarize/mail', verifyToken, aiDraftLimiter, validate(summarizeMa
 
 // ─── Place Brief ────────────────────────────────────────────────────────────
 
-router.get('/place-brief', verifyToken, aiDraftLimiter, asyncHandler(async (req, res) => {
+router.get('/place-brief', verifyToken, aiDraftLimiter, draftBudget, asyncHandler(async (req, res) => {
   const { error: validError } = placeBriefSchema.validate(req.query);
   if (validError) {
     return res.status(400).json({ error: 'Validation failed', message: validError.message });

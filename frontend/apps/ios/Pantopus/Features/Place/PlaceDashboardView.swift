@@ -63,6 +63,34 @@ struct PlaceDashboardView: View {
         _viewModel = State(initialValue: viewModel)
     }
 
+    private var isLoaded: Bool {
+        if case .loaded = viewModel.state { return true }
+        return false
+    }
+
+    /// Card 1 leaves out its address line for someone who joined by a household invitation (never typed one).
+    private var guidanceVariants: GuidanceVariants {
+        guard case let .loaded(intel) = viewModel.state, viewModel.claim == nil else {
+            return GuidanceVariants(placeHasAddress: true)
+        }
+        let invited = intel.viewer?.role == "member" || intel.viewer?.role == "nonresident"
+        return GuidanceVariants(joinedByInvite: invited, placeHasAddress: true, home: guidanceHome(intel, invited: invited))
+    }
+
+    /// The home, for the cards after setting it up (16, 17, 23) and the reminders to verify and invite (26, 27).
+    /// It was set up when the person's place in it started (the kept list of their homes), else when it was made.
+    private func guidanceHome(_ intel: PlaceIntelligence, invited: Bool) -> GuidanceHomeFacts {
+        let mine = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id == viewModel.homeId }
+        let verified = intel.tier == .t4
+        return GuidanceHomeFacts(
+            id: viewModel.homeId,
+            verified: verified,
+            verifiable: !verified && (intel.verifyAvailable ?? (intel.tier == .t3)),
+            setUpAt: mine?.occupancy?.startAt ?? mine?.home.createdAt,
+            invited: invited
+        )
+    }
+
     private var verifyAddress: String {
         if case let .loaded(intel) = viewModel.state { return intel.place.label }
         return ""
@@ -126,6 +154,10 @@ struct PlaceDashboardView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+        // The Place tab's first screen for the guidance cards (card 1, and the pointers here).
+        .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
+        // The guidance reminder "Verify your address": its button opens the verify step, as "Verify address" does.
+        .guidanceAction(.nextVerify, active: isRoot) { showVerify = true }
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return
@@ -200,6 +232,8 @@ struct PlaceDashboardView: View {
                 homeId: viewModel.homeId,
                 onStart: { method in
                     showVerify = false
+                    // A fast check can verify the person before they come back: read Place again then.
+                    if viewModel.verifyOptions != nil { viewModel.reloadOnReturn() }
                     viewModel.onStartVerify(method, verifyAddress)
                 },
                 onClose: { showVerify = false },
@@ -239,22 +273,8 @@ struct PlaceDashboardView: View {
                     PlaceColumns {
                         VStack(alignment: .leading, spacing: 0) {
                             leadBanner(claim: claim)
-                            PlaceHomeCard(
-                                intel: intel,
-                                claimInReview: claim != nil,
-                                shortcuts: viewModel.homeShortcuts,
-                                onUnlock: canVerify ? { showVerify = true } : nil,
-                                showsVerify: showsVerify && claim == nil,
-                                onOpenTools: {
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHubHome()
-                                },
-                                onShortcut: { shortcut in
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHomeShortcut(shortcut)
-                                }
-                            )
-                            .padding(.top, 12)
+                            homeCard(intel, claim: claim, canVerify: canVerify, showsVerify: showsVerify)
+                                .padding(.top, 12)
                             worthALook(intel)
                         }
                         .placeColumn(.leading, order: 0)
@@ -314,6 +334,35 @@ struct PlaceDashboardView: View {
         }
     }
 
+    /// The home at the top: where the person stands, the address, the record and Home tools.
+    private func homeCard(_ intel: PlaceIntelligence, claim: OwnershipClaimDTO?, canVerify: Bool, showsVerify: Bool) -> some View {
+        PlaceHomeCard(
+            intel: intel,
+            claimInReview: claim != nil,
+            shortcuts: viewModel.homeShortcuts,
+            onUnlock: canVerify ? { showVerify = true } : nil,
+            showsVerify: showsVerify && claim == nil,
+            onOpenTools: {
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHubHome()
+            },
+            onShortcut: { shortcut in
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHomeShortcut(shortcut)
+            },
+            verifyOptions: viewModel.verifyOptions,
+            onMessageHomes: { viewModel.onComposeMessage(intel.place.label) },
+            onMailCode: {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            },
+            onEnterMailedCode: viewModel.hasPendingPostcard ? {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            } : nil
+        )
+    }
+
     private static let topAnchor = "place.top"
     private static let ballotAnchor = "place.ballot"
 
@@ -357,7 +406,7 @@ struct PlaceDashboardView: View {
     private func header(intel: PlaceIntelligence) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                if isRoot { menuButton.padding(.leading, -Spacing.s3) }
+                if isRoot { menuButton.guidanceAnchor(.tipMenu).padding(.leading, -Spacing.s3) }
                 HStack(spacing: 8) {
                     Text("Your Place")
                         .font(.system(size: 28, weight: .bold))
@@ -402,6 +451,7 @@ struct PlaceDashboardView: View {
                         .frame(width: Spacing.s12, height: 44)
                         .contentShape(Rectangle())
                 }
+                .guidanceAnchor(.tipAsk, when: isRoot)
             }
         }
     }
@@ -620,6 +670,8 @@ struct PlaceDashboardView: View {
 
     private func saveOpenGroups(_ groups: Set<PlaceGlanceGroup>) {
         UserDefaults.standard.set(groups.map(\.rawValue).sorted(), forKey: openGroupsKey)
+        // "See more" (the guidance pointer on the first row's +) is for someone who hasn't opened one.
+        if !groups.isEmpty { GuidanceCenter.shared.note(.placeRowOpened) }
     }
 
     /// The sections that belong in each glance group, in the server's order.
@@ -658,7 +710,8 @@ struct PlaceDashboardView: View {
                 PlaceGlanceRow(
                     group: group,
                     summary: summary(group, sections: sections, intel: intel, claim: claim),
-                    isOpen: groupBinding(group)
+                    isOpen: groupBinding(group),
+                    guidanceAnchor: index == 0 && isRoot ? .tipPlaceRow : nil
                 ) {
                     groupContent(group, sections: sections, intel: intel, claim: claim)
                 }

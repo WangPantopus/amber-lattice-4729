@@ -1,7 +1,9 @@
 /* One visual world: a card lying on a table, in a light taken from its own picture. Always dark, whatever the phone's
    setting. A port of sample/index.html; sizes that follow large text are in rem. */
+/* overflow: clip, not hidden (Part 8.3): the light and the cloth reach past the edges, and a hidden overflow is still a
+   scroll box, so focusing a button scrolled the whole table up and the close button off the top with no way back. */
 .stage {
-  position: fixed; inset: 0; z-index: 999; overflow: hidden; touch-action: none; contain: strict; color-scheme: dark;
+  position: fixed; inset: 0; z-index: 999; overflow: clip; touch-action: none; contain: strict; color-scheme: dark;
   background: #1c2233; color: var(--cream); font: 0.9375rem/1.35 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
   --cream: #f6ecd9; --cream-soft: rgba(246, 236, 217, 0.74); --cream-faint: rgba(246, 236, 217, 0.5);
@@ -135,24 +137,37 @@
 .side { backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; isolation: isolate; border-radius: calc(var(--u) * 0.7); }
 .sideBack { transform: rotateY(180deg); }
 /* The card's own photo and voice greeting (memories plan steps 4 and 7) lie on the table once it's turned over (wave 4
-   drawings 3 and 4): beside the card where the table has room at its sides, else under it and a little over its bottom
-   edge, in the room the engine keeps (--media-room). Under the light, so the window light falls on them too. */
-.media { position: absolute; inset: 0; z-index: 24; pointer-events: none; opacity: 0; transition: opacity 0.45s ease; }
-.mediaShown { opacity: 1; }
+   drawings 3 and 4): beside the card where the table has room at its sides, else under it, in the room the card leaves
+   as it moves up on being turned (--media-room), so nothing printed on the card is ever under them. They come as the
+   card arrives at its place and go as it leaves: the engine writes how much of them shows (--media-seen, 0 to 1) from
+   the card's own turn. Under the light, so the window light falls on them too. */
+.media { position: absolute; inset: 0; z-index: 24; pointer-events: none; opacity: var(--media-seen, 0); }
 .mediaShown [data-ui] { pointer-events: auto; }
-.mediaPrint, .mediaVoice { position: absolute; container-type: inline-size; transform: translateY(5%); transition: transform 0.45s ease; }
-.mediaShown .mediaPrint, .mediaShown .mediaVoice { transform: none; }
-@media (prefers-reduced-motion: reduce) { .media, .mediaPrint, .mediaVoice { transition: none; } }
+.mediaPrint, .mediaVoice {
+  position: absolute; container-type: inline-size; transition: opacity 0.3s ease;
+  translate: 0 calc((1 - var(--media-seen, 0)) * 5%);
+}
+/* Not while the card is enlarged: it would lie over them. */
+.mediaAway .mediaPrint, .mediaAway .mediaVoice { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .mediaPrint, .mediaVoice { transition: none; translate: none; } }
+/* Under the card: their top edge at the foot of the turned-over card (--card-top is where it lies then), where their
+   small turn lifts a corner a few pixels onto the card's blank margin and no further. */
 .stage[data-media='below'] .mediaPrint {
-  left: calc(var(--card-x) + var(--card-w) * 0.02); top: calc(var(--card-top) + var(--card-h) - var(--media-room) * 0.16);
-  width: min(calc(var(--card-w) * 0.47), calc(var(--media-room) * 1.1 / var(--print-k)));
+  left: calc(var(--card-x) + var(--card-w) * 0.02); top: calc(var(--card-top) + var(--card-h) - var(--card-w) * 0.004);
+  width: min(calc(var(--card-w) * 0.47), calc(var(--media-room) / var(--print-k)));
 }
 .stage[data-media='below'] .mediaVoice {
-  right: calc(100% - var(--card-x) - var(--card-w) * 0.98); top: calc(var(--card-top) + var(--card-h) - var(--media-room) * 0.08);
-  width: min(calc(var(--card-w) * 0.45), calc((var(--media-room) * 1.02 - 1.9rem) / 0.62));
+  right: calc(100% - var(--card-x) - var(--card-w) * 0.98);
+  top: calc(var(--card-top) + var(--card-h) - var(--card-w) * 0.004 + var(--media-room) * 0.04);
+  width: min(calc(var(--card-w) * 0.45), max(5rem, calc((var(--media-room) * 0.95 - 1.9rem) / 0.62)));
+}
+/* A cassette is 0.62 of its width tall with a pill under it; a gift tag 0.53 with none, so it can lie wider. */
+.stage[data-media='below'] .mediaVoiceGift {
+  width: min(calc(var(--card-w) * 0.45), max(5rem, calc(var(--media-room) * 0.95 / 0.53)));
+  /* It is turned twice as far as a cassette, which lifts its far corner: it starts that much lower. */
+  top: calc(var(--card-top) + var(--card-h) - var(--card-w) * 0.004 + var(--media-room) * 0.04 + var(--card-w) * 0.027);
 }
 .stage[data-media='below'] .mediaVoiceAlone { right: auto; left: calc(var(--card-x) + var(--card-w) * 0.5); transform: translateX(-50%); }
-.stage[data-media='below'] .mediaShown .mediaVoiceAlone { transform: translateX(-50%); }
 .stage[data-media='beside'] .mediaPrint {
   right: calc(100% - var(--card-x) - 1.25rem); top: calc(var(--card-top) + var(--card-h) * 0.5);
   width: min(15rem, calc(var(--card-x) - 1.5rem));
@@ -193,13 +208,25 @@
   min-height: 2.75rem; padding: 0 1.5rem; border-radius: 1.375rem; background: var(--glass); box-shadow: inset 0 0 0 0.5px var(--glass-line);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-weight: 600; font-size: 0.9375rem; color: var(--cream);
 }
-.hint { font-size: 0.78125rem; color: rgba(255, 255, 255, 0.7); min-height: 1rem; text-align: center; }
+/* The hint under the main button: 15 px at 85% white (Part 8.2; was 12.5 px at 70%). */
+.hint { font-size: 0.9375rem; color: rgba(255, 255, 255, 0.85); min-height: 1rem; text-align: center; }
+/* The main button, and with larger text "Read it in print" beside it (Part 2); they wrap when there's no room. */
+.primaryRow { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 100%; }
 .stage .quiet {
   min-height: 2.75rem; padding: 0 1rem; border-radius: 1.375rem; font-weight: 600; font-size: 0.875rem; color: var(--cream-soft);
   text-decoration: underline; text-decoration-color: rgba(246, 236, 217, 0.35); text-underline-offset: 0.25em; transition: opacity 0.35s ease;
 }
 .stage .quiet:hover { color: var(--cream); }
-.quietRow { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 0.25rem; transition: opacity 0.35s ease; }
+/* One row of quiet buttons under the line slot, at most two side by side, never a second row (design check of
+   November 17, Fix 1). Its height is kept while it's hidden, so the card doesn't move when it shows. */
+.quietRow {
+  position: relative; display: flex; flex-wrap: nowrap; justify-content: center; column-gap: 0.25rem; min-height: 2.75rem;
+  max-width: 100%; transition: opacity 0.35s ease;
+}
+.stage .quietRow .quiet { white-space: nowrap; }
+/* Both wordings of each button, laid out unseen, to choose the words that fit. */
+.quietMeasure { position: absolute; left: 0; top: 0; display: flex; width: max-content; visibility: hidden; pointer-events: none; }
+.stage .quietMeasure .quiet { display: inline-flex; align-items: center; white-space: nowrap; }
 .toast {
   position: absolute; z-index: 60; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 62px); transform: translateX(-50%); width: max-content;
   max-width: 86%; padding: 9px 15px; border-radius: 14px; background: rgba(24, 18, 16, 0.88); font-size: 0.84375rem; line-height: 1.35; color: var(--cream);
@@ -286,8 +313,32 @@
 .bookmarkVerse { margin: 0; font: 1.1875rem/1.55 var(--serif); text-wrap: pretty; }
 .bookmarkRef { margin: 14px 0 0; font: italic 0.9375rem/1.3 var(--serif); color: #6a5f52; }
 .stage .bookmarkClose { margin-top: 18px; min-height: 2.75rem; padding: 0 1.5rem; border-radius: 1.375rem; background: #2a1a12; color: #f6ecd9; font-weight: 600; }
+/* Read it in print (Part 2): the note in the card's serif, 19 px at the browser's normal text size and growing with it,
+   its own line breaks kept; it scrolls inside the bookmark when long. */
+.bookmark { touch-action: pan-y; overscroll-behavior: contain; }
+.printSheet { text-align: left; }
+.printFrom { margin: 0; font: 0.75rem/1.4 var(--serif); letter-spacing: 0.18em; color: #6a5f52; }
+.printWords { margin: 14px 0 0; font: 1.1875rem/1.55 var(--serif); white-space: pre-wrap; overflow-wrap: anywhere; }
+.printSheet .bookmarkClose { display: block; margin-left: auto; margin-right: auto; }
 @keyframes bookmarkUp { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes shadeIn { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .bookmark { animation: shadeIn 0.25s ease both; }
+}
+
+/* Write back (mail-cards-experience Part 3): the reply lies over the card's printed strip only, its top at 86% of the card's
+   height (the picture ends at 87%), so the whole picture shows (founder, November 17); turned 2°, it reaches 76% of the
+   card's height below it (the engine keeps that room, REPLY_BELOW). It lands from above. Note side up it lies at 92%, so
+   the FROM line and a drawn signature are clear (design check of November 17, Fix 3; REPLY_BELOW_NOTE). */
+.replySheet {
+  position: absolute; left: 5%; top: 86%; width: 90%; aspect-ratio: 5 / 6; pointer-events: auto; cursor: pointer; z-index: -1;
+  transform: translateY(-90%) rotate(-4deg); opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, top 0.35s ease;
+  filter: drop-shadow(0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2.2) rgba(0, 0, 0, 0.45));
+}
+.replyLanded { transform: rotate(2deg); opacity: 1; }
+.replyOnNote { top: 92%; }
+.replyFront { z-index: 2; }
+@media (prefers-reduced-motion: reduce) {
+  .replySheet { transform: rotate(2deg); transition: opacity 0.2s ease; }
 }

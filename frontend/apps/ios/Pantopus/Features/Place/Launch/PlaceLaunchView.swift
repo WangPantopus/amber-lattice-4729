@@ -135,6 +135,19 @@ struct PlaceLaunchView: View {
         }
         // Half folded like a book, the funnel keeps to one page instead of running its buttons across the crease.
         .readableColumnBesideFold()
+        // The guidance reminder "Add your address" (Place's first-run root): its button puts the cursor in the box.
+        .guidanceAction(.nextAddAddress, active: embedded != nil) {
+            if case .hero = viewModel.step {
+                addressFocused = true
+            } else {
+                // A looked-up address shows: back to the box first, then the cursor once it is there.
+                viewModel.backToHero()
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    addressFocused = true
+                }
+            }
+        }
     }
 
     private var signedInEntry: Bool {
@@ -176,6 +189,7 @@ struct PlaceLaunchView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Menu")
                     .accessibilityIdentifier("place.menu")
+                    .guidanceAnchor(.tipMenu)
                     Spacer()
                     PlaceBellButton(unreadCount: embedded.unreadCount, action: embedded.onOpenNotifications)
                     MessagesButton(accessibilityIdentifier: "place.chat")

@@ -199,7 +199,7 @@ public struct WindDownSection: View {
                 tone: .sky,
                 label: "Invite more helpers",
                 meta: nil,
-                sub: "Share a link or pick from neighbors.",
+                sub: "Share the link, or invite people you know.",
                 isDestructive: false
             ),
             OrganizeRowContent(

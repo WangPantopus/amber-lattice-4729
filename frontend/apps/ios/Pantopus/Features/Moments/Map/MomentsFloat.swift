@@ -8,14 +8,18 @@
 //  bigger the higher it was made (a quarter bigger in flight), and its shadow
 //  falls on the map where the real sun puts it now, farther and softer the
 //  higher it is. Its height tag takes the side away from the shadow. A pin
-//  with no elevation keeps its tail and stands on its spot, so floating
-//  always means height. A chip beside the colour key says the time the
-//  shadows are drawn for.
+//  with no elevation keeps its tail and stands on its spot. A chip beside the
+//  colour key says the time the shadows are drawn for.
 //
 //  Only while the map's answer says `float_on` (the `moment_float` switch,
 //  contract v3.10), the Elevation chip is on and the sun is up. Otherwise the
 //  map draws today's pins. The shadows only change with the minute: nothing
 //  follows the camera, so the map moves as it always has.
+//
+//  A Moment that shows only its area (made at home; the Sky, founder
+//  2026-11-17) floats too, whatever the hour and the chip: the same disc with
+//  no tail, low over a street close by, its shadow right under it, so it
+//  never points at one spot.
 //
 
 import SwiftUI
@@ -62,17 +66,32 @@ enum MomentsFloat {
 
     /// The shadow's radius before its soft edge: the disc's own.
     static let shadowRadius: CGFloat = 31
+
+    /// Under a Moment that shows only its area: right below the disc, the same by day and by night.
+    static let areaShadow = Shadow(offset: CGSize(width: 0, height: 9), blur: 5, opacity: 0.3)
 }
 
 /// A floating pin: today's disc with no tail, its shadow on the map beside it.
 struct MomentFloatPin: View {
     let ring: MomentRingDTO
-    let height: MomentShownHeight
-    let sun: MomentSunDTO
+    let scale: CGFloat
+    let shadow: MomentsFloat.Shadow
+
+    /// At its elevation, its shadow where the sun puts it.
+    init(ring: MomentRingDTO, height: MomentShownHeight, sun: MomentSunDTO) {
+        self.ring = ring
+        scale = MomentsFloat.scale(height)
+        shadow = MomentsFloat.shadow(height, sun: sun)
+    }
+
+    /// Over its area (a Moment made at home): today's size, its shadow right under it.
+    init(overArea ring: MomentRingDTO) {
+        self.ring = ring
+        scale = 1
+        shadow = MomentsFloat.areaShadow
+    }
 
     var body: some View {
-        let scale = MomentsFloat.scale(height)
-        let shadow = MomentsFloat.shadow(height, sun: sun)
         let edge = MomentsFloat.shadowRadius + shadow.blur
         MomentRingPin(ring: ring, tail: false)
             .scaleEffect(scale)

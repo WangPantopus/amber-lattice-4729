@@ -23,6 +23,15 @@ struct PlaceHomeCard: View {
     let showsVerify: Bool
     let onOpenTools: () -> Void
     let onShortcut: (PlaceHomeShortcut) -> Void
+    /// Faster verification (FASTVERIFY): the person's level here. Nil while the switch is off, and the card stays
+    /// as it was.
+    var verifyOptions: HomeVerifyOptions?
+    /// "Message homes near you", for a verified resident while the switch is on.
+    var onMessageHomes: (() -> Void)?
+    /// "Mail me a code", after a fast check: residency letters and home Mail still need the mailed code.
+    var onMailCode: (() -> Void)?
+    /// "Enter mailed code": a card is waiting for its code (the card's words send people here).
+    var onEnterMailedCode: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var yourHome: PlaceSectionEnvelope? {
@@ -31,9 +40,16 @@ struct PlaceHomeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            standing
-                .padding(.bottom, 10)
-            if showsVerify, let onUnlock {
+            if let verifiedBy = Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) {
+                verifiedResident(by: verifiedBy)
+                    .padding(.bottom, 10)
+            } else {
+                standing
+                    .padding(.bottom, 10)
+            }
+            // verify-options is read fresh; a Place copy from before a check can still say "verify": the newer
+            // answer wins, so the card never says both.
+            if showsVerify, let onUnlock, Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) == nil {
                 verifyLine(onUnlock)
                     .padding(.bottom, 12)
             }
@@ -49,8 +65,22 @@ struct PlaceHomeCard: View {
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .padding(.top, 2)
             }
+            if let onMessageHomes, Self.verifiedResident(verifyOptions, intel: intel, claimInReview: claimInReview) != nil {
+                PlaceTextButton(title: "Message homes near you", minHeight: 44, action: onMessageHomes)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("place.homeCard.messageHomes")
+            }
             record
                 .padding(.top, 14)
+            if let onEnterMailedCode, !claimInReview {
+                PlaceRowDivider().padding(.top, 14)
+                PlaceTextButton(title: "Enter mailed code", minHeight: 44, action: onEnterMailedCode)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("place.homeCard.enterMailedCode")
+            } else if let onMailCode, verifyOptions?.needsMail == true, !claimInReview {
+                PlaceRowDivider().padding(.top, 14)
+                mailCodeLine(onMailCode).padding(.top, 10)
+            }
             if !claimInReview {
                 PlaceRowDivider().padding(.top, 14)
                 tools.padding(.top, 10)
@@ -109,6 +139,7 @@ struct PlaceHomeCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             PlaceTextButton(title: "Verify address", minHeight: 44, action: verify)
                 .accessibilityIdentifier("place.verifyBanner")
+                .guidanceAnchor(.tipVerify, cornerRadius: 15)
         }
         .accessibilityElement(children: .contain)
     }

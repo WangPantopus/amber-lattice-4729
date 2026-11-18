@@ -205,7 +205,7 @@ struct PlanBusinessPreviewCard: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 HStack(spacing: Spacing.s2) {
                     PlanBusinessLabelTag(kind: model.kind, text: model.businessLabelText ?? model.kind.title)
-                    PlanPriceChip()
+                    PlanPriceChip(text: model.previewPrice ?? "Free")
                 }
                 Text(model.title).planFont(.h3).foregroundStyle(Theme.Color.appText).fixedSize(horizontal: false, vertical: true)
                 Text("\(PlanFormat.when(start: model.start, end: model.end)) · \(model.spots) spots")

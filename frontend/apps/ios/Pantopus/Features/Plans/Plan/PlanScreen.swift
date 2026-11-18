@@ -63,6 +63,8 @@ struct PlanScreen: View {
         .task {
             // An email or text invitation becomes this account's before the plan is read.
             if case let .invite(token) = intent, !askedOnOpen { await viewModel.claimInvite(token: token) }
+            if case let .openLink(token) = intent, !askedOnOpen { await viewModel.claimOpenLink(token: token) }
+            if case let .spot(token) = intent, !askedOnOpen { await viewModel.readSpot(token: token) }
             await viewModel.resume()
             if let notice = PlansNavigator.shared.notice {
                 PlansNavigator.shared.notice = nil
@@ -79,17 +81,7 @@ struct PlanScreen: View {
         .refreshesOnStoreChange(affects: { PlansStoreReads.affects($0) }, perform: { await viewModel.load() })
         .onDisappear { viewModel.suspend() }
         .onChange(of: scenePhase) { _, phase in sceneChanged(phase) }
-        .sheet(isPresented: $showsAsk) {
-            if let card = viewModel.card ?? sheetCard {
-                PlanAskSheet(
-                    card: card,
-                    previous: askIsChange ? viewModel.askPrefill : nil,
-                    invited: !askIsChange && viewModel.openInvite.map { !$0.needsHostOk } == true
-                ) { body in
-                    await viewModel.ask(body) ? nil : viewModel.actionError ?? "We couldn't send that. Please try again."
-                }
-            }
-        }
+        .sheet(isPresented: $showsAsk) { askSheet }
         .sheet(isPresented: $showsCancel) {
             PlanCancelSheet(viewModel: viewModel) { showsCancel = false }
         }
@@ -125,6 +117,7 @@ struct PlanScreen: View {
         .navigationDestination(item: $chatRoute) { route in
             PlanChatScreen(route: route)
         }
+        .environment(\.planOpenRoute) { path.append($0) } // B5: the check and the guest list with money
         .overlay(alignment: .bottom) { toastView }
         .onChange(of: viewModel.notice) { _, notice in
             guard let notice else { return }
@@ -191,7 +184,13 @@ struct PlanScreen: View {
                     onOpenChat: openChat,
                     onChange: { path.append(.change(planId: viewModel.planId)) },
                     onCancel: { showsCancel = true },
-                    onConfirm: { confirmation = $0 }
+                    onConfirm: { confirmation = $0 },
+                    onAnswer: {
+                        askIsChange = true
+                        showsAsk = true
+                    },
+                    onOpenGuests: { path.append(.whosComing(planId: viewModel.planId)) },
+                    onOpenBring: { path.append(.bringList(planId: viewModel.planId)) }
                 )
                 .padding(.horizontal, Spacing.s4)
                 .padding(.top, 18)
@@ -215,8 +214,9 @@ struct PlanScreen: View {
                 },
                 onConfirm: { confirmation = $0 }
             )
+            PlanSamePeopleFooter(viewModel: viewModel, onHost: onHost)
         }
-        .refreshableUnlessZoomed { await viewModel.load() }
+        .refreshableUnlessZoomed { await viewModel.refreshWithSpot() }
     }
 
     private func topButtons(_ card: PlanCardDTO) -> some View {
@@ -308,9 +308,11 @@ struct PlanScreen: View {
     }
 
     private var unavailable: some View {
+        // The plan's one link for everyone refused (contract 6.9): the words for an invitation that's gone.
         PlanMessageScreen(
-            title: "This plan isn't available",
-            message: "It may have ended, been cancelled, or be just for people closer by.",
+            title: viewModel.openLinkRefused ? "This invitation isn't available anymore" : "This plan isn't available",
+            message: viewModel.openLinkRefused ? "Ask the person who shared the link to send it again."
+                : "It may have ended, been cancelled, or be just for people closer by.",
             onBack: close
         ) {
             // A way on, as on Android (J8's "See all plans" goes back the same way).
@@ -417,61 +419,39 @@ struct PlanMessageScreen<Extra: View>: View {
     }
 }
 
-/// Board-style top bar: a 44 pt round button, a centered title, a trailing slot.
-struct PlanNavBar: View {
-    enum Leading { case back, close, none }
+// MARK: - Asking and answering
 
-    let title: String
-    var leading: Leading = .back
-    var trailing: String?
-    var onLeading: () -> Void = {}
+extension PlanScreen {
+    private static let tryAgain = "We couldn't send that. Please try again."
 
-    var body: some View {
-        HStack(spacing: Spacing.s2) {
-            switch leading {
-            case .back:
-                navButton(.chevronLeft, label: "Back")
-            case .close:
-                navButton(.x, label: "Close")
-            case .none:
-                Color.clear.frame(width: 44, height: 44)
+    /// J3/J4's ask, or board 18's answer sheet (Plans for the holidays) for someone invited to a private plan that
+    /// takes answers, or in it and changing their answer.
+    @ViewBuilder var askSheet: some View {
+        if let card = viewModel.card ?? sheetCard, answersHere(card) {
+            PlanAnswerSheet(
+                card: card,
+                prefill: viewModel.answerPrefill,
+                onIn: { await viewModel.answerIn($0) },
+                onMaybe: { await viewModel.sayMaybe() ? nil : viewModel.actionError ?? Self.tryAgain },
+                onCantMakeIt: { await viewModel.declineInvite() ? nil : viewModel.actionError ?? Self.tryAgain }
+            )
+        } else if let card = viewModel.card ?? sheetCard, card.paysToJoin, !askIsChange {
+            PlanPaySpotSheet(card: card, viewModel: viewModel) // B2: paying for a spot (board 11)
+        } else if let card = viewModel.card ?? sheetCard {
+            PlanAskSheet(
+                card: card,
+                previous: askIsChange ? viewModel.askPrefill : nil,
+                invited: !askIsChange && viewModel.openInvite.map { !$0.needsHostOk } == true
+            ) { body in
+                await viewModel.ask(body) ? nil : viewModel.actionError ?? Self.tryAgain
             }
-            Text(title)
-                .planFont(.h4)
-                .foregroundStyle(Theme.Color.appText)
-                .frame(maxWidth: .infinity)
-                .lineLimit(1)
-                .accessibilityAddTraits(.isHeader)
-            Text(trailing ?? "")
-                .planFont(.label)
-                .foregroundStyle(Theme.Color.appTextSecondary)
-                .frame(minWidth: 44, alignment: .trailing)
         }
-        .padding(.horizontal, Spacing.s3)
-        .padding(.vertical, Spacing.s1)
-        .frame(minHeight: 52)
     }
 
-    private func navButton(_ icon: PantopusIcon, label: String) -> some View {
-        Button(action: onLeading) {
-            Icon(icon, size: 20, color: Theme.Color.appText)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(Theme.Color.appSurfaceSunken))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityIdentifier("planNav.\(label.lowercased())")
+    /// Board 18 also for the plan's one link with the host's yes (contract 6.9, A10 item 4): their ask carries adults
+    /// and kids, and waits.
+    private func answersHere(_ card: PlanCardDTO) -> Bool {
+        card.answersWithNumbers
+            && (viewModel.mode == .going || viewModel.openInvite.map { !$0.needsHostOk || $0.cameByOpenLink } == true)
     }
-}
-
-/// The post report reasons (`reportPostSchema`, backend/routes/posts.js:339).
-enum PlanReportReason {
-    static let all: [(token: String, label: String)] = [
-        ("safety", "Something unsafe"),
-        ("harassment", "Harassment"),
-        ("inappropriate", "Inappropriate"),
-        ("spam", "Spam or a scam"),
-        ("misinformation", "Not a real plan"),
-        ("other", "Something else")
-    ]
 }

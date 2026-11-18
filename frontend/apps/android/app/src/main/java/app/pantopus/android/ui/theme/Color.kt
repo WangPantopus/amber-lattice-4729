@@ -366,8 +366,8 @@ object PantopusColors {
     val tableCreamSoft = Color(0xBDF6ECD9)
     val tableCreamFaint = Color(0x80F6ECD9)
 
-    /** The hint under the table's button: white at 70%. */
-    val tableHint = Color(0xB3FFFFFF)
+    /** The hint under the table's button: white at 85% (plan 8.2; was 70%). */
+    val tableHint = Color(0xD9FFFFFF)
 
     /** The round and pill buttons' glass: `rgb(24 18 16 / 36%)`, edged cream at 16%. */
     val tableGlass = Color(0x5C181210)
@@ -415,6 +415,18 @@ object PantopusColors {
     val tablePostmarkInk = Color(0xDBB2413A)
     val tablePictureLine = Color(0x40463214)
     val tableEdgeShade = Color(0x336E501E)
+
+    /** The mantel (plan Part 7): the lamp's warm pool on the wall, `rgba(255 226 170 / 55%)`. */
+    val mantelGlow = Color(0x8CFFE2AA)
+
+    /** A card's shadow on the wall behind the mantel, `rgba(60 40 10 / 26%)`. */
+    val mantelWallShadow = Color(0x423C280A)
+
+    /** The small dark under a card's edge, `rgba(0 0 0 / 25%)`. */
+    val mantelEdgeShadow = Color(0x40000000)
+
+    /** Where a card stands on the shelf: 38% black at the middle of its foot. */
+    val mantelFootShadow = Color(0x61000000)
 
     /** The light: the vignette's edge `rgb(6 3 4 / 46%)`; the window's warm wash on phones without soft light. */
     val tableVignette = Color(0x75060304)

@@ -30,7 +30,7 @@ data class PreparedPhoto(
 
 /**
  * A card's own photo (memories plan step 4, launch key `holiday_card_memories`) on its way to the server: the picked
- * picture is turned upright and made a JPEG of at most 1600 px on its long side on the phone, so no location or other
+ * picture is turned upright and made a JPEG of at most 2400 px on its long side on the phone, so no location or other
  * EXIF ever leaves it, then uploaded to `POST /api/mailbox/cards/media` with its progress. The prepared copy lives in the
  * app's cache only while the card is written; nothing of it is kept for another account.
  */
@@ -90,7 +90,9 @@ class CardMediaUploads
 
         private companion object {
             const val FOLDER = "card-media"
-            const val PHOTO_LONG_SIDE = 1600
+
+            // What the server keeps (2400 since November 16, so an opened photo stays sharp when it's enlarged).
+            const val PHOTO_LONG_SIDE = 2400
             const val PHOTO_QUALITY = 90
             val TEXT = "text/plain".toMediaType()
         }

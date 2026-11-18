@@ -117,6 +117,12 @@ final class PlaceDetailViewModel {
         return { [weak self] in self?.showVerify = true }
     }
 
+    /// "Mail me a code" for someone verified by a fast check (FASTVERIFY): the postcard screen.
+    var mailCodeAction: (() -> Void)? {
+        guard let onStartVerify else { return nil }
+        return { onStartVerify(.mail) }
+    }
+
     func load() async {
         if case .loaded = state, keepsCopy { return }
         // The dashboard or Today may already hold this copy (one store entry).

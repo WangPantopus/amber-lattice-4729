@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Check, ChevronLeft, Home as HomeIcon, Info, Lock } from 'lucide-react';
 import * as api from '@pantopus/api';
 import { getAuthToken } from '@pantopus/api';
 import type {
@@ -19,6 +19,8 @@ import { CountyCheckNote, CountyPageLink, FloorPlanNote, QuickQuestion } from '@
 import { validHomeCreationInput, type HomeCreationInput } from '@/components/homes/creation/homeCreationModel';
 import HomeCreationRecoveryView from '@/components/homes/creation/HomeCreationRecoveryView';
 import { validHomeResidencyInput, type HomeResidencyInput } from '@/components/homes/creation/homeResidencySubmissionModel';
+import { useFeatureFlagState } from '@/hooks/useFeatureFlag';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type NormalizedAddress = {
   address: string;
@@ -197,6 +199,21 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
   const detailsNow = useRef({ bedrooms, bathrooms, sqft, lotSqft, yearBuilt, description });
   detailsNow.current = { bedrooms, bathrooms, sqft, lotSqft, yearBuilt, description };
   useEffect(() => { if (step === 2) setLateDetails(false); }, [step]);
+
+  // Add Home in two steps (home_short_add, FASTVERIFY): decided once, while still on the first step, so the
+  // form never changes under someone. Off, unread or failed: today's four steps.
+  const shortFlag = useFeatureFlagState('home_short_add');
+  const [shortAdd, setShortAdd] = useState(false);
+  const shortDecided = useRef(false);
+  useEffect(() => {
+    if (shortDecided.current || !shortFlag.isFetched) return;
+    shortDecided.current = true;
+    if (shortFlag.enabled && stepNow.current === 1) setShortAdd(true);
+  }, [shortFlag.isFetched, shortFlag.enabled]);
+  // A picked suggestion is checked at once in the two-step form ("Checked address").
+  const checkPicked = useRef(false);
+  // Someone adding another home sees addresses near the one they have first (SPEC 11).
+  const homeCenter = useMyHomeCenter();
 
   // Step 3 — Your Setup
   const [isOwner, setIsOwner] = useState(true);
@@ -403,6 +420,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     const zipcode = n?.zipcode || n?.zip_code;
     if (!n?.address || !zipcode || n?.latitude == null || n?.longitude == null) { setNormalized(null); return; }
     setNormalized({ address: n.address, city: n.city, state: n.state, zipcode, latitude: n.latitude, longitude: n.longitude, label: n.label || n.address });
+    checkPicked.current = shortAdd;
     setFieldErrors((prev) => {
       if (!prev.location) return prev;
       const next = { ...prev };
@@ -444,7 +462,8 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
       latitude: normalized.latitude ?? undefined,
       longitude: normalized.longitude ?? undefined,
       name: name.trim() || undefined,
-      home_type: homeType,
+      // Two steps: the type and details come from the county record after the Home is saved (server, home_short_add).
+      home_type: shortAdd ? undefined : homeType,
       bedrooms: parsedBedrooms,
       bathrooms: parsedBathrooms,
       sq_ft: parsedSqft,
@@ -453,9 +472,9 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
       ...(floorPlanAnswer ? { floor_plan_answer: floorPlanAnswer } : {}),
       ...(countyCheck && countyChecked ? { county_checked: true } : {}),
       description: description.trim() || undefined,
-      amenities: Object.fromEntries(Object.entries(amenities).filter(([, v]) => v)),
+      amenities: shortAdd ? undefined : Object.fromEntries(Object.entries(amenities).filter(([, v]) => v)),
       is_owner: isOwner,
-      role: isOwner ? 'owner' : 'renter',
+      role: isOwner ? 'owner' : shortAdd ? residencyRole : 'renter',
       move_in_date: moveInDate || undefined,
       entry_instructions: entryInstructions.trim() || undefined,
       parking_instructions: parkingInstructions.trim() || undefined,
@@ -637,7 +656,8 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
           label: buildAddressLabel(resolved.line1, resolved.city, resolved.state, resolved.zip, resolved.line2),
         };
         setNormalized(nextNormalized);
-        setAddressText(nextNormalized.label || nextNormalized.address);
+        // Two steps: the "Checked address" card shows the checked address; rewriting the field would search again.
+        if (!shortAdd) setAddressText(nextNormalized.label || nextNormalized.address);
         setUnit(resolved.line2 || '');
       }
 
@@ -835,6 +855,45 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     }
   };
 
+  // ── Add Home in two steps (FASTVERIFY) ──────────────────────
+  // A picked suggestion is checked with USPS right away, so the card says "Confirmed with USPS".
+  useEffect(() => {
+    if (!shortAdd || step !== 1 || !normalized || !checkPicked.current) return;
+    checkPicked.current = false;
+    void verifyAddress();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalized, shortAdd, step]);
+  // "This is my home": the checked address goes on to "How do you live here?"; anything changed is checked again.
+  const continueShort = async () => {
+    if (!normalized) {
+      setFieldErrors({ location: 'Please select an address.' });
+      setError('Please fix the highlighted fields.');
+      return;
+    }
+    if (validatingAddress) return;
+    if (!validatedAddressId) {
+      const ok = await verifyAddress();
+      if (!ok || typeof ok !== 'object' || !ok.current()) return;
+    }
+    setError('');
+    setFieldErrors({});
+    setStep(2);
+  };
+  // The Home is saved: Place opens with the verify sheet (the instant claim made it yours already).
+  const leftForPlace = useRef(false);
+  useEffect(() => {
+    if (!shortAdd || leftForPlace.current) return;
+    if (recovery.pending?.outcome?.state !== 'completed' || !recovery.canAcknowledge || recovery.busy) return;
+    leftForPlace.current = true;
+    void (async () => {
+      const original = await recovery.acknowledge();
+      if (!original) { leftForPlace.current = false; return; }
+      const homeId = original.version === 1 ? original.outcome?.home?.id : null;
+      if (homeId) router.replace(`/app/place?home=${encodeURIComponent(homeId)}&verify=1`);
+      else { router.push('/app/homes'); router.refresh(); }
+    })();
+  }, [shortAdd, recovery, router]);
+
   const submit = async () => {
     setError('');
     setFieldErrors({});
@@ -907,6 +966,9 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
   const homeTypeIcon = HOME_TYPES.find(t => t.value === homeType)?.icon || '🏠';
   const activeAmenities = AMENITIES_OPTIONS.filter(a => amenities[a.key]);
 
+  if (shortAdd && recovery.pending?.outcome?.state === 'completed' && !recovery.error) {
+    return <main className="mx-auto max-w-xl px-4 py-10"><p role="status" className="text-app-text-secondary">Opening your Place…</p></main>;
+  }
   if (!recovery.ready || recovery.pending || recovery.busy || recovery.blocked) {
     return <HomeCreationRecoveryView recovery={recovery} onContinue={() => void continueOriginal()} />;
   }
@@ -949,6 +1011,272 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
               onBack={handleAddressStepUpBack}
             />
           </div>
+        </main>
+      </div>
+    );
+  }
+
+  // "Enter it yourself": suggestions on the street line (picking one fills the rest), and a rural route,
+  // military or Puerto Rico address can still be typed in full (SPEC 11).
+  const setManual = (next: typeof manualAddress, point?: { lat?: number | null; lng?: number | null }) => {
+    setManualAddress(next);
+    resetAddressValidation();
+    // The search box above keeps its own text: mirroring the street line into it would search there too.
+    const complete = next.line.trim() && next.city.trim() && next.state.trim().length === 2 && /^\d{5}(-\d{4})?$/.test(next.zip.trim());
+    setNormalized(complete ? {
+      address: next.line.trim(),
+      city: next.city.trim(),
+      state: next.state.trim(),
+      zipcode: next.zip.trim(),
+      ...(point?.lat != null && point?.lng != null ? { latitude: point.lat, longitude: point.lng } : {}),
+      label: buildAddressLabel(next.line.trim(), next.city.trim(), next.state.trim(), next.zip.trim()),
+    } : null);
+  };
+  const manualGrid = (
+    <div className="grid grid-cols-6 gap-2">
+      <div className="col-span-6">
+        <AddressAutocomplete
+          value={manualAddress.line}
+          onChange={(value) => setManual({ ...manualAddress, line: value })}
+          onSelectNormalized={(n) => setManual(
+            { line: n.address, city: n.city || '', state: (n.state || '').toUpperCase().slice(0, 2), zip: n.zipcode || '' },
+            { lat: n.latitude, lng: n.longitude },
+          )}
+          ariaLabel="Street address"
+          placeholder="Street, or RR 2 Box 152, PSC 3 Box 1234"
+          hintText={null}
+          streetOnly
+          near={homeCenter}
+          inputClassName={`${inputClass('address')} bg-app-surface text-app-text`}
+        />
+      </div>
+      {([
+        ['city', 'City', 'col-span-3', 'City', 100],
+        ['state', 'State', 'col-span-1', 'ST', 2],
+        ['zip', 'ZIP', 'col-span-2', 'ZIP', 10],
+      ] as const).map(([field, label, span, placeholder, maxLength]) => (
+        <input
+          key={field}
+          aria-label={label}
+          placeholder={placeholder}
+          maxLength={maxLength}
+          value={manualAddress[field]}
+          onChange={(e) => setManual({ ...manualAddress, [field]: field === 'state' ? e.target.value.toUpperCase() : e.target.value })}
+          className={`${span} ${inputClass('address')} bg-app-surface text-app-text`}
+        />
+      ))}
+    </div>
+  );
+
+  if (shortAdd) {
+    const addressConfirmed = !!validatedAddressId && !postalNotice && !noUnitAttested;
+    const cityLine = normalized ? [normalized.city, [normalized.state, normalized.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+    const ROLES = [
+      { id: 'owner', label: 'I own it', sub: 'You can confirm ownership with a document later.' },
+      { id: 'renter', label: 'I rent it', sub: "The lease is in your name or a housemate's." },
+      { id: 'household', label: 'I live here with family or friends', sub: 'Someone else owns or rents it.' },
+    ] as const;
+    const roleNow = isOwner ? 'owner' : residencyRole;
+    const pickRole = (id: (typeof ROLES)[number]['id']) => {
+      if (id === 'owner') setIsOwner(true);
+      else { setIsOwner(false); setResidencyRole(id); }
+    };
+    const primaryButton = 'w-full min-h-[52px] rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-semibold text-base disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
+    return (
+      <div className="bg-app-surface-raised min-h-full">
+        <div className="max-w-xl mx-auto px-4 pt-4">
+          <div className="grid grid-cols-[minmax(44px,auto)_1fr_minmax(44px,auto)] items-center gap-2">
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => { if (step === 2) { setError(''); setStep(1); } else router.back(); }}
+              className="w-11 h-11 -ml-2 flex items-center justify-center rounded-full text-app-text hover:bg-app-hover"
+            >
+              <ChevronLeft size={22} strokeWidth={2.25} />
+            </button>
+            <h1 className="text-center text-[17px] font-semibold text-app-text">Add your home</h1>
+            <div className="text-right text-sm text-app-text-secondary whitespace-nowrap">{step === 2 ? '2 of 2' : '1 of 2'}</div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-1.5" aria-hidden>
+            <span className="h-1 rounded-full bg-primary-600" />
+            <span className={`h-1 rounded-full ${step === 2 ? 'bg-primary-600' : 'bg-app-surface-sunken'}`} />
+          </div>
+        </div>
+
+        <main className="max-w-xl mx-auto px-4 py-6 space-y-5">
+          {error ? (
+            <div role="alert" className="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
+          ) : null}
+
+          {step === 1 ? (
+            <>
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-app-home-bg text-app-home px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em]">
+                  <HomeIcon size={13} strokeWidth={2.25} aria-hidden /> Your home
+                </span>
+                <h2 id="short-home-title" className="mt-3 text-[26px] font-bold -tracking-[0.02em] text-app-text">Find your home</h2>
+                <p id="short-home-address-label" className="mt-1 text-[15px] text-app-text-secondary">Type your street address and pick it from the list.</p>
+              </div>
+
+              <AddressAutocomplete
+                value={addressText}
+                onChange={(value) => {
+                  resetAddressValidation();
+                  setAddressText(value);
+                  setNormalized(null);
+                }}
+                onResolveStart={() => { resetAddressValidation(); setNormalized(null); return beginAddressOperation(true); }}
+                onSelectNormalized={onSelectNormalized}
+                placeholder="Search address…"
+                labelId="short-home-address-label"
+                hintText={null}
+                near={homeCenter}
+              />
+              <button
+                type="button"
+                onClick={() => setManualEntry((open) => !open)}
+                aria-expanded={manualEntry}
+                className="text-xs text-app-text-secondary underline underline-offset-2 hover:text-app-text"
+              >
+                {manualEntry ? 'Search for my address instead' : 'Can’t find your address? Enter it yourself'}
+              </button>
+              {manualEntry ? manualGrid : null}
+              {fieldErrors.location ? <p id="err-location" role="alert" className="text-xs text-red-600">{fieldErrors.location}</p> : null}
+              {fieldErrors.address ? <p id="err-address" role="alert" className="text-xs text-red-600">{fieldErrors.address}</p> : null}
+
+              {normalized ? (
+                <section aria-label="Checked address" className="rounded-2xl border border-app-border bg-app-surface p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-app-text-muted">Checked address</span>
+                    {validatingAddress ? (
+                      <span role="status" className="text-xs text-app-text-secondary">Checking…</span>
+                    ) : addressConfirmed ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-app-success-light text-app-success px-2.5 py-0.5 text-xs font-semibold">
+                        <Check size={13} strokeWidth={2.5} aria-hidden /> Confirmed with USPS
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-[18px] font-semibold text-app-text break-words">{normalized.address}</p>
+                  {cityLine ? <p className="text-[14px] text-app-text-secondary">{cityLine}</p> : null}
+                  <label htmlFor="home-unit" className="mt-4 block text-sm font-medium text-app-text-strong">Apartment or unit</label>
+                  <input
+                    id="home-unit"
+                    maxLength={50}
+                    value={unit}
+                    onChange={(e) => { resetAddressValidation(false); setUnit(e.target.value); }}
+                    placeholder="None for this home"
+                    className={`mt-1.5 ${inputClass('unit_number')} min-h-11 bg-app-surface text-app-text`}
+                    aria-invalid={fieldErrors.unit_number ? true : undefined}
+                    aria-describedby={fieldErrors.unit_number ? 'err-unit_number home-unit-hint' : 'home-unit-hint'}
+                  />
+                  <p id="home-unit-hint" className="mt-1 text-xs text-app-text-secondary">Leave empty if your home has none.</p>
+                  {unitChoices.length > 0 ? (
+                    <div className="mt-2" role="group" aria-label="Units at this address">
+                      <p className="text-xs font-medium text-app-text-strong">Which one is yours?</p>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {unitChoices.map((choice) => (
+                          <button
+                            key={choice}
+                            type="button"
+                            aria-pressed={unit.trim() === choice}
+                            onClick={() => {
+                              resetAddressValidation(false);
+                              setUnit(choice);
+                              setFieldErrors((prev) => { const next = { ...prev }; delete next.unit_number; return next; });
+                              setError('');
+                            }}
+                            className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                              unit.trim() === choice ? 'border-primary-500 bg-primary-50 text-app-text-strong' : 'border-app-border text-app-text-secondary hover:border-primary-300'
+                            }`}
+                          >
+                            {choice}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {fieldErrors.unit_number ? (
+                    <>
+                      <p id="err-unit_number" role="alert" className="mt-1 text-xs text-red-600">{fieldErrors.unit_number}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFieldErrors((prev) => { const next = { ...prev }; delete next.unit_number; return next; });
+                          setError('');
+                          void verifyAddress({ attestNoUnit: true });
+                        }}
+                        className="mt-1 text-xs text-app-text-secondary underline underline-offset-2 hover:text-app-text-strong"
+                      >
+                        My home doesn&apos;t have a unit number
+                      </button>
+                    </>
+                  ) : null}
+                </section>
+              ) : null}
+
+              {postalNotice ? (
+                <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">{postalNotice.text}</div>
+              ) : null}
+
+              <p className="flex items-start gap-2 text-[13px] text-app-text-secondary">
+                <Lock size={15} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />
+                <span>Only you see the address you type, others see your first name, never your address</span>
+              </p>
+
+              <button type="button" onClick={() => void continueShort()} disabled={!normalized || validatingAddress} className={primaryButton}>
+                {validatingAddress ? 'Checking…' : 'This is my home'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div>
+                <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-app-home-bg text-app-home px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em]">
+                  <HomeIcon size={13} strokeWidth={2.25} aria-hidden className="shrink-0" />
+                  <span className="truncate">{normalized?.address || ''}</span>
+                </span>
+                <h2 className="mt-3 text-[26px] font-bold -tracking-[0.02em] text-app-text">How do you live here?</h2>
+                <p className="mt-1 text-[15px] text-app-text-secondary">Pick the one that fits. It sets which tools you get.</p>
+              </div>
+              <div role="radiogroup" aria-label="How do you live here?" className="space-y-2.5">
+                {ROLES.map((role) => {
+                  const selected = roleNow === role.id;
+                  return (
+                    <button
+                      key={role.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => pickRole(role.id)}
+                      className={`w-full flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
+                        selected ? 'border-primary-600 bg-primary-50 dark:bg-primary-950/30' : 'border-app-border bg-app-surface hover:bg-app-hover'
+                      }`}
+                    >
+                      <span aria-hidden className={`mt-0.5 w-[22px] h-[22px] rounded-full shrink-0 box-border ${
+                        selected ? 'border-[6.5px] border-primary-600' : 'border-2 border-app-border-strong'
+                      }`} />
+                      <span className="min-w-0">
+                        <span className="block text-[16px] font-semibold text-app-text">{role.label}</span>
+                        <span className="block mt-0.5 text-[13.5px] text-app-text-secondary">{role.sub}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {isClaimingExistingHome ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                  Existing home found at {addressCheckResult?.formatted_address || normalized?.label || normalized?.address}. Your submission will attach to that home instead of creating a new one.
+                </div>
+              ) : (
+                <p className="flex items-start gap-2 rounded-xl bg-app-surface-sunken px-3.5 py-3 text-[13.5px] text-app-text-secondary">
+                  <Info size={16} strokeWidth={2} aria-hidden className="mt-0.5 shrink-0" />
+                  <span>We fill in your home&apos;s type, size and year built from the county record. Check them anytime in Place.</span>
+                </p>
+              )}
+              <button type="button" onClick={() => void submit()} disabled={loading || !normalized} className={primaryButton}>
+                {loading ? 'Adding…' : 'Add home'}
+              </button>
+            </>
+          )}
         </main>
       </div>
     );
@@ -1044,6 +1372,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
                 onSelectNormalized={onSelectNormalized}
                 placeholder="Search address…"
                 labelId="home-address-label"
+                near={homeCenter}
               />
               <button
                 type="button"
@@ -1053,39 +1382,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
               >
                 {manualEntry ? 'Search for my address instead' : 'Can’t find your address? Enter it yourself'}
               </button>
-              {manualEntry ? (
-                <div className="grid grid-cols-6 gap-2">
-                  {([
-                    ['line', 'Street address', 'col-span-6', 'Street, or RR 2 Box 152, PSC 3 Box 1234', 255],
-                    ['city', 'City', 'col-span-3', 'City', 100],
-                    ['state', 'State', 'col-span-1', 'ST', 2],
-                    ['zip', 'ZIP', 'col-span-2', 'ZIP', 10],
-                  ] as const).map(([field, label, span, placeholder, maxLength]) => (
-                    <input
-                      key={field}
-                      aria-label={label}
-                      placeholder={placeholder}
-                      maxLength={maxLength}
-                      value={manualAddress[field]}
-                      onChange={(e) => {
-                        const next = { ...manualAddress, [field]: field === 'state' ? e.target.value.toUpperCase() : e.target.value };
-                        setManualAddress(next);
-                        resetAddressValidation();
-                        setAddressText(next.line);
-                        const complete = next.line.trim() && next.city.trim() && next.state.trim().length === 2 && /^\d{5}(-\d{4})?$/.test(next.zip.trim());
-                        setNormalized(complete ? {
-                          address: next.line.trim(),
-                          city: next.city.trim(),
-                          state: next.state.trim(),
-                          zipcode: next.zip.trim(),
-                          label: buildAddressLabel(next.line.trim(), next.city.trim(), next.state.trim(), next.zip.trim()),
-                        } : null);
-                      }}
-                      className={`${span} ${inputClass('address')}`}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {manualEntry ? manualGrid : null}
 
               {normalized ? (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">

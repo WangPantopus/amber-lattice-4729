@@ -86,6 +86,12 @@ final class CreateBusinessWizardViewModel: WizardModel {
     private let logger = Logger(label: "app.pantopus.ios.CreateBusinessWizard")
     private var usernameCheckTask: Task<Void, Never>?
 
+    /// Address suggestions favor the owner's own home's area (founder 2026-11-17: suggestions everywhere).
+    func loadAddressSearchArea() async {
+        guard addressSuggestions.near == nil else { return }
+        addressSuggestions.near = await AddressSuggestions.anyHomePoint()
+    }
+
     init(api: APIClient = .shared, uploader: MultipartUploader = .shared) {
         self.api = api
         self.uploader = uploader

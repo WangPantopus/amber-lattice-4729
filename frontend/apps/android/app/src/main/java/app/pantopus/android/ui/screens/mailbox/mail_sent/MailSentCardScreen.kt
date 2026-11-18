@@ -61,13 +61,20 @@ import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardBack
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFlip
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFront
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardTimes
+import app.pantopus.android.ui.screens.mailbox.cards.SEND_THIS_CARD_AGAIN
 import app.pantopus.android.ui.screens.mailbox.cards.TakeBackDialog
+import app.pantopus.android.ui.screens.mailbox.cards.canSendAnother
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardGreetingVoice
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardLinkBox
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardPrintPhoto
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyState
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyTable
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardReplyViewModel
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardShareSheet
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableDialog
+import app.pantopus.android.ui.screens.mailbox.cards.table.CardTableSendBack
 import app.pantopus.android.ui.screens.mailbox.cards.table.LetterCardPrint
+import app.pantopus.android.ui.screens.mailbox.cards.table.joined
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceMapper
 import app.pantopus.android.ui.screens.mailbox.mail_detail.letter.MailLetterCard
@@ -95,7 +102,10 @@ import java.util.Locale
 @Composable
 fun MailSentCardScreen(
     onBack: () -> Unit,
+    /** "Send this card to someone else" (plan Part 6): the send flow with this picture kept, from Who it's for. */
+    onSendAgain: ((design: String) -> Unit)? = null,
     viewModel: MailSentCardViewModel = hiltViewModel(),
+    replies: CardReplyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val takingBack by viewModel.takingBack.collectAsStateWithLifecycle()
@@ -112,6 +122,25 @@ fun MailSentCardScreen(
     LaunchedEffect(Unit) { viewModel.closed.collect { onBack() } }
     LaunchedEffect(Unit) { viewModel.emailed.collect { toasts.success("We emailed them.") } }
 
+    // Write back (plan Part 3): a reply this person wrote opens as the joined card; a card of theirs that was answered
+    // offers "{First name} wrote back".
+    val sentCard = (state as? MailSentCardState.Loaded)?.card
+    LaunchedEffect(sentCard?.id) { sentCard?.id?.let { replies.load(it) } }
+    val replyState by replies.state.collectAsStateWithLifecycle()
+    var showsJoined by rememberSaveable { mutableStateOf(false) }
+    val ownReply = sentCard?.cardReply != null
+    // The writer took their reply back: there's nothing left to show here.
+    LaunchedEffect(replyState.exchange) { if (ownReply && replyState.exchange?.let { it.reply == null } == true) onBack() }
+    SentJoinedCard(
+        card = sentCard,
+        state = replyState,
+        replies = replies,
+        shows = showsJoined || ownReply,
+        onClose = {
+            showsJoined = false
+            if (ownReply) onBack()
+        },
+    )
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("mailSentPiece")) {
             BackToSent(onBack)
@@ -148,6 +177,27 @@ fun MailSentCardScreen(
                                     onEmailAgain = viewModel::emailAgain,
                                 ),
                         )
+                        // Only while another card can go now: a stamp left, or today's card not used.
+                        val design = shown.card.card?.design
+                        if (onSendAgain != null && design != null && cards.canSendAnother(null)) {
+                            CardButton(
+                                SEND_THIS_CARD_AGAIN,
+                                onClick = { onSendAgain(design) },
+                                kind = CardButtonKind.Paper,
+                                modifier = Modifier.testTag("sentSendThisCardAgain"),
+                            )
+                        }
+                        // The card was answered: who wrote back, opening the joined card.
+                        val answer = replyState.exchange?.reply?.takeIf { shown.card.cardReply == null }
+                        if (answer != null) {
+                            val first = answer.fromName.orEmpty().trim().substringBefore(' ').ifEmpty { "Someone" }
+                            CardButton(
+                                "$first wrote back",
+                                onClick = { showsJoined = true },
+                                kind = CardButtonKind.Paper,
+                                modifier = Modifier.testTag("sentWroteBack"),
+                            )
+                        }
                     }
             }
         }
@@ -168,6 +218,26 @@ fun MailSentCardScreen(
             notEmailedYet = MailSentWords.notEmailedYet(card),
         )
     }
+}
+
+/** The joined card from Sent (plan Part 3): the writer's own reply with Take it back while it waits, or the answered card. */
+@Composable
+private fun SentJoinedCard(
+    card: SentCard?,
+    state: CardReplyState,
+    replies: CardReplyViewModel,
+    shows: Boolean,
+    onClose: () -> Unit,
+) {
+    if (card == null || !shows) return
+    val mine = card.cardReply != null
+    val joined = state.exchange?.joined(viewerWrote = mine) ?: return
+    val takeBack =
+        state.exchange.pendingReply
+            ?.takeIf { mine && it.canTakeBack }
+            ?.let { listOf(CardTableSendBack("Take it back") { replies.takeBack() }) }
+            .orEmpty()
+    CardReplyTable(joined, onClose = onClose, actions = takeBack, closeLabel = if (mine) "Back to Sent" else "Close")
 }
 
 /** Back, with where it goes: "Sent". */

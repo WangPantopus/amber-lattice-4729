@@ -1,7 +1,9 @@
 /* The send flow at the table (design plan Part 9): the chosen card's cloth, the window light and the dark edges, the
    same layers the card table uses (CardTable.module.css), always dark whatever the page's own setting. */
+/* overflow: clip, not hidden: the light reaches past the edges, and a hidden overflow is a scroll box of its own, which
+   would keep Look it over's pinned button (mail-cards-experience 5.2) from sticking to the bottom of the page. */
 .cloth {
-  position: relative; margin-top: 12px; padding: 18px 0 28px; min-height: calc(100dvh - 190px); overflow: hidden;
+  position: relative; margin-top: 12px; padding: 18px 0 28px; min-height: calc(100dvh - 190px); overflow: clip;
   background-size: cover; background-position: 50% 30%; background-blend-mode: multiply; color: #f6ecd9; color-scheme: dark;
 }
 .light {

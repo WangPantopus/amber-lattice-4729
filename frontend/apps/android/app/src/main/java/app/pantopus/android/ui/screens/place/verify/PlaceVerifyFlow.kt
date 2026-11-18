@@ -40,10 +40,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.homes.HomeFastVerifyRepository
+import app.pantopus.android.data.homes.HomeLocationRecheck
 import app.pantopus.android.data.homes.HomesRepository
 import app.pantopus.android.data.tenant.TenantRepository
 import app.pantopus.android.ui.components.PrimaryButton
@@ -84,10 +87,27 @@ enum class PlaceVerifyMethod(val slug: String, val icon: PantopusIcon, val label
     ),
     MAIL("mail", PantopusIcon.Send, "Mail a code to my address", "A postcard with a code, usually within a week."),
     LANDLORD("landlord", PantopusIcon.Home, "Ask my landlord", "Your landlord or property manager confirms you live here."),
+
+    /** Faster home verification: a texted code, then the phone company's records (`home_fast_verify_phone`). */
+    PHONE("phone", PantopusIcon.Smartphone, "Use my phone number", "We text a code, then match the number to this address."),
+
+    /** Faster home verification: the phone's location once, at home (`home_fast_verify_location`). */
+    LOCATION("location", PantopusIcon.MapPin, "I'm at home now", "One tap. We check your phone's location once."),
     ;
 
     companion object {
+        /** Today's three doors, the ones the sheet offers while faster home verification is off. */
+        val TODAY: List<PlaceVerifyMethod> = listOf(DOCUMENT, MAIL, LANDLORD)
+
+        /** The ways this build can open. */
+        private val READY = setOf(DOCUMENT, MAIL, LANDLORD, PHONE, LOCATION)
+
         fun fromSlug(slug: String?): PlaceVerifyMethod = entries.firstOrNull { it.slug == slug } ?: DOCUMENT
+
+        /** The method for a `verify-options` way this build can open; null for one it can't (yet). */
+        fun fromOption(id: String): PlaceVerifyMethod? = entries.firstOrNull { it.slug == id && it in READY }
+
+        fun isFastFlowReady(method: PlaceVerifyMethod): Boolean = method in READY
     }
 }
 
@@ -130,6 +150,10 @@ interface PlaceVerifySheetDeps {
     fun tenantRepository(): TenantRepository
 
     fun homesRepository(): HomesRepository
+
+    fun homeFastVerifyRepository(): HomeFastVerifyRepository
+
+    fun homeLocationRecheck(): HomeLocationRecheck
 }
 
 /**
@@ -196,91 +220,122 @@ fun PlaceVerifySheet(
     val documentInReview = rememberDocumentInReview(homeId)
     // A document already in review isn't a door to choose: mail leads again.
     val chosen = if (documentInReview && selected == PlaceVerifyMethod.DOCUMENT) PlaceVerifyMethod.MAIL else selected
+    // The server's ways to verify (FASTVERIFY); null while `home_fast_verify` is off, and the sheet is today's.
+    val options = rememberVerifyOptions(homeId)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = PantopusColors.appSurface) {
-        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 4.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(bottom = 18.dp),
-            ) {
-                Box(
-                    modifier =
-                        Modifier.size(
-                            38.dp,
-                        ).clip(
-                            RoundedCornerShape(11.dp),
-                        ).background(PantopusColors.homeBg).border(1.dp, PantopusColors.successLight, RoundedCornerShape(11.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PantopusIconImage(PantopusIcon.ShieldCheck, null, size = 20.dp, strokeWidth = 2f, tint = PantopusColors.home)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Verify your address",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.36).sp,
-                        color = PantopusColors.appText,
-                    )
-                    Text(address, fontSize = 13.sp, color = PantopusColors.appTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Box(
-                    modifier =
-                        Modifier.size(
-                            30.dp,
-                        ).clip(CircleShape).background(PantopusColors.appSurfaceSunken).clickable(onClick = onDismiss),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PantopusIconImage(PantopusIcon.X, "Close", size = 16.dp, strokeWidth = 2.5f, tint = PantopusColors.appTextSecondary)
-                }
-            }
-
-            Overline("What this unlocks")
-            Column(modifier = Modifier.fillMaxWidth().placeCard()) {
-                VERIFY_BENEFITS.forEachIndexed { i, b ->
-                    VerifyRow(b.icon, b.label, b.sub, PlaceTileTone.HOME, trailing = null)
-                    if (i < VERIFY_BENEFITS.lastIndex) Divider()
-                }
-            }
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Overline("Choose how")
-            VerifyDoors(methods, chosen, documentInReview, onChoose = { selected = it }, onOpenDocumentStatus = onOpenDocumentStatus)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)) {
-                PantopusIconImage(
-                    PantopusIcon.Clock,
-                    null,
-                    size = 15.dp,
-                    strokeWidth = 2f,
-                    tint = PantopusColors.appTextMuted,
-                    modifier = Modifier.padding(top = 1.dp),
-                )
-                Text(
-                    "Postcards take about a week; documents are reviewed by a person. " +
-                        "Everything you have now stays available while you wait.",
-                    fontSize = 12.5.sp,
-                    lineHeight = 18.sp,
-                    color = PantopusColors.appTextSecondary,
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            PrimaryButton(title = "Start verification", onClick = { onStart(chosen) }, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(20.dp))
+        if (options != null) {
+            FastVerifySheetContent(
+                address = address,
+                options = options,
+                documentInReview = documentInReview,
+                onStart = onStart,
+                onDismiss = onDismiss,
+                onOpenDocumentStatus = onOpenDocumentStatus,
+            )
+        } else {
+            TodaySheetContent(address, methods, chosen, documentInReview, { selected = it }, onStart, onDismiss, onOpenDocumentStatus)
         }
     }
 }
 
+/** Today's sheet: what verifying unlocks, the doors as one radio group, and "Start verification". */
 @Composable
-private fun VerifyRow(
+@Suppress("LongParameterList", "LongMethod")
+private fun TodaySheetContent(
+    address: String,
+    methods: List<PlaceVerifyMethod>,
+    chosen: PlaceVerifyMethod,
+    documentInReview: Boolean,
+    onChoose: (PlaceVerifyMethod) -> Unit,
+    onStart: (PlaceVerifyMethod) -> Unit,
+    onDismiss: () -> Unit,
+    onOpenDocumentStatus: (() -> Unit)?,
+) {
+    Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(bottom = 18.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier.size(
+                        38.dp,
+                    ).clip(
+                        RoundedCornerShape(11.dp),
+                    ).background(PantopusColors.homeBg).border(1.dp, PantopusColors.successLight, RoundedCornerShape(11.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                PantopusIconImage(PantopusIcon.ShieldCheck, null, size = 20.dp, strokeWidth = 2f, tint = PantopusColors.home)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Verify your address",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.36).sp,
+                    color = PantopusColors.appText,
+                )
+                Text(address, fontSize = 13.sp, color = PantopusColors.appTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Box(
+                modifier =
+                    Modifier.size(
+                        30.dp,
+                    ).clip(CircleShape).background(PantopusColors.appSurfaceSunken).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                PantopusIconImage(PantopusIcon.X, "Close", size = 16.dp, strokeWidth = 2.5f, tint = PantopusColors.appTextSecondary)
+            }
+        }
+
+        VerifyOverline("What this unlocks")
+        Column(modifier = Modifier.fillMaxWidth().placeCard()) {
+            VERIFY_BENEFITS.forEachIndexed { i, b ->
+                VerifyRow(b.icon, b.label, b.sub, PlaceTileTone.HOME, trailing = null)
+                if (i < VERIFY_BENEFITS.lastIndex) VerifyDivider()
+            }
+        }
+        Spacer(modifier = Modifier.height(18.dp))
+
+        VerifyOverline("Choose how")
+        VerifyDoors(methods, chosen, documentInReview, onChoose = onChoose, onOpenDocumentStatus = onOpenDocumentStatus)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)) {
+            PantopusIconImage(
+                PantopusIcon.Clock,
+                null,
+                size = 15.dp,
+                strokeWidth = 2f,
+                tint = PantopusColors.appTextMuted,
+                modifier = Modifier.padding(top = 1.dp),
+            )
+            Text(
+                "Postcards take about a week; documents are reviewed by a person. " +
+                    "Everything you have now stays available while you wait.",
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp,
+                color = PantopusColors.appTextSecondary,
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        PrimaryButton(title = "Start verification", onClick = { onStart(chosen) }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(20.dp))
+    }
+}
+
+@Composable
+internal fun VerifyRow(
     icon: PantopusIcon,
     label: String,
     sub: String,
     tone: PlaceTileTone,
     trailing: (@Composable () -> Unit)?,
+    // Faster home verification's rows set it; today's rows keep the theme's.
+    subLineHeight: TextUnit = TextUnit.Unspecified,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -290,7 +345,7 @@ private fun VerifyRow(
         PlaceIconTile(icon = icon, tone = tone, size = 34.dp)
         Column(modifier = Modifier.weight(1f)) {
             Text(label, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
-            Text(sub, fontSize = 12.5.sp, color = PantopusColors.appTextMuted)
+            Text(sub, fontSize = 12.5.sp, lineHeight = subLineHeight, color = PantopusColors.appTextMuted)
         }
         trailing?.invoke()
     }
@@ -315,14 +370,14 @@ private fun VerifyDoors(
                     VerifyRow(m.icon, m.label, m.sub, PlaceTileTone.SKY, trailing = { Radio(chosen == m) })
                 }
             }
-            if (i < methods.lastIndex) Divider()
+            if (i < methods.lastIndex) VerifyDivider()
         }
     }
 }
 
 /** The document door while the person's residency document waits on a reviewer: where it stands and the way to its status. */
 @Composable
-private fun DocumentReviewRow(onOpenStatus: (() -> Unit)?) {
+internal fun DocumentReviewRow(onOpenStatus: (() -> Unit)?) {
     val open =
         if (onOpenStatus != null) {
             Modifier.clickable(onClickLabel = "Open its status", role = Role.Button, onClick = onOpenStatus)
@@ -354,12 +409,12 @@ private fun Radio(selected: Boolean) {
 }
 
 @Composable
-private fun Divider() {
+internal fun VerifyDivider() {
     Box(modifier = Modifier.fillMaxWidth().padding(start = 60.dp).height(1.dp).background(PantopusColors.appBorderSubtle))
 }
 
 @Composable
-private fun Overline(text: String) {
+internal fun VerifyOverline(text: String) {
     Text(
         text.uppercase(),
         fontSize = 11.sp,
@@ -417,7 +472,7 @@ private fun Pending(
         when (method) {
             PlaceVerifyMethod.MAIL -> "Your code is on the way"
             PlaceVerifyMethod.LANDLORD -> "Waiting on your landlord"
-            PlaceVerifyMethod.DOCUMENT -> "Reviewing your document"
+            else -> "Reviewing your document"
         },
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
@@ -428,7 +483,7 @@ private fun Pending(
         when (method) {
             PlaceVerifyMethod.MAIL -> "We've mailed a postcard to your address. Enter the code when it arrives — usually within a week."
             PlaceVerifyMethod.LANDLORD -> "We've asked your landlord or property manager to confirm you live here."
-            PlaceVerifyMethod.DOCUMENT -> "A person will review the document you uploaded. You'll get a notification when it's decided."
+            else -> "A person will review the document you uploaded. You'll get a notification when it's decided."
         },
         fontSize = 14.sp,
         lineHeight = 20.sp,
@@ -524,7 +579,7 @@ private fun Failed(
     Column(modifier = Modifier.fillMaxWidth()) {
         PlaceDetailSectionLabel("Other ways to verify")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlaceVerifyMethod.entries.filter { it != method }.forEach { m ->
+            PlaceVerifyMethod.TODAY.filter { it != method }.forEach { m ->
                 Box(modifier = Modifier.clickable(onClick = onRetry)) {
                     PlaceDetailCard(padding = 14.dp) {
                         Row(horizontalArrangement = Arrangement.spacedBy(11.dp), verticalAlignment = Alignment.CenterVertically) {

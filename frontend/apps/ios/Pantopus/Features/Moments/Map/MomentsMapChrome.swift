@@ -134,10 +134,16 @@ struct MomentsMapBottom: View {
                     MomentsLoadFailedCard { Task { await viewModel.load() } }
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
                         .padding(.top, 14)
-                } else if viewModel.isEmpty, postings.isEmpty {
-                    MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
-                        .padding(.top, 14)
+                } else if viewModel.isEmpty, postings.isEmpty, !MomentsScheduled.shared.waiting {
+                    Group {
+                        if viewModel.tooWide {
+                            MomentsZoomInCard { Task { await viewModel.locate() } }
+                        } else {
+                            MomentsEmptyCard(line: viewModel.emptyLine, onAdd: actions.compose)
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onBottomHeight?($0) }
+                    .padding(.top, 14)
                 } else if viewModel.showsRow(postings: postings) {
                     MomentsRoundButton.add(action: actions.compose)
                         .padding(.top, Spacing.s3)
@@ -229,6 +235,7 @@ struct MomentsStrip: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
                     ForEach(postings) { posting in postingCell(posting) }
+                    if viewModel.focus == nil { MomentsScheduledCells() }
                     // One face per person: someone at three spots is one face, not three.
                     ForEach(viewModel.rowPeople) { person in
                         Button { actions.watch(viewModel.watchQueue(from: person), 0, false) } label: { MomentStripFace(ring: person.face) }
@@ -337,6 +344,7 @@ struct MomentsStrip: View {
     /// With no spot open the row holds what the map can't: Moments with no location, and yours while it posts.
     private var title: String {
         if !viewModel.rowPeople.isEmpty { return "Not on the map" }
+        if postings.isEmpty, MomentsScheduled.shared.waiting { return SkyWords.scheduledRowTitle }
         let failed = postings.contains { if case .failed = $0.phase { true } else { false } }
         let posting = postings.contains { $0.phase == .uploading || $0.phase == .checking }
         if failed, !posting { return "Your Moment didn't post" }
@@ -427,7 +435,7 @@ struct MomentsLocationCard: View {
 }
 
 /// The glass card M3 draws: an icon, a title and a line, and one button.
-private struct MomentsMapCard: View {
+struct MomentsMapCard: View {
     let icon: PantopusIcon
     let title: String
     let line: String

@@ -18,13 +18,22 @@ struct PlanScreenSections: View {
     let onChange: () -> Void
     let onCancel: () -> Void
     let onConfirm: (PlanConfirmation) -> Void
+    /// Plans for the holidays: "Change" on board 20's banners opens board 18's sheet; the host's counts open board 17.
+    var onAnswer: () -> Void = {}
+    var onOpenGuests: () -> Void = {}
+    /// Plans for the holidays H2: the host's bring list (board 19).
+    var onOpenBring: () -> Void = {}
 
     var body: some View {
         if let card = viewModel.card {
             VStack(alignment: .leading, spacing: Spacing.s4) {
                 switch viewModel.mode {
                 case .browsing:
-                    if viewModel.openInvite != nil, card.isPrivate {
+                    if card.extrasPart.dates != nil, card.viewer?.isHost != true {
+                        PlanPickingBanner(card: card) // find a date (board 24): ticking is the answer for now
+                    } else if let invite = viewModel.openInvite, invite.status == .maybe, card.answersWithNumbers {
+                        PlanAnswerBanner(kind: .maybe, line: "\(PlanCardLines.hostName(card)) sees your answer", onChange: onAnswer)
+                    } else if viewModel.openInvite != nil, card.isPrivate {
                         // Board Invited: only the people the host invites can see a private plan.
                         PlanInvitedBanner(card: card)
                     } else if let invite = viewModel.openInvite {
@@ -32,7 +41,11 @@ struct PlanScreenSections: View {
                         PlanBanner(tone: .success, icon: .partyPopper, title: words.title, message: words.message)
                             .accessibilityIdentifier("planInviteBanner")
                     }
+                    if let offer = viewModel.spot?.offer, offer.open { PlanSpotOfferCard(offer: offer) }
                     PlanBrowsingSection(card: card, onOpenHost: onOpenHost)
+                    if let dates = card.extrasPart.dates, card.viewer?.isHost != true {
+                        PlanDatesGuestCard(card: card, dates: dates, draft: PlanDatesDraft.of(card.id))
+                    }
                 case .requested:
                     PlanRequestedSection(card: card, myRequest: viewModel.plan?.myRequest)
                 case .waitlisted:
@@ -43,7 +56,8 @@ struct PlanScreenSections: View {
                         card: card,
                         onOpenChat: onOpenChat,
                         onConfirm: onConfirm,
-                        onOpenProfile: onOpenHost
+                        onOpenProfile: onOpenHost,
+                        onAnswer: onAnswer
                     )
                 case .hosting:
                     PlanHostingSection(
@@ -55,7 +69,9 @@ struct PlanScreenSections: View {
                         onChange: onChange,
                         onCancel: onCancel,
                         onConfirm: onConfirm,
-                        onOpenProfile: onOpenHost
+                        onOpenProfile: onOpenHost,
+                        onOpenGuests: onOpenGuests,
+                        onOpenBring: onOpenBring
                     )
                 case .closed:
                     PlanClosedSection(
@@ -118,60 +134,6 @@ struct PlanTitleBlock: View {
     }
 }
 
-/// A status banner: a 34 pt glyph square and two lines.
-struct PlanBanner: View {
-    enum Tone { case neutral, success, warning }
-
-    let tone: Tone
-    let icon: PantopusIcon
-    let title: String
-    let message: String?
-
-    var body: some View {
-        HStack(spacing: Spacing.s3) {
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(tone == .success ? Theme.Color.successSolid : Theme.Color.appSurface)
-                .overlay {
-                    if tone != .success {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(Theme.Color.appBorder, lineWidth: 1)
-                    }
-                }
-                .frame(width: 34, height: 34)
-                .overlay(Icon(icon, size: 18, strokeWidth: tone == .success ? 2.6 : 2, color: glyph))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).planFont(.bodyStrong).foregroundStyle(Theme.Color.appText)
-                if let message {
-                    Text(message)
-                        .planFont(.small)
-                        .foregroundStyle(Theme.Color.appTextSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Spacing.s3)
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(background))
-        .accessibilityElement(children: .combine)
-    }
-
-    private var background: Color {
-        switch tone {
-        case .neutral: Theme.Color.appSurfaceSunken
-        case .success: Theme.Color.successBg
-        case .warning: Theme.Color.warningBg
-        }
-    }
-
-    private var glyph: Color {
-        switch tone {
-        case .success: Theme.Color.appTextInverse
-        case .warning: Theme.Color.warning
-        case .neutral: Theme.Color.appTextStrong
-        }
-    }
-}
-
 /// A bordered card.
 struct PlanCardBox<Content: View>: View {
     var padding: CGFloat = 14
@@ -190,6 +152,7 @@ struct PlanCardBox<Content: View>: View {
 enum PlanScreenLines {
     /// "Sunday, Oct 18 · 1:25–4:45 PM", "Saturday morning", "Happening now · until 10:30".
     static func when(_ card: PlanCardDTO) -> String {
+        if let picking = card.pickingText { return picking } // find a date, until the host picks
         let calendar = PlanFormat.calendar(for: card.timezone)
         if card.state == .live {
             return PlanFormat.rowWhen(state: .live, start: card.startsAtDate, end: card.endsAtDate, calendar: calendar) ?? "Happening now"
@@ -203,6 +166,7 @@ enum PlanScreenLines {
     /// "Sun 1:25 PM", "Tomorrow 6:00 PM", "Happening now · until 10:30"; a
     /// playdate before you're in: "Saturday morning".
     static func shortWhen(_ card: PlanCardDTO) -> String {
+        if let picking = card.pickingText { return picking }
         let calendar = PlanFormat.calendar(for: card.timezone)
         return PlanFormat.rowWhen(state: card.state, start: card.startsAtDate, end: card.endsAtDate, calendar: calendar)
             ?? PlanFormat.dayPartPhrase(card.dayPart, day: card.startsOnDate, calendar: calendar)
@@ -253,6 +217,8 @@ struct PlanBrowsingSection: View {
     var body: some View {
         PlanTitleBlock(card: card)
         PlanHostCard(card: card, onOpenHost: onOpenHost)
+        // Plans for the holidays B1 (D1): the deal under the business's name.
+        if let deal = card.deal { PlanDealCard(card: card, deal: deal) }
         PlanSpotsBlock(card: card, trailing: card.kind == .playdate ? nil : "Names show once you're in")
         if card.kind == .playdate {
             PlanNote(
@@ -269,7 +235,9 @@ struct PlanBrowsingSection: View {
             }
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 PlanFactRow(icon: .users, text: PlanCardLines.approval(card))
-                if !card.isBusiness { PlanFactRow(icon: .shieldCheck, text: "Free, and for adults") }
+                if !card.isBusiness {
+                    PlanFactRow(icon: .shieldCheck, text: card.kidsWelcome ? "Free, and kids are welcome" : "Free, and for adults")
+                }
             }
         }
         if card.isRepeating, card.myInvite?.isOpen == true { PlanFactRow(icon: .check, text: PlanRepeatCopy.invitedLine) }
@@ -453,11 +421,13 @@ struct PlanClosedSection: View {
     var onOpenChat: (() -> Void)?
 
     var body: some View {
+        // Board 29: a plan that is over with photos reads "This was Saturday, Nov 21" / "12 people came".
+        let photos = card.state == .ended ? card.extrasPart.photos : nil
         PlanBanner(
             tone: .neutral,
-            icon: card.state == .cancelled ? .calendarX : .checkCircle,
-            title: title,
-            message: message
+            icon: card.state == .cancelled ? .calendarX : photos != nil ? .calendar : .checkCircle,
+            title: photos?.banner ?? title,
+            message: photos?.cameText ?? message
         )
         // The host's own note, as everyone was sent it (as on Android).
         if isHost, card.state == .cancelled, let note {
@@ -467,6 +437,9 @@ struct PlanClosedSection: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         if showsTitle { PlanTitleBlock(card: card) }
+        if let photos { PlanPhotosCard(planId: card.id, photos: photos) }
+        // B6 (07-screens C4): a guest who paid, once, for 7 days after the end (the server sends it only then).
+        if card.state == .ended, let tipLater = card.tipLater { PlanTipLaterCard(card: card, tipLater: tipLater) }
         if let onOpenChat {
             Button(action: onOpenChat) { PlanButtonLabel(title: "Read the group chat", icon: .messageCircle, kind: .secondary) }
                 .planButton(.secondary, size: .small)
