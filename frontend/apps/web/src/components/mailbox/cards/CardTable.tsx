@@ -9,7 +9,7 @@
 // nothing about the server: reading it marks nothing.
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cardMood, cardStampFile, cardTrimmedPicture, daysUntil, firstNameOf, postmarkDay, seededRandom, TABLE_ART, tableEdge, tableTint } from './cardArt';
 import { cardPen } from './cardFont';
@@ -67,7 +67,12 @@ export type TableCard = {
   voice?: CardVoice | null;
 };
 
-export type TableMenuItem = { label: string; onSelect: () => void };
+/** A line in the ⋯ menu, or a quiet button under the card. A quiet button may also carry its short words (used when two
+ *  don't fit side by side) and what a screen reader says (the full words, whichever show). */
+export type TableMenuItem = { label: string; onSelect: () => void; short?: string; spoken?: string };
+
+/** A quiet button in the one row under the card (Fix 1 of the November 17 design check). */
+type QuietButton = { key: string; full: string; short: string; spoken: string; testId: string; onSelect: () => void };
 
 /** A reply lying on the card (Write back, mail-cards-experience Part 3): the replier's sheet, drawn as the card's back. */
 export type TableReply = {
@@ -189,8 +194,8 @@ export default function CardTable({
   menu?: TableMenuItem[];
   /** Send one back (design plan Part 3): a quiet button under "Turn it back" once the card is turned over. */
   sendBack?: TableMenuItem | null;
-  /** "Write back to {first name}" or "You wrote back · {day}" (Part 3): the first quiet button once the card is turned
-   *  over; "Share this card" then keeps only its corner button and its line in the ⋯ menu. */
+  /** "Write back to {first name}" or "You wrote back" (Part 3): a quiet button once the card is turned over; "Share this
+   *  card" then keeps only its corner button and its line in the ⋯ menu. */
   writeBack?: TableMenuItem | null;
   /** The reply on the card (the joined pair): it lands over the card's lower part. The table keeps room for it. */
   reply?: TableReply | null;
@@ -227,6 +232,29 @@ export default function CardTable({
   const momentRef = useRef(sendMoment);
   momentRef.current = sendMoment;
   const [menuOpen, setMenuOpen] = useState(false);
+  // The quiet row's words: both full, both short, or only the first (full, else short) where two don't fit side by side.
+  const quietRowRef = useRef<HTMLDivElement | null>(null);
+  const quietMeasureRef = useRef<HTMLDivElement | null>(null);
+  const [rowFit, setRowFit] = useState<'full' | 'short' | 'one' | 'oneShort'>('full');
+  const fitQuietRow = useCallback(() => {
+    const row = quietRowRef.current;
+    const measure = quietMeasureRef.current;
+    const bottom = row?.closest('[data-el="bottom"]') as HTMLElement | null;
+    if (!row || !measure || !bottom) return;
+    const box = getComputedStyle(bottom);
+    const room = bottom.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+    const widths = (which: string) => Array.from(measure.querySelectorAll<HTMLElement>(`[data-words="${which}"]`))
+      .map((el) => el.getBoundingClientRect().width);
+    const across = (list: number[]) => list.reduce((a, b) => a + b, 0) + gap * Math.max(0, list.length - 1);
+    const full = widths('full');
+    const short = widths('short');
+    if (!full.length || room <= 0) return;
+    setRowFit(across(full) <= room ? 'full' : across(short) <= room ? 'short' : full[0] <= room ? 'one' : 'oneShort');
+  }, []);
+  // Measured after every render (the words change with the card's side and the reply), and again when the controls
+  // change size (window width, larger text).
+  useLayoutEffect(() => { fitQuietRow(); });
   const [controlsHidden, setControlsHidden] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef(0);
@@ -412,10 +440,10 @@ export default function CardTable({
     const stage = stageRef.current;
     if (!mounted || !stage || typeof ResizeObserver === 'undefined') return undefined;
     const bottom = stage.querySelector('[data-el="bottom"]') as HTMLElement;
-    const observer = new ResizeObserver(() => { engineRef.current?.layout(); engineRef.current?.wake(); });
+    const observer = new ResizeObserver(() => { fitQuietRow(); engineRef.current?.layout(); engineRef.current?.wake(); });
     observer.observe(bottom);
     return () => observer.disconnect();
-  }, [mounted]);
+  }, [mounted, fitQuietRow]);
 
   useEffect(() => {
     if (!mounted) return undefined;
@@ -544,6 +572,28 @@ export default function CardTable({
   // Once the card has been turned over (and after it's turned back), while it lies on the table, not enlarged.
   const nextShown = Boolean(nextCard) && !sendMoment && !isLetter && step === 'out' && turnedOnce && !ui.enlarged;
   const quietShare = Boolean(onShare) && !sendMoment && !isLetter && !sealed;
+  // Under the line slot, ONE row of quiet buttons, at most two side by side, never a second row (the design check of
+  // November 17, Fix 1): Open the next card when cards wait, then Write back (or You wrote back), then Send {first name}
+  // a card. Share this card fills the second place only when fewer than two of those apply, as before Part 3. The rest
+  // stay in the ⋯ menu. The row's room is kept while any of them can be offered, so the card never moves when they show.
+  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || writeBack || sendBack || quietShare);
+  const quietButtons = ([
+    nextCard && nextShown ? {
+      key: 'next', full: `Open the next card (${nextCard.count} more)`, short: `Next card (${nextCard.count} more)`,
+      spoken: `Open the next card, ${nextCard.count} more waiting`, testId: 'cardTableNextCard', onSelect: nextCard.onOpen,
+    } : null,
+    writeBack && turnedOver ? {
+      key: 'write', full: writeBack.label, short: writeBack.short || writeBack.label, spoken: writeBack.spoken || writeBack.label,
+      testId: 'cardTableWriteBack', onSelect: writeBack.onSelect,
+    } : null,
+    sendBack && turnedOver ? {
+      key: 'send', full: sendBack.label, short: sendBack.short || sendBack.label, spoken: sendBack.spoken || sendBack.label,
+      testId: 'cardTableSendBack', onSelect: sendBack.onSelect,
+    } : null,
+    quietShare && turnedOver && !writeBack ? {
+      key: 'share', full: 'Share this card', short: 'Share', spoken: 'Share this card', testId: 'cardTableShareQuiet', onSelect: () => onShare?.(),
+    } : null,
+  ].filter(Boolean) as QuietButton[]).slice(0, 2);
   const showTopRight = !sendMoment && !isLetter && (step === 'out' || (sealed && (step === 'back' || step === 'front')));
   // The button is there only when there's something to press: never while things move by themselves.
   const sendButton = !sendMoment || send === 'ready' || send === 'in' || send === 'seal';
@@ -866,64 +916,36 @@ export default function CardTable({
                   ) : <div className={styles.hint}>{readPrint ? '' : hint}</div>}
                 </div>
               ) : <div className={styles.hint}>{hint}</div>}
-              {/* Its room is kept while it can be offered, so the card never moves when it shows. Once the card is turned
-                  over: "Send {first name} a card" and, quietly beside it, "Share this card" (design plan 11.1; the corner
-                  icon stays). */}
-              {writeBack || sendBack || quietShare ? (
-                <div className={`${styles.quietRow} ${turnedOver ? '' : styles.hidden}`} aria-hidden={!turnedOver}>
-                  {/* Write back (Part 3): first, with "Send {first name} a card" beside it. */}
-                  {writeBack ? (
+              {/* One row of quiet buttons, at most two (Fix 1). Its room is kept while any can be offered, so the card never
+                  moves when they show; screen readers get the full words whichever show. */}
+              {rowRoom ? (
+                <div
+                  ref={quietRowRef}
+                  className={`${styles.quietRow} ${quietButtons.length ? '' : styles.hidden}`}
+                  aria-hidden={!quietButtons.length}
+                  data-testid="cardTableQuietRow"
+                >
+                  {(rowFit === 'one' || rowFit === 'oneShort' ? quietButtons.slice(0, 1) : quietButtons).map((button) => (
                     <button
+                      key={button.key}
                       type="button"
                       className={styles.quiet}
                       data-ui
-                      data-testid="cardTableWriteBack"
-                      tabIndex={turnedOver ? 0 : -1}
-                      onClick={() => { setMenuOpen(false); writeBack.onSelect(); }}
+                      data-testid={button.testId}
+                      aria-label={button.spoken}
+                      onClick={() => { setMenuOpen(false); button.onSelect(); }}
                     >
-                      {writeBack.label}
+                      {rowFit === 'short' || rowFit === 'oneShort' ? button.short : button.full}
                     </button>
-                  ) : null}
-                  {sendBack ? (
-                    <button
-                      type="button"
-                      className={styles.quiet}
-                      data-ui
-                      data-testid="cardTableSendBack"
-                      tabIndex={turnedOver ? 0 : -1}
-                      onClick={() => { setMenuOpen(false); sendBack.onSelect(); }}
-                    >
-                      {sendBack.label}
-                    </button>
-                  ) : null}
-                  {quietShare && !writeBack ? (
-                    <button
-                      type="button"
-                      className={styles.quiet}
-                      data-ui
-                      data-testid="cardTableShareQuiet"
-                      tabIndex={turnedOver ? 0 : -1}
-                      onClick={() => { setMenuOpen(false); onShare?.(); }}
-                    >
-                      Share this card
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {/* Its room is kept from the start, so the card never moves when it shows. */}
-              {nextCard ? (
-                <div className={`${styles.nextRow} ${nextShown ? '' : styles.hidden}`} aria-hidden={!nextShown}>
-                  <button
-                    type="button"
-                    className={styles.quiet}
-                    data-ui
-                    data-testid="cardTableNextCard"
-                    tabIndex={nextShown ? 0 : -1}
-                    onClick={() => { setMenuOpen(false); nextCard.onOpen(); }}
-                  >
-                    Open the next card
-                  </button>
-                  <div className={styles.nextLine} data-testid="cardTableNextCount">{nextCard.count} more waiting</div>
+                  ))}
+                  <div ref={quietMeasureRef} className={styles.quietMeasure} aria-hidden="true">
+                    {quietButtons.map((button) => (
+                      <span key={button.key}>
+                        <span className={styles.quiet} data-words="full">{button.full}</span>
+                        <span className={styles.quiet} data-words="short">{button.short}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>
