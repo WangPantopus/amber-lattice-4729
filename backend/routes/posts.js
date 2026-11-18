@@ -3448,10 +3448,14 @@ router.post('/:id/unarchive', verifyToken, async (req, res) => {
     if (['expired', 'resolved'].includes(existing.archive_reason)) {
       // A post that ended by time, or an Ask its author closed, comes back for one more of its type's
       // windows from now, open again unless it ended its own way (contract §5); otherwise the next
-      // job run would end it.
-      const days = await pulseLifecycle.windowDays(existing.post_type);
+      // job run would end it. A kind that stays comes back with no end time and stays.
       restored.is_archived = false;
-      restored.expires_at = new Date(Date.now() + days * pulseLifecycle.DAY_MS).toISOString();
+      if (pulseLifecycle.staysUp(existing.post_type)) {
+        restored.expires_at = null;
+      } else {
+        const days = await pulseLifecycle.windowDays(existing.post_type);
+        restored.expires_at = new Date(Date.now() + days * pulseLifecycle.DAY_MS).toISOString();
+      }
       if (pulseLifecycle.TIMED_OUT_RESOLUTIONS.includes(existing.resolution)) {
         Object.assign(restored, { state: 'open', resolution: null });
       }
