@@ -195,8 +195,8 @@ private fun BoxScope.LiftingLeaf(
             .graphicsLayer {
                 val p = run.value
                 alpha = if (reduceMotion) 1f - p else if (p >= 1f) 0f else 1f
-                // CSS's X turn runs the other way from Android's: the foot comes up toward you.
-                rotationX = if (reduceMotion) 0f else -90f * p
+                // A positive X turn about the top edge brings the foot up toward you (seen on the emulator).
+                rotationX = if (reduceMotion) 0f else 90f * p
                 transformOrigin = TransformOrigin(0.5f, 0f)
                 cameraDistance = 16f * density
             }.drawBehind {

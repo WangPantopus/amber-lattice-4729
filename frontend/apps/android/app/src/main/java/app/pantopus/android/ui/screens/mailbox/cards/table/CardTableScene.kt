@@ -810,8 +810,8 @@ private fun BoxScope.FirstLeaf(
             .matchParentSize()
             .graphicsLayer {
                 alpha = state.leafAlpha
-                // CSS's X turn runs the other way from Android's: the foot comes up toward you.
-                rotationX = -state.leafAngle
+                // A positive X turn about the top edge brings the foot up toward you (seen on the emulator).
+                rotationX = state.leafAngle
                 transformOrigin = TransformOrigin(0.5f, 0f)
                 cameraDistance = g.cardWidth * 5.2f / PIXELS_PER_CAMERA_UNIT
             }.drawBehind {
