@@ -89,14 +89,7 @@ object SupportTrainDetailProjection {
             recipient = recipient(dto, primaryName),
             typeDates = typeDates,
             calendarDays = calendar(slots, reservations, today),
-            sections =
-                sections(slots, reservations, helperReservations, today, zone, role).let { all ->
-                    if (dto.status == "completed" || dto.status == "archived") {
-                        all.map { section -> section.copy(rows = section.rows.map { it.copy(signupChangeable = false) }) }
-                    } else {
-                        all
-                    }
-                },
+            sections = lockedWhenEnded(sections(slots, reservations, helperReservations, today, zone, role), dto.status),
             hostedBy = hostedBy(primaryName, organizers.firstOrNull()?.user?.id),
             dock = dock(dto.status, isFull, role),
             celebrationBanner =
@@ -510,6 +503,17 @@ object SupportTrainDetailProjection {
             signupChangeable = slot?.let { !isOver(it, today) } ?: true,
         )
     }
+
+    /** An ended train takes no helper's change, whatever the date. */
+    private fun lockedWhenEnded(
+        sections: List<SlotSection>,
+        status: String?,
+    ): List<SlotSection> =
+        if (status == "completed" || status == "archived") {
+            sections.map { section -> section.copy(rows = section.rows.map { it.copy(signupChangeable = false) }) }
+        } else {
+            sections
+        }
 
     private fun helperRow(
         reservation: SupportTrainReservationDto,

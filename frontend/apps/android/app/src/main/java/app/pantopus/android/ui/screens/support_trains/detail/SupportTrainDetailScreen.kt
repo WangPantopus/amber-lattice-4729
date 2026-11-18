@@ -732,7 +732,7 @@ private fun SlotSectionBlock(
                 showSignUp = viewerRole != SupportTrainViewerRole.RECIPIENT,
                 // A helper edits their own signup while it's still ahead of them (B1).
                 onEdit =
-                    if (row.mine && row.canLeaveSlot && row.signupChangeable && onEditSlot != null) {
+                    if (row.canEditSignup && onEditSlot != null) {
                         { onEditSlot(row) }
                     } else {
                         null

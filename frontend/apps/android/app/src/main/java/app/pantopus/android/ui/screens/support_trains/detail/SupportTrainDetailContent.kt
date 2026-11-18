@@ -144,6 +144,10 @@ data class SlotRowContent(
 
     val canMarkDelivered: Boolean
         get() = canLeaveSlot
+
+    /** The helper's own signup they may still change (B1). */
+    val canEditSignup: Boolean
+        get() = canLeaveSlot && signupChangeable
 }
 
 /** One pickable open slot inside the reserve sheet. */
