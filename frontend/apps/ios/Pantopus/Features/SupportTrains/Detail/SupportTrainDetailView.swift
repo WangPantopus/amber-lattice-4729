@@ -253,7 +253,8 @@ public struct SupportTrainDetailView: View {
                                     SlotRow(
                                         content: row,
                                         onSignUp: signUpAction(for: row),
-                                        onEdit: editAction(for: row)
+                                        onEdit: editAction(for: row),
+                                        showsSignUp: content.viewerRole != .recipient
                                     )
                                     commitmentActions(for: row, content: content)
                                 }

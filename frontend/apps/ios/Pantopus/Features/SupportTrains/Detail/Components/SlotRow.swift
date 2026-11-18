@@ -15,15 +15,19 @@ public struct SlotRow: View {
     private let content: SlotRowContent
     private let onSignUp: (@MainActor () -> Void)?
     private let onEdit: (@MainActor () -> Void)?
+    /// False for the person the train is for: no Sign up pill on their own train's dates (B2).
+    private let showsSignUp: Bool
 
     public init(
         content: SlotRowContent,
         onSignUp: (@MainActor () -> Void)? = nil,
-        onEdit: (@MainActor () -> Void)? = nil
+        onEdit: (@MainActor () -> Void)? = nil,
+        showsSignUp: Bool = true
     ) {
         self.content = content
         self.onSignUp = onSignUp
         self.onEdit = onEdit
+        self.showsSignUp = showsSignUp
     }
 
     public var body: some View {
@@ -137,6 +141,8 @@ public struct SlotRow: View {
     @ViewBuilder
     private var trailing: some View {
         switch (content.state, content.mine) {
+        case (.open, _) where !showsSignUp:
+            EmptyView()
         case (.open, _):
             let button = Button(
                 action: { onSignUp?() },
