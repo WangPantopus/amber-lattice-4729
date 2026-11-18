@@ -36,12 +36,13 @@ export default function HomeFooter() {
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
         <div className={styles.footerBrand}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, color: 'var(--night-ink)' }}>
+          <a className={styles.brand} href="#top">
             <PantopusMark size={22} variant="reverse" />
-            <span className={styles.brandWord} style={{ fontSize: 20 }}>Pantopus</span>
-          </span>
-          <span>Your home, your everyday, and the life around you.</span>
-          <span style={{ fontSize: 13, color: '#7E8BA0' }}>© 2026 Pantopus, Inc.</span>
+            Pantopus
+          </a>
+          <span>Real life, connected.</span>
+          <span>© 2026 Pantopus, Inc.</span>
+          <span>Earth imagery: NASA</span>
         </div>
         <nav className={styles.footerCols} aria-label="Footer">
           {COLUMNS.map((col) => (
