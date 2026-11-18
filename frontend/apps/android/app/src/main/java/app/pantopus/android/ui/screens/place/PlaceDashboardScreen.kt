@@ -93,6 +93,7 @@ import app.pantopus.android.ui.screens.place.components.rememberGlanceOpen
 import app.pantopus.android.ui.screens.place.detail.RadonToday
 import app.pantopus.android.ui.screens.place.detail.TodayAskEntry
 import app.pantopus.android.ui.screens.place.messaging.PlaceMessagesActionRow
+import app.pantopus.android.ui.screens.place.verify.LocationRecheckEffect
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifySheet
 import app.pantopus.android.ui.screens.place.verify.rememberVerifyOptions
@@ -393,6 +394,8 @@ internal fun PlaceDashboardContent(
     // `home_fast_verify` is off, and the home card is today's.
     val verifyOptions = rememberVerifyOptions(homeId.takeIf { it.isNotBlank() && claim == null }, refreshKey = intel.generatedAt)
     val verifiedMark = placeVerifiedMark(verifyOptions, intel.homeZone)
+    // "We check once more on another day when you open Pantopus at home."
+    LocationRecheckEffect(homeId.takeIf { it.isNotBlank() && claim == null }, verifyOptions, intel.homeZone)
     // Verifying is the next step for a claimed resident and for a private setup (by mail). Guests and service
     // providers can't verify, so they get no verify prompts; older servers don't say, and claimed decides.
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))

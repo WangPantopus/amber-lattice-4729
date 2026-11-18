@@ -46,6 +46,7 @@ import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.flowOf
+import java.time.ZoneId
 
 /**
  * The server's verify options for [homeId] (FASTVERIFY `GET /api/homes/:id/verify-options`), read again whenever
@@ -73,6 +74,31 @@ fun rememberVerifyOptions(
         if (repository != null && homeId != null) repository.refresh(homeId)
     }
     return answer
+}
+
+/**
+ * The location check's second day (FASTVERIFY phase 5): Place, opened on a later day while a first match stands
+ * unconfirmed, takes one quiet reading with the location access the person already gave. Nothing in previews.
+ */
+@Composable
+fun LocationRecheckEffect(
+    homeId: String?,
+    options: HomeVerifyOptions?,
+    zone: ZoneId?,
+) {
+    val context = LocalContext.current
+    val recheck =
+        remember(context) {
+            runCatching {
+                EntryPointAccessors
+                    .fromApplication(context.applicationContext, PlaceVerifySheetDeps::class.java)
+                    .homeLocationRecheck()
+            }.getOrNull()
+        }
+    val due = options?.fast?.takeIf { it.kind == "location" }?.recheckDueAt
+    LaunchedEffect(recheck, homeId, due) {
+        if (recheck != null && homeId != null && due != null) recheck.maybeConfirm(homeId, options, zone)
+    }
 }
 
 /** One way to verify on the sheet: the server's id, the flow it opens and its words (SPEC section 6). */

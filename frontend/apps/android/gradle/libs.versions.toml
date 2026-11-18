@@ -48,6 +48,8 @@ stripe = "21.2.0"
 mapsCompose = "6.2.1"
 playServicesMaps = "19.0.0"
 playServicesLocation = "21.3.0"
+# Faster home verification, location check: the device proof (developer.android.com/google/play/integrity/setup).
+playIntegrity = "1.6.0"
 # Block Store — persistent-login "account hint + resume grant" that survives
 # delete + reinstall on the same device (design docs/persistent-login §9).
 playServicesBlockstore = "16.4.0"
@@ -165,6 +167,7 @@ stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = 
 maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
 play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+play-integrity = { group = "com.google.android.play", name = "integrity", version.ref = "playIntegrity" }
 # Block Store: `AccountHintStore` (data/auth) keeps a non-secret account hint
 # + a single-use resume grant across delete/reinstall (never cloud-backed).
 play-services-auth-blockstore = { group = "com.google.android.gms", name = "play-services-auth-blockstore", version.ref = "playServicesBlockstore" }

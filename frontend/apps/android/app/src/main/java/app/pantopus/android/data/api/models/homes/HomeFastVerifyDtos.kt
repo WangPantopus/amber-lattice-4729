@@ -116,3 +116,46 @@ data class PhoneCheckVerifyResponse(
     val level: String? = null,
     @Json(name = "tries_left") val triesLeft: Int? = null,
 )
+
+/** `POST /api/homes/:id/fast-check/location/challenge`: a signed, two-minute value the reading's proof binds. */
+@JsonClass(generateAdapter = true)
+data class LocationChallengeResponse(
+    val challenge: String,
+    @Json(name = "expires_at") val expiresAt: String? = null,
+)
+
+/**
+ * The device proof: on Android `{ type: 'play_integrity', token, reading }`, a Play Integrity token whose nonce is
+ * base64url(SHA-256(challenge + reading)) and the exact reading text it binds.
+ */
+@JsonClass(generateAdapter = true)
+data class LocationProofDto(
+    val type: String,
+    val token: String,
+    val reading: String,
+) {
+    override fun toString(): String = "LocationProofDto(hidden)"
+}
+
+/** `POST /api/homes/:id/fast-check/location`: one reading. Never kept by the app. */
+@JsonClass(generateAdapter = true)
+data class LocationCheckRequest(
+    val challenge: String,
+    val latitude: Double,
+    val longitude: Double,
+    @Json(name = "accuracy_m") val accuracyM: Double,
+    val mocked: Boolean,
+    val platform: String,
+    val proof: LocationProofDto?,
+) {
+    /** Never prints where the phone was. */
+    override fun toString(): String = "LocationCheckRequest(hidden)"
+}
+
+/** `verified`, `confirmed`, `no_match`, `too_rough` or `not_counted`; the level after it; when it is checked again. */
+@JsonClass(generateAdapter = true)
+data class LocationCheckResponse(
+    val result: String,
+    val level: String? = null,
+    @Json(name = "recheck_due_at") val recheckDueAt: String? = null,
+)
