@@ -328,14 +328,16 @@
 
 /* Write back (mail-cards-experience Part 3): the reply lies over the card's printed strip only, its top at 86% of the card's
    height (the picture ends at 87%), so the whole picture shows (founder, November 17); turned 2°, it reaches 76% of the
-   card's height below it (the engine keeps that room, REPLY_BELOW). It lands from above. */
+   card's height below it (the engine keeps that room, REPLY_BELOW). It lands from above. Note side up it lies at 92%, so
+   the FROM line and a drawn signature are clear (design check of November 17, Fix 3; REPLY_BELOW_NOTE). */
 .replySheet {
   position: absolute; left: 5%; top: 86%; width: 90%; aspect-ratio: 5 / 6; pointer-events: auto; cursor: pointer; z-index: -1;
   transform: translateY(-90%) rotate(-4deg); opacity: 0;
-  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, top 0.35s ease;
   filter: drop-shadow(0 calc(var(--u, 4px) * 1.4) calc(var(--u, 4px) * 2.2) rgba(0, 0, 0, 0.45));
 }
 .replyLanded { transform: rotate(2deg); opacity: 1; }
+.replyOnNote { top: 92%; }
 .replyFront { z-index: 2; }
 @media (prefers-reduced-motion: reduce) {
   .replySheet { transform: rotate(2deg); transition: opacity 0.2s ease; }

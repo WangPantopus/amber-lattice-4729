@@ -685,12 +685,13 @@ export default function CardTable({
               </PaperBack>
               </>)}
             </div>
-            {/* The reply lying on the card (Part 3): over its lower part, turned 2°; a tap on it brings it to the front, a
+            {/* The reply lying on the card (Part 3): over its printed strip, turned 2°, lower with the note side up (Fix 3 of the
+                design check); a tap on it brings it to the front, a
                 tap on the card takes the card back to the front (the engine's onCardTap). Screen readers hear it in the
                 table's words, and Read it in print prints it. */}
             {reply ? (
               <div
-                className={`${styles.replySheet} ${replyLanded ? styles.replyLanded : ''} ${replyFront ? styles.replyFront : ''}`}
+                className={`${styles.replySheet} ${replyLanded ? styles.replyLanded : ''} ${replyFront ? styles.replyFront : ''} ${backUp ? styles.replyOnNote : ''}`}
                 data-ui
                 data-testid="cardTableReply"
                 onClick={() => setReplyFront(true)}

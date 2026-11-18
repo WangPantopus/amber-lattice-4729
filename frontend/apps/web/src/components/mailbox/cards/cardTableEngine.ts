@@ -65,10 +65,12 @@ type Geometry = {
 const FLAP_OPEN = 0.3;
 /** The table's room at each side of the card for its photo and greeting to lie beside it, rather than under it. */
 const MEDIA_BESIDE = 176;
-// How far a reply sheet reaches below the card, as a share of the card's height (CardTable's .replySheet): its top lies
-// at 86% of the card's height, over the printed strip only, so the whole picture shows (founder, November 17), and it is
-// 90% of the card's height tall.
+// How far a reply sheet reaches below the card, as a share of the card's height (CardTable's .replySheet): picture side
+// up its top lies at 86% of the card's height, over the printed strip only, so the whole picture shows (founder, November
+// 17); it is 90% of the card's height tall.
 const REPLY_BELOW = 0.76;
+// Note side up it lies at 92%, so the FROM line and a drawn signature are clear (design check of November 17, Fix 3).
+const REPLY_BELOW_NOTE = 0.82;
 /** The press that seals it, in milliseconds. */
 const SEAL_HOLD = 600;
 /** The gold seal stays in sight this long before the envelope turns over. */
@@ -579,7 +581,8 @@ export class CardTableEngine {
     const widest = Math.min(w - side * 2, w < 760 ? 470 : 640);
     const shutLimit = (h - safeTop - bottom - 88) / ((1.012 * 1392) / 1200);
     // With a reply on the card, the card and the reply below it fit together: both are smaller.
-    const replyReach = this.reply ? 1.2 * REPLY_BELOW : 0;
+    // The card is sized for the lower of the two, so it is the same size on both sides and the pair fits either way.
+    const replyReach = this.reply ? 1.2 * REPLY_BELOW_NOTE : 0;
     const fitted = (under: number) => Math.max(0, Math.min(
       widest, shutLimit, (room - under) / (1.2 + 0.13 + replyReach), (h - underButtons - bottom - under) / (1.2 + replyReach),
     ));
@@ -597,8 +600,9 @@ export class CardTableEngine {
       }
     }
     const cw = fitted(mediaRoom);
-    // The room the reply takes under the card (REPLY_BELOW).
-    const replyRoom = Math.round(cw * replyReach);
+    // The room the reply takes under the card: picture side up (REPLY_BELOW), and turned over (REPLY_BELOW_NOTE).
+    const replyRoom = this.reply ? Math.round(cw * 1.2 * REPLY_BELOW) : 0;
+    const replyRoomBack = this.reply ? Math.round(cw * 1.2 * REPLY_BELOW_NOTE) : 0;
     const ew = cw * 1.012;
     const eh = (ew * 1392) / 1200;
     const fd = (ew * 512) / 1200;
@@ -614,7 +618,7 @@ export class CardTableEngine {
     };
     // With its picture up the card lies under the whole flap; turned over, it lies higher and leaves the room under it.
     const front = laid(room - replyRoom);
-    const back = laid(room - mediaRoom - replyRoom);
+    const back = laid(room - mediaRoom - replyRoomBack);
     // Shut, it sits a little above the middle of the free space, under the words.
     const free = h - safeTop - bottom;
     // Large text: the words above it may take two lines.
