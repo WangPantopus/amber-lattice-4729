@@ -12,7 +12,7 @@
 // ============================================================
 
 import { PostageLine, StampChip, StampSheet, useStamps, type Stamps } from './StampBooks';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { mailbox } from '@pantopus/api';
@@ -71,14 +71,18 @@ const muted = 'text-[#4e5563] [@media(prefers-color-scheme:dark)]:text-app-text-
 // "Look it over" pinned under "Seal and send" on Seal it for the day (design check of November 17, Fix 2): a quiet
 // button, not a second filled bar, on the page and on the cloth.
 const LOOK_QUIET = 'mx-auto flex min-h-11 items-center justify-center rounded-lg px-4 text-[15px] font-semibold text-[#374151] underline decoration-[#374151]/35 underline-offset-4 transition hover:text-[#111827] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d] disabled:opacity-50';
-const LOOK_QUIET_ON_CLOTH = 'mx-auto flex min-h-11 items-center justify-center rounded-lg px-4 text-[15px] font-semibold text-[#f6ecd9] underline decoration-[#f6ecd9]/35 underline-offset-4 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f] disabled:opacity-50';
+// On the cloth its words carry a soft dark shadow: at rest on a small phone what lies behind the fade shows through.
+const LOOK_QUIET_ON_CLOTH = 'mx-auto flex min-h-11 items-center justify-center rounded-lg px-4 text-[15px] font-semibold text-[#f6ecd9] underline decoration-[#f6ecd9]/35 underline-offset-4 [text-shadow:0_1px_6px_rgba(0,0,0,0.6)] transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f] disabled:opacity-50';
 /** The soft fade under a pinned button (5.2): clear at its top, nearly the colour under it at the bottom. */
 // On the cloth, `shade` darkens the tint toward the vignette's darker edge, so the fade meets the cloth it lies on.
+const tintOf = (rgb: string, shade = 1) =>
+  rgb.match(/\d+/g)?.slice(0, 3).map((c) => Math.round(Number(c) * shade)).join(', ') ?? '245, 240, 232';
 const fadeOf = (rgb: string, shade = 1) => {
-  const parts = rgb.match(/\d+/g)?.slice(0, 3).map((c) => Math.round(Number(c) * shade)).join(', ') ?? '245, 240, 232';
+  const parts = tintOf(rgb, shade);
   return `linear-gradient(to bottom, rgba(${parts}, 0) 0, rgba(${parts}, 0.78) 12px, rgba(${parts}, 0.9) 100%)`;
 };
 const PAGE_FADE = fadeOf('rgb(245, 240, 232)');
+const PAGE_TINT = tintOf('rgb(245, 240, 232)');
 
 /** Step 4 when the server can't show the look; "Seal and send" is then on step 4. */
 const LOOK_UNAVAILABLE = 'Pantopus can’t show how your card will look yet. You can still seal and send it.';
@@ -1165,6 +1169,7 @@ function SealStep({
   onGetStamps,
   onCloth = false,
   fade = PAGE_FADE,
+  solid = PAGE_TINT,
 }: {
   cards: HolidayCards;
   to: Recipient;
@@ -1191,6 +1196,8 @@ function SealStep({
   onCloth?: boolean;
   /** The soft fade the pinned buttons sit on: the cloth's colour, or the page's. */
   fade?: string;
+  /** That colour as "r, g, b": solid behind "Look it over" (design re-check of November 17). */
+  solid?: string;
 }) {
   // No stamp left (for a list, fewer than its cards): the main button opens the stamp books, as Look it over's does.
   const count = to.kind === 'list' ? to.entries.length : 1;
@@ -1251,7 +1258,7 @@ function SealStep({
       {/* "Seal and send" above "Look it over" (founder, November 17), both pinned at the bottom so they're on screen the
           moment the step opens (design check of November 17, Fix 2): on the same soft fade as Look it over's button, no
           panel. The take-back and postage lines scroll above them; a refusal is one line just above the buttons. */}
-      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
+      <PinnedSend fade={fade} error={error} solidUnder={sendsHere ? undefined : solid}>
         <button
           type="button"
           data-testid="sendCardSend"
@@ -1315,7 +1322,7 @@ function LookStep({
         </p>
         {stamps ? <div className="mt-3"><PostageLine stamps={stamps} design={design} /></div> : null}
       </div>
-      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
+      <PinnedSend fade={fade} error={error}>
         <button type="button" data-testid="sendCardLookSend" disabled={sending} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={primary} style={{ backgroundColor: WAX }}>
           {sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
           {needsStamps ? 'Get stamps to send' : sendWords(to)}
@@ -1327,13 +1334,40 @@ function LookStep({
 
 /**
  * Look it over's main button, pinned to the bottom (mail-cards-experience 5.2): only the button, on a soft fade of the
- * cloth with no panel behind it, so the card is in sight down to the button. A refusal is one line just above it.
+ * cloth with no panel behind it, so the card is in sight down to the button. A refusal is one line just above it, on its
+ * own cream slip in dark red (as on the iPhone and Android): the fade's top edge is clear, and red words there ran over
+ * whatever lay behind them (the arrival slip, the take-back line) and couldn't be read.
  */
-function PinnedSend({ fade, error, onCloth, children }: { fade: string; error: string | null; onCloth: boolean; children: ReactNode }) {
+function PinnedSend({ fade, error, solidUnder, children }: { fade: string; error: string | null; solidUnder?: string; children: ReactNode }) {
+  // With a quiet button under the main one (Seal it for the day), the colour is solid behind it, so no word of the page
+  // reads through (design re-check of November 17): clear at the top edge, the full colour by the main button's middle,
+  // and full from there to the bottom of the screen. Look it over's own page, one button and nothing under it, keeps
+  // the fade. Still no box and no line.
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [middle, setMiddle] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (!solidUnder || !box) return undefined;
+    const measure = () => {
+      const main = box.querySelector('button');
+      if (!main) return;
+      setMiddle(Math.round(main.getBoundingClientRect().top - box.getBoundingClientRect().top + main.getBoundingClientRect().height / 2));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [solidUnder, error]);
+  // Before it's measured: the main button's middle with no refusal above it (12 px above the 48 px button).
+  const stop = middle === null ? 'calc(12px + 1.5rem)' : `${middle}px`;
+  const background = solidUnder
+    ? `linear-gradient(to bottom, rgba(${solidUnder}, 0) 0, rgba(${solidUnder}, 1) ${stop}, rgba(${solidUnder}, 1) 100%)`
+    : fade;
   return (
-    <div className="sticky bottom-0 z-10 mt-4 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 md:-bottom-6" style={{ backgroundImage: fade }} data-testid="sendCardPinned">
+    <div ref={ref} className="sticky bottom-0 z-10 mt-4 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 md:-bottom-6" style={{ backgroundImage: background }} data-testid="sendCardPinned">
       <div className="mx-auto max-w-[420px]">
-        {error ? <p role="alert" className={`mb-2 text-[14px] font-medium leading-5 ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
+        {error ? <p role="alert" className="mb-2 rounded-xl border border-[#e7dcc6] bg-[#fbf6ec] px-3.5 py-2.5 text-[14px] font-medium leading-5 text-[#a81a1a] shadow-[0_2px_8px_rgba(0,0,0,0.12)]" data-testid="sendCardRefusal">{error}</p> : null}
         {children}
       </div>
     </div>
@@ -1427,7 +1461,7 @@ function ListLookStep({
         {stamps && look.needed ? <div className="mt-3"><PostageLine stamps={stamps} design={design} count={look.needed} /></div> : null}
         {!look.needed ? <p className={`mt-3 text-center text-[14px] ${onCloth ? ON_CLOTH_MUTED : muted}`}>None of these cards can go now.</p> : null}
       </div>
-      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
+      <PinnedSend fade={fade} error={error}>
         <button type="button" data-testid="sendCardLookSend" disabled={sending || !look.needed} onClick={needsStamps ? onGetStamps : onSealOnTable ?? onSend} className={primary} style={{ backgroundColor: WAX }}>
           {sending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : null}
           {needsStamps ? 'Get stamps to send' : sending ? `Sending ${cards}…` : `Seal and send ${cards}`}
@@ -2393,6 +2427,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           }}
           onCloth={atTable}
           fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
+          solid={atTable ? tintOf(tableTint(design?.table), 0.72) : PAGE_TINT}
         />
       ) : null}
       {step === 'look' && look && to ? (
