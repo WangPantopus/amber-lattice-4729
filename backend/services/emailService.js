@@ -1166,6 +1166,7 @@ async function sendGuestReservationConfirmationEmail({
   addressLabel,
   confirmed = false,
   confirmUrl = null,
+  cancelUrl = null,
 }) {
   const modeLabels = { cook: 'Home-cooked meal', takeout: 'Takeout', groceries: 'Groceries' };
   const modeLabel = modeLabels[contributionMode] || contributionMode;
@@ -1227,13 +1228,17 @@ async function sendGuestReservationConfirmationEmail({
         <a href="${appUrl}" style="display:inline-block; background:#111827; color:#ffffff; font-size:15px; font-weight:600; padding:14px 32px; border-radius:10px; text-decoration:none;">
           View Support Train
         </a>
-      </div>
+      </div>${cancelUrl ? `
+
+      <p style="color:#374151; font-size:14px; line-height:1.6; margin:0; text-align:center;">
+        Can't make it? <a href="${escapeHtml(cancelUrl)}" style="color:#1d4ed8;">Cancel your sign-up</a> so someone else can take the date.
+      </p>` : ''}
     </div>
 
     <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
       <p style="color:#9ca3af; font-size:11px; margin:0;">Pantopus — Your household, organized.</p>
       <p style="color:#d1d5db; font-size:10px; margin:8px 0 0;">
-        If you didn't sign up for this, you can safely ignore this email.
+        ${cancelUrl ? `If you didn't sign up for this, <a href="${escapeHtml(cancelUrl)}" style="color:#9ca3af;">cancel the sign-up</a> to free the date.` : "If you didn't sign up for this, you can safely ignore this email."}
       </p>
     </div>
   </div>
@@ -1253,7 +1258,7 @@ ${sharedAddress ? `Drop-off address:\n${sharedAddress}` : 'The organizer will sh
 Want a better experience? Download the Pantopus app for one-tap signups, real-time updates, and direct chat with the organizer.
 
 View Support Train: ${appUrl}
-`;
+${cancelUrl ? `\nCan't make it? Cancel your sign-up so someone else can take the date: ${cancelUrl}\n` : ''}`;
 
   return sendEmail({ to: toEmail, subject, html, text });
 }
@@ -1268,12 +1273,23 @@ async function sendGuestReservationReminderEmail(options) {
  * "Fri, Oct 9") are no longer needed: the organizer closed the Train, or (`removed`) took this
  * signup off it, with their optional reason.
  */
-async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, slots, removed = false, reason = null }) {
-  const subject = removed ? `Signup removed: ${trainTitle}` : `No longer needed: ${trainTitle}`;
+// `confirmed`: the address opened the link in its signup email. Until then the email uses fixed wording, as the signup
+// and reminder emails do: no name, title or reason anyone typed (C6).
+async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, slots, removed = false, reason = null, confirmed = false }) {
+  const typed = confirmed === true;
+  const subject = typed
+    ? (removed ? `Signup removed: ${trainTitle}` : `No longer needed: ${trainTitle}`)
+    : (removed ? 'Your Support Train sign-up was removed' : 'Your Support Train sign-up is no longer needed');
   const heading = removed ? 'Your signup was removed' : 'This Support Train has closed';
   const what = removed ? 'an organizer removed your signup for' : 'the organizer closed';
-  const reasonText = typeof reason === 'string' && reason.trim() ? reason.trim() : null;
+  const reasonText = typed && typeof reason === 'string' && reason.trim() ? reason.trim() : null;
   const slotRows = (slots || []).map((s) => `${s.slotLabel} · ${s.slotDate}`);
+  const greetingHtml = typed
+    ? `Hi <strong>${escapeHtml(guestName)}</strong>, ${what} <strong>${escapeHtml(trainTitle)}</strong>. You don't need to bring anything for:`
+    : `Hi, ${removed ? 'an organizer removed your sign-up for a Support Train on Pantopus' : 'the organizer closed a Support Train you signed up for on Pantopus'}. You don't need to bring anything for:`;
+  const greetingText = typed
+    ? `Hi ${guestName}, ${what} ${trainTitle}. You don't need to bring anything for:`
+    : `Hi, ${removed ? 'an organizer removed your sign-up for a Support Train on Pantopus' : 'the organizer closed a Support Train you signed up for on Pantopus'}. You don't need to bring anything for:`;
 
   const html = `
 <!DOCTYPE html>
@@ -1292,7 +1308,7 @@ async function sendGuestSignupReleasedEmail({ toEmail, guestName, trainTitle, sl
 
     <div style="padding:32px;">
       <p style="color:#374151; font-size:15px; line-height:1.6; margin:0 0 16px;">
-        Hi <strong>${escapeHtml(guestName)}</strong>, ${what} <strong>${escapeHtml(trainTitle)}</strong>. You don't need to bring anything for:
+        ${greetingHtml}
       </p>
 
       <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin:0 0 20px;">
@@ -1319,7 +1335,7 @@ ${reasonText ? `
   const text = `
 ${subject}
 
-Hi ${guestName}, ${what} ${trainTitle}. You don't need to bring anything for:
+${greetingText}
 
 ${slotRows.join('\n')}
 ${reasonText ? `\nReason: ${reasonText}\n` : ''}
