@@ -271,22 +271,8 @@ struct PlaceDashboardView: View {
                     PlaceColumns {
                         VStack(alignment: .leading, spacing: 0) {
                             leadBanner(claim: claim)
-                            PlaceHomeCard(
-                                intel: intel,
-                                claimInReview: claim != nil,
-                                shortcuts: viewModel.homeShortcuts,
-                                onUnlock: canVerify ? { showVerify = true } : nil,
-                                showsVerify: showsVerify && claim == nil,
-                                onOpenTools: {
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHubHome()
-                                },
-                                onShortcut: { shortcut in
-                                    viewModel.reloadOnReturn()
-                                    viewModel.onOpenHomeShortcut(shortcut)
-                                }
-                            )
-                            .padding(.top, 12)
+                            homeCard(intel, claim: claim, canVerify: canVerify, showsVerify: showsVerify)
+                                .padding(.top, 12)
                             worthALook(intel)
                         }
                         .placeColumn(.leading, order: 0)
@@ -344,6 +330,31 @@ struct PlaceDashboardView: View {
             .task(id: viewModel.homeId) { loadOpenGroups() }
             .onChange(of: openGroups) { _, groups in saveOpenGroups(groups) }
         }
+    }
+
+    /// The home at the top: where the person stands, the address, the record and Home tools.
+    private func homeCard(_ intel: PlaceIntelligence, claim: OwnershipClaimDTO?, canVerify: Bool, showsVerify: Bool) -> some View {
+        PlaceHomeCard(
+            intel: intel,
+            claimInReview: claim != nil,
+            shortcuts: viewModel.homeShortcuts,
+            onUnlock: canVerify ? { showVerify = true } : nil,
+            showsVerify: showsVerify && claim == nil,
+            onOpenTools: {
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHubHome()
+            },
+            onShortcut: { shortcut in
+                viewModel.reloadOnReturn()
+                viewModel.onOpenHomeShortcut(shortcut)
+            },
+            verifyOptions: viewModel.verifyOptions,
+            onMessageHomes: { viewModel.onComposeMessage(intel.place.label) },
+            onMailCode: {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            }
+        )
     }
 
     private static let topAnchor = "place.top"
