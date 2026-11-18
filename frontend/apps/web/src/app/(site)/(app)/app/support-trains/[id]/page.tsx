@@ -634,12 +634,7 @@ export default function SupportTrainDetailPage() {
                   slot={slotsById.get(reservation.slot_id)}
                   busy={helperAction !== null}
                   timezone={trainZone}
-                  // The server refuses a helper's change once the train has ended or the date is behind it.
-                  canEdit={
-                    !['completed', 'archived'].includes(data.status) &&
-                    !(slotsById.get(reservation.slot_id)?.slot_date &&
-                      String(slotsById.get(reservation.slot_id).slot_date) < todayKey)
-                  }
+                  canEdit={signupChangeable(data.status, slotsById.get(reservation.slot_id), todayKey)}
                   onDelivered={(slotDate) => handleMarkDelivered(reservation.id, slotDate)}
                   onEdit={() => openEditSignup(reservation)}
                   onLeave={() => handleLeaveSlot(reservation.id)}
@@ -1439,6 +1434,13 @@ function StatBox({ label, value }: { label: string; value: number | string }) {
       <p className="text-xs text-app-text-muted mt-0.5">{label}</p>
     </div>
   );
+}
+
+/** The server refuses a helper's change once the train has ended or the date is behind the train's today. */
+function signupChangeable(status: string | null | undefined, slot: unknown, todayKey: string): boolean {
+  if (status === 'completed' || status === 'archived') return false;
+  const date = (slot as { slot_date?: string | null } | undefined)?.slot_date;
+  return !(date && String(date) < todayKey);
 }
 
 /** Reservations only open on a published or active train; the server refuses the rest. */
