@@ -16,6 +16,7 @@ import type { GenerateSlotsPreset } from '@pantopus/types';
 import ScheduleSection from '@/components/support-trains/ScheduleSection';
 import { refreshSupportTrains } from '@/components/support-trains/supportTrainQueries';
 import WhereSection, {
+  homesFromApi,
   toSupportTrainDeliveryLocation,
   type HomeInfo,
   type LocationOption,
@@ -25,6 +26,7 @@ import {
   PRESET_SLOT_DEFAULTS,
   normalizeGenerateSlotsPreset,
   buildSupportTrainGenerateSlotsPayload,
+  countScheduleDates,
   weekdaysEnabledForPreset,
 } from '@/components/support-trains/scheduleUtils';
 
@@ -46,7 +48,7 @@ const SUPPORT_MODES = [
 const SHARING_MODES = [
   // The same choices and words as the iOS and Android Start wizards. "Nearby neighbors" is
   // listed in Nearby (~25 mi), so "Private link" undersold who could find it.
-  { key: 'private_link', label: 'Nearby neighbors', desc: 'Anyone within 25 mi can find and sign up.' },
+  { key: 'private_link', label: 'People near you', desc: 'Anyone within 25 mi can find and sign up.' },
   { key: 'invited_only', label: 'My connections', desc: "Only people you're connected to can find this." },
   { key: 'direct_share_only', label: 'Link only', desc: 'Hidden — share the link with people you trust.' },
 ] as const;
@@ -63,33 +65,26 @@ function cuisineKey(label: string): string {
 
 type Step = 'story' | 'review';
 
-type MissingField = { key: string; label: string; card: string };
-
-// Homes API → HomeInfo
-function homesFromApi(raw: any): HomeInfo[] {
-  const homes = raw?.homes ?? [];
-  return homes
-    .map((h: any): HomeInfo | null => {
-      const coords = h?.location?.coordinates;
-      // My Homes returns a decoded point. Keep GeoJSON compatibility for
-      // older responses, without turning an absent coordinate into zero.
-      const lat = h?.location?.latitude ?? (Array.isArray(coords) ? coords[1] : undefined);
-      const lng = h?.location?.longitude ?? (Array.isArray(coords) ? coords[0] : undefined);
-      const hasCoords = Number.isFinite(lat) && Math.abs(lat) <= 90
-        && Number.isFinite(lng) && Math.abs(lng) <= 180;
-      return {
-        id: String(h?.id ?? ''),
-        name: String(h?.name ?? h?.address ?? 'Home'),
-        address: h?.address ?? undefined,
-        city: h?.city ?? '',
-        state: h?.state ?? '',
-        latitude: hasCoords ? lat : NaN,
-        longitude: hasCoords ? lng : NaN,
-        hasLocation: hasCoords,
-      };
-    })
-    .filter((h: HomeInfo | null): h is HomeInfo => !!h && !!h.id);
+// What the organizer has filled in, kept for this tab so a refresh or Back doesn't lose it (B7). Cleared on publish.
+const WIZARD_KEY = 'pantopus.supportTrainWizard.v1';
+type SavedWizard = Record<string, unknown> & { step?: Step };
+function readSavedWizard(): SavedWizard | null {
+  try {
+    const raw = sessionStorage.getItem(WIZARD_KEY);
+    return raw ? (JSON.parse(raw) as SavedWizard) : null;
+  } catch {
+    return null;
+  }
 }
+function clearSavedWizard() {
+  try { sessionStorage.removeItem(WIZARD_KEY); } catch { /* storage blocked */ }
+}
+// The browser's zone, for a train with a typed address the server can't place in one (A5).
+function browserTimezone(): string | undefined {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined; } catch { return undefined; }
+}
+
+type MissingField = { key: string; label: string; card: string };
 
 // The draft delete was refused because the train is already published (its publish went through).
 function isNotADraft(err: unknown): boolean {
@@ -110,6 +105,8 @@ export default function NewSupportTrainPage() {
       const fromAssistant = sessionStorage.getItem(AI_SUPPORT_TRAIN_STORY_KEY);
       if (fromAssistant) {
         sessionStorage.removeItem(AI_SUPPORT_TRAIN_STORY_KEY);
+        // A new story from Pantopus AI starts a new train.
+        clearSavedWizard();
         setStory(fromAssistant.slice(0, 2000));
       }
     } catch {
@@ -173,6 +170,66 @@ export default function NewSupportTrainPage() {
   // then reaches the draft the server already made instead of making a second train.
   const createRequestId = useRef<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // The story the review was drafted from.
+  const draftedStory = useRef<string | null>(null);
+
+  // A refresh brings back what was filled in (dates as days; the address as picked).
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    const saved = readSavedWizard();
+    if (!saved) return;
+    const str = (v: unknown) => (typeof v === 'string' ? v : '');
+    const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+    const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+    const date = (v: unknown, d: Date) => { const x = new Date(str(v)); return Number.isNaN(x.getTime()) ? d : x; };
+    setStory(str(saved.story));
+    setSelectedModes(strs(saved.selectedModes));
+    if (saved.step !== 'review') return;
+    setDraftData((saved.draftData as any) || {});
+    setSummaryChips(strs(saved.summaryChips));
+    setTitle(str(saved.title));
+    setDraftStory(str(saved.draftStory));
+    setHouseholdSize(str(saved.householdSize));
+    setRestrictions(strs(saved.restrictions));
+    setPreferences(strs(saved.preferences));
+    setContactless(bool(saved.contactless, false));
+    setSpecialInstructions(str(saved.specialInstructions));
+    setSharingMode(str(saved.sharingMode) || 'private_link');
+    setEnableMeals(bool(saved.enableMeals, true));
+    setEnableTakeout(bool(saved.enableTakeout, true));
+    setEnableGroceries(bool(saved.enableGroceries, true));
+    setSchedulePreset(normalizeGenerateSlotsPreset(str(saved.schedulePreset)));
+    setScheduleRangeStart((d) => date(saved.scheduleRangeStart, d));
+    setScheduleRangeEnd((d) => date(saved.scheduleRangeEnd, d));
+    if (Array.isArray(saved.scheduleWeekdays) && saved.scheduleWeekdays.length === 7) {
+      setScheduleWeekdays(saved.scheduleWeekdays.map(Boolean));
+    }
+    setScheduleSlotStart(str(saved.scheduleSlotStart) || '17:00');
+    setScheduleSlotEnd(str(saved.scheduleSlotEnd) || '19:00');
+    setLocationOption((saved.locationOption as LocationOption) ?? null);
+    setResolvedLocation((saved.resolvedLocation as ResolvedLocation | null) ?? null);
+    draftedStory.current = str(saved.draftedStory) || null;
+    setStep('review');
+  }, []);
+
+  // Keep it as it changes.
+  useEffect(() => {
+    if (!restored.current) return;
+    try {
+      sessionStorage.setItem(WIZARD_KEY, JSON.stringify({
+        step, story, selectedModes, draftData, summaryChips, title, draftStory, householdSize, restrictions,
+        preferences, contactless, specialInstructions, sharingMode, enableMeals, enableTakeout, enableGroceries,
+        schedulePreset, scheduleRangeStart: scheduleRangeStart.toISOString(), scheduleRangeEnd: scheduleRangeEnd.toISOString(),
+        scheduleWeekdays, scheduleSlotStart, scheduleSlotEnd, locationOption, resolvedLocation,
+        draftedStory: draftedStory.current,
+      }));
+    } catch { /* storage blocked: the wizard works, it just isn't kept */ }
+  }, [step, story, selectedModes, draftData, summaryChips, title, draftStory, householdSize, restrictions,
+    preferences, contactless, specialInstructions, sharingMode, enableMeals, enableTakeout, enableGroceries,
+    schedulePreset, scheduleRangeStart, scheduleRangeEnd, scheduleWeekdays, scheduleSlotStart, scheduleSlotEnd,
+    locationOption, resolvedLocation]);
 
   // ── Computed: missing essentials ─────────────────────────────
   const computedMissingEssentials = useMemo<MissingField[]>(() => {
@@ -180,15 +237,22 @@ export default function NewSupportTrainPage() {
     if (!title.trim()) missing.push({ key: 'title', label: 'Title', card: 'title' });
     if (!draftStory.trim()) missing.push({ key: 'recipient', label: "Who it's for", card: 'who' });
     if (!resolvedLocation) missing.push({ key: 'address', label: 'Delivery location', card: 'where' });
+    if (!enableMeals && !enableTakeout && !enableGroceries) {
+      missing.push({ key: 'support', label: 'At least one way to help', card: 'support' });
+    }
     const anyDow = scheduleWeekdays.some(Boolean);
+    const schedule = countScheduleDates(scheduleRangeStart, scheduleRangeEnd, scheduleWeekdays);
     if (!anyDow) missing.push({ key: 'schedule_dow', label: 'Schedule days', card: 'schedule' });
+    else if (schedule.tooLong) missing.push({ key: 'schedule_range', label: 'A schedule of 90 days or less', card: 'schedule' });
+    else if (schedule.count === 0) missing.push({ key: 'schedule_none', label: 'Dates: none of the picked days fall in this range', card: 'schedule' });
     if (!scheduleSlotStart || !scheduleSlotEnd) {
       missing.push({ key: 'schedule_slot_time', label: 'Slot time window', card: 'schedule' });
     } else if (scheduleSlotStart >= scheduleSlotEnd) {
       missing.push({ key: 'schedule_time', label: 'Slot time window', card: 'schedule' });
     }
     return missing;
-  }, [title, draftStory, resolvedLocation, scheduleWeekdays, scheduleSlotStart, scheduleSlotEnd]);
+  }, [title, draftStory, resolvedLocation, scheduleWeekdays, scheduleSlotStart, scheduleSlotEnd,
+    enableMeals, enableTakeout, enableGroceries, scheduleRangeStart, scheduleRangeEnd]);
 
   const toggleMode = useCallback((mode: string) => {
     setSelectedModes((prev) => (prev.includes(mode) ? prev.filter((m) => m !== mode) : [...prev, mode]));
@@ -258,6 +322,8 @@ export default function NewSupportTrainPage() {
   const handleDraft = useCallback(async () => {
     if (!getAuthToken()) { router.push('/login'); return; }
     if (story.trim().length < 10) return;
+    // Back to the story and Continue again with the same story keeps everything already reviewed.
+    if (draftedStory.current === story.trim() && title.trim()) { setStep('review'); return; }
     setDrafting(true);
     setDraftError(null);
     try {
@@ -266,6 +332,7 @@ export default function NewSupportTrainPage() {
         support_modes_requested: selectedModes.length > 0 ? (selectedModes as any) : undefined,
       });
       applyDraft(result.draft || {}, result.summary_chips || []);
+      draftedStory.current = story.trim();
     } catch (err: any) {
       const msg = err?.message || 'Failed to generate draft';
       if (msg.includes('AI_UNAVAILABLE') || msg.includes('AI_TIMEOUT')) {
@@ -276,10 +343,11 @@ export default function NewSupportTrainPage() {
     } finally {
       setDrafting(false);
     }
-  }, [story, selectedModes, router, applyDraft]);
+  }, [story, selectedModes, router, applyDraft, title]);
 
   const handleManualCreate = useCallback(() => {
     applyDraft({ story: story.trim() }, []);
+    draftedStory.current = story.trim();
   }, [story, applyDraft]);
 
   // ── Publish ──────────────────────────────────────────────────
@@ -301,6 +369,7 @@ export default function NewSupportTrainPage() {
         } catch (deleteErr) {
           // The last attempt went live after all; only its reply was lost.
           if (isNotADraft(deleteErr)) {
+            clearSavedWizard();
             router.replace(`/app/support-trains/${leftoverTrainId.current}`);
             return;
           }
@@ -333,6 +402,7 @@ export default function NewSupportTrainPage() {
         enable_takeout: enableTakeout,
         enable_groceries: enableGroceries,
         enable_gift_funds: enableGiftFunds,
+        timezone: browserTimezone(),
         ...(delivery_location ? { delivery_location } : {}),
       });
 
@@ -364,6 +434,7 @@ export default function NewSupportTrainPage() {
       await api.supportTrains.generateSlots(trainId, slotPayload);
 
       await api.supportTrains.publishSupportTrain(trainId);
+      clearSavedWizard();
       router.replace(`/app/support-trains/${trainId}`);
     } catch (err: any) {
       // Publishing is several calls. If a later one fails, remove the half-built draft so
@@ -374,6 +445,7 @@ export default function NewSupportTrainPage() {
         } catch (deleteErr) {
           // Publish went through; only its reply was lost. The train is live.
           if (isNotADraft(deleteErr)) {
+            clearSavedWizard();
             router.replace(`/app/support-trains/${createdTrainId}`);
             return;
           }

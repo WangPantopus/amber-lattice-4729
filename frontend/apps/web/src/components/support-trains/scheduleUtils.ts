@@ -115,3 +115,26 @@ export function buildSupportTrainGenerateSlotsPayload(
     ...(timeCustom ? { start_time: slotStart, end_time: slotEnd } : {}),
   };
 }
+
+/**
+ * How many dates a schedule makes: the days from today (or the start, if later) to the end that fall on an enabled
+ * weekday. The server makes no date for a day that has passed. `tooLong` is a range over the server's 90 days.
+ */
+export function countScheduleDates(
+  rangeStart: Date,
+  rangeEnd: Date,
+  weekdaysEnabled: boolean[],
+): { count: number; tooLong: boolean } {
+  const start = snapNoon(rangeStart);
+  const end = snapNoon(rangeEnd);
+  const [from, to] = end < start ? [end, start] : [start, end];
+  const days = Math.round((to.getTime() - from.getTime()) / 86400000);
+  if (days > 90) return { count: 0, tooLong: true };
+  const today = snapNoon(new Date());
+  let count = 0;
+  for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    if (d < today) continue;
+    if (weekdaysEnabled[d.getDay()]) count++;
+  }
+  return { count, tooLong: false };
+}

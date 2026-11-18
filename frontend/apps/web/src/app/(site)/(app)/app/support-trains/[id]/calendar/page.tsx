@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { formatSlotWindow } from '@/components/support-trains/scheduleUtils';
 import { supportTrainQuery } from '@/components/support-trains/supportTrainQueries';
+import { isSlotPast, trainTodayKey } from '@/components/support-trains/trainTime';
 
 // ============================================================
 // SUPPORT TRAIN CALENDAR VIEW (Web)
@@ -21,9 +22,17 @@ type ViewMode = 'calendar' | 'list';
 const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   open:      { bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500' },
   full:      { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-300', dot: 'bg-slate-400' },
-  canceled:  { bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-600 dark:text-red-300', dot: 'bg-red-400' },
   completed: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-600 dark:text-blue-300', dot: 'bg-blue-500' },
+  passed:    { bg: 'bg-app-surface-sunken', text: 'text-app-text-muted', dot: 'bg-slate-300 dark:bg-slate-600' },
 };
+
+const STATUS_WORDS: Record<string, string> = { open: 'Open', full: 'Taken', completed: 'Delivered', passed: 'Passed' };
+
+// A date as the calendar colours it: an open date whose day is over has passed.
+function slotState(slot: any, today: string): string {
+  if (slot.status === 'open' && isSlotPast(slot, today)) return 'passed';
+  return STATUS_COLORS[slot.status] ? slot.status : 'open';
+}
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -50,7 +59,20 @@ export default function SupportTrainCalendarPage() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
-  const slots: any[] = data?.slots || [];
+  const slots: any[] = (data?.slots || []).filter((s: any) => s.status !== 'canceled');
+  const today = trainTodayKey(data);
+  // Open on the month of the next date (or the train's last one), not today's month (B16).
+  const focusDate: string | null = useMemo(() => {
+    const dates = slots.map((s) => String(s.slot_date)).sort();
+    return dates.find((d) => d >= today) || dates[dates.length - 1] || null;
+  }, [slots, today]);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (focused || !focusDate) return;
+    const [y, m] = focusDate.split('-').map(Number);
+    setCurrentMonth(new Date(y, m - 1, 1));
+    setFocused(true);
+  }, [focusDate, focused]);
 
   // Group slots by date
   const slotsByDate = useMemo(() => {
@@ -154,7 +176,7 @@ export default function SupportTrainCalendarPage() {
         {Object.entries(STATUS_COLORS).map(([status, c]) => (
           <span key={status} className="flex items-center gap-1.5">
             <span className={`w-2.5 h-2.5 rounded-full ${c.dot}`} />
-            <span className="text-app-text-secondary capitalize">{status}</span>
+            <span className="text-app-text-secondary">{STATUS_WORDS[status]}</span>
           </span>
         ))}
       </div>
@@ -186,13 +208,21 @@ export default function SupportTrainCalendarPage() {
                       <span className="text-xs text-app-text-muted">{cell.day}</span>
                       <div className="space-y-1 mt-1">
                         {daySlots.map((s: any) => {
-                          const c = STATUS_COLORS[s.status] || STATUS_COLORS.open;
+                          const state = slotState(s, today);
+                          const c = STATUS_COLORS[state];
                           const ModeIcon = s.support_mode === 'meal' ? ChefHat : s.support_mode === 'groceries' ? ShoppingCart : Truck;
+                          // A date opens the train, where it can be signed up for or managed.
                           return (
-                            <div key={s.id} className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium ${c.bg} ${c.text} cursor-pointer hover:opacity-80 transition`}>
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => router.push(`/app/support-trains/${id}`)}
+                              title={`${s.slot_label} · ${STATUS_WORDS[state]}`}
+                              className={`w-full flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium text-left ${c.bg} ${c.text} hover:opacity-80 transition`}
+                            >
                               <ModeIcon className="w-3 h-3 flex-shrink-0" />
                               <span className="truncate">{s.slot_label}</span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -216,7 +246,8 @@ export default function SupportTrainCalendarPage() {
                 <h3 className="text-sm font-semibold text-app-text-muted mb-3">{group.weekLabel}</h3>
                 <div className="space-y-2">
                   {group.slots.map((s: any) => {
-                    const c = STATUS_COLORS[s.status] || STATUS_COLORS.open;
+                    const state = slotState(s, today);
+                    const c = STATUS_COLORS[state];
                     const d = new Date(s.slot_date + 'T00:00:00Z');
                     const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
                     const ModeIcon = s.support_mode === 'meal' ? ChefHat : s.support_mode === 'groceries' ? ShoppingCart : Truck;
@@ -230,7 +261,7 @@ export default function SupportTrainCalendarPage() {
                           <p className={`text-sm font-medium ${c.text}`}>{s.slot_label} — {dateStr}</p>
                           {s.start_time && <p className="text-xs text-app-text-muted">{formatSlotWindow(s.start_time, s.end_time)}</p>}
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.bg} ${c.text} capitalize`}>{s.status}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c.bg} ${c.text}`}>{STATUS_WORDS[state]}</span>
                       </div>
                     );
                   })}
