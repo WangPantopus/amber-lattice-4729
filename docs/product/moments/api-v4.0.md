@@ -17,13 +17,13 @@ Adds, with the flag on for the caller:
 | --- | --- |
 | `sky: true` | Draw the new Post sheet. |
 | `area: { label, latitude, longitude, radius_m } \| null` | The area this point is in, which a Moment at home shows: the town's name (read at the area's own spot, so the words depend on the area only), the spot (a street close to the middle of the point's quarter-mile cell) and the disc's radius in metres. `null` with no point. |
-| `place: { key, label } \| null` | The public place that names the spot and may take a pin (never a school or preschool): what "Pin it at a place" starts with. Its `key` is one of `places`' keys. |
+| `place: { key, label } \| null` | The public place that names the spot and may take a pin (a school or preschool too, since 2026-11-17): what "Pin it at a place" starts with. Its `key` is one of `places`' keys. |
 | `can_pin: bool` | False at home and with no point. |
 | `share_later: [{ key, label, at }]` | The "Share later" choices on offer now: `1h` ("In 1 hour"), `3h` ("In 3 hours"), and `tonight` ("Tonight at 8") only before 7 pm in the author's time zone (the point's; with no point, a home's; else Pacific). `at` is when each would share. Given with no point too. |
 
 Unchanged: `area_label`, `at_home`, `can_show_height` (true for any point not at home while heights are on),
-`adult_confirmed`, `has_connections`. `place_label` and `places` leave out schools and preschools, and
-`pick_within_m` follows how built-up the spot is (below).
+`adult_confirmed`, `has_connections`. `place_label` and `places` list schools and preschools like any place (until
+2026-11-17 they left them out), and `pick_within_m` follows how built-up the spot is (below).
 
 ## `POST /api/moments`
 
@@ -48,17 +48,20 @@ a Moment is where it was taken, not at the middle of an area):
    `label_kind: "place"`. A place whose own point is farther from the Moment's than `pick_within_m` (the middle of a
    big park the photo was taken in) gives its name and the pin stays at the Moment's own point.
 4. **Where it was taken** otherwise: the exact point, with the label a v3.9 Moment gets (a named place, else the
-   street's name, else the town; a `place_key` of `street` or `town` picks one), except that a school or a preschool
-   never names it.
+   street's name, else the town; a `place_key` of `street` or `town` picks one). Since 2026-11-17 a school or a
+   preschool names it like any place.
 
 "Picked a place" is `pin: "place"`, or a `venue_id`, or a `place_key` that names a venue (`v_…`). A picked place
-that is a school or preschool, or is itself within 60 m of the author's home, takes no pin: the Moment is where it
-was taken (rule 4).
+that is itself within 60 m of the author's home takes no pin: the Moment is where it was taken (rule 4). Schools and
+preschools take a pin like any place (the founder reversed the Sky design's call C9 on 2026-11-17).
 
 `pick_within_m` (on the preview) is how far from the Moment's point a picked place may be, by how built-up the spot
-is: 400 m (a quarter mile) where a quarter-mile cell holds 100 homes, then 800, 1600 (a mile), 2400 and 3200 (two
-miles, open country); 1600 where the homes file can't say (abroad). A place whose outline holds the point is 0 m
-away. With the flag off it is 1500, as in v3.9.
+is: 1600 (a mile) on the two most built-up steps (a quarter-mile cell with 100 homes or more, then the next), 2400
+(a mile and a half) on the middle step and 3200 (two miles) on the two most open; 1600 where the homes file can't
+say (abroad). Founder 2026-11-17, evening; until then it was 400, 800, 1600, 2400 and 3200. A place whose outline
+holds the point is 0 m away. With the flag off it is 1500, as in v3.9. `pin: "place"` with nothing picked (the
+preview's `place`, at the spot itself) keeps the earlier distances for how far its pin may move to the place's own
+point (rule 3).
 
 A Moment over its area stores only that spot (`latitude`, `longitude` and the effective pair),
 `location_precision: approx_area`, `post_metadata.moment.show_area: true`, and `post_metadata.area = { v: 1, step: 1,

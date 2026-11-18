@@ -142,8 +142,10 @@ any exact pin, and an edit can't raise a post to `exact_place`.
 **The Sky's places (phase A; `sky_places` flag, off everywhere until the founder
 turns it on; accepted 2026-11-14).** With the flag on for the author, a personal
 place post keeps an exact pin only at a **tagged venue where its own photo or
-video was taken**, and not when that venue is a school or a preschool (looked
-up again by its picker id) or is within ~60 m of a home the author lives at.
+video was taken** (looked up again by its picker id), and not when that venue
+is within ~60 m of a home the author lives at. Schools and preschools take a pin
+like any venue: the founder reversed call C9 on 2026-11-17 ("schools and
+preschools should be allowed as a pin").
 Everything else floats over its area ([Areas of at least 100 homes](#areas-of-at-least-100-homes)):
 an address or town tag, a bare photo, no photo, a venue with no photo, and every
 Home post (`POST /api/posts`, the Pulse-mode composer in `services/pulse/compose.js`,
@@ -242,20 +244,25 @@ area), the server decides, whatever an app's sheet says:
 
 | Moment | Point stored and seen (author included) | Place label |
 |--------|-----------------------------------------|-------------|
-| Where it was taken (the default) | the exact point | a named place, else the street's name without a number, else the town; never a school's or a preschool's name |
+| Where it was taken (the default) | the exact point | a named place (a school or a preschool too, since 2026-11-17), else the street's name without a number, else the town |
 | "Pin it at a place": a public place close by, picked by name | the place's own point (from the venues index); the photo's own point when the place's is farther off than a place may be picked (the middle of a big park) | the place's name |
 | Within ~60 m of the author's own home, always | only its area's spot: a public street close to the middle of the quarter-mile cell the home is in (below), never the home | the town at that spot |
 | "Don't show where" | none | none |
 
 - **How close a picked place must be** depends on how built-up the spot is, from the same homes file as the areas
-  (`momentPlace.pickWithinM`): a quarter mile (400 m) where a quarter-mile cell holds 100 homes (downtown, Manhattan),
-  then 800 m, a mile (1,600 m), 2,400 m, and two miles (3,200 m) in open country; a mile where nobody counted the
-  homes (abroad). The preview's `pick_within_m` says it and the apps' place picker lists no place farther. A place
-  whose outline holds the spot is 0 m away. A `venue_id` farther off, or one nobody finds, is `422
-  PLACE_NOT_NEARBY`. So no pin is ever farther from where the photo was taken than that distance.
-- **A place is picked** with `pin: "place"`, a `venue_id` from the place picker, or a venue's `place_key`. A school
-  or a preschool never takes a pin, and neither does a place within ~60 m of the author's home: the Moment stays
-  where it was taken.
+  (`momentPlace.pickWithinM`): a mile (1,600 m) on the two most built-up steps (a quarter-mile cell with 100 homes or
+  more, downtown, Manhattan, and the next), a mile and a half (2,400 m) on the middle step, and two miles (3,200 m)
+  on the two most open; a mile where nobody counted the homes (abroad). The founder set these on 2026-11-17 in the
+  evening ("when users pick a spot, we can allow a bit more further distance places to be searched, although still
+  not too far"); before that they were 400 m, 800 m, 1,600 m, 2,400 m and 3,200 m. The preview's `pick_within_m`
+  says it and the apps' place picker lists and finds no place farther. A place whose outline holds the spot is 0 m
+  away. A `venue_id` farther off, or one nobody finds, is `422 PLACE_NOT_NEARBY`. So no pin is ever farther from
+  where the photo was taken than that distance. A place nobody picked ("Pin it at a place" with nothing picked: the
+  place at the spot itself) keeps the earlier distances: its pin moves to the place's own point only within 400 m,
+  800 m, 1,600 m, 2,400 m or 3,200 m by the same steps, else it stays where the photo was taken.
+- **A place is picked** with `pin: "place"`, a `venue_id` from the place picker, or a venue's `place_key`. A place
+  within ~60 m of the author's home takes no pin: the Moment stays where it was taken. Schools and preschools take a
+  pin like any place (founder 2026-11-17, reversing call C9 of the Sky design).
 - **A Moment at home floats over a street close by** (founder 2026-11-17: at home it stays an area, but a very
   close one, never miles off). Its spot is worked out from the cell only (`momentPlace.closeArea`): the 0.005° cell
   holding the home (about 0.35 by 0.25 mile), then the point on a public street (OpenStreetMap: residential to
@@ -276,14 +283,14 @@ area), the server decides, whatever an app's sheet says:
   keeps 10; at home, none.
 - **The preview** (`POST /api/moments/place-preview`) adds `sky`, `area` (the town, the street spot and
   `radius_m`: what a Moment at home shows), `place` (the public place a pin would use) and `can_pin` (false at home)
-  for a caller with the flag on; its names leave out schools and preschools.
+  for a caller with the flag on; its names include schools and preschools (since 2026-11-17).
 - **Share later** (`share_later: "1h" | "3h" | "tonight"`): the Moment is made at once but until its time only its
   author can read it (`state: "scheduled"`, `share_at`); it is on no map, in no ring and in no push. At its time its
   `created_at` becomes the time it went live, so nobody reads when its author was there; new apps say "Earlier today"
   (or "Yesterday") for it (`earlier: true`).
 - **In the apps** (iPhone and Android, 2026-11-17): the Post sheet draws the Sky only when the preview answers `sky:
   true`: the name of where it was taken with the exact pin and "Exact" by default; "Pin it at a place" (the place
-  naming the spot, else the place picker, which leaves out schools and preschools) sends `pin: "place"` and shows "At
+  naming the spot, else the place picker, schools and preschools included since 2026-11-17) sends `pin: "place"` and shows "At
   Esther Short Park"; at home "Around Washougal, WA" with the area's disc and a note, with the pin and the elevation
   greyed out; "Share later" sends `share_later`. A Moment at home also sends `show_area: true`, so it shows only its
   area even if the flag went off meanwhile.

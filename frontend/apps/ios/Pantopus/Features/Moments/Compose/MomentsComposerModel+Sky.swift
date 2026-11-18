@@ -63,14 +63,6 @@ extension MomentsComposerModel {
         if sky.place != nil { pinsAtPlace = true } else { findsPlace = true }
     }
 
-    /// The place picker lists only places that can take a pin: under the Sky, never a school or a preschool (call C9;
-    /// the server leaves a Moment picked at one where it was taken).
-    func canPin(_ place: GeoPlace) -> Bool {
-        sky == nil || !Self.notPinnable.contains(place.category ?? "")
-    }
-
-    static let notPinnable: Set<String> = ["School", "Preschool"]
-
     /// The server found no place to pin at (`422 NO_PLACE_HERE`): the switch goes back off and says so.
     func noPlaceToPin() {
         pinsAtPlace = false

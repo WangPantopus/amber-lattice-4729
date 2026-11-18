@@ -7,9 +7,9 @@
 // (the Pulse composer's, around the Moment's pin) may also name a venue a little farther off, the coffee shop or the
 // stadium the photo was taken in: the app sends only the venue's id, and venueNear finds it again near the pin.
 // With the Sky's places on for the author (`sky_places`), a Moment is where it was taken unless its author pins it at a
-// public place close by, picked by name (namingPlace, venueForKey, venueNear; never a school or a preschool, and no
-// farther than pickWithinM, which is shorter where the spot is built up); at home it shows only its area: it stands
-// over a street close by (closeArea), named by the town there (townAt).
+// public place close by, picked by name (namingPlace, venueForKey, venueNear; schools and preschools too since
+// November 17, 2026, and no farther than pickWithinM, which is shorter where the spot is built up); at home it shows
+// only its area: it stands over a street close by (closeArea), named by the town there (townAt).
 
 const crypto = require('crypto');
 const supabaseAdmin = require('../../config/supabaseAdmin');
@@ -33,11 +33,16 @@ const MAX_PLACES = 6;
 // moves to the venue, so it stays in the same part of town as the photo.
 const PICK_PLACE_M = 1500;
 // With the Sky on (founder 2026-11-17: a place close by, nearer where it's built up, farther in open country): how far
-// by how built-up the spot is, from the homes around it (the five steps of utils/areaCells.js): a quarter mile
-// downtown, half a mile, a mile, a mile and a half, and two miles in open country. A mile where nobody counted the
-// homes (abroad).
-const PICK_PLACE_BY_STEP_M = [400, 800, 1600, 2400, 3200];
+// a place the author picks by name may be, by how built-up the spot is, from the homes around it (the five steps of
+// utils/areaCells.js): a mile on the two most built-up steps, a mile and a half in the middle, and two miles on the
+// two most open (founder 2026-11-17, evening: "when users pick a spot, we can allow a bit more further distance").
+// A mile where nobody counted the homes (abroad).
+const PICK_PLACE_BY_STEP_M = [1600, 1600, 2400, 3200, 3200];
 const PICK_PLACE_UNKNOWN_M = 1600;
+// What a place the author didn't pick ("Pin it at a place" with nothing picked: the place at the spot itself) keeps:
+// the distances from before that evening, so its pin moves no farther than it did (a quarter mile downtown, half a
+// mile, a mile, a mile and a half, two miles).
+const SPOT_PLACE_BY_STEP_M = [400, 800, 1600, 2400, 3200];
 // A Moment that shows only its area (at home, always) stands over a public street this close to the middle of its
 // quarter-mile cell (founder 2026-11-17: at home it floats over a very close street, never miles off); with no street
 // there, or none found in time, at the middle itself.
@@ -99,7 +104,7 @@ function venuesAt(latitude, longitude) {
       key: venueKey(place),
       label: String(place.name).slice(0, 80),
       // Kept on the server (labelsAt hands out only key and label): where a pin at this place stands, and whether it
-      // may take one (the Sky: never a school or a preschool).
+      // may take one (it has a point).
       latitude: Number(place.center?.lat),
       longitude: Number(place.center?.lng),
       pinnable: isPinnable(place),
@@ -111,12 +116,11 @@ function venueKey(place) {
   return `v_${crypto.createHash('sha256').update(String(place.place_id ?? place.name)).digest('hex').slice(0, 16)}`;
 }
 
-// The Sky (phase A, call C9): a post may be pinned exactly at any place the picker lists except schools and preschools
-// (colleges and universities may). The venues index labels them (services/geo/venues.js).
-const NOT_PINNABLE = new Set(['School', 'Preschool']);
+// The Sky (phase A): a post may be pinned exactly at any place the picker lists that has a point. Schools and
+// preschools may too: the founder reversed call C9 on November 17, 2026 ("schools and preschools should be allowed as
+// a pin").
 function isPinnable(place) {
-  return !NOT_PINNABLE.has(place?.category) && Number.isFinite(Number(place?.center?.lat))
-    && Number.isFinite(Number(place?.center?.lng));
+  return Number.isFinite(Number(place?.center?.lat)) && Number.isFinite(Number(place?.center?.lng));
 }
 
 async function settle(promise, what) {
@@ -133,7 +137,7 @@ async function settle(promise, what) {
  * author picks another of `places`, `area_label` what an area pin (and a home) says. `places` are the names that fit
  * an exact pin, [{ key, label }], at most MAX_PLACES: the places right there, then the street's name, then the town;
  * the first is `place_label`. Never throws; a label nobody could find is FALLBACK_LABEL. `pinnableOnly` (the Sky)
- * leaves out the places that never take a pin, so a Moment taken at a school reads the street's name or the town's.
+ * leaves out the places that can't take a pin (one with no point).
  */
 async function labelsAt(latitude, longitude, { pinnableOnly = false } = {}) {
   const [around, ts] = await Promise.all([
@@ -159,11 +163,13 @@ function pickedLabel(labels, key) {
 
 /**
  * How far from a spot a place picked for it may be, in metres, with the Sky on: PICK_PLACE_BY_STEP_M by how built-up
- * the spot is, PICK_PLACE_UNKNOWN_M where the homes file can't say. Never throws.
+ * the spot is, PICK_PLACE_UNKNOWN_M where the homes file can't say. `picked: false` (a place the author didn't pick
+ * by name: the one at the spot itself) answers SPOT_PLACE_BY_STEP_M instead, the shorter distances from before
+ * November 17, 2026. Never throws.
  */
-async function pickWithinM(latitude, longitude) {
+async function pickWithinM(latitude, longitude, { picked = true } = {}) {
   const step = await knownStepAt(latitude, longitude);
-  return step ? PICK_PLACE_BY_STEP_M[step - 1] : PICK_PLACE_UNKNOWN_M;
+  return step ? (picked ? PICK_PLACE_BY_STEP_M : SPOT_PLACE_BY_STEP_M)[step - 1] : PICK_PLACE_UNKNOWN_M;
 }
 
 /**

@@ -82,10 +82,6 @@ val MomentsComposeUiState.sharesAt: Instant?
             }
         }
 
-/** The place picker lists only places that can take a pin: under the Sky, never a school or a preschool (call C9). */
-fun MomentsComposeUiState.canPinAt(category: String?): Boolean = !sky || category !in NOT_PINNABLE
-
-private val NOT_PINNABLE = setOf("School", "Preschool")
 private const val HOUR_S = 3600L
 
 /**

@@ -19,7 +19,7 @@ extension MomentsPostSheet {
             },
             anchoredAt: anchor,
             placeFilter: { place in
-                (place.placeId?.hasPrefix("osm:") ?? false) && (place.distanceM ?? .infinity) <= reach && model.canPin(place)
+                (place.placeId?.hasPrefix("osm:") ?? false) && (place.distanceM ?? .infinity) <= reach
             },
             onSelect: { tag in
                 model.pickVenue(tag)
