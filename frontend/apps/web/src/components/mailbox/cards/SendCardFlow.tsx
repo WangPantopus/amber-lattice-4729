@@ -68,8 +68,10 @@ const page = 'min-h-[calc(100dvh-8rem)] bg-[#f5f0e8] text-[#111827] md:h-full md
 const primary = WAX_BUTTON;
 const secondary = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#d6cbb6] bg-[#fffdf8] text-[15px] font-semibold text-[#374151] transition hover:bg-[#f5efe3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d] disabled:opacity-50';
 const muted = 'text-[#4e5563] [@media(prefers-color-scheme:dark)]:text-app-text-secondary';
-// "Look it over" on the cloth (5.1): the quieter button under "Seal and send", glass on the cloth.
-const LOOK_ON_CLOTH = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#f6ecd9]/30 bg-[#18100e]/35 text-[15px] font-semibold text-[#f6ecd9] backdrop-blur transition hover:bg-[#18100e]/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f] disabled:opacity-50';
+// "Look it over" pinned under "Seal and send" on Seal it for the day (design check of November 17, Fix 2): a quiet
+// button, not a second filled bar, on the page and on the cloth.
+const LOOK_QUIET = 'mx-auto flex min-h-11 items-center justify-center rounded-lg px-4 text-[15px] font-semibold text-[#374151] underline decoration-[#374151]/35 underline-offset-4 transition hover:text-[#111827] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d] disabled:opacity-50';
+const LOOK_QUIET_ON_CLOTH = 'mx-auto flex min-h-11 items-center justify-center rounded-lg px-4 text-[15px] font-semibold text-[#f6ecd9] underline decoration-[#f6ecd9]/35 underline-offset-4 transition hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f] disabled:opacity-50';
 /** The soft fade under a pinned button (5.2): clear at its top, nearly the colour under it at the bottom. */
 // On the cloth, `shade` darkens the tint toward the vignette's darker edge, so the fade meets the cloth it lies on.
 const fadeOf = (rgb: string, shade = 1) => {
@@ -1162,6 +1164,7 @@ function SealStep({
   stamps = null,
   onGetStamps,
   onCloth = false,
+  fade = PAGE_FADE,
 }: {
   cards: HolidayCards;
   to: Recipient;
@@ -1186,6 +1189,8 @@ function SealStep({
   onGetStamps?: () => void;
   /** On the card's cloth (design plan Part 9): the choices on a cream slip. */
   onCloth?: boolean;
+  /** The soft fade the pinned buttons sit on: the cloth's colour, or the page's. */
+  fade?: string;
 }) {
   // No stamp left (for a list, fewer than its cards): the main button opens the stamp books, as Look it over's does.
   const count = to.kind === 'list' ? to.entries.length : 1;
@@ -1200,6 +1205,7 @@ function SealStep({
       year: cards.year, arrival, sealed_until: null, sealed: arrival === 'sealed_christmas' },
   } as unknown as MailItemV2;
   return (
+    <div data-testid="sendCardSeal">
     <div className="mt-3 px-4">
       <div className="mx-auto max-w-[380px] rotate-1">
         <MailPiece item={preview} recipientName={envelopeName(to)} opened={false} />
@@ -1241,9 +1247,11 @@ function SealStep({
       </p>
       {/* The postage line too (5.1), so a sender who goes straight to the table has read both. */}
       {stamps ? <div className="mx-auto mt-3 max-w-[420px]"><PostageLine stamps={stamps} design={design.id} count={to.kind === 'list' ? count : undefined} /></div> : null}
-      {error ? <p role="alert" className={`mx-auto mt-3 max-w-[420px] text-[14px] font-medium ${onCloth ? 'text-[#ffb4a8]' : 'text-[#a81a1a]'}`}>{error}</p> : null}
-      <div className="mx-auto mt-5 max-w-[420px] space-y-2.5 pb-4">
-        {/* "Seal and send" above "Look it over" (founder, November 17): straight to the sealing table, or the look. */}
+    </div>
+      {/* "Seal and send" above "Look it over" (founder, November 17), both pinned at the bottom so they're on screen the
+          moment the step opens (design check of November 17, Fix 2): on the same soft fade as Look it over's button, no
+          panel. The take-back and postage lines scroll above them; a refusal is one line just above the buttons. */}
+      <PinnedSend fade={fade} error={error} onCloth={onCloth}>
         <button
           type="button"
           data-testid="sendCardSend"
@@ -1256,11 +1264,11 @@ function SealStep({
           {needsStamps ? 'Get stamps to send' : to.kind === 'list' ? `Seal and send ${count} cards` : sendWords(to)}
         </button>
         {sendsHere ? null : (
-          <button type="button" data-testid="sendCardLookOver" disabled={!arrival || busy} onClick={onLook} className={onCloth ? LOOK_ON_CLOTH : secondary}>
+          <button type="button" data-testid="sendCardLookOver" disabled={!arrival || busy} onClick={onLook} className={`mt-1 ${onCloth ? LOOK_QUIET_ON_CLOTH : LOOK_QUIET}`}>
             Look it over
           </button>
         )}
-      </div>
+      </PinnedSend>
     </div>
   );
 }
@@ -2384,6 +2392,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
             setStampSheet(true);
           }}
           onCloth={atTable}
+          fade={atTable ? fadeOf(tableTint(design?.table), 0.72) : PAGE_FADE}
         />
       ) : null}
       {step === 'look' && look && to ? (
