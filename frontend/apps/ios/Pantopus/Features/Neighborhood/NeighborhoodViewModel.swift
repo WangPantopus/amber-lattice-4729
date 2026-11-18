@@ -74,7 +74,7 @@ final class NeighborhoodViewModel {
         } catch {
             // A failed refresh keeps the meter on screen.
             if case .loaded = state, !ScreenStore.isRefusal(error) { return }
-            state = .error(message: "We couldn't load your neighborhood meter.")
+            state = .error(message: "We couldn't load the verified homes near you.")
         }
     }
 

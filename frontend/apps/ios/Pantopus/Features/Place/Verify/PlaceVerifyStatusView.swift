@@ -79,7 +79,7 @@ struct PlaceVerifyStatusView: View {
                     .font(.system(size: 24, weight: .bold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Theme.Color.appText)
-                Text("You're now an address-proven neighbor at \(address).")
+                Text("You're now an address-proven resident at \(address).")
                     .pantopusTextStyle(.small)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Theme.Color.appTextSecondary)

@@ -152,7 +152,7 @@ struct NeighborhoodView: View {
 
         return VStack(alignment: .leading, spacing: Spacing.s3) {
             HStack {
-                Text("VERIFIED NEIGHBORS \(areaSuffix(meter).uppercased())")
+                Text("VERIFIED HOMES \(areaSuffix(meter).uppercased())")
                     .font(.system(size: 11, weight: .bold))
                     .kerning(0.7)
                     .foregroundStyle(Theme.Color.appTextSecondary)
@@ -193,7 +193,7 @@ struct NeighborhoodView: View {
         ShareLink(item: PersonalInviteLink.shared.url, message: Text(Self.inviteMessage)) {
             HStack(spacing: Spacing.s2) {
                 Icon(.share2, size: 17, color: .white)
-                Text("Invite your neighbors")
+                Text("Invite homes near you")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
             }

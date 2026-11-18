@@ -60,7 +60,7 @@ struct BlockInviteForm: View {
     private var header: some View {
         HStack(spacing: 11) {
             PlaceIconTile(icon: .mailbox, tone: .sky, size: 34)
-            Text("Invite a neighbor by mail")
+            Text("Invite a home by mail")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)
             Spacer(minLength: 0)
@@ -75,7 +75,7 @@ struct BlockInviteForm: View {
             .font(.system(size: 12.5))
             .lineSpacing(2)
             .foregroundStyle(Theme.Color.appTextSecondary)
-            promise("You're named only as a neighbor on your street — never your name, never your house number.")
+            promise("You're named only as someone on your street — never your name, never your house number.")
             promise("Every card carries a working opt-out. One use silences that address for good, from every sender.")
             promise("One card per address per season, from anyone — an address already on Pantopus is never mailed.")
         }

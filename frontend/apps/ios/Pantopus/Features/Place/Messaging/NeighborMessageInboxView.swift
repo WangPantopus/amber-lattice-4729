@@ -18,7 +18,7 @@ struct NeighborMessageInboxView: View {
         VStack(spacing: 0) {
             PlaceDetailHeader(
                 title: "Messages",
-                address: "From verified neighbors",
+                address: "From verified homes nearby",
                 onBack: onBack
             )
             content
@@ -39,7 +39,7 @@ struct NeighborMessageInboxView: View {
                 EmptyState(
                     icon: .inbox,
                     headline: "No messages yet",
-                    subcopy: "When a verified neighbor on your block sends you a heads-up, it'll show up here."
+                    subcopy: "When a verified home on your block sends you a heads-up, it'll show up here."
                 )
                 .containerRelativeFrame(.vertical)
             }
@@ -83,7 +83,7 @@ private struct InboxRow: View {
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text("A verified neighbor nearby")
+                    Text("A verified home nearby")
                         .font(.system(size: 14.5, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
                         .lineLimit(1)

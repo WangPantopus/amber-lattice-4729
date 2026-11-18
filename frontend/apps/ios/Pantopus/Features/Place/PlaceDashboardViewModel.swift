@@ -92,7 +92,7 @@ final class PlaceDashboardViewModel {
     let onOpenInbox: () -> Void
     /// "Verified homes nearby": the density window, the meter and the invite.
     let onOpenVerifiedHomes: () -> Void
-    /// Wedge v2 §2 — the privacy mirror ("see what neighbors see").
+    /// Wedge v2 §2 — the privacy mirror ("see what others see").
     let onOpenPrivacyMirror: () -> Void
     /// Movers first (Wedge v2 D5): "Send back the previous resident's mail" opens Mail Day.
     let onOpenMailDay: () -> Void
