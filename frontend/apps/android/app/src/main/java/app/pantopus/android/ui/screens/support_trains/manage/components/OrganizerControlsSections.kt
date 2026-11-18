@@ -315,49 +315,71 @@ fun ManageHelpersSection(
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                    if (row.status != "canceled" && !addressAvailable) {
-                        Text(
-                            text = "Delivery address unavailable",
-                            color = PantopusColors.appTextMuted,
-                            fontSize = 11.5.sp,
-                        )
-                    } else if (row.canShareAddress && !readOnly) {
-                        ManagePillButton(
-                            label = if (row.isGuest) "Email address" else "Share address",
-                            icon = PantopusIcon.MapPin,
-                            tag = "manageTrainShareAddress-${row.id}",
-                            isEnabled = !isBusy,
-                            onClick = { onShareAddress(row) },
-                        )
-                    } else if (row.status != "canceled" && !row.canShareAddress) {
-                        Text(
-                            text = if (row.isGuest) "Exact location sent" else "Exact location shared",
-                            color = PantopusColors.success,
-                            fontSize = 11.5.sp,
-                        )
-                    }
-                    if (row.canConfirm) {
-                        ManagePillButton(
-                            label = "Confirm delivery",
-                            icon = PantopusIcon.CheckCircle,
-                            tag = "manageTrainConfirmDelivery-${row.id}",
-                            isEnabled = !isBusy,
-                            onClick = { onConfirm(row) },
-                        )
-                    }
-                    if (row.canRemove && !readOnly) {
-                        ManagePillButton(
-                            label = "Remove",
-                            icon = PantopusIcon.UserMinus,
-                            tag = "manageTrainRemoveHelper-${row.id}",
-                            destructive = true,
-                            isEnabled = !isBusy,
-                            onClick = { onRemove(row) },
-                        )
-                    }
-                }
+                HelperRowActions(
+                    row = row,
+                    addressAvailable = addressAvailable,
+                    readOnly = readOnly,
+                    isBusy = isBusy,
+                    onShareAddress = onShareAddress,
+                    onConfirm = onConfirm,
+                    onRemove = onRemove,
+                )
             }
+        }
+    }
+}
+
+/** A helper's address, delivery and remove buttons; a read-only viewer (recipient_delegate) gets only Confirm delivery. */
+@Composable
+private fun HelperRowActions(
+    row: ManageHelperRow,
+    addressAvailable: Boolean,
+    readOnly: Boolean,
+    isBusy: Boolean,
+    onShareAddress: (ManageHelperRow) -> Unit,
+    onConfirm: (ManageHelperRow) -> Unit,
+    onRemove: (ManageHelperRow) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        if (row.status != "canceled" && !addressAvailable) {
+            Text(
+                text = "Delivery address unavailable",
+                color = PantopusColors.appTextMuted,
+                fontSize = 11.5.sp,
+            )
+        } else if (row.canShareAddress && !readOnly) {
+            ManagePillButton(
+                label = if (row.isGuest) "Email address" else "Share address",
+                icon = PantopusIcon.MapPin,
+                tag = "manageTrainShareAddress-${row.id}",
+                isEnabled = !isBusy,
+                onClick = { onShareAddress(row) },
+            )
+        } else if (row.status != "canceled" && !row.canShareAddress) {
+            Text(
+                text = if (row.isGuest) "Exact location sent" else "Exact location shared",
+                color = PantopusColors.success,
+                fontSize = 11.5.sp,
+            )
+        }
+        if (row.canConfirm) {
+            ManagePillButton(
+                label = "Confirm delivery",
+                icon = PantopusIcon.CheckCircle,
+                tag = "manageTrainConfirmDelivery-${row.id}",
+                isEnabled = !isBusy,
+                onClick = { onConfirm(row) },
+            )
+        }
+        if (row.canRemove && !readOnly) {
+            ManagePillButton(
+                label = "Remove",
+                icon = PantopusIcon.UserMinus,
+                tag = "manageTrainRemoveHelper-${row.id}",
+                destructive = true,
+                isEnabled = !isBusy,
+                onClick = { onRemove(row) },
+            )
         }
     }
 }
