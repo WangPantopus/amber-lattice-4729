@@ -1396,7 +1396,7 @@ async function sendGuestReservationAddressEmail({
   <div style="max-width:480px; margin:40px auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
 
     <div style="background:#111827; padding:32px 32px 24px; text-align:center;">
-      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">Delivery Location</h1>
+      <h1 style="color:#ffffff; font-size:20px; font-weight:600; margin:0;">${replacesEarlier ? 'New Delivery Location' : 'Delivery Location'}</h1>
     </div>
 
     <div style="padding:32px;">
@@ -1449,7 +1449,7 @@ async function sendGuestReservationAddressEmail({
 </html>`;
 
   const text = `
-Delivery location for ${trainTitle}
+${subject}
 
 Hi ${guestName}, ${replacesEarlier ? 'the delivery location changed. This replaces the address we sent you earlier.' : 'the organizer has shared the exact delivery location.'}
 

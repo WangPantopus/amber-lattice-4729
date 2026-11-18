@@ -229,7 +229,16 @@ async function notifyDeliveryChanged(train, actorUserId) {
       payload: { helper_user_ids: helperIds },
     });
   }
-  const guests = upcoming.filter((r) => !r.user_id && r.guest_email && r.guest_address_shared_at);
+  // One email per guest address for one change, dated with their earliest coming date.
+  const slotKey = (r) => `${r.SupportTrainSlot?.slot_date || ''} ${r.SupportTrainSlot?.start_time || ''}`;
+  const earliestByEmail = new Map();
+  for (const r of upcoming) {
+    if (r.user_id || !r.guest_email || !r.guest_address_shared_at) continue;
+    const email = r.guest_email.trim().toLowerCase();
+    const seen = earliestByEmail.get(email);
+    if (!seen || slotKey(r) < slotKey(seen)) earliestByEmail.set(email, r);
+  }
+  const guests = [...earliestByEmail.values()];
   if (guests.length === 0) return;
   const delivery = await getSupportTrainExactDeliveryDetails(train, supportTrainId, { includeInstructions: true });
   if (!delivery.address?.address?.trim()) return;
