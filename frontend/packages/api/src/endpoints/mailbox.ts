@@ -839,7 +839,7 @@ export async function suggestHolidayCardNote(data: {
   design: string;
   /** First names, as shown on the screen (none for an address or a link). */
   to: string[];
-  /** How many people the card goes to: past two, the note names no one. */
+  /** How many people the card goes to: past one, the note names no one. */
   count: number;
   hint?: string;
   /** What's on the card so far. */

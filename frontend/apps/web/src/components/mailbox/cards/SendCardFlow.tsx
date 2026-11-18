@@ -768,6 +768,7 @@ function WriteStep({
   year,
   fromName,
   toFirstName,
+  toList = false,
   limit,
   message,
   onMessage,
@@ -798,6 +799,8 @@ function WriteStep({
   year: number;
   fromName: string;
   toFirstName: string;
+  /** A list: each person gets the same note, so the grey example line names no one. */
+  toList?: boolean;
   limit: number;
   message: string;
   onMessage: (text: string) => void;
@@ -897,7 +900,7 @@ function WriteStep({
               id="card-note"
               value={message}
               onChange={(event) => onMessage([...event.target.value].slice(0, limit).join(''))}
-              placeholder={`Dear ${toFirstName || 'friend'},`}
+              placeholder={toList ? 'Dear friends,' : `Dear ${toFirstName || 'friend'},`}
               className="h-full w-full resize-none border-0 bg-transparent p-0 placeholder:text-[#2c4a8a]/45 focus:outline-none focus:ring-0"
               style={noteStyle}
               tabIndex={showBack ? 0 : -1}
@@ -2367,6 +2370,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           year={data.year}
           fromName={fromName}
           toFirstName={to?.kind === 'person' ? firstName(to.name) : ''}
+          toList={to?.kind === 'list'}
           limit={data.message_limit}
           message={message}
           onMessage={setMessage}

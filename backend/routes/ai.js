@@ -446,7 +446,7 @@ const draftCardNoteSchema = Joi.object({
   // The picture they picked (a design id from GET /api/mailbox/cards).
   design: Joi.string().max(64).required(),
   // The first names the card is to, as the app shows them (none for an address or a link), and how many people it
-  // goes to in all: a list gets one note, so past two people no one is named.
+  // goes to in all: a list gets one note, so past one person no one is named.
   to: Joi.array().items(Joi.string().trim().min(1).max(cardNote.NAME_LIMIT)).max(20).default([]),
   count: Joi.number().integer().min(0).max(20).optional(),
   // "Anything to mention?"

@@ -394,7 +394,7 @@ Write three notes, each a different way to say it:
 
 Rules:
 - Each note is complete as it stands and at most ${limit} characters, counting spaces and line breaks. Aim for ${target} or fewer; brief stays under 120.
-- When the card is to one or two named people, open with a greeting that uses the first names ("Dear Maria," or "Dear Maria and Tom,") on its own line. When you are told to name no one, greet no one by name ("Dear friends," or straight into the note): every person on the list gets the same words.
+- When the card is to one named person, open with a greeting that uses the first name ("Dear Maria,") on its own line. When you are told to name no one, greet no one by name ("Dear friends," or straight into the note): every person on the list gets the same words.
 - No sign-off and no name at the end: the sender's name is already printed on the card beside FROM.
 - Sound like a person writing by hand to someone they know. Plain words. No rhymes, no emoji, no hashtags, no links, no quotation marks around the note.
 - Use only what the sender tells you. Never invent a shared memory, an event, a family member, a place, a gift, or news about anyone's health or life. With nothing to mention, write about the season and about thinking of them.
@@ -569,7 +569,7 @@ module.exports = {
     mail: 'mail-summary-v1.1',  // v1.1: told today's date, so "overdue" is judged, not guessed
     placeBrief: 'place-brief-v1.0',
     mailOpening: 'mail-opening-v1.0',
-    cardNote: 'card-note-v1.0',
+    cardNote: 'card-note-v1.1',  // v1.1: a card to two or more people names no one; only one person is greeted by name
     supportTrain: 'support-train-draft-v1.1',  // v1.1: told today's date
     openSlotsNudge: 'open-slots-nudge-v1.0',
     pickupSchedule: 'pickup-schedule-v1.0',
