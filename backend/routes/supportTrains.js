@@ -948,8 +948,12 @@ router.post(
     } = req.body;
     const userId = req.user.id;
     // A train's organizers, recipient and helpers see its Home's exact address, so a train
-    // may only name a Home its organizer belongs to.
-    const namedHomeIds = [recipient_home_id, home_id].filter(Boolean);
+    // may only name a Home its organizer belongs to, as PATCH /:id answers (refused before anything is written).
+    const namedHomeIds = [
+      recipient_home_id,
+      home_id,
+      delivery_location?.mode === 'home' ? delivery_location.home_id : null,
+    ].filter(Boolean);
     if (namedHomeIds.length > 0) {
       const homeIds = await householdHomeIds(userId);
       if (namedHomeIds.some((id) => !homeIds.includes(id))) {
