@@ -448,20 +448,22 @@ class ManageTrainViewModel
          * its rows and shows an error without hiding the rest of the screen.
          */
         @Suppress("CyclomaticComplexMethod")
+        private suspend fun readOrganizerSurfaces(): OrganizerReads =
+            coroutineScope {
+                val reservationsCall = async { repo.reservations(trainId) }
+                val organizersCall = async { repo.organizers(trainId) }
+                val fundCall = async { repo.fund(trainId) }
+                val invitesCall = async { repo.invites(trainId) }
+                OrganizerReads(reservationsCall.await(), organizersCall.await(), fundCall.await(), invitesCall.await())
+            }
+
         private suspend fun loadOrganizerSurfaces(
             slots: List<ManageSlotRow>,
             version: Long,
         ) {
             // The four reads go out together, so the invitations list adds no round trip (founder: a fix must
             // not slow a feature).
-            val reads =
-                coroutineScope {
-                    val reservationsCall = async { repo.reservations(trainId) }
-                    val organizersCall = async { repo.organizers(trainId) }
-                    val fundCall = async { repo.fund(trainId) }
-                    val invitesCall = async { repo.invites(trainId) }
-                    OrganizerReads(reservationsCall.await(), organizersCall.await(), fundCall.await(), invitesCall.await())
-                }
+            val reads = readOrganizerSurfaces()
             if (!current(version)) return
             val reservationsResult = reads.reservations
             val reservations =

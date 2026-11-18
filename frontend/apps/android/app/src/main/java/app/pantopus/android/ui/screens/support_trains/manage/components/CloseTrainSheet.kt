@@ -53,6 +53,7 @@ const val MANAGE_TRAIN_THANK_YOU_FIELD_TAG: String = "manageTrainThankYouField"
  * summary card + italic recipient testimonial + 66dp thank-you note
  * textarea + Cancel/Close action row in a 1:1.4 ratio.
  */
+@Suppress("LongParameterList")
 @Composable
 fun CloseTrainSheet(
     content: CloseTrainSheetContent,

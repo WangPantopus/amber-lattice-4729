@@ -369,6 +369,9 @@ internal fun formatDay(millis: Long): String {
 /** The server keeps at most this many allergies or diet items (`allergies` max(50) in routes/supportTrains.js). */
 private const val MAX_LIST_ITEMS = 50
 
+/** Always end an item; a comma ends one only outside parentheses. */
+private val LIST_SEPARATORS = setOf(';', '\n')
+
 /** The server keeps each allergy or diet item to this many characters (`allergies` items max(100)). */
 internal const val MAX_LIST_ITEM_CHARS = 100
 
@@ -385,7 +388,7 @@ internal fun splitList(text: String): List<String> {
             ch == '(' -> depth++
             ch == ')' && depth > 0 -> depth--
         }
-        if ((ch == ',' && depth == 0) || ch == ';' || ch == '\n') {
+        if (ch in LIST_SEPARATORS || (ch == ',' && depth == 0)) {
             items += current.toString()
             current.clear()
         } else {
