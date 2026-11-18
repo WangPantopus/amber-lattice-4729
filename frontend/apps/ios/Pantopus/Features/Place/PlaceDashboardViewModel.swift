@@ -54,6 +54,8 @@ final class PlaceDashboardViewModel {
     /// Faster verification (FASTVERIFY): the person's level here and the ways to verify. Nil while the switch is
     /// off (the server answers 404), and Place stays as it was.
     private(set) var verifyOptions: HomeVerifyOptions?
+    /// A mailed card is waiting for its code (FASTVERIFY): Place offers "Enter mailed code", as the card says.
+    private(set) var hasPendingPostcard = false
     private var taskAccess: HomeTaskAccess?
     /// What changed since the last visit, newest first, and how many in all.
     private(set) var changes: [PlaceChange] = []
@@ -350,6 +352,16 @@ final class PlaceDashboardViewModel {
     /// The server's verify-options answer (FASTVERIFY); the verify sheet reads the same copy.
     private func refreshVerifyOptions() async {
         verifyOptions = await HomeVerifyOptionsStore.shared.load(homeId: homeId)
+        guard verifyOptions != nil else {
+            hasPendingPostcard = false
+            return
+        }
+        // Only while the switch is on: today's Place never reads the card's status.
+        if let raw: JSONValue = try? await api.request(Endpoint(
+            method: .get, path: "/api/homes/\(homeId)/postcard-status", cachePolicy: .reloadIgnoringLocalCacheData
+        )) {
+            hasPendingPostcard = HomePostalStatus(value: raw).canVerify
+        }
     }
 
     private func fetch(force: Bool) async {

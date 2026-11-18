@@ -152,3 +152,19 @@ public struct HomeFastCheck: Decodable, Sendable, Hashable {
         self.recheckDueAt = recheckDueAt
     }
 }
+
+/// "This wasn't me" for a scanned card: the Home and the code printed on it.
+public struct PostcardReportRequest: Encodable, Sendable {
+    public let homeId: String
+    public let code: String
+
+    private enum CodingKeys: String, CodingKey {
+        case homeId = "home_id"
+        case code
+    }
+}
+
+/// `{ recorded: true }`, the same answer for any input.
+public struct PostcardReportResponse: Decodable, Sendable, Hashable {
+    public let recorded: Bool?
+}

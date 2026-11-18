@@ -33,6 +33,9 @@ struct HomePostalAddressForm {
 
 enum HomePostalNavigation { case home, residency, ownership, addHome, document, addressWrong }
 
+/// "This wasn't me" for a scanned card (FASTVERIFY).
+enum HomePostalReport: Equatable { case idle, sending, recorded, failed }
+
 @Observable
 @MainActor
 final class HomePostalViewModel {
@@ -49,6 +52,13 @@ final class HomePostalViewModel {
     private(set) var error: String?
     var address = HomePostalAddressForm()
     var codeInput = ""
+    /// The code from a scanned card's link (FASTVERIFY `#c=`), filled in when this account's card can be verified.
+    private(set) var linkCode: String?
+    /// Faster verification (FASTVERIFY): this Home's verify-options answer. Nil while the switch is off, and the
+    /// screen stays as it was.
+    private(set) var fastOptions: HomeVerifyOptions?
+    /// "This wasn't me" for a scanned card this account didn't ask for.
+    private(set) var report: HomePostalReport = .idle
 
     init(scope: HomePostalScope, api: APIClient, session: HomeClaimSessionScope, store: any PendingHomePostalStoring) {
         self.scope = scope
@@ -62,12 +72,15 @@ final class HomePostalViewModel {
     static func live(homeId: String, api: APIClient = .shared) -> HomePostalViewModel {
         let auth = api.authProvider ?? AuthManager.shared
         let actor: String = if case let .signedIn(user) = auth.state { user.id } else { "" }
-        return HomePostalViewModel(
+        let model = HomePostalViewModel(
             scope: HomePostalScope(origin: api.apiBaseURL.absoluteString, actorId: actor, homeId: homeId.lowercased()),
             api: api,
             session: HomeClaimSessionScope(api: api),
             store: PendingHomePostalStore()
         )
+        model.linkCode = PostcardLinkCode.take(homeId: homeId)
+        model.fastOptions = HomeVerifyOptionsStore.shared.cached(homeId: homeId)
+        return model
     }
 
     var homeId: String {
@@ -100,6 +113,22 @@ final class HomePostalViewModel {
 
     var canResumeMail: Bool {
         ready && status?.canResume == true
+    }
+
+    /// The one-tap request (FASTVERIFY drawing M1): the switch is on and a first card can be asked for at the
+    /// Home's saved address, which is sent back as it is.
+    var offersOneTapMail: Bool {
+        guard fastOptions != nil, let status, status.canRequest, !status.canVerify, !status.canResume else { return false }
+        return status.mailingAddress != nil
+    }
+
+    /// A scanned card this account can't verify: someone else asked for it (FASTVERIFY "This wasn't me"). Also when
+    /// this account has nothing at the Home and can't read its card status at all. Only cards printed with the QR
+    /// carry a code in their link, so a switch that says otherwise is the only reason not to ask.
+    var asksAboutScannedCard: Bool {
+        guard linkCode != nil, fastOptions?.postcardScan != false, opened, !isWorking, pending == nil else { return false }
+        guard let status else { return true }
+        return status.postcard == nil && !status.canVerify
     }
 
     var canVerifyCode: Bool {
@@ -135,6 +164,7 @@ final class HomePostalViewModel {
         status = nil
         progress = nil
         defer { if current(revision) { isWorking = false } }
+        async let options = fastOptionsAnswer()
         do {
             try coordinator.restore()
             opened = true
@@ -144,6 +174,13 @@ final class HomePostalViewModel {
                 try await loadCurrent(revision)
             }
         } catch { show(error, revision: revision) }
+        let answer = await options
+        if current(revision) { fastOptions = answer }
+    }
+
+    /// This Home's verify-options answer (nil while the switch is off).
+    private func fastOptionsAnswer() async -> HomeVerifyOptions? {
+        await HomeVerifyOptionsStore.shared.load(homeId: homeId)
     }
 
     func refresh() async {
@@ -151,6 +188,29 @@ final class HomePostalViewModel {
             return
         }
         await perform { revision in try await self.loadCurrent(revision) }
+    }
+
+    /// "Mail my postcard": the Home's saved address, unchanged, in one tap.
+    func requestMailInOneTap() async {
+        guard offersOneTapMail, let saved = status?.mailingAddress else { return }
+        address = HomePostalAddressForm(saved)
+        await requestMail()
+    }
+
+    /// "This wasn't me": the card stops and a review opens. The server answers the same whatever it found.
+    func reportScannedCard() async {
+        guard let code = linkCode, report != .sending else { return }
+        report = .sending
+        do {
+            _ = try await api.request(
+                HomeFastVerifyEndpoints.postcardReport(homeId: homeId, code: code),
+                as: PostcardReportResponse.self
+            )
+            // The code stays, so the screen keeps "Thank you" rather than a status it can't read.
+            report = .recorded
+        } catch {
+            report = .failed
+        }
     }
 
     func requestMail() async {
@@ -248,6 +308,8 @@ final class HomePostalViewModel {
         status = postal
         progress = residency
         if address.isBlank, let saved = postal.mailingAddress { address = HomePostalAddressForm(saved) }
+        // A scanned card fills its code in for the account that asked for it.
+        if let linkCode, postal.canVerify, codeInput.isEmpty { codeInput = linkCode }
     }
 
     private func perform(_ action: (Int) async throws -> Void) async {

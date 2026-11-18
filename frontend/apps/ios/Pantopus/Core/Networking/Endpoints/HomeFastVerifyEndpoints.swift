@@ -18,4 +18,10 @@ public enum HomeFastVerifyEndpoints {
             cachePolicy: .reloadIgnoringLocalAndRemoteCacheData
         )
     }
+
+    /// `POST /api/public/postcard-report` — "This wasn't me" for a scanned card (FASTVERIFY phase 2). Needs no
+    /// account; the server answers `{ recorded: true }` whatever it found.
+    public static func postcardReport(homeId: String, code: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/public/postcard-report", body: PostcardReportRequest(homeId: homeId, code: code))
+    }
 }

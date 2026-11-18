@@ -30,6 +30,8 @@ struct PlaceHomeCard: View {
     var onMessageHomes: (() -> Void)?
     /// "Mail me a code", after a fast check: residency letters and home Mail still need the mailed code.
     var onMailCode: (() -> Void)?
+    /// "Enter mailed code": a card is waiting for its code (the card's words send people here).
+    var onEnterMailedCode: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var yourHome: PlaceSectionEnvelope? {
@@ -68,7 +70,12 @@ struct PlaceHomeCard: View {
             }
             record
                 .padding(.top, 14)
-            if let onMailCode, verifyOptions?.needsMail == true, !claimInReview {
+            if let onEnterMailedCode, !claimInReview {
+                PlaceRowDivider().padding(.top, 14)
+                PlaceTextButton(title: "Enter mailed code", minHeight: 44, action: onEnterMailedCode)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("place.homeCard.enterMailedCode")
+            } else if let onMailCode, verifyOptions?.needsMail == true, !claimInReview {
                 PlaceRowDivider().padding(.top, 14)
                 mailCodeLine(onMailCode).padding(.top, 10)
             }

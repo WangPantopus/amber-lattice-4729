@@ -353,7 +353,11 @@ struct PlaceDashboardView: View {
             onMailCode: {
                 viewModel.reloadOnReturn()
                 viewModel.onStartVerify(.mail, verifyAddress)
-            }
+            },
+            onEnterMailedCode: viewModel.hasPendingPostcard ? {
+                viewModel.reloadOnReturn()
+                viewModel.onStartVerify(.mail, verifyAddress)
+            } : nil
         )
     }
 
