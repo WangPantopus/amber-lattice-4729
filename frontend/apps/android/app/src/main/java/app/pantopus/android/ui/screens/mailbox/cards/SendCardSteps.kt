@@ -41,6 +41,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -102,6 +103,7 @@ import app.pantopus.android.data.api.models.mailbox.StampBalance
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardMood
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardRack
+import app.pantopus.android.ui.screens.mailbox.cards.table.rememberSecondLeaf
 import app.pantopus.android.ui.screens.mailbox.components.MailKind
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceCard
@@ -818,6 +820,8 @@ internal fun WriteStep(
     /** "Help me write it" (`GET /api/mailbox/cards` `note_help`, the server's launch key `card_note_help`); null: no button. */
     noteHelp: CardNoteHelper? = null,
 ) {
+    // The card's width as it's written on: the note's leaves are worked out at it (plan Part 9).
+    var cardWidth by remember { mutableIntStateOf(0) }
     var showBack by rememberSaveable { mutableStateOf(true) }
     var signing by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -833,7 +837,7 @@ internal fun WriteStep(
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         HolidayCardFlip(
             showBack = showBack,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onSizeChanged { cardWidth = it.width },
             front = {
                 HolidayCardFront(
                     design = design.id,
@@ -901,6 +905,7 @@ internal fun WriteStep(
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("sendCardCount"),
             )
         }
+        SecondLeafLine(message, design.id, cardWidth)
         if (noteHelp != null) {
             // A note picked there lands on the back, face up.
             CardNoteHelpRow(noteHelp, design.id, to, message, limit, onOpen = { focusManager.clearFocus() }, onPicked = { showBack = true })
@@ -1402,4 +1407,28 @@ private fun envelopePreview(
 private fun notOnPantopusYet(many: Boolean): String {
     val yet = if (LaunchFeatures.cardTable) " yet" else ""
     return if (many) "Not on Pantopus$yet? Add their email" else "Not on Pantopus$yet? Send it to their email"
+}
+
+/**
+ * Under the writing box while the note will go over two leaves (plan Part 9): the box itself stays as it is, and the
+ * reader turns the first leaf over.
+ */
+@Composable
+private fun SecondLeafLine(
+    message: String,
+    design: String,
+    cardWidth: Int,
+) {
+    if (!LaunchFeatures.cardTable || !rememberSecondLeaf(message, design, cardWidth)) return
+    Text(
+        "This note runs onto a second leaf.",
+        fontSize = 13.sp,
+        color = DeskInk.quiet,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s1)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("sendCardSecondLeaf"),
+    )
 }
