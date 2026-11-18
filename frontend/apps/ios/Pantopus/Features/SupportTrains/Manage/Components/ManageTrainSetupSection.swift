@@ -150,8 +150,15 @@ struct ManageTrainAddressSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                SupportTrainWhereSection(model: model, identifier: "manageTrainWhere")
-                    .padding(Spacing.s4)
+                VStack(alignment: .leading, spacing: Spacing.s3) {
+                    SupportTrainWhereSection(model: model, identifier: "manageTrainWhere")
+                    Text("Helpers who already have the address are told it changed.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("manageTrainWhereChangeNote")
+                }
+                .padding(Spacing.s4)
             }
             .background(Theme.Color.appBg)
             .navigationTitle("Where help goes")
