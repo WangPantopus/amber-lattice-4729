@@ -81,6 +81,8 @@ enum NavigationDrawerDestination: Equatable {
     case myBeacon
     case myListings
     case myPulse
+    /// The viewer's Support Trains (the ones they organize, are for, or help on) and Start a Support Train.
+    case supportTrains
     case myTasks
     case myBids
     case offersAndBids
@@ -285,6 +287,7 @@ final class NavigationDrawerViewModel {
                 item(.radio, "My Beacon", .myBeacon),
                 item(.tag, "My Listings", .myListings),
                 item(.fileText, "My Pulse", .myPulse),
+                item(.utensils, "Support Trains", .supportTrains),
                 item(.listChecks, "My Tasks", .myTasks),
                 item(.hand, "My Bids", .myBids),
                 item(.gavel, "Offers & Bids", .offersAndBids),
