@@ -183,6 +183,8 @@ public struct SavedPostsResponse: Decodable, Sendable {
     }
 
     public let posts: [MyPostDTO]
+    /// The same posts read as the feed's (the server lists them with the feed's serializer), drawn as Pulse cards.
+    public let feedPosts: [FeedPostDTO]
     public let pagination: Pagination?
 
     private enum CodingKeys: String, CodingKey {
@@ -190,8 +192,9 @@ public struct SavedPostsResponse: Decodable, Sendable {
         case pagination
     }
 
-    public init(posts: [MyPostDTO], pagination: Pagination? = nil) {
+    public init(posts: [MyPostDTO], feedPosts: [FeedPostDTO] = [], pagination: Pagination? = nil) {
         self.posts = posts
+        self.feedPosts = feedPosts
         self.pagination = pagination
     }
 
@@ -199,6 +202,7 @@ public struct SavedPostsResponse: Decodable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // A row this build can't read is left out (Pulse S2).
         posts = c.lossyList(MyPostDTO.self, forKey: .posts)
+        feedPosts = c.lossyList(FeedPostDTO.self, forKey: .posts)
         pagination = try? c.decodeIfPresent(Pagination.self, forKey: .pagination)
     }
 }
@@ -207,6 +211,8 @@ public struct SavedPostsResponse: Decodable, Sendable {
 /// the Pulse feed envelope.
 public struct MyPostsResponse: Decodable, Sendable {
     public let posts: [MyPostDTO]
+    /// The same posts read as the feed's (the route uses the feed's serializer), drawn as Pulse cards.
+    public let feedPosts: [FeedPostDTO]
     public let pagination: FeedPagination?
 
     private enum CodingKeys: String, CodingKey {
@@ -214,8 +220,9 @@ public struct MyPostsResponse: Decodable, Sendable {
         case pagination
     }
 
-    public init(posts: [MyPostDTO], pagination: FeedPagination? = nil) {
+    public init(posts: [MyPostDTO], feedPosts: [FeedPostDTO] = [], pagination: FeedPagination? = nil) {
         self.posts = posts
+        self.feedPosts = feedPosts
         self.pagination = pagination
     }
 
@@ -223,6 +230,7 @@ public struct MyPostsResponse: Decodable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // A row this build can't read is left out (Pulse S2).
         posts = c.lossyList(MyPostDTO.self, forKey: .posts)
+        feedPosts = c.lossyList(FeedPostDTO.self, forKey: .posts)
         pagination = try? c.decodeIfPresent(FeedPagination.self, forKey: .pagination)
     }
 }
