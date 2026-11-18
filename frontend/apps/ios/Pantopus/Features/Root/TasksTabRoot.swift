@@ -6,6 +6,8 @@
 //  React Native Tasks tab (formerly the Nearby tab).
 //
 
+// swiftlint:disable file_length
+
 import SwiftUI
 
 // swiftlint:disable cyclomatic_complexity multiple_closures_with_trailing_closure type_body_length
@@ -33,6 +35,10 @@ public enum TasksRoute: Hashable {
     case supportTrains
     case supportTrainDetail(supportTrainId: String)
     case manageTrain(trainId: String)
+    /// Start a train, search trains, and a helper's own signup, as from Place and You (B14).
+    case startSupportTrain
+    case searchSupportTrains
+    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO, timeZoneId: String?)
     case placeholder(label: String)
 }
 
@@ -178,6 +184,14 @@ public struct TasksTabRoot: View {
             supportTrainDetailDestination(supportTrainId: supportTrainId)
         case let .manageTrain(trainId):
             manageTrainDestination(trainId: trainId)
+        case .startSupportTrain:
+            startSupportTrainDestination()
+        case .searchSupportTrains:
+            searchSupportTrainsDestination()
+        case let .editSignup(supportTrainId, reservation, timeZoneId):
+            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: timeZoneId) {
+                pop()
+            }
         }
     }
 
@@ -211,10 +225,38 @@ public struct TasksTabRoot: View {
             // Keep the explicit `onOpenTrain:` label — as a trailing closure this
             // resolves to the zero-argument initializer instead.
             viewModel: SupportTrainsViewModel(
-                // swiftlint:disable:next trailing_closure
+                onStartTrain: {
+                    Task { @MainActor in path.append(.startSupportTrain) }
+                },
                 onOpenTrain: { trainId in
                     Task { @MainActor in path.append(.supportTrainDetail(supportTrainId: trainId)) }
+                },
+                onSearch: {
+                    Task { @MainActor in path.append(.searchSupportTrains) }
                 }
+            )
+        )
+    }
+
+    private func startSupportTrainDestination() -> some View {
+        StartSupportTrainWizardView(
+            onDismiss: { Task { @MainActor in pop() } },
+            onOpenTrain: { trainId in
+                Task { @MainActor in
+                    pop()
+                    path.append(.supportTrainDetail(supportTrainId: trainId))
+                }
+            }
+        )
+    }
+
+    private func searchSupportTrainsDestination() -> some View {
+        SupportTrainsSearchView(
+            viewModel: SupportTrainsSearchViewModel(
+                onOpenTrain: { trainId in
+                    Task { @MainActor in path.append(.supportTrainDetail(supportTrainId: trainId)) }
+                },
+                onCancel: { Task { @MainActor in pop() } }
             )
         )
     }
@@ -228,9 +270,12 @@ public struct TasksTabRoot: View {
                 Task { @MainActor in path.append(.manageTrain(trainId: supportTrainId)) }
             },
             onShare: {
-                systemSheet = .share(
-                    items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
-                )
+                systemSheet = .share(items: [SupportTrainShareText.message(trainId: supportTrainId)])
+            },
+            onEditSignup: { reservation, zone in
+                Task { @MainActor in
+                    path.append(.editSignup(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: zone))
+                }
             },
             onMessageHost: { host in
                 path.append(.chatConversation(InboxConversationDestination(
@@ -262,9 +307,7 @@ public struct TasksTabRoot: View {
                 }
             },
             onInviteHelpers: { _ in
-                systemSheet = .share(
-                    items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: trainId))"]
-                )
+                systemSheet = .share(items: [SupportTrainShareText.message(trainId: trainId, asOrganizer: true)])
             }
         )
     }

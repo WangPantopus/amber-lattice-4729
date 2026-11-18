@@ -289,4 +289,29 @@ public enum SupportTrainActionsEndpoints {
     public static func disableFund(supportTrainId: String) -> Endpoint {
         Endpoint(method: .post, path: SupportTrainsAPI.path(supportTrainId, "/fund/disable"))
     }
+
+    // MARK: - The train itself
+
+    /// Change the train: where help goes (`delivery_location`), who can open it (`sharing_mode`), title, story.
+    /// Primary or co-organizer; a home must be one the person belongs to (403 HOME_NOT_ACCESSIBLE).
+    ///
+    /// Route: `backend/routes/supportTrains.js` — `PATCH /:id` (`updateSupportTrainSchema`).
+    public static func updateTrain(supportTrainId: String, body: SupportTrainPatchBody) -> Endpoint {
+        Endpoint(method: .patch, path: SupportTrainsAPI.path(supportTrainId), body: body)
+    }
+
+    /// Invite someone by account: the organizer's connections or people sharing their home (403 NOT_KNOWN
+    /// otherwise). Inviting the same person again answers the existing invitation.
+    ///
+    /// Route: `backend/routes/supportTrains.js` — `POST /:id/invites` (`createInviteSchema`).
+    public static func invite(supportTrainId: String, body: SupportTrainInviteBody) -> Endpoint {
+        Endpoint(method: .post, path: SupportTrainsAPI.path(supportTrainId, "/invites"), body: body)
+    }
+
+    /// The train's invitations. Primary or co-organizer.
+    ///
+    /// Route: `backend/routes/supportTrains.js` — `GET /:id/invites`.
+    public static func invites(supportTrainId: String) -> Endpoint {
+        Endpoint(method: .get, path: SupportTrainsAPI.path(supportTrainId, "/invites"))
+    }
 }

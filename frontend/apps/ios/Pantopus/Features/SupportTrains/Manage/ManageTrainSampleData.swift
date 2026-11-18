@@ -63,7 +63,7 @@ public enum ManageTrainSampleData {
                 tone: .sky,
                 label: "Invite more helpers",
                 meta: nil,
-                sub: "Share a link or pick from neighbors who follow this train.",
+                sub: "Share the link, or invite people you know.",
                 isDestructive: false
             ),
             OrganizeRowContent(

@@ -287,7 +287,7 @@ public enum HubRoute: Hashable {
     /// reservation). Pushed from the Review-signups per-row Edit
     /// action with the seed DTO baked into the route so the form can
     /// prefill without a re-fetch.
-    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO)
+    case editSignup(supportTrainId: String, reservation: SupportTrainReservationDTO, timeZoneId: String? = nil)
     /// A13.13 / P4.3 — Manage train (organizer surface). Pushed from
     /// the A10.9 detail dock overflow when the viewer is the organizer
     /// and from the `pantopus://support-trains/:id/manage` deep link.
@@ -3222,13 +3222,18 @@ public struct HubTabRoot: View {
                 },
                 onShare: {
                     systemSheet = .share(
-                        items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
+                        items: [SupportTrainShareText.message(trainId: supportTrainId, asOrganizer: false)]
                     )
                 },
                 onSignUp: {
                     // S1 — the reserve sheet is owned by the detail
                     // screen itself (`ReserveSlotSheet`), which posts
                     // `POST …/slots/:slotId/reserve`. Nothing to push.
+                },
+                onEditSignup: { reservation, zone in
+                    Task { @MainActor in
+                        push(.editSignup(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: zone))
+                    }
                 },
                 // Edit slot, Send a card and Join as backup have no backend
                 // route yet, so they aren't wired and the screen hides them
@@ -3249,7 +3254,7 @@ public struct HubTabRoot: View {
                     supportTrainId: supportTrainId,
                     onShareTrain: {
                         systemSheet = .share(
-                            items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: supportTrainId))"]
+                            items: [SupportTrainShareText.message(trainId: supportTrainId, asOrganizer: false)]
                         )
                     },
                     onConfirm: { reservationId in
@@ -3276,8 +3281,8 @@ public struct HubTabRoot: View {
                     }
                 )
             )
-        case let .editSignup(supportTrainId, reservation):
-            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation) {
+        case let .editSignup(supportTrainId, reservation, timeZoneId):
+            EditSignupFormView(supportTrainId: supportTrainId, reservation: reservation, timeZoneId: timeZoneId) {
                 if !path.isEmpty { path.removeLast() }
             }
         case let .manageTrain(trainId):
@@ -3306,7 +3311,7 @@ public struct HubTabRoot: View {
                 // yet, so they aren't wired and their rows are hidden.
                 onInviteHelpers: { _ in
                     systemSheet = .share(
-                        items: ["Join my support train on Pantopus — \(InviteLinks.supportTrainURLString(trainId: trainId))"]
+                        items: [SupportTrainShareText.message(trainId: trainId, asOrganizer: true)]
                     )
                 }
             )

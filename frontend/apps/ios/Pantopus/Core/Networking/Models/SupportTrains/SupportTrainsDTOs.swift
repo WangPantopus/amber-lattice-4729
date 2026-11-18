@@ -16,6 +16,8 @@
 //  inline as **follow-up backend prep** so the next change is additive.
 //
 
+// swiftlint:disable file_length
+
 import Foundation
 
 // MARK: - List feeds
@@ -330,6 +332,8 @@ public struct CreateSupportTrainBody: Encodable, Sendable {
     public let enableGroceries: Bool
     public let enableGiftFunds: Bool
     public let timezone: String
+    /// Where help goes (A1): one of the organizer's homes, or a picked address.
+    public let deliveryLocation: SupportTrainDeliveryLocationBody?
 
     public init(
         draftPayload: DraftPayload,
@@ -341,8 +345,10 @@ public struct CreateSupportTrainBody: Encodable, Sendable {
         enableGroceries: Bool = true,
         enableGiftFunds: Bool = false,
         timezone: String = TimeZone.current.identifier,
+        deliveryLocation: SupportTrainDeliveryLocationBody? = nil,
         clientRequestId: String? = nil
     ) {
+        self.deliveryLocation = deliveryLocation
         self.clientRequestId = clientRequestId
         self.draftPayload = draftPayload
         self.title = title
@@ -366,13 +372,60 @@ public struct CreateSupportTrainBody: Encodable, Sendable {
         case enableGroceries = "enable_groceries"
         case enableGiftFunds = "enable_gift_funds"
         case timezone
+        case deliveryLocation = "delivery_location"
     }
 
+    /// The story and what helpers should know; the server saves the details as the recipient profile.
     public struct DraftPayload: Encodable, Sendable {
         public let story: String?
+        public let householdSize: Int?
+        public let dietaryRestrictions: [String]?
+        public let dietaryPreferences: [String]?
+        public let preferredDropoffWindow: DropoffWindow?
+        public let contactlessPreferred: Bool?
+        public let specialInstructions: String?
 
-        public init(story: String?) {
+        public init(
+            story: String?,
+            householdSize: Int? = nil,
+            dietaryRestrictions: [String]? = nil,
+            dietaryPreferences: [String]? = nil,
+            preferredDropoffWindow: DropoffWindow? = nil,
+            contactlessPreferred: Bool? = nil,
+            specialInstructions: String? = nil
+        ) {
             self.story = story
+            self.householdSize = householdSize
+            self.dietaryRestrictions = dietaryRestrictions
+            self.dietaryPreferences = dietaryPreferences
+            self.preferredDropoffWindow = preferredDropoffWindow
+            self.contactlessPreferred = contactlessPreferred
+            self.specialInstructions = specialInstructions
+        }
+
+        public struct DropoffWindow: Encodable, Sendable {
+            public let startTime: String
+            public let endTime: String?
+
+            public init(startTime: String, endTime: String?) {
+                self.startTime = startTime
+                self.endTime = endTime
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case startTime = "start_time"
+                case endTime = "end_time"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case story
+            case householdSize = "household_size"
+            case dietaryRestrictions = "dietary_restrictions"
+            case dietaryPreferences = "dietary_preferences"
+            case preferredDropoffWindow = "preferred_dropoff_window"
+            case contactlessPreferred = "contactless_preferred"
+            case specialInstructions = "special_instructions"
         }
     }
 }
@@ -382,14 +435,18 @@ public struct CreateSupportTrainBody: Encodable, Sendable {
 /// train's review-signups screen immediately after publish.
 public struct CreateSupportTrainResponse: Decodable, Sendable {
     public let id: String
+    /// False when the person picked by account wasn't linked (not a connection, no shared home) (A13).
+    public let recipientLinked: Bool?
 
-    public init(id: String) {
+    public init(id: String, recipientLinked: Bool? = nil) {
         self.id = id
+        self.recipientLinked = recipientLinked
     }
 
-    /// The route answers `{ support_train_id, activity_id, status }`.
+    /// The route answers `{ support_train_id, activity_id, status, recipient_linked? }`.
     enum CodingKeys: String, CodingKey {
         case id = "support_train_id"
+        case recipientLinked = "recipient_linked"
     }
 }
 
@@ -446,6 +503,8 @@ public struct GenerateSupportTrainSlotsBody: Encodable, Sendable {
     public let slotLabel: String
     public let supportMode: String
     public let replaceExisting = true
+    /// The weekdays the train runs (0 = Sunday … 6 = Saturday); nil means every day.
+    public let weekdays: [Int]?
 
     public init(
         startDate: String,
@@ -453,8 +512,10 @@ public struct GenerateSupportTrainSlotsBody: Encodable, Sendable {
         startTime: String,
         endTime: String,
         slotLabel: String,
-        supportMode: String
+        supportMode: String,
+        weekdays: [Int]? = nil
     ) {
+        self.weekdays = weekdays
         self.startDate = startDate
         self.endDate = endDate
         self.startTime = startTime
@@ -472,6 +533,7 @@ public struct GenerateSupportTrainSlotsBody: Encodable, Sendable {
         case slotLabel = "slot_label"
         case supportMode = "support_mode"
         case replaceExisting = "replace_existing"
+        case weekdays
     }
 }
 

@@ -316,7 +316,7 @@ public final class SupportTrainsViewModel: ListOfRowsDataSource {
             emptyContent = ListOfRowsState.EmptyContent(
                 icon: .heart,
                 headline: "No trains nearby right now",
-                subcopy: "When a neighbor starts a meal, ride, or pet-care train within 25 mi, you'll see it here.",
+                subcopy: "When someone near you starts a meal train within 25 mi, you'll see it here.",
                 ctaTitle: "Start a train"
             ) { [weak self] in
                 MainActor.assumeIsolated { self?.onStartTrain() }
@@ -330,7 +330,7 @@ public final class SupportTrainsViewModel: ListOfRowsDataSource {
             )
         default:
             activeRows = mineRows
-            let subcopy = "A support train is a calendar of neighbors taking turns helping someone " +
+            let subcopy = "A support train is a calendar of people taking turns helping someone " +
                 "through a life event. Start one for someone, or join one nearby."
             emptyContent = ListOfRowsState.EmptyContent(
                 icon: .handCoins,

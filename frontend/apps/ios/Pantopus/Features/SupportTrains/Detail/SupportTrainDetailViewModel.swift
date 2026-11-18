@@ -23,7 +23,7 @@
 //  built from `organizers`, and the recipient identity defaults to `.home`.
 //
 
-// swiftlint:disable file_length
+// swiftlint:disable file_length type_body_length
 
 import Foundation
 import Observation
@@ -77,6 +77,9 @@ public final class SupportTrainDetailViewModel {
     /// Recipient-only delivery review is never stored in the preview cache.
     public private(set) var deliveryRows: [SlotRowContent]?
     public private(set) var deliveryLoadError: String?
+    /// The viewer's own signups and the train's zone from the last read, for "Edit" on a signup (B1).
+    private var ownReservations: [SupportTrainMyReservationDTO] = []
+    public private(set) var trainTimeZoneId: String?
     /// Offline override. When set, `load()` resolves from it instead of the
     /// network — used by QA / previews to swap variants on a row tap.
     private let resolver: Resolver?
@@ -199,9 +202,14 @@ public final class SupportTrainDetailViewModel {
                 showsBeforeRecheck: true
             )
             state = .loaded(Self.project(dto))
+            ownReservations = dto.myReservations ?? []
+            slotDates = Dictionary(dto.liveSlots.compactMap { slot in slot.slotDate.map { (slot.id, $0) } }) { first, _ in first }
+            signupsChangeable = !["completed", "archived"].contains(dto.status ?? "")
+            trainTodayKey = dto.trainToday
+            trainTimeZoneId = dto.timezone
             recipientDetailsAvailable = true
             if Self.viewerRole(dto) == .recipient {
-                await fetchRecipientDeliveries(read: read, cache: cache)
+                await fetchRecipientDeliveries(dto, read: read, cache: cache)
             }
         } catch {
             guard read == readGeneration, cache == store.generation,
@@ -236,7 +244,13 @@ public final class SupportTrainDetailViewModel {
         recipientDetailsAvailable = false
         deliveryRows = nil
         deliveryLoadError = nil
-        if let safeContent { state = .loaded(safeContent) }
+        // Keep what was on screen (story, dates, allergies) while it is checked again; only the
+        // exact address and instructions go (B5). The stored preview is the fallback on a cold start.
+        if case let .loaded(current) = state {
+            state = .loaded(current.withoutPrivateDetails())
+        } else if let safeContent {
+            state = .loaded(safeContent)
+        }
     }
 
     /// Unknown fields are excluded too: adding a server field must not opt it into caching.
@@ -255,7 +269,8 @@ public final class SupportTrainDetailViewModel {
             "end_time",
             "status",
             "filled_count",
-            "capacity"
+            "capacity",
+            "is_past"
         ]
         safe["slots"] = (body["slots"] as? [[String: Any]])?.map { row in row.filter { slotFields.contains($0.key) } }
         return try JSONSerialization.data(withJSONObject: safe)
@@ -267,6 +282,39 @@ public final class SupportTrainDetailViewModel {
         store.markStale(topics: [ScreenTopic.supportTrain(trainId), ScreenTopic.supportTrains])
         await fetch()
     }
+
+    /// The helper's own upcoming signup as the Edit signup form takes it, or nil when it can't be
+    /// edited (delivered, read by an older server without its version, or one the server refuses:
+    /// the train has ended or the date is behind the train's today).
+    public func editableReservation(id: String?) -> SupportTrainReservationDTO? {
+        guard let id, let own = ownReservations.first(where: { $0.id == id }),
+              own.status == "reserved", own.updatedAt != nil, signupsChangeable else { return nil }
+        if let date = slotDates[own.slotId ?? ""], date < trainTodayKey { return nil }
+        return SupportTrainReservationDTO(
+            id: own.id,
+            slotId: own.slotId,
+            userId: nil,
+            guestName: nil,
+            status: own.status,
+            contributionMode: own.contributionMode,
+            dishTitle: own.dishTitle,
+            restaurantName: own.restaurantName,
+            estimatedArrivalAt: own.estimatedArrivalAt,
+            noteToRecipient: own.noteToRecipient,
+            privateNoteToOrganizer: own.privateNoteToOrganizer,
+            createdAt: own.createdAt,
+            updatedAt: own.updatedAt,
+            canceledAt: nil,
+            helper: nil,
+            slotDate: slotDates[own.slotId ?? ""]
+        )
+    }
+
+    /// Slot dates by id, from the last read.
+    private var slotDates: [String: String] = [:]
+    /// Whether the last read train still takes a helper's change, and its today (`YYYY-MM-DD`).
+    private var signupsChangeable = true
+    private var trainTodayKey = ""
 
     /// Convenience accessor used by the dock-handler hook in the view.
     public var currentContent: SupportTrainDetailContent? {
@@ -326,6 +374,15 @@ public final class SupportTrainDetailViewModel {
             toast = "You're signed up"
             return nil
         } catch {
+            // The date was just taken, has passed, or signups stopped: show the train as it is now (B6).
+            let raw = (error as? APIError)?.errorDescription ?? "\(error)"
+            let stale = [
+                "SLOT_FULL", "SLOT_NOT_OPEN", "SLOT_PASSED", "INVALID_STATE", "no longer open",
+                "already full", "just filled", "passed", "isn’t taking", "paused"
+            ]
+            if stale.contains(where: raw.contains) {
+                pendingReserveRefresh = true
+            }
             return Self.reserveFailureMessage(for: error)
         }
     }
@@ -431,12 +488,15 @@ public final class SupportTrainDetailViewModel {
 // MARK: - Projection (DTO → content)
 
 extension SupportTrainDetailViewModel {
-    private func fetchRecipientDeliveries(read: Int, cache: Int) async {
+    /// The person the train is for reads the signups list (the server lets them, as Android and
+    /// web do) to see who is coming by name and which deliveries wait for their confirmation.
+    private func fetchRecipientDeliveries(_ dto: SupportTrainDetailDTO, read: Int, cache: Int) async {
         do {
             let response: SupportTrainReservationsResponse = try await api.request(
                 SupportTrainsEndpoints.reservations(supportTrainId: trainId)
             )
             try requireCurrentRead(read, cache: cache)
+            state = .loaded(Self.project(dto, helpers: response.reservations))
             deliveryRows = response.reservations.filter { $0.status == "delivered" }.map { reservation in
                 let date = Self.parseSlotDate(reservation.slotDate)
                 return SlotRowContent(
@@ -444,6 +504,7 @@ extension SupportTrainDetailViewModel {
                     dayLabel: date.map { Self.format($0, "EEE") } ?? "",
                     dateLabel: date.map { Self.format($0, "d") } ?? "",
                     state: .covered,
+                    author: Self.helperAuthor(reservation),
                     title: reservation.dishTitle ?? reservation.restaurantName ?? "Contribution",
                     subtitle: "Awaiting your confirmation",
                     reservationId: reservation.id,
@@ -459,8 +520,15 @@ extension SupportTrainDetailViewModel {
 
     /// Pure mapping from the `GET /:id` payload to the render model.
     /// `nonisolated` so unit tests can assert it without an actor hop.
-    nonisolated static func project(_ dto: SupportTrainDetailDTO) -> SupportTrainDetailContent {
-        let slots = dto.slots ?? []
+    /// `helpers` is the signups list, read only for the person the train is for: it names who covers each date.
+    nonisolated static func project(
+        _ dto: SupportTrainDetailDTO,
+        helpers: [SupportTrainReservationDTO]? = nil
+    ) -> SupportTrainDetailContent {
+        // A removed date is never shown or counted (A10); "today" is the train's own day (B4).
+        let slots = dto.liveSlots
+        let today = parseSlotDate(dto.trainToday) ?? localToday()
+        let zoneId = dto.timezone
         let reservations = dto.myReservations ?? []
         let organizers = dto.organizers ?? []
 
@@ -475,7 +543,7 @@ extension SupportTrainDetailViewModel {
             kind: kind(from: dto.supportModes),
             title: title,
             dateRange: dateRange(slots: slots),
-            daysLeft: daysLeft(slots: slots, status: dto.status),
+            daysLeft: daysLeft(slots: slots, status: dto.status, today: today),
             slotsFilled: slotsFilled,
             slotsTotal: slotsTotal,
             // `/:id` carries no helper roster. Organizers aren't helpers, so the
@@ -488,46 +556,83 @@ extension SupportTrainDetailViewModel {
         let isFull = typeDates.isFullyCovered
 
         let mineSlotIds = Set(reservations.compactMap(\.slotId))
-        let today = localToday()
         let openSlots = slots
             .filter {
                 !$0.isCovered && ($0.status ?? "open") == "open" && !mineSlotIds.contains($0.id)
-                    && !isBefore($0.slotDate, today)
+                    && !isPast($0, today)
             }
             .sorted { ($0.slotDate ?? "") < ($1.slotDate ?? "") }
+        let role = viewerRole(dto)
+        let trainModes = enabledModes(dto.supportModes)
 
         return SupportTrainDetailContent(
             trainId: dto.id,
             recipient: recipient(dto: dto, primaryName: primaryName),
             typeDates: typeDates,
-            calendarDays: calendar(slots: slots, reservations: reservations),
-            sections: sections(slots: slots, reservations: reservations),
+            calendarDays: calendar(slots: slots, reservations: reservations, today: today),
+            sections: sections(
+                slots: slots,
+                reservations: reservations,
+                // The person the train is for gets the "Who's coming" list (named once the signups load).
+                helpers: role == .recipient ? (helpers ?? []) : nil,
+                today: today,
+                zoneId: zoneId
+            ),
             hostedBy: hostedBy(primaryName: primaryName, primaryUserId: primary?.user?.id),
-            dock: signupsClosedReason(status: dto.status).map { .closed(reason: $0) }
+            // Organizers run the train from Manage; the person it is for isn't asked to sign up (B2).
+            dock: role.isOrganizer ? .manage
+                : role == .recipient ? .noDock
+                : signupsClosedReason(status: dto.status).map { .closed(reason: $0) }
                 ?? (isFull ? .sendCardAndBackup : .signUp(label: "Sign up for a slot")),
             celebrationBanner: isFull
                 ? SupportTrainDetailContent.CelebrationBanner(
                     title: "Every slot is covered",
                     // No backup sign-up exists yet (see the dock), so don't offer one,
                     // and don't repeat the title.
-                    body: "Thanks, neighbors. No more sign-ups are needed right now."
+                    body: "Thank you, everyone. No more sign-ups are needed right now."
                 )
                 : nil,
-            reserveOptions: openSlots.map(reserveOption(for:)),
+            reserveOptions: openSlots.map { reserveOption(for: $0, trainModes: trainModes) },
             reserveContext: ReserveSheetContext(
-                enabledModes: enabledModes(dto.supportModes),
+                enabledModes: trainModes,
                 restrictionChips: ((dto.dietaryRestrictions ?? []) + (dto.dietaryPreferences ?? []))
                     .map(Self.dietaryLabel),
-                contactlessPreferred: dto.contactlessPreferred ?? false
+                contactlessPreferred: dto.contactlessPreferred ?? false,
+                timeZoneId: zoneId
             ),
-            viewerRole: viewerRole(dto),
+            viewerRole: role,
             exactAddress: dto.address?.address?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
                 ? dto.address?.singleLineLabel
                 : nil,
             deliveryInstructions: dto.deliveryInstructions,
             updates: updateCards(dto.updates ?? [], organizers: organizers),
-            chatRoomId: dto.chatThreadId
+            chatRoomId: dto.chatThreadId,
+            helperDetails: helperDetails(dto)
         )
+    }
+
+    /// What helpers should know, as the web's Details tab lists it (A14). Instructions come only to
+    /// people the server shows the address to.
+    nonisolated static func helperDetails(_ dto: SupportTrainDetailDTO) -> [SupportTrainDetailContent.HelperDetailLine] {
+        typealias Line = SupportTrainDetailContent.HelperDetailLine
+        var lines: [Line] = []
+        let allergies = (dto.dietaryRestrictions ?? []).map(dietaryLabel)
+        if !allergies.isEmpty { lines.append(Line(label: "Allergies", value: allergies.joined(separator: ", "))) }
+        let diet = (dto.dietaryPreferences ?? []).map(dietaryLabel)
+        if !diet.isEmpty { lines.append(Line(label: "Diet", value: diet.joined(separator: ", "))) }
+        if let size = dto.householdSize, size > 0 {
+            lines.append(Line(label: "Household", value: size == 1 ? "1 person" : "\(size) people"))
+        }
+        if let start = dto.preferredDropoffWindow?.startTime, !start.isEmpty {
+            let end = dto.preferredDropoffWindow?.endTime
+            let window = (end?.isEmpty == false) ? "\(shortTime(start)) – \(shortTime(end ?? ""))" : "From \(shortTime(start))"
+            lines.append(Line(label: "Drop-off", value: window))
+        }
+        if dto.contactlessPreferred == true { lines.append(Line(label: "Contactless", value: "Leave it at the door")) }
+        if let special = dto.specialInstructions?.trimmingCharacters(in: .whitespacesAndNewlines), !special.isEmpty {
+            lines.append(Line(label: "Instructions", value: special))
+        }
+        return lines
     }
 
     /// The organizers' updates in the API's order (newest first), each signed by the organizer
@@ -605,7 +710,10 @@ extension SupportTrainDetailViewModel {
         return out
     }
 
-    private nonisolated static func reserveOption(for slot: SupportTrainSlotDTO) -> ReserveSlotOption {
+    private nonisolated static func reserveOption(
+        for slot: SupportTrainSlotDTO,
+        trainModes: [SupportTrainContributionMode]
+    ) -> ReserveSlotOption {
         let date = parseSlotDate(slot.slotDate)
         return ReserveSlotOption(
             id: slot.id,
@@ -613,8 +721,19 @@ extension SupportTrainDetailViewModel {
             slotLabel: slot.slotLabel ?? slot.supportMode?.capitalized ?? "Slot",
             windowLabel: windowLabel(slot),
             slotDate: slot.slotDate,
-            windowStart: slot.startTime
+            windowStart: slot.startTime,
+            allowedModes: slotModes(slot, trainModes: trainModes)
         )
+    }
+
+    /// The ways of helping a date takes, as the server checks them (B3): a groceries date takes
+    /// groceries; a meal date a home-cooked meal or takeout — of those the train asks for.
+    nonisolated static func slotModes(
+        _ slot: SupportTrainSlotDTO,
+        trainModes: [SupportTrainContributionMode]
+    ) -> [SupportTrainContributionMode] {
+        let fits: [SupportTrainContributionMode] = slot.supportMode == "groceries" ? [.groceries] : [.cook, .takeout]
+        return trainModes.filter { fits.contains($0) }
     }
 
     private nonisolated static func windowLabel(_ slot: SupportTrainSlotDTO) -> String? {
@@ -673,10 +792,10 @@ extension SupportTrainDetailViewModel {
 
     private nonisolated static func calendar(
         slots: [SupportTrainSlotDTO],
-        reservations: [SupportTrainMyReservationDTO]
+        reservations: [SupportTrainMyReservationDTO],
+        today: Date
     ) -> [SlotCalendarDay] {
         let cal = utcCalendar()
-        let today = localToday()
         let slotDates = slots.compactMap { parseSlotDate($0.slotDate) }
         let earliest = slotDates.min().map { cal.startOfDay(for: $0) } ?? today
         let weekday = cal.component(.weekday, from: earliest) // 1 = Sunday
@@ -715,25 +834,29 @@ extension SupportTrainDetailViewModel {
 
     private nonisolated static func sections(
         slots: [SupportTrainSlotDTO],
-        reservations: [SupportTrainMyReservationDTO]
+        reservations: [SupportTrainMyReservationDTO],
+        helpers: [SupportTrainReservationDTO]?,
+        today: Date,
+        zoneId: String?
     ) -> [SlotSection] {
         var sections: [SlotSection] = []
         let slotById = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
 
-        let mineRows = reservations.map { reservationRow($0, slot: $0.slotId.flatMap { slotById[$0] }) }
+        let mineRows = reservations.map {
+            reservationRow($0, slot: $0.slotId.flatMap { slotById[$0] }, today: today, zoneId: zoneId)
+        }
         if !mineRows.isEmpty {
             sections.append(SlotSection(id: "mine", overline: "Your commitment", rows: mineRows))
         }
 
-        let today = localToday()
         let sortedOpen = slots
-            .filter { !$0.isCovered && !isBefore($0.slotDate, today) }
+            .filter { !$0.isCovered && !isPast($0, today) }
             .sorted { ($0.slotDate ?? "") < ($1.slotDate ?? "") }
         if !sortedOpen.isEmpty {
             let shown = Array(sortedOpen.prefix(4)).map { slotRow($0, covered: false) }
             sections.append(SlotSection(
                 id: "open",
-                overline: "Open slots near you",
+                overline: "Open dates",
                 actionLabel: sortedOpen.count > shown.count ? "See all \(sortedOpen.count)" : nil,
                 rows: shown,
                 moreRows: sortedOpen.dropFirst(shown.count).map { slotRow($0, covered: false) }
@@ -741,7 +864,7 @@ extension SupportTrainDetailViewModel {
         }
 
         // The viewer's own signups are listed under "Your commitment". A slot only
-        // they fill isn't repeated here, where it would read as a neighbor's.
+        // they fill isn't repeated here, where it would read as someone else's.
         let mineCountBySlot = reservations.compactMap(\.slotId).reduce(into: [String: Int]()) { $0[$1, default: 0] += 1 }
         let sortedCovered = slots
             .filter { slot in
@@ -751,13 +874,23 @@ extension SupportTrainDetailViewModel {
             }
             .sorted { ($0.slotDate ?? "") < ($1.slotDate ?? "") }
         if !sortedCovered.isEmpty {
-            let shown = Array(sortedCovered.prefix(4)).map { slotRow($0, covered: true) }
+            // With the signups list (the person the train is for), each date names its helper, as on
+            // Android and web; without it the row says only what is coming.
+            let mineIds = Set(reservations.map(\.id))
+            let helpersBySlot = Dictionary(grouping: (helpers ?? []).filter { helper in
+                !mineIds.contains(helper.id) && ["reserved", "delivered", "confirmed"].contains(helper.status ?? "")
+            }) { $0.slotId ?? "" }
+            let rows = sortedCovered.flatMap { slot in
+                helpersBySlot[slot.id].map { $0.map { helperRow($0, slot: slot, zoneId: zoneId) } }
+                    ?? [slotRow(slot, covered: true)]
+            }
+            let shown = Array(rows.prefix(4))
             sections.append(SlotSection(
                 id: "covered",
-                overline: "Already on the train",
-                actionLabel: sortedCovered.count > shown.count ? "See all \(sortedCovered.count)" : nil,
+                overline: helpers == nil ? "Already on the train" : "Who's coming",
+                actionLabel: rows.count > shown.count ? "See all \(rows.count)" : nil,
                 rows: shown,
-                moreRows: sortedCovered.dropFirst(shown.count).map { slotRow($0, covered: true) }
+                moreRows: Array(rows.dropFirst(shown.count))
             ))
         }
         return sections
@@ -779,9 +912,56 @@ extension SupportTrainDetailViewModel {
         )
     }
 
+    /// Another helper's signup, named, for the person the train is for.
+    private nonisolated static func helperRow(
+        _ helper: SupportTrainReservationDTO,
+        slot: SupportTrainSlotDTO,
+        zoneId: String?
+    ) -> SlotRowContent {
+        let date = parseSlotDate(slot.slotDate)
+        let title = helper.dishTitle
+            ?? helper.restaurantName
+            ?? helper.contributionMode.map { SupportTrainContributionMode(rawValue: $0)?.label ?? $0.capitalized }
+            ?? slot.slotLabel
+            ?? "A contribution"
+        let status: String? = switch helper.status {
+        case "delivered": "Delivered — awaiting confirmation"
+        case "confirmed": "Delivery confirmed"
+        default: nil
+        }
+        let subtitle = [
+            status,
+            arrivalLabel(helper.estimatedArrivalAt, zoneId: zoneId).map { "Arriving \($0)" },
+            helper.noteToRecipient
+        ]
+        .compactMap { $0?.isEmpty == false ? $0 : nil }
+        .joined(separator: " · ")
+        return SlotRowContent(
+            id: "helper-\(helper.id)",
+            dayLabel: date.map { format($0, "EEE") } ?? "",
+            dateLabel: date.map { format($0, "d") } ?? "",
+            state: .covered,
+            author: helperAuthor(helper),
+            title: title,
+            subtitle: subtitle.isEmpty ? dropWindow(slot.endTime) : subtitle,
+            mine: false,
+            slotId: slot.id
+        )
+    }
+
+    nonisolated static func helperAuthor(_ helper: SupportTrainReservationDTO) -> SlotRowContent.SlotAuthor {
+        SlotRowContent.SlotAuthor(
+            initials: initials(from: helper.displayName),
+            displayName: helper.displayName,
+            tone: .personal
+        )
+    }
+
     private nonisolated static func reservationRow(
         _ reservation: SupportTrainMyReservationDTO,
-        slot: SupportTrainSlotDTO?
+        slot: SupportTrainSlotDTO?,
+        today: Date,
+        zoneId: String?
     ) -> SlotRowContent {
         let date = slot.flatMap { parseSlotDate($0.slotDate) }
         // "Home-cooked meal", not the wire value "Cook", when the helper named no dish.
@@ -796,12 +976,13 @@ extension SupportTrainDetailViewModel {
             state: .covered,
             author: SlotRowContent.SlotAuthor(initials: "YO", displayName: "You", tone: .primary),
             title: title,
-            subtitle: arrivalLabel(reservation.estimatedArrivalAt) ?? reservation.noteToRecipient,
+            subtitle: arrivalLabel(reservation.estimatedArrivalAt, zoneId: zoneId).map { "Arriving \($0)" }
+                ?? reservation.noteToRecipient,
             mine: true,
             slotId: reservation.slotId,
             reservationId: reservation.id,
             reservationStatus: reservation.status,
-            isBeforeSlotDay: date.map { $0 > localToday() } ?? false,
+            isBeforeSlotDay: date.map { $0 > today } ?? false,
             slotDayLabel: date.map { format($0, "EEE, MMM d") }
         )
     }
@@ -820,25 +1001,25 @@ extension SupportTrainDetailViewModel {
     }
 
     /// Days until the last slot. A closed Train has none left, whatever its last date.
-    private nonisolated static func daysLeft(slots: [SupportTrainSlotDTO], status: String?) -> Int {
+    private nonisolated static func daysLeft(slots: [SupportTrainSlotDTO], status: String?, today: Date) -> Int {
         if status == "completed" || status == "archived" { return 0 }
         let cal = utcCalendar()
         let dates = slots.compactMap { parseSlotDate($0.slotDate) }
         guard let max = dates.max() else { return 0 }
-        let days = cal.dateComponents([.day], from: localToday(), to: cal.startOfDay(for: max)).day ?? 0
+        let days = cal.dateComponents([.day], from: today, to: cal.startOfDay(for: max)).day ?? 0
         return Swift.max(0, days)
     }
 
-    private nonisolated static func arrivalLabel(_ iso: String?) -> String? {
+    nonisolated static func arrivalLabel(_ iso: String?, zoneId: String?) -> String? {
         guard let iso else { return nil }
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
         guard let date else { return nil }
-        // An arrival is an instant (the sign-up sheets send one), so it reads in the helper's own
-        // time zone, as the Edit signup form shows it; in UTC a 5:30 pm drop-off read 12:30 AM.
+        // An arrival is an instant; it reads in the train's own zone (B4), where it is delivered.
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = zoneId.flatMap(TimeZone.init(identifier:)) ?? .current
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
     }
@@ -879,6 +1060,11 @@ extension SupportTrainDetailViewModel {
     private nonisolated static func localToday() -> Date {
         let parts = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         return utcCalendar().date(from: parts) ?? utcCalendar().startOfDay(for: Date())
+    }
+
+    /// Whether a date has passed where the train is (the server says; older replies by date).
+    private nonisolated static func isPast(_ slot: SupportTrainSlotDTO, _ today: Date) -> Bool {
+        slot.isPast ?? isBefore(slot.slotDate, today)
     }
 
     /// Whether a slot's date is before `day`; a slot without a readable date is never "over".
