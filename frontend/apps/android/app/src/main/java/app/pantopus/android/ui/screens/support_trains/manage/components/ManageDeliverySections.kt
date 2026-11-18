@@ -231,6 +231,11 @@ fun ManageAddressSheet(
             onPickAddress = onPickAddress,
             testTagPrefix = "manageTrain",
         )
+        Text(
+            text = "Helpers who already have the address are told it changed.",
+            color = PantopusColors.appTextSecondary,
+            fontSize = 12.sp,
+        )
     }
 }
 
