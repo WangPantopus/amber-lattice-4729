@@ -2,7 +2,7 @@
 
 November 17, 2026. A plan and a design. No app code has been changed. It follows the [design plan of November 9](../mail-cards-design-plan-2026-11-09.md), which is fully built, and the founder's request of November 16 for a bigger card, which is on staging.
 
-The founder asked on November 17 what else could be better in sending, drafting, receiving and opening a card, whether the cards are still too small to read for many people, and then said: "Plan everything." Later that morning the founder answered the plan's decisions; they are recorded under [Decided by the founder](#decided-by-the-founder) and the parts below already follow them.
+The founder asked on November 17 what else could be better in sending, drafting, receiving and opening a card, whether the cards are still too small to read for many people, and then said: "Plan everything." Later that morning the founder answered the plan's decisions; they are recorded under [Decided by the founder](#decided-by-the-founder) and the parts below already follow them. Parts 1 to 8 were built that day. Parts 9 and 10 were added that evening, after the founder asked about long notes and about "Help me write it".
 
 ## What the review found
 
@@ -231,6 +231,83 @@ Done when, on each app: with no opened card there is no strip; with one, it stan
 
 ---
 
+## Part 9. A long note runs onto a second leaf
+
+Added on the evening of November 17. The founder asked how a long note could keep showing everything with the best experience, without shortening what "Help me write it" writes.
+
+**What changes:** a long note gets more paper, not smaller writing. The smallest pen is no longer used on one side. A note that would need it is written in the largest pen over two leaves.
+
+![One 296-letter note: today on one side, and over two leaves](second-leaf/second-leaf-sample.jpg)
+
+The picture is the real card and pen on the web at 402×874. The same note takes 14 lines in the largest pen: nine on the first leaf and five on the second.
+
+| The note, laid out as Part 1 does | Before this part | With this part |
+|---|---|---|
+| Fits 9 lines in the 7.8u pen (about 200 letters) | One side, 30 pt on an iPhone 17 | The same |
+| Fits 10 lines in the 7.0u pen (about 240 letters) | One side, 27 pt | The same |
+| Longer than that, up to the 300 letters a card holds | One side, 23 pt | Two leaves, 30 pt |
+
+**The rule.** One function in each app, the one Part 1 added:
+
+1. If the note fits 9 lines at 7.8u, or 10 lines at 7.0u, it is on one side, exactly as before.
+2. Otherwise it is on two leaves, at the first of these that holds it: 7.8u with 9 lines a leaf (18 lines), 7.0u with 10 lines a leaf (20), 6.0u with 11 lines a leaf (22).
+3. Otherwise (a note of very many short lines) it is on one side with the shrinking Part 1 kept, unchanged.
+
+**The break.** The first leaf takes the first 9 lines as the pen wraps them (10 or 11 in the smaller pens), and the second leaf takes the rest, never fewer than two lines. A blank line that would be the second leaf's first line is left out. Each word keeps the shift, the turn and the ink it would have had on one side: they are drawn for the whole note in order, then the lines are dealt to the leaves.
+
+**The two leaves.**
+
+- **The first leaf** lies on the card's back: the same paper, the same size, the same ruled lines for its pen, starting 9u from the top. It has no FROM, no signature and no foot line. At its foot, in the pen, is the word "over" with a short arrow: the word 5.6u high in the pen's ink at 82%, turned 2° up to the right, its right end 8u from the leaf's right edge and its top 97.5u down. The arrow is 8u wide and 3.2u high, a 1.7-wide round stroke in a 40 by 16 box: `M2 9.5C10 7.2 22 7 36 8` and `M29.5 3.2 36.6 8 29 13`.
+- **The second leaf is the card's own back**, as it is drawn now: the rest of the note from the first rule, then FROM, the signature and the foot line. The signature comes at the end, as in a letter.
+
+**On the table.**
+
+- "Turn it over" brings the note side up on the first leaf. The main button reads **Read on**. A tap on the card does the same. A swipe still turns the card back to its picture.
+- **Read on:** the first leaf lifts from its foot, hinged along its top edge, and is gone. It turns about the top edge from 0° to 90° in 0.45 s, easing in, with the same depth the card's own turn uses. It darkens by up to 22% as it rises and is not drawn past 90°. With reduced motion it fades out in 0.2 s. It makes the paper sound the card's turn makes, when sounds are on.
+- With the second leaf up the main button reads **Turn it back**, and a tap or a swipe turns the card, as before.
+- Turned back to its picture, the card has its first leaf in place again. Turning it over always starts at the first leaf.
+- The line under the button stays **Read it in print** on both leaves. It prints the whole note.
+- Enlarging works on either leaf as it does now.
+- Screen readers hear the whole note once, note side up, as now. The main button is spoken "Read on, the note continues on a second leaf".
+
+**Where.** Wherever the card lies on a table and can be turned: the reader's table, the page a card's link opens, Sent, Look it over, "Open it the way they will", the card inside the web's joined pair, and the iPhone Duo's note page. Any still drawing of the back (a share picture with the note on, the admin's view of a reported card) keeps Part 1's one-side fitting, smallest pen and shrinking included. The reply's own sheet keeps Part 1's rule in this part.
+
+**The writer.** The writing box stays as it is. When the note will take two leaves, a quiet line under the box reads "This note runs onto a second leaf." It goes away when the note fits one side again. The count stays "n of 300 letters". Look it over shows the two leaves as the reader will see them.
+
+**Nothing is stored and the server does not change.** The reader's app deals the leaves. A reader on an older app sees one side in the small pen, as before. Two apps may break a line a word apart; no word may be lost or shown twice.
+
+Files. Web: `CardPaper.tsx` (`measureNote`, `PaperBack`), `CardTable.tsx`, `cardTableEngine.ts` (the tap and the main button's step), `CardTable.module.css`, the writing step in `SendCardFlow.tsx`. iPhone: `Table/CardTableNoteLayout.swift`, `Table/CardTableFaces.swift`, `Table/CardTableControls.swift`, `Table/CardTableModel+Words.swift`. Android: `table/CardFacePainter.kt`, `table/CardTableControls.kt`, the writing step in `SendCardSteps.kt`.
+
+Done when, on each app, with the sample's 296-letter note:
+
+- Note side up, the first leaf shows nine lines in the largest pen with "over" at its foot, and the button reads "Read on".
+- The button, and a tap on the card, lift the leaf. The card's back then shows the remaining lines, FROM and the signature, and the button reads "Turn it back".
+- The last word of the first leaf and the first word of the second are neighbours in the note. No word is missing or repeated.
+- Turning back and over again starts at the first leaf.
+- A note of about 230 letters is on one side in the middle pen, and one of about 150 letters on one side in the largest pen, both as before.
+- "Read it in print" shows the whole note from either leaf. VoiceOver and TalkBack read the whole note and the button's words.
+- With reduced motion the leaf fades.
+- The writing step shows its line when the note passes one side and drops it when the note is cut back. Look it over shows both leaves.
+- A card written on one app reads on two leaves on the other two.
+
+---
+
+## Part 10. "Help me write it" names one person only
+
+Added on the evening of November 17. The help writes three notes for the card's back (launch key `card_note_help`, on in production since November 14). Until now it greeted two chosen people by name on both cards ("Dear Maria and Tom,") and named no one from three people up.
+
+**What changes:** a first name goes into the greeting only when the card goes to exactly one person. For two or more it names no one ("Dear friends," or straight into the note).
+
+- **Why:** each person on a list gets their own card, and the list page says "No one sees who else got one." Both names on both cards tell each of them that the other got one. The app cannot know that two people are a couple; a sender who wants both names can type them.
+- **Server:** `backend/services/ai/cardNote.js` (`toLine`) and the greeting rule in `cardNoteSystem` (`backend/services/ai/prompts.js`), with the prompt's version raised. The length it aims for, the three tones and every other rule stay as they are.
+- **The help panel's first line, on each app:** two people read "One note for both of them, so it names no one." Three or more stay "One note for all 5 people, so it names no one." One named person stays "For Maria."
+- **The writing box's grey example line** reads "Dear friends," on a card to two or more people.
+- An older app keeps its old first line over notes that now name no one. Accepted.
+
+Done when: with two people chosen, the three notes name no one on each app; with one person they still open "Dear {first name},".
+
+---
+
 ## Left out, and why
 
 - **The phone reading the note aloud.** A machine voice on a personal card works against the feeling. The sender's own voice greeting is the human way.
@@ -245,6 +322,7 @@ Done when, on each app: with no opened card there is no strip; with one, it stan
 | A | Part 1, Part 2, Part 8, Part 5, Part 4, Part 6, in that order | Apps and web only. The wave to get into the next store builds. |
 | B | Part 3 | Server first, then the three apps. One new server switch. The server work starts alongside wave A. |
 | C | Part 7 | The founder approved its sample on November 17. New art, already made. |
+| D | Part 10, then Part 9 | Added on the evening of November 17. Part 10 is the server and one line on each app. Part 9 is the apps and web only. |
 
 Each line is a small set of pull requests into `dev`: web (with the server where there is one), iPhone with the Duo, Android.
 
@@ -271,7 +349,17 @@ So:
 | D6 | The mantel is built only after the founder approves one sample picture, which the design session makes | Yes. The sample was approved the same day (Part 7). |
 | D7 | The three pen sizes as in the picture above (30, 27 and 23 pt on an iPhone 17) and the slightly stronger ink | Yes |
 
+**The evening of November 17.** After Parts 1 to 8 were built, the founder asked about "Help me write it" and about long notes. In the founder's words:
+
+- On shortening what the help writes so it fits the largest pen: "No I think we do not need to short, we need to figure out when the notes are long how we adjust so we can continue to show everything with the best experience." Part 9 is the answer: a second leaf.
+- On whom the help greets: "Yes, please change the 2 people to dear friends too, so 2 or more will be dear friends coming back from AI help notes." Part 10.
+- On who builds and who reviews: "I will want you to start a Opus 5.5 Extra High session to do the actual coding work and verify in emulator and simulator and web apps, and create PR and you review." And: "Either way, please start the work, you have my full permission to start the work now."
+
+The founder left it to the design session whether to draw Part 9 first. It drew the sample in Part 9 from the real card and wrote the part before the build sessions started on it. The sample was sent to the founder, not held for an approval.
+
 ## How the build runs
+
+**For Parts 9 and 10 (wave D)** the same three sessions build, with one change from the list below: a session opens its pull request, checks it in the real app, and does not merge. The design session reads the diff, looks at the web itself, and writes "reviewed, merge" in the notes file; the session merges after that.
 
 - Three build sessions on Opus 5.5 at Extra High, each in its own worktree and branch from `origin/dev`: server and web (label CARDUX-WEB), iPhone with the Duo (CARDUX-IOS), Android (CARDUX-AND). Each owns its own area and asks the owning session for a change in another.
 - The design session that wrote this plan writes no app code and reviews none. It answers design questions left in the notes file. It drew the mantel's sample and its art.
