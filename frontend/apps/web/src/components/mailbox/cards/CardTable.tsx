@@ -17,7 +17,7 @@ import { playCardSound, preloadCardSounds } from './cardSounds';
 import type { CardPhoto, CardSignature, CardVoice } from '@pantopus/api';
 import CardPrint, { type PrintSource } from './CardPrint';
 import CardGreeting, { spokenLength } from './CardGreeting';
-import { PaperBack, PaperFront } from './CardPaper';
+import { PaperBack, PaperFront, PaperLeaf, useNoteLeaves } from './CardPaper';
 import { CardTableEngine, type TableState } from './cardTableEngine';
 import { useDarkPage } from './useDarkPage';
 import styles from './CardTable.module.css';
@@ -271,6 +271,9 @@ export default function CardTable({
   const photo = !isLetter && !card.sealed && !sendMoment && mediaFrom ? card.photo ?? null : null;
   const voice = !isLetter && !card.sealed && !sendMoment && mediaFrom ? card.voice ?? null : null;
   const hasMedia = Boolean(photo || voice);
+  // A long note runs onto a second leaf on a table that can be turned (Part 9); the sealing moment keeps one side.
+  const leavesOn = !isLetter && !card.sealed && !sendMoment;
+  const leaves = useNoteLeaves(leavesOn ? note : '', card.number, leavesOn);
   // The envelope's pictures: the cream set for a letter.
   const envArt = (name: string) => art(isLetter ? `cream-${name}` : name);
   const waxWhole = isLetter ? LETTER_WAX_WHOLE : WAX_WHOLE;
@@ -372,6 +375,10 @@ export default function CardTable({
     // The engine is made once per screen; a different card gets a new table (the host keys it by card).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
+
+  // The engine knows when the note runs onto a second leaf (Part 9): then "Read on" and a tap lift its first leaf.
+  const twoLeaves = Boolean(leaves);
+  useEffect(() => { if (mounted) engineRef.current?.setLeaves(twoLeaves); }, [mounted, twoLeaves]);
 
   // Read the verse (design plan 6.2): the bookmark over the table.
   const [verseOpen, setVerseOpen] = useState(false);
@@ -546,7 +553,8 @@ export default function CardTable({
     primary = 'Take the card out';
     hint = 'or pull it out with your finger';
   } else if (step === 'out') {
-    primary = backUp ? 'Turn it back' : 'Turn it over';
+    // A long note's first leaf (Part 9): "Read on" lifts it; the card's own back, the second leaf, turns it back.
+    primary = backUp ? (twoLeaves && ui.leafUp ? 'Read on' : 'Turn it back') : 'Turn it over';
     if (!turnedOnce) hint = 'or swipe it';
     // Until it's been enlarged once (the card could always be enlarged, but nothing said so).
     else if (!enlargedOnce) hint = typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches ? 'double-tap the card to enlarge it' : 'double-click the card to enlarge it';
@@ -679,11 +687,24 @@ export default function CardTable({
                 year={card.year}
                 note={sealed ? '' : note}
                 signature={sealed ? null : card.signature}
+                leaves={leaves}
                 className={`${styles.side} ${styles.sideBack}`}
                 style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
               >
                 <SidePieces side="Back" />
               </PaperBack>
+              {/* A long note's first leaf (Part 9): on the back, a hair in front of it, and lifted about its top edge
+                  with the card's own depth (this flip's perspective). */}
+              {leaves ? (
+                <PaperLeaf
+                  leaves={leaves}
+                  paper={card.paper}
+                  lifted={!ui.leafUp}
+                  lying="rotateY(180deg) translateZ(1px)"
+                  className={styles.side}
+                  style={{ position: 'absolute', inset: 0, aspectRatio: 'auto' }}
+                />
+              ) : null}
               </>)}
             </div>
             {/* The reply lying on the card (Part 3): over its printed strip, turned 2°, lower with the note side up (Fix 3 of the
@@ -894,6 +915,7 @@ export default function CardTable({
                   data-testid={sendMoment ? 'cardTableSendStep' : undefined}
                   aria-hidden={!sendButton}
                   tabIndex={sendButton ? 0 : -1}
+                  aria-label={primary === 'Read on' ? 'Read on, the note continues on a second leaf' : undefined}
                   onClick={() => { setRefusal(null); if (isLetter && step === 'out') { letter?.onOut(); return; } engineRef.current?.primary(); }}
                 >
                   {primary || 'Turn it over'}

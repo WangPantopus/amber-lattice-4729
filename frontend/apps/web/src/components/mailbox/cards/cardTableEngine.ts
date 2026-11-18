@@ -29,6 +29,8 @@ export type TableState = {
   send: SendStep | null;
   /** The card is enlarged (pinch or double-tap, design plan 6.1). */
   enlarged?: boolean;
+  /** A long note's first leaf lies on the back (mail-cards-experience Part 9): note side up, the button reads "Read on". */
+  leafUp?: boolean;
 };
 
 export type TableCallbacks = {
@@ -134,6 +136,11 @@ export class CardTableEngine {
   private envTurnedOnce = false;
 
   private heldOnce = false;
+
+  /** The note runs onto a second leaf (Part 9), and whether its first leaf has been lifted since the card was turned over. */
+  private leaves = false;
+
+  private leafLifted = false;
 
   private cracked = false;
 
@@ -245,6 +252,7 @@ export class CardTableEngine {
       heldOnce: this.heldOnce,
       send: this.send,
       enlarged: this.v.zs.t > 1.02,
+      leafUp: this.leaves && !this.leafLifted,
     };
   }
 
@@ -522,8 +530,30 @@ export class CardTableEngine {
     } else if (this.step === 'flap') {
       this.takeOut();
     } else if (this.step === 'out') {
-      this.turnCard();
+      this.readOnOrTurn();
     }
+  }
+
+  /** The host has laid the note out: true when it runs onto a second leaf. */
+  setLeaves(on: boolean) {
+    if (this.leaves === on) return;
+    this.leaves = on;
+    this.leafLifted = false;
+    this.mark();
+  }
+
+  /**
+   * Note side up on a long note's first leaf, the button and a tap lift the leaf (Part 9): "Read on". Otherwise they
+   * turn the card. A swipe always turns it.
+   */
+  private readOnOrTurn() {
+    const backUp = Math.cos((this.v.deg.t * Math.PI) / 180) < 0;
+    if (this.leaves && !this.leafLifted && backUp) {
+      this.leafLifted = true;
+      this.mark();
+      return;
+    }
+    this.turnCard();
   }
 
   /** Arrow keys: the same turns a finger makes. */
@@ -855,7 +885,7 @@ export class CardTableEngine {
         if (twice && !reducedMotion()) { this.lastTap.t = 0; this.toggleZoom(e.clientX, e.clientY); return; }
         this.lastTap = { t: now, x: e.clientX, y: e.clientY };
         if (this.enlarged) return;
-        this.tapTimer = window.setTimeout(() => { if (!this.callbacks.onCardTap?.()) this.turnCard(); }, 300);
+        this.tapTimer = window.setTimeout(() => { if (!this.callbacks.onCardTap?.()) this.readOnOrTurn(); }, 300);
       } else this.callbacks.onTableTap();
       return;
     }
@@ -985,6 +1015,11 @@ export class CardTableEngine {
     const zoom = v.zs.x > 1.0005 || Math.abs(v.zx.x) > 0.1 || Math.abs(v.zy.x) > 0.1
       ? `translate(${v.zx.x.toFixed(1)}px,${v.zy.x.toFixed(1)}px) scale(${v.zs.x.toFixed(4)}) ` : '';
     this.$('flip').style.transform = `${zoom}rotateX(${-ty * 2.6}deg) rotateY(${v.deg.x + tx * 3.2}deg)`;
+    // Once the card shows its picture, its first leaf is back in place: turning it over always starts there (Part 9).
+    if (this.leafLifted && Math.cos((v.deg.x * Math.PI) / 180) > 0) {
+      this.leafLifted = false;
+      this.mark();
+    }
 
     // The card's shadows grow as it lifts off the paper.
     const lift = (1 - lay) * r;
