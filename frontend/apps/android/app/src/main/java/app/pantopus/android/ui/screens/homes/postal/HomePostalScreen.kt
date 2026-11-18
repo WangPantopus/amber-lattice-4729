@@ -50,19 +50,26 @@ fun HomePostalScreen(
         Modifier.fillMaxSize().background(PantopusColors.appBg).imePadding().testTag("homePostalVerification")
             .semantics { testTagsAsResourceId = true },
     ) {
+        // Faster home verification's one tap (drawing 8, "Mail check"); otherwise today's words.
+        val oneTap = state.showsOneTap && state.pending == null
         Row(Modifier.fillMaxWidth().padding(Spacing.s3), verticalAlignment = Alignment.CenterVertically) {
             HomePostalButton("Back", "homePostalBack", onClick = onBack)
-            Text("Mail verification", style = PantopusTextStyle.h3)
+            Text(if (oneTap) "Mail check" else "Mail verification", style = PantopusTextStyle.h3)
         }
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.s5),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4),
         ) {
-            Text("Verify your address by mail", style = PantopusTextStyle.h2)
+            Text(if (oneTap) "Mail me a code" else "Verify your address by mail", style = PantopusTextStyle.h2)
             Text(
-                "We'll mail a postcard with a code to this Home's address. Enter the code when it arrives to verify that you live here.",
+                if (oneTap) {
+                    "We mail a postcard to this home. Scan it when it arrives and you're done."
+                } else {
+                    "We'll mail a postcard with a code to this Home's address. Enter the code when it arrives to verify that you live here."
+                },
                 style = PantopusTextStyle.body,
             )
+            if (state.unmatchedScan) HomePostalScannedCard(state, viewModel)
             state.error?.let { Text(it, style = PantopusTextStyle.body, modifier = Modifier.testTag("homePostalError")) }
             when {
                 state.pending != null -> HomePostalRecovery(state, viewModel)
@@ -71,6 +78,8 @@ fun HomePostalScreen(
                     Text("Checking…", style = PantopusTextStyle.body)
                 }
                 state.status != null -> HomePostalCurrentStatus(state, viewModel, onNavigate)
+                // A scanned card that isn't this account's: the server keeps its status from them, so nothing to retry.
+                state.scanNotMine -> Unit
                 else -> HomePostalButton("Try again", "homePostalRetry", onClick = viewModel::open)
             }
         }
@@ -103,7 +112,7 @@ private fun HomePostalLifecycle(viewModel: HomePostalViewModel) {
     }
 }
 
-@Suppress("LongMethod") // Declarative status and its gated actions stay together.
+@Suppress("LongMethod", "CyclomaticComplexMethod") // Declarative status and its gated actions stay together.
 @Composable
 private fun HomePostalCurrentStatus(
     state: HomePostalUiState,
@@ -111,7 +120,8 @@ private fun HomePostalCurrentStatus(
     onNavigate: (String, HomePostalNavigation) -> Unit,
 ) {
     val status = state.status ?: return
-    HomePostalPostcardSummary(status)
+    // One tap with no card yet: the steps say what happens, so no "You haven't requested a postcard yet."
+    if (!(state.showsOneTap && status.postcard == null)) HomePostalPostcardSummary(status)
     status.restriction?.let {
         Text(HomePostalMessages.restriction(it), style = PantopusTextStyle.body, modifier = Modifier.testTag("homePostalRestriction"))
     }
@@ -126,12 +136,20 @@ private fun HomePostalCurrentStatus(
         HomePostalNavigation.Document to "Verify another way",
         HomePostalNavigation.AddressWrong to "This address is wrong",
     ).forEach { (destination, label) ->
-        if (viewModel.permits(destination)) {
+        // One tap's card has its own "This address is wrong".
+        val shownOnCard = state.showsOneTap && destination == HomePostalNavigation.AddressWrong
+        if (viewModel.permits(destination) && !shownOnCard) {
             HomePostalButton(label, "homePostal${destination.name}") { onNavigate(viewModel.homeId, destination) }
         }
     }
-    if (status.canRequest) HomePostalMailForm(state, viewModel)
+    if (state.showsOneTap) {
+        HomePostalOneTap(state, viewModel, onAddressWrong = { onNavigate(viewModel.homeId, HomePostalNavigation.AddressWrong) })
+    } else if (status.canRequest) {
+        HomePostalMailForm(state, viewModel)
+    }
     if (status.canVerify) HomePostalCodeForm(state, viewModel)
+    // The Mail check ends with "Free. One card at a time." (drawing 8): today's household block and "Refresh" stay off it.
+    if (state.showsOneTap) return
     state.progress?.let { progress ->
         Text(progress.title, style = PantopusTextStyle.h3, modifier = Modifier.testTag("homePostalResidencyHeading"))
         Text(progress.explanation, style = PantopusTextStyle.body, color = PantopusColors.appTextSecondary)

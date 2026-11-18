@@ -259,6 +259,7 @@ import app.pantopus.android.ui.screens.homes.polls.START_POLL_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.polls.StartPollFormScreen
 import app.pantopus.android.ui.screens.homes.postal.HomePostalNavigation
 import app.pantopus.android.ui.screens.homes.postal.HomePostalScreen
+import app.pantopus.android.ui.screens.homes.postal.ScannedPostcardCode
 import app.pantopus.android.ui.screens.homes.property_correction.PROPERTY_CORRECTION_HOME_ID_KEY
 import app.pantopus.android.ui.screens.homes.property_correction.PropertyCorrectionScreen
 import app.pantopus.android.ui.screens.homes.property_details.PropertyDetailsScreen
@@ -2512,6 +2513,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val todayReselects = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     val nearbyReselects = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     var ballotHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Add Home in two steps (FASTVERIFY) lands on the new Home's Place with its verify sheet open, once.
+    var verifyHomeId by rememberSaveable { mutableStateOf<String?>(null) }
     // Place's "Next step: Add radon test information": Today opens its home setup on this Home's radon question once,
     // then clears it (as on iPhone).
     var radonHomeId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -2961,6 +2964,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 DeepLinkRouter.consume()
             }
             is DeepLinkRouter.Destination.PostcardVerification -> {
+                // A scanned card's code (FASTVERIFY) reaches the screen in memory, never in the route.
+                pending.code?.let { ScannedPostcardCode.put(pending.id, it) }
                 navController.navigate(ChildRoutes.postcardVerification(pending.id))
                 DeepLinkRouter.consume()
             }
@@ -3322,6 +3327,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onBallotOpened = { ballotHomeId = null },
                         onOpenMenu = openMenu,
                         onOpenTodayRadon = openTodayRadon,
+                        verifyHomeId = verifyHomeId,
+                        onVerifyOpened = { verifyHomeId = null },
                     )
                 }
                 // ── The bar (founder decision 2026-11-13: Mail is third): Place · Today · Mail · Pulse · Moments · Plans
@@ -7959,6 +7966,21 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                             }
                         },
                         completionOpensPlace = opensPlace,
+                        // Two steps: the new Home's Place, its verify sheet open (FASTVERIFY section 9.2).
+                        onOpenVerify = { homeId ->
+                            navController.popBackStack()
+                            val host = currentPlaceHost
+                            if (host != null) {
+                                verifyHomeId = homeId
+                                host.landOnAddedHome(homeId)
+                                navController.openTabRoot(PantopusRoute.Place)
+                            } else {
+                                navController.navigate(ChildRoutes.MY_HOMES) {
+                                    popUpTo(ChildRoutes.MY_HOMES) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                         onOpenClaimOwnership = { homeId ->
                             navController.popBackStack()
                             navController.navigate(ChildRoutes.claimOwnership(homeId))
@@ -8139,7 +8161,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
  * waits on verification. The arrival step (keep a looked-up address privately) shows over it until it is finished.
  */
 @Composable
-@Suppress("LongMethod")
+@Suppress("LongMethod", "LongParameterList")
 private fun PlaceTabRoot(
     navController: NavHostController,
     scrollToTop: Flow<Unit>,
@@ -8147,6 +8169,8 @@ private fun PlaceTabRoot(
     onBallotOpened: () -> Unit,
     onOpenMenu: () -> Unit,
     onOpenTodayRadon: (homeId: String) -> Unit = {},
+    verifyHomeId: String? = null,
+    onVerifyOpened: () -> Unit = {},
     host: HomeTabHostViewModel = hiltViewModel(),
 ) {
     val root by host.landing.collectAsStateWithLifecycle()
@@ -8205,6 +8229,8 @@ private fun PlaceTabRoot(
                         scrollToTop = scrollToTop,
                         scrollToBallot = ballotHomeId == current.homeId,
                         onBallotOpened = onBallotOpened,
+                        openVerify = verifyHomeId == current.homeId,
+                        onVerifyOpened = onVerifyOpened,
                         onOpenTodayRadon = { onOpenTodayRadon(current.homeId) },
                         // A new default changes where Place lands next time, not the Home on screen now.
                         onDefaultHomeChange = { host.switchHome(current.homeId) },
@@ -8328,6 +8354,8 @@ private fun PlaceDashboardDestination(
     scrollToBallot: Boolean = false,
     onBallotOpened: () -> Unit = {},
     onOpenTodayRadon: (() -> Unit)? = null,
+    openVerify: Boolean = false,
+    onVerifyOpened: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val inviteShare: InviteShareViewModel = hiltViewModel()
@@ -8371,6 +8399,8 @@ private fun PlaceDashboardDestination(
         onBallotOpened = onBallotOpened,
         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
         onOpenTodayRadon = onOpenTodayRadon,
+        openVerify = openVerify,
+        onVerifyOpened = onVerifyOpened,
     )
 }
 

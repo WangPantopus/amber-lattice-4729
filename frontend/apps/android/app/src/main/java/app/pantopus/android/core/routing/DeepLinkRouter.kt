@@ -64,6 +64,9 @@ object DeepLinkRouter {
     /** A mail or message id in a notification link (a UUID). */
     private val MAIL_UUID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
+    /** A mailed postcard code as the card's link carries it (`#c=`): 6 to 8 letters and digits. */
+    private val POSTCARD_CODE = Regex("^[A-Za-z0-9]{6,8}$")
+
     sealed interface Destination {
         data object Feed : Destination
 
@@ -141,9 +144,12 @@ object DeepLinkRouter {
 
         /**
          * `pantopus://homes/:id/verify-postcard` — opens the A12.7
-         * sibling status screen directly.
+         * sibling status screen directly. [code] is the mailed code a scanned card carries in the link's fragment
+         * (`#c=K7M4Q2`, FASTVERIFY), filled into the code field; it never goes to a server in the link or to a log.
          */
-        data class PostcardVerification(val id: String) : Destination
+        data class PostcardVerification(val id: String, val code: String? = null) : Destination {
+            override fun toString(): String = "PostcardVerification(id=$id, code=${if (code == null) "none" else "hidden"})"
+        }
 
         data class HomeResidency(val id: String) : Destination
 
@@ -565,9 +571,19 @@ object DeepLinkRouter {
      * it opens in the app only for someone signed in, who answers it as themselves; signed out it's the web's page,
      * where a guest answers without an account. A `pantopus://` arrival, where the person chose the app, is kept through
      * sign-in instead, as plan links are.
+     *
+     * A scanned postcard's link (`/app/homes/:id/verify-postcard#c=…`, FASTVERIFY) is the same: signed in, the app opens
+     * the code screen with the code filled in; signed out, the web's page asks "Did you ask for this card?" (and offers
+     * "This wasn't me"), and the code is never kept on the phone for after sign-in.
      */
-    fun opensOnlySignedIn(uri: Uri): Boolean =
-        uri.scheme.equals("https", ignoreCase = true) && (resolve(uri) as? Destination.Plan)?.let { it.open ?: it.spot } != null
+    fun opensOnlySignedIn(uri: Uri): Boolean {
+        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        return when (val destination = resolve(uri)) {
+            is Destination.Plan -> (destination.open ?: destination.spot) != null
+            is Destination.PostcardVerification -> destination.code != null
+            else -> false
+        }
+    }
 
     /**
      * A Plans notice whose metadata says `opens: whos_coming` (Plans for the holidays: a guest is in, wants to come, or
@@ -1078,7 +1094,11 @@ object DeepLinkRouter {
                     "claim-owner" ->
                         if (trailing.getOrNull(1) == "evidence") Destination.WaitingRoom(id) else Destination.HomeDetail(id)
                     "verify-landlord", "verify_landlord" -> Destination.VerifyLandlord(id)
-                    "verify-postcard", "verify_postcard" -> Destination.PostcardVerification(id)
+                    "verify-postcard", "verify_postcard" ->
+                        Destination.PostcardVerification(
+                            id,
+                            code = Paths.queryParam(fragmentPart, "c")?.takeIf(POSTCARD_CODE::matches)?.uppercase(),
+                        )
                     // B1.6 — A18.4 persistent waiting room.
                     "waiting-room", "waiting_room" -> Destination.WaitingRoom(id)
                     else -> Destination.HomeDetail(id)
