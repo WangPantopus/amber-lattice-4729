@@ -55,9 +55,8 @@ final class PlaceBlockFoundersViewModel {
     }
 
     func load() async {
-        if addressSuggestions.near == nil {
-            addressSuggestions.near = await AddressSuggestions.homePoint(homeId: homeId)
-        }
+        // Beside the block's read, never in front of it.
+        addressSuggestions.findNear(homeId: homeId)
         do {
             let response: BlockStatusResponse = try await api.request(
                 BlockFoundersEndpoints.status(homeId: homeId)
