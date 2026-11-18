@@ -80,7 +80,7 @@ export default function VerifiedSuccess({ onContinue, homeId: verifiedHomeId = n
   // you live here, your permanent rank on the block, and the mailbox.
   const rows: { icon: LucideIcon; label: string; sub: string; href: string }[] = [
     { icon: FileText, label: 'Proof you live here', sub: 'Your badge, a residency letter, and a shareable Residency Pass', href: '/app/place/identity' },
-    { icon: MessageCircle, label: 'Your Block Founder number', sub: 'A permanent rank on your block, and the real rents your verified neighbors pay', href: '/app/place/block' },
+    { icon: MessageCircle, label: 'Your Block Founder number', sub: 'A permanent rank on your block, and the real rents verified residents pay', href: '/app/place/block' },
     // Launch cut #10 (Mailbox): the mailbox is hidden.
     ...(launchFeatures.mailbox ? [{ icon: Mailbox, label: 'Your mailbox', sub: 'Packages, notices, and the offers that come to this address', href: '/app/mailbox' }] : []),
   ];
@@ -102,7 +102,7 @@ export default function VerifiedSuccess({ onContinue, homeId: verifiedHomeId = n
           Your address is verified.
         </h1>
         <p className="mt-3 text-[14.5px] text-app-text-strong leading-[21px] max-w-[300px]">
-          You&apos;re now an address-proven neighbor at {addressLine}.
+          You&apos;re now an address-proven resident at {addressLine}.
         </p>
       </div>
 

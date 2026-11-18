@@ -25,7 +25,7 @@ export interface VerifyBannerProps {
 }
 
 export default function VerifyBanner({
-  title = 'Verify your address to message neighbors and get your badge.',
+  title = 'Verify your address to message homes near you and get your badge.',
   cta = 'Verify address',
   icon: Icon = ShieldCheck,
   onClick,

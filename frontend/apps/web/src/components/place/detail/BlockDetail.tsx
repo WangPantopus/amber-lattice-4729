@@ -36,7 +36,7 @@ function CensusCard({ data }: { data: PlaceCensusContextData }) {
           <Map size={20} strokeWidth={2} className="text-app-home" />
         </span>
         <div className="min-w-0">
-          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">This neighborhood</div>
+          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">Your area</div>
           <div className="text-[12.5px] text-app-text-muted mt-0.5">Census tract around your block</div>
         </div>
       </div>
@@ -130,7 +130,7 @@ function InviteForm({ homeId, remaining, cap }: { homeId: string; remaining: num
   return (
     <div className="mt-3 pt-3 border-t border-app-border-subtle">
       <div className="text-[12.5px] font-semibold text-app-text-secondary mb-2">
-        Invite a neighbor by mail — {remaining} left this week
+        Invite a home by mail — {remaining} left this week
       </div>
       <div className="grid grid-cols-1 gap-2">
         <AddressAutocomplete
@@ -166,7 +166,7 @@ function InviteForm({ homeId, remaining, cap }: { homeId: string; remaining: num
         Mail the invitation
       </button>
       <div className="text-[12px] text-app-text-muted leading-[17px] mt-2">
-        Pantopus prints and mails a fixed card — you can&apos;t write the message, and it&apos;s signed only as a neighbor on your street, never your name or address. Each card carries a working opt-out link.
+        Pantopus prints and mails a fixed card — you can&apos;t write the message, and it&apos;s signed only as someone on your street, never your name or address. Each card carries a working opt-out link.
       </div>
     </div>
   );
@@ -181,15 +181,15 @@ function FoundingLine({ founding }: { founding: NonNullable<BlockStatus['foundin
     return (
       <div className="mt-3 flex items-center gap-2 rounded-xl bg-app-home-bg px-3 py-2 text-[13px] text-app-home font-semibold">
         <Award size={15} strokeWidth={2.25} />
-        Founding Neighbor · slot {founding.slot} of {founding.slots_total}. Permanent.
+        Block Founder · slot {founding.slot} of {founding.slots_total}. Permanent.
       </div>
     );
   }
   if (founding.window_open && founding.slots_open > 0) {
     return (
       <div className="mt-3 rounded-xl bg-app-surface-sunken px-3 py-2 text-[13px] text-app-text-strong">
-        <span className="font-semibold">{founding.slots_open} Founding Neighbor {founding.slots_open === 1 ? 'slot' : 'slots'} still open on this block</span>
-        {daysLeft != null ? <span className="text-app-text-secondary"> · closes in {daysLeft} {daysLeft === 1 ? 'day' : 'days'}. Invite a neighbor below.</span> : null}
+        <span className="font-semibold">{founding.slots_open} Block Founder {founding.slots_open === 1 ? 'slot' : 'slots'} still open on this block</span>
+        {daysLeft != null ? <span className="text-app-text-secondary"> · closes in {daysLeft} {daysLeft === 1 ? 'day' : 'days'}. Invite a home below.</span> : null}
       </div>
     );
   }
@@ -323,11 +323,11 @@ export default function BlockDetail({ intelligence, homeId }: { intelligence: Pl
         <DetailSectionLabel>Block founders</DetailSectionLabel>
         <FoundersSection homeId={homeId} verified={verified} canVerify={canVerify} />
 
-        <DetailSectionLabel>Neighborhood</DetailSectionLabel>
+        <DetailSectionLabel>This area</DetailSectionLabel>
         {censusReady ? (
           <CensusCard data={census!.data as PlaceCensusContextData} />
         ) : (
-          <SectionCard icon={Map} title="This neighborhood" state={census ? statusToState(census.status) : 'unavailable'} caption={census?.unavailable_reason ?? undefined} onRetry={() => window.location.reload()} />
+          <SectionCard icon={Map} title="Your area" state={census ? statusToState(census.status) : 'unavailable'} caption={census?.unavailable_reason ?? undefined} onRetry={() => window.location.reload()} />
         )}
         {census?.source ? <SourceNote name={census.source} asOf="2020–2024" /> : null}
 
@@ -340,7 +340,7 @@ export default function BlockDetail({ intelligence, homeId }: { intelligence: Pl
         />
 
         <InfoNote>
-          Neighborhood figures are typical values for your census tract, not your specific home.
+          Area figures are typical values for your census tract, not your specific home.
         </InfoNote>
       </div>
     </>

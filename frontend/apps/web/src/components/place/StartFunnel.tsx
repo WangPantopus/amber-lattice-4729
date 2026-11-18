@@ -179,10 +179,10 @@ function HeroStep({
                 to see your comparison.
               </span>
             ) : signedIn ? (
-              <>Your flood risk, today&apos;s air, your home&apos;s value, and who your verified neighbors are.</>
+              <>Your flood risk, today&apos;s air, your home&apos;s value, and the verified homes near you.</>
             ) : (
               <>
-                Wildfire and flood risk, today&apos;s air, radon, water, who represents you, and the neighbors who&apos;ve
+                Wildfire and flood risk, today&apos;s air, radon, water, who represents you, and the people who&apos;ve
                 proven they&apos;re real. Free, no account.
               </>
             )}
@@ -257,7 +257,7 @@ function PrivacyProof() {
     <div className="mt-4 flex items-start gap-2 px-1" data-testid="start-privacy-proof">
       <ShieldCheck size={15} strokeWidth={2.1} className="mt-[3px] text-app-home shrink-0" />
       <span className="text-[13px] leading-[19px] text-app-text-secondary">
-        Neighbors see a first name and a street.{' '}
+        Others see a first name and a street.{' '}
         <span className="font-semibold text-app-text">Never your house number.</span>
       </span>
     </div>
