@@ -1597,6 +1597,13 @@ router.post(
         .status(409)
         .json({ error: 'ALREADY_PRIMARY', message: 'This user is already the primary organizer.' });
     }
+    // The person the train is for doesn't run it: organizers see helpers' private notes to them.
+    if (st.recipient_user_id && user_id === st.recipient_user_id) {
+      return res.status(409).json({
+        error: 'IS_RECIPIENT',
+        message: "The person this Support Train is for can't also organize it.",
+      });
+    }
     if (!(await knownToOrganizer(req.user.id, user_id))) return res.status(403).json(NOT_KNOWN);
 
     const { data, error } = await supabaseAdmin
