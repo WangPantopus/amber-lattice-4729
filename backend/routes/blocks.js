@@ -205,7 +205,7 @@ router.get('/blocked', verifyToken, async (req, res) => {
         id: b.id,
         user_id: `anonymous:${b.id}`,
         username: null,
-        name: 'Anonymous neighbor',
+        name: 'Anonymous sender',
         profile_picture_url: null,
         reason: b.reason,
         created_at: b.created_at,

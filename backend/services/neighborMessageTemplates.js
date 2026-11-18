@@ -21,7 +21,7 @@ const MESSAGE_TEMPLATES = Object.freeze([
     id: 'noise',
     icon: 'volume-2',
     category: 'Late-night noise',
-    body: 'A verified neighbor mentioned some noise after 10pm. Just a friendly heads-up — no need to reply.',
+    body: 'Someone nearby mentioned some noise after 10pm. Just a friendly heads-up — no need to reply.',
   },
   {
     id: 'package',
@@ -39,7 +39,7 @@ const MESSAGE_TEMPLATES = Object.freeze([
     id: 'pet',
     icon: 'dog',
     category: 'Pet in the yard',
-    body: 'A neighbor noticed a pet out in the yard. Just making sure everything is okay.',
+    body: 'Someone nearby noticed a pet out in the yard. Just making sure everything is okay.',
   },
   {
     id: 'gate',

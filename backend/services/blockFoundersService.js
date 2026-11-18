@@ -320,7 +320,7 @@ function cleanAddressInput(recipient) {
   const state = /^[A-Za-z]{2}$/.test(stateRaw) ? stateRaw.toUpperCase() : '';
   const zip = String((recipient && recipient.zip) || '').trim().slice(0, 10);
   if (!line1 || !city || !/^[A-Z]{2}$/.test(state) || !/^\d{5}(-\d{4})?$/.test(zip)) {
-    throw new BlockFoundersError('Enter the neighbor\'s street address, city, state, and ZIP.', 'BAD_ADDRESS');
+    throw new BlockFoundersError('Enter the home\'s street address, city, state, and ZIP.', 'BAD_ADDRESS');
   }
   // Shape, not just presence: a house number, then something that reads
   // as a street name (with an optional unit after it).
@@ -350,7 +350,7 @@ function inviteBackHtml({ street, verifiedCount, optOutCode }) {
   // sentence that is true either way.
   const countLine = Number.isFinite(verifiedCount) && verifiedCount >= 2
     ? `${escapeHtml(verifiedCount)} homes near you are already verified.`
-    : 'Your neighbors are starting to verify their homes.';
+    : 'Homes near you are starting to verify.';
   // Every interpolated value is escaped. `street` derives from
   // sender-controlled text (see streetOnly) and `optOutCode` is the
   // recipient's kill switch — markup reaching either would let a sender
