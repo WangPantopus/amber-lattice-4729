@@ -13,7 +13,7 @@ export const SUPPORT_TRAIN_FRESH_MS = 60 * 1000;
 
 export interface SupportTrainView {
   train: any;
-  /** The signups, for organizers; empty for everyone else. */
+  /** The signups, for organizers and the person the train is for; empty for everyone else. */
   reservations: any[];
   /** Why the signups could not be read (the train itself loaded). */
   reservationError: string | null;
@@ -21,7 +21,10 @@ export interface SupportTrainView {
 
 async function loadSupportTrain(id: string): Promise<SupportTrainView> {
   const train = await api.supportTrains.getSupportTrain(id) as any;
-  if (train?.viewer_level !== 'organizer') return { train, reservations: [], reservationError: null };
+  // The person a train is for sees who is coming too (B2).
+  if (train?.viewer_level !== 'organizer' && train?.viewer_level !== 'recipient') {
+    return { train, reservations: [], reservationError: null };
+  }
   try {
     const res = await api.supportTrains.listReservations(id);
     return { train, reservations: res.reservations || [], reservationError: null };

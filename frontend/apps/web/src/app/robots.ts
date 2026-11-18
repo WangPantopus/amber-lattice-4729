@@ -8,6 +8,8 @@ import type { MetadataRoute } from 'next';
 const PRIVATE_PATHS = [
   '/app/', '/api/', '/auth/', '/dev/', '/status/', '/guest/', '/invite/', '/join/',
   '/verify-claim/', '/verify-residency/', '/session/', '/shared/', '/unlisted/', '/book/o/',
+  // Support Train link pages are for the people a train is shared with.
+  '/support-trains/',
 ];
 
 export default function robots(): MetadataRoute.Robots {

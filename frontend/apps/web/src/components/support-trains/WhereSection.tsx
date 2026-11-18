@@ -161,7 +161,8 @@ export default function WhereSection({
   return (
     <div className="space-y-3">
       <p className="text-xs text-app-text-muted">
-        Where helpers should bring meals or supplies. Hidden by default — only revealed after signup.
+        Where helpers should bring meals or supplies. Only the city shows to others; you share the exact address
+        with each helper from Manage when you&apos;re ready.
       </p>
 
       {/* Pills */}
@@ -278,6 +279,33 @@ export default function WhereSection({
 }
 
 // ── Helpers used by the parent page ───────────────────────────────
+
+// Homes API → HomeInfo
+export function homesFromApi(raw: any): HomeInfo[] {
+  const homes = raw?.homes ?? [];
+  return homes
+    .map((h: any): HomeInfo | null => {
+      const coords = h?.location?.coordinates;
+      // My Homes returns a decoded point. Keep GeoJSON compatibility for
+      // older responses, without turning an absent coordinate into zero.
+      const lat = h?.location?.latitude ?? (Array.isArray(coords) ? coords[1] : undefined);
+      const lng = h?.location?.longitude ?? (Array.isArray(coords) ? coords[0] : undefined);
+      const hasCoords = Number.isFinite(lat) && Math.abs(lat) <= 90
+        && Number.isFinite(lng) && Math.abs(lng) <= 180;
+      return {
+        id: String(h?.id ?? ''),
+        name: String(h?.name ?? h?.address ?? 'Home'),
+        address: h?.address ?? undefined,
+        city: h?.city ?? '',
+        state: h?.state ?? '',
+        latitude: hasCoords ? lat : NaN,
+        longitude: hasCoords ? lng : NaN,
+        hasLocation: hasCoords,
+      };
+    })
+    .filter((h: HomeInfo | null): h is HomeInfo => !!h && !!h.id);
+}
+
 
 export function toSupportTrainDeliveryLocation(resolved: ResolvedLocation | null) {
   if (!resolved) return undefined;

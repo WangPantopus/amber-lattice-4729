@@ -14,6 +14,7 @@ import {
   fetchPublicSupportTrain,
   formatLocationLine,
   getStoreDownloadCta,
+  storePlatform,
   summarizeText,
 } from '@/lib/publicShare';
 import OpenInAppButton from '@/components/public-share/OpenInAppButton';
@@ -21,6 +22,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { authPageHref } from '@/lib/auth-utils';
 import SlotSignupButton from '@/components/public-share/SlotSignupButton';
 import { formatSlotWindow } from '@/components/support-trains/scheduleUtils';
+import { isSlotPast, slotContributionKeys, trainTodayKey } from '@/components/support-trains/trainTime';
 
 type OrganizerUser = {
   id?: string | null;
@@ -41,7 +43,12 @@ type SupportTrainSlot = {
   end_time?: string | null;
   slot_label?: string | null;
   support_mode?: string | null;
+  is_past?: boolean | null;
 };
+
+// A link page is for the people it is shared with: it stays out of search engines (robots.ts disallows the path
+// too), and a link preview carries only the title and a short line.
+const NOT_INDEXED = { index: false, follow: false } as const;
 
 type SupportTrainWithOrganizers = {
   organizers?: Array<{
@@ -152,6 +159,7 @@ export async function generateMetadata({
 
   if (!train) {
     return {
+      robots: NOT_INDEXED,
       title: 'Support Train Not Available | Pantopus',
       description:
         result.status === 403
@@ -171,12 +179,15 @@ export async function generateMetadata({
     .filter(Boolean)
     .join(' ');
 
-  return buildShareMetadata({
-    title: train.title || 'Support Train',
-    description: summarizeText(description, 160, 'See this Support Train on Pantopus.'),
-    path: buildSupportTrainPath(id),
-    appArgument: buildSupportTrainAppUrl(id),
-  });
+  return {
+    ...buildShareMetadata({
+      title: train.title || 'Support Train',
+      description: summarizeText(description, 160, 'See this Support Train on Pantopus.'),
+      path: buildSupportTrainPath(id),
+      appArgument: buildSupportTrainAppUrl(id),
+    }),
+    robots: NOT_INDEXED,
+  };
 }
 
 export default async function PublicSupportTrainPage({
@@ -192,6 +203,9 @@ export default async function PublicSupportTrainPage({
   const storeCta = getStoreDownloadCta(userAgent, buildSupportTrainPath(id));
   const fallbackUrl = storeCta?.href ?? null;
   const copyPath = storeCta?.copyPath ?? null;
+  // On a computer there is no app to open: signing in opens the train in Pantopus on the web.
+  const onComputer = storePlatform(userAgent) === null;
+  const signInHref = authPageHref('/login', `/app/support-trains/${encodeURIComponent(id)}`);
 
   if (!train && result.status === 404) {
     notFound();
@@ -263,26 +277,25 @@ export default async function PublicSupportTrainPage({
     .filter(([, enabled]) => !!enabled)
     .map(([key]) => supportModeLabel(key));
   const trainSlots = Array.isArray(train.slots) ? (train.slots as SupportTrainSlot[]) : [];
-  // Dates that are over aren't "upcoming": a slot that nobody took stays 'open' after its day.
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  // Dates that are over aren't "upcoming": a slot that nobody took stays 'open' after its day. The day is the
+  // train's own (train.today), not this server's.
+  const todayKey = trainTodayKey(train);
   const visibleSlots = trainSlots.filter(
-    (slot) => slot?.status !== 'canceled' && !(slot?.slot_date && String(slot.slot_date) < todayKey)
+    (slot) => slot?.status !== 'canceled' && !isSlotPast(slot, todayKey)
   );
-  const openSlots = visibleSlots.filter(
-    (slot) => slot?.status === 'open' && (slot?.filled_count ?? 0) < (slot?.capacity ?? 1)
-  );
+  // Only a live train takes signups (A9): a paused or ended one shows its dates without a Sign Up.
+  const takesSignups = train.status === 'published' || train.status === 'active';
+  const closedNotice = train.status === 'paused'
+    ? 'The organizer has paused signups for now. Check back later.'
+    : takesSignups
+      ? null
+      : 'This Support Train has ended. Thank you for wanting to help.';
+  const openSlots = takesSignups
+    ? visibleSlots.filter(
+      (slot) => slot?.status === 'open' && (slot?.filled_count ?? 0) < (slot?.capacity ?? 1)
+    )
+    : [];
   const organizerUser = getOrganizerUser(train);
-
-  // Map enabled support modes to contribution_mode values for the signup form
-  const modeKeyToContribution: Record<string, 'cook' | 'takeout' | 'groceries'> = {
-    home_cooked_meals: 'cook',
-    takeout: 'takeout',
-    groceries: 'groceries',
-  };
-  const enabledContributionModes = Object.entries(train.support_modes || {})
-    .filter(([key, enabled]) => !!enabled && key in modeKeyToContribution)
-    .map(([key]) => modeKeyToContribution[key]);
 
   return (
     <main className="min-h-screen bg-app text-app">
@@ -292,15 +305,24 @@ export default async function PublicSupportTrainPage({
             Pantopus
           </Link>
           <div className="flex items-center gap-3">
-            <OpenInAppButton
-              appUrl={buildSupportTrainAppUrl(id)}
-              linkHref={buildSupportTrainShareUrl(id)}
-              fallbackUrl={fallbackUrl}
-              copyPath={copyPath}
-              className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
-            >
-              Open In App
-            </OpenInAppButton>
+            {onComputer ? (
+              <Link
+                href={signInHref}
+                className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+              >
+                Sign In
+              </Link>
+            ) : (
+              <OpenInAppButton
+                appUrl={buildSupportTrainAppUrl(id)}
+                linkHref={buildSupportTrainShareUrl(id)}
+                fallbackUrl={fallbackUrl}
+                copyPath={copyPath}
+                className="rounded-full bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+              >
+                Open In App
+              </OpenInAppButton>
+            )}
           </div>
         </div>
 
@@ -375,27 +397,44 @@ export default async function PublicSupportTrainPage({
                 Open dates
               </p>
               <p className="mt-2 text-2xl font-semibold text-app">{openSlots.length}</p>
+              {closedNotice ? (
+                <p role="status" className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  {closedNotice}
+                </p>
+              ) : null}
               <p className="mt-3 text-sm leading-6 text-app-text-secondary">
-                Exact address stays hidden until an organizer manually shares it with a signed-up
+                The exact address stays hidden until an organizer shares it with a signed-up
                 helper.
               </p>
             </div>
 
             <div className="rounded-3xl border border-app bg-surface p-6 shadow-sm">
               <p className="text-sm leading-6 text-app-text-secondary">
-                Sign up for an open date below, or open in Pantopus for the best experience
-                with one-tap signups, real-time updates, and direct chat with the organizer.
+                {!takesSignups
+                  ? 'Follow this train and others on Pantopus.'
+                  : onComputer
+                    ? 'Sign up for an open date below with your email, or sign in to Pantopus to sign up, follow updates and chat with the organizer.'
+                    : 'Sign up for an open date below, or open in Pantopus for the best experience with one-tap signups, real-time updates, and direct chat with the organizer.'}
               </p>
               <div className="mt-4 flex flex-col gap-3">
-                <OpenInAppButton
-                  appUrl={buildSupportTrainAppUrl(id)}
-                  linkHref={buildSupportTrainShareUrl(id)}
-                  fallbackUrl={fallbackUrl}
-                  copyPath={copyPath}
-                  className="rounded-full bg-primary-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-primary-700"
-                >
-                  Open Support Train
-                </OpenInAppButton>
+                {onComputer ? (
+                  <Link
+                    href={signInHref}
+                    className="rounded-full bg-primary-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-primary-700"
+                  >
+                    {takesSignups ? 'Sign in to sign up' : 'Sign in'}
+                  </Link>
+                ) : (
+                  <OpenInAppButton
+                    appUrl={buildSupportTrainAppUrl(id)}
+                    linkHref={buildSupportTrainShareUrl(id)}
+                    fallbackUrl={fallbackUrl}
+                    copyPath={copyPath}
+                    className="rounded-full bg-primary-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-primary-700"
+                  >
+                    Open Support Train
+                  </OpenInAppButton>
+                )}
                 {storeCta ? (
                   <StoreLink
                     href={storeCta.href}
@@ -422,7 +461,9 @@ export default async function PublicSupportTrainPage({
 
           <div className="mt-6 space-y-3">
             {visibleSlots.length === 0 ? (
-              <p className="text-sm text-app-text-secondary">No dates have been posted yet.</p>
+              <p className="text-sm text-app-text-secondary">
+                {trainSlots.length > 0 ? 'No dates ahead.' : 'No dates have been posted yet.'}
+              </p>
             ) : (
               visibleSlots.map((slot) => {
                 const dateLabel = slot?.slot_date
@@ -435,7 +476,7 @@ export default async function PublicSupportTrainPage({
                   : 'Upcoming date';
                 const windowLabel = formatSlotWindow(slot?.start_time, slot?.end_time);
                 const isOpen =
-                  slot?.status === 'open' && (slot?.filled_count ?? 0) < (slot?.capacity ?? 1);
+                  takesSignups && slot?.status === 'open' && (slot?.filled_count ?? 0) < (slot?.capacity ?? 1);
 
                 return (
                   <div
@@ -458,9 +499,11 @@ export default async function PublicSupportTrainPage({
                       slotLabel={slot?.slot_label || 'Support'}
                       slotDate={dateLabel}
                       isOpen={isOpen}
+                      closedLabel={takesSignups ? null : train.status === 'paused' ? 'Paused' : 'Ended'}
                       appUrl={buildSupportTrainAppUrl(id)}
                       fallbackUrl={fallbackUrl}
-                      enabledModes={enabledContributionModes}
+                      signInHref={onComputer ? signInHref : null}
+                      enabledModes={slotContributionKeys(train.support_modes, slot?.support_mode)}
                     />
                   </div>
                 );

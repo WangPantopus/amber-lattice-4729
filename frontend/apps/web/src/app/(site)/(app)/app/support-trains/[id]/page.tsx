@@ -14,6 +14,14 @@ import { formatSlotWindow } from '@/components/support-trains/scheduleUtils';
 import { contributionSummary, trainStatusLabel } from '@/components/support-trains/contributionLabels';
 import { refreshSupportTrains, supportTrainQuery } from '@/components/support-trains/supportTrainQueries';
 import {
+  formatTrainTime,
+  isSlotPast,
+  slotContributionKeys,
+  trainLocalTimeToIso,
+  trainTimeInputValue,
+  trainTodayKey,
+} from '@/components/support-trains/trainTime';
+import {
   Calendar,
   Clock,
   Heart,
@@ -160,6 +168,7 @@ function OrganizerProfileChip({ user }: { user: OrganizerUser }) {
 function formatOrganizerRole(role: string | null | undefined): string {
   if (role === 'primary') return 'Primary';
   if (role === 'co_organizer') return 'Co-organizer';
+  if (role === 'recipient_delegate') return 'Helps organize';
   return role ? role.replace(/_/g, ' ') : 'Organizer';
 }
 
@@ -232,6 +241,8 @@ export default function SupportTrainDetailPage() {
   // Reservation id of the helper action in flight (Mark delivered / Leave slot).
   const [helperAction, setHelperAction] = useState<string | null>(null);
   const [reserveSlot, setReserveSlot] = useState<any>(null);
+  // The helper's own signup being changed (B1); null when signing up.
+  const [editingReservation, setEditingReservation] = useState<any>(null);
   const [reserveMode, setReserveMode] = useState('');
   const [dishTitle, setDishTitle] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
@@ -272,19 +283,22 @@ export default function SupportTrainDetailPage() {
   );
   const myReservations = ((data.my_reservations || []) as any[]).filter((r) => r?.id && r?.slot_id);
   const slotsById = new Map(slots.map((s: any) => [s.id, s]));
-  // A slot that nobody took stays 'open' after its day; it can't take a signup any more.
-  const todayDate = new Date();
-  const todayKey = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+  // A slot that nobody took stays 'open' after its day; it can't take a signup any more. The day is the train's.
+  const todayKey = trainTodayKey(data);
+  const trainZone: string | null = data.timezone || null;
   const openSlots = slots.filter(
     (s: any) =>
       s.status === 'open' &&
       (s.filled_count ?? 0) < (s.capacity ?? 1) &&
       !myReservationSlotIds.has(s.id) &&
-      !(s.slot_date && String(s.slot_date) < todayKey)
+      !isSlotPast(s, todayKey)
   );
   const updates = data.updates || [];
   const viewerLevel = data.viewer_level;
   const isOrganizer = viewerLevel === 'organizer';
+  // The person the train is for sees who is coming and confirms deliveries; they don't sign up (B2).
+  const isRecipient = viewerLevel === 'recipient';
+  const seesSignups = isOrganizer || isRecipient;
   const closedReason = signupsClosedReason(data.status);
   const ownerSignupRows = buildOwnerSignupRows(slots, reservations);
   const visibleSignupEntries = ownerSignupRows.flatMap((row) => row.entries);
@@ -297,7 +311,7 @@ export default function SupportTrainDetailPage() {
   const totalDateCount = countUniqueSlotDates(scheduledSlots);
   const openDateCount = countUniqueSlotDates(openUnsignedSlots);
   const signedDateCount = ownerSignupRows.length;
-  const needsCount = isOrganizer ? ownerSignupRows.length : openSlots.length;
+  const needsCount = seesSignups ? ownerSignupRows.length : openSlots.length;
   const organizerUser = getOrganizerUser(data);
   const scrollToNeeds = () => {
     window.setTimeout(() => {
@@ -307,6 +321,7 @@ export default function SupportTrainDetailPage() {
 
   const resetReserveForm = () => {
     setReserveSlot(null);
+    setEditingReservation(null);
     setReserveMode('');
     setDishTitle('');
     setRestaurantName('');
@@ -316,7 +331,7 @@ export default function SupportTrainDetailPage() {
   };
 
   const openReserveFlowForSlot = (slot: any) => {
-    if (isOrganizer) {
+    if (seesSignups) {
       setActiveTab('needs');
       scrollToNeeds();
       return;
@@ -332,14 +347,28 @@ export default function SupportTrainDetailPage() {
     setReserveMode(slotModes[0].key);
     setDishTitle('');
     setRestaurantName('');
-    setEstimatedArrivalTime(slot.start_time || '');
+    setEstimatedArrivalTime(String(slot.start_time || '').slice(0, 5));
     setNoteToRecipient('');
     setReserveError(null);
   };
 
+  // A helper changes their own signup: what they bring, when they arrive, their notes.
+  const openEditSignup = (reservation: any) => {
+    const slot = slotsById.get(reservation.slot_id);
+    if (!slot) return;
+    setEditingReservation(reservation);
+    setReserveSlot(slot);
+    setReserveMode(reservation.contribution_mode || '');
+    setDishTitle(reservation.dish_title || '');
+    setRestaurantName(reservation.restaurant_name || '');
+    setEstimatedArrivalTime(trainTimeInputValue(reservation.estimated_arrival_at, trainZone));
+    setNoteToRecipient(reservation.note_to_recipient || '');
+    setReserveError(null);
+  };
+
   const handleTakeSlot = () => {
-    if (!isOrganizer && closedReason) return;
-    if (isOrganizer) {
+    if (!seesSignups && closedReason) return;
+    if (seesSignups) {
       setActiveTab('needs');
       scrollToNeeds();
       return;
@@ -377,12 +406,28 @@ export default function SupportTrainDetailPage() {
 
     setReserving(true);
     setReserveError(null);
+    // The arrival is the train's local time on that date, wherever this browser is (B4).
+    const estimatedArrivalAt = trainLocalTimeToIso(reserveSlot.slot_date, estimatedArrivalTime, trainZone);
     try {
+      if (editingReservation) {
+        await api.supportTrains.updateReservation(id, editingReservation.id, {
+          dish_title: dishTitle.trim() || null,
+          restaurant_name: restaurantName.trim() || null,
+          estimated_arrival_at: estimatedArrivalAt,
+          private_note_to_organizer: editingReservation.private_note_to_organizer ?? null,
+          note_to_recipient: noteToRecipient.trim() || null,
+          expected_updated_at: editingReservation.updated_at,
+        });
+        resetReserveForm();
+        await fetchData();
+        toast.success('Signup saved');
+        return;
+      }
       await api.supportTrains.reserveSlot(id, reserveSlot.id, {
         contribution_mode: reserveMode as any,
         dish_title: dishTitle.trim() || null,
         restaurant_name: restaurantName.trim() || null,
-        estimated_arrival_at: buildEstimatedArrivalISO(reserveSlot.slot_date, estimatedArrivalTime),
+        estimated_arrival_at: estimatedArrivalAt,
         note_to_recipient: noteToRecipient.trim() || null,
       });
       resetReserveForm();
@@ -393,6 +438,11 @@ export default function SupportTrainDetailPage() {
       const message = getReservationErrorMessage(err);
       setReserveError(message);
       toast.error(message);
+      // The date was just taken, has passed, or the train stopped taking signups: show it as it is now (B6).
+      if (/SLOT_FULL|SLOT_NOT_OPEN|SLOT_PASSED|INVALID_STATE|CONFLICT/.test(String(err?.code || err?.data?.error || ''))) {
+        if (!editingReservation) resetReserveForm();
+        void fetchData();
+      }
     } finally {
       setReserving(false);
     }
@@ -416,8 +466,23 @@ export default function SupportTrainDetailPage() {
       await api.supportTrains.markDelivered(id, reservationId);
       await fetchData();
       toast.success('Marked delivered');
-    } catch {
-      toast.error('Failed to mark this as delivered.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to mark this as delivered.');
+    } finally {
+      setHelperAction(null);
+    }
+  };
+
+  // The person the train is for confirms that help arrived.
+  const handleConfirmDelivery = async (reservationId: string) => {
+    if (helperAction) return;
+    setHelperAction(reservationId);
+    try {
+      await api.supportTrains.confirmDelivered(id, reservationId);
+      await fetchData();
+      toast.success('Thank you sent');
+    } catch (err: any) {
+      toast.error(err?.message || 'Couldn’t confirm this delivery.');
     } finally {
       setHelperAction(null);
     }
@@ -437,8 +502,8 @@ export default function SupportTrainDetailPage() {
       await api.supportTrains.cancelReservation(id, reservationId, {});
       await fetchData();
       toast.success('Slot reopened');
-    } catch {
-      toast.error('Failed to leave this slot.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to leave this slot.');
     } finally {
       setHelperAction(null);
     }
@@ -526,10 +591,10 @@ export default function SupportTrainDetailPage() {
           <div className="space-y-2">
             <button
               onClick={handleTakeSlot}
-              disabled={!isOrganizer && Boolean(closedReason)}
+              disabled={!seesSignups && Boolean(closedReason)}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition disabled:cursor-not-allowed disabled:bg-app-border-strong disabled:text-app-text-secondary disabled:hover:bg-app-border-strong"
             >
-              {isOrganizer ? 'View signups' : closedReason ?? 'Sign up for a slot'}
+              {isOrganizer ? 'View signups' : isRecipient ? 'See who’s coming' : closedReason ?? 'Sign up for a slot'}
             </button>
             <button
               onClick={handleCopyLink}
@@ -554,7 +619,7 @@ export default function SupportTrainDetailPage() {
         {/* ── Center Column: Tabs ── */}
         <div ref={needsSectionRef} className="lg:col-span-6 scroll-mt-6">
           {/* The viewer's own signups */}
-          {!isOrganizer && myReservations.length > 0 && (
+          {!seesSignups && myReservations.length > 0 && (
             <section
               aria-labelledby="my-signups-title"
               className="mb-6 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-primary-50/60 dark:bg-primary-900/20 p-4 space-y-3"
@@ -568,7 +633,9 @@ export default function SupportTrainDetailPage() {
                   reservation={reservation}
                   slot={slotsById.get(reservation.slot_id)}
                   busy={helperAction !== null}
+                  timezone={trainZone}
                   onDelivered={(slotDate) => handleMarkDelivered(reservation.id, slotDate)}
+                  onEdit={() => openEditSignup(reservation)}
                   onLeave={() => handleLeaveSlot(reservation.id)}
                 />
               ))}
@@ -588,7 +655,7 @@ export default function SupportTrainDetailPage() {
                 }`}
               >
                 {tab === 'needs'
-                  ? `${isOrganizer ? 'Signups' : 'Needs'} (${needsCount})`
+                  ? `${isOrganizer ? 'Signups' : isRecipient ? 'Who’s coming' : 'Needs'} (${needsCount})`
                   : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
@@ -597,7 +664,7 @@ export default function SupportTrainDetailPage() {
           {/* Needs tab */}
           {activeTab === 'needs' && (
             <div className="space-y-3">
-              {isOrganizer && reservationError ? (
+              {seesSignups && reservationError ? (
                 <div className="text-center py-16">
                   <AlertTriangle className="w-10 h-10 text-app-text-muted mx-auto mb-3" />
                   <p className="text-app-text-secondary">{reservationError}</p>
@@ -608,14 +675,22 @@ export default function SupportTrainDetailPage() {
                     Retry
                   </button>
                 </div>
-              ) : isOrganizer ? (
+              ) : seesSignups ? (
                 ownerSignupRows.length === 0 ? (
                   <div className="text-center py-16">
                     <Users className="w-10 h-10 text-app-text-muted mx-auto mb-3" />
                     <p className="text-app-text-secondary">No one has signed up yet</p>
                   </div>
                 ) : (
-                  ownerSignupRows.map((row) => <OwnerSignupCard key={row.key} row={row} />)
+                  ownerSignupRows.map((row) => (
+                    <OwnerSignupCard
+                      key={row.key}
+                      row={row}
+                      timezone={trainZone}
+                      busy={helperAction !== null}
+                      onConfirm={handleConfirmDelivery}
+                    />
+                  ))
                 )
               ) : openSlots.length === 0 ? (
                 <div className="text-center py-16">
@@ -694,9 +769,31 @@ export default function SupportTrainDetailPage() {
                 </DetailSection>
               )}
 
+              {viewerLevel === 'signed_up_helper' && !data.address && (
+                <DetailSection label="Address">
+                  <p className="text-sm text-app-text-secondary">
+                    {data.coarse_location?.city ? `${data.coarse_location.city}. ` : ''}The organizer shares the exact address with you before your date.
+                  </p>
+                </DetailSection>
+              )}
+
               {viewerLevel !== 'viewer' && data.delivery_instructions && (
                 <DetailSection label="Delivery instructions">
                   <p className="text-sm text-app-text">{data.delivery_instructions}</p>
+                </DetailSection>
+              )}
+
+              {viewerLevel !== 'viewer' && data.special_instructions && (
+                <DetailSection label="Other instructions">
+                  <p className="text-sm text-app-text whitespace-pre-line">{data.special_instructions}</p>
+                </DetailSection>
+              )}
+
+              {(data.dietary_preferences || []).length > 0 && (
+                <DetailSection label="Diet">
+                  <p className="text-sm text-app-text capitalize">
+                    {data.dietary_preferences.map((p: string) => p.replace(/_/g, ' ')).join(', ')}
+                  </p>
                 </DetailSection>
               )}
             </div>
@@ -788,6 +885,7 @@ export default function SupportTrainDetailPage() {
         <ReserveSlotModal
           slot={reserveSlot}
           modes={getSlotContributionModes(data.support_modes, reserveSlot)}
+          editing={Boolean(editingReservation)}
           selectedMode={reserveMode}
           onSelectMode={setReserveMode}
           dishTitle={dishTitle}
@@ -816,19 +914,13 @@ const MY_SIGNUP_STATUS: Record<string, string> = {
   confirmed: 'Delivery confirmed',
 };
 
-// The helper's estimated arrival as "5:30 pm" in this browser's time zone, as the organizer's table shows it.
-function arrivalLabel(iso: unknown): string | null {
-  if (typeof iso !== 'string' || !iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
-}
-
-function MySignupRow({ reservation, slot, busy, onDelivered, onLeave }: {
+function MySignupRow({ reservation, slot, busy, timezone, onDelivered, onEdit, onLeave }: {
   reservation: any;
   slot: any;
   busy: boolean;
+  timezone: string | null;
   onDelivered: (slotDate?: string | null) => void;
+  onEdit: () => void;
   onLeave: () => void;
 }) {
   const dateStr = slot?.slot_date
@@ -840,7 +932,8 @@ function MySignupRow({ reservation, slot, busy, onDelivered, onLeave }: {
       })
     : '';
   const contribution = contributionSummary(reservation);
-  const arrival = arrivalLabel(reservation.estimated_arrival_at);
+  // The helper's estimated arrival in the train's time zone, as the organizer's table shows it.
+  const arrival = formatTrainTime(reservation.estimated_arrival_at, timezone);
   const isReserved = reservation.status === 'reserved';
 
   return (
@@ -869,6 +962,16 @@ function MySignupRow({ reservation, slot, busy, onDelivered, onLeave }: {
           >
             Mark delivered
           </button>
+          {reservation.updated_at && (
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={busy}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-app-border bg-app-surface text-app-text hover:bg-app-surface-sunken disabled:opacity-50 transition"
+            >
+              Edit
+            </button>
+          )}
           <button
             type="button"
             onClick={onLeave}
@@ -931,6 +1034,7 @@ function SlotCard({ slot, onSelect, disabled = false }: { slot: any; onSelect: (
 
 function ReserveSlotModal({
   slot,
+  editing = false,
   modes,
   selectedMode,
   onSelectMode,
@@ -948,6 +1052,7 @@ function ReserveSlotModal({
   onSubmit,
 }: {
   slot: any;
+  editing?: boolean;
   modes: typeof MODE_OPTIONS;
   selectedMode: string;
   onSelectMode: (mode: string) => void;
@@ -998,7 +1103,7 @@ function ReserveSlotModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 id="reserve-slot-title" className="text-lg font-semibold text-app-text">
-              Sign up for this slot
+              {editing ? 'Change your signup' : 'Sign up for this slot'}
             </h2>
             <p className="mt-1 text-sm text-app-text-secondary">
               {slot.slot_label} on {dateStr}
@@ -1025,7 +1130,8 @@ function ReserveSlotModal({
                   <button
                     key={mode.key}
                     type="button"
-                    onClick={() => onSelectMode(mode.key)}
+                    onClick={() => !editing && onSelectMode(mode.key)}
+                    disabled={editing && selectedMode !== mode.key}
                     className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
                       selectedMode === mode.key
                         ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200'
@@ -1065,7 +1171,7 @@ function ReserveSlotModal({
           </div>
 
           <label className="block text-sm font-medium text-app-text">
-            Estimated arrival
+            Estimated arrival (the train&apos;s local time)
             <input
               type="time"
               value={estimatedArrivalTime}
@@ -1101,7 +1207,7 @@ function ReserveSlotModal({
               disabled={!canSubmit}
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? 'Signing up...' : 'Confirm signup'}
+              {submitting ? (editing ? 'Saving…' : 'Signing up...') : editing ? 'Save' : 'Confirm signup'}
             </button>
           </div>
         </div>
@@ -1111,7 +1217,12 @@ function ReserveSlotModal({
   );
 }
 
-function OwnerSignupCard({ row }: { row: OwnerSignupRow }) {
+function OwnerSignupCard({ row, timezone, busy, onConfirm }: {
+  row: OwnerSignupRow;
+  timezone: string | null;
+  busy: boolean;
+  onConfirm: (reservationId: string) => void;
+}) {
   const date = new Date(row.slotDate + 'T00:00:00Z');
   const dateStr = date.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -1151,7 +1262,21 @@ function OwnerSignupCard({ row }: { row: OwnerSignupRow }) {
                 {' '}
                 · {formatSlotSummary(slot)}
                 {contributionSummary(reservation) ? ` · ${contributionSummary(reservation)}` : ''}
+                {formatTrainTime(reservation.estimated_arrival_at, timezone) ? ` · arrives ${formatTrainTime(reservation.estimated_arrival_at, timezone)}` : ''}
               </span>
+              {reservation.status === 'delivered' && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onConfirm(reservation.id)}
+                  className="ml-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  It arrived
+                </button>
+              )}
+              {reservation.status === 'confirmed' && (
+                <span className="ml-2 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Received</span>
+              )}
             </span>
           ))}
         </div>
@@ -1245,29 +1370,10 @@ function formatSignupCount(count: number): string {
   return `${count} ${count === 1 ? 'signup' : 'signups'}`;
 }
 
-function getAvailableContributionModes(supportModes: any): typeof MODE_OPTIONS {
-  return MODE_OPTIONS.filter((mode) => supportModes?.[mode.flag]);
-}
-
+// The ways of helping this date takes, as the server checks them (what the train asks for, fitting the date's kind).
 function getSlotContributionModes(supportModes: any, slot: any): typeof MODE_OPTIONS {
-  const supportMode = String(slot?.support_mode || '').toLowerCase();
-  const configuredModes = getAvailableContributionModes(supportModes);
-  if (configuredModes.length > 0) return configuredModes;
-
-  if (supportMode === 'groceries') return MODE_OPTIONS.filter((mode) => mode.key === 'groceries');
-  if (supportMode === 'takeout') return MODE_OPTIONS.filter((mode) => mode.key === 'takeout');
-  if (supportMode === 'meal' || supportMode === 'cook' || supportMode === 'home_cooked_meals') {
-    return MODE_OPTIONS.filter((mode) => mode.key === 'cook');
-  }
-  return [];
-}
-
-function buildEstimatedArrivalISO(slotDate: string, time: string): string | null {
-  if (!slotDate || !time) return null;
-  const [year, month, day] = slotDate.split('-').map(Number);
-  const [hours, minutes] = time.split(':').map(Number);
-  if (!year || !month || !day || Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return new Date(year, month - 1, day, hours, minutes, 0, 0).toISOString();
+  const keys = slotContributionKeys(supportModes, slot?.support_mode);
+  return MODE_OPTIONS.filter((mode) => keys.includes(mode.key as any));
 }
 
 function getReservationErrorMessage(err: any): string {
@@ -1278,8 +1384,8 @@ function getReservationErrorMessage(err: any): string {
   if (code.includes('ALREADY_RESERVED')) {
     return 'You already have a reservation on this slot.';
   }
-  if (code.includes('MODE_NOT_ENABLED')) {
-    return 'That support type is not available for this train.';
+  if (code.includes('MODE_NOT_ENABLED') || code.includes('SLOT_PASSED') || code.includes('INVALID_STATE')) {
+    return err?.data?.message || err?.message || 'That way of helping isn’t available for this date.';
   }
   return err?.message || 'Failed to reserve this slot. Please try again.';
 }

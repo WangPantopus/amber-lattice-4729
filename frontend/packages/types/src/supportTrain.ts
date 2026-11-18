@@ -285,8 +285,10 @@ export interface UpdateSupportTrainRequest {
   starts_at?: string | null;
   ends_at?: string | null;
   timezone?: string | null;
-  /** Maps to Activity.visibility — neighborhood Tasks feed lists nearby/public only */
+  /** Maps to Activity.visibility — the nearby list shows nearby/public only */
   activity_visibility?: 'private' | 'nearby' | 'public';
+  /** Set or change where help goes: one of the organizer's homes (home_id), or a typed or GPS address. */
+  delivery_location?: (Partial<SupportTrainDeliveryLocation> & { mode: SupportTrainDeliveryLocation['mode'] }) | null;
 }
 
 /** GET /activities/support-trains/nearby */
