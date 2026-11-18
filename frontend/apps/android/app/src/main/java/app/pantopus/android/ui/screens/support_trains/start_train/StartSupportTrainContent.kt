@@ -366,6 +366,9 @@ internal fun formatDay(millis: Long): String {
     return fmt.format(Date(millis))
 }
 
+/** The server keeps at most this many allergies or diet items (`allergies` max(50) in routes/supportTrains.js). */
+private const val MAX_LIST_ITEMS = 50
+
 /** "peanuts, shellfish" → ["peanuts", "shellfish"]: one item per comma or line. */
 internal fun splitList(text: String): List<String> =
-    text.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(50)
+    text.split(',', '\n', ';').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_LIST_ITEMS)

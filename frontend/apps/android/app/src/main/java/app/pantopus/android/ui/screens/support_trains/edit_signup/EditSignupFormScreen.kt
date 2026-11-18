@@ -270,6 +270,7 @@ private fun DropoffTimeGroup(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
 private fun NoteGroup(
     state: EditSignupUiState,

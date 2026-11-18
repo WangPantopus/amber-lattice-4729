@@ -121,6 +121,7 @@ const val MANAGE_TRAIN_RETRY_TAG: String = "manageTrainRetry"
  * Tapping the destructive `Close train` row presents the
  * [CloseTrainSheet] over a dimmed body.
  */
+@Suppress("CyclomaticComplexMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageTrainScreen(

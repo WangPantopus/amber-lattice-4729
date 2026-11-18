@@ -293,7 +293,6 @@ class ManageTrainViewModel
         private val _state = MutableStateFlow(ManageTrainUiState(state = summary()))
         val state: StateFlow<ManageTrainUiState> = _state.asStateFlow()
         private var updateRequestId = java.util.UUID.randomUUID().toString()
-        private val closeRequestId = java.util.UUID.randomUUID().toString()
         private val session = sessionScopes.create(viewModelScope)
         private var active = true
         private var readVersion = 0L

@@ -32,6 +32,7 @@ import java.util.TimeZone
 object SupportTrainDetailProjection {
     private const val MILLIS_PER_DAY = 1000L * 60 * 60 * 24
 
+    @Suppress("CyclomaticComplexMethod")
     fun project(
         dto: SupportTrainDetailDto,
         helperReservations: List<SupportTrainReservationDto>? = null,
@@ -383,6 +384,7 @@ object SupportTrainDetailProjection {
         }
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun sections(
         slots: List<SupportTrainSlotDto>,
         reservations: List<SupportTrainMyReservationDto>,

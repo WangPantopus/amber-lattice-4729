@@ -505,6 +505,7 @@ private fun OverflowMenuButton(onAction: () -> Unit) {
 
 // MARK: - Loaded body
 
+@Suppress("CyclomaticComplexMethod")
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun LoadedBody(

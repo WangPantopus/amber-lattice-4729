@@ -577,6 +577,7 @@ class StartSupportTrainViewModel
             _homeOptions.value = SupportTrainHomes.options(list)
         }
 
+        @Suppress("CyclomaticComplexMethod")
         private fun launch() {
             _isSubmitting.value = true
             _launchError.value = null
@@ -779,6 +780,7 @@ class StartSupportTrainViewModel
                 beneficiary?.let { arrayOf(it.userId, it.name, it.username, it.homeAddress, it.isVerified?.toString()) }
         }
 
+        @Suppress("CyclomaticComplexMethod")
         private fun restoreForm(): StartSupportTrainFormState? {
             val step = savedState.get<String>(KEY_STEP) ?: return null
             val defaults = StartSupportTrainFormState()

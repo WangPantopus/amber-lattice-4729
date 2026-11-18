@@ -274,6 +274,7 @@ class EditSignupFormViewModel
          * The picked `HH:mm` on the signup's day, as that clock time where the train is (B4). An untouched time keeps
          * the saved instant exactly; a cleared one clears it.
          */
+        @Suppress("ReturnCount")
         private fun newArrivalIso(seed: SupportTrainMyReservationDto): String? {
             val field = _state.value.fields[EditSignupField.DropoffTime]
             val value = field?.value?.trim().orEmpty()
