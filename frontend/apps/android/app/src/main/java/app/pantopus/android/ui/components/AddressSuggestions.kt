@@ -289,11 +289,12 @@ fun ListKeptAboveKeyboard(
         // One pass on a still page. A bar that slides away while the page scrolls (the tab bar) leaves the list lower
         // than it was measured for: the page is then measured once more, when the bar has stopped.
         for (pass in 1..PASSES) {
-            if (room == ROOM_UNMEASURED) {
-                // The list is laid out with the keyboard's height of room before it is measured: two frames on a still
-                // page, longer while the page's end still moves.
+            if (room == ROOM_UNMEASURED || pass > 1) {
+                // The list is laid out before the page is measured: two frames on a still page, longer while the
+                // page's end still moves.
                 awaitStillPage { placed }
-                placed?.takeIf { it.isAttached }?.let { roomThePageNeeds(it, keyboard) }?.let { needed ->
+                val needed = placed?.let { roomThePageNeeds(it, keyboard) } ?: ROOM_UNMEASURED
+                if (needed != room) {
                     room = needed
                     repeat(2) { withFrameNanos {} }
                 }
@@ -306,7 +307,6 @@ fun ListKeptAboveKeyboard(
             lastRow.bringIntoView()
             val settled = placed?.takeIf { it.isAttached }?.let { listEndsAboveKeyboard(it, room, keyboard) } ?: true
             if (settled || pass == PASSES) break
-            room = ROOM_UNMEASURED
         }
     }
     Column(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(listAndRoom).onGloballyPositioned { placed = it }) {
@@ -324,32 +324,45 @@ private const val EDGE_SLACK = 2f
 private const val STILL_FRAMES = 30
 
 /**
- * Waits until the page shows the same of the list and its room on two frames in a row ([placed] as last placed), for
+ * Waits until the page ends at the same place on two frames in a row (around the list as [placed]), for
  * [STILL_FRAMES] frames at most: two frames on a still page, and the length of its slide while a bar moves away.
  */
 private suspend fun awaitStillPage(placed: () -> LayoutCoordinates?) {
-    var shownBottom = Float.NaN
-    repeat(STILL_FRAMES) {
+    var before: Float? = null
+    repeat(STILL_FRAMES) { frame ->
         withFrameNanos {}
-        val now = placed()?.takeIf { it.isAttached }?.boundsInRoot()?.bottom
-        if (now != null && now == shownBottom) return
-        shownBottom = now ?: Float.NaN
+        val now = placed()?.let(::shownPageBottom)
+        if (frame > 0 && now == before) return
+        before = now
     }
 }
 
 /**
- * How much of the page the keyboard covers, from where the page cuts off the list and its room ([listAndRoom] as
- * placed, [keyboard] pixels high). Null when the page shows all of it or none of it: the keyboard's height then stays.
+ * How much of the page the keyboard covers ([listAndRoom] as placed, [keyboard] pixels high). Null when the page
+ * cuts nothing off around the list: the keyboard's height then stays.
  */
 private fun roomThePageNeeds(
     listAndRoom: LayoutCoordinates,
     keyboard: Int,
 ): Int? {
-    val shown = listAndRoom.boundsInRoot()
-    val bottom = listAndRoom.positionInRoot().y + listAndRoom.size.height
-    if (shown.height <= 0f || shown.bottom >= bottom - 1f) return null
+    val pageBottom = shownPageBottom(listAndRoom) ?: return null
     val keyboardTop = listAndRoom.findRootCoordinates().size.height - keyboard
-    return (shown.bottom - keyboardTop).roundToInt().coerceIn(0, keyboard)
+    return (pageBottom - keyboardTop).roundToInt().coerceIn(0, keyboard)
+}
+
+/**
+ * Where the page stops showing its content, in the window: the bottom at which [node], or the nearest layout around
+ * it that reaches further down than the page shows, is cut off. A list that starts below what the page shows is found
+ * through the layouts around it. Null when nothing around [node] is cut off at the bottom.
+ */
+private fun shownPageBottom(node: LayoutCoordinates): Float? {
+    var at: LayoutCoordinates? = node
+    while (at != null && at.isAttached) {
+        val shown = at.boundsInRoot()
+        if (shown.height > 0f && shown.bottom < at.positionInRoot().y + at.size.height - 1f) return shown.bottom
+        at = at.parentLayoutCoordinates
+    }
+    return null
 }
 
 /** Whether the list ends at the keyboard's top or higher ([listAndRoom] as placed, over [room] pixels of room). */
