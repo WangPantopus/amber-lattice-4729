@@ -235,9 +235,9 @@ private fun Hero(
             Text(
                 when {
                     // The Place tab's first-run root says what an address shows, as the front door does (TABCARD §4b).
-                    embedded != null -> "Your flood risk, today's air, your home's value, and who your verified neighbors are."
+                    embedded != null -> "Your flood risk, today's air, your home's value, and the verified homes near you."
                     signedInEntry -> "Look up an address, preview its public information, and choose whether to save it privately."
-                    else -> "Your flood risk, today's air, your home's value, and who your verified neighbors are — free, no account."
+                    else -> "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
                 },
                 fontSize = 15.sp,
                 lineHeight = 21.sp,
@@ -331,7 +331,7 @@ private fun PrivacyProof() {
         )
         Text(
             buildAnnotatedString {
-                append("Neighbors see a first name and a street. ")
+                append("Others see a first name and a street. ")
                 withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)) {
                     append("Never your house number.")
                 }

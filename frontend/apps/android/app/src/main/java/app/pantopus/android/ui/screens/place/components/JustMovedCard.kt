@@ -114,7 +114,7 @@ private val STEPS =
             JustMovedStepId.BLOCK,
             PantopusIcon.Users,
             "Meet the block",
-            "Who is verified nearby, and the Founding Neighbor slots",
+            "Who is verified nearby, and the Block Founder slots",
             PlaceDetailGroup.BLOCK,
         ),
     )
@@ -221,7 +221,7 @@ fun JustMovedCard(
                         color = PantopusColors.appText,
                     )
                     Text(
-                        "$total things it can do for you now, before there are neighbors to meet.",
+                        "$total things it can do for you now, before there is anyone to meet.",
                         fontSize = 13.5.sp,
                         lineHeight = 19.sp,
                         color = PantopusColors.appTextSecondary,

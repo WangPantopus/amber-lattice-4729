@@ -227,7 +227,7 @@ private fun PrivacyNote() {
             text =
                 buildString {
                     append("Your identity stays private. It's delivered as ")
-                    append("“from a verified neighbor nearby” — never your name or address.")
+                    append("“from a verified home nearby” — never your name or address.")
                 },
             fontSize = 13.5.sp,
             lineHeight = 19.sp,
@@ -359,7 +359,7 @@ private fun DeliveryPreview(messageBody: String) {
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "A verified neighbor nearby",
+                    text = "A verified home nearby",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = (-0.15).sp,
@@ -432,7 +432,7 @@ private fun SafetyCard() {
         listOf(
             SafetyRow(
                 PantopusIcon.Hand,
-                "Keep it neighborly",
+                "Keep it kind",
                 "For genuine heads-ups — not complaints, sales, or anything targeted.",
             ),
             SafetyRow(
@@ -443,7 +443,7 @@ private fun SafetyCard() {
             SafetyRow(
                 PantopusIcon.Ban,
                 "Always blockable",
-                "Anyone can block messages from verified neighbors at any time.",
+                "Anyone can block messages from verified homes at any time.",
             ),
         )
     Column(modifier = Modifier.fillMaxWidth().placeCard().padding(horizontal = 14.dp)) {
@@ -569,7 +569,7 @@ private fun SentConfirmation(onDone: () -> Unit) {
             )
             Text(
                 text =
-                    "If a verified household lives there, they'll get it as “from a verified neighbor nearby” — " +
+                    "If a verified household lives there, they'll get it as “from a verified home nearby” — " +
                         "never your name or address.",
                 fontSize = 13.5.sp,
                 lineHeight = 19.sp,

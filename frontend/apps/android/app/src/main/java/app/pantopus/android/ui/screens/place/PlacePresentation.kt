@@ -574,7 +574,7 @@ object PlacePresentation {
 
     val verifyLockedItems: List<PlaceVerifyLockedItem> =
         listOfNotNull(
-            PlaceVerifyLockedItem(PantopusIcon.MessageCircle, "Neighbor messaging", "Verify your address to message neighbors."),
+            PlaceVerifyLockedItem(PantopusIcon.MessageCircle, "Messages between homes", "Verify your address to message homes near you."),
             PlaceVerifyLockedItem(PantopusIcon.BadgeCheck, "Verified badge", "Verify your address to get your verified badge."),
             // Launch cut #10 (Mailbox): verifying doesn't open a mailbox while it is off.
             PlaceVerifyLockedItem(
