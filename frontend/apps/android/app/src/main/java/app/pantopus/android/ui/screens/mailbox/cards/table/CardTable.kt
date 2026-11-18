@@ -55,7 +55,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -126,18 +125,33 @@ private class TableSending(
     val next: CardTableNext? = null,
     /** The reply's quiet button (plan Part 3). */
     val reply: CardTableSendBack? = null,
-) {
-    /** The quiet line's second button: the reply's, in place of "Share this card". */
-    val quietTitle: String get() = reply?.title ?: SHARE_THIS_CARD
-}
+)
 
-/** With the reply's button in the quiet line, "Share this card" moves into ⋯ (its round button stays). */
-private fun menuWithShare(
+/**
+ * The reader's ⋯ holds every quiet button, since the quiet row shows at most two (the design check of November 17):
+ * "Open the next card (2 more)" and "Write back to Hazel" or "You wrote back" first, then the page's own lines, and
+ * "Share this card" (its round button stays). The sender's moment keeps its menu as it is.
+ */
+private fun tableMenu(
     menu: List<CardTableMenuItem>,
-    replies: Boolean,
+    sending: TableSending,
     canShare: Boolean,
     onShare: () -> Unit,
-): List<CardTableMenuItem> = if (replies && canShare) menu + CardTableMenuItem(SHARE_THIS_CARD, "cardTableMenuShare", onShare) else menu
+): List<CardTableMenuItem> {
+    if (sending.calls != null) return menu
+    return buildList {
+        sending.next?.let { add(CardTableMenuItem(openTheNextCard(it.waiting), "cardTableMenuNext", it.onClick)) }
+        sending.reply?.let { add(CardTableMenuItem(it.title, "cardTableMenuReply", it.onClick)) }
+        addAll(menu)
+        if (canShare) add(CardTableMenuItem(SHARE_THIS_CARD, "cardTableMenuShare", onShare))
+    }
+}
+
+/** The reader's quiet row has something in it once the card is turned over: the table keeps it room from the start. */
+private fun TableSending.hasQuietRow(sendBack: CardTableSendBack?): Boolean {
+    if (calls != null) return false
+    return next != null || reply != null || sendBack != null
+}
 
 @Composable
 private fun CardTable(
@@ -218,10 +232,8 @@ private fun CardTable(
                 safeTop,
                 safeBottom,
                 density,
-                quietButton = hasQuietLine(sendBack, canShare),
+                quietRow = sending.hasQuietRow(sendBack),
                 sending = calls != null,
-                nextCard = sending.next != null,
-                quietTitle = sending.quietTitle,
             )
         SideEffect { state.geometry = geometry }
         // A new window size (the phone turned, a fold opened) brings an enlarged card back to its size.
@@ -259,7 +271,7 @@ private fun CardTable(
             with(density) {
                 PaddingValues(top = safeTop.toDp(), bottom = safeBottom.toDp())
             }
-        val allItems = rememberMenu(menuWithShare(menu, replies = sending.reply != null, canShare = canShare) { sharing = true }, state)
+        val allItems = rememberMenu(tableMenu(menu, sending, canShare) { sharing = true }, state)
         // Once the sent card is gone: Take it back, and Share this card.
         val gone = remember(sending.goneActions) { sending.goneActions + CardTableSendBack("Share this card") { sharing = true } }
         CardTableControls(
@@ -369,8 +381,8 @@ private fun PictureProblem(
 }
 
 /**
- * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the quiet
- * second button when there is one ([quietButton]).
+ * The moment fitted to this screen, with room held for the largest words and hint at this text size, and for the
+ * reader's one quiet row when there is one ([quietRow]).
  */
 @Composable
 private fun rememberTableGeometry(
@@ -379,13 +391,9 @@ private fun rememberTableGeometry(
     safeTop: Float,
     safeBottom: Float,
     density: Density,
-    quietButton: Boolean,
+    quietRow: Boolean,
     /** The sender's moment: its words stay over the open envelope, so the table starts below them. */
     sending: Boolean = false,
-    /** "Open the next card" with its line under it (plan Part 4). */
-    nextCard: Boolean = false,
-    /** The quiet line's second button beside "Send … a card": "Share this card", or the reply's (plan Part 3). */
-    quietTitle: String = SHARE_THIS_CARD,
 ): TableGeometry {
     val measurer = rememberTextMeasurer()
     val width = constraints.maxWidth
@@ -403,13 +411,11 @@ private fun rememberTableGeometry(
         density,
         card.fromFirst,
         card.sealed,
-        quietButton,
+        quietRow,
         sending,
         readsVerse,
         readsInPrint,
         media,
-        nextCard,
-        quietTitle,
     ) {
         with(density) {
             val textWidth = width - 32.dp.roundToPx()
@@ -438,21 +444,18 @@ private fun rememberTableGeometry(
                 } else {
                     0f
                 }
+            // One row of quiet buttons, never a second (the design check of November 17): one line of their words.
             val quietHeight =
-                if (quietButton && !card.sealed) {
-                    val send = measurer.measure("Send ${card.fromFirst} a card", tableQuietStyle).size
-                    val share = measurer.measure(quietTitle, tableQuietStyle).size
-                    // Side by side when both fit the line (plan 11.1), else one under the other at large text.
-                    val lines = if (send.width + share.width + 64.dp.roundToPx() > textWidth) 2 else 1
-                    (max(48.dp.toPx(), send.height + 12.dp.toPx()) + 2.dp.toPx()) * lines
+                if (quietRow && !card.sealed) {
+                    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle, maxLines = 1).size.height
+                    max(48.dp.toPx(), words + 12.dp.toPx()) + 2.dp.toPx()
                 } else {
                     0f
                 }
             // The button starts at least 12 dp below the lowest edge of paper, wherever the light has drifted it and with
             // its small turn ([PAPER_SWAY]); on a short screen the card shrinks.
             val gap = 12.dp.toPx() + PAPER_SWAY.dp.toPx()
-            val nextHeight = nextCardRoom(measurer, shows = nextCard, sending = sending, sealed = card.sealed)
-            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + nextHeight + pillHeight + printRow + gap
+            val bottomRoom = safeBottom + 8.dp.toPx() + hintHeight + 2.dp.toPx() + quietHeight + pillHeight + printRow + gap
             val wordsWidth = Constraints(maxWidth = (width - 48.dp.roundToPx()).coerceAtLeast(1))
             val longestWords = if (card.sealed) "It opens Christmas morning, in 56 days." else "A Christmas card from ${card.fromFirst}."
             val wordsHeight = measurer.measure(longestWords, tableWordsStyle, constraints = wordsWidth).size.height
@@ -469,22 +472,10 @@ private fun rememberTableGeometry(
                 wordsBottom = wordsBottom,
                 // The geometry keeps what a full-size card leaves under it, once it's turned over.
                 keepsMediaRoom = media,
+                quietRoom = quietHeight,
             )
         }
     }
-}
-
-/** "Open the next card" with "2 more waiting" under it, a quiet button of its own (plan Part 4); none while sealing. */
-private fun Density.nextCardRoom(
-    measurer: TextMeasurer,
-    shows: Boolean,
-    sending: Boolean,
-    sealed: Boolean,
-): Float {
-    if (!shows || sending || sealed) return 0f
-    val words = measurer.measure(OPEN_THE_NEXT_CARD, tableQuietStyle).size.height
-    val line = measurer.measure("9 more waiting", tableHintStyle).size.height
-    return max(48.dp.toPx(), words + line + 12.dp.toPx()) + 2.dp.toPx()
 }
 
 /** How far the card's lowest edge can move: the light moves it 5.5 dp, and its 1° turn lowers a corner about 3.5. */
@@ -694,9 +685,3 @@ private fun LetterOpens(
 
 private const val LETTER_OPENS_MS = 1_100L
 private const val LETTER_OPENS_AT_ONCE_MS = 300L
-
-/** The reader's quiet line under the button: "Send … a card" and, where it can be shared, "Share this card" (plan 11.1). */
-private fun hasQuietLine(
-    sendBack: CardTableSendBack?,
-    canShare: Boolean,
-): Boolean = sendBack != null || canShare

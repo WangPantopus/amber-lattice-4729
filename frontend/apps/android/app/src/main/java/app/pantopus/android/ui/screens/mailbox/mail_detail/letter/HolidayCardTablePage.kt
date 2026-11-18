@@ -144,8 +144,9 @@ private fun MutableList<CardTableMenuItem>.addPieceItems(
 }
 
 /**
- * The reply's quiet button (plan Part 3): "Write back to Hazel" while this reader may, or "You wrote back · {day}"
- * (opening the joined card) once they have; null otherwise, and while the joined card hasn't been read.
+ * The reply's quiet button (plan Part 3): "Write back to Hazel" ("Write back" when the row is short of room) while this
+ * reader may, or "You wrote back" (opening the joined card, which shows the day) once they have; null otherwise, and
+ * while the joined card hasn't been read.
  */
 private fun replyAction(
     state: CardReplyState,
@@ -156,11 +157,8 @@ private fun replyAction(
     val exchange = state.exchange ?: return null
     val mine = exchange.reply
     return when {
-        mine != null -> {
-            val day = HolidayCardTimes.shortDay(mine.sentOn, HolidayCardTimes.zone(null)).ifEmpty { null }
-            CardTableSendBack(listOfNotNull("You wrote back", day).joinToString(" · "), onJoined)
-        }
-        exchange.canReply -> CardTableSendBack("Write back to $first", onWrite)
+        mine != null -> CardTableSendBack("You wrote back", onClick = onJoined)
+        exchange.canReply -> CardTableSendBack("Write back to $first", short = "Write back", onClick = onWrite)
         else -> null
     }
 }
@@ -275,7 +273,7 @@ private fun sendBackAction(
 ): CardTableSendBack? {
     val name = fromName.trim()
     if (person == null || sendCard == null || name.isEmpty()) return null
-    return CardTableSendBack("Send ${name.substringBefore(' ')} a card") { sendCard(person, name) }
+    return CardTableSendBack("Send ${name.substringBefore(' ')} a card", short = "Send a card") { sendCard(person, name) }
 }
 
 /** The card as the table draws it, with the names on its envelope. */

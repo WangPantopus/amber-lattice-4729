@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -46,13 +47,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -73,6 +77,8 @@ data class CardTableMenuItem(
 /** "Send Hazel a card": the quiet second button under the main one, once the card has been turned over. */
 data class CardTableSendBack(
     val title: String,
+    /** Its words when two don't fit side by side in the quiet row ("Send a card", "Write back"); a screen reader hears [title]. */
+    val short: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -143,26 +149,21 @@ internal fun CardTableControls(
     gone: List<CardTableSendBack> = emptyList(),
     /** "Open the next card" once the card has been turned over, with the Mailbox list's waiting cards in hand. */
     next: CardTableNext? = null,
-    /** The reply's quiet button, first in the line, with "Share this card" then in ⋯ (plan Part 3). */
+    /** "Write back to Hazel" or "You wrote back" (plan Part 3). */
     reply: CardTableSendBack? = null,
 ) {
     val top = insets.calculateTopPadding()
     val bottom = insets.calculateBottomPadding()
     val hidden = state.controlsHidden && !touchExploring
-    // The quiet buttons under the main one: the sender's once their card is gone, or the reader's "Send … a card" once
-    // the card has been turned over (not on a sealed card), with "Share this card" beside it (plan 11.1; the corner icon
-    // stays).
+    // The sender's quiet buttons once their card is gone; the reader's one quiet row once the card has been turned over
+    // (not on a sealed card): at most two, side by side, never stacked (the design check of November 17). "Share this
+    // card" keeps its corner button and its line in ⋯.
     val moment = state.sending
-    val quiet =
-        when {
-            moment != null -> if (moment.step == SendStep.Gone) gone else emptyList()
-            state.sendBackShows ->
-                listOfNotNull(reply, sendBack, CardTableSendBack(SHARE_THIS_CARD, onShare).takeIf { canShare && reply == null })
-            else -> emptyList()
-        }
+    val goneButtons = if (moment?.step == SendStep.Gone) gone else emptyList()
+    val row = if (moment == null && state.sendBackShows) quietRow(next, reply, sendBack) else emptyList()
     Box(modifier = Modifier.fillMaxSize()) {
         Words(state, top)
-        ActionBlock(state, hidden, bottom, quiet, next.takeIf { state.sendBackShows })
+        ActionBlock(state, hidden, bottom, goneButtons, row)
         if (showsTurnTip) TurnTip()
         TopRow(state, top, hidden, canShare, menu.isNotEmpty(), onClose, onShare)
         if (state.menuOpen && menu.isNotEmpty()) MenuPanel(state, top, menu)
@@ -271,8 +272,8 @@ private fun ActionBlock(
     state: CardTableState,
     hidden: Boolean,
     bottom: Dp,
-    quiet: List<CardTableSendBack>,
-    next: CardTableNext?,
+    gone: List<CardTableSendBack>,
+    row: List<QuietChoice>,
 ) {
     val away = hidden || state.step == TableStep.Pulling
     val fade by animateFloatAsState(if (away) 0f else 1f, tween(350), label = "tableAct")
@@ -299,23 +300,15 @@ private fun ActionBlock(
                 TablePill(state.primaryLabel, away, "cardTablePrimary", state::primary)
             }
             if (state.sending == null) {
-                // The reader's quiet buttons side by side in the one quiet line (plan 11.1), wrapping at large text.
-                FlowRow(horizontalArrangement = Arrangement.Center) {
-                    quiet.forEach { action ->
-                        val tag =
-                            when {
-                                action.title == SHARE_THIS_CARD -> "cardTableShareQuiet"
-                                action.title.startsWith("Send ") -> "cardTableSendBack"
-                                else -> "cardTableWriteBack"
-                            }
-                        QuietButton(action, away, tag)
-                    }
-                }
+                // The line slot stays with the main button; under it, the reader's one quiet row (as on the web and iPhone).
+                HintSlot(state, away, printButton)
+                QuietRow(row, away)
             } else {
-                quiet.forEachIndexed { index, action -> QuietButton(action, away, "cardTableGone.$index") }
+                gone.forEachIndexed { index, action ->
+                    QuietButton(action.title, action.title, away, "cardTableGone.$index", action.onClick)
+                }
+                HintSlot(state, away, printButton)
             }
-            next?.let { NextCardButton(it, away) }
-            HintSlot(state, away, printButton)
         }
     }
 }
@@ -346,51 +339,107 @@ private fun TablePill(
     }
 }
 
-/** "Open the next card" with "{n} more waiting" as the line under it, one button to touch and to hear (plan Part 4). */
-@Composable
-private fun NextCardButton(
-    next: CardTableNext,
-    away: Boolean,
-) {
-    Column(
-        modifier =
-            Modifier
-                .minimumInteractiveComponentSize()
-                .clip(RoundedCornerShape(22.dp))
-                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = next.onClick))
-                .heightIn(min = 44.dp)
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .semantics(mergeDescendants = true) {}
-                .testTag("cardTableNextCard"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(OPEN_THE_NEXT_CARD, style = tableQuietStyle)
-        Text("${next.waiting} more waiting", style = tableHintStyle, modifier = Modifier.testTag("cardTableNextWaiting"))
-    }
-}
-
 /** The reader's way on to the next card waiting (plan Part 4). */
 internal const val OPEN_THE_NEXT_CARD = "Open the next card"
 
-/** A quiet button under the main one: words only, 44 dp to touch. */
+/** "Open the next card (2 more)": the count in the button's own words (the design check of November 17). */
+internal fun openTheNextCard(waiting: Int): String = "$OPEN_THE_NEXT_CARD ($waiting more)"
+
+/** One button of the reader's quiet row: its full words, its short words, what a screen reader hears, and its tag. */
+internal class QuietChoice(
+    val full: String,
+    val short: String,
+    val spoken: String,
+    val tag: String,
+    val onClick: () -> Unit,
+)
+
+/**
+ * The reader's quiet row, at most two, in this order: "Open the next card" when cards wait, "Write back to Hazel" (or "You
+ * wrote back"), "Send Hazel a card". The rest are in ⋯.
+ */
+private fun quietRow(
+    next: CardTableNext?,
+    reply: CardTableSendBack?,
+    sendBack: CardTableSendBack?,
+): List<QuietChoice> {
+    val nextChoice =
+        next?.let {
+            QuietChoice(
+                full = openTheNextCard(it.waiting),
+                short = "Next card (${it.waiting} more)",
+                spoken = "$OPEN_THE_NEXT_CARD, ${it.waiting} more waiting",
+                tag = "cardTableNextCard",
+                onClick = it.onClick,
+            )
+        }
+    val replyChoice = reply?.let { QuietChoice(it.title, it.short ?: it.title, it.title, "cardTableWriteBack", it.onClick) }
+    val sendChoice = sendBack?.let { QuietChoice(it.title, it.short ?: it.title, it.title, "cardTableSendBack", it.onClick) }
+    return listOfNotNull(nextChoice, replyChoice, sendChoice).take(2)
+}
+
+/**
+ * One row, never a second row or a column: both buttons in their full words when they fit side by side, else both in
+ * their short words, else only the first (at the largest text sizes).
+ */
+@Composable
+private fun QuietRow(
+    choices: List<QuietChoice>,
+    away: Boolean,
+) {
+    if (choices.isEmpty()) return
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val room = constraints.maxWidth
+        val density = LocalDensity.current
+        val shown = remember(choices, room, density) { with(density) { fitQuietRow(choices, room, measurer) } }
+        Row(horizontalArrangement = Arrangement.Center) {
+            shown.forEach { (choice, words) -> QuietButton(words, choice.spoken, away, choice.tag, choice.onClick) }
+        }
+    }
+}
+
+/** Which buttons the row shows, and in which words, for [room] pixels across. */
+private fun Density.fitQuietRow(
+    choices: List<QuietChoice>,
+    room: Int,
+    measurer: TextMeasurer,
+): List<Pair<QuietChoice, String>> {
+    val padding = (2 * QUIET_PADDING).dp.roundToPx()
+    val width = { words: String -> measurer.measure(words, tableQuietStyle, maxLines = 1, softWrap = false).size.width + padding }
+    val full = choices.map { it.full }
+    if (full.sumOf(width) <= room) return choices.zip(full)
+    val short = choices.map { it.short }
+    if (short.sumOf(width) <= room) return choices.zip(short)
+    val first = choices.first()
+    return listOf(first to if (width(first.full) <= room) first.full else first.short)
+}
+
+/** A quiet button's space either side of its words. */
+private const val QUIET_PADDING = 16
+
+/** A quiet button under the main one: words only, on one line, 44 dp to touch; a screen reader hears [spoken]. */
 @Composable
 private fun QuietButton(
-    action: CardTableSendBack,
+    words: String,
+    spoken: String,
     away: Boolean,
     tag: String,
+    onClick: () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
                 .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(22.dp))
-                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = action.onClick))
+                .then(if (away) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick))
                 .heightIn(min = 44.dp)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = QUIET_PADDING.dp)
+                .semantics { contentDescription = spoken }
                 .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        Text(action.title, style = tableQuietStyle)
+        Text(words, style = tableQuietStyle, maxLines = 1, softWrap = false)
     }
 }
 
