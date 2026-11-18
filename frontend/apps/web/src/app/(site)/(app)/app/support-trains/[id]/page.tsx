@@ -634,6 +634,12 @@ export default function SupportTrainDetailPage() {
                   slot={slotsById.get(reservation.slot_id)}
                   busy={helperAction !== null}
                   timezone={trainZone}
+                  // The server refuses a helper's change once the train has ended or the date is behind it.
+                  canEdit={
+                    !['completed', 'archived'].includes(data.status) &&
+                    !(slotsById.get(reservation.slot_id)?.slot_date &&
+                      String(slotsById.get(reservation.slot_id).slot_date) < todayKey)
+                  }
                   onDelivered={(slotDate) => handleMarkDelivered(reservation.id, slotDate)}
                   onEdit={() => openEditSignup(reservation)}
                   onLeave={() => handleLeaveSlot(reservation.id)}
@@ -914,11 +920,12 @@ const MY_SIGNUP_STATUS: Record<string, string> = {
   confirmed: 'Delivery confirmed',
 };
 
-function MySignupRow({ reservation, slot, busy, timezone, onDelivered, onEdit, onLeave }: {
+function MySignupRow({ reservation, slot, busy, timezone, canEdit, onDelivered, onEdit, onLeave }: {
   reservation: any;
   slot: any;
   busy: boolean;
   timezone: string | null;
+  canEdit: boolean;
   onDelivered: (slotDate?: string | null) => void;
   onEdit: () => void;
   onLeave: () => void;
@@ -962,7 +969,7 @@ function MySignupRow({ reservation, slot, busy, timezone, onDelivered, onEdit, o
           >
             Mark delivered
           </button>
-          {reservation.updated_at && (
+          {canEdit && reservation.updated_at && (
             <button
               type="button"
               onClick={onEdit}
