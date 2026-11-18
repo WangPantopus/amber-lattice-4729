@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.mailbox.cards.table
 
+import androidx.compose.animation.core.EaseIn
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -273,6 +274,12 @@ private const val UNDER_TOP_BUTTONS = 62f
 /** A second tap within this long, on the same spot, is a double-tap; one tap turns the card after it. */
 private const val DOUBLE_TAP_MS = 300L
 
+// The first leaf's lift (plan Part 9): 90° in 0.45 s, darkening by up to 22%; with animations off, a 0.2 s fade.
+private const val LEAF_TURN = 90f
+private const val LEAF_SHADE = 0.22f
+private const val LEAF_LIFT_S = 0.45f
+private const val LEAF_FADE_S = 0.2f
+
 /** The small taps you can feel, firmest last; [Tick] is the paper's light tick every 8% of a card's pull (plan 8.1). */
 internal enum class TableTap { Hold, Soft, Land, Crack, Refuse, Tick }
 
@@ -364,6 +371,48 @@ internal class CardTableState(
     /** The card's back is the side up now. */
     var backUp by mutableStateOf(false)
         private set
+
+    /** A long note goes over two leaves on this card (plan Part 9); the table says so once the pen has laid it out. */
+    var twoLeaves by mutableStateOf(false)
+        private set
+
+    /** "Read on" has lifted the first leaf: the card's own back, the second leaf, is up. */
+    var leafLifted by mutableStateOf(false)
+        private set
+
+    /** How far the first leaf's lift has run, 0 to 1 over its 0.45 s (0.2 s fading, with animations off). */
+    var leafRun by mutableFloatStateOf(0f)
+        private set
+
+    /** Note side up on the first leaf: the main button reads "Read on". */
+    val onFirstLeaf: Boolean get() = twoLeaves && backUp && !leafLifted
+
+    /** What a screen reader hears for the main button where its words don't say it all; null: its words. */
+    var primarySpoken by mutableStateOf<String?>(null)
+        private set
+
+    /** The first leaf's turn about its top edge, easing in: 0° lying on the back, 90° gone. None with animations off. */
+    val leafAngle: Float get() = if (reduceMotion) 0f else LEAF_TURN * EaseIn.transform(leafRun)
+
+    /** It darkens as it rises, by up to 22%. */
+    val leafShade: Float get() = if (reduceMotion) 0f else LEAF_SHADE * EaseIn.transform(leafRun)
+
+    /** Drawn while it lies there or rises, never past 90°; with animations off it fades out instead. */
+    val leafAlpha: Float
+        get() =
+            when {
+                !twoLeaves -> 0f
+                reduceMotion -> 1f - leafRun
+                leafRun >= 1f -> 0f
+                else -> 1f
+            }
+
+    /** The pen has laid the note out on this card: one side, or two leaves. */
+    fun leavesLaid(two: Boolean) {
+        if (two == twoLeaves) return
+        twoLeaves = two
+        mark()
+    }
 
     /** The card is enlarged: a drag moves around it, one tap does nothing, a double-tap or Back brings it back. */
     val enlarged: Boolean get() = zoom.enlarged
@@ -489,6 +538,7 @@ internal class CardTableState(
             words = moment.words
             primaryLabel = moment.primary
             hint = moment.hint
+            primarySpoken = null
             showsTopRight = false
             return
         }
@@ -518,7 +568,12 @@ internal class CardTableState(
                 nextHint = "or pull it out with your finger"
             }
             TableStep.Out -> {
-                nextPrimary = if (backUp) "Turn it back" else "Turn it over"
+                nextPrimary =
+                    when {
+                        onFirstLeaf -> READ_ON
+                        backUp -> "Turn it back"
+                        else -> "Turn it over"
+                    }
                 nextHint =
                     when {
                         enlarged -> "double-tap to bring it back"
@@ -533,6 +588,7 @@ internal class CardTableState(
         val letter = if (card.letter) LetterWords.of(step, first) else null
         words = letter?.words ?: nextWords
         primaryLabel = letter?.primary ?: nextPrimary
+        primarySpoken = if (primaryLabel == READ_ON) READ_ON_SPOKEN else null
         hint = letter?.hint ?: nextHint
         showsTopRight = !card.letter && (step == TableStep.Out || (sealed && (step == TableStep.Back || step == TableStep.Front)))
     }
@@ -617,7 +673,7 @@ internal class CardTableState(
             TableStep.Back -> primaryOnFlapSide()
             TableStep.Flap ->
                 if (reduceMotion) cardOutAtOnce() else takeOut()
-            TableStep.Out -> turnCard()
+            TableStep.Out -> if (onFirstLeaf) liftLeaf() else turnCard()
             TableStep.Pulling -> Unit
         }
     }
@@ -643,6 +699,17 @@ internal class CardTableState(
         crack()
         reportOpened()
         mark()
+    }
+
+    /** "Read on" (plan Part 9): the first leaf lifts from its foot and is gone; the card's back is the second leaf. */
+    private fun liftLeaf() {
+        pendingTurn?.cancel()
+        leafLifted = true
+        leafRun = 0f
+        // The card's own turn is felt, not heard, on this phone: the leaf is the same.
+        onTap(TableTap.Soft)
+        mark()
+        wake()
     }
 
     private fun turnCard(direction: Int = -1) {
@@ -920,7 +987,8 @@ internal class CardTableState(
         pendingTurn =
             scope.launch {
                 delay(DOUBLE_TAP_MS)
-                turnCard()
+                // Note side up on the first leaf, a tap reads on, as the button does (plan Part 9).
+                if (onFirstLeaf) liftLeaf() else turnCard()
             }
     }
 
@@ -1046,6 +1114,7 @@ internal class CardTableState(
             if (spring.advance(steps, h)) moving = true
         }
         if (sending?.frame(dt, steps, h) == true) moving = true
+        if (leafFrame(dt)) moving = true
         tickAlongThePull()
         soundCues.listen(((pull.x - FLAP_OPEN) / (1f - FLAP_OPEN)).coerceIn(0f, 1f), lay.x)
         // Once it has cleared the envelope, the card is laid down in front of it.
@@ -1058,6 +1127,23 @@ internal class CardTableState(
             moving = true
         }
         return first || moving || drag != null || drifting
+    }
+
+    /**
+     * The first leaf's lift runs on (plan Part 9); turned back to its picture, the card has its first leaf in place
+     * again, so turning it over always starts there. True while it's lifting.
+     */
+    private fun leafFrame(dt: Float): Boolean {
+        if (!leafLifted) return false
+        if (!cardBackShows) {
+            leafLifted = false
+            leafRun = 0f
+            mark()
+            return false
+        }
+        if (leafRun >= 1f) return false
+        leafRun = min(1f, leafRun + dt / if (reduceMotion) LEAF_FADE_S else LEAF_LIFT_S)
+        return true
     }
 
     /**

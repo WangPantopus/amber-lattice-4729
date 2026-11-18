@@ -21,6 +21,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
@@ -731,7 +733,11 @@ private fun TableCardLayer(
     val out = state.cardOutForOrder
     val density = LocalDensity.current.density
     val painter = remember(faceArt, density) { faceArt?.let { CardFacePainter(it, density) } }
-    val words = remember(state.card) { state.card.words(cardPaperColor(state.card.paper)) }
+    // A long note goes over two leaves where the card can be turned: not while it's being sealed (plan Part 9).
+    val words = remember(state.card) { state.card.words(cardPaperColor(state.card.paper)).copy(leaves = state.sending == null) }
+    LaunchedEffect(painter, words, g.cardWidth) {
+        painter?.let { state.leavesLaid(it.twoLeaves(words, g.cardWidth / 100f)) }
+    }
     val loaded = (picture as? CardPictureState.Loaded)?.picture
     Box(
         modifier =
@@ -778,10 +784,43 @@ private fun TableCardLayer(
                         val face = painter ?: return@drawBehind
                         drawIntoCanvas { face.drawBack(it.nativeCanvas, size.width, words) }
                     },
-            )
+            ) { FirstLeaf(state, painter, words, g) }
             TurningLight(state)
         }
     }
+}
+
+/**
+ * A long note's first leaf (plan Part 9), lying on the card's back. "Read on" lifts it from its foot, hinged along its
+ * top edge, with the depth the card's own turn uses; it darkens as it rises and isn't drawn past 90°.
+ */
+@Composable
+private fun BoxScope.FirstLeaf(
+    state: CardTableState,
+    painter: CardFacePainter?,
+    words: CardFaceWords,
+    g: TableGeometry,
+) {
+    if (!state.twoLeaves) return
+    Box(
+        Modifier
+            .matchParentSize()
+            .graphicsLayer {
+                alpha = state.leafAlpha
+                // CSS's X turn runs the other way from Android's: the foot comes up toward you.
+                rotationX = -state.leafAngle
+                transformOrigin = TransformOrigin(0.5f, 0f)
+                cameraDistance = g.cardWidth * 5.2f / PIXELS_PER_CAMERA_UNIT
+            }.drawBehind {
+                val face = painter ?: return@drawBehind
+                drawIntoCanvas { face.drawFirstLeaf(it.nativeCanvas, size.width, words) }
+                val shade = state.leafShade
+                if (shade > 0.001f) {
+                    val corner = size.width * 0.007f
+                    drawRoundRect(Color.Black.copy(alpha = shade), cornerRadius = CornerRadius(corner, corner))
+                }
+            },
+    )
 }
 
 /**

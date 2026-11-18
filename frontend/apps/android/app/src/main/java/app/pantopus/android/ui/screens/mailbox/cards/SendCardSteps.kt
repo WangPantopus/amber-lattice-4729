@@ -41,6 +41,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -102,6 +103,7 @@ import app.pantopus.android.data.api.models.mailbox.StampBalance
 import app.pantopus.android.ui.components.firstTapClosesKeyboard
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardMood
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardRack
+import app.pantopus.android.ui.screens.mailbox.cards.table.rememberSecondLeaf
 import app.pantopus.android.ui.screens.mailbox.components.MailKind
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceCard
@@ -818,6 +820,8 @@ internal fun WriteStep(
     /** "Help me write it" (`GET /api/mailbox/cards` `note_help`, the server's launch key `card_note_help`); null: no button. */
     noteHelp: CardNoteHelper? = null,
 ) {
+    // The card's width as it's written on: the note's leaves are worked out at it (plan Part 9).
+    var cardWidth by remember { mutableIntStateOf(0) }
     var showBack by rememberSaveable { mutableStateOf(true) }
     var signing by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -833,7 +837,7 @@ internal fun WriteStep(
     Column(modifier = Modifier.padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3)) {
         HolidayCardFlip(
             showBack = showBack,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onSizeChanged { cardWidth = it.width },
             front = {
                 HolidayCardFront(
                     design = design.id,
@@ -899,6 +903,20 @@ internal fun WriteStep(
                 fontWeight = if (count >= limit) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (count >= limit) PantopusColors.cardWax else DeskInk.quiet,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("sendCardCount"),
+            )
+        }
+        // The writing box stays as it is; the reader will turn a long note's first leaf over (plan Part 9).
+        if (LaunchFeatures.cardTable && rememberSecondLeaf(message, design.id, cardWidth)) {
+            Text(
+                "This note runs onto a second leaf.",
+                fontSize = 13.sp,
+                color = DeskInk.quiet,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = Spacing.s1)
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .testTag("sendCardSecondLeaf"),
             )
         }
         if (noteHelp != null) {

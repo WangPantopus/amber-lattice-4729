@@ -42,9 +42,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.ui.screens.mailbox.cards.CardButton
 import app.pantopus.android.ui.screens.mailbox.cards.CardButtonKind
+import app.pantopus.android.ui.screens.mailbox.cards.CardLeaves
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardBack
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFlip
 import app.pantopus.android.ui.screens.mailbox.cards.HolidayCardFront
+import app.pantopus.android.ui.screens.mailbox.cards.rememberCardLeaves
 import app.pantopus.android.ui.screens.mailbox.components.MailPiece
 import app.pantopus.android.ui.screens.mailbox.components.MailPieceModel
 import app.pantopus.android.ui.theme.PantopusColors
@@ -98,6 +100,7 @@ internal fun HolidayCardPage(
             )
         } else {
             var showBack by rememberSaveable(letter.envelope.id) { mutableStateOf(false) }
+            val leaves = rememberCardLeaves()
             HolidayCardOutOfEnvelope(
                 envelope = letter.envelope,
                 card = card,
@@ -105,6 +108,7 @@ internal fun HolidayCardPage(
                 showBack = showBack,
                 opening = stage == CardStage.Opening,
                 onOut = { stage = CardStage.Card },
+                leaves = leaves,
             )
             Row(
                 modifier = Modifier.padding(top = Spacing.s4),
@@ -112,11 +116,12 @@ internal fun HolidayCardPage(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CardButton(
-                    if (showBack) "Turn it back" else "Turn it over",
-                    onClick = { showBack = !showBack },
+                    leaves.turnLabel(showBack),
+                    onClick = { leaves.press(showBack) { showBack = !showBack } },
                     kind = CardButtonKind.Paper,
                     fill = false,
                     state = if (showBack) "Showing the back" else "Showing the picture",
+                    spoken = leaves.turnSpoken(showBack),
                     modifier = Modifier.testTag("mailHolidayCardTurn"),
                 )
                 CardButton(
@@ -143,6 +148,8 @@ internal fun HolidayCardOutOfEnvelope(
     showBack: Boolean,
     opening: Boolean,
     onOut: () -> Unit,
+    /** A long note's two leaves (plan Part 9); null: one side. */
+    leaves: CardLeaves? = null,
 ) {
     // First composed as it starts opening (from 0), or already out (at 1).
     val rise = remember { Animatable(if (opening) 0f else 1f) }
@@ -177,6 +184,7 @@ internal fun HolidayCardOutOfEnvelope(
             val shape = RoundedCornerShape(3.dp)
             HolidayCardFlip(
                 showBack = showBack,
+                leaves = leaves,
                 front = {
                     HolidayCardFront(
                         design = card.design,
@@ -195,6 +203,7 @@ internal fun HolidayCardOutOfEnvelope(
                         year = card.year,
                         message = card.note,
                         signature = card.signature,
+                        leaves = leaves,
                         modifier = Modifier.shadow(10.dp, shape).clip(shape),
                     )
                 },
