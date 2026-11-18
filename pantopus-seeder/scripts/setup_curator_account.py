@@ -37,7 +37,7 @@ from src.config.sources_config import get_sources_for_region  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
 
-DEFAULT_DISPLAY_NAME = "Pantopus Local"
+DEFAULT_DISPLAY_NAME = "Pantopus"
 DEFAULT_BIO = (
     "Your neighborhood bot — sharing local news, events, and seasonal tips "
     "for the community. Powered by Pantopus."
