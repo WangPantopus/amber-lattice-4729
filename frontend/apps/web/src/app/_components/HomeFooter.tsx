@@ -42,7 +42,6 @@ export default function HomeFooter() {
           </a>
           <span>Real life, connected.</span>
           <span>© 2026 Pantopus, Inc.</span>
-          <span>Earth imagery: NASA</span>
         </div>
         <nav className={styles.footerCols} aria-label="Footer">
           {COLUMNS.map((col) => (
