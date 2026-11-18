@@ -217,10 +217,16 @@
   text-decoration: underline; text-decoration-color: rgba(246, 236, 217, 0.35); text-underline-offset: 0.25em; transition: opacity 0.35s ease;
 }
 .stage .quiet:hover { color: var(--cream); }
-.quietRow { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 0.25rem; transition: opacity 0.35s ease; }
-/* Open the next card (Part 4): a quiet button and "{n} more waiting" under it. */
-.nextRow { display: flex; flex-direction: column; align-items: center; transition: opacity 0.35s ease; }
-.nextLine { margin-top: -0.375rem; font-size: 0.8125rem; color: var(--cream-faint); }
+/* One row of quiet buttons under the line slot, at most two side by side, never a second row (design check of
+   November 17, Fix 1). Its height is kept while it's hidden, so the card doesn't move when it shows. */
+.quietRow {
+  position: relative; display: flex; flex-wrap: nowrap; justify-content: center; column-gap: 0.25rem; min-height: 2.75rem;
+  max-width: 100%; transition: opacity 0.35s ease;
+}
+.stage .quietRow .quiet { white-space: nowrap; }
+/* Both wordings of each button, laid out unseen, to choose the words that fit. */
+.quietMeasure { position: absolute; left: 0; top: 0; display: flex; width: max-content; visibility: hidden; pointer-events: none; }
+.stage .quietMeasure .quiet { display: inline-flex; align-items: center; white-space: nowrap; }
 .toast {
   position: absolute; z-index: 60; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 62px); transform: translateX(-50%); width: max-content;
   max-width: 86%; padding: 9px 15px; border-radius: 14px; background: rgba(24, 18, 16, 0.88); font-size: 0.84375rem; line-height: 1.35; color: var(--cream);

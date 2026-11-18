@@ -113,7 +113,7 @@ export default function CardTablePiece({
   const senderId = !card.sealed && !blockedNow && season.data?.open ? piece.sender_user_id ?? null : null;
   const theirs = useCardArrivals(senderId);
   const sendBack: TableMenuItem | null = senderId && theirs.isSuccess
-    ? { label: `Send ${firstNameOf(from)} a card`, onSelect: () => router.push(sendOneBackPath({ userId: senderId, name: from })) }
+    ? { label: `Send ${firstNameOf(from)} a card`, short: 'Send a card', onSelect: () => router.push(sendOneBackPath({ userId: senderId, name: from })) }
     : null;
 
   // Write back (Part 3): the server says whether this reader can write back now (can_reply), and their own reply once it's
@@ -121,9 +121,10 @@ export default function CardTablePiece({
   const [writing, setWriting] = useState(false);
   const [showReply, setShowReply] = useState(false);
   const ownReply = !replyPiece && exchange?.reply ? exchange.reply : null;
+  // Under the card it reads "You wrote back" without its day (the joined card shows the day); a screen reader hears it.
   const writeBack: TableMenuItem | null = replyPiece || blockedNow ? null
-    : exchange?.can_reply ? { label: `Write back to ${firstNameOf(from)}`, onSelect: () => setWriting(true) }
-      : ownReply ? { label: `You wrote back · ${shortDay(ownReply.sent_on)}`, onSelect: () => setShowReply(true) } : null;
+    : exchange?.can_reply ? { label: `Write back to ${firstNameOf(from)}`, short: 'Write back', onSelect: () => setWriting(true) }
+      : ownReply ? { label: 'You wrote back', spoken: `You wrote back on ${shortDay(ownReply.sent_on)}`, onSelect: () => setShowReply(true) } : null;
   const reply: TableReply | null = replyPiece
     ? { note: piece.content || exchange?.reply?.note || '', fromName: from, signature: replyPiece.signature ?? null,
       writtenOn: exchange?.reply?.sent_on ?? piece.created_at }
@@ -195,9 +196,13 @@ export default function CardTablePiece({
     else items.push({ label: 'File in the Vault', onSelect: () => setSheet('vault') });
     items.push({ label: 'Shred', onSelect: () => { void shred(); } });
     if (!card.sealed && !replyPiece) items.push({ label: 'Open it again', onSelect: () => setReplay((n) => n + 1) });
+    // The quiet row under the card holds at most two buttons (design check of November 17, Fix 1), so everything it
+    // can offer is here too: Write back (or You wrote back), Send {first name} a card and Open the next card.
+    if (writeBack) items.push({ label: writeBack.label, onSelect: writeBack.onSelect });
     // With Write back in the quiet row, "Share this card" keeps its corner button and this line (Part 3).
     if (writeBack && !replyPiece) items.push({ label: 'Share this card', onSelect: () => setSheet('share') });
-    if (sendBack) items.push(sendBack);
+    if (sendBack) items.push({ label: sendBack.label, onSelect: sendBack.onSelect });
+    if (nextCard) items.push({ label: 'Open the next card', onSelect: nextCard.onOpen });
     if (piece.sender_user_id) {
       // As drawn for card memories (wave 4 drawing 6): the card itself is reported, and the person is named.
       items.push({ label: launchFeatures.holidayCardMemories ? 'Report this card' : 'Report', onSelect: () => setSheet('report') });
@@ -206,7 +211,7 @@ export default function CardTablePiece({
     return items;
     // The menu follows the piece; its handlers read the latest piece through this same render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label, Boolean(writeBack), Boolean(replyPiece)]);
+  }, [filed, archived, card.sealed, piece.sender_user_id, piece.recipient_home_id, from, sendBack?.label, writeBack?.label, Boolean(replyPiece), Boolean(nextCard)]);
 
   // A reply waits for the joined read, so its table is made once, with the room the reply needs.
   if (replyPiece && joined.isPending) return null;
