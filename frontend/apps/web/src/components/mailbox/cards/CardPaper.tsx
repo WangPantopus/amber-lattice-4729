@@ -131,7 +131,8 @@ type LeafCut = { note: string; fit: NoteFit; lineOf: number[][]; first: number; 
 /**
  * Part 9's rule. A note that fits 9 lines in the largest pen or 10 in the middle one stays on one side (null). A longer
  * one goes on two leaves at the first pen that holds it, 9, 10 or 11 lines a leaf: the first leaf takes that many lines as
- * the pen wraps them and the second the rest, never fewer than two, without a blank line at its top. A word is never
+ * the pen wraps them and the second the rest, without a blank line at its top and never fewer than two lines, except one
+ * line the writer began after a blank line, which stands alone with the blank line left out. A word is never
  * split between the leaves or cut: a word wider than a line (a web address) covers several lines, and the first leaf ends
  * before a word that would cross the break. A note that no pen holds on two leaves (very many short lines, or one word
  * taller than a leaf) stays on one side with Part 1's shrinking (null).
@@ -172,7 +173,9 @@ export function measureLeaves(note: string): LeafCut | null {
         const start = blank.has(first) ? first + 1 : first;
         const rest = total - start;
         if (rest > perLeaf) break;
-        if (rest >= 2) return { note, fit: size, lineOf, first, start };
+        // One line left may stand alone when the writer began it after a blank line (a closing such as "Merry Christmas!").
+        const closing = rest === 1 && start > first && !blank.has(start);
+        if (rest >= 2 || closing) return { note, fit: size, lineOf, first, start };
       }
     }
     return null;
