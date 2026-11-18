@@ -575,15 +575,19 @@ private fun LoadedBody(
                     onEditDetails = viewModel::openDetailsEditor,
                     canEditAddress = canEdit && !content.isRecipientDelegate,
                 )
-                ManageAudienceSection(
-                    sharingMode = content.sharingMode,
-                    canEdit = canEdit && !content.isRecipientDelegate,
-                    isBusy = ui.isSubmitting,
-                    invitedNames = ui.invitedNames,
-                    invitesFailed = ui.invitesFailed,
-                    onSetAudience = viewModel::setAudience,
-                    onInvite = onInvitePeople,
-                )
+                // Who can open it and invitations are the primary and co-organizers' (the server refuses a
+                // recipient_delegate both, including the invitations list), so a delegate doesn't see them.
+                if (!content.isRecipientDelegate) {
+                    ManageAudienceSection(
+                        sharingMode = content.sharingMode,
+                        canEdit = canEdit,
+                        isBusy = ui.isSubmitting,
+                        invitedNames = ui.invitedNames,
+                        invitesFailed = ui.invitesFailed,
+                        onSetAudience = viewModel::setAudience,
+                        onInvite = onInvitePeople,
+                    )
+                }
                 SectionOverline("Send an update")
                 SendUpdateForm(
                     chips = content.audienceChips,
