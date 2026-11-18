@@ -168,3 +168,54 @@ public struct PostcardReportRequest: Encodable, Sendable {
 public struct PostcardReportResponse: Decodable, Sendable, Hashable {
     public let recorded: Bool?
 }
+
+// MARK: - Phone check (phase 3)
+
+/// The mobile number in E.164 and, when someone else's name is on the account, that name.
+public struct PhoneCheckStartRequest: Encodable, Sendable {
+    public let phone: String
+    public let accountFirstName: String?
+    public let accountLastName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case phone
+        case accountFirstName = "account_first_name"
+        case accountLastName = "account_last_name"
+    }
+}
+
+public struct PhoneCheckStartResponse: Decodable, Sendable, Hashable {
+    public let sent: Bool?
+    public let resendAfterS: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case sent
+        case resendAfterS = "resend_after_s"
+    }
+}
+
+/// The code, with the same number (and the same other name, when one was given) as the start.
+public struct PhoneCheckVerifyRequest: Encodable, Sendable {
+    public let phone: String
+    public let code: String
+    public let accountFirstName: String?
+    public let accountLastName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case phone, code
+        case accountFirstName = "account_first_name"
+        case accountLastName = "account_last_name"
+    }
+}
+
+/// `verified`, `no_match` (the records don't show this address for the number) or `wrong_code`.
+public struct PhoneCheckVerifyResponse: Decodable, Sendable, Hashable {
+    public let result: String
+    public let level: String?
+    public let triesLeft: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case result, level
+        case triesLeft = "tries_left"
+    }
+}

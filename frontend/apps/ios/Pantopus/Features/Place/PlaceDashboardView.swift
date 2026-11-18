@@ -232,6 +232,8 @@ struct PlaceDashboardView: View {
                 homeId: viewModel.homeId,
                 onStart: { method in
                     showVerify = false
+                    // A fast check can verify the person before they come back: read Place again then.
+                    if viewModel.verifyOptions != nil { viewModel.reloadOnReturn() }
                     viewModel.onStartVerify(method, verifyAddress)
                 },
                 onClose: { showVerify = false },

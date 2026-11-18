@@ -414,6 +414,8 @@ public enum HubRoute: Hashable {
     /// W5 — the verify status screen (B2 pending → B3 success / B4 failed)
     /// after a method is chosen in the verify sheet.
     case placeVerifyStatus(homeId: String, method: PlaceVerifyMethod, address: String)
+    /// FASTVERIFY — "Phone check": the texted code and the phone records' answer for this Home.
+    case phoneCheck(homeId: String)
     /// W7 D1 — compose a template-only heads-up to a verified neighbor on
     /// your block. `recipient` is nil when opened without a chosen home
     /// (the "choose a neighbor" empty state).
@@ -852,11 +854,7 @@ public struct HubTabRoot: View {
                 homeId: home.homeId,
                 onStart: { method in
                     mailVerifyHome = nil
-                    switch method {
-                    case .document: path.append(.verifyResidency(homeId: home.homeId))
-                    case .mail: path.append(.postcardVerification(homeId: home.homeId))
-                    case .landlord: path.append(.verifyLandlord(homeId: home.homeId))
-                    }
+                    path.append(Self.verifyRoute(method, homeId: home.homeId))
                 },
                 onClose: { mailVerifyHome = nil },
                 onOpenDocumentStatus: {
@@ -1050,6 +1048,39 @@ public struct HubTabRoot: View {
         model.onOpenChristmasCards = { push(.christmasCards()) }
         model.onOpenSentCard = { id in push(.mailSentCard(id: id)) }
         return model
+    }
+
+    /// The screen each way to verify opens (the verify sheet's rows, a locked section's "Verify address").
+    static func verifyRoute(_ method: PlaceVerifyMethod, homeId: String) -> HubRoute {
+        switch method {
+        case .document: .verifyResidency(homeId: homeId)
+        case .mail: .postcardVerification(homeId: homeId)
+        case .landlord: .verifyLandlord(homeId: homeId)
+        case .phone: .phoneCheck(homeId: homeId)
+        }
+    }
+
+    /// The Home's street from the kept homes list, for a fast check's words.
+    static func homeStreet(_ homeId: String) -> String {
+        let home = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id.caseInsensitiveCompare(homeId) == .orderedSame }
+        let street = home?.home.address?.trimmingCharacters(in: .whitespaces) ?? ""
+        return street.isEmpty ? "this home" : street
+    }
+
+    /// A renter here sees "What others near you pay in rent" once verified.
+    static func isRenter(_ homeId: String) -> Bool {
+        let home = HomesStoreReads.peekMyHomes()?.value.homes.first { $0.id.caseInsensitiveCompare(homeId) == .orderedSame }
+        return home?.roleBase == "lease_resident" || home?.occupancy?.roleBase == "lease_resident"
+    }
+
+    /// A fast check passed: back to Your Place, which reads the new level.
+    @MainActor
+    private func leaveFastCheck(homeId: String) {
+        HomeVerifyOptionsStore.shared.forget(homeId: homeId)
+        path.removeAll { route in
+            if case .phoneCheck = route { return true }
+            return false
+        }
     }
 
     /// After Add Home in two steps: Your Place for the new Home, and its verify sheet once the sheet knows its rows.
@@ -3994,11 +4025,7 @@ public struct HubTabRoot: View {
                     group: group,
                     onStartVerify: { method in
                         // A locked section's "Verify address" opens the same doors as the dashboard's verify sheet.
-                        switch method {
-                        case .document: push(.verifyResidency(homeId: homeId))
-                        case .mail: push(.postcardVerification(homeId: homeId))
-                        case .landlord: push(.verifyLandlord(homeId: homeId))
-                        }
+                        push(Self.verifyRoute(method, homeId: homeId))
                     },
                     onOpenVerificationStatus: { push(.waitingRoom(homeId: homeId)) }
                 ),
@@ -4018,6 +4045,18 @@ public struct HubTabRoot: View {
             ) { pop() }
         case let .privacyMirror(homeId):
             PlacePrivacyMirrorView(viewModel: PlacePrivacyMirrorViewModel(homeId: homeId)) { pop() }
+        case let .phoneCheck(homeId):
+            PhoneCheckView(
+                viewModel: PhoneCheckViewModel(homeId: homeId, address: Self.homeStreet(homeId)),
+                isRenter: Self.isRenter(homeId),
+                onStart: { method in
+                    pop()
+                    push(Self.verifyRoute(method, homeId: homeId))
+                },
+                onMailCode: { push(.postcardVerification(homeId: homeId)) },
+                onGoToPlace: { leaveFastCheck(homeId: homeId) },
+                onBack: { pop() }
+            )
         case let .placeVerifyStatus(homeId, method, address):
             PlaceVerifyStatusView(
                 address: address,
@@ -4080,11 +4119,7 @@ public struct HubTabRoot: View {
                 // The sheet's doors open the REAL flows (Wedge Phase 2, D3);
                 // the simulated status screen stays only for previews.
                 onStartVerify: { method, _ in
-                    switch method {
-                    case .document: path.append(.verifyResidency(homeId: homeId))
-                    case .mail: path.append(.postcardVerification(homeId: homeId))
-                    case .landlord: path.append(.verifyLandlord(homeId: homeId))
-                    }
+                    path.append(Self.verifyRoute(method, homeId: homeId))
                 },
                 // A residency document already in review: its status, not a second upload.
                 onOpenVerificationStatus: { path.append(.waitingRoom(homeId: homeId)) },

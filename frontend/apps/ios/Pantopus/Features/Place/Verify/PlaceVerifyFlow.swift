@@ -20,12 +20,18 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
     case document
     case mail
     case landlord
+    /// FASTVERIFY: the phone number check, drawn only while the server offers it.
+    case phone
+
+    /// Today's doors, in today's order (the faster sheet draws the server's).
+    static let todayDoors: [PlaceVerifyMethod] = [.document, .mail, .landlord]
 
     var icon: PantopusIcon {
         switch self {
         case .document: .upload
         case .mail: .send
         case .landlord: .shieldCheck
+        case .phone: .smartphone
         }
     }
 
@@ -34,6 +40,7 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
         case .document: "Upload a document"
         case .mail: "Mail a code to my address"
         case .landlord: "Confirm with your landlord"
+        case .phone: "Use my phone number"
         }
     }
 
@@ -42,6 +49,7 @@ public enum PlaceVerifyMethod: String, CaseIterable, Hashable, Sendable {
         case .document: "A utility bill, lease, or ID. A person reviews it."
         case .mail: "A postcard with a code, 3–7 days. Yours to keep."
         case .landlord: "Your landlord confirms that you live here."
+        case .phone: "We text a code, then match the number to this address."
         }
     }
 }

@@ -119,7 +119,7 @@ struct PlaceVerifyStatusView: View {
             VStack(alignment: .leading, spacing: 9) {
                 PlaceDetailSectionLabel(text: "Other ways to verify")
                 VStack(spacing: 8) {
-                    ForEach(PlaceVerifyMethod.allCases.filter { $0 != method }, id: \.self) { m in
+                    ForEach(PlaceVerifyMethod.todayDoors.filter { $0 != method }, id: \.self) { m in
                         Button { stage = .pending } label: { methodRetryRow(m) }.buttonStyle(.plain)
                     }
                 }
@@ -191,6 +191,7 @@ struct PlaceVerifyStatusView: View {
         case .document: "A person will review your document. You'll get a notification the moment it's decided."
         case .mail: "We've mailed a postcard to your address. Enter the code when it arrives — 3–7 days. Keep the card."
         case .landlord: "We've asked your landlord to confirm that you live here. This usually takes 1–3 business days."
+        case .phone: "We're checking your phone number against this address."
         }
     }
 }
