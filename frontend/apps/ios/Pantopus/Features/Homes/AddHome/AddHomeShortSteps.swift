@@ -29,6 +29,23 @@ struct AddHomeShortLabel: View {
     }
 }
 
+/// The founder's line about the typed address, on "1 of 2" from the first keystroke to the checked address.
+struct AddHomeShortPrivacyLine: View {
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
+            Icon(.lock, size: 14, color: Theme.Color.appTextSecondary)
+                .accessibilityHidden(true)
+            // The founder's line, verbatim (no closing period).
+            Text("Only you see the address you type, others see your first name, never your address")
+                .pantopusTextStyle(.caption)
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("addHome_short_privacyLine")
+    }
+}
+
 // MARK: - 1 of 2: the checked address
 
 struct AddHomeShortFindStep: View {
@@ -49,17 +66,7 @@ struct AddHomeShortFindStep: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .accessibilityLabel("Checking the address")
             }
-            HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
-                Icon(.lock, size: 14, color: Theme.Color.appTextSecondary)
-                    .accessibilityHidden(true)
-                // The founder's line, verbatim (no closing period).
-                Text("Only you see the address you type, others see your first name, never your address")
-                    .pantopusTextStyle(.caption)
-                    .foregroundStyle(Theme.Color.appTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("addHome_short_privacyLine")
+            AddHomeShortPrivacyLine()
         }
     }
 
