@@ -142,6 +142,14 @@ private struct StartSupportTrainWhoAndWhyStep: View {
             } else {
                 contextNoteSection
                 privacySection
+                if !viewModel.inviteOnly, !viewModel.blockVisible {
+                    // The default (A2): who can open a train with both switches off.
+                    Text("Both off: anyone with the link. It isn't listed anywhere; share the link with the people you choose.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Color.appTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("startSupportTrainLinkAudienceNote")
+                }
             }
             StepRail(current: 1)
         }
@@ -293,7 +301,7 @@ private struct StartSupportTrainWhoAndWhyStep: View {
                 }
                 HStack(spacing: Spacing.s1) {
                     Icon(.lock, size: 10, color: Theme.Color.appTextMuted)
-                    Text("Shared only with people you invite")
+                    Text("Visible to the audience you choose for this train")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.Color.appTextMuted)
                     Spacer()
