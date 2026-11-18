@@ -2018,11 +2018,11 @@ router.get('/feed', verifyToken, async (req, res) => {
             {
               id: transitionId,
               type: 'transition',
-              title: 'Your Neighborhood Is Coming Alive!',
-              body: `${realPostCount} neighbors have posted recently. Real conversations are happening \u2014 join in!`,
+              title: 'Pulse Is Coming Alive Near You!',
+              body: `${realPostCount} people near you have posted recently. Real conversations are happening \u2014 join in!`,
               source: 'Community',
               post_type: 'neighborhood_win',
-              cta: 'Say hello to your neighbors',
+              cta: 'Say hello to people near you',
             },
             now.toISOString(),
             {
