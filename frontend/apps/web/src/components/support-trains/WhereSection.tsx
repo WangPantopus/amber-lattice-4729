@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { Home as HomeIcon, Navigation, CheckCircle2, MapPin, Pencil } from 'lucide-react';
 import * as api from '@pantopus/api';
 import AddressAutocomplete from '../AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 export type LocationOption = 'home' | 'current' | 'other' | null;
 
@@ -58,6 +59,8 @@ export default function WhereSection({
   const primaryHome = homes[0] ?? null;
   const primaryHomeHasLocation = !!primaryHome?.hasLocation;
 
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [gpsLocating, setGpsLocating] = useState(false);
   const [gpsError, setGpsError] = useState('');
   const [editingGpsAddress, setEditingGpsAddress] = useState(false);
@@ -237,6 +240,7 @@ export default function WhereSection({
           <AddressAutocomplete
             value={addressQuery}
             onChange={setAddressQuery}
+            near={homeCenter}
             onSelectNormalized={(n) => {
               if (n.latitude == null || n.longitude == null) return;
               onResolvedLocationChange({

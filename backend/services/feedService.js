@@ -10,6 +10,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { GeoCache } = require('../utils/geoCache');
 const { aroundYouEnabled } = require('../utils/featureFlags');
+const { isUuid, isIsoTime, invalidPosition } = require('../utils/pagingValues');
 const { personaPostVisibleToViewer } = require('../utils/personaPostVisibility');
 const {
   applyLocationPrecision,
@@ -939,6 +940,8 @@ function onlyShownPosts(query) {
 
 function applyCursorCondition(query, cursorCreatedAt, cursorId) {
   if (!cursorCreatedAt || !cursorId) return query;
+  // Routes check the position they were sent and answer 400; this keeps any other value out of the filter.
+  if (!isIsoTime(cursorCreatedAt) || !isUuid(cursorId)) throw invalidPosition();
   return query.or(
     `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${cursorId})`
   );
@@ -948,6 +951,7 @@ function applyPinnedCursorCondition(query, cursorCreatedAt, cursorId, cursorIsPi
   if (!cursorCreatedAt || !cursorId || cursorIsPinned == null) {
     return applyCursorCondition(query, cursorCreatedAt, cursorId);
   }
+  if (!isIsoTime(cursorCreatedAt) || !isUuid(cursorId)) throw invalidPosition();
 
   if (cursorIsPinned) {
     return query.or(

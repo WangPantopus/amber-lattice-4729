@@ -172,6 +172,8 @@ data class MailDetail(
     @Json(name = "first_opened_at") val firstOpenedAt: String? = null,
     /** A Christmas card (its note is [contentText]); null for everything else. */
     val card: MailCard? = null,
+    /** A reply to a Christmas card (plan Part 3; its note is [contentText]); null for everything else. */
+    @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
 ) {
     /** [senderDisplay] when it says something. */
     val printedSender: String?

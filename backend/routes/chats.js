@@ -10,6 +10,7 @@ const verifyToken = require('../middleware/verifyToken');
 const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
+const { isUuid, isIsoTime, invalidPosition } = require('../utils/pagingValues');
 const badgeService = require('../services/badgeService');
 const {
   serializeLocalProfileForViewer,
@@ -1108,21 +1109,33 @@ function normalizePaginationCursor(raw) {
   );
 }
 
+// A message position as the apps send it back: "<created_at>" or "<created_at>|<message id>". Throws (400) for
+// anything else, so only a plain time and id reach a query.
 function parseCursor(before) {
   if (!before) return { beforeTs: null, beforeId: null };
+  if (typeof before !== 'string' || before.length > 256) throw invalidPosition('Invalid message cursor');
   before = normalizePaginationCursor(before);
   const pipeIdx = before.indexOf('|');
-  if (pipeIdx === -1) return { beforeTs: before, beforeId: null };
-  return { beforeTs: before.slice(0, pipeIdx), beforeId: before.slice(pipeIdx + 1) };
+  const beforeTs = pipeIdx === -1 ? before : before.slice(0, pipeIdx);
+  const beforeId = pipeIdx === -1 ? null : before.slice(pipeIdx + 1);
+  if (!isIsoTime(beforeTs) || (beforeId !== null && !isUuid(beforeId))) throw invalidPosition('Invalid message cursor');
+  return { beforeTs, beforeId };
+}
+
+/** Whether a message list's `before` and `after` are positions parseCursor reads. */
+function validMessagePositions(...positions) {
+  try {
+    positions.forEach(parseCursor);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function roomInboxPage(query, userId, actorId = userId) {
   const limit = Math.min(Math.max(parseInt(query.limit, 10) || 200, 1), 500);
   const { beforeTs, beforeId } = parseCursor(query.before);
-  if (query.before && (String(query.before).length > 256 || !Number.isFinite(Date.parse(beforeTs))
-    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId || ''))) {
-    throw Object.assign(new Error('Invalid room cursor'), { status: 400 });
-  }
+  if (query.before && !beforeId) throw Object.assign(new Error('Invalid room cursor'), { status: 400 });
   if (query.type != null && typeof query.type !== 'string') {
     throw Object.assign(new Error('Invalid room type'), { status: 400 });
   }
@@ -1718,11 +1731,12 @@ router.post('/group', verifyToken, groupChatLimiter, validate(createGroupChatSch
  * Update room details (name, description)
  */
 /**
- * A plan's chat (type 'plan') changes its members and its name only through the
- * Plans endpoints (routes/plans.js), which keep it in step with who's in.
- * Answers for the caller and returns true when the room is a plan's (or can't be read).
+ * Only a group chat (type 'group') has members and a name its owner and admins manage here. A direct chat is its two
+ * people; a plan's chat changes only through the Plans endpoints (routes/plans.js), which keep it in step with who's
+ * in; a Support Train's, a home's and a task's chat follow their own memberships.
+ * Answers for the caller and returns true when the room is not a group chat (or can't be read).
  */
-async function refusePlanRoom(roomId, res) {
+async function refuseUnlessGroupRoom(roomId, res) {
   const { data: room, error } = await supabaseAdmin.from('ChatRoom').select('type').eq('id', roomId).maybeSingle();
   if (error) {
     res.status(503).json({ error: 'Chat is unavailable. Please try again.' });
@@ -1730,6 +1744,10 @@ async function refusePlanRoom(roomId, res) {
   }
   if (room?.type === 'plan') {
     res.status(403).json({ error: "A plan's chat changes only through the plan.", code: 'PLAN_ROOM' });
+    return true;
+  }
+  if (room && room.type !== 'group') {
+    res.status(403).json({ error: 'Only a group chat can be changed this way.', code: 'NOT_A_GROUP_CHAT' });
     return true;
   }
   return false;
@@ -1740,7 +1758,7 @@ router.put('/rooms/:roomId', verifyToken, validate(updateRoomSchema), async (req
     const { roomId } = req.params;
     const userId = req.user.id;
     const { roomName, roomDescription } = req.body;
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
     const { data: participant } = await supabaseAdmin
@@ -1971,6 +1989,7 @@ router.get('/conversations/:otherUserId/messages', verifyToken, async (req, res)
     const userId = req.user.id;
     const { otherUserId } = req.params;
     const { limit = 100, before, after, topicId } = req.query;
+    if (!validMessagePositions(before, after)) return res.status(400).json({ error: 'Invalid message cursor' });
     const asBusinessUserId = req.query.asBusinessUserId ? String(req.query.asBusinessUserId) : null;
 
     const lim = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 400);
@@ -2123,6 +2142,7 @@ router.get('/rooms/:roomId/messages', verifyToken, async (req, res) => {
     const { roomId } = req.params;
     const userId = req.user.id;
     const { limit = 50, before, after } = req.query;
+    if (!validMessagePositions(before, after)) return res.status(400).json({ error: 'Invalid message cursor' });
     const asBusinessUserId = req.query.asBusinessUserId ? String(req.query.asBusinessUserId) : null;
 
     // These reads don't depend on one another, so they start together; their answers are applied in the order below,
@@ -2976,7 +2996,7 @@ router.post('/rooms/:roomId/participants', verifyToken, participantLimiter, asyn
     if (!newUserId) {
       return res.status(400).json({ error: 'userId required' });
     }
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Verify user is owner/admin
     const { data: participant } = await supabaseAdmin
@@ -3069,7 +3089,7 @@ router.delete('/rooms/:roomId/participants/:participantUserId', verifyToken, par
   try {
     const { roomId, participantUserId } = req.params;
     const userId = req.user.id;
-    if (await refusePlanRoom(roomId, res)) return;
+    if (await refuseUnlessGroupRoom(roomId, res)) return;
     
     // Check if removing self or if user is admin/owner
     const isSelf = userId === participantUserId;

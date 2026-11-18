@@ -1,4 +1,6 @@
 'use client';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type LocationMode = 'home' | 'current' | 'address';
 
@@ -23,6 +25,8 @@ export default function WhereChips({
   hasHome,
   onAddressChange,
 }: WhereChipsProps) {
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-app-text-strong">Where</p>
@@ -49,12 +53,16 @@ export default function WhereChips({
         <p className="text-sm text-app-text-secondary truncate">{address}</p>
       )}
       {value === 'address' && (
-        <input
-          type="text"
+        <AddressAutocomplete
           value={address}
-          onChange={(e) => onAddressChange?.(e.target.value)}
+          onChange={(v) => onAddressChange?.(v)}
+          onSelectNormalized={() => {}}
+          fillPicked={(n) => [n.address, n.city, [n.state, n.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+          near={homeCenter}
+          hintText={null}
+          ariaLabel="Address"
           placeholder="Enter address..."
-          className="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface focus:outline-none focus:ring-2 focus:ring-emerald-400 placeholder:text-app-text-muted"
+          inputClassName="w-full px-3 py-2 border border-app-border rounded-lg text-sm text-app-text bg-app-surface focus:outline-none focus:ring-2 focus:ring-emerald-400 placeholder:text-app-text-muted"
         />
       )}
     </div>

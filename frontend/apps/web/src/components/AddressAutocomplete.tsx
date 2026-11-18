@@ -39,6 +39,11 @@ type Props = {
   near?: { lat: number; lng: number } | null;
   /** Street addresses only, for a house-number-and-street field. */
   streetOnly?: boolean;
+  /**
+   * What a pick writes into the field (default: the street line). A form whose one field holds the whole
+   * address (or only the city) says so here, so the picked text doesn't start a new search.
+   */
+  fillPicked?: (n: { address: string; city: string; state: string; zipcode: string }) => string;
 };
 
 const DEFAULT_INPUT_CLASS = 'w-full px-4 py-2 border border-app-border rounded-lg bg-app-surface text-app-text placeholder:text-app-text-secondary caret-gray-900 [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-primary-500';
@@ -82,6 +87,7 @@ export default function AddressAutocomplete({
   inputClassName = DEFAULT_INPUT_CLASS,
   near = null,
   streetOnly = false,
+  fillPicked,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -173,8 +179,9 @@ export default function AddressAutocomplete({
       if (!current()) return;
       const n = data.normalized;
       setLoading(false);
-      pickedText.current = n.address;
-      onChange(n.address); onSelectNormalized(n);
+      const filled = fillPicked ? fillPicked(n) : n.address;
+      pickedText.current = filled;
+      onChange(filled); onSelectNormalized(n);
     } catch { if (current()) setError('Failed to resolve address. Please select it again.'); }
     finally { if (current()) setLoading(false); }
   };

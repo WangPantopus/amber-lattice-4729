@@ -9,12 +9,15 @@ import { HomeTaskClient } from './HomeTaskClient';
 import { HomeTaskGigController } from './HomeTaskGigController';
 import { TASK_UUID, type HomeTask } from './homeTaskModel';
 import { validTaskGigFields, type TaskGigFields } from './homeTaskGigModel';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 function failureMessage(value: unknown, fallback: string) {
   return value && typeof value === 'object' && 'message' in value && typeof value.message === 'string' ? value.message : fallback;
 }
 
 export function HomeTaskGigComposer({ homeId, taskId, invalid = false }: { homeId: string; taskId: string; invalid?: boolean }) {
+  // Address suggestions near the person's own home first (SPEC 11, FASTVERIFY).
+  const homeCenter = useMyHomeCenter();
   const [controller, setController] = useState<HomeTaskGigController | null>(null);
   const [source, setSource] = useState<HomeTask | null>(null);
   const [error, setError] = useState('');
@@ -167,7 +170,7 @@ export function HomeTaskGigComposer({ homeId, taskId, invalid = false }: { homeI
                 {['General',...GIG_CATEGORIES].map(c => <option key={c}>{c}</option>)}</select></div>
           </div>
           <div><label id="home-gig-location-label" className="mb-1 block font-medium">Choose the work location</label>
-            <AddressAutocomplete value={addressText} labelId="home-gig-location-label" hintText="Start typing, then choose a suggested work location." onChange={text => { setAddressText(text); setLocation(null); setReviewed(false); }}
+            <AddressAutocomplete near={homeCenter} value={addressText} labelId="home-gig-location-label" hintText="Start typing, then choose a suggested work location." onChange={text => { setAddressText(text); setLocation(null); setReviewed(false); }}
               onSelectNormalized={n => {
                 setReviewed(false);
                 if (typeof n.latitude !== 'number' || typeof n.longitude !== 'number') { setLocation(null); return; }

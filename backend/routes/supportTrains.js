@@ -7,7 +7,7 @@ const router = express.Router();
 const verifyToken = require('../middleware/verifyToken');
 const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
-const { supportTrainDraftLimiter, supportTrainWriteLimiter } = require('../middleware/rateLimiter');
+const { supportTrainDraftLimiter, supportTrainWriteLimiter, supportTrainGuestSignupLimiter, previewLimiter } = require('../middleware/rateLimiter');
 const { asyncHandler } = require('../errorHandler');
 const {
   draftSupportTrain,
@@ -57,6 +57,9 @@ function withTrainPerson(row, people) {
 const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
 const { applyLocationPrecision } = require('../utils/locationPrivacy');
 const { householdHomeIds } = require('../utils/homeMailAccess');
+const blockService = require('../services/blockService');
+
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const { isPublicStorageUrl } = require('../services/s3Service');
 const {
   countActiveReservationsForSlot,
@@ -704,7 +707,8 @@ router.get(
   })
 );
 
-// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs)
+// Nearby Support Trains for Tasks feed (visibility nearby/public, same radius idea as gigs). Each train's distance is
+// from the area its page shows to people who are not helping yet (buildCoarseLocation), to the nearest 100 m.
 router.get(
   '/nearby',
   verifyToken,
@@ -724,7 +728,9 @@ router.get(
     if (!Number.isFinite(radiusMeters)) {
       radiusMeters = 40234; // ~25 mi
     }
-    radiusMeters = Math.min(Math.max(radiusMeters, 100), 200000);
+    // Never narrower than about a mile: the list measures from the area a train's page shows, not from an address
+    // (list_support_trains_nearby keeps the same floor).
+    radiusMeters = Math.min(Math.max(radiusMeters, 1609), 200000);
 
     let limit = parseInt(req.query.limit, 10);
     if (!Number.isFinite(limit)) limit = 40;
@@ -745,6 +751,34 @@ router.get(
     }
 
     res.json({ support_trains: data || [] });
+  })
+);
+
+// The link in a guest's signup email. Opening it records that the address is the helper's own (for every signup that
+// address holds on the train), then shows the train's page. An unknown link just shows the site.
+const guestConfirmHash = (token) => createHash('sha256').update(`pantopus:st-guest-confirm:v1:${token}`).digest('hex');
+router.get(
+  '/guest-confirm/:token',
+  previewLimiter,
+  asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return res.redirect(302, APP_URL);
+    const { data: reservation, error } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .select('id, support_train_id, guest_email, user_id')
+      .eq('guest_confirm_token_hash', guestConfirmHash(token))
+      .maybeSingle();
+    if (error) return supportTrainUnavailable(res);
+    if (!reservation || reservation.user_id || !reservation.guest_email) return res.redirect(302, APP_URL);
+    const { error: markError } = await supabaseAdmin
+      .from('SupportTrainReservation')
+      .update({ guest_email_confirmed_at: new Date().toISOString() })
+      .eq('support_train_id', reservation.support_train_id)
+      .eq('guest_email', reservation.guest_email)
+      .is('user_id', null)
+      .is('guest_email_confirmed_at', null);
+    if (markError) logger.warn('Guest signup confirmation not recorded', { reservationId: reservation.id, error: markError.message });
+    return res.redirect(302, `${APP_URL}/support-trains/${reservation.support_train_id}`);
   })
 );
 
@@ -834,8 +868,12 @@ router.post(
       home_id: resolvedActivityHomeId,
       timezone: timezoneFromCoordinates(deliveryFields.delivery_lat, deliveryFields.delivery_lng, timezone || null),
     };
+    // The person a train is for is linked to their account only when the organizer knows them (knownToOrganizer);
+    // otherwise the train keeps them by name, and their account is not brought into it.
+    const linkedRecipientId = recipient_user_id && (await knownToOrganizer(userId, recipient_user_id))
+      ? recipient_user_id : null;
     const trainFields = {
-      recipient_user_id: recipient_user_id || null,
+      recipient_user_id: linkedRecipientId,
       recipient_home_id: resolvedRecipientHomeId,
       ...deliveryFields,
       story: draft_payload.story || null,
@@ -1319,6 +1357,35 @@ router.patch(
   })
 );
 
+// ─── Who an organizer can bring into a train by account ──────
+
+const INVITES_PER_TRAIN = 100;
+const NOT_KNOWN = {
+  error: 'NOT_KNOWN',
+  message: "You can add people you're connected with or who share your home.",
+};
+
+/**
+ * Whether an organizer can bring this account into a Support Train (an invitation, a co-organizer, the person the
+ * train is for): their accepted connections and the people they share a home with, never across a block. The rule
+ * Plans invitations follow (services/plans/planInvites.js). Throws when it can't be told.
+ */
+async function knownToOrganizer(organizerId, userId) {
+  if (!organizerId || !userId) return false;
+  if (String(organizerId) === String(userId)) return true;
+  if (await blockService.isBlocked(organizerId, userId)) return false;
+  const { data, error } = await supabaseAdmin
+    .from('Relationship')
+    .select('status')
+    .in('status', ['accepted', 'blocked'])
+    .or(`and(requester_id.eq.${organizerId},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${organizerId})`);
+  if (error) throw Object.assign(new Error('Could not check who you can add. Please try again.'), { status: 503 });
+  if ((data || []).some((row) => row.status === 'blocked')) return false;
+  if ((data || []).some((row) => row.status === 'accepted')) return true;
+  const [mine, theirs] = await Promise.all([householdHomeIds(organizerId), householdHomeIds(userId)]);
+  return mine.some((id) => theirs.includes(id));
+}
+
 // ─── Co-organizer Management ──────────────────────────────────────────────
 
 const addOrganizerSchema = Joi.object({
@@ -1344,6 +1411,7 @@ router.post(
         .status(409)
         .json({ error: 'ALREADY_PRIMARY', message: 'This user is already the primary organizer.' });
     }
+    if (!(await knownToOrganizer(req.user.id, user_id))) return res.status(403).json(NOT_KNOWN);
 
     const { data, error } = await supabaseAdmin
       .from('SupportTrainOrganizer')
@@ -2537,7 +2605,29 @@ router.post(
   validate(createInviteSchema),
   asyncHandler(async (req, res) => {
     const st = req.supportTrain;
-    const { invitee_user_id, invitee_email } = req.body;
+    const { invitee_user_id } = req.body;
+    const invitee_email = req.body.invitee_email ? normalizeEmail(req.body.invitee_email) : null;
+
+    // An invitation by account goes to someone the inviter knows; nobody is invited twice; a train has a ceiling.
+    if (invitee_user_id && !(await knownToOrganizer(req.user.id, invitee_user_id))) {
+      return res.status(403).json(NOT_KNOWN);
+    }
+    const { data: invited, error: invitedError } = await supabaseAdmin
+      .from('SupportTrainInvite')
+      .select('*')
+      .eq('support_train_id', st.id)
+      .limit(INVITES_PER_TRAIN + 1);
+    if (invitedError) return supportTrainUnavailable(res);
+    const already = (invited || []).find((row) => (invitee_user_id
+      ? row.invitee_user_id === invitee_user_id
+      : !row.invitee_user_id && normalizeEmail(row.invitee_email) === invitee_email));
+    if (already) return res.status(200).json(already);
+    if ((invited || []).length >= INVITES_PER_TRAIN) {
+      return res.status(429).json({
+        error: 'TOO_MANY_INVITES',
+        message: `A Support Train can have up to ${INVITES_PER_TRAIN} invitations.`,
+      });
+    }
 
     const crypto = require('crypto');
     const inviteToken = crypto.randomBytes(24).toString('base64url');
@@ -3006,6 +3096,10 @@ router.post(
 
 // ─── Guest (Email-only) Reserve Flow ────────────────────────────────────────
 
+// An email address without a signed-in account behind it: signups it can hold on one train, and make in a day.
+const GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN = 5;
+const GUEST_SIGNUPS_PER_EMAIL_PER_DAY = 8;
+
 const guestReserveSchema = Joi.object({
   guest_name: Joi.string().trim().min(1).max(100).required(),
   guest_email: Joi.string().email().max(320).required(),
@@ -3023,6 +3117,7 @@ router.post(
   supportTrainWriteLimiter,
   optionalAuth,
   requireAvailableOptionalAuth,
+  supportTrainGuestSignupLimiter,
   loadSupportTrain,
   validate(guestReserveSchema),
   asyncHandler(async (req, res) => {
@@ -3221,30 +3316,27 @@ router.post(
       });
     }
 
-    const { data: existingUsers, error: existingUserErr } = await supabaseAdmin
-      .from('User')
-      .select('id, email')
-      .ilike('email', guestEmail)
-      .limit(10);
-
-    if (existingUserErr) {
-      logger.warn('Guest reserve existing-user lookup failed', {
-        guestEmail,
-        error: existingUserErr.message,
+    // The answer is the same whether or not this email has an account. One address takes a few signups on a train and
+    // a few a day in all: nothing here shows the address is the caller's own, and each signup writes to it.
+    const [onThisTrain, today] = await Promise.all([
+      supabaseAdmin.from('SupportTrainReservation').select('id, guest_email_confirmed_at')
+        .eq('support_train_id', st.id).eq('guest_email', guestEmail).is('user_id', null).eq('status', 'reserved')
+        .limit(GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN + 1),
+      supabaseAdmin.from('SupportTrainReservation').select('id', { count: 'exact', head: true })
+        .eq('guest_email', guestEmail).is('user_id', null)
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+    if (onThisTrain.error || today.error) return supportTrainUnavailable(res);
+    if ((onThisTrain.data || []).length >= GUEST_SIGNUPS_PER_EMAIL_PER_TRAIN || (today.count || 0) >= GUEST_SIGNUPS_PER_EMAIL_PER_DAY) {
+      return res.status(429).json({
+        error: 'TOO_MANY_SIGNUPS',
+        message: 'This email already has several signups. Sign in to Pantopus to help with more.',
       });
     }
-
-    const existingUser = (existingUsers || []).find(
-      (user) => normalizeEmail(user.email) === guestEmail
-    );
-
-    if (existingUser && !body.allow_guest_for_existing_account) {
-      return res.status(409).json({
-        error: 'ACCOUNT_EXISTS',
-        message:
-          'This email has a Pantopus account. Sign in for chat and in-app location sharing, or continue with email.',
-      });
-    }
+    // The link in the signup email records that the address was opened (GET /guest-confirm/:token). An address
+    // already confirmed on this train stays confirmed for its next signup.
+    const confirmToken = require('crypto').randomBytes(24).toString('base64url');
+    const confirmedBefore = (onThisTrain.data || []).map((row) => row.guest_email_confirmed_at).find(Boolean) || null;
 
     // Insert guest reservation (user_id is null)
     const { data: reservation, error: resErr } = await supabaseAdmin
@@ -3255,6 +3347,8 @@ router.post(
         user_id: null,
         guest_name: body.guest_name,
         guest_email: guestEmail,
+        guest_confirm_token_hash: guestConfirmHash(confirmToken),
+        guest_email_confirmed_at: confirmedBefore,
         status: 'reserved',
         contribution_mode: body.contribution_mode,
         dish_title: body.dish_title || null,
@@ -3328,6 +3422,7 @@ router.post(
       slotTime: formatSupportTrainSlotTime(slot),
       contributionMode: body.contribution_mode,
       supportTrainId: st.id,
+      confirmUrl: `${APP_URL}/api/activities/support-trains/guest-confirm/${confirmToken}`,
     }).catch((err) => {
       logger.error('Guest confirmation email failed (non-fatal)', {
         guestEmail,
@@ -3335,6 +3430,7 @@ router.post(
       });
     });
 
+    delete reservation.guest_confirm_token_hash;
     res.status(201).json(reservation);
   })
 );

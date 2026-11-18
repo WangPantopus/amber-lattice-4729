@@ -213,4 +213,45 @@ async function billRejected({ homeId, userId, claimId, reason = null }) {
   }
 }
 
-module.exports = { afterUpload, billRejected, nameMatches, addressMatches, dateRecent, SCHEMA, SYSTEM };
+/** Does a residency document of this person's for this Home still wait for (or has it passed) a person's review? */
+async function documentStillInReview(homeId, userId) {
+  const { data: claims, error } = await db.from('HomeOwnershipClaim').select('id, state, claim_phase_v2')
+    .eq('home_id', homeId).eq('claimant_user_id', userId).eq('claim_type', 'resident');
+  if (error) throw new Error(error.message);
+  // eslint-disable-next-line global-require
+  const { maskClaimState } = require('../homeOwnershipClaimListService');
+  const open = (claims || []).filter((c) => maskClaimState(c.state, c.claim_phase_v2) === 'under_review').map((c) => c.id);
+  if (!open.length) return false;
+  // A document the person deleted stays as a row with status 'failed': nobody can review it.
+  const { data: evidence, error: evidenceError } = await db.from('HomeVerificationEvidence').select('claim_id')
+    .in('claim_id', open).neq('evidence_type', 'idv').in('status', ['pending', 'verified']).limit(1);
+  if (evidenceError) throw new Error(evidenceError.message);
+  return (evidence || []).length > 0;
+}
+
+/**
+ * The person took their residency document out of review themselves: they withdrew the claim, or deleted the file. A
+ * mark the bill read gave comes off, because a person at Pantopus will never review that document now, and the mark
+ * stands on that review ("A person at Pantopus also reviews it afterwards"). It stays while another document of theirs
+ * for this Home is still in review. No notice: it was their own step. Fails closed: when the documents can't be read,
+ * the mark comes off. Never throws.
+ */
+async function billWithdrawn({ homeId, claimId }) {
+  try {
+    const { data: claim } = await db.from('HomeOwnershipClaim').select('claim_type, claimant_user_id, home_id').eq('id', claimId).maybeSingle();
+    if (!claim || claim.claim_type !== 'resident' || claim.home_id !== homeId) return false;
+    const userId = claim.claimant_user_id;
+    const { data: row } = await db.from('HomeOccupancy').select('id, fast_check_kind')
+      .eq('home_id', homeId).eq('user_id', userId).maybeSingle();
+    if (!row || row.fast_check_kind !== KIND) return false;
+    if (await documentStillInReview(homeId, userId).catch(() => false)) return false;
+    await fastCheck.clearFastCheck({ homeId, userId, kind: KIND });
+    logger.info('fast_check.bill_withdrawn', { home_id: homeId });
+    return true;
+  } catch (error) {
+    logger.warn('fast_check.bill_withdrawn_failed', { home_id: homeId, error: error.message });
+    return false;
+  }
+}
+
+module.exports = { afterUpload, billRejected, billWithdrawn, nameMatches, addressMatches, dateRecent, SCHEMA, SYSTEM };

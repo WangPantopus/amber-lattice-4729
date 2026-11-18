@@ -150,4 +150,6 @@ data class MailPieceCard(
     val number: Int? = null,
     val year: Int? = null,
     val openedAt: String? = null,
+    /** A reply to this card (plan Part 3): who wrote back, on a cream slip across the opened card's row. */
+    val replyFrom: String? = null,
 )

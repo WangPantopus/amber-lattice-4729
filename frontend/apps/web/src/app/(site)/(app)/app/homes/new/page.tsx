@@ -20,6 +20,7 @@ import { validHomeCreationInput, type HomeCreationInput } from '@/components/hom
 import HomeCreationRecoveryView from '@/components/homes/creation/HomeCreationRecoveryView';
 import { validHomeResidencyInput, type HomeResidencyInput } from '@/components/homes/creation/homeResidencySubmissionModel';
 import { useFeatureFlagState } from '@/hooks/useFeatureFlag';
+import { useMyHomeCenter } from '@/lib/myHomes';
 
 type NormalizedAddress = {
   address: string;
@@ -211,6 +212,8 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
   }, [shortFlag.isFetched, shortFlag.enabled]);
   // A picked suggestion is checked at once in the two-step form ("Checked address").
   const checkPicked = useRef(false);
+  // Someone adding another home sees addresses near the one they have first (SPEC 11).
+  const homeCenter = useMyHomeCenter();
 
   // Step 3 — Your Setup
   const [isOwner, setIsOwner] = useState(true);
@@ -1013,6 +1016,58 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     );
   }
 
+  // "Enter it yourself": suggestions on the street line (picking one fills the rest), and a rural route,
+  // military or Puerto Rico address can still be typed in full (SPEC 11).
+  const setManual = (next: typeof manualAddress, point?: { lat?: number | null; lng?: number | null }) => {
+    setManualAddress(next);
+    resetAddressValidation();
+    // The search box above keeps its own text: mirroring the street line into it would search there too.
+    const complete = next.line.trim() && next.city.trim() && next.state.trim().length === 2 && /^\d{5}(-\d{4})?$/.test(next.zip.trim());
+    setNormalized(complete ? {
+      address: next.line.trim(),
+      city: next.city.trim(),
+      state: next.state.trim(),
+      zipcode: next.zip.trim(),
+      ...(point?.lat != null && point?.lng != null ? { latitude: point.lat, longitude: point.lng } : {}),
+      label: buildAddressLabel(next.line.trim(), next.city.trim(), next.state.trim(), next.zip.trim()),
+    } : null);
+  };
+  const manualGrid = (
+    <div className="grid grid-cols-6 gap-2">
+      <div className="col-span-6">
+        <AddressAutocomplete
+          value={manualAddress.line}
+          onChange={(value) => setManual({ ...manualAddress, line: value })}
+          onSelectNormalized={(n) => setManual(
+            { line: n.address, city: n.city || '', state: (n.state || '').toUpperCase().slice(0, 2), zip: n.zipcode || '' },
+            { lat: n.latitude, lng: n.longitude },
+          )}
+          ariaLabel="Street address"
+          placeholder="Street, or RR 2 Box 152, PSC 3 Box 1234"
+          hintText={null}
+          streetOnly
+          near={homeCenter}
+          inputClassName={`${inputClass('address')} bg-app-surface text-app-text`}
+        />
+      </div>
+      {([
+        ['city', 'City', 'col-span-3', 'City', 100],
+        ['state', 'State', 'col-span-1', 'ST', 2],
+        ['zip', 'ZIP', 'col-span-2', 'ZIP', 10],
+      ] as const).map(([field, label, span, placeholder, maxLength]) => (
+        <input
+          key={field}
+          aria-label={label}
+          placeholder={placeholder}
+          maxLength={maxLength}
+          value={manualAddress[field]}
+          onChange={(e) => setManual({ ...manualAddress, [field]: field === 'state' ? e.target.value.toUpperCase() : e.target.value })}
+          className={`${span} ${inputClass('address')} bg-app-surface text-app-text`}
+        />
+      ))}
+    </div>
+  );
+
   if (shortAdd) {
     const addressConfirmed = !!validatedAddressId && !postalNotice && !noUnitAttested;
     const cityLine = normalized ? [normalized.city, [normalized.state, normalized.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
@@ -1030,7 +1085,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
     return (
       <div className="bg-app-surface-raised min-h-full">
         <div className="max-w-xl mx-auto px-4 pt-4">
-          <div className="grid grid-cols-[44px_1fr_44px] items-center">
+          <div className="grid grid-cols-[minmax(44px,auto)_1fr_minmax(44px,auto)] items-center gap-2">
             <button
               type="button"
               aria-label="Back"
@@ -1075,6 +1130,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
                 placeholder="Search address…"
                 labelId="short-home-address-label"
                 hintText={null}
+                near={homeCenter}
               />
               <button
                 type="button"
@@ -1084,39 +1140,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
               >
                 {manualEntry ? 'Search for my address instead' : 'Can’t find your address? Enter it yourself'}
               </button>
-              {manualEntry ? (
-                <div className="grid grid-cols-6 gap-2">
-                  {([
-                    ['line', 'Street address', 'col-span-6', 'Street, or RR 2 Box 152, PSC 3 Box 1234', 255],
-                    ['city', 'City', 'col-span-3', 'City', 100],
-                    ['state', 'State', 'col-span-1', 'ST', 2],
-                    ['zip', 'ZIP', 'col-span-2', 'ZIP', 10],
-                  ] as const).map(([field, label, span, placeholder, maxLength]) => (
-                    <input
-                      key={field}
-                      aria-label={label}
-                      placeholder={placeholder}
-                      maxLength={maxLength}
-                      value={manualAddress[field]}
-                      onChange={(e) => {
-                        const next = { ...manualAddress, [field]: field === 'state' ? e.target.value.toUpperCase() : e.target.value };
-                        setManualAddress(next);
-                        resetAddressValidation();
-                        setAddressText(next.line);
-                        const complete = next.line.trim() && next.city.trim() && next.state.trim().length === 2 && /^\d{5}(-\d{4})?$/.test(next.zip.trim());
-                        setNormalized(complete ? {
-                          address: next.line.trim(),
-                          city: next.city.trim(),
-                          state: next.state.trim(),
-                          zipcode: next.zip.trim(),
-                          label: buildAddressLabel(next.line.trim(), next.city.trim(), next.state.trim(), next.zip.trim()),
-                        } : null);
-                      }}
-                      className={`${span} ${inputClass('address')} bg-app-surface text-app-text`}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {manualEntry ? manualGrid : null}
               {fieldErrors.location ? <p id="err-location" role="alert" className="text-xs text-red-600">{fieldErrors.location}</p> : null}
               {fieldErrors.address ? <p id="err-address" role="alert" className="text-xs text-red-600">{fieldErrors.address}</p> : null}
 
@@ -1348,6 +1372,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
                 onSelectNormalized={onSelectNormalized}
                 placeholder="Search address…"
                 labelId="home-address-label"
+                near={homeCenter}
               />
               <button
                 type="button"
@@ -1357,39 +1382,7 @@ function NewHomeWizard({ recovery }: { recovery: ReturnType<typeof useHomeCreati
               >
                 {manualEntry ? 'Search for my address instead' : 'Can’t find your address? Enter it yourself'}
               </button>
-              {manualEntry ? (
-                <div className="grid grid-cols-6 gap-2">
-                  {([
-                    ['line', 'Street address', 'col-span-6', 'Street, or RR 2 Box 152, PSC 3 Box 1234', 255],
-                    ['city', 'City', 'col-span-3', 'City', 100],
-                    ['state', 'State', 'col-span-1', 'ST', 2],
-                    ['zip', 'ZIP', 'col-span-2', 'ZIP', 10],
-                  ] as const).map(([field, label, span, placeholder, maxLength]) => (
-                    <input
-                      key={field}
-                      aria-label={label}
-                      placeholder={placeholder}
-                      maxLength={maxLength}
-                      value={manualAddress[field]}
-                      onChange={(e) => {
-                        const next = { ...manualAddress, [field]: field === 'state' ? e.target.value.toUpperCase() : e.target.value };
-                        setManualAddress(next);
-                        resetAddressValidation();
-                        setAddressText(next.line);
-                        const complete = next.line.trim() && next.city.trim() && next.state.trim().length === 2 && /^\d{5}(-\d{4})?$/.test(next.zip.trim());
-                        setNormalized(complete ? {
-                          address: next.line.trim(),
-                          city: next.city.trim(),
-                          state: next.state.trim(),
-                          zipcode: next.zip.trim(),
-                          label: buildAddressLabel(next.line.trim(), next.city.trim(), next.state.trim(), next.zip.trim()),
-                        } : null);
-                      }}
-                      className={`${span} ${inputClass('address')}`}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {manualEntry ? manualGrid : null}
 
               {normalized ? (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">

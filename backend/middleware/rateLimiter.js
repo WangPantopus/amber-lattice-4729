@@ -382,6 +382,12 @@ const aiDraftLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
   message: { error: 'AI_RATE_LIMITED', message: 'Too many AI requests. Please try again later.' },
+  // A route that has a plain answer of its own (req.aiDraftFallback, the task draft's parser) carries on past the
+  // limit with req.aiDraftRefused set; every other route answers 429 as before.
+  handler: (req, res, next, options) => {
+    if (req.aiDraftFallback) { req.aiDraftRefused = true; return next(); }
+    return res.status(options.statusCode).send(options.message);
+  },
 });
 
 /**
@@ -476,6 +482,19 @@ const supportTrainWriteLimiter = rateLimit({
   keyGenerator: (req) => req.user?.id || clientIpKey(req),
   skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
   message: { error: 'Too many support train requests. Please try again shortly.' },
+});
+
+/**
+ * Signups one caller makes on one Support Train through the page anyone with the link can open
+ * (POST /api/activities/support-trains/:id/slots/:slotId/guest-reserve): eight a day.
+ */
+const supportTrainGuestSignupLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 8,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `train-guest:${req.params.id}:${req.user?.id || clientIpKey(req)}`,
+  message: { error: 'TOO_MANY_SIGNUPS', message: 'That is a lot of signups for one day. Please try again tomorrow.' },
 });
 
 /**
@@ -578,7 +597,21 @@ const bookingWriteLimiter = rateLimit({
   message: { error: 'Too many booking requests. Please try again shortly.' },
 });
 
+/**
+ * A host's notes about one booking (POST /api/scheduling/bookings/:id/nudge): three a day for a booking, whoever on
+ * the host's side sends them.
+ */
+const bookingNudgeLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `booking-nudge:${req.params.id}`,
+  message: { error: 'This booking has had its notes for today. Try again tomorrow.' },
+});
+
 module.exports = {
+  bookingNudgeLimiter,
   clientIpKey,
   userWriteLimits,
   geocodeLimiter,
@@ -607,6 +640,7 @@ module.exports = {
   placeLookupLimiter,
   shareCardRenderLimiter,
   supportTrainWriteLimiter,
+  supportTrainGuestSignupLimiter,
   supportTrainDraftLimiter,
   personaFollowLimiter,
   broadcastPublishLimiter,

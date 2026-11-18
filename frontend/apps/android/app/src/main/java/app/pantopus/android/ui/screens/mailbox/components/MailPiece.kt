@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -178,7 +180,8 @@ private fun CardOpening(
 ) {
     val context = LocalContext.current
     LaunchedEffect(card.design) { HolidayCardArt.loadAhead(context, card.design) }
-    if (!piece.opened || card.sealed) return ChristmasEnvelope(piece, card)
+    // A reply is always drawn as the opened card with its slip across it (plan Part 3).
+    if ((!piece.opened || card.sealed) && card.replyFrom == null) return ChristmasEnvelope(piece, card)
     if (LaunchFeatures.cardTable) return CardTakenOut(piece, card)
     Box(modifier = Modifier.fillMaxWidth()) {
         val shape = RoundedCornerShape(2.dp)
@@ -272,8 +275,33 @@ private fun CardTakenOut(
                 modifier = Modifier.padding(2.dp).fillMaxWidth().fillMaxHeight(0.86f).clip(RoundedCornerShape(1.dp)),
             )
         }
+        card.replyFrom?.let { ReplySlip(it) }
     }
 }
+
+/** "{First name} wrote back" in the pen, on a cream slip laid across the card's row (plan Part 3). */
+@Composable
+private fun BoxScope.ReplySlip(name: String) {
+    val first = name.trim().substringBefore(' ').ifEmpty { "Someone" }
+    Text(
+        "$first wrote back",
+        style = replySlipStyle,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier =
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 12.dp, bottom = 8.dp)
+                .rotate(-2f)
+                .shadow(3.dp, RoundedCornerShape(2.dp))
+                .background(PantopusColors.cardNotePaper)
+                .padding(horizontal = 10.dp, vertical = 2.dp)
+                .testTag("mailReplySlip"),
+    )
+}
+
+private val replySlipStyle =
+    TextStyle(fontFamily = cardPen, fontSize = 18.sp, lineHeight = 21.sp, color = PantopusColors.tablePen)
 
 private val takenOutWhoStyle =
     TextStyle(fontFamily = cardPen, fontSize = 22.sp, lineHeight = 26.sp, color = PantopusColors.tableEnvelopeFrom)

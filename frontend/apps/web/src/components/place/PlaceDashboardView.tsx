@@ -67,6 +67,8 @@ export interface PlaceDashboardViewProps {
   neighbors?: ReactNode;
   /** The server's verify-options answer (FASTVERIFY); null while the faster verification is off. */
   verifyOptions?: VerifyOptions | null;
+  /** The verify-options answer hasn't come yet: a verified place shows no Identity group until it knows how. */
+  verifyLoading?: boolean;
   /** Open the verify sheet once (Add Home in two steps lands here); then `onAutoOpened` drops the request. */
   autoOpenVerify?: boolean;
   onAutoOpened?: () => void;
@@ -90,6 +92,7 @@ export default function PlaceDashboardView({
   onOpenClaimStatus,
   neighbors = null,
   verifyOptions = null,
+  verifyLoading = false,
   autoOpenVerify = false,
   onAutoOpened,
 }: PlaceDashboardViewProps) {
@@ -247,7 +250,8 @@ export default function PlaceDashboardView({
         {showVerify ? (
           <Group label="Locked until you verify">{renderVerifyLocked(openVerify)}</Group>
         ) : null}
-        {showIdentity ? (
+        {/* Verified by a fast check, residency letters need a mailed code: nothing is offered until we know. */}
+        {showIdentity && !verifyLoading ? (
           <IdentityGroup homeId={homeId} verifyOptions={verifyOptions} />
         ) : null}
         {/* "Verified homes nearby" and the invite on the person's own home, not a claim still in review. */}

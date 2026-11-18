@@ -59,6 +59,12 @@ jest.mock('../../services/notificationService', () => ({
   createNotification: jest.fn(),
 }));
 
+// ── The ordinary owner-claim rules apply to an authority request; these cases are ones they allow ──
+jest.mock('../../utils/homeSecurityPolicy', () => ({
+  ...jest.requireActual('../../utils/homeSecurityPolicy'),
+  canSubmitOwnerClaim: jest.fn(async () => ({ allowed: true, errors: [], blockCode: null, routingClassification: 'standalone_claim' })),
+}));
+
 // ── Mock rate limiters ──────────────────────────────────────
 jest.mock('../../middleware/rateLimiter', () => {
   const passthrough = (_req, _res, next) => next();
