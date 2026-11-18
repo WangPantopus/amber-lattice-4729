@@ -36,7 +36,7 @@ extension CardTableModel {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard let self, !Task.isCancelled else { return }
             pendingCardTap = nil
-            if !isZoomed { turnCard() }
+            if !isZoomed { turnOrReadOn() }
         }
     }
 

@@ -156,7 +156,16 @@ struct CardTableScreen: View {
                             width: layout.cardWidth,
                             height: layout.cardHeight
                         ))
-                        model.fingerLifted(at: value.location, layout: layout, isOnCard: card.contains(value.location))
+                        // The open Duo's note page, where a long note's first leaf lies (plan Part 9).
+                        let scale = pose.cardScale * pose.pageScale
+                        let notePage = CGRect(
+                            x: pose.notePageX,
+                            y: pose.notePageY,
+                            width: layout.cardWidth * scale,
+                            height: layout.cardHeight * scale
+                        )
+                        let onCard = card.contains(value.location) || (model.fold.isSpread && notePage.contains(value.location))
+                        model.fingerLifted(at: value.location, layout: layout, isOnCard: onCard)
                     }
             )
             // Two fingers enlarge the card (plan 6.1).

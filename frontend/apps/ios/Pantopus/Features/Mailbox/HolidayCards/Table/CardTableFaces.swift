@@ -226,6 +226,8 @@ struct CardTableBack: View, Equatable {
     /// `note` (plan Part 1), so pass it either way.
     var drawsNote = true
     var grainOpacity = 1.0
+    /// On a table, a long note's first leaf or the card's own back under it (plan Part 9); the whole note elsewhere.
+    var leaf: CardTableLeaf = .whole
 
     var body: some View {
         Canvas(rendersAsynchronously: false) { context, size in
@@ -234,13 +236,17 @@ struct CardTableBack: View, Equatable {
             var face = context
             face.clip(to: Path(roundedRect: rect, cornerRadius: 0.7 * u, style: .continuous))
             face.fill(Path(rect), with: .color(MailPaper.cardPaper(paper)))
-            let layout = CardTableNoteLayout(text: note, seed: number, u: u)
+            let layout = CardTableNoteLayout(text: note, seed: number, u: u, leaf: leaf)
             drawRules(layout.fit, in: face, u: u)
             if drawsNote {
                 layout.draw(in: face)
             }
-            drawFrom(in: face, u: u)
-            drawFoot(in: face, u: u, width: size.width)
+            if layout.leaf == .first {
+                drawOver(in: face, u: u)
+            } else {
+                drawFrom(in: face, u: u)
+                drawFoot(in: face, u: u, width: size.width)
+            }
             face.fillPaperGrain(paperGrain, in: rect, u: u, opacity: grainOpacity)
             face.strokeCardEdges(in: rect, u: u)
         }
@@ -285,6 +291,37 @@ struct CardTableBack: View, Equatable {
         )
     }
 
+    /// "over" and a short arrow at the first leaf's foot, in the pen (plan Part 9): the word 5.6u high at 82% ink, turned
+    /// 2° up to the right, the pair's right end 8u from the edge and its top 97.5u down; the arrow 8u by 3.2u, drawn in
+    /// a 40 by 16 box with a 1.7-wide round stroke, 1.6u after the word.
+    private func drawOver(in context: GraphicsContext, u: CGFloat) {
+        let size = 5.6 * u
+        let font = CardTableType.pen(size)
+        let word = Text("over").font(Font(font)).foregroundColor(MailPaper.tablePenInk)
+        let wordWidth = context.resolve(word).measure(in: CGSize(width: 100 * u, height: 20 * u)).width
+        let arrowWidth = 8 * u
+        let arrowHeight = 3.2 * u
+        let gap = 1.6 * u
+        let box = CGRect(x: 92 * u - (wordWidth + gap + arrowWidth), y: 97.5 * u, width: wordWidth + gap + arrowWidth, height: size)
+        var mark = context
+        mark.blendMode = .multiply
+        mark.opacity = 0.82
+        mark.translateBy(x: box.midX, y: box.midY)
+        mark.rotate(by: .degrees(-2))
+        mark.translateBy(x: -box.width / 2, y: -box.height / 2)
+        mark.drawText(word, x: 0, baseline: CardTableType.baseline(font, lineHeight: size))
+        var arrow = mark
+        arrow.translateBy(x: wordWidth + gap, y: (size - arrowHeight) / 2)
+        arrow.scaleBy(x: arrowWidth / 40, y: arrowHeight / 16)
+        var path = Path()
+        path.move(to: CGPoint(x: 2, y: 9.5))
+        path.addCurve(to: CGPoint(x: 36, y: 8), control1: CGPoint(x: 10, y: 7.2), control2: CGPoint(x: 22, y: 7))
+        path.move(to: CGPoint(x: 29.5, y: 3.2))
+        path.addLine(to: CGPoint(x: 36.6, y: 8))
+        path.addLine(to: CGPoint(x: 29, y: 13))
+        arrow.stroke(path, with: .color(MailPaper.tablePenInk), style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+    }
+
     private func drawFoot(in context: GraphicsContext, u: CGFloat, width: CGFloat) {
         let font = CardTableSerif.font(size: 1.9 * u)
         context.drawText(
@@ -298,6 +335,6 @@ struct CardTableBack: View, Equatable {
         lhs.paperGrain === rhs.paperGrain && lhs.paper == rhs.paper && lhs.note == rhs.note && lhs.fromName == rhs.fromName
             && lhs.year == rhs.year && lhs.number == rhs.number && lhs.signature == rhs.signature
             && lhs.drawsNote == rhs.drawsNote
-            && lhs.grainOpacity == rhs.grainOpacity
+            && lhs.grainOpacity == rhs.grainOpacity && lhs.leaf == rhs.leaf
     }
 }

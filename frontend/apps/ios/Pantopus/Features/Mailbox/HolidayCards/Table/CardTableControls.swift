@@ -204,6 +204,7 @@ struct CardTableControls: View {
     private var bottom: some View {
         CardTableAct(
             title: model.primaryTitle,
+            spoken: model.primarySpoken,
             hint: model.hint,
             primarySize: primarySize,
             hintSize: hintSize,
@@ -233,6 +234,8 @@ struct CardTableControls: View {
 /// The button and the hint under it.
 struct CardTableAct: View {
     let title: String?
+    /// What VoiceOver says for the main button, when it says more than its words ("Read on", plan Part 9).
+    var spoken: String?
     let hint: String
     let primarySize: CGFloat
     let hintSize: CGFloat
@@ -316,6 +319,7 @@ struct CardTableAct: View {
 private extension CardTableAct {
     var primaryButton: some View {
         glassButton(title ?? " ", identifier: "cardTablePrimary", action: action)
+            .accessibilityLabel(spoken ?? title ?? "")
             .opacity(title == nil ? 0 : 1)
             .disabled(title == nil)
             .accessibilityHidden(title == nil)

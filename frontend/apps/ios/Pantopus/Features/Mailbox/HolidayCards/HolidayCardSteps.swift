@@ -569,6 +569,14 @@ struct HolidayCardWriteStep: View {
                     .foregroundStyle(count >= cards.messageLimit ? MailPaper.wax : HolidayCardDesk.muted(scheme))
                     .accessibilityIdentifier("sendCardCount")
             }
+            // A note the table writes over two leaves (plan Part 9).
+            if LaunchFeatures.cardTable, CardTableNoteLayout.leaves(viewModel.message) != nil {
+                Text("This note runs onto a second leaf.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(HolidayCardDesk.muted(scheme))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("sendCardSecondLeaf")
+            }
             if cards.noteHelp, let recipient = viewModel.recipient {
                 noteHelpRow(recipient)
             }

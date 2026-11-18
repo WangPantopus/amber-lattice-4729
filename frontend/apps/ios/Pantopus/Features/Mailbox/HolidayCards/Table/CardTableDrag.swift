@@ -257,6 +257,9 @@ extension CardTableModel {
         case .out:
             if isOnCard, !fold.isSpread {
                 tapCard(at: point, layout: layout)
+            } else if isOnCard, readsOn {
+                // On the open Duo a tap on the card's pages reads on too (plan Part 9).
+                liftLeaf()
             } else {
                 controlsHidden.toggle()
             }
