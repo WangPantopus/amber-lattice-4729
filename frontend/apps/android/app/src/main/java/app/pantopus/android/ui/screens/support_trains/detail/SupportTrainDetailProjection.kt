@@ -89,7 +89,14 @@ object SupportTrainDetailProjection {
             recipient = recipient(dto, primaryName),
             typeDates = typeDates,
             calendarDays = calendar(slots, reservations, today),
-            sections = sections(slots, reservations, helperReservations, today, zone, role),
+            sections =
+                sections(slots, reservations, helperReservations, today, zone, role).let { all ->
+                    if (dto.status == "completed" || dto.status == "archived") {
+                        all.map { section -> section.copy(rows = section.rows.map { it.copy(signupChangeable = false) }) }
+                    } else {
+                        all
+                    }
+                },
             hostedBy = hostedBy(primaryName, organizers.firstOrNull()?.user?.id),
             dock = dock(dto.status, isFull, role),
             celebrationBanner =
@@ -500,6 +507,7 @@ object SupportTrainDetailProjection {
             reservationStatus = reservation.status,
             isBeforeSlotDay = date?.let { it.time > today.time } ?: false,
             slotDayLabel = date?.let { format(it, "EEE, MMM d") },
+            signupChangeable = slot?.let { !isOver(it, today) } ?: true,
         )
     }
 

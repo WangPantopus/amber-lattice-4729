@@ -128,6 +128,11 @@ data class SlotRowContent(
     val isBeforeSlotDay: Boolean = false,
     /** "Sat, Oct 10", for that question. */
     val slotDayLabel: String? = null,
+    /**
+     * The helper may still change this signup: the server refuses a helper's change once the
+     * train has ended or the date is behind the train's today.
+     */
+    val signupChangeable: Boolean = true,
 ) {
     /**
      * The helper can only leave / mark delivered while the reservation
