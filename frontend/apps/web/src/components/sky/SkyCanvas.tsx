@@ -2,7 +2,7 @@
 
 // ============================================================
 // SkyCanvas — the canvas, clock and animation loop around a Living Sky
-// scene: the homepage's (app/_components/LivingSky.tsx) or Today's (TodaySkyCanvas.tsx).
+// scene: Today's (TodaySkyCanvas.tsx).
 //
 // The sky glides to a new hour instead of jumping, rises into place the
 // first time it appears (as the Today card's sun and moon do), and keeps
