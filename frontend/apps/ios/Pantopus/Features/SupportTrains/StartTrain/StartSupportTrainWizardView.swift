@@ -747,7 +747,7 @@ private struct StartSupportTrainReviewStep: View {
                 }
                 detailField(
                     "Instructions (gate code, doorbell…)",
-                    text: Binding(get: { viewModel.instructions }, set: { viewModel.instructions = $0 }),
+                    text: Binding(get: { viewModel.instructions }, set: { viewModel.updateInstructions($0) }),
                     id: "Instructions"
                 )
                 Toggle(isOn: Binding(get: { viewModel.contactless }, set: { viewModel.contactless = $0 })) {
