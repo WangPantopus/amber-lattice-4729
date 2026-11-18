@@ -39,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -191,6 +192,23 @@ fun ReserveSlotSheet(
 
     val selected = remember(slotId, options) { options.firstOrNull { it.id == slotId } }
     val selectedMode = remember(mode) { SupportTrainContributionMode.entries.firstOrNull { it.wire == mode } }
+    // The ways this date takes (B3): a groceries date, groceries; a meal date, a meal or takeout.
+    // A date whose own list is empty (a groceries date on a train with groceries off) takes no signup here; it never
+    // falls back to the train's ways, which the server would refuse.
+    val dateModes = selected?.modes ?: context.enabledModes
+    val zone = remember(context.timezone) { trainZone(context.timezone) }
+
+    // The page refreshed under the sheet (a date was taken, or passed): a chosen date that's gone sends the helper
+    // back to pick another, with the reason kept on screen (B6). A way of helping this date doesn't take is cleared.
+    LaunchedEffect(options) {
+        if (step != ReserveStep.SUCCESS && slotId != null && options.none { it.id == slotId }) {
+            slotId = null
+            step = ReserveStep.DATE
+        }
+    }
+    LaunchedEffect(dateModes) {
+        if (mode != null && dateModes.none { it.wire == mode } && step != ReserveStep.SUCCESS) mode = null
+    }
 
     Column(
         modifier =
@@ -221,6 +239,14 @@ fun ReserveSlotSheet(
             when (step) {
                 ReserveStep.DATE -> {
                     StepTitle("Which date can you take?")
+                    if (options.isEmpty()) {
+                        Text(
+                            text = "There are no open dates left on this train.",
+                            color = PantopusColors.appTextSecondary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.testTag("supportTrainReserveNoDates"),
+                        )
+                    }
                     options.forEach { option ->
                         SelectableCard(
                             isSelected = option.id == slotId,
@@ -246,7 +272,15 @@ fun ReserveSlotSheet(
 
                 ReserveStep.MODE -> {
                     StepTitle("How would you like to help?")
-                    context.enabledModes.forEach { option ->
+                    if (dateModes.isEmpty()) {
+                        Text(
+                            text = "This date doesn't take signups right now. Pick another date.",
+                            color = PantopusColors.appTextSecondary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.testTag("supportTrainReserveNoModes"),
+                        )
+                    }
+                    dateModes.forEach { option ->
                         SelectableCard(
                             isSelected = option.wire == mode,
                             tag = "supportTrainReserveMode-${option.wire}",
@@ -305,7 +339,7 @@ fun ReserveSlotSheet(
                         onEnabledChange = { on ->
                             hasArrivalTime = on
                             // Start at the slot's window, not a blank: as on iOS.
-                            if (on && arrivalTime.isEmpty()) arrivalTime = defaultArrivalTime(selected?.windowStart)
+                            if (on && arrivalTime.isEmpty()) arrivalTime = defaultArrivalTime(selected?.windowStart, zone)
                         },
                         onTimeChange = { arrivalTime = it },
                     )
@@ -428,7 +462,7 @@ fun ReserveSlotSheet(
                                     restaurantName = restaurantName.takeIf { it.isNotBlank() },
                                     noteToRecipient = noteToRecipient.takeIf { it.isNotBlank() },
                                     estimatedArrivalAt =
-                                        if (hasArrivalTime) arrivalIso(selected?.slotDate, arrivalTime) else null,
+                                        if (hasArrivalTime) arrivalIso(selected?.slotDate, arrivalTime, zone) else null,
                                 ),
                             ) { failure ->
                                 if (failure == null) step = ReserveStep.SUCCESS else errorMessage = failure
@@ -442,23 +476,34 @@ fun ReserveSlotSheet(
     }
 }
 
-/** "17:00:00" → "17:00"; a slot without a window starts at the current time, as on iOS. */
-private fun defaultArrivalTime(windowStart: String?): String =
+/** "17:00:00" → "17:00"; a slot without a window starts at the current time where the train is. */
+private fun defaultArrivalTime(
+    windowStart: String?,
+    zone: ZoneId,
+): String =
     windowStart?.takeIf { it.length >= 5 && it[2] == ':' }?.take(5)
-        ?: LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm", Locale.US))
+        ?: LocalTime.now(zone).format(DateTimeFormatter.ofPattern("HH:mm", Locale.US))
+
+/** The train's zone, or the phone's when an older server sends none. */
+internal fun trainZone(id: String?): ZoneId =
+    id?.takeIf { it.isNotBlank() }?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
 /** "17:30" → "5:30 PM". */
 private fun arrivalLabel(time: String): String? =
     runCatching { LocalTime.parse(time) }.getOrNull()?.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
 
-/** The picked time on the slot's day, in this phone's time zone, as iOS and the web send it. */
+/**
+ * The picked time on the slot's day as that clock time where the train is (B4): a helper away from home still
+ * arrives at 5:30 there, not at 5:30 on their phone's clock.
+ */
 internal fun arrivalIso(
     slotDate: String?,
     time: String,
+    zone: ZoneId = ZoneId.systemDefault(),
 ): String? {
     val day = slotDate?.take(10)?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return null
     val clock = runCatching { LocalTime.parse(time) }.getOrNull() ?: return null
-    return day.atTime(clock).atZone(ZoneId.systemDefault())
+    return day.atTime(clock).atZone(zone)
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US))
 }
 

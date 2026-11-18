@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.support_trains.manage
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -67,13 +68,19 @@ import app.pantopus.android.ui.components.RefreshOnStoreChange
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
 import app.pantopus.android.ui.components.closesKeyboardOnTapOrScroll
+import app.pantopus.android.ui.components.rememberAddressSuggestions
+import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.components.toastDurationMillis
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
 import app.pantopus.android.ui.screens.inbox.newmessage.NewMessageScreen
 import app.pantopus.android.ui.screens.support_trains.detail.SupportTrainViewerRole
 import app.pantopus.android.ui.screens.support_trains.manage.components.CloseTrainSheet
 import app.pantopus.android.ui.screens.support_trains.manage.components.MANAGE_TRAIN_CLOSE_SHEET_SCRIM_TAG
+import app.pantopus.android.ui.screens.support_trains.manage.components.ManageAddressSheet
+import app.pantopus.android.ui.screens.support_trains.manage.components.ManageAudienceSection
 import app.pantopus.android.ui.screens.support_trains.manage.components.ManageDatesSection
+import app.pantopus.android.ui.screens.support_trains.manage.components.ManageDeliverySection
+import app.pantopus.android.ui.screens.support_trains.manage.components.ManageDetailsSheet
 import app.pantopus.android.ui.screens.support_trains.manage.components.ManageFundSection
 import app.pantopus.android.ui.screens.support_trains.manage.components.ManageHelpersSection
 import app.pantopus.android.ui.screens.support_trains.manage.components.ManageLifecycleSection
@@ -114,6 +121,7 @@ const val MANAGE_TRAIN_RETRY_TAG: String = "manageTrainRetry"
  * Tapping the destructive `Close train` row presents the
  * [CloseTrainSheet] over a dimmed body.
  */
+@Suppress("CyclomaticComplexMethod")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageTrainScreen(
@@ -182,6 +190,7 @@ fun ManageTrainScreen(
                 CloseSheetOverlay(
                     content = content.close.copy(mealsDelivered = state.deliveredMeals?.toString() ?: "—"),
                     thankYouNote = state.thankYouNote,
+                    thankYouSent = state.thankYouSent,
                     isSubmitting = state.isSubmitting,
                     onUpdateNote = viewModel::updateThankYouNote,
                     onCancel = viewModel::hideCloseSheet,
@@ -214,6 +223,56 @@ fun ManageTrainScreen(
         }
     }
 
+    val addressSuggestions = rememberAddressSuggestions()
+    state.addressEditor?.takeIf { privateDetailsAvailable }?.let { editor ->
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissAddressEditor() },
+            sheetState =
+                rememberModalBottomSheetState(
+                    skipPartiallyExpanded = true,
+                    confirmValueChange = { !state.isSubmitting || it != SheetValue.Hidden },
+                ),
+            containerColor = PantopusColors.appBg,
+            modifier = Modifier.sheetKeyboardRules(),
+        ) {
+            ManageAddressSheet(
+                editor = editor,
+                suggestions = addressSuggestions,
+                isSubmitting = state.isSubmitting,
+                onSelectHome = viewModel::selectDeliveryHome,
+                onChooseAnotherAddress = viewModel::chooseAnotherAddress,
+                onAddressQuery = { text ->
+                    viewModel.updateAddressQuery(text)
+                    addressSuggestions?.onTextChanged(text)
+                },
+                onPickAddress = viewModel::pickDeliveryAddress,
+                onSave = viewModel::saveAddress,
+                onCancel = viewModel::dismissAddressEditor,
+            )
+        }
+    }
+
+    state.detailsEditor?.takeIf { privateDetailsAvailable }?.let { editor ->
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissDetailsEditor() },
+            sheetState =
+                rememberModalBottomSheetState(
+                    skipPartiallyExpanded = true,
+                    confirmValueChange = { !state.isSubmitting || it != SheetValue.Hidden },
+                ),
+            containerColor = PantopusColors.appBg,
+            modifier = Modifier.sheetKeyboardRules(),
+        ) {
+            ManageDetailsSheet(
+                editor = editor,
+                isSubmitting = state.isSubmitting,
+                onChange = viewModel::updateDetailsEditor,
+                onSave = viewModel::saveDetails,
+                onCancel = viewModel::dismissDetailsEditor,
+            )
+        }
+    }
+
     state.pendingConfirm?.takeIf { privateDetailsAvailable }?.let { confirm ->
         AlertDialog(
             onDismissRequest = { viewModel.dismissConfirm() },
@@ -221,7 +280,10 @@ fun ManageTrainScreen(
             text = { Text(confirm.message) },
             confirmButton = {
                 TextButton(onClick = { viewModel.performConfirm(confirm.kind) }) {
-                    Text(confirm.confirmLabel, color = PantopusColors.error)
+                    Text(
+                        confirm.confirmLabel,
+                        color = if (confirm.kind == ManageConfirmKind.ListNearby) PantopusColors.primary600 else PantopusColors.error,
+                    )
                 }
             },
             dismissButton = {
@@ -415,6 +477,39 @@ private fun LoadedBody(
     onEditDates: ((String) -> Unit)?,
     onInviteHelpers: ((String) -> Unit)?,
 ) {
+    // Invite by account (A2): the chat New message picker, showing only connections, since the server takes an
+    // invitation only for someone the organizer knows. Each opening gets its own view model.
+    var showInvitePicker by rememberSaveable { mutableStateOf(false) }
+    var invitePickerSession by rememberSaveable { mutableIntStateOf(0) }
+    val onInvitePeople = {
+        invitePickerSession += 1
+        showInvitePicker = true
+    }
+    if (showInvitePicker) {
+        Dialog(
+            onDismissRequest = { showInvitePicker = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(modifier = Modifier.closesKeyboardOnTapOrScroll()) {
+                NewMessageScreen(
+                    title = "Invite to the train",
+                    emptyHeadline = "No connections yet",
+                    emptyBody = "You can invite people you're connected with. Share the link with anyone else.",
+                    connectionsOnly = true,
+                    onCancel = { showInvitePicker = false },
+                    onSelect = { destination ->
+                        showInvitePicker = false
+                        viewModel.invite(destination.userId, destination.displayName)
+                    },
+                    onInvite = {
+                        showInvitePicker = false
+                        onInviteHelpers?.invoke(content.trainId)
+                    },
+                    viewModel = hiltViewModel(key = "trainInvitePicker-$invitePickerSession"),
+                )
+            }
+        }
+    }
     val organizeHandler: (String) -> ((String) -> Unit)? = { id ->
         when (id) {
             "edit-dates" -> onEditDates
@@ -469,6 +564,30 @@ private fun LoadedBody(
             if (!content.privateDetailsAvailable) {
                 TextButton(onClick = viewModel::refresh) { Text("Load organizer details") }
             } else {
+                // A train that has ended can't be changed (the server says so), so its editors stay closed.
+                val canEdit = content.status !in listOf("completed", "archived")
+                ManageDeliverySection(
+                    address = content.deliveryAddress,
+                    details = content.recipientDetails,
+                    isBusy = ui.isSubmitting,
+                    canEdit = canEdit,
+                    onEditAddress = viewModel::openAddressEditor,
+                    onEditDetails = viewModel::openDetailsEditor,
+                    canEditAddress = canEdit && !content.isRecipientDelegate,
+                )
+                // Who can open it and invitations are the primary and co-organizers' (the server refuses a
+                // recipient_delegate both, including the invitations list), so a delegate doesn't see them.
+                if (!content.isRecipientDelegate) {
+                    ManageAudienceSection(
+                        sharingMode = content.sharingMode,
+                        canEdit = canEdit,
+                        isBusy = ui.isSubmitting,
+                        invitedNames = ui.invitedNames,
+                        invitesFailed = ui.invitesFailed,
+                        onSetAudience = viewModel::setAudience,
+                        onInvite = onInvitePeople,
+                    )
+                }
                 SectionOverline("Send an update")
                 SendUpdateForm(
                     chips = content.audienceChips,
@@ -495,11 +614,14 @@ private fun LoadedBody(
                     listScroll = listScroll,
                 )
 
-                SectionOverline("Wind down")
-                WindDownSection(
-                    row = content.closeRow,
-                    onTap = { viewModel.showCloseSheet() },
-                )
+                // Close is the primary organizer's, on a live train (A11).
+                if (content.canClose) {
+                    SectionOverline("Wind down")
+                    WindDownSection(
+                        row = content.closeRow,
+                        onTap = { viewModel.showCloseSheet() },
+                    )
+                }
                 ManageLifecycleSection(
                     status = content.status,
                     viewerRole = content.viewerRole,
@@ -512,7 +634,7 @@ private fun LoadedBody(
                             ManageDestructiveConfirm(
                                 kind = ManageConfirmKind.UnpublishTrain,
                                 title = "Unpublish this train?",
-                                message = "${content.title} goes back to draft and neighbors stop seeing it.",
+                                message = "${content.title} goes back to draft, and everyone but its organizers stops seeing it.",
                                 confirmLabel = "Unpublish",
                             ),
                         )
@@ -677,7 +799,7 @@ private fun OrganizerControls(
                     ManageDestructiveConfirm(
                         kind = ManageConfirmKind.DisableFund,
                         title = "Disable the gift fund?",
-                        message = "Neighbors won't be able to chip in money any more.",
+                        message = "People won't be able to chip in money any more.",
                         confirmLabel = "Disable",
                     ),
                 )
@@ -746,10 +868,13 @@ private fun CloseSheetOverlay(
     content: CloseTrainSheetContent,
     isSubmitting: Boolean,
     thankYouNote: String,
+    thankYouSent: Boolean,
     onUpdateNote: (String) -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    // Back closes the overlay, not Manage under it (B15); while closing it waits.
+    BackHandler { if (!isSubmitting) onCancel() }
     Box(modifier = Modifier.fillMaxSize().imePadding()) {
         Box(
             modifier =
@@ -770,6 +895,7 @@ private fun CloseSheetOverlay(
             CloseTrainSheet(
                 content = content,
                 thankYouNote = thankYouNote,
+                thankYouSent = thankYouSent,
                 enabled = !isSubmitting,
                 onUpdateThankYouNote = onUpdateNote,
                 onCancel = onCancel,

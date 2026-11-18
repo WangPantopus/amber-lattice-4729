@@ -5,8 +5,12 @@ package app.pantopus.android.ui.screens.support_trains.edit_signup
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.pantopus.android.data.api.models.support_trains.SupportTrainReservationDto
-import app.pantopus.android.data.support_trains.SupportTrainReservationsStore
+import app.pantopus.android.data.api.models.support_trains.SupportTrainMyReservationDto
+import app.pantopus.android.data.api.net.NetworkError
+import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.api.net.displayMessage
+import app.pantopus.android.data.support_trains.SupportTrainSignupEdit
+import app.pantopus.android.data.support_trains.SupportTrainsRepository
 import app.pantopus.android.ui.screens.shared.form.FormAggregate
 import app.pantopus.android.ui.screens.shared.form.FormFieldState
 import app.pantopus.android.ui.screens.shared.form.FormValidator
@@ -20,10 +24,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
-import java.time.ZoneOffset
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
@@ -36,13 +40,13 @@ enum class EditSignupField(val key: String) {
      */
     Contribution("contribution"),
 
-    /** `HH:mm` drop-off time within the recipient's slot window. */
+    /** `HH:mm` arrival, as the clock time where the train is. */
     DropoffTime("dropoffTime"),
 
-    /**
-     * Organizer-only dietary / accommodation notes
-     * (`private_note_to_organizer`).
-     */
+    /** The helper's note to the family (`note_to_recipient`). */
+    NoteToRecipient("noteToRecipient"),
+
+    /** The helper's private note to the organizers (`private_note_to_organizer`). */
     DietaryNotes("dietaryNotes"),
 }
 
@@ -54,14 +58,21 @@ data class EditSignupToastPayload(
 
 /** Aggregate UI state for the Edit Signup form. */
 data class EditSignupUiState(
-    val reservation: SupportTrainReservationDto? = null,
+    val reservation: SupportTrainMyReservationDto? = null,
     val fields: Map<EditSignupField, FormFieldState> =
         EditSignupField.entries.associateWith { FormFieldState(id = it.key) },
     val isSaving: Boolean = false,
     val toast: EditSignupToastPayload? = null,
     val shouldDismiss: Boolean = false,
-    /** True once the staged seed could not be found — surfaces an error CTA. */
+    /** The signup isn't the viewer's own reserved one any more (delivered, cancelled, gone): nothing to edit. */
     val isMissingSeed: Boolean = false,
+    /** The train is being read. */
+    val isLoading: Boolean = false,
+    /** The first read failed (offline, server down): nothing to show yet, and a retry may work. */
+    val loadFailed: Boolean = false,
+    /** The date the signup is for (`YYYY-MM-DD`), and the train's zone, where the drop-off time is read. */
+    val slotDate: String? = null,
+    val timezone: String? = null,
 ) {
     val aggregate: FormAggregate
         get() = FormAggregate.from(EditSignupField.entries.mapNotNull { fields[it] })
@@ -92,43 +103,68 @@ data class EditSignupUiState(
 }
 
 /**
- * P3.7 — Edit Signup form ViewModel. Mirrors iOS
- * `EditSignupFormViewModel` exactly: prefills from the seed
- * reservation, validates on every keystroke, and on Save writes an
- * optimistic patch into [SupportTrainReservationsStore] so the
- * Review-signups list reflects the edit when the user pops back. The
- * backend `PATCH …/reservations/:reservationId` route lands
- * separately — until then the store's patch is the user-facing source
- * of truth (matches the optimistic-confirm precedent on
- * `ReviewSignupsViewModel.confirm`).
+ * P3.7 — Edit Signup form ViewModel: a helper changes their own signup (B1) with
+ * `PATCH /:id/reservations/:reservationId`. It reads the train for the signup (no stale copy handed over), sends every
+ * field (unchanged ones with their current values) and the version it started from; a change made meanwhile is
+ * answered 409, and the form reloads with what's there now.
  */
 @HiltViewModel
 class EditSignupFormViewModel
     @Inject
     constructor(
-        private val store: SupportTrainReservationsStore,
+        private val repo: SupportTrainsRepository,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
-        private val reservationId: String =
-            savedStateHandle.get<String>(RESERVATION_ID_KEY).orEmpty()
+        private val trainId: String = savedStateHandle.get<String>(TRAIN_ID_KEY).orEmpty()
+        private val reservationId: String = savedStateHandle.get<String>(RESERVATION_ID_KEY).orEmpty()
 
-        private val _state = MutableStateFlow(EditSignupUiState())
+        private val _state = MutableStateFlow(EditSignupUiState(isLoading = true))
         val state: StateFlow<EditSignupUiState> = _state.asStateFlow()
 
         init {
-            // Pull the staged seed the list screen dropped before
-            // navigating. If the user got here via a deep link (or the
-            // process restarted) the seed will be null and we surface
-            // an error CTA in the UI rather than rendering a blank form.
-            val seed = store.consumeStaged()
-            if (seed == null || (reservationId.isNotEmpty() && seed.id != reservationId)) {
-                _state.update { it.copy(isMissingSeed = true) }
-            } else {
-                _state.update {
-                    it.copy(
-                        reservation = seed,
-                        fields = seedFields(seed),
-                    )
+            load()
+        }
+
+        /** Reads the train and finds the viewer's own signup; only a reserved one (still ahead) can be edited. */
+        fun load() {
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
+            viewModelScope.launch {
+                when (val result = repo.detail(trainId)) {
+                    is NetworkResult.Success -> {
+                        val dto = result.data
+                        val mine = dto.myReservations.orEmpty().firstOrNull { it.id == reservationId }
+                        val slotDate = mine?.slotId?.let { id -> dto.slots.orEmpty().firstOrNull { it.id == id }?.slotDate }
+                        if (mine == null || (mine.status ?: "reserved") != "reserved" || mine.updatedAt.isNullOrBlank()) {
+                            _state.update { it.copy(isLoading = false, isMissingSeed = true, reservation = null) }
+                        } else {
+                            _state.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isMissingSeed = false,
+                                    reservation = mine,
+                                    slotDate = slotDate,
+                                    timezone = dto.timezone,
+                                    fields = seedFields(mine, zone(dto.timezone)),
+                                )
+                            }
+                        }
+                    }
+                    is NetworkResult.Failure ->
+                        _state.update {
+                            if (it.reservation == null) {
+                                // Nothing loaded yet: say it couldn't load and offer Retry, not "can't be changed".
+                                it.copy(isLoading = false, loadFailed = true)
+                            } else {
+                                it.copy(
+                                    isLoading = false,
+                                    toast =
+                                        EditSignupToastPayload(
+                                            result.error.displayMessage("Couldn't load your signup."),
+                                            isError = true,
+                                        ),
+                                )
+                            }
+                        }
                 }
             }
         }
@@ -175,35 +211,38 @@ class EditSignupFormViewModel
             return firstInvalid
         }
 
-        /**
-         * Commit the edit. Builds the patched DTO, writes it into the
-         * shared store, surfaces a success toast, and flips
-         * `shouldDismiss` after a beat so the host nav-pops the form.
-         */
+        /** Saves the edit on the server; the form closes only once the server has it. */
         fun submit() {
-            if (_state.value.reservation == null) return
+            val current = _state.value
+            if (current.reservation == null || current.isSaving) return
             if (validateAll() != null) {
-                _state.update {
-                    it.copy(
-                        toast = EditSignupToastPayload("Fix the highlighted field.", isError = true),
-                    )
-                }
+                _state.update { it.copy(toast = EditSignupToastPayload("Fix the highlighted field.", isError = true)) }
                 return
             }
-            val updated = buildUpdatedReservation() ?: return
+            val edit = buildEdit() ?: return
             _state.update { it.copy(isSaving = true) }
-            store.applyPatch(updated)
             viewModelScope.launch {
-                _state.update {
-                    it.copy(
-                        isSaving = false,
-                        toast = EditSignupToastPayload("Signup updated.", isError = false),
-                    )
+                when (val result = repo.editSignup(trainId, reservationId, edit)) {
+                    is NetworkResult.Success -> {
+                        _state.update {
+                            it.copy(isSaving = false, toast = EditSignupToastPayload("Signup updated.", isError = false))
+                        }
+                        // Hold the success toast on screen briefly before the host
+                        // pops the nav stack — mirrors iOS cadence.
+                        delay(700)
+                        _state.update { it.copy(shouldDismiss = true) }
+                    }
+                    is NetworkResult.Failure -> {
+                        _state.update {
+                            it.copy(
+                                isSaving = false,
+                                toast = EditSignupToastPayload(result.error.displayMessage("Couldn't save your signup."), isError = true),
+                            )
+                        }
+                        // Changed meanwhile (409): show what's there now.
+                        if (result.error is NetworkError.ClientError && result.error.code == CONFLICT) load()
+                    }
                 }
-                // Hold the success toast on screen briefly before the host
-                // pops the nav stack — mirrors iOS cadence.
-                delay(700)
-                _state.update { it.copy(shouldDismiss = true) }
             }
         }
 
@@ -211,125 +250,87 @@ class EditSignupFormViewModel
 
         private fun validator(field: EditSignupField): FormValidator =
             when (field) {
-                // Optional on the wire (Joi `.allow(null, '')`) but
-                // capped at 200 chars to match the reserve schema.
+                // Optional on the wire (Joi `.allow(null, '')`) but capped at 200 chars, as the reserve schema.
                 EditSignupField.Contribution -> FormValidator.all(listOf(FormValidator.maxLength(200)))
                 EditSignupField.DropoffTime -> FormValidator.all(listOf(FormValidator.timeHHmm()))
+                EditSignupField.NoteToRecipient -> FormValidator.all(listOf(FormValidator.maxLength(1000)))
                 EditSignupField.DietaryNotes -> FormValidator.all(listOf(FormValidator.maxLength(1000)))
             }
 
-        private fun buildUpdatedReservation(): SupportTrainReservationDto? {
+        private fun buildEdit(): SupportTrainSignupEdit? {
             val current = _state.value
             val seed = current.reservation ?: return null
-
-            val trimmedContribution =
-                (current.fields[EditSignupField.Contribution]?.value ?: "").trim()
-            val trimmedNotes =
-                (current.fields[EditSignupField.DietaryNotes]?.value ?: "").trim()
-
+            val contribution = (current.fields[EditSignupField.Contribution]?.value ?: "").trim().ifEmpty { null }
             val dishTitle: String?
             val restaurantName: String?
             if (current.contributionMapsToRestaurant) {
                 dishTitle = seed.dishTitle
-                restaurantName = trimmedContribution.ifEmpty { null }
+                restaurantName = contribution
             } else {
-                dishTitle = trimmedContribution.ifEmpty { null }
+                dishTitle = contribution
                 restaurantName = seed.restaurantName
             }
-
-            val arrival = newArrivalIso(seed)
-            return seed.copy(
+            return SupportTrainSignupEdit(
                 dishTitle = dishTitle,
                 restaurantName = restaurantName,
-                estimatedArrivalAt = arrival,
-                privateNoteToOrganizer = trimmedNotes.ifEmpty { null },
-                // Bumping `updatedAt` flips the row to the "Edited" chip
-                // in the list view — same client-side derivation
-                // `SupportTrainReservationDto.wasEdited` uses.
-                updatedAt = isoNow(),
+                estimatedArrivalAt = newArrivalIso(seed),
+                privateNoteToOrganizer = (current.fields[EditSignupField.DietaryNotes]?.value ?: "").trim().ifEmpty { null },
+                noteToRecipient = (current.fields[EditSignupField.NoteToRecipient]?.value ?: "").trim().ifEmpty { null },
+                expectedUpdatedAt = seed.updatedAt.orEmpty(),
             )
         }
 
         /**
-         * Build the new `estimated_arrival_at` ISO string by overlaying
-         * the picked `HH:mm` on the seed arrival date. Falls back to
-         * the seed value when no time is set or the seed arrival is
-         * missing / unparseable.
+         * The picked `HH:mm` on the signup's day, as that clock time where the train is (B4). An untouched time keeps
+         * the saved instant exactly; a cleared one clears it.
          */
-        private fun newArrivalIso(seed: SupportTrainReservationDto): String? {
-            val value = (_state.value.fields[EditSignupField.DropoffTime]?.value ?: "").trim()
-            if (value.isEmpty()) return seed.estimatedArrivalAt
-            val (hour, minute) =
-                runCatching {
-                    val parts = value.split(":")
-                    parts[0].toInt() to parts[1].toInt()
-                }.getOrNull() ?: return seed.estimatedArrivalAt
-            val zone = ZoneId.systemDefault()
-            val base: ZonedDateTime =
-                runCatching { Instant.parse(seed.estimatedArrivalAt ?: "") }
-                    .getOrNull()
-                    ?.atZone(zone)
-                    ?: ZonedDateTime.now(zone)
-            val composed =
-                base
-                    .withHour(hour)
-                    .withMinute(minute)
-                    .withSecond(0)
-                    .withNano(0)
-            return composed.withZoneSameInstant(ZoneOffset.UTC).format(ISO_FMT)
-        }
-
-        private fun seedFields(seed: SupportTrainReservationDto): Map<EditSignupField, FormFieldState> {
-            val contributionOriginal =
-                if (seed.contributionMode == "takeout") {
-                    seed.restaurantName.orEmpty()
-                } else {
-                    seed.dishTitle.orEmpty()
+        @Suppress("ReturnCount")
+        private fun newArrivalIso(seed: SupportTrainMyReservationDto): String? {
+            val field = _state.value.fields[EditSignupField.DropoffTime]
+            val value = field?.value?.trim().orEmpty()
+            if (field != null && value == field.originalValue) return seed.estimatedArrivalAt
+            if (value.isEmpty()) return null
+            val clock = runCatching { LocalTime.parse(value) }.getOrNull() ?: return seed.estimatedArrivalAt
+            val zone = zone(_state.value.timezone)
+            val savedDay =
+                seed.estimatedArrivalAt?.let { iso ->
+                    runCatching { OffsetDateTime.parse(iso).atZoneSameInstant(zone).toLocalDate() }.getOrNull()
                 }
-            val dropoffOriginal = formatDropoffTime(seed)
-            val dietaryOriginal = seed.privateNoteToOrganizer.orEmpty()
-            return mapOf(
-                EditSignupField.Contribution to
-                    FormFieldState(
-                        id = EditSignupField.Contribution.key,
-                        value = contributionOriginal,
-                        originalValue = contributionOriginal,
-                    ),
-                EditSignupField.DropoffTime to
-                    FormFieldState(
-                        id = EditSignupField.DropoffTime.key,
-                        value = dropoffOriginal,
-                        originalValue = dropoffOriginal,
-                    ),
-                EditSignupField.DietaryNotes to
-                    FormFieldState(
-                        id = EditSignupField.DietaryNotes.key,
-                        value = dietaryOriginal,
-                        originalValue = dietaryOriginal,
-                    ),
-            )
+            val day =
+                savedDay
+                    ?: _state.value.slotDate?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+                    ?: return seed.estimatedArrivalAt
+            return day.atTime(clock).atZone(zone).format(ISO_FMT)
         }
 
-        private fun formatDropoffTime(seed: SupportTrainReservationDto): String {
-            val iso = seed.estimatedArrivalAt ?: return ""
-            return runCatching {
-                val zone = ZoneId.systemDefault()
-                val zdt = Instant.parse(iso).atZone(zone)
-                TIME_FMT.format(zdt)
-            }.getOrDefault("")
+        private fun seedFields(
+            seed: SupportTrainMyReservationDto,
+            zone: ZoneId,
+        ): Map<EditSignupField, FormFieldState> {
+            val contribution = if (seed.contributionMode == "takeout") seed.restaurantName.orEmpty() else seed.dishTitle.orEmpty()
+            val dropoff =
+                seed.estimatedArrivalAt
+                    ?.let { runCatching { OffsetDateTime.parse(it).atZoneSameInstant(zone).format(TIME_FMT) }.getOrNull() }
+                    .orEmpty()
+            val values =
+                mapOf(
+                    EditSignupField.Contribution to contribution,
+                    EditSignupField.DropoffTime to dropoff,
+                    EditSignupField.NoteToRecipient to seed.noteToRecipient.orEmpty(),
+                    EditSignupField.DietaryNotes to seed.privateNoteToOrganizer.orEmpty(),
+                )
+            return values.mapValues { (field, value) -> FormFieldState(id = field.key, value = value, originalValue = value) }
         }
 
-        private fun isoNow(): String = ISO_FMT.format(ZonedDateTime.now(ZoneOffset.UTC))
+        private fun zone(id: String?): ZoneId = id?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
         companion object {
-            /**
-             * Nav-arg key for the reservation UUID this screen edits.
-             * Mirrors `ChildRoutes.EDIT_SIGNUP_ID_KEY` in
-             * `RootTabScreen.kt`.
-             */
+            /** Nav-arg keys; mirror `ChildRoutes.EDIT_SIGNUP_*` in `RootTabScreen.kt`. */
+            const val TRAIN_ID_KEY = "supportTrainId"
             const val RESERVATION_ID_KEY = "reservationId"
 
+            private const val CONFLICT = 409
             private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-            private val ISO_FMT: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+            private val ISO_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX")
         }
     }

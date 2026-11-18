@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -55,15 +56,12 @@ const val EDIT_SIGNUP_FORM_TAG = "editSignupForm"
 const val EDIT_SIGNUP_CONTRIBUTION_FIELD_TAG = "editSignupContributionField"
 const val EDIT_SIGNUP_DROPOFF_TIME_FIELD_TAG = "editSignupDropoffTimeField"
 const val EDIT_SIGNUP_DIETARY_NOTES_FIELD_TAG = "editSignupDietaryNotesField"
+const val EDIT_SIGNUP_NOTE_FIELD_TAG = "editSignupNoteField"
 const val EDIT_SIGNUP_TOAST_TAG = "editSignupToast"
 
 /**
- * P3.7 — Edit Signup form. The ViewModel reads the seed reservation
- * from [app.pantopus.android.data.support_trains.SupportTrainReservationsStore]
- * on init; the list screen stages it before navigating so the form
- * prefills without a re-fetch. On save the form writes a patch back
- * to the same store so the Review-signups list reflects the change
- * when the user pops.
+ * P3.7 — Edit Signup form: a helper changes their own signup from the train page (B1). The ViewModel reads the train
+ * for the signup and saves with `PATCH /:id/reservations/:reservationId`; the form closes once the server has it.
  */
 @Composable
 fun EditSignupFormScreen(
@@ -95,6 +93,19 @@ fun EditSignupFormScreen(
     ) {
         if (state.isMissingSeed) {
             MissingSeedBody(onClose = onClose)
+        } else if (state.loadFailed) {
+            EmptyState(
+                icon = PantopusIcon.AlertCircle,
+                headline = "Couldn't load your signup",
+                subcopy = "Check your connection and try again.",
+                ctaTitle = "Retry",
+                onCta = viewModel::load,
+                modifier = Modifier.testTag("editSignupLoadFailed"),
+            )
+        } else if (state.isLoading && state.reservation == null) {
+            Box(modifier = Modifier.fillMaxSize().testTag("editSignupLoading"), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = PantopusColors.primary600)
+            }
         } else {
             FormShell(
                 title = "Edit signup",
@@ -107,7 +118,26 @@ fun EditSignupFormScreen(
             ) {
                 ContributionGroup(state = state, onChange = viewModel::update)
                 DropoffTimeGroup(state = state, onChange = viewModel::update)
-                DietaryNotesGroup(state = state, onChange = viewModel::update)
+                NoteGroup(
+                    state = state,
+                    field = EditSignupField.NoteToRecipient,
+                    group = "Note to the family",
+                    label = "Note to the family",
+                    placeholder = "A few words with the meal",
+                    hint = "The family and the organizers see this.",
+                    tag = EDIT_SIGNUP_NOTE_FIELD_TAG,
+                    onChange = viewModel::update,
+                )
+                NoteGroup(
+                    state = state,
+                    field = EditSignupField.DietaryNotes,
+                    group = "Note to the organizers",
+                    label = "Note to the organizers",
+                    placeholder = "Anything the organizers should know",
+                    hint = "Only you and the train's organizers see this.",
+                    tag = EDIT_SIGNUP_DIETARY_NOTES_FIELD_TAG,
+                    onChange = viewModel::update,
+                )
             }
         }
 
@@ -134,8 +164,8 @@ fun EditSignupFormScreen(
 private fun MissingSeedBody(onClose: () -> Unit) {
     EmptyState(
         icon = PantopusIcon.AlertCircle,
-        headline = "Reservation unavailable",
-        subcopy = "Open the helper's row from the Review signups list to edit their signup.",
+        headline = "This signup can't be changed",
+        subcopy = "It may have been delivered or cancelled. Go back to the train to see where it stands.",
         ctaTitle = "Close",
         onCta = onClose,
     )
@@ -212,7 +242,7 @@ private fun DropoffTimeGroup(
                 )
             }
             Text(
-                text = "Pick a time inside the recipient's preferred drop window.",
+                text = "The time where the train is. Pick one inside the drop-off window.",
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )
@@ -249,31 +279,39 @@ private fun DropoffTimeGroup(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
-private fun DietaryNotesGroup(
+private fun NoteGroup(
     state: EditSignupUiState,
+    field: EditSignupField,
+    group: String,
+    label: String,
+    placeholder: String,
+    hint: String,
+    tag: String,
     onChange: (EditSignupField, String) -> Unit,
 ) {
-    FormFieldGroup("Dietary notes") {
-        val snapshot = state.fields[EditSignupField.DietaryNotes]
+    FormFieldGroup(group) {
+        val snapshot = state.fields[field]
         val value = snapshot?.value.orEmpty()
         val error = if (snapshot != null && snapshot.touched) snapshot.error else null
         val hasError = error != null
 
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s1)) {
             Text(
-                text = "Dietary / accommodation notes",
+                text = label,
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )
             OutlinedTextField(
                 value = value,
-                onValueChange = { onChange(EditSignupField.DietaryNotes, it) },
+                onValueChange = { onChange(field, it) },
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 96.dp)
-                        .testTag(EDIT_SIGNUP_DIETARY_NOTES_FIELD_TAG),
+                        .semantics { contentDescription = label }
+                        .testTag(tag),
                 colors =
                     OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = PantopusColors.appSurface,
@@ -290,7 +328,7 @@ private fun DietaryNotesGroup(
                 isError = hasError,
                 placeholder = {
                     Text(
-                        text = "Allergies, access needs, anything the helper should know.",
+                        text = placeholder,
                         style = PantopusTextStyle.body,
                         color = PantopusColors.appTextMuted,
                     )
@@ -304,7 +342,7 @@ private fun DietaryNotesGroup(
                 )
             }
             Text(
-                text = "Only the organizer sees this. Helpful for allergies or access needs.",
+                text = hint,
                 style = PantopusTextStyle.caption,
                 color = PantopusColors.appTextSecondary,
             )

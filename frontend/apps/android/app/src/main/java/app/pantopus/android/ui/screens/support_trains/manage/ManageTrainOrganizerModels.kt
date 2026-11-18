@@ -111,6 +111,9 @@ sealed interface ManageConfirmKind {
     data class RemoveOrganizer(val userId: String) : ManageConfirmKind
 
     data class RemoveHelper(val reservationId: String) : ManageConfirmKind
+
+    /** "People near you" lists the train for people within about 25 miles, so it is asked first. */
+    data object ListNearby : ManageConfirmKind
 }
 
 data class ManageDestructiveConfirm(
