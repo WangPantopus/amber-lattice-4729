@@ -103,8 +103,8 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * With the Sky on for the caller (`sky_places`) it adds `sky: true`, the area a Moment at home shows (`area`: its town,
  * the street spot it stands over and its disc), the public place that may take a pin there (`place`), whether one may
  * be pinned (`can_pin`) and
- * the "Share later" times on offer now (`share_later`); the names leave out schools and preschools, and
- * `pick_within_m` is shorter where the spot is built up (momentPlace.pickWithinM).
+ * the "Share later" times on offer now (`share_later`); `pick_within_m` (how far a place picked by name may be) is
+ * a mile where the spot is most built up, up to two miles in open country (momentPlace.pickWithinM).
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
@@ -179,10 +179,12 @@ async function skyPreview(userId, at, atHome) {
  *
  * A place is picked with `pin: "place"`, a `venue_id` or a venue's `place_key`. It may be no farther from the spot
  * than momentPlace.pickWithinM says (422 PLACE_NOT_NEARBY for a `venue_id` that is, or that nobody finds), and
- * `pin: "place"` with no place named and none at the spot is 422 NO_PLACE_HERE. A place that can't take a pin (a
- * school), and one right by the author's home, leave the Moment where it was taken. A place whose own point is
- * farther off than that (the middle of a big park the photo was taken in) names the Moment, and the pin stays where
- * it was taken: no pin is ever farther from the photo than a place may be picked.
+ * `pin: "place"` with no place named and none at the spot is 422 NO_PLACE_HERE. Schools and preschools take a pin
+ * like any place (founder 2026-11-17); a place right by the author's home leaves the Moment where it was taken. A
+ * place whose own point is farther off than that (the middle of a big park the photo was taken in) names the Moment,
+ * and the pin stays where it was taken: no pin is ever farther from the photo than a place may be picked. With no
+ * place named (the one at the spot itself) "that" is the shorter distance from before November 17, 2026
+ * (pickWithinM's `picked: false`), so that pin moves no farther than it did.
  */
 async function skyPlacement(userId, body) {
   const { latitude, longitude } = body.location;
@@ -190,7 +192,7 @@ async function skyPlacement(userId, body) {
   if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
   const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
   if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
-  const within = await momentPlace.pickWithinM(latitude, longitude);
+  const within = await momentPlace.pickWithinM(latitude, longitude, { picked: Boolean(body.venue_id || venueKey) });
   let venue = null;
   if (body.venue_id) {
     const found = await momentPlace.venueNear(body.venue_id, latitude, longitude, within);
@@ -336,7 +338,7 @@ router.post('/', createLimiter, async (req, res) => {
       const town = area ? await momentPlace.townAt(area.latitude, area.longitude) : null;
       [found, atHome] = [{ place_label: venue ? venue.label : town, area_label: town, places: [] }, placed.atHome];
     } else if (sky) {
-      // Where it was taken: the names that fit the spot, as before the Sky, but never a school's or a preschool's.
+      // Where it was taken: the names that fit the spot, as before the Sky (only places that can take a pin).
       [found, atHome] = [await momentPlace.labelsAt(latitude, longitude, { pinnableOnly: true }), false];
     } else {
       [found, atHome] = await Promise.all([

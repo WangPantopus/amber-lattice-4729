@@ -241,8 +241,7 @@ fun MomentsComposeScreen(
                 limits =
                     PlacePickerLimits(anchorChips = false, showLocality = false) { place ->
                         place.placeId?.startsWith("osm:") == true &&
-                            (place.distanceM ?: Double.MAX_VALUE) <= reach &&
-                            state.canPinAt(place.category)
+                            (place.distanceM ?: Double.MAX_VALUE) <= reach
                     },
             )
         }
