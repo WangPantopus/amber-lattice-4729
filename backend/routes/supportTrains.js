@@ -4618,7 +4618,8 @@ router.get(
         ? supabaseAdmin
             .from('SupportTrainReservation')
             .select(
-              'id, slot_id, status, contribution_mode, dish_title, restaurant_name, estimated_arrival_at, note_to_recipient, created_at'
+              // updated_at and their own private note let a helper edit their signup (PATCH reservation).
+              'id, slot_id, status, contribution_mode, dish_title, restaurant_name, estimated_arrival_at, note_to_recipient, private_note_to_organizer, created_at, updated_at'
             )
             .eq('support_train_id', supportTrainId)
             .eq('user_id', userId)
