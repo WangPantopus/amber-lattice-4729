@@ -77,6 +77,7 @@ import app.pantopus.android.data.analytics.AnalyticsEvent
 import app.pantopus.android.data.api.models.posts.EarlierPostDto
 import app.pantopus.android.data.location.HeightReading
 import app.pantopus.android.data.posts.PostCameraPhotos
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.components.FutureDateTimePickerDialogs
 import app.pantopus.android.ui.components.PantopusFieldState
@@ -86,6 +87,8 @@ import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastKind
 import app.pantopus.android.ui.components.ToastMessage
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.oneLine
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.screens.compose.placepicker.MediaCaptureLocation
 import app.pantopus.android.ui.screens.compose.placepicker.MediaHeightExtractor
 import app.pantopus.android.ui.screens.compose.placepicker.MediaLocationExtractor
@@ -1325,7 +1328,7 @@ private fun EventSection(
             fields = fields,
             onUpdate = onUpdateField,
         )
-        FieldRow(
+        PlaceFieldRow(
             field = PulseComposeField.EventLocation,
             label = "Location",
             placeholder = "Where?",
@@ -1359,7 +1362,7 @@ private fun LostSection(
             fields = fields,
             onUpdate = onUpdateField,
         )
-        FieldRow(
+        PlaceFieldRow(
             field = PulseComposeField.LostLastSeenLocation,
             label = "Last seen location",
             placeholder = "Where?",
@@ -2027,6 +2030,34 @@ private fun VisibilityRow(
 }
 
 // MARK: - Shared field helpers
+
+/**
+ * A "Where?" field that suggests addresses and places as it is typed, near the person's home (FASTVERIFY section 11);
+ * a pick fills the line, and any place can still be typed.
+ */
+@Composable
+private fun PlaceFieldRow(
+    field: PulseComposeField,
+    label: String,
+    placeholder: String,
+    fields: Map<PulseComposeField, FormFieldState>,
+    onUpdate: (PulseComposeField, String) -> Unit,
+) {
+    val suggestions = rememberAddressSuggestions(streetOnly = false)
+    FieldRow(
+        field = field,
+        label = label,
+        placeholder = placeholder,
+        fields = fields,
+        onUpdate = { changed, value ->
+            onUpdate(changed, value)
+            suggestions?.onTextChanged(value)
+        },
+    )
+    AddressSuggestionList(suggestions, testTagPrefix = "pulseCompose.${field.name}.suggestion", keepAboveKeyboard = true) { picked ->
+        onUpdate(field, picked.oneLine())
+    }
+}
 
 @Composable
 private fun FieldRow(

@@ -52,11 +52,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.ui.components.AddressSuggestionList
 import app.pantopus.android.ui.components.EmptyState
 import app.pantopus.android.ui.components.Shimmer
 import app.pantopus.android.ui.components.Toast
 import app.pantopus.android.ui.components.ToastAppearance
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.components.rememberAddressSuggestions
 import app.pantopus.android.ui.components.toastDurationMillis
 import app.pantopus.android.ui.screens.profile.PillarStrip
 import app.pantopus.android.ui.screens.shared.form.FormShell
@@ -537,14 +539,23 @@ private fun ServiceAreaSection(
     onHourlyRateChange: (String) -> Unit,
 ) {
     ProSection("Service area & pricing") {
+        // The city suggests places as it is typed (FASTVERIFY section 11); a pick fills the city and the state.
+        val citySuggestions = rememberAddressSuggestions(streetOnly = false)
         ProTextInput(
             label = "City",
             optional = true,
             value = content.serviceCity.value,
             placeholder = "City",
             testTag = "proServiceCityField",
-            onValueChange = onServiceCityChange,
+            onValueChange = {
+                onServiceCityChange(it)
+                citySuggestions?.onTextChanged(it)
+            },
         )
+        AddressSuggestionList(citySuggestions, testTagPrefix = "proServiceCitySuggestion") { picked ->
+            picked.city?.takeIf { it.isNotBlank() }?.let(onServiceCityChange)
+            picked.state?.takeIf { it.isNotBlank() }?.let(onServiceStateChange)
+        }
         ProTextInput(
             label = "State",
             optional = true,
