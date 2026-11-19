@@ -1386,7 +1386,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       // Home Place type enforcement
       if (postAs === 'home' && !HOME_PLACE_TYPES.includes(postType)) {
         return res.status(400).json({
-          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Neighborhood Wins, and Visitor Guides.`,
+          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Local Wins, and Visitor Guides.`,
         });
       }
 
