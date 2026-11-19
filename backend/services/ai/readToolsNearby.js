@@ -63,7 +63,7 @@ const typeRank = (type) => (TYPE_ORDER.includes(type) ? TYPE_ORDER.indexOf(type)
 const nearbyReadToolDefinitions = [
   {
     name: 'catch_up_nearby',
-    description: "What is new on Pulse near the person (the Pulse tab's Nearby view), within about 10 miles: since they last looked, or over the last `days`. Counts by type and the top posts, heads-ups and lost and found first, each with its post_id for a link button. Without days it covers the time since their last visit (at most 14 days), or the last 7 days when they haven't looked yet or are looking at the feed right now. The person's own posts are left out: every post here is a neighbor's (`yours: false`), even one by someone with their first name. Use it for \"what did I miss\" and \"what's new around here\".",
+    description: "What is new on Pulse near the person (the Pulse tab's Nearby view), within about 10 miles: since they last looked, or over the last `days`. Counts by type and the top posts, heads-ups and lost and found first, each with its post_id for a link button. Without days it covers the time since their last visit (at most 14 days), or the last 7 days when they haven't looked yet or are looking at the feed right now. The person's own posts are left out: every post here is someone else's (`yours: false`), even one by someone with their first name. Use it for \"what did I miss\" and \"what's new around here\".",
     input_schema: {
       type: 'object',
       properties: {
@@ -75,7 +75,7 @@ const nearbyReadToolDefinitions = [
   },
   {
     name: 'find_recommendations',
-    description: "What neighbors recommend for something (a plumber, a dentist, a dog sitter, a taco place): recommendation posts and questions on their Nearby feed from the last 180 days, within 10 miles, that match the words, and the businesses or people named in them and in their replies, with how many neighbors named each and the post_ids. Names are picked out by their capital letters, so read said_text before calling a mention a recommendation.",
+    description: "What people nearby recommend for something (a plumber, a dentist, a dog sitter, a taco place): recommendation posts and questions on their Nearby feed from the last 180 days, within 10 miles, that match the words, and the businesses or people named in them and in their replies, with how many people named each (named_by) and the post_ids. Names are picked out by their capital letters, so read said_text before calling a mention a recommendation.",
     input_schema: {
       type: 'object',
       properties: {
@@ -374,9 +374,9 @@ async function findRecommendations(args, ctx) {
   return {
     ...base,
     mentions: ranked.map((group) => ({
-      // The way most neighbors wrote it; on a tie, the shorter (without "Second" and the like).
+      // The way most people wrote it; on a tie, the shorter (without "Second" and the like).
       name_text: [...group.names.entries()].sort((a, b) => (b[1] - a[1]) || (a[0].length - b[0].length))[0][0],
-      neighbors: group.by.size,
+      named_by: group.by.size,
       mentions: group.mentions,
       post_ids: group.posts.slice(0, 3),
       latest: dayLabel(new Date(group.latest).toISOString(), ctx.timeZone),
