@@ -36,7 +36,7 @@ function CensusCard({ data }: { data: PlaceCensusContextData }) {
           <Map size={20} strokeWidth={2} className="text-app-home" />
         </span>
         <div className="min-w-0">
-          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">Your area</div>
+          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">This area</div>
           <div className="text-[12.5px] text-app-text-muted mt-0.5">Census tract around your block</div>
         </div>
       </div>
@@ -327,7 +327,7 @@ export default function BlockDetail({ intelligence, homeId }: { intelligence: Pl
         {censusReady ? (
           <CensusCard data={census!.data as PlaceCensusContextData} />
         ) : (
-          <SectionCard icon={Map} title="Your area" state={census ? statusToState(census.status) : 'unavailable'} caption={census?.unavailable_reason ?? undefined} onRetry={() => window.location.reload()} />
+          <SectionCard icon={Map} title="This area" state={census ? statusToState(census.status) : 'unavailable'} caption={census?.unavailable_reason ?? undefined} onRetry={() => window.location.reload()} />
         )}
         {census?.source ? <SourceNote name={census.source} asOf="2020–2024" /> : null}
 
