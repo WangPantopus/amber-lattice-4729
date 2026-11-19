@@ -1386,7 +1386,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       // Home Place type enforcement
       if (postAs === 'home' && !HOME_PLACE_TYPES.includes(postType)) {
         return res.status(400).json({
-          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Neighborhood Wins, and Visitor Guides.`,
+          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Local Wins, and Visitor Guides.`,
         });
       }
 
@@ -2018,11 +2018,11 @@ router.get('/feed', verifyToken, async (req, res) => {
             {
               id: transitionId,
               type: 'transition',
-              title: 'Your Neighborhood Is Coming Alive!',
-              body: `${realPostCount} neighbors have posted recently. Real conversations are happening \u2014 join in!`,
+              title: 'Pulse Is Coming Alive Near You!',
+              body: `${realPostCount} people near you have posted recently. Real conversations are happening \u2014 join in!`,
               source: 'Community',
               post_type: 'neighborhood_win',
-              cta: 'Say hello to your neighbors',
+              cta: 'Say hello to people near you',
             },
             now.toISOString(),
             {

@@ -224,7 +224,7 @@ struct PulsePageQuietDay: View {
         if let topicContent { return topicContent.body }
         return following
             ? "New activity in conversations you follow will show here."
-            : "When neighbors post, it shows here. Start a conversation if you'd like."
+            : "When people near you post, it shows here. Start a conversation if you'd like."
     }
 
     var body: some View {

@@ -476,7 +476,7 @@ public struct PulseComposeContent: View {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 HStack(spacing: Spacing.s2) {
                     Icon(.lightbulb, size: 16, strokeWidth: 2, color: Theme.Color.primary600)
-                    Text("Before you ask, neighbors already said")
+                    Text("Before you ask, people near you already said")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
                 }
@@ -1088,7 +1088,7 @@ public struct PulseComposeContent: View {
         guard !state.isNetworkTarget else { return "Post" }
         return switch state.composePurpose {
         case .localUpdate: "Local Update"
-        case .neighborhoodWin: "Neighborhood Win"
+        case .neighborhoodWin: "Local Win"
         case .visitorGuide: "Visitor Guide"
         default: "Announcement"
         }
@@ -1096,7 +1096,7 @@ public struct PulseComposeContent: View {
 
     private var announceBodyPlaceholder: String {
         if state.isNetworkTarget { return "Share with your connections…" }
-        return state.composePurpose?.placeholder ?? "Share what your neighbors should know…"
+        return state.composePurpose?.placeholder ?? "Share what people near you should know…"
     }
 
     private var audienceChipRow: some View {

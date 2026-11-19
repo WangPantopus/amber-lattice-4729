@@ -6,13 +6,13 @@ import type { PostVisibility } from '@pantopus/api';
 
 /** Matches mobile feed + backend: nearby / social graph only (no legacy `public`). */
 const VISIBILITY_OPTIONS: { value: PostVisibility; label: string; icon: ReactNode; desc: string }[] = [
-  { value: 'neighborhood', label: 'Neighborhood', icon: <HomeIcon className="w-4 h-4" />, desc: 'People nearby on Pantopus' },
+  { value: 'neighborhood', label: 'Nearby', icon: <HomeIcon className="w-4 h-4" />, desc: 'People nearby on Pantopus' },
   { value: 'connections', label: 'Connections', icon: <Link2 className="w-4 h-4" />, desc: 'Your mutual connections' },
 ];
 
 interface VisibilityPickerProps {
   visibility: PostVisibility;
-  /** Who "Neighborhood" reaches when the post is tagged with a place. */
+  /** Who "Nearby" reaches when the post is tagged with a place. */
   neighborhoodCaption?: string;
   showVisibility: boolean;
   onVisibilityChange: (v: PostVisibility) => void;

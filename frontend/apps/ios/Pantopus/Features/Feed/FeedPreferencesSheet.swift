@@ -279,7 +279,7 @@ public struct FeedPreferencesSheet: View {
             preferenceRow(
                 title: "Show political content",
                 body: "Political posts are hidden by default to keep your feed focused"
-                    + " on neighborhood life",
+                    + " on life near you",
                 isOn: prefs.showPoliticsPlace,
                 identifier: "pulsePreferencesShowPolitics"
             ) { next in
