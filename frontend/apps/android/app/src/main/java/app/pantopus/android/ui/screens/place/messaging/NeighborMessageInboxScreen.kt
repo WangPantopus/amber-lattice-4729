@@ -61,7 +61,7 @@ fun NeighborMessageInboxScreen(
     LaunchedEffect(Unit) { viewModel.load() }
 
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg)) {
-        PlaceDetailHeader(title = "Messages", address = "From verified neighbors", onBack = onBack)
+        PlaceDetailHeader(title = "Messages", address = "From verified homes nearby", onBack = onBack)
         // Pull to refresh, as on iOS: a heads-up that just came shows up.
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = viewModel::pullToRefresh, modifier = Modifier.weight(1f)) {
             when (val current = state) {
@@ -74,7 +74,7 @@ fun NeighborMessageInboxScreen(
                             EmptyState(
                                 icon = PantopusIcon.Inbox,
                                 headline = "No messages yet",
-                                subcopy = "When a verified neighbor on your block sends you a heads-up, it'll show up here.",
+                                subcopy = "When a verified home on your block sends you a heads-up, it'll show up here.",
                                 modifier = Modifier.height(viewport),
                             )
                         }
@@ -132,7 +132,7 @@ private fun InboxRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        text = "A verified neighbor nearby",
+                        text = "A verified home nearby",
                         fontSize = 14.5.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PantopusColors.appText,

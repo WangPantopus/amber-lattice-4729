@@ -73,8 +73,8 @@ class NearbyViewModel
                         _state.value !is NearbyUiState.Loaded || meterStored.failure.refusesStoredCopy ->
                             _state.value =
                                 NearbyUiState.Error(
-                                    meterStored.failure?.displayMessage("We couldn't load your neighborhood meter.")
-                                        ?: "We couldn't load your neighborhood meter.",
+                                    meterStored.failure?.displayMessage("We couldn't load the verified homes near you.")
+                                        ?: "We couldn't load the verified homes near you.",
                                 )
                     }
                 } finally {

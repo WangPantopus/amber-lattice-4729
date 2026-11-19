@@ -93,14 +93,14 @@ data class BlockFounding(
      * closed and the viewer is not a Founding Neighbor. Same copy as iOS.
      */
     fun line(nowMillis: Long = System.currentTimeMillis()): String? {
-        if (isFounding && slot != null) return "Founding Neighbor · slot $slot of $slotsTotal. Permanent."
+        if (isFounding && slot != null) return "Block Founder · slot $slot of $slotsTotal. Permanent."
         if (!windowOpen || slotsOpen <= 0) return null
         val slots = if (slotsOpen == 1) "slot" else "slots"
         val endMillis = windowEndsAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
         if (endMillis != null) {
             val days = maxOf(0L, kotlin.math.ceil((endMillis - nowMillis) / MILLIS_PER_DAY).toLong())
-            return "$slotsOpen Founding Neighbor $slots still open · closes in $days ${if (days == 1L) "day" else "days"}"
+            return "$slotsOpen Block Founder $slots still open · closes in $days ${if (days == 1L) "day" else "days"}"
         }
-        return "$slotsOpen Founding Neighbor $slots still open"
+        return "$slotsOpen Block Founder $slots still open"
     }
 }

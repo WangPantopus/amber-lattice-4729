@@ -318,8 +318,8 @@ private fun IdentityRows(
     PlaceHairline()
     PlaceMessagesActionRow(
         icon = PantopusIcon.Eye,
-        title = "What neighbors see",
-        subtitle = "Preview this address as a neighbor sees it.",
+        title = "What others see",
+        subtitle = "Preview this address as others see it.",
         onTap = actions.onOpenPrivacyMirror,
         modifier = Modifier.testTag("place.glance.privacyMirror"),
     )
@@ -364,7 +364,7 @@ private fun glanceSummary(
                     topicsSummary(sections, zone),
                     "Residency letters & passes".takeUnless { actions.claimInReview },
                     "locked until you verify".takeIf { !actions.claimInReview && actions.showsVerify && actions.onVerify != null },
-                    "what neighbors see".takeUnless { actions.claimInReview },
+                    "what others see".takeUnless { actions.claimInReview },
                 ).joinToString(" · ").ifEmpty { null }
             GlanceGroup.BLOCK, GlanceGroup.COSTS -> topicsSummary(sections, zone)
         }

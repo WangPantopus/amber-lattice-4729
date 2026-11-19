@@ -204,7 +204,7 @@ fun PlaceHomeCard(
             }
             if (onVerify != null) {
                 Text(
-                    "Verify your address to message neighbors and get your badge.",
+                    "Verify your address to message homes near you and get your badge.",
                     fontSize = 13.5.sp,
                     lineHeight = 19.sp,
                     color = PantopusColors.appTextStrong,

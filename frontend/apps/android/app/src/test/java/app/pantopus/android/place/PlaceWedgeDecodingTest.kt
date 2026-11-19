@@ -208,7 +208,7 @@ class PlaceWedgeDecodingTest {
                               "window_open":true,"window_ends_at":"2026-09-20T00:00:00.000Z"}}}
                 """.trimIndent(),
             )!!
-        assertEquals("Founding Neighbor · slot 3 of 5. Permanent.", status.block.founding?.line())
+        assertEquals("Block Founder · slot 3 of 5. Permanent.", status.block.founding?.line())
 
         val now = java.time.Instant.parse("2026-09-01T00:00:00Z").toEpochMilli()
         val open =
@@ -220,9 +220,9 @@ class PlaceWedgeDecodingTest {
                 windowOpen = true,
                 windowEndsAt = "2026-09-04T12:00:00.000Z",
             )
-        assertEquals("3 Founding Neighbor slots still open · closes in 4 days", open.line(now))
+        assertEquals("3 Block Founder slots still open · closes in 4 days", open.line(now))
         val one = open.copy(slotsOpen = 1, windowEndsAt = "2026-09-02T00:00:00.000Z")
-        assertEquals("1 Founding Neighbor slot still open · closes in 1 day", one.line(now))
+        assertEquals("1 Block Founder slot still open · closes in 1 day", one.line(now))
         assertNull(open.copy(windowOpen = false).line(now))
         assertNull(BlockFounding().line(now))
     }

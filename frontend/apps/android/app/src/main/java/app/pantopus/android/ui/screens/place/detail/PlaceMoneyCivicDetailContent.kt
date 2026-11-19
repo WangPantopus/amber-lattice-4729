@@ -125,7 +125,7 @@ fun PlaceMoneyDetailContent(
     intel.section(PlaceSectionId.REAL_RENT)?.let { env ->
         PlaceDetailSectionLabel("Real rent on your block")
         PlaceRealRentSection(env, viewModel)
-        PlaceSourceNote(env.source.orEmpty().ifEmpty { "Pantopus · verified neighbors on your block" })
+        PlaceSourceNote(env.source.orEmpty().ifEmpty { "Pantopus · verified residents on your block" })
     }
     intel.section(PlaceSectionId.EXEMPTION_CHECK)?.let { env ->
         PlaceDetailSectionLabel("Property-tax exemption")
