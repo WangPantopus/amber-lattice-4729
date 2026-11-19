@@ -801,12 +801,13 @@ describe('Feed Service', () => {
   });
 
   it('map feed strips exact home address for non-author viewers', async () => {
+    // The map reads a post's home by id in the enrichment round (loadPostEmbeds), not as an embed.
+    seedTable('Home', [{ id: 'home-1', address: '123 Private Way', city: 'San Francisco' }]);
     seedTable('Post', [
       makePost({
         id: 'home-map-post',
         user_id: OTHER_USER,
         home_id: 'home-1',
-        home: { id: 'home-1', address: '123 Private Way', city: 'San Francisco' },
         location_precision: 'exact_place',
         distribution_targets: ['place'],
         latitude: SF_LAT,
