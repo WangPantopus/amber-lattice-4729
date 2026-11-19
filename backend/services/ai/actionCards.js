@@ -596,8 +596,9 @@ const shown = (value) => (value ? String(value).replace(/_/g, ' ').replace(/^./,
 function detailLines(kind, details) {
   const d = details || {};
   if (kind === 'pickup_game') return [line('Sport', shown(d.sport)), line('Level', shown(d.level)), d.extra_gear ? line('Gear', 'Extra gear to share') : null];
-  // "Walk", not a second "Kind": the card's first row is already the plan's kind.
-  if (kind === 'walk_coffee') return [line('Walk', shown(d.walk_kind)), line('Pace', shown(d.pace)), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
+  // "Walk", not a second "Kind": the card's first row is already the plan's kind. A plain walk says nothing the kind
+  // row hasn't ("Walk · Walk"), so only a dog walk, a stroller walk or coffee gets the row.
+  if (kind === 'walk_coffee') return [line('Walk', d.walk_kind === 'walk' ? null : shown(d.walk_kind)), line('Pace', shown(d.pace)), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
   if (kind === 'study_group') return [line('Subject', d.subject), line('Style', d.study_style === 'together' ? 'Working through it together' : 'Quiet study')];
   if (kind === 'watch_party') return [line('Watching', d.game?.label)];
   if (kind === 'playdate') return [line('Kids’ ages', agesText(d.kids_age_bands))];
