@@ -47,7 +47,7 @@ public struct PulsePostPurposePickerView: View {
                         Text("What is this post for?")
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(Theme.Color.appText)
-                        Text("This helps neighbors find your post.")
+                        Text("This helps people near you find your post.")
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.Color.appTextSecondary)
                     }
@@ -123,14 +123,14 @@ public struct PulsePostPurposePickerView: View {
 
     private func purposeDescription(_ purpose: PulseComposePurpose) -> String {
         switch purpose {
-        case .ask: "Get help or answers from neighbors"
+        case .ask: "Get help or answers from people near you"
         case .headsUp: "Warn people nearby about something"
         case .recommend: "Share a place or service you love"
         case .lostFound: "Reunite lost items and pets"
         case .localUpdate: "Share news from around the area"
         case .neighborhoodWin: "Celebrate something good nearby"
         case .visitorGuide: "Tips for people visiting the area"
-        case .event: "Invite neighbors to something"
+        case .event: "Invite people near you to something"
         case .deal: "Share a local discount or offer"
         }
     }

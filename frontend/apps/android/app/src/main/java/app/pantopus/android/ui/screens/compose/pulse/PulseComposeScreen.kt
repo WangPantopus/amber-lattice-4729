@@ -1566,7 +1566,7 @@ private fun announceWording(state: PulseComposeContentState): AnnounceWording {
         if (state.isNetworkTarget) {
             "Share with your connections…"
         } else {
-            state.composePurpose?.placeholder ?: "Share what your neighbors should know…"
+            state.composePurpose?.placeholder ?: "Share what people near you should know…"
         }
     return AnnounceWording(title, showsHeadline = true, "Details", hint)
 }
@@ -1574,7 +1574,7 @@ private fun announceWording(state: PulseComposeContentState): AnnounceWording {
 private fun announceSectionTitle(purpose: PulseComposePurpose?): String =
     when (purpose) {
         PulseComposePurpose.LocalUpdate -> "Local Update"
-        PulseComposePurpose.NeighborhoodWin -> "Neighborhood Win"
+        PulseComposePurpose.NeighborhoodWin -> "Local Win"
         PulseComposePurpose.VisitorGuide -> "Visitor Guide"
         else -> "Announcement"
     }

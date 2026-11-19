@@ -9,6 +9,17 @@ const LOCAL_AUDIENCES = ['nearby', 'neighborhood', 'saved_place', 'target_area']
 const REPLY_PAGE_SIZE = 1000;
 // The days a type stays up when nothing else says (PostCategoryTTL has the real rows).
 const DEFAULT_WINDOW_DAYS = 7;
+// The kinds that stay until their author removes them (founder, 2026-11-18: "A Moment fades. A Pulse
+// post stays."): Local Update, Recommend, Local Win, Visitor Guide and the plain kinds. Their
+// PostCategoryTTL rows stay for history but no longer end them. Ask, Heads Up, Event, Deal and
+// Lost & Found keep their windows.
+const STAYING_POST_TYPES = ['local_update', 'recommendation', 'neighborhood_win', 'visitor_guide', 'general', 'personal_update'];
+
+// Whether a post of this kind stays until its author removes it (a row with no kind is a plain one).
+function staysUp(postType) {
+  return !postType || STAYING_POST_TYPES.includes(postType);
+}
+
 // The endings that time gives a post (or its author's close); restoring such a post reopens it.
 const TIMED_OUT_RESOLUTIONS = ['expired', 'closed', 'closed_unanswered', 'happened'];
 
@@ -61,6 +72,8 @@ module.exports = {
   DAY_MS,
   LOCAL_AUDIENCES,
   TIMED_OUT_RESOLUTIONS,
+  STAYING_POST_TYPES,
+  staysUp,
   resolutionWhenTimeRunsOut,
   askIdsWithReplies,
   windowDays,

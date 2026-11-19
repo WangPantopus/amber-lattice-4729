@@ -12,6 +12,8 @@
  *       - Other types:     per PostCategoryTTL (Ask 7 days, Share 3, Offer 7, Heads-up 2,
  *                          Lost and found 14, ...)
  *       - Home Neighborhood: 7 days
+ *     Local Update, Recommend, Local Win, Visitor Guide and the plain kinds stay until their
+ *     author removes them (lifecycle.STAYING_POST_TYPES), whatever their PostCategoryTTL row says.
  *     Only posts targeted to local audiences (nearby, neighborhood, saved_place,
  *     target_area); network/private posts do not auto-expire.
  *
@@ -27,7 +29,7 @@
 const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const {
-  DAY_MS, LOCAL_AUDIENCES, askIdsWithReplies, resolutionWhenTimeRunsOut,
+  DAY_MS, LOCAL_AUDIENCES, STAYING_POST_TYPES, staysUp, askIdsWithReplies, resolutionWhenTimeRunsOut,
 } = require('../services/pulse/lifecycle');
 
 // End of a deal's stated expiry day in US Pacific, measured from the stored midnight (see step 4).
@@ -158,8 +160,8 @@ async function autoArchivePosts() {
     logger.error('[autoArchive] Error fetching TTLs', { error: ttlErr.message });
   } else {
     for (const { post_type, ttl_days } of (ttls || [])) {
-      // Events end by their own times (step 3)
-      if (post_type === 'event') continue;
+      // Events end by their own times (step 3); the staying kinds don't end.
+      if (post_type === 'event' || staysUp(post_type)) continue;
 
       const cutoff = new Date(now - ttl_days * DAY_MS).toISOString();
       totalArchived += await endMatching(post_type, (query) => query
@@ -170,11 +172,12 @@ async function autoArchivePosts() {
     }
   }
 
-  // 6) Home Neighborhood posts older than 7 days
+  // 6) Home Neighborhood posts older than 7 days, except the kinds that stay
   const neighborhoodCutoff = new Date(now - 7 * DAY_MS).toISOString();
   totalArchived += await endMatching('home neighborhood posts', (query) => query
     .eq('post_as', 'home')
     .eq('audience', 'neighborhood')
+    .not('post_type', 'in', `(${STAYING_POST_TYPES.join(',')})`)
     .is('expires_at', null)
     .lt('created_at', neighborhoodCutoff));
 
