@@ -98,7 +98,7 @@ export default function BillTrendChart({
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-app-text">Share bill data anonymously</p>
             <p className="text-[11px] text-app-text-secondary leading-snug mt-0.5">
-              Help neighbors compare costs. Only averages are shared &mdash; never individual amounts.
+              Help homes near you compare costs. Only averages are shared &mdash; never individual amounts.
             </p>
           </div>
           <label className="relative inline-flex cursor-pointer items-center flex-shrink-0">
