@@ -178,7 +178,7 @@ export default function PulseStreamView({
       icon={ShieldCheck}
       tone="sky"
       title="Verify your address"
-      detail={launchFeatures.mailbox ? 'Message neighbors, get your verified badge, and unlock your mailbox.' : 'Message neighbors and get your verified badge.'}
+      detail={launchFeatures.mailbox ? 'Message homes near you, get your verified badge, and unlock your mailbox.' : 'Message homes near you and get your verified badge.'}
       action={{ label: 'Verify address', onClick: () => setVerifyOpen(true) }}
     />
   ) : null;

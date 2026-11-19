@@ -180,7 +180,7 @@ export default function PlaceDashboardView({
             className="mb-4 flex items-center gap-2 rounded-xl border border-app-border bg-app-surface-sunken px-3.5 py-2.5 text-[13px] text-app-text-secondary hover:text-app-text"
           >
             <ShieldCheck size={15} strokeWidth={2.25} className="shrink-0 text-app-home" />
-            <span className="flex-1">Private by default. See what neighbors see of this address.</span>
+            <span className="flex-1">Private by default. See what others see of this address.</span>
             <ChevronRight size={15} strokeWidth={2.25} className="shrink-0 text-app-text-muted" />
           </Link>
         )}

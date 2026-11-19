@@ -124,7 +124,7 @@ enum class FeedSurface(
                     headline = "Connect with people you trust.",
                     body =
                         "Posts from your connections land here. " +
-                            "Connect with neighbors and businesses to fill this feed.",
+                            "Connect with people and businesses to fill this feed.",
                     ctaLabel = "Create post",
                     ctaIcon = PantopusIcon.Pencil,
                     footerIcon = PantopusIcon.Users,
@@ -155,7 +155,7 @@ enum class FeedSurface(
             FeedEmptyContent(
                 icon = PantopusIcon.MapPin,
                 headline = "Set an area to see local posts",
-                body = "Choose an area, or turn on location, to see what neighbors near you are posting.",
+                body = "Choose an area, or turn on location, to see what people near you are posting.",
                 ctaLabel = "Choose an area",
                 ctaIcon = PantopusIcon.MapPin,
                 footerIcon = PantopusIcon.MapPin,

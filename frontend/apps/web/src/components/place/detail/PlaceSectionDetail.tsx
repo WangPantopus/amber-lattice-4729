@@ -233,7 +233,7 @@ export default function PlaceSectionDetail({ section }: { section: string }) {
             <EmptyState
               icon={MapPinned}
               title="You haven't added a place yet"
-              description="Claim your address to see flood risk, today's air, your home's value, and your verified neighbors."
+              description="Claim your address to see flood risk, today's air, your home's value, and the verified homes near you."
               actionLabel="Add your place"
               headingLevel={2}
               onAction={() => router.push('/app/homes')}

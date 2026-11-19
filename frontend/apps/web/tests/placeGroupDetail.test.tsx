@@ -121,7 +121,8 @@ describe('Place group-detail — renders from the contract', () => {
   it('Block shows the density bucket, census, and permits unavailable', () => {
     renderWithQueryClient(<BlockDetail intelligence={FULL} homeId="home-1" />);
     expect(screen.getByText('A few verified homes nearby')).toBeInTheDocument();
-    expect(screen.getByText('This neighborhood')).toBeInTheDocument();
+    // The section label and the census card's title both read "This area" (as on iOS).
+    expect(screen.getAllByText('This area')).toHaveLength(2);
     expect(screen.getByText('Not available for your area yet.')).toBeInTheDocument();
   });
 

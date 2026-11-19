@@ -91,8 +91,8 @@ var placeVerifyBenefits: [PlaceVerifyBenefit] {
             ),
         .init(
             icon: .messageCircle,
-            label: "What only verified neighbors see",
-            sub: "Real rents on your block, neighbor messages, the Fridge Card, rate watch"
+            label: "What only verified residents see",
+            sub: "Real rents on your block, messages between homes, the Fridge Card, rate watch"
         )
     ]
 }

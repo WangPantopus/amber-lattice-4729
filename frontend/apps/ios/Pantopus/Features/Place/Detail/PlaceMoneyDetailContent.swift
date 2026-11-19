@@ -143,7 +143,7 @@ struct PlaceMoneyDetailContent: View {
                         if realRentSection.access != .locked { await realRent.load() }
                     }
                 PlaceSourceNote(
-                    name: realRentSection.source ?? "Pantopus · verified neighbors on your block",
+                    name: realRentSection.source ?? "Pantopus · verified residents on your block",
                     asOf: nil
                 )
             }

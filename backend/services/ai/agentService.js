@@ -226,7 +226,7 @@ const TOOL_STATUS = {
   find_posts: 'Reading posts on Pulse…',
   get_post: 'Reading the post…',
   catch_up_nearby: 'Catching up on Pulse…',
-  find_recommendations: 'Looking at what neighbors recommend…',
+  find_recommendations: 'Looking at what people near you recommend…',
   get_place_facts: 'Checking your home…',
   get_today: 'Checking today…',
   get_schedule: 'Looking at the days ahead…',

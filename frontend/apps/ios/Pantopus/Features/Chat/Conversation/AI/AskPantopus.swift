@@ -50,7 +50,7 @@ public struct AIAskTopic: Identifiable, Hashable, Sendable {
         AIAskTopic(
             context: AIChatContext(surface: "nearby"),
             about: "Nearby",
-            starters: ["What did I miss this week?", "Help me post something", "Who do neighbors recommend\u{2026}"]
+            starters: ["What did I miss this week?", "Help me post something", "Who do people near me recommend\u{2026}"]
         )
     }
 

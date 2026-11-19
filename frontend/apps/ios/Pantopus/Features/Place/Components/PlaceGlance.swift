@@ -166,7 +166,7 @@ enum PlaceGlanceSummary {
         if let read = topics(sections) { parts.append(read) }
         if letters { parts.append("Residency letters & passes") }
         if verify { parts.append("locked until you verify") }
-        if mirror { parts.append("what neighbors see") }
+        if mirror { parts.append("what others see") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 

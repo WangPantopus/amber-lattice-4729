@@ -745,7 +745,7 @@ private fun EmptyCard(
                     "Try different words or clear your search."
                 } else if (hasHint) {
                     "Nothing has been posted inside this viewport yet. Jump to the nearest " +
-                        "active neighborhood, or drag the map and search again."
+                        "activity, or drag the map and search again."
                 } else {
                     "Nothing has been posted inside this viewport yet. Drag the map and search again."
                 },

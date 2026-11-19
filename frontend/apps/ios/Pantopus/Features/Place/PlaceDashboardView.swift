@@ -926,19 +926,19 @@ struct PlaceDashboardView: View {
         if claim == nil {
             PlaceRowDivider()
             Button(action: viewModel.onOpenPrivacyMirror) {
-                PlaceActionRowLabel(icon: .eye, title: "What neighbors see", subtitle: "Preview this address as a neighbor sees it.")
+                PlaceActionRowLabel(icon: .eye, title: "What others see", subtitle: "Preview this address as others see it.")
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("place.glance.privacyMirror")
         }
     }
 
-    /// Wedge v2 §2 — "Private by default. See what neighbors see of this address."
+    /// Wedge v2 §2 — "Private by default. See what others see of this address."
     private var privacyMirrorRow: some View {
         Button(action: viewModel.onOpenPrivacyMirror) {
             HStack(spacing: 8) {
                 Icon(.shieldCheck, size: 15, strokeWidth: 2.25, color: Theme.Color.home)
-                Text("Private by default. See what neighbors see of this address.")
+                Text("Private by default. See what others see of this address.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .multilineTextAlignment(.leading)
@@ -961,13 +961,13 @@ struct PlaceDashboardView: View {
     private func neighborsEntry(address: String, messages: Bool, homesNearby: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // "Private messages" names the section only while messages are all it holds.
-            PlaceSectionHeading(title: "Verified neighbors", detail: messages && !homesNearby ? "Private messages" : nil)
+            PlaceSectionHeading(title: "Verified homes near you", detail: messages && !homesNearby ? "Private messages" : nil)
             PlaceGroupSurface {
                 if messages {
                     Button { viewModel.onComposeMessage(address) } label: {
                         PlaceActionRowLabel(
                             icon: .messageSquarePlus,
-                            title: "Message a neighbor",
+                            title: "Message a home near you",
                             subtitle: "Send a private heads-up to a home on your block."
                         )
                     }
@@ -975,7 +975,7 @@ struct PlaceDashboardView: View {
                     .accessibilityIdentifier("place.messageNeighbor")
                     PlaceRowDivider()
                     Button { viewModel.onOpenInbox() } label: {
-                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified neighbors nearby.")
+                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified homes nearby.")
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("place.inbox")
@@ -996,7 +996,7 @@ struct PlaceDashboardView: View {
                     ShareLink(item: PersonalInviteLink.shared.url, message: Text(NeighborhoodView.inviteMessage)) {
                         PlaceActionRowLabel(
                             icon: .share2,
-                            title: "Invite your neighbors",
+                            title: "Invite homes near you",
                             subtitle: "Share a link that shows them their own address first."
                         )
                     }
@@ -1021,7 +1021,7 @@ struct BallotGovernmentsSheet: Identifiable {
 
 struct PlaceVerifyBanner: View {
     var icon: PantopusIcon = .shieldCheck
-    var message = "Verify your address to message neighbors and get your badge."
+    var message = "Verify your address to message homes near you and get your badge."
     var action = "Verify address"
     var identifier = "place.verifyBanner"
     var onTap: () -> Void

@@ -66,7 +66,7 @@ function InviteButton() {
       className="w-full flex items-center justify-center gap-2 h-12 rounded-xl bg-primary-600 text-white text-[15px] font-semibold hover:bg-primary-700 transition-colors"
     >
       {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-      {copied ? 'Link copied' : 'Invite your neighbors'}
+      {copied ? 'Link copied' : 'Invite homes near you'}
     </button>
   );
 }
@@ -83,7 +83,7 @@ function MeterCard({ meter }: { meter: NeighborhoodMeter }) {
     <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-5">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">
-          Verified neighbors {areaLabel(meter)}
+          Verified homes {areaLabel(meter)}
         </span>
         <span className="text-[13px] font-bold text-app-text tabular-nums">
           {state === 'forming' ? `< ${k_anon_min}` : verified_count} / {threshold}

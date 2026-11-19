@@ -69,7 +69,7 @@ internal fun BeforeYouAskSection(
                 tint = PantopusColors.primary600,
             )
             Text(
-                text = "Before you ask, neighbors already said",
+                text = "Before you ask, people near you already said",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = PantopusColors.appText,

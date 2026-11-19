@@ -209,7 +209,7 @@ async function verifiedSenderHome(res, senderHomeId, userId) {
   }
   // Verified by mail or by a fast check (FASTVERIFY; homePermissions.isVerified).
   if (resolveTier(access, await fastVerified(access.occupancy)) !== 'T4') {
-    res.status(403).json({ error: 'Only verified neighbors can send messages.' });
+    res.status(403).json({ error: 'Only verified residents can send messages.' });
     return null;
   }
   const { data: senderHome, error } = await supabaseAdmin
@@ -388,7 +388,7 @@ router.post('/', verifyToken, sendBurstLimiter, validate(sendSchema), async (req
       createNotification({
         userId: target.recipientUserId,
         type: 'neighbor_message',
-        title: 'A message from a verified neighbor nearby',
+        title: 'A message from a verified home nearby',
         body: template.body,
         icon: '🏡',
         link: `/app/place/neighbor-message/${row.id}`,

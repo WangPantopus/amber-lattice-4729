@@ -26,7 +26,7 @@
 //  Explore group pins the same way.
 //
 
-// swiftlint:disable line_length type_body_length file_length
+// swiftlint:disable type_body_length file_length
 
 import CoreLocation
 import MapKit
@@ -659,7 +659,7 @@ struct FeedMapView: View {
                 searching
                     ? "Try different words or clear your search."
                     : hasHint
-                    ? "Nothing has been posted inside this viewport yet. Jump to the nearest active neighborhood, or drag the map and search again."
+                    ? "Nothing has been posted inside this viewport yet. Jump to the nearest activity, or drag the map and search again."
                     : "Nothing has been posted inside this viewport yet. Drag the map and search again."
             )
             .font(.system(size: 12.5))
