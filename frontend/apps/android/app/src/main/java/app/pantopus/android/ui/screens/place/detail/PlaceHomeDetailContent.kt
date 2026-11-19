@@ -400,7 +400,7 @@ private fun EquityCalculator(estimatedValue: Double?) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             PantopusIconImage(PantopusIcon.Lock, null, size = 12.dp, strokeWidth = 2f, tint = PantopusColors.appTextMuted)
-            Text("Private to you — never shown to neighbors", fontSize = 12.sp, color = PantopusColors.appTextMuted)
+            Text("Private to you — never shown to others", fontSize = 12.sp, color = PantopusColors.appTextMuted)
         }
     }
 }

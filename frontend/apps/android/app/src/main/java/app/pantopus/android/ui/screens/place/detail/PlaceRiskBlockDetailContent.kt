@@ -394,7 +394,7 @@ private val EMERGENCY_GROUPS =
             ),
         ),
         ChecklistGroup("Key contacts", listOf("Out-of-area contact", "Local emergency numbers", "Utility shut-off info")),
-        ChecklistGroup("Meeting point", listOf("Neighborhood spot", "Out-of-town spot", "Reunification plan")),
+        ChecklistGroup("Meeting point", listOf("Nearby spot", "Out-of-town spot", "Reunification plan")),
     )
 
 @Composable
@@ -490,7 +490,7 @@ fun PlaceBlockDetailContent(
         } else {
             PlaceDetailFallbackCard(env)
         }
-        PlaceSourceNote("Pantopus verified neighbors")
+        PlaceSourceNote("Verified homes on Pantopus")
     }
     // The growth surface sits right under the density bucket: the
     // k-anon bucket is what everyone sees, the founding rank and the
@@ -498,7 +498,7 @@ fun PlaceBlockDetailContent(
     PlaceDetailSectionLabel("Block founders")
     PlaceBlockFoundersSection(intel, viewModel)
     intel.section(PlaceSectionId.CENSUS_CONTEXT)?.let { env ->
-        PlaceDetailSectionLabel("Neighborhood")
+        PlaceDetailSectionLabel("This area")
         val data = env.censusContext
         if (data != null && env.isLive()) {
             PlaceDetailCard {

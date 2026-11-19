@@ -160,9 +160,9 @@ private fun RealRentBuildingCard(data: PlaceRealRentData) {
             }
             Text(data.summary, fontSize = 13.5.sp, lineHeight = 18.sp, color = PantopusColors.appTextSecondary)
             Text(
-                "These are real rents from neighbors who proved they live on this block — not a " +
+                "These are real rents from people who proved they live on this block — not a " +
                     "county-wide estimate like the fair-market band above. Add yours below, and invite a " +
-                    "neighbor by mail from Your block.",
+                    "home by mail from Your block.",
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 color = PantopusColors.appTextMuted,
@@ -427,7 +427,7 @@ private fun RealRentForm(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "Bedrooms decide which neighbors you're compared against — a studio is never priced " +
+                "Bedrooms decide which homes you're compared against — a studio is never priced " +
                     "against a four-bedroom. Leave it blank to use this home's own count.",
                 fontSize = 11.5.sp,
                 lineHeight = 15.sp,
@@ -451,7 +451,7 @@ private fun RealRentForm(
             }
             Text(
                 "Only the block's quartile band and its sample size are ever published — never your " +
-                    "figure, never a neighbor's, and never who pays more.",
+                    "figure, never another home's, and never who pays more.",
                 fontSize = 11.5.sp,
                 lineHeight = 15.sp,
                 color = PantopusColors.appTextMuted,
@@ -521,7 +521,7 @@ private fun RealRentSavedCard(
                 color = PantopusColors.appText,
             )
             Text(
-                "Counted toward your block's benchmark. Only you see this figure; your neighbors only " +
+                "Counted toward your block's benchmark. Only you see this figure; others only " +
                     "ever see the block's quartiles.",
                 fontSize = 12.5.sp,
                 lineHeight = 17.sp,

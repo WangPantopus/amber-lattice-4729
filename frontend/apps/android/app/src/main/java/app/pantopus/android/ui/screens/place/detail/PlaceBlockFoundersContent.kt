@@ -358,7 +358,7 @@ private fun BlockInviteForm(
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         Text(
-            "Invite a neighbor by mail — ${block.invitesRemaining} left this week",
+            "Invite a home by mail — ${block.invitesRemaining} left this week",
             fontSize = 12.5.sp,
             fontWeight = FontWeight.SemiBold,
             color = PantopusColors.appTextSecondary,
@@ -464,7 +464,7 @@ private fun BlockInviteFields(
 private fun BlockInviteDisclosure() {
     Text(
         "Pantopus writes and mails a fixed card — you can't write the message. The card names you only " +
-            "as a neighbor on your street, never your name and never your address. Every card carries a " +
+            "as someone on your street, never your name and never your address. Every card carries a " +
             "working opt-out, and an address that opts out is never written to again.",
         fontSize = 12.sp,
         lineHeight = 17.sp,

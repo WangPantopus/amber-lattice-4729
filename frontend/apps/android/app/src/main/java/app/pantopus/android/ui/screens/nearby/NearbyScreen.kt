@@ -262,7 +262,7 @@ internal fun NeighborhoodContent(
                                 if (launchSurfaces.isNotEmpty()) MeterCard(current.meter)
                                 // The area is still forming or growing: ask the neighbors in (as iOS and web do).
                                 PrimaryButton(
-                                    title = "Invite your neighbors",
+                                    title = "Invite homes near you",
                                     onClick = onInvite,
                                     modifier = Modifier.fillMaxWidth().testTag("nearbyInvite"),
                                 )
@@ -479,7 +479,7 @@ private fun MeterCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "VERIFIED NEIGHBORS ${areaLabel(meter).uppercase()}",
+                "VERIFIED HOMES ${areaLabel(meter).uppercase()}",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp,
