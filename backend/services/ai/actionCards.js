@@ -75,8 +75,8 @@ const AGE_LABELS = { under_2: 'Under 2', '2_3': '2–3', '4_5': '4–5', '6_8': 
 const agesText = (bands) => (Array.isArray(bands) && bands.length ? bands.map((band) => AGE_LABELS[band] || band).join(', ') : null);
 const WHO_GETS_IN = {
   host_approves: { rules: [], text: 'You approve each person' },
-  verified_neighbors: { rules: ['verified'], text: 'Verified neighbors get in right away; you approve everyone else' },
-  verified_and_hosted: { rules: ['verified', 'hosted_before'], text: "Verified neighbors and people you've hosted get in right away; you approve everyone else" },
+  verified_neighbors: { rules: ['verified'], text: 'People with a verified address get in right away; you approve everyone else' },
+  verified_and_hosted: { rules: ['verified', 'hosted_before'], text: "People with a verified address and people you've hosted get in right away; you approve everyone else" },
   hosted_before: { rules: ['hosted_before'], text: "People you've hosted before get in right away; you approve everyone else" },
   anyone_nearby: { rules: ['anyone_nearby'], text: 'Anyone nearby gets in right away' },
 };
@@ -590,10 +590,15 @@ function detailsInput(kind, details) {
   return {};
 }
 
+/** A stored value as a card shows it: "stroller_walk" -> "Stroller walk". */
+const shown = (value) => (value ? String(value).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : value);
+
 function detailLines(kind, details) {
   const d = details || {};
-  if (kind === 'pickup_game') return [line('Sport', d.sport), line('Level', d.level), d.extra_gear ? line('Gear', 'Extra gear to share') : null];
-  if (kind === 'walk_coffee') return [line('Kind', d.walk_kind && d.walk_kind.replace('_', ' ')), line('Pace', d.pace), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
+  if (kind === 'pickup_game') return [line('Sport', shown(d.sport)), line('Level', shown(d.level)), d.extra_gear ? line('Gear', 'Extra gear to share') : null];
+  // "Walk", not a second "Kind": the card's first row is already the plan's kind. A plain walk says nothing the kind
+  // row hasn't ("Walk · Walk"), so only a dog walk, a stroller walk or coffee gets the row.
+  if (kind === 'walk_coffee') return [line('Walk', d.walk_kind === 'walk' ? null : shown(d.walk_kind)), line('Pace', shown(d.pace)), d.dogs_welcome ? line('Dogs', 'Welcome') : null];
   if (kind === 'study_group') return [line('Subject', d.subject), line('Style', d.study_style === 'together' ? 'Working through it together' : 'Quiet study')];
   if (kind === 'watch_party') return [line('Watching', d.game?.label)];
   if (kind === 'playdate') return [line('Kids’ ages', agesText(d.kids_age_bands))];
@@ -701,8 +706,8 @@ async function draftPlan(args, ctx) {
       ]
       : [
         checked.place.kind === 'home'
-          ? 'Neighbors see the title and about. Only people you accept see your address.'
-          : 'Neighbors see the title, about and area; they see the exact place once they get in.',
+          ? 'Others see the title and about. Only people you accept see your address.'
+          : 'Others see the title, about and area; they see the exact place once they get in.',
       ],
     actions: [action('confirm', 'Post plan', { method: 'POST', path: '/api/plans', body },
       { label: 'Plan posted', link: linkFor('plan', '{{response.id}}') })],
