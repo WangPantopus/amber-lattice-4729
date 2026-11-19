@@ -29,7 +29,7 @@ struct PlaceBlockDetailContent: View {
         if vm.nonResidentViewer {
             return "Founding places belong to the verified homes on this block — the earliest keep their number forever."
         }
-        return "Verify your address to claim your permanent founding place on this block, see what each locked block surface is still waiting for, and mail an invitation to a neighbor."
+        return "Verify your address to claim your permanent founding place on this block, see what each locked block surface is still waiting for, and mail an invitation to a home near you."
     }
 
     var body: some View {
@@ -46,7 +46,7 @@ struct PlaceBlockDetailContent: View {
                 } else {
                     vm.fallbackCard(density)
                 }
-                PlaceSourceNote(name: "Pantopus verified neighbors", asOf: nil)
+                PlaceSourceNote(name: "Verified homes on Pantopus", asOf: nil)
             }
 
             PlaceDetailSectionLabel(text: "Block founders")
@@ -62,10 +62,10 @@ struct PlaceBlockDetailContent: View {
                     onTap: vm.verifyAction
                 )
             }
-            PlaceSourceNote(name: "Pantopus verified neighbors", asOf: nil)
+            PlaceSourceNote(name: "Verified homes on Pantopus", asOf: nil)
 
             if let census = vm.section(.censusContext, in: intel) {
-                PlaceDetailSectionLabel(text: "Neighborhood")
+                PlaceDetailSectionLabel(text: "This area")
                 if let data = census.censusContext, census.status == .ready || census.status == .stale {
                     CensusCard(data: data)
                 } else {

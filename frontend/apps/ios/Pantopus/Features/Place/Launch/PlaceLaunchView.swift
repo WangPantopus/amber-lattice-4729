@@ -271,7 +271,7 @@ struct PlaceLaunchView: View {
         HStack(alignment: .top, spacing: 8) {
             Icon(.shieldCheck, size: 15, strokeWidth: 2.1, color: Theme.Color.home)
                 .padding(.top, 2)
-            (Text("Neighbors see a first name and a street. ")
+            (Text("Others see a first name and a street. ")
                 + Text("Never your house number.").fontWeight(.semibold).foregroundColor(Theme.Color.appText))
                 .font(.system(size: 13))
                 .lineSpacing(3)
@@ -454,10 +454,10 @@ private extension PlaceLaunchView {
     /// Under the headline. The Place tab's first-run root (signed in) says
     /// what an address shows, as the front door does (TABCARD 4b).
     var heroSentence: String {
-        if embedded != nil { return "Your flood risk, today's air, your home's value, and who your verified neighbors are." }
+        if embedded != nil { return "Your flood risk, today's air, your home's value, and the verified homes near you." }
         return signedInEntry
             ? "Look up an address, preview its public information, and choose whether to save it privately."
-            : "Your flood risk, today's air, your home's value, and who your verified neighbors are — free, no account."
+            : "Your flood risk, today's air, your home's value, and the verified homes near you — free, no account."
     }
 
     /// The Place tab's first-run root with a city kept on this phone (TABCARD

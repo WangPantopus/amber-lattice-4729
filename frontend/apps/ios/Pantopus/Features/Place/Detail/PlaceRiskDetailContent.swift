@@ -288,7 +288,7 @@ private struct EmergencyChecklist: View {
         ),
         Group(
             title: "Meeting point",
-            items: ["Neighborhood spot", "Out-of-town spot", "Reunification plan"]
+            items: ["Nearby spot", "Out-of-town spot", "Reunification plan"]
         )
     ]
 

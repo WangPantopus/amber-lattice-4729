@@ -130,10 +130,10 @@ struct PlaceHomeCard: View {
         }
     }
 
-    /// "Verify your address to message neighbors and get your badge." and its button.
+    /// "Verify your address to message homes near you and get your badge." and its button.
     private func verifyLine(_ verify: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Verify your address to message neighbors and get your badge.")
+            Text("Verify your address to message homes near you and get your badge.")
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.Color.appTextStrong)
                 .fixedSize(horizontal: false, vertical: true)

@@ -1614,7 +1614,7 @@ extension ChatConversationView {
     private var aiPrivacyRow: some View {
         HStack(spacing: 5) {
             Icon(.shieldCheck, size: 11, strokeWidth: 2.5, color: Theme.Color.success)
-            Text("Private to your account · never shared with neighbors")
+            Text("Private to your account · never shared with others")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)
