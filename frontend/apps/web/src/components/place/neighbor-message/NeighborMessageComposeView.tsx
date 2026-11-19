@@ -104,7 +104,7 @@ function PrivacyNote() {
     <div className="flex items-start gap-2.5 mt-2 px-3.5 py-3 rounded-xl border bg-app-info-bg border-app-info-light">
       <EyeOff size={18} strokeWidth={2} className="mt-px shrink-0 text-app-info" />
       <div className="text-[13.5px] leading-[19px] text-app-text-strong">
-        <b className="font-bold">Your identity stays private.</b> It&apos;s delivered as &ldquo;from a verified neighbor
+        <b className="font-bold">Your identity stays private.</b> It&apos;s delivered as &ldquo;from a verified home
         nearby&rdquo; — never your name or address.
       </div>
     </div>
@@ -164,7 +164,7 @@ function DeliveryPreview({ body }: { body: string }) {
           <ShieldCheck size={20} strokeWidth={2} />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">A verified neighbor nearby</div>
+          <div className="text-[15px] font-semibold text-app-text -tracking-[0.01em]">A verified home nearby</div>
           <div className="text-[12.5px] text-app-text-muted mt-px">On your block · just now</div>
         </div>
         <Chip label="Verified" variant="success" icon={ShieldCheck} />
@@ -185,9 +185,9 @@ function DeliveryPreview({ body }: { body: string }) {
 
 // ── Respectful-use + rate limit + block, in one calm card ──
 const SAFETY_ROWS = [
-  { icon: HeartHandshake, title: 'Keep it neighborly', sub: 'For genuine heads-ups — not complaints, sales, or anything targeted.' },
+  { icon: HeartHandshake, title: 'Keep it kind', sub: 'For genuine heads-ups — not complaints, sales, or anything targeted.' },
   { icon: Clock, title: 'A few messages a week', sub: "There's a gentle limit, so the channel stays low-volume and calm." },
-  { icon: Ban, title: 'Always blockable', sub: 'Anyone can block messages from verified neighbors at any time.' },
+  { icon: Ban, title: 'Always blockable', sub: 'Anyone can block messages from verified homes at any time.' },
 ];
 
 function SafetyCard() {
@@ -242,7 +242,7 @@ export default function NeighborMessageComposeView({
                 <HomeIcon size={20} strokeWidth={2} />
               </span>
               <div className="flex-1 min-w-0">
-                <div className="text-[15px] font-semibold text-app-text">Choose a neighbor on your block</div>
+                <div className="text-[15px] font-semibold text-app-text">Choose a home on your block</div>
                 <div className="text-[13px] text-app-text-muted mt-0.5 leading-[18px]">
                   Open a home on your block to send it a verified heads-up.
                 </div>

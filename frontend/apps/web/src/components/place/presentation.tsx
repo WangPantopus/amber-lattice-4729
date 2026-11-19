@@ -390,7 +390,7 @@ const SECTION_CONFIG: Record<PlaceSectionId, SectionConfig> = {
       const chip: PlaceSectionCardChip | undefined = d.state === 'building'
         ? { label: `${d.reports} of ${d.needed}`, variant: 'info' }
         : undefined;
-      return { value: d.summary, chip, caption: 'Reported by verified neighbors — not a listings estimate' };
+      return { value: d.summary, chip, caption: 'Reported by verified residents — not a listings estimate' };
     },
   },
   exemption_check: {
@@ -681,7 +681,7 @@ export interface VerifyLockedItem {
 }
 
 export const VERIFY_LOCKED_SECTIONS: VerifyLockedItem[] = [
-  { icon: MessageCircle, title: 'Neighbor messaging', reason: 'Verify your address to message neighbors.' },
+  { icon: MessageCircle, title: 'Messages between homes', reason: 'Verify your address to message homes near you.' },
   { icon: BadgeCheck, title: 'Verified badge', reason: 'Verify your address to get your verified badge.' },
   // Launch cut #10 (Mailbox): the mailbox isn't something verifying opens.
   ...(launchFeatures.mailbox ? [{

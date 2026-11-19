@@ -85,7 +85,7 @@ export default function PendingPlaceSaver({ previewId, userId, onSaved }: {
     <section className="rounded-2xl border border-app-border bg-app-surface p-5">
       <p className="text-sm text-app-text-secondary">Your address preview</p>
       <h1 className="mt-1 break-words text-xl font-semibold">{draft.label}</h1>
-      <p className="mt-3 text-app-text-secondary">Save this address privately to your account so you can return to its public information. This does not join a household, verify residency, or share your address with neighbors.</p>
+      <p className="mt-3 text-app-text-secondary">Save this address privately to your account so you can return to its public information. This does not join a household, verify residency, or share your address with others.</p>
       {error ? <p role="alert" className="mt-3 text-red-700 dark:text-red-300">{error}</p> : null}
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <button onClick={save} disabled={saving} className="rounded-xl bg-primary-600 px-5 py-3 font-semibold text-white disabled:opacity-50">

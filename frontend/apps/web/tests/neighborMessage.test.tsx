@@ -23,7 +23,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 const TEMPLATES: NeighborMessageTemplate[] = [
-  { id: 'noise', icon: 'volume-2', category: 'Late-night noise', body: 'A verified neighbor mentioned some noise after 10pm.' },
+  { id: 'noise', icon: 'volume-2', category: 'Late-night noise', body: 'Someone nearby mentioned some noise after 10pm.' },
   { id: 'package', icon: 'package', category: 'Misdelivered package', body: 'A package may have been left at the wrong door near you.' },
 ];
 
@@ -38,7 +38,7 @@ function received(overrides: Partial<ReceivedNeighborMessage> = {}): ReceivedNei
     category: 'Misdelivered package',
     body: 'A package may have been left at the wrong door near you.',
     created_at: new Date().toISOString(),
-    sender: { label: 'A verified neighbor nearby', block_label: 'On your block', verified: true },
+    sender: { label: 'A verified home nearby', block_label: 'On your block', verified: true },
     reply: null,
     can_reply: true,
     not_helpful: false,
@@ -63,7 +63,7 @@ describe('NeighborMessageComposeView — template-only compose', () => {
     );
 
     expect(screen.getByText('1425 SE Oak St')).toBeInTheDocument();
-    expect(screen.getByText(/from a verified neighbor nearby/i)).toBeInTheDocument();
+    expect(screen.getByText(/from a verified home nearby/i)).toBeInTheDocument();
     // Template-only: there must be no free-text field anywhere.
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('textarea')).toBeNull();
@@ -124,7 +124,7 @@ describe('NeighborMessageReceivedView — calm, in-control receiving', () => {
       />
     );
 
-    expect(screen.getByText('From a verified neighbor nearby')).toBeInTheDocument();
+    expect(screen.getByText('From a verified home nearby')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Thanks for the heads-up' }));
     expect(onReply).toHaveBeenCalledWith('thanks');
   });
@@ -147,7 +147,7 @@ describe('NeighborMessageReceivedView — calm, in-control receiving', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Block this neighbor/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Block this sender/i }));
     fireEvent.click(screen.getByRole('button', { name: /Report this message/i }));
     expect(onBlock).toHaveBeenCalledTimes(1);
     expect(onReport).toHaveBeenCalledTimes(1);
