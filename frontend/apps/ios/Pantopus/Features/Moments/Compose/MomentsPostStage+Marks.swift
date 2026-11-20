@@ -3,7 +3,7 @@
 //  Pantopus
 //
 //  The pills over the picture on the Post screen: Retake, and on a photo
-//  Text and Draw (board T1), which open the marks editor. On the phone Text
+//  Text and Draw (board T1), which open the marks editor in that tool. On the phone Text
 //  and Draw sit at the top right; on the iPhone Duo they follow Retake in one
 //  row, because two poses keep the clock at the top right. While a Post is
 //  going Text and Draw are off.
@@ -33,7 +33,12 @@ extension MomentsPostStage {
     private var markPills: some View {
         if model.offersMarks {
             HStack(spacing: Spacing.s2) {
-                markPill(.draw, id: "moments.post.draw") {
+                markPill(.text, name: "Text", id: "moments.post.text") {
+                    // "Aa" is lettering, not an icon (board T1).
+                    Text("Aa").font(.system(size: 16, weight: .bold)).kerning(-0.5)
+                    Text("Text")
+                }
+                markPill(.draw, name: "Draw", id: "moments.post.draw") {
                     Icon(.pencil, size: 18, strokeWidth: 2.2, color: .white)
                     Text("Draw")
                 }
@@ -43,7 +48,7 @@ extension MomentsPostStage {
         }
     }
 
-    private func markPill(_ tool: MomentsMarking.Tool, id: String, @ViewBuilder label: () -> some View) -> some View {
+    private func markPill(_ tool: MomentsMarking.Tool, name: String, id: String, @ViewBuilder label: () -> some View) -> some View {
         Button { model.openMarks(tool) } label: {
             HStack(spacing: 6) { label() }
                 .font(.system(size: 15, weight: .semibold))
@@ -55,6 +60,9 @@ extension MomentsPostStage {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier(id)
     }
 

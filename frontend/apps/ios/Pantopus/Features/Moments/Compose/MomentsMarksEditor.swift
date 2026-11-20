@@ -4,9 +4,10 @@
 //
 //  Text and Draw on the photo being posted (boards T2, T3). The picture is
 //  shown in the viewer's own frame (the phone's full width above the reply
-//  bar, filled and cropped as people will see it), with the strip the
-//  viewer's top bar covers marked. On the iPhone Duo it is the same card the
-//  Post screen shows for each pose, with the controls over it. X drops what
+//  bar, filled and cropped as people will see it), with a dashed line where
+//  labels may begin, below the lowest any viewer's top bar reaches. On the
+//  iPhone Duo it is the same card the Post screen shows for each pose, with
+//  the controls over it. X drops what
 //  changed in this visit (asking first when something did); Done keeps it.
 //  The editor is a branch of the composer's stack and its state lives in the
 //  composer's model (`MomentsMarking`), so a fold keeps it.
@@ -18,38 +19,77 @@ struct MomentsMarksEditor: View {
     let model: MomentsComposerModel
     let image: UIImage
     @Environment(\.momentsDuoScreen) var duo
+    /// Where the keyboard's top is on the screen (the screen's bottom while it's down), and where the looks and inks
+    /// begin: a label being typed in stays above both.
+    @State var keyboardTop: CGFloat = .infinity
+    @State var footerTop: CGFloat = .infinity
 
     var marking: MomentsMarking {
         model.marking
     }
 
     var body: some View {
-        // The safe area as this cover has it (the keyboard never moves the picture).
+        asksBeforeCancel(ZStack {
+            screenLayer
+            keyboardReader
+        })
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(.escape) { model.cancelMarks() }
+        .accessibilityIdentifier("moments.marks")
+    }
+
+    /// The X's question when something changed in this visit.
+    private func asksBeforeCancel(_ content: some View) -> some View {
+        let asks = Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })
+        return content.alert("Discard your changes?", isPresented: asks) {
+            Button("Discard", role: .destructive) { marking.cancel() }
+                .accessibilityIdentifier("moments.marks.discard")
+            Button("Keep editing", role: .cancel) {}
+                .accessibilityIdentifier("moments.marks.keep")
+        }
+    }
+
+    /// The safe area as this cover has it (the keyboard never moves the picture).
+    private var screenLayer: some View {
         GeometryReader { geo in
             let insets = geo.safeAreaInsets
             let width = geo.size.width + insets.leading + insets.trailing
             screen(size: CGSize(width: width, height: geo.size.height + insets.top + insets.bottom), insets: insets)
         }
         .ignoresSafeArea(.keyboard)
-        .alert("Discard your changes?", isPresented: Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })) {
-            Button("Discard", role: .destructive) { marking.cancel() }
-                .accessibilityIdentifier("moments.marks.discard")
-            Button("Keep editing", role: .cancel) {}
-                .accessibilityIdentifier("moments.marks.keep")
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(.escape) { model.cancelMarks() }
-        .accessibilityIdentifier("moments.marks")
+    }
+
+    /// The keyboard's top, from a layer that gives way to it.
+    private var keyboardReader: some View {
+        Color.clear
+            .ignoresSafeArea(.container)
+            .allowsHitTesting(false)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { keyboardTop = $0 }
     }
 
     /// Everything in the screen's own points, from its top-left corner.
     private func screen(size: CGSize, insets: EdgeInsets) -> some View {
         let frame = pictureFrame(size)
-        let room = controlRoom(frame, size: size, insets: insets)
+        let full = controlRoom(frame, size: size, insets: insets)
+        // With the keyboard up, the looks and inks sit right above it.
+        let typing = keyboardTop < size.height - max(insets.bottom, 1) - 1
+        let room = typing ? CGRect(
+            x: full.minX,
+            y: full.minY,
+            width: full.width,
+            height: max(min(full.maxY, keyboardTop - Spacing.s2) - full.minY, 0)
+        ) : full
+        // Between the top bar's buttons and the bottom controls: where labels are put and dragged.
+        let free = (room.minY + 48 - frame.minY)...max(room.minY + 48 - frame.minY, footerTop - frame.minY - Spacing.s1)
         return ZStack(alignment: .topLeading) {
             Color.black
-            MomentsMarksDrawArea(marking: marking, image: image, size: frame.size)
-                .overlay(alignment: .top) { viewerStrip(frame, insets: insets) }
+            MomentsMarksDrawArea(marking: marking, image: image, size: frame.size, addWords: addWords(frame: frame, free: free))
+                .overlay {
+                    if marking.tool == .text {
+                        MomentsMarksTextLayer(marking: marking, image: image, size: frame.size, free: free)
+                    }
+                }
+                .overlay(alignment: .top) { viewerStrip(frame) }
                 .overlay(alignment: .bottom) {
                     LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
                         .frame(height: min(200, frame.height / 3))
@@ -60,10 +100,13 @@ struct MomentsMarksEditor: View {
             VStack(spacing: 0) {
                 topBar
                 Spacer(minLength: Spacing.s2)
-                drawFooter(width: room.width)
+                Group {
+                    if marking.tool == .text { textFooter(width: room.width, typing: typing) } else { drawFooter(width: room.width) }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { footerTop = $0 }
             }
             .frame(width: room.width, height: room.height)
-            .overlay(alignment: .trailing) { widthColumn }
+            .overlay(alignment: .trailing) { if marking.tool == .draw { widthColumn } }
             .offset(x: room.minX, y: room.minY)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
@@ -117,28 +160,40 @@ struct MomentsMarksEditor: View {
         }
     }
 
-    /// The strip the viewer's top bar covers (its progress bars, face, name, place and buttons), as the viewer darkens
-    /// it, with a dashed line where it ends.
-    func viewerStrip(_ frame: CGRect, insets: EdgeInsets) -> some View {
-        let barsTop = duo.pose == .phone
-            ? insets.top + 8
-            : max(12, insets.top, duo.occludedBottom(from: frame.minX, to: frame.maxX)) - frame.minY
-        // Bars 3 pt, 9 pt to the header, the header 48 pt.
-        let covered = max(barsTop + 60, 0)
+    /// Text: VoiceOver's "Add words" on the picture, a label as opening Text adds; at five it says so.
+    private func addWords(frame: CGRect, free: ClosedRange<CGFloat>) -> (() -> Void)? {
+        guard marking.tool == .text else { return nil }
+        return { [marking, image] in
+            if !MomentsMarksTextLayer.addLabel(marking: marking, picture: image.size, size: frame.size, free: free) {
+                AccessibilityNotification.Announcement("Five labels is the most.").post()
+            }
+        }
+    }
+
+    /// The viewer's top gradient, and a dashed line where labels may begin: below the lowest line any phone's viewer
+    /// top bar reaches in this picture (`MomentMarks.safeBox`), the same place in the picture on every phone.
+    func viewerStrip(_ frame: CGRect) -> some View {
+        let fill = MomentMarks.fill(image.size, in: frame.size)
+        let line = max(fill.minY + MomentMarks.safeBox(aspect: image.size.width / max(image.size.height, 1)).minY * fill.height, 0)
         return ZStack(alignment: .top) {
             LinearGradient(colors: [Color.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: max(covered + 90, 170))
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: 0.5))
-                path.addLine(to: CGPoint(x: frame.width, y: 0.5))
-            }
-            .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-            .frame(height: 1)
-            .offset(y: covered)
+                .frame(height: max(line + 60, 170))
+            // White over a dark line just under it, so it shows on light pictures and dark ones.
+            dashes(Color.black.opacity(0.4), width: frame.width).offset(y: line + 1)
+            dashes(Color.white.opacity(0.5), width: frame.width).offset(y: line)
         }
         .frame(width: frame.width, alignment: .top)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func dashes(_ color: Color, width: CGFloat) -> some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0.5))
+            path.addLine(to: CGPoint(x: width, y: 0.5))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+        .frame(height: 1)
     }
 
     // MARK: - The top bar
@@ -147,7 +202,7 @@ struct MomentsMarksEditor: View {
         HStack(spacing: Spacing.s2) {
             roundButton(.x, size: 22, label: "Cancel", id: "moments.marks.cancel") { model.cancelMarks() }
             Spacer(minLength: Spacing.s2)
-            MomentsMarksUndo(marking: marking)
+            if marking.tool == .draw { MomentsMarksUndo(marking: marking) }
             Button { model.applyMarks() } label: {
                 Text("Done")
                     .scaledFont(15, weight: .bold)

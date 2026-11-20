@@ -106,10 +106,13 @@ struct MomentsMarksDrawArea: View {
     let marking: MomentsMarking
     let image: UIImage
     let size: CGSize
+    /// Text: VoiceOver's "Add words", which adds a label as opening Text does.
+    var addWords: (() -> Void)?
 
     var body: some View {
         let fill = MomentMarks.fill(image.size, in: size)
-        MomentsMarkedPhoto(image: image, marks: marking.editing)
+        // The label being typed in is its text field (`MomentsMarksTextLayer`), not drawn under it.
+        MomentsMarkedPhoto(image: image, marks: marking.shown)
             .frame(width: size.width, height: size.height)
             .clipped()
             .contentShape(Rectangle())
@@ -122,11 +125,16 @@ struct MomentsMarksDrawArea: View {
                         )
                         marking.draw(at: point, pictureWidth: fill.width)
                     }
-                    .onEnded { _ in marking.endLine() }
+                    .onEnded { _ in marking.endLine() },
+                // Text: the labels' own layer takes the touches.
+                isEnabled: marking.tool == .draw
             )
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("The photo you're posting")
-            .accessibilityHint("Draw on it with one finger.")
+            .accessibilityHint(marking.tool == .draw ? "Draw on it with one finger." : "")
+            .accessibilityActions {
+                if let addWords { Button("Add words", action: addWords) }
+            }
             .accessibilityIdentifier("moments.marks.picture")
     }
 }

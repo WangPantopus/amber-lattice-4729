@@ -79,9 +79,15 @@ struct MomentMarks: Equatable {
     static let maxLetters = 80
     /// The most lines one picture keeps: Undo goes back one at a time, and the drawing stays cheap to redraw.
     static let maxStrokes = 200
-    /// The smallest letters a label may have, as a share of the picture's width: the picture check reads a copy
-    /// 1024 px on its longest side, where this is at least about 14 px on a tall photo.
-    static let minLetterSize: CGFloat = 0.025
+    /// The smallest letters a label may have on a picture `aspect` wide (width over height), as a share of its
+    /// width: 16 px in the copy the picture check reads, which is 1024 px on its longest side (0.016 of a landscape
+    /// picture's width, 0.028 of a 9:16 one's).
+    static func minLetterSize(aspect: CGFloat) -> CGFloat {
+        16 * max(1, 1 / max(aspect, 0.01)) / 1024
+    }
+
+    /// The largest letters, as a share of the picture's width.
+    static let maxLetterSize: CGFloat = 0.15
     /// A new label's letters, on the screen showing the picture (board T2).
     static let newLetterPoints: CGFloat = 22
 
@@ -92,15 +98,22 @@ struct MomentMarks: Equatable {
     /// not promised.
     static let narrowestFrame: CGFloat = 9.0 / 21.0
     static let widestFrame: CGFloat = 0.63
+    /// The most of a viewer's frame its top covers: the bars, face, name and place, and one row of pills under them
+    /// (Live or Taken here or Taken on a date, and the weather). Measured with both pills, the row ends at 19.5% on an
+    /// iPhone 17 and 19.2% on an iPhone SE; the tallest is about 21% (a 720 x 1280 Android phone). This leaves a few
+    /// points more. A second row, when the pills wrap on the narrowest phones, isn't covered.
+    static let topBar: CGFloat = 0.23
 
-    /// The part of a picture `aspect` wide (width over height) that every phone's viewer shows, in picture
-    /// coordinates: a centered box, as wide as the narrowest frame shows and as tall as the widest one does.
-    /// Labels stay inside it; drawing is not held to it.
+    /// Where a label may go on a picture `aspect` wide (width over height), in picture coordinates: the part every
+    /// phone's viewer shows (a centered box, as wide as the narrowest frame shows and as tall as the widest one does),
+    /// below the lowest line any viewer's top bar reaches in it. The whole label stays inside; drawing is not held to
+    /// it. The editor's dashed line is its top.
     static func safeBox(aspect: CGFloat) -> CGRect {
         guard aspect > 0 else { return CGRect(x: 0, y: 0, width: 1, height: 1) }
         let width = min(1, narrowestFrame / aspect)
         let height = min(1, aspect / widestFrame)
-        return CGRect(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+        let top = 0.5 - (0.5 - topBar) * height
+        return CGRect(x: (1 - width) / 2, y: top, width: width, height: 0.5 + height / 2 - top)
     }
 
     /// Where a picture `image` big lands when it fills `frame` (centered, cropped, as the viewer shows it), in the
