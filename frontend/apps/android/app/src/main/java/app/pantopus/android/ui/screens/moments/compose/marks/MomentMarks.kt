@@ -264,10 +264,11 @@ object MomentMarkRules {
     private const val WIDEST_FRAME = 0.63f
 
     /**
-     * The share of a viewer frame its top bar covers on the phone where it covers the most: about 16% measured on an
-     * iPhone 17 and a 720 × 1280 Android phone, with a little room.
+     * The share of a viewer frame its top bar covers, with one row of pills under the name (Live or Taken, and the
+     * weather), on the phones where it covers the most: 19.6% on a 720 × 1280 Android phone with a 3-button bar and
+     * 19.5% on an iPhone 17, with a little room. A second, wrapped pill row on a narrow phone isn't covered.
      */
-    private const val TOP_BAR = 0.17f
+    private const val TOP_BAR = 0.23f
 
     private const val SHAPE_STEPS = 10_000f
 
