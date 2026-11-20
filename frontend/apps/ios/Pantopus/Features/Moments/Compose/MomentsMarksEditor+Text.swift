@@ -151,52 +151,62 @@ struct MomentsMarksTextLayer: View {
     private func labelArea(_ label: MomentMarks.Label, index: Int, fill: CGRect, scale: CGFloat) -> some View {
         let box = onScreen(MomentMarksDrawing.lay(label, aspect: marking.aspect).box, fill: fill, scale: scale)
         let picked = marking.picked == label.id
-        return Color.clear
+        let area: some View = Color.clear
             .frame(width: box.width, height: box.height)
-            .overlay {
-                if picked {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .padding(-6)
-                        .allowsHitTesting(false)
-                }
-            }
+            .overlay { if picked { pickedFrame } }
             .contentShape(Rectangle().inset(by: -8))
             .onTapGesture {
                 marking.startTyping(label.id)
                 focused = true
             }
-            .gesture(
-                // In the layer's own space: the label moves under the finger, so its own space would shrink the drag.
-                DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.space))
-                    .onChanged { value in
-                        let rows = ((free.lowerBound - fill.minY) / fill.height)...max(
-                            (free.lowerBound - fill.minY) / fill.height,
-                            (free.upperBound - fill.minY) / fill.height
-                        )
-                        let moved = CGSize(width: value.translation.width / fill.width, height: value.translation.height / fill.height)
-                        marking.drag(label.id, by: moved, within: rows)
-                    }
-                    .onEnded { _ in marking.endDrag() }
-            )
-            // After the label's own touch area, which would otherwise leave out the corner circle.
-            .overlay(alignment: .bottomTrailing) {
-                if picked { resizeMark(center: CGPoint(x: box.midX, y: box.midY)).offset(x: 28, y: 28) }
+            .gesture(moving(label.id, fill: fill))
+        // After the label's own touch area, which would otherwise leave out the corner circle.
+        let handled: some View = area.overlay(alignment: .bottomTrailing) {
+            if picked { resizeMark(center: CGPoint(x: box.midX, y: box.midY)).offset(x: 28, y: 28) }
+        }
+        return spoken(handled.position(x: box.midX, y: box.midY), label: label, index: index)
+    }
+
+    /// The picked label's dashed frame (board T2).
+    private var pickedFrame: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            .padding(-6)
+            .allowsHitTesting(false)
+    }
+
+    /// A finger moving a label, in the layer's own space: the label moves under the finger, so its own space would
+    /// shrink the drag. It stays between the editor's top bar and its controls.
+    private func moving(_ id: UUID, fill: CGRect) -> some Gesture {
+        let top = (free.lowerBound - fill.minY) / fill.height
+        let rows = top...max(top, (free.upperBound - fill.minY) / fill.height)
+        return DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.space))
+            .onChanged { value in
+                let moved = CGSize(width: value.translation.width / fill.width, height: value.translation.height / fill.height)
+                marking.drag(id, by: moved, within: rows)
             }
-            .position(x: box.midX, y: box.midY)
+            .onEnded { _ in marking.endDrag() }
+    }
+
+    /// A label read aloud, with VoiceOver's moves and sizes.
+    private func spoken(_ area: some View, label: MomentMarks.Label, index: Int) -> some View {
+        let id = label.id
+        let named: some View = area
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Words on the picture: \(label.text)")
             .accessibilityHint("Double-tap to change the words.")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction { marking.startTyping(label.id) }
-            .accessibilityAction(named: "Move up") { marking.nudge(label.id, dx: 0, dy: -0.05) }
-            .accessibilityAction(named: "Move down") { marking.nudge(label.id, dx: 0, dy: 0.05) }
-            .accessibilityAction(named: "Move left") { marking.nudge(label.id, dx: -0.05, dy: 0) }
-            .accessibilityAction(named: "Move right") { marking.nudge(label.id, dx: 0.05, dy: 0) }
-            .accessibilityAction(named: "Make larger") { marking.scale(label.id, by: 1.2) }
-            .accessibilityAction(named: "Make smaller") { marking.scale(label.id, by: 1 / 1.2) }
-            .accessibilityAction(named: "Delete") { marking.delete(label.id) }
+            .accessibilityAction { marking.startTyping(id) }
             .accessibilityIdentifier("moments.marks.label.\(index)")
+        let moves: some View = named
+            .accessibilityAction(named: "Move up") { marking.nudge(id, dx: 0, dy: -0.05) }
+            .accessibilityAction(named: "Move down") { marking.nudge(id, dx: 0, dy: 0.05) }
+            .accessibilityAction(named: "Move left") { marking.nudge(id, dx: -0.05, dy: 0) }
+            .accessibilityAction(named: "Move right") { marking.nudge(id, dx: 0.05, dy: 0) }
+        return moves
+            .accessibilityAction(named: "Make larger") { marking.scale(id, by: 1.2) }
+            .accessibilityAction(named: "Make smaller") { marking.scale(id, by: 1 / 1.2) }
+            .accessibilityAction(named: "Delete") { marking.delete(id) }
     }
 
     /// The white circle at a picked label's corner (board T2), in a 44-pt touch area: dragging it resizes the label as

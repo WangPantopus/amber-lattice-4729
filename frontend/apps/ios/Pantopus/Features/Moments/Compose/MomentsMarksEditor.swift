@@ -30,18 +30,8 @@ struct MomentsMarksEditor: View {
 
     var body: some View {
         ZStack {
-            // The safe area as this cover has it (the keyboard never moves the picture).
-            GeometryReader { geo in
-                let insets = geo.safeAreaInsets
-                let width = geo.size.width + insets.leading + insets.trailing
-                screen(size: CGSize(width: width, height: geo.size.height + insets.top + insets.bottom), insets: insets)
-            }
-            .ignoresSafeArea(.keyboard)
-            // The keyboard's top, from a layer that gives way to it.
-            Color.clear
-                .ignoresSafeArea(.container)
-                .allowsHitTesting(false)
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { keyboardTop = $0 }
+            screenLayer
+            keyboardReader
         }
         .alert("Discard your changes?", isPresented: Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })) {
             Button("Discard", role: .destructive) { marking.cancel() }
@@ -52,6 +42,24 @@ struct MomentsMarksEditor: View {
         .accessibilityElement(children: .contain)
         .accessibilityAction(.escape) { model.cancelMarks() }
         .accessibilityIdentifier("moments.marks")
+    }
+
+    /// The safe area as this cover has it (the keyboard never moves the picture).
+    private var screenLayer: some View {
+        GeometryReader { geo in
+            let insets = geo.safeAreaInsets
+            let width = geo.size.width + insets.leading + insets.trailing
+            screen(size: CGSize(width: width, height: geo.size.height + insets.top + insets.bottom), insets: insets)
+        }
+        .ignoresSafeArea(.keyboard)
+    }
+
+    /// The keyboard's top, from a layer that gives way to it.
+    private var keyboardReader: some View {
+        Color.clear
+            .ignoresSafeArea(.container)
+            .allowsHitTesting(false)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { keyboardTop = $0 }
     }
 
     /// Everything in the screen's own points, from its top-left corner.
