@@ -166,17 +166,22 @@ struct MomentsMarksEditor: View {
         return ZStack(alignment: .top) {
             LinearGradient(colors: [Color.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: max(line + 60, 170))
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: 0.5))
-                path.addLine(to: CGPoint(x: frame.width, y: 0.5))
-            }
-            .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-            .frame(height: 1)
-            .offset(y: line)
+            // White over a dark line just under it, so it shows on light pictures and dark ones.
+            dashes(Color.black.opacity(0.4), width: frame.width).offset(y: line + 1)
+            dashes(Color.white.opacity(0.5), width: frame.width).offset(y: line)
         }
         .frame(width: frame.width, alignment: .top)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func dashes(_ color: Color, width: CGFloat) -> some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0.5))
+            path.addLine(to: CGPoint(x: width, y: 0.5))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+        .frame(height: 1)
     }
 
     // MARK: - The top bar

@@ -112,7 +112,7 @@ struct MomentsMarksTextLayer: View {
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { point in
                     let at = CGPoint(x: (point.x - fill.minX) / fill.width, y: (point.y - fill.minY) / fill.height)
-                    if marking.addLabel(at: at, pictureWidth: fill.width) { focused = true }
+                    if marking.addLabel(at: at, pictureWidth: fill.width, within: rows(fill)) { focused = true }
                 }
                 // While typing, a tap there only closes the keyboard.
                 .closesKeyboardFirst()
@@ -136,7 +136,7 @@ struct MomentsMarksTextLayer: View {
             guard marking.addsLabel else { return }
             marking.addsLabel = false
             let at = CGPoint(x: (size.width / 2 - fill.minX) / fill.width, y: (size.height * 0.4 - fill.minY) / fill.height)
-            if marking.addLabel(at: at, pictureWidth: fill.width) { focused = true }
+            if marking.addLabel(at: at, pictureWidth: fill.width, within: rows(fill)) { focused = true }
         }
         .onChange(of: marking.typing, initial: true) { _, typing in
             if typing != nil, !focused { focused = true }
@@ -178,14 +178,19 @@ struct MomentsMarksTextLayer: View {
     /// A finger moving a label, in the layer's own space: the label moves under the finger, so its own space would
     /// shrink the drag. It stays between the editor's top bar and its controls.
     private func moving(_ id: UUID, fill: CGRect) -> some Gesture {
-        let top = (free.lowerBound - fill.minY) / fill.height
-        let rows = top...max(top, (free.upperBound - fill.minY) / fill.height)
+        let rows = rows(fill)
         return DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 let moved = CGSize(width: value.translation.width / fill.width, height: value.translation.height / fill.height)
                 marking.drag(id, by: moved, within: rows)
             }
             .onEnded { _ in marking.endDrag() }
+    }
+
+    /// Between the editor's top bar and its controls, as picture heights: where a label is dragged or added.
+    private func rows(_ fill: CGRect) -> ClosedRange<CGFloat> {
+        let top = (free.lowerBound - fill.minY) / fill.height
+        return top...max(top, (free.upperBound - fill.minY) / fill.height)
     }
 
     /// A label read aloud, with VoiceOver's moves and sizes.

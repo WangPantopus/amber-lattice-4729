@@ -153,20 +153,21 @@ extension MomentsMarking {
         editing.labels.first { $0.id == id }
     }
 
-    /// A new label, typed in at once, at `point` (picture coordinates): false at five labels.
+    /// A new label, typed in at once, at `point` (picture coordinates), held between `rows` like a dragged one: false
+    /// at five labels.
     @discardableResult
-    func addLabel(at point: CGPoint, pictureWidth: CGFloat) -> Bool {
+    func addLabel(at point: CGPoint, pictureWidth: CGFloat, within rows: ClosedRange<CGFloat>) -> Bool {
         guard isOpen, tool == .text, pictureWidth > 0 else { return false }
         endTyping()
         guard editing.labels.count < MomentMarks.maxLabels else { return false }
-        let label = clamped(MomentMarks.Label(
+        let label = clamped(hold(clamped(MomentMarks.Label(
             id: UUID(),
             text: "",
             style: style,
             ink: textInk,
             center: point,
             size: MomentMarks.newLetterPoints / pictureWidth
-        ))
+        )), within: rows))
         editing.labels.append(label)
         (typing, picked) = (label.id, label.id)
         return true
@@ -213,9 +214,16 @@ extension MomentsMarking {
         guard let from = movedFrom else { return }
         update(id) { moved in
             moved.center = CGPoint(x: from.x + translation.width, y: from.y + translation.height)
-            let half = MomentMarksDrawing.lay(moved, aspect: aspect).box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
-            moved.center.y = Self.within(moved.center.y, rows.lowerBound + half, rows.upperBound - half)
+            moved = hold(moved, within: rows)
         }
+    }
+
+    /// `label` with its middle where its whole box stays between `rows` (picture heights), when it fits there.
+    private func hold(_ label: MomentMarks.Label, within rows: ClosedRange<CGFloat>) -> MomentMarks.Label {
+        var label = label
+        let half = MomentMarksDrawing.lay(label, aspect: aspect).box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
+        label.center.y = Self.within(label.center.y, rows.lowerBound + half, rows.upperBound - half)
+        return label
     }
 
     func endDrag() {

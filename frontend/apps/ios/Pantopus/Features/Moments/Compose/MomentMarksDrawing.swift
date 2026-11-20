@@ -19,8 +19,9 @@ enum MomentMarksDrawing {
     /// The longest side of what's drawn on and uploaded (the photo export's own limit).
     static let maxPixels: CGFloat = 2048
 
-    /// Draws `marks` over a picture filling `size` in `context`, whose origin is the picture's top-left corner.
-    static func draw(_ marks: MomentMarks, in context: CGContext, size: CGSize) {
+    /// Draws `marks` over a picture filling `size` in `context`, whose origin is the picture's top-left corner. Labels
+    /// are placed by the picture's own shape, `aspect` (width over height), when the size drawn at is rounded from it.
+    static func draw(_ marks: MomentMarks, in context: CGContext, size: CGSize, aspect: CGFloat? = nil) {
         guard size.width > 0, size.height > 0, !marks.isEmpty else { return }
         context.saveGState()
         defer { context.restoreGState() }
@@ -35,7 +36,7 @@ enum MomentMarksDrawing {
             context.strokePath()
         }
         // Words over lines.
-        drawLabels(marks.labels, in: context, size: size)
+        drawLabels(marks.labels, in: context, size: size, aspect: aspect ?? size.width / size.height)
     }
 
     /// `image` redrawn upright at most 2048 px on its longest side (scale 1, opaque), with `marks` drawn in.
@@ -48,7 +49,7 @@ enum MomentMarksDrawing {
         format.opaque = true
         return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
             image.draw(in: CGRect(origin: .zero, size: size))
-            draw(marks, in: renderer.cgContext, size: size)
+            draw(marks, in: renderer.cgContext, size: size, aspect: image.size.width / max(image.size.height, 1))
         }
     }
 
@@ -163,7 +164,7 @@ extension MomentMarksDrawing {
     }
 
     /// Draws the labels with words over a picture `size` big in `context` (origin at its top-left corner).
-    static func drawLabels(_ labels: [MomentMarks.Label], in context: CGContext, size: CGSize) {
+    static func drawLabels(_ labels: [MomentMarks.Label], in context: CGContext, size: CGSize, aspect: CGFloat) {
         let shown = labels.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !shown.isEmpty, size.width > 0, size.height > 0 else { return }
         context.saveGState()
@@ -172,7 +173,7 @@ extension MomentMarksDrawing {
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
         for label in shown {
-            let laid = lay(label, aspect: size.width / size.height)
+            let laid = lay(label, aspect: aspect)
             if let plate = laid.plate {
                 context.setFillColor(plate.cgColor)
                 context.addPath(UIBezierPath(roundedRect: laid.box, cornerRadius: laid.radius).cgPath)
