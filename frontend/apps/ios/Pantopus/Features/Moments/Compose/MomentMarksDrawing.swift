@@ -6,7 +6,8 @@
 //  what goes up: the live canvas over the picture (the editor, the Post
 //  screen) and the photo flattened for the upload. The flatten works on a
 //  copy at most 2048 px on its longest side, at scale 1 and opaque, off the
-//  main thread, then hands it to the usual photo export. A label is laid out
+//  main thread, then hands it to the usual photo export; on a video it draws
+//  them once on a clear picture the size of the exported frame. A label is laid out
 //  where the picture is 1000 units wide, whatever size it's drawn at, so its
 //  words break into the same lines on the screen and in the upload; its
 //  letters are a share of the picture's width, never the phone's text size.
@@ -50,6 +51,20 @@ enum MomentMarksDrawing {
         return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
             image.draw(in: CGRect(origin: .zero, size: size))
             draw(marks, in: renderer.cgContext, size: size, aspect: image.size.width / max(image.size.height, 1))
+        }
+    }
+
+    /// The marks alone on a clear picture of the size a video's export asks for: laid over every frame, labels placed by
+    /// the video's own shape (`aspect`, as shown). Nil for none.
+    static func overlay(_ marks: MomentMarks, aspect: CGFloat) -> MomentsVideoEncoder.Overlay? {
+        guard !marks.isEmpty else { return nil }
+        return { size in
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = false
+            return UIGraphicsImageRenderer(size: size, format: format)
+                .image { draw(marks, in: $0.cgContext, size: size, aspect: aspect) }
+                .cgImage
         }
     }
 
@@ -219,5 +234,24 @@ struct MomentsMarkedPhoto: View {
             .overlay {
                 if !marks.isEmpty { MomentMarksCanvas(marks: marks) }
             }
+    }
+}
+
+/// The marks over a video filling this view as the viewer shows it (centered, cropped); `picture` is its shown size.
+struct MomentMarksOverVideo: View {
+    let marks: MomentMarks
+    let picture: CGSize?
+
+    var body: some View {
+        GeometryReader { geo in
+            if let picture, !marks.isEmpty {
+                let fill = MomentMarks.fill(picture, in: geo.size)
+                MomentMarksCanvas(marks: marks)
+                    .frame(width: fill.width, height: fill.height)
+                    .position(x: fill.midX, y: fill.midY)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

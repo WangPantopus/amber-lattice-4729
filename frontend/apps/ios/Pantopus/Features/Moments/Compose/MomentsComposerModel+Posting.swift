@@ -42,7 +42,9 @@ extension MomentsComposerModel {
         // A photo or video is made ready first: a Moment is never made for a file that can't be sent.
         let ready = await (preparation?.value ?? []).compactMap { part in part.media.map { (part.folderId, $0) } }
         guard !ready.isEmpty else {
-            if error == nil { error = "Couldn't get that ready to post. Try another one." }
+            // A video whose marks couldn't be put on it never posts without them; say so again.
+            let marked = kind == .video && !marking.marks.isEmpty
+            if error == nil { error = marked ? MomentsMediaExport.marksFailed : "Couldn't get that ready to post. Try another one." }
             return false
         }
         // A long video's parts share one id, named after the first part's folder: a second tap sends the same.

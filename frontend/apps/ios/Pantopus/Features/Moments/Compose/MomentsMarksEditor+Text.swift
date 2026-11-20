@@ -100,7 +100,8 @@ extension MomentsMarksEditor {
 /// (raised above the keyboard and the row of looks when it would be under them).
 struct MomentsMarksTextLayer: View {
     let marking: MomentsMarking
-    let image: UIImage
+    /// The picture's own size (a photo's, or a video's as shown): its shape places the labels.
+    let picture: CGSize
     let size: CGSize
     /// Between the editor's top bar and its looks and inks, in this view's points: a label being typed in stays above
     /// the bottom, and one being dragged stays between the two.
@@ -109,7 +110,7 @@ struct MomentsMarksTextLayer: View {
     private static let space = "moments.marks.text"
 
     var body: some View {
-        let fill = MomentMarks.fill(image.size, in: size)
+        let fill = MomentMarks.fill(picture, in: size)
         let scale = fill.width / MomentMarksDrawing.unit
         ZStack(alignment: .topLeading) {
             Color.clear
@@ -139,7 +140,7 @@ struct MomentsMarksTextLayer: View {
             // Text opened: a label in the middle of what shows above the keyboard, typed in at once.
             guard marking.addsLabel else { return }
             marking.addsLabel = false
-            if Self.addLabel(marking: marking, picture: image.size, size: size, free: free) { focused = true }
+            if Self.addLabel(marking: marking, picture: picture, size: size, free: free) { focused = true }
         }
         .onChange(of: marking.typing, initial: true) { _, typing in
             if typing != nil, !focused { focused = true }

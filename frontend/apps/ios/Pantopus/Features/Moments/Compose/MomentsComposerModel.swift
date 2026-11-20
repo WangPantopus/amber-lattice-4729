@@ -296,10 +296,15 @@ final class MomentsComposerModel {
             return
         }
         draft = .video(url)
-        // A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own.
+        prepareVideo(url, seconds: seconds)
+    }
+
+    /// A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own, with the
+    /// marks (`overlay`) over every frame of each.
+    private func prepareVideo(_ url: URL, seconds: Double, overlay: MomentsVideoEncoder.Overlay? = nil) {
         let ranges = MomentsMediaExport.parts(of: seconds)
         prepare(ranges.map { range in
-            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil) }
+            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil, overlay: overlay) }
         })
     }
 
@@ -310,6 +315,17 @@ final class MomentsComposerModel {
         draft = .photo(base)
         marking.keep(marks, base: base)
         prepare([{ folder in try await MomentMarksDrawing.export(base, marks, into: folder) }])
+    }
+
+    /// The same for a video: every part is exported again with the marks over every frame; Post waits for it.
+    func use(marked url: URL, video: (size: CGSize, seconds: Double), _ marks: MomentMarks) {
+        guard !isPosting, case .video = draft else { return }
+        draft = .video(url)
+        marking.keep(marks, base: nil, video: video)
+        // The export running for the video as it was is no longer wanted.
+        preparation?.cancel()
+        let aspect = video.size.width / max(video.size.height, 1)
+        prepareVideo(url, seconds: video.seconds, overlay: MomentMarksDrawing.overlay(marks, aspect: aspect))
     }
 
     /// P2's Next: the text card goes to the Post sheet.

@@ -30,9 +30,12 @@ enum MomentsVideoEncoder {
         return min(videoBitsPerSecond, max(1_500_000, fits))
     }
 
-    /// Writes `range` of the video at `source` to `output` as an MP4 at `bits` a second of video. Throws when the
-    /// video can't be read or written.
-    static func encode(_ source: URL, to output: URL, range: CMTimeRange, bits: Int = videoBitsPerSecond) async throws {
+    /// Writes `range` of the video at `source` to `output` as an MP4 at `bits` a second of video, with `overlay` (the
+    /// marks drawn on a clear picture the size it's asked for) over every frame. Throws when the video can't be read
+    /// or written.
+    static func encode(
+        _ source: URL, to output: URL, range: CMTimeRange, bits: Int = videoBitsPerSecond, overlay: Overlay? = nil
+    ) async throws {
         let asset = AVURLAsset(url: source)
         guard let video = try await asset.loadTracks(withMediaType: .video).first else { throw MomentsFailure.mediaRejected }
         let sounds = try await asset.loadTracks(withMediaType: .audio)
@@ -42,12 +45,43 @@ enum MomentsVideoEncoder {
             if try await track.load(.isEnabled) { sound = track }
         }
         let tracks = (video: video, sound: sound ?? sounds.first)
-        let job = try await Job(asset: asset, tracks: tracks, output: output, range: range, bits: bits)
+        let job = try await Job(asset: asset, tracks: tracks, output: output, range: range, bits: bits, overlay: overlay)
         try await withTaskCancellationHandler {
             try await job.run()
         } onCancel: {
             job.cancel()
         }
+    }
+
+    /// Draws the marks on a clear picture of the size given (the exported frame's), or nil for none.
+    typealias Overlay = @Sendable (CGSize) -> CGImage?
+
+    /// The video's picture as it is exported, with the marks over it when `overlay` draws any: the layer instruction
+    /// today's export has, or the marks compositor doing the same transform (`MomentsMarksCompositor`). The system's
+    /// export uses it too, so a marked video never loses its marks there.
+    static func composition(for video: AVAssetTrack, overlay: Overlay?) async throws -> AVMutableVideoComposition {
+        let (natural, transform, rate) = try await video.load(.naturalSize, .preferredTransform, .nominalFrameRate)
+        let frame = frame(natural: natural, transform: transform)
+        let frames = rate > 0 ? min(framesPerSecond, Int32(rate.rounded())) : framesPerSecond
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = frame.size
+        composition.frameDuration = CMTime(value: 1, timescale: max(1, frames))
+        if let marks = overlay?(frame.size) {
+            composition.customVideoCompositorClass = MomentsMarksCompositor.self
+            composition.instructions = [MomentsMarksInstruction(trackID: video.trackID, transform: frame.transform, overlay: marks)]
+        } else {
+            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
+            layer.setTransform(frame.transform, at: .zero)
+            let instruction = AVMutableVideoCompositionInstruction()
+            instruction.timeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
+            instruction.layerInstructions = [layer]
+            composition.instructions = [instruction]
+        }
+        // Standard colours: an HDR video is tone-mapped here instead of looking washed out in H.264.
+        composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+        composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+        composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+        return composition
     }
 
     /// The picture as it is shown (after the phone's rotation), scaled to 720 px on its short side, never up.
@@ -79,12 +113,17 @@ enum MomentsVideoEncoder {
         private let start: CMTime
 
         init(
-            asset: AVURLAsset, tracks: (video: AVAssetTrack, sound: AVAssetTrack?), output: URL, range: CMTimeRange, bits: Int
+            asset: AVURLAsset,
+            tracks: (video: AVAssetTrack, sound: AVAssetTrack?),
+            output: URL,
+            range: CMTimeRange,
+            bits: Int,
+            overlay: Overlay?
         ) async throws {
             let (video, sound) = tracks
-            let (natural, transform, rate) = try await video.load(.naturalSize, .preferredTransform, .nominalFrameRate)
-            let frame = MomentsVideoEncoder.frame(natural: natural, transform: transform)
-            let frames = rate > 0 ? min(framesPerSecond, Int32(rate.rounded())) : framesPerSecond
+            let composition = try await MomentsVideoEncoder.composition(for: video, overlay: overlay)
+            let size = composition.renderSize
+            let frames = composition.frameDuration.timescale
             start = range.start
 
             reader = try AVAssetReader(asset: asset)
@@ -94,20 +133,6 @@ enum MomentsVideoEncoder {
             // No location, no camera details.
             writer.metadata = []
 
-            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
-            layer.setTransform(frame.transform, at: .zero)
-            let instruction = AVMutableVideoCompositionInstruction()
-            instruction.timeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
-            instruction.layerInstructions = [layer]
-            let composition = AVMutableVideoComposition()
-            composition.renderSize = frame.size
-            composition.frameDuration = CMTime(value: 1, timescale: max(1, frames))
-            composition.instructions = [instruction]
-            // Standard colours: an HDR video is tone-mapped here instead of looking washed out in H.264.
-            composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-            composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-            composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
-
             let pictures = AVAssetReaderVideoCompositionOutput(
                 videoTracks: [video],
                 videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
@@ -116,8 +141,8 @@ enum MomentsVideoEncoder {
             pictures.alwaysCopiesSampleData = false
             let pictureInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
                 AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: frame.size.width,
-                AVVideoHeightKey: frame.size.height,
+                AVVideoWidthKey: size.width,
+                AVVideoHeightKey: size.height,
                 AVVideoColorPropertiesKey: [
                     AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
                     AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,

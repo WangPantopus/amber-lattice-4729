@@ -17,7 +17,7 @@ import SwiftUI
 
 struct MomentsMarksEditor: View {
     let model: MomentsComposerModel
-    let image: UIImage
+    let media: MomentsMarkedMedia
     @Environment(\.momentsDuoScreen) var duo
     /// Where the keyboard's top is on the screen (the screen's bottom while it's down), and where the looks and inks
     /// begin: a label being typed in stays above both.
@@ -83,10 +83,10 @@ struct MomentsMarksEditor: View {
         let free = (room.minY + 48 - frame.minY)...max(room.minY + 48 - frame.minY, footerTop - frame.minY - Spacing.s1)
         return ZStack(alignment: .topLeading) {
             Color.black
-            MomentsMarksDrawArea(marking: marking, image: image, size: frame.size, addWords: addWords(frame: frame, free: free))
+            MomentsMarksDrawArea(marking: marking, media: media, size: frame.size, addWords: addWords(frame: frame, free: free))
                 .overlay {
                     if marking.tool == .text {
-                        MomentsMarksTextLayer(marking: marking, image: image, size: frame.size, free: free)
+                        MomentsMarksTextLayer(marking: marking, picture: media.size, size: frame.size, free: free)
                     }
                 }
                 .overlay(alignment: .top) { viewerStrip(frame) }
@@ -163,8 +163,8 @@ struct MomentsMarksEditor: View {
     /// Text: VoiceOver's "Add words" on the picture, a label as opening Text adds; at five it says so.
     private func addWords(frame: CGRect, free: ClosedRange<CGFloat>) -> (() -> Void)? {
         guard marking.tool == .text else { return nil }
-        return { [marking, image] in
-            if !MomentsMarksTextLayer.addLabel(marking: marking, picture: image.size, size: frame.size, free: free) {
+        return { [marking, media] in
+            if !MomentsMarksTextLayer.addLabel(marking: marking, picture: media.size, size: frame.size, free: free) {
                 AccessibilityNotification.Announcement("Five labels is the most.").post()
             }
         }
@@ -173,8 +173,8 @@ struct MomentsMarksEditor: View {
     /// The viewer's top gradient, and a dashed line where labels may begin: below the lowest line any phone's viewer
     /// top bar reaches in this picture (`MomentMarks.safeBox`), the same place in the picture on every phone.
     func viewerStrip(_ frame: CGRect) -> some View {
-        let fill = MomentMarks.fill(image.size, in: frame.size)
-        let line = max(fill.minY + MomentMarks.safeBox(aspect: image.size.width / max(image.size.height, 1)).minY * fill.height, 0)
+        let fill = MomentMarks.fill(media.size, in: frame.size)
+        let line = max(fill.minY + MomentMarks.safeBox(aspect: media.size.width / max(media.size.height, 1)).minY * fill.height, 0)
         return ZStack(alignment: .top) {
             LinearGradient(colors: [Color.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
                 .frame(height: max(line + 60, 170))
