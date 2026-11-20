@@ -8,7 +8,10 @@
 //     venue_id (the venue the author picked in the place picker, its `osm:` id),
 //     altitude_ft, flying (the height above sea level the author chose to show, rounded to 10 ft, and whether they
 //       were in the air; behind the `moment_heights` flag; never kept for a Moment at home, shown as an area or
-//       with no location: shownAltitude; a floating Moment's is rounded to 100 ft) }
+//       with no location: shownAltitude; a floating Moment's is rounded to 100 ft),
+//     taken_here (the Live mark, API v4.1: the app's own camera made it just now, kept only for a photo or video at
+//       an exact pin away from home: markKept), weather ({ temp_f, kind, label }, read by the server when the
+//       author kept "Show the weather" on; only with taken_here: services/moments/momentWeather.js) }
 // The Sky, phase A (behind the `sky_places` flag, read for the author when they post): a Moment floats over an area of
 // at least 100 homes (utils/areaCells.js) unless its author pinned it at a public place by name, and one made at home
 // always floats. A floating Moment stores only its area's point (latitude, longitude and the effective pair),
@@ -36,6 +39,7 @@ const { applyLocationPrecision, MAX_DISPLAY_OFFSET_DEGREES, snapToNeighborhoodCe
 const { shownReaction, reactionSummary } = require('../../utils/postReaction');
 const { areaMetadata } = require('../../utils/areaCells');
 const media = require('./momentMedia');
+const momentWeather = require('./momentWeather');
 
 const KINDS = ['photo', 'video', 'text'];
 const HOURS = [1, 6, 24, 48];
@@ -74,6 +78,9 @@ const MAX_ALTITUDE_ERROR_M = 60;
 const MAX_ALTITUDE_ERROR_FLYING_M = 150;
 // Nothing on the ground goes this fast (60 m/s is about 134 mph): the Moment was posted from the air.
 const FLYING_SPEED_MPS = 60;
+// The Live mark (API v4.1): a Moment taken here reads "Live from here" this long after everyone reads it was posted
+// (`created_at`), then "Taken here". Here and nowhere else, so changing it needs no app build.
+const LIVE_FOR_MS = 15 * 60 * 1000;
 const MAX_RINGS = 300;
 const MAX_MAP_ROWS = 2000;
 // A box wider than this (the whole state and beyond) shows no rings; the map asks again closer in.
@@ -284,6 +291,47 @@ function shownHeight(row) {
 }
 
 /**
+ * Whether the Moment is shown at its exact pin away from its author's home: it has a point, wasn't made at home, isn't
+ * shown as an area and doesn't float. Only there may anything say its author is at that spot now.
+ */
+function exactAway(row) {
+  const m = meta(row);
+  return hasPlace(row) && row.location_precision === 'exact_place' && !m.at_home && !m.show_area
+    && !row.post_metadata?.area;
+}
+
+/**
+ * Whether the Moment carries the Live mark (API v4.1): its author's app said its camera made it just now, and what
+ * was kept at posting (markKept) still holds: a photo or video from a fix where its author was, with no older taken
+ * time, at its exact pin away from home.
+ */
+function takenHere(row) {
+  const m = meta(row);
+  return m.taken_here === true && (m.kind === 'photo' || m.kind === 'video') && m.location_source === 'gps'
+    && !m.taken_at && exactAway(row);
+}
+
+/**
+ * Until when a Moment taken here reads "Live from here": LIVE_FOR_MS after the time everyone reads it was posted.
+ * Null for one shared later (it may read "Taken here", never "Live") and for any Moment without the mark.
+ */
+function liveUntil(row) {
+  if (!takenHere(row) || meta(row).share_at) return null;
+  const posted = Date.parse(shownAt(row));
+  return Number.isFinite(posted) ? new Date(posted + LIVE_FOR_MS).toISOString() : null;
+}
+
+/**
+ * A ring's `live_until`: the latest among its Moments, only when the Moment the ring is drawn at (its newest) is
+ * itself an exact pin away from home, so the dot never sits on a pin at home or an area. Null otherwise.
+ */
+function ringLiveUntil(members, newest) {
+  if (!exactAway(newest.row)) return null;
+  const times = members.map(({ row }) => liveUntil(row)).filter(Boolean).sort();
+  return times.length ? times[times.length - 1] : null;
+}
+
+/**
  * Whether `viewer` (an id, or { id, role }) has heights: off for everyone until the founder turns the flag on. Every
  * Moments read asks, so while the flag is off, or on only for named people, it costs no read of its own (the flag
  * row is kept for a minute); only the internal-team tier looks up the person's role.
@@ -366,6 +414,11 @@ function serializeMoment(row, { author, viewerId, seen = false, myReaction = nul
     // A part of a longer video posted as several Moments: which one, of how many (null for any other Moment).
     series: m.series ? { id: m.series.id, index: m.series.index, count: m.series.count } : null,
     taken_at: m.kind === 'text' ? null : (m.taken_at || null),
+    // The Live mark (API v4.1): taken here with the app's camera; "Live from here" until `live_until`, then "Taken
+    // here" (null for one shared later). `weather`: the stamp its author kept, only on a Moment taken here.
+    taken_here: takenHere(row),
+    live_until: liveUntil(row),
+    weather: takenHere(row) ? momentWeather.shownStamp(m.weather) : null,
     // Feet above sea level, when the author chose "Show height" (null otherwise); `flying`: posted from the air.
     altitude_ft: high ? high.altitude_ft : null,
     flying: Boolean(high?.flying),
@@ -634,6 +687,10 @@ async function ringsOf(viewerId, shown, { keyOf = ringKey, previews = true } = {
       // The Sky: the newest Moment shows only its area (made at home), so apps draw the pin floating over its spot
       // with no pointer, never as an exact pin.
       floating: isFloating(newest.row),
+      // The Live mark (API v4.1): the latest time one of its Moments stops reading "Live from here" (apps draw the
+      // dot and keep the ring under "Live now" until then); null when none is live or the ring isn't an exact pin
+      // away from home.
+      live_until: ringLiveUntil(members, newest),
       moments,
       unseen_count: moments.filter((m) => !m.seen).length,
       newest_at: shownAt(newest.row),
@@ -748,7 +805,7 @@ async function viewersOf(row) {
 /** The Post row a new Moment is stored as. */
 function newMomentRow({ userId, accountType, kind, hours, audience, showArea, atHome, caption, text, background,
   location, labels, labelKind = null, createdAt, takenAt = null, venueId = null, altitude = null, series = null,
-  area = null, shareAt = null }) {
+  area = null, shareAt = null, takenHere: sentTakenHere = false, weather = null }) {
   const now = createdAt ? new Date(createdAt) : new Date();
   // A Moment shared later counts its hours from its time.
   const starts = shareAt ? new Date(shareAt) : now;
@@ -758,6 +815,8 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
     location = { ...location, latitude: area.latitude, longitude: area.longitude };
     showArea = true;
   }
+  // The Live mark, decided again on what is stored; its weather only with it.
+  const marked = Boolean(sentTakenHere) && markKept({ kind, source: location.source, atHome, showArea, takenAt });
   return {
     user_id: userId,
     author_user_id: userId,
@@ -802,6 +861,7 @@ function newMomentRow({ userId, accountType, kind, hours, audience, showArea, at
         ...(series && kind === 'video' ? { series: { id: series.id, index: series.index, count: series.count } } : {}),
         ...(altitude ? { altitude_ft: altitude.altitude_ft, ...(altitude.flying ? { flying: true } : {}) } : {}),
         ...(shareAt ? { share_at: new Date(shareAt).toISOString() } : {}),
+        ...(marked ? { taken_here: true, ...(weather ? { weather } : {}) } : {}),
         location_source: location.source,
         state: live ? 'live' : 'uploading',
         media: null,
@@ -840,6 +900,18 @@ function shownAltitude(reading, { atHome = false, showArea = false, unplaced = f
   const step = floating ? FLOATING_HEIGHT_STEP_FT : HEIGHT_STEP_FT;
   // `|| 0`: a few feet below the sea rounds to 0, never to -0.
   return { altitude_ft: Math.round((meters * FEET_PER_M) / step) * step || 0, flying };
+}
+
+/**
+ * Whether a new Moment keeps the Live mark its author's app sent (`taken_here`: its own camera made it just now). Only
+ * a photo or video from a fresh fix of where its author is (`gps`; never an album item pinned where its file says,
+ * `capture`), sent with no taken time (`takenAt`: the apps send one only for an album item), at its exact pin away
+ * from home: never at home, shown as an area, floating or with no location, whatever the app sent. The same places a
+ * height is never kept (shownAltitude). The route also drops it when the author's homes can't be read.
+ */
+function markKept({ kind, source, atHome = false, showArea = false, unplaced = false, floating = false, takenAt = null }) {
+  return (kind === 'photo' || kind === 'video') && source === 'gps' && !atHome && !showArea && !unplaced && !floating
+    && !takenAt;
 }
 
 /**
@@ -1019,6 +1091,6 @@ module.exports = {
   KINDS, HOURS, BACKGROUNDS, AUDIENCES, DAILY_LIMIT, MAX_PARTS, HOUR_MS, MOMENT_SELECT,
   fail, meta, hasEnded, momentState, isScheduled, shownAt, displayedPoint, viewerContext, canSee, loadAuthors, loadMoment,
   serializeMoments, openMoment, openMoments, mapRings, unplacedRings, peopleRings, MAX_PEOPLE, connectionIds, unseenPeople, wentLiveAt, ownMoments, viewersOf,
-  newMomentRow, takenAtShown, shownAltitude, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
+  newMomentRow, takenAtShown, shownAltitude, markKept, heightsOn, floatOn, skyOn, isFloating, HEIGHTS_FLAG, FLOAT_FLAG, SKY_FLAG, checkPostingRules, insertMoment, updateMoment, goLive, hold, holdIfReported, releaseIfReviewed,
   filesHeld, purgeFiles, deleteMoment,
 };

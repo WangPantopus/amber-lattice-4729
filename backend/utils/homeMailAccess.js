@@ -109,14 +109,22 @@ async function mailReaderIdsOrThrow(homeId) {
  * closed to [].
  */
 async function householdHomeIds(userId) {
-  if (!userId) return [];
   try {
-    const rows = await householdOccupancies('user_id', userId);
-    return [...new Set(rows.map((r) => r.home_id).filter(Boolean))];
+    return await householdHomeIdsOrThrow(userId);
   } catch (error) {
     logger.error('householdHomeIds: failing closed', { userId, error: error.message });
     return [];
   }
+}
+
+/**
+ * householdHomeIds, but throws on a read failure: for a caller that must tell "no homes" from "the read broke"
+ * (Moments, which must never show a home: services/moments/momentPlace.isAtHome with `onFailure`).
+ */
+async function householdHomeIdsOrThrow(userId) {
+  if (!userId) return [];
+  const rows = await householdOccupancies('user_id', userId);
+  return [...new Set(rows.map((r) => r.home_id).filter(Boolean))];
 }
 
 const OCCUPANCY_SELECT = 'home_id, user_id, role, role_base, is_active, start_at, end_at, access_start_at, access_end_at, '
@@ -605,7 +613,7 @@ async function canSendToMailHome(homeId, userId) {
 }
 
 module.exports = { hasVerifiedSenderHome, canSendToMailHome, MAIL_TRUSTED_VERIFICATION_STATUSES, MAIL_PROVEN_SOURCES, getAccessibleHomeIds, trustedHomeIdsOrThrow,
-  mailReaderIdsOrThrow, householdHomeIds, mailHomesOrThrow, homeMailNeedsProof, sendMailUnavailable, onlyDelivered,
+  mailReaderIdsOrThrow, householdHomeIds, householdHomeIdsOrThrow, mailHomesOrThrow, homeMailNeedsProof, sendMailUnavailable, onlyDelivered,
   isDeliveredMail,
   MAIL_HOME_NEEDS_PROOF, MAIL_NOT_FOUND, canAccessMail, readableMail, restorableMail,
   isDeletedMail, removedMailInfo, homeMailAudience, sendHomeMailRemovedNotice, MAIL_RESTORE_DAYS, restoreWindowOver,
