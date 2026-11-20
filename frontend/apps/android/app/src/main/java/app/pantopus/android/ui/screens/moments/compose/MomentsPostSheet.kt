@@ -762,6 +762,7 @@ private fun LiveRow(later: Boolean) {
         Text(
             text = line,
             fontSize = 13.sp,
+            lineHeight = 17.sp,
             color = PantopusColors.appTextSecondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
