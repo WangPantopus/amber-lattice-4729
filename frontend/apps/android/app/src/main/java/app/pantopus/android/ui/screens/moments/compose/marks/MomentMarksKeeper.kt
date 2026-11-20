@@ -1,0 +1,157 @@
+@file:Suppress("TooGenericExceptionCaught")
+
+package app.pantopus.android.ui.screens.moments.compose.marks
+
+import android.content.Context
+import android.graphics.Bitmap
+import app.pantopus.android.data.moments.MomentMarksFlatten
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+/**
+ * What Text and Draw keep for the photo on the Post sheet, held by the composer's view model (the phone can turn): the
+ * photo as it came, which marks are always drawn on afresh; the editor's copy of it; and the work of drawing the marks
+ * into the file that posts. Post waits for that work ([awaitDrawn]), so what uploads carries the marks.
+ */
+internal class MomentMarksKeeper(
+    private val context: Context,
+    private val scope: CoroutineScope,
+) {
+    /** The photo as taken or picked, while the sheet shows a copy with marks drawn in; null otherwise. */
+    private var original: File? = null
+
+    /** The marks drawn into the photo on the sheet: what a failed drawing goes back to. */
+    private var drawnMarks = MomentMarks()
+
+    private val _picture = MutableStateFlow<Bitmap?>(null)
+
+    /** The editor's copy of the photo (upright, 2048 px at most on its long side), once read. */
+    val picture: StateFlow<Bitmap?> = _picture.asStateFlow()
+
+    private var pictureOf: File? = null
+    private var reading: Job? = null
+    private var drawing: Job? = null
+    private var drawnOk = true
+
+    /** The ink and line width picked last, for the editor's next visit. */
+    private var ink = MomentInk.Yellow
+    private var width = MomentLineWidth.Medium
+
+    /** The marks are still being drawn into the photo: Post waits. */
+    val busy: Boolean get() = drawing?.isActive == true
+
+    /** The editor opening with [tool] on [marks], with the ink and width picked last. */
+    fun editing(
+        tool: MomentMarksTool,
+        marks: MomentMarks,
+    ): MomentMarksEditing = MomentMarksEditing(tool, marks, marks, ink, width)
+
+    /** The editor closed (Done or the X): its ink and width stay picked. */
+    fun closed(editing: MomentMarksEditing) {
+        ink = editing.ink
+        width = editing.width
+    }
+
+    /** Reads the editor's copy of the photo [shown] on the sheet, or of its original when marks are drawn into it. */
+    fun read(
+        shown: File,
+        onUnreadable: () -> Unit,
+    ) {
+        val source = original ?: shown
+        if (pictureOf == source) return
+        reading?.cancel()
+        pictureOf = source
+        _picture.value = null
+        reading =
+            scope.launch {
+                val read = withContext(Dispatchers.Default) { MomentMarksFlatten.picture(source) }
+                if (read != null) {
+                    _picture.value = read
+                } else {
+                    pictureOf = null
+                    onUnreadable()
+                }
+            }
+    }
+
+    /**
+     * Done: [marks] drawn into a new copy of the photo [shown] on the sheet. [onDrawn] gets the file that now posts (the
+     * photo as it came when no marks are left), and the copy it replaces goes; [onFailed] gets the marks still drawn in.
+     */
+    fun draw(
+        marks: MomentMarks,
+        shown: File,
+        onDrawn: (File) -> Unit,
+        onFailed: (MomentMarks) -> Unit,
+    ) {
+        val source = original ?: shown
+        drawing?.cancel()
+        drawing =
+            scope.launch {
+                var made: File? = null
+                val file =
+                    try {
+                        if (marks.isEmpty) source else drawn(source, marks) { made = it }
+                    } catch (cancelled: CancellationException) {
+                        made?.delete()
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        timber.log.Timber.tag("Moments").w(failure, "couldn't draw the marks in")
+                        made?.delete()
+                        drawnOk = false
+                        onFailed(drawnMarks)
+                        return@launch
+                    }
+                if (shown != source && shown != file) shown.delete()
+                original = source.takeIf { file != source }
+                drawnMarks = marks
+                drawnOk = true
+                onDrawn(file)
+            }
+    }
+
+    private suspend fun drawn(
+        source: File,
+        marks: MomentMarks,
+        made: (File) -> Unit,
+    ): File {
+        reading?.join()
+        val picture =
+            _picture.value?.takeIf { pictureOf == source }
+                ?: withContext(Dispatchers.Default) { MomentMarksFlatten.picture(source) }
+                ?: error("Couldn't read the photo.")
+        return withContext(Dispatchers.Default) { MomentMarksFlatten.flatten(context, picture, marks).also(made) }
+    }
+
+    /** Post waiting for the marks to be drawn in: false when that failed or was called off (Retake, closing). */
+    suspend fun awaitDrawn(): Boolean {
+        val job = drawing ?: return drawnOk
+        job.join()
+        return !job.isCancelled && drawnOk
+    }
+
+    /**
+     * Retake, the next picture, closing, or the photo handed to its upload: nothing kept here stays on the phone. The
+     * photo on the sheet is never deleted here.
+     */
+    fun drop() {
+        reading?.cancel()
+        reading = null
+        drawing?.cancel()
+        drawing = null
+        original?.let { runCatching { it.delete() } }
+        original = null
+        _picture.value = null
+        pictureOf = null
+        drawnMarks = MomentMarks()
+        drawnOk = true
+    }
+}

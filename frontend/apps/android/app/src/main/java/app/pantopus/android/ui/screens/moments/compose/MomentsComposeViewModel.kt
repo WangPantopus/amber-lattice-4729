@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.moments.compose
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.lifecycle.SavedStateHandle
@@ -37,6 +38,10 @@ import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksEditing
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksKeeper
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -158,6 +163,10 @@ data class MomentsComposeUiState(
     val pinsAtPlace: Boolean = false,
     /** The Sky's "Share later": the choice picked (`1h`, `3h`, `tonight`); null posts now. */
     val shareLaterKey: String? = null,
+    /** Text and Draw: the marks drawn into the photo on the sheet, kept to change again. */
+    val marks: MomentMarks = MomentMarks(),
+    /** The marks editor while it is open. */
+    val marking: MomentMarksEditing? = null,
 ) {
     val kind: String
         get() =
@@ -290,6 +299,12 @@ class MomentsComposeViewModel
         /** How far [preparation] has come, 0 to 1. */
         private var readyProgress = 0f
 
+        /** Text and Draw's photo as it came, the editor's copy of it, and the marks being drawn into the one that posts. */
+        private val marksKeeper = MomentMarksKeeper(context, viewModelScope)
+
+        /** The marks editor's picture, once read. */
+        val marksPicture: StateFlow<Bitmap?> = marksKeeper.picture
+
         /** Opening (or coming back with location allowed): a fresh fix, the place it pins at, and the 18+ state. */
         fun start() {
             if (!locations.hasLocationPermission()) {
@@ -407,6 +422,7 @@ class MomentsComposeViewModel
             media: MomentMediaFile,
             takenAt: Instant? = null,
         ) {
+            forgetMarks()
             val current = _state.value
             _state.update {
                 it.copy(
@@ -597,6 +613,7 @@ class MomentsComposeViewModel
             if (lat != null && lng != null) {
                 val place = (repository.placePreview(lat, lng) as? NetworkResult.Success)?.data
                 val pin = ComposePin(lat, lng, takenAt ?: Instant.now(), capture = true, height = photoHeightFor(place, picked))
+                forgetMarks()
                 _state.update {
                     it.copy(
                         media = media,
@@ -694,17 +711,73 @@ class MomentsComposeViewModel
             val current = _state.value
             dropPreparation()
             current.media?.file?.delete()
+            marksKeeper.drop()
             // The ones picked with it that were still waiting go too.
             waiting = emptyList()
             _state.update {
                 it.copy(
                     media = null,
+                    marks = MomentMarks(),
+                    marking = null,
                     step = if (current.media == null) ComposeStep.Text else ComposeStep.Camera,
                     notice = null,
                     pickedTogether = 0,
                     pickedAt = 0,
                 )
             }
+        }
+
+        /** The Post screen's Text or Draw pill: the editor opens on the photo's marks (never while a Post is in flight). */
+        fun openMarks(tool: MomentMarksTool) {
+            val current = _state.value
+            val photo = current.media as? MomentMediaFile.Photo ?: return
+            if (current.posting || current.marking != null) return
+            _state.update { it.copy(marking = marksKeeper.editing(tool, it.marks)) }
+            marksKeeper.read(photo.file) { _state.update { it.copy(marking = null, notice = MARKS_UNREADABLE) } }
+        }
+
+        /** A change in the open editor: a line drawn or undone, an ink or a width picked. */
+        fun editMarks(change: (MomentMarksEditing) -> MomentMarksEditing) =
+            _state.update { current -> current.marking?.let { current.copy(marking = change(it)) } ?: current }
+
+        /**
+         * The editor's Done ([keep]) or its X. Done draws the marks into a new copy of the photo, which then posts (Post
+         * waits for it); the photo as it came is kept, to change the marks again. Nothing changes under a Post in flight.
+         */
+        fun closeMarks(keep: Boolean) {
+            val current = _state.value
+            val editing = current.marking ?: return
+            marksKeeper.closed(editing)
+            val photo = (current.media as? MomentMediaFile.Photo)?.takeIf { keep && !current.posting }
+            if (photo == null || editing.marks == current.marks) {
+                _state.update { it.copy(marking = null) }
+                return
+            }
+            _state.update { it.copy(marking = null, marks = editing.marks) }
+            marksKeeper.draw(
+                editing.marks,
+                photo.file,
+                onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
+                onFailed = { drawn -> _state.update { it.copy(marks = drawn, notice = MARKS_FAILED) } },
+            )
+        }
+
+        /** Another picture takes the sheet: it starts with no marks, and nothing kept for the last one stays. */
+        private fun forgetMarks() {
+            marksKeeper.drop()
+            _state.update { it.copy(marks = MomentMarks(), marking = null) }
+        }
+
+        /** Post right after the editor's Done waits for the marks to be drawn in, so what uploads carries them. */
+        private fun waitsForMarks(retried: Boolean): Boolean {
+            if (!marksKeeper.busy) return false
+            _state.update { it.copy(posting = true, notice = null) }
+            viewModelScope.launch {
+                val drawn = marksKeeper.awaitDrawn()
+                _state.update { it.copy(posting = false) }
+                if (drawn) post(retried)
+            }
+            return true
         }
 
         fun setHours(hours: Int) = _state.update { it.copy(hours = hours) }
@@ -761,7 +834,7 @@ class MomentsComposeViewModel
         /** Post: makes the Moment now (so its location is checked while fresh); a photo or video then uploads. */
         fun post(retried: Boolean = false) {
             val current = _state.value
-            if (current.posting) return
+            if (current.posting || waitsForMarks(retried)) return
             if (current.noLocationOn) return postWithoutLocation(current)
             val pin = current.pin ?: return
             _state.update { it.copy(posting = true, notice = null) }
@@ -842,6 +915,8 @@ class MomentsComposeViewModel
                         else -> {
                             val latitude = pinned?.let { moment.latitude ?: it.first }
                             posting.start(moment, media, latitude, pinned?.let { moment.longitude ?: it.second })
+                            // The photo that posts carries its marks: the one as it came isn't needed any more.
+                            marksKeeper.drop()
                         }
                     }
                     true
@@ -1015,6 +1090,7 @@ class MomentsComposeViewModel
             // A capture that was never posted doesn't stay on the phone, nor does what was made ready to post it.
             val current = _state.value
             if (!current.done) current.media?.file?.delete()
+            marksKeeper.drop()
             preparation?.cancel()
             readyVideos?.forEach { deleteFiles(it, keep = null) }
             super.onCleared()
@@ -1037,5 +1113,7 @@ class MomentsComposeViewModel
             const val NO_FIX = "We couldn't find where you are. Try again in a moment."
             const val FAR_PLACE = "That place is too far from this Moment's pin. Pick one nearby."
             const val NEEDS_CONNECTION = "A Moment with no location goes only to your connections. Add a connection first."
+            const val MARKS_UNREADABLE = "Couldn't open this photo to draw on."
+            const val MARKS_FAILED = "Couldn't add your marks to the photo. Try again."
         }
     }

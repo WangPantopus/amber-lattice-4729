@@ -99,6 +99,9 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
@@ -170,7 +173,7 @@ fun MomentsComposeScreen(
         onPauseOrDispose { }
     }
     // Closing with something to lose asks first (REVIEW item 8): a written card from the camera or the card, or a photo
-    // or video on the Post sheet (Back there goes back to the camera; Retake doesn't ask).
+    // or video on the Post sheet (Back there goes back to the camera; Retake asks only when the photo has marks).
     var asksDiscard by remember { mutableStateOf(false) }
     val closeOrAsk: () -> Unit = {
         if (state.text.isNotBlank()) {
@@ -215,7 +218,9 @@ fun MomentsComposeScreen(
                 ReviewStep(
                     state = state,
                     avatarUrl = viewModel.avatarUrl,
-                    onBack = viewModel::backFromReview,
+                    // Retake asks first when the photo has marks on it.
+                    onBack = { if (state.marks.isEmpty) viewModel.backFromReview() else asksDiscard = true },
+                    onMarks = viewModel::openMarks,
                     onShowArea = viewModel::setShowArea,
                     onHours = viewModel::setHours,
                     onAudience = viewModel::setAudience,
@@ -227,6 +232,11 @@ fun MomentsComposeScreen(
                     onShowHeight = viewModel::setShowHeight,
                     sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                 )
+        }
+        // Text and Draw on the photo, over the Post screen (its own Back handler takes Back while it's up).
+        state.marking?.let { editing ->
+            val picture by viewModel.marksPicture.collectAsStateWithLifecycle()
+            MomentsMarksEditor(picture = picture, editing = editing, onEdit = viewModel::editMarks, onClose = viewModel::closeMarks)
         }
         // The place picker (the Pulse composer's) around the Moment's pin: venues within reach of it, and search.
         val pin = state.pin
@@ -254,6 +264,7 @@ fun MomentsComposeScreen(
                     Text(
                         when {
                             !onSheet -> "What you wrote won't be saved."
+                            !state.marks.isEmpty -> "What you drew on it won't be saved."
                             state.media is MomentMediaFile.Video -> "Your video won't be saved."
                             else -> "Your photo won't be saved."
                         },
@@ -680,6 +691,7 @@ private fun ReviewStep(
     state: MomentsComposeUiState,
     avatarUrl: String?,
     onBack: () -> Unit,
+    onMarks: (MomentMarksTool) -> Unit,
     onShowArea: (Boolean) -> Unit,
     onHours: (Int) -> Unit,
     onAudience: (String) -> Unit,
@@ -691,7 +703,8 @@ private fun ReviewStep(
     onShowHeight: (Boolean) -> Unit,
     sky: MomentsSkyActions,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Under the marks editor, TalkBack reads only the editor.
+    Box(modifier = Modifier.fillMaxSize().then(if (state.marking != null) Modifier.clearAndSetSemantics {} else Modifier)) {
         when (val media = state.media) {
             is MomentMediaFile.Photo ->
                 AsyncImage(
@@ -746,6 +759,13 @@ private fun ReviewStep(
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (state.media is MomentMediaFile.Photo) {
+            MomentsMarksPills(
+                enabled = !state.posting,
+                onOpen = onMarks,
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s3, top = 11.dp),
             )
         }
         MomentsPostSheet(

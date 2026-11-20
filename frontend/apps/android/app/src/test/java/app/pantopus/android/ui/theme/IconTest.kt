@@ -343,6 +343,8 @@ class IconTest {
             "volume-x",
             // Moment heights: the "Elevation" chip and a Moment's height.
             "mountain",
+            // Moment marks: Draw's Undo.
+            "undo",
         )
 
     @Test
