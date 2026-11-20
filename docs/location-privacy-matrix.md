@@ -143,7 +143,9 @@ any exact pin, and an edit can't raise a post to `exact_place`.
 turns it on; accepted 2026-11-14).** With the flag on for the author, a personal
 place post keeps an exact pin only at a **tagged venue where its own photo or
 video was taken** (looked up again by its picker id), and not when that venue
-is within ~60 m of a home the author lives at. Schools and preschools take a pin
+is within ~60 m of a home the author lives at, nor when the author's homes can't
+be read (a failed lookup counts as at home, founder 2026-11-20; the post still
+goes up, floating, and `moments.at_home_failed` is logged). Schools and preschools take a pin
 like any venue: the founder reversed call C9 on 2026-11-17 ("schools and
 preschools should be allowed as a pin").
 Everything else floats over its area ([Areas of at least 100 homes](#areas-of-at-least-100-homes)):
