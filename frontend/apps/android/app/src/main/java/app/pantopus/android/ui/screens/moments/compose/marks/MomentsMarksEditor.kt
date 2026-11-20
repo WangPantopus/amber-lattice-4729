@@ -355,7 +355,7 @@ private fun MarksCanvas(
                 Modifier.matchParentSize().pointerInput(text) {
                     if (text) tapsAndPinches(tapped, pinched) else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
                 }
-            MarksPicture(image, editing, live, lineWidth, touches, onAddWords = { addWords() })
+            MarksPicture(image, editing, live, lineWidth, touches, Size(drawnWidth, drawnHeight), onAddWords = { addWords() })
             TopBarLine(MomentMarkRules.labelBox(picture.width, picture.height).top)
             if (text) TextLabels(editing, frame, onEdit)
         }
@@ -395,6 +395,7 @@ private fun MarksPicture(
     live: List<Float>,
     lineWidth: Float,
     modifier: Modifier,
+    drawn: Size,
     onAddWords: () -> Unit,
 ) {
     val typed = editing.selected.takeIf { editing.typing }
@@ -424,7 +425,8 @@ private fun MarksPicture(
             } else {
                 editing.marks.copy(strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth))
             }
-        drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, size.width, size.height, skip = typed) }
+        // The picture's exact drawn size (the canvas is whole pixels), so labels lay out from its exact shape.
+        drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, drawn.width, drawn.height, skip = typed) }
     }
 }
 

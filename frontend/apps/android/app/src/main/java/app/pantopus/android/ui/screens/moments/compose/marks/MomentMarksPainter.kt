@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package app.pantopus.android.ui.screens.moments.compose.marks
 
 import android.graphics.Canvas
@@ -26,8 +28,11 @@ object MomentMarksPainter {
      */
     private const val LAYOUT_WIDTH = 1000f
 
-    /** Plain letters' thin edge, in letter sizes (an edge scales with the picture; a shadow's blur doesn't). */
-    const val EDGE = 0.08f
+    /**
+     * Plain letters' edge, in letter sizes: a stroke centred on the outline, so half of it shows outside the letter
+     * (iPhone's 16%). An edge scales with the picture; a shadow's blur doesn't.
+     */
+    const val EDGE = 0.16f
 
     /** A plain label's box around its words (it has no plate), in letter sizes. */
     private const val PLAIN_ACROSS = 0.12f
@@ -95,8 +100,6 @@ object MomentMarksPainter {
         val padAcross: Float,
         val padDown: Float,
         val scale: Float,
-        /** The longest word over the line width: above 1, a word had to break in the middle. */
-        val wordOverflow: Float = 0f,
     ) {
         val letters: Float get() = text.paint.textSize * scale
         val wrap: Float get() = text.width * scale
@@ -109,21 +112,11 @@ object MomentMarksPainter {
     ): LabelLayout {
         val scale = width / LAYOUT_WIDTH
         val letters = label.size * LAYOUT_WIDTH
-        val paint =
-            TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = letters
-                typeface = Typeface.DEFAULT_BOLD
-                color = letterColor(label).toArgb()
-                isLinearText = true
-                isSubpixelText = true
-            }
+        val paint = labelPaint(label, letters)
         val words = label.text.ifEmpty { " " }
         val metrics = paint.fontMetrics
         val (across, down) = padding(label, letters)
-        // Lines break at 13.1 letter sizes, or at the width a label may take (less its padding) where that's narrower:
-        // a landscape picture shows only its middle third.
-        val room = MomentMarkRules.labelBox(width.roundToInt(), height.roundToInt()).width * LAYOUT_WIDTH - across * 2
-        val wrap = minOf(MomentMarkRules.WRAP_LETTERS * letters, room).roundToInt().coerceAtLeast(letters.roundToInt().coerceAtLeast(1))
+        val wrap = lineWidth(label, letters, width, height)
         val text =
             StaticLayout.Builder
                 .obtain(words, 0, words.length, paint, wrap)
@@ -139,7 +132,6 @@ object MomentMarksPainter {
         val centreX = label.x * width
         val centreY = label.y * height
         val box = RectF(centreX - boxWidth / 2, centreY - boxHeight / 2, centreX + boxWidth / 2, centreY + boxHeight / 2)
-        val longestWord = words.split(' ', '\n').maxOf { paint.measureText(it) }
         return LabelLayout(
             text = text,
             box = box,
@@ -147,8 +139,52 @@ object MomentMarksPainter {
             padAcross = (across - (text.width - widest) / 2) * scale,
             padDown = down * scale,
             scale = scale,
-            wordOverflow = longestWord / wrap,
         )
+    }
+
+    /** The label's letters, unhinted so they measure in proportion at every size, at [letters] layout units. */
+    private fun labelPaint(
+        label: MomentLabel,
+        letters: Float,
+    ): TextPaint =
+        TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = letters
+            typeface = Typeface.DEFAULT_BOLD
+            color = letterColor(label).toArgb()
+            isLinearText = true
+            isSubpixelText = true
+        }
+
+    /**
+     * Where a label's lines break, in layout units: at 13.1 letter sizes, or at the width a label may take (less its
+     * padding) where that's narrower (a landscape picture shows only its middle third).
+     */
+    private fun lineWidth(
+        label: MomentLabel,
+        letters: Float,
+        width: Float,
+        height: Float,
+    ): Int {
+        val (across, _) = padding(label, letters)
+        val room = MomentMarkRules.labelBox(width / height).width * LAYOUT_WIDTH - across * 2
+        return minOf(MomentMarkRules.WRAP_LETTERS * letters, room).roundToInt().coerceAtLeast(letters.roundToInt().coerceAtLeast(1))
+    }
+
+    /**
+     * How far the label's longest word overruns its line (above 1, it breaks in the middle), for the fit only. Null when
+     * that word is wider than a whole 13.1-letter line: no size makes it fit (a web address, a long handle), so it keeps
+     * its size and breaks.
+     */
+    private fun wordOverflow(
+        label: MomentLabel,
+        width: Float,
+        height: Float,
+    ): Float? {
+        val letters = label.size * LAYOUT_WIDTH
+        val paint = labelPaint(label, letters)
+        val longest = label.text.split(' ', '\n').maxOfOrNull { paint.measureText(it) } ?: return null
+        if (longest > MomentMarkRules.WRAP_LETTERS * letters) return null
+        return longest / lineWidth(label, letters, width, height)
     }
 
     /** A label's padding around its words, across and down, for letters [letters] px tall (a plain label has no plate). */
@@ -205,7 +241,9 @@ object MomentMarksPainter {
         var passes = 0
         while (passes++ < FIT_PASSES) {
             val box = laid.box
-            val fits = minOf(allowed.width * width / box.width(), allowed.height * height / box.height(), 1f / laid.wordOverflow)
+            // A word that could fit a whole line is never broken in the middle to fit; a longer one keeps its size.
+            val word = wordOverflow(sized, width.toFloat(), height.toFloat())?.let { 1f / it } ?: Float.MAX_VALUE
+            val fits = minOf(allowed.width * width / box.width(), allowed.height * height / box.height(), word)
             if (fits >= 1f || sized.size <= smallest) break
             sized = sized.copy(size = (sized.size * fits).coerceAtLeast(smallest))
             laid = layout(sized, width.toFloat(), height.toFloat())

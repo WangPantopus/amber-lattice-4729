@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.Color
 import app.pantopus.android.ui.theme.PantopusColors
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /*
  * Text and Draw on a Moment's photo (plan part 1, boards T2 and T3). Marks live in the picture's own coordinates, the
@@ -268,6 +269,8 @@ object MomentMarkRules {
      */
     private const val TOP_BAR = 0.17f
 
+    private const val SHAPE_STEPS = 10_000f
+
     /**
      * Where a label may go on a picture, in its own coordinates (shares of 1): as wide as a 9:21 screen shows, as tall
      * as iPhone SE's viewer frame shows, and below the lowest line any phone's top bar reaches in it. The whole label
@@ -277,8 +280,14 @@ object MomentMarkRules {
     fun labelBox(
         pictureWidth: Int,
         pictureHeight: Int,
-    ): LabelBox {
-        val aspect = pictureWidth.toFloat() / pictureHeight.coerceAtLeast(1)
+    ): LabelBox = labelBox(pictureWidth.toFloat() / pictureHeight.coerceAtLeast(1))
+
+    /**
+     * [labelBox] from the picture's shape alone (width over height), rounded to a ten-thousandth so the picture drawn
+     * at any size, on the screen or in the photo, gets exactly the same box (and its labels the same line breaks).
+     */
+    fun labelBox(shape: Float): LabelBox {
+        val aspect = (shape * SHAPE_STEPS).roundToInt() / SHAPE_STEPS
         val width = min(1f, NARROWEST_FRAME / aspect)
         val height = min(1f, aspect / WIDEST_FRAME)
         return LabelBox(
