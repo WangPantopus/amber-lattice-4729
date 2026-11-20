@@ -345,6 +345,7 @@ extension MomentsComposerModel {
 
     /// Retake on a photo with marks asks first ("Discard this Moment?").
     func askRetake() {
+        guard !isSending else { return }
         if marking.marks.isEmpty {
             retake()
         } else {

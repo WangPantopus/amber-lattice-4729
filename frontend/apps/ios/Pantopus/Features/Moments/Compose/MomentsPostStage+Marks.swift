@@ -81,6 +81,9 @@ extension MomentsPostStage {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // Off from the request that makes the Moment until that Post ends; before that it cancels the Post.
+        .disabled(model.isSending)
+        .opacity(model.isSending ? 0.5 : 1)
         .accessibilityIdentifier("moments.post.retake")
     }
 }

@@ -23,28 +23,33 @@ extension MomentsComposerModel {
     func post() async -> Bool {
         guard canPost, let draft else { return false }
         isPosting = true
-        defer { isPosting = false }
+        defer { (isPosting, isSending) = (false, false) }
         error = nil
+        // Retake while Post only waits (for the fix, or for the file below) cancels it: no Moment is made.
+        let preparing = preparation
         // No location: nothing to locate (connections only, no pin).
         var located: MomentLocationBody? = .noLocation
         if !noLocationOn { located = await pinLocation() }
+        guard stillOn(preparing) else { return false }
         guard let pinAt = located else {
             error = "Turn on location to post a Moment."
             return false
         }
         let trimmedCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        let kind: MomentKind = switch draft {
-        case .photo: .photo
-        case .video: .video
-        case .text: .text
+        let kind = draft.kind
+        guard kind != .text else {
+            beginSending()
+            return await postText(location: pinAt)
         }
-        guard kind != .text else { return await postText(location: pinAt) }
         // A photo or video is made ready first: a Moment is never made for a file that can't be sent.
         let ready = await (preparation?.value ?? []).compactMap { part in part.media.map { (part.folderId, $0) } }
+        // Retake as the wait ended has dropped the files already: stop before a Moment is made for them.
+        guard stillOn(preparing) else { return false }
         guard !ready.isEmpty else {
             if error == nil { error = "Couldn't get that ready to post. Try another one." }
             return false
         }
+        beginSending()
         // A long video's parts share one id, named after the first part's folder: a second tap sends the same.
         let seriesId = ready.count > 1 ? ready[0].0.lowercased() : nil
         // The Live mark, decided once for every part: a tap that carries on follows what the server kept on the first.
@@ -76,6 +81,18 @@ extension MomentsComposerModel {
         })
         made = []
         return true
+    }
+
+    /// The draft Post was tapped on is still on the sheet: Retake drops its export (a new pick replaces it).
+    private func stillOn(_ preparing: Task<[MomentsPreparedPart]?, Never>?) -> Bool {
+        draft != nil && preparation == preparing
+    }
+
+    /// The request that makes the Moment goes out: from here to the end of this Post, Retake does nothing
+    /// (`retake()`), so the files stay; a "Discard this Moment?" asked while Post waited closes.
+    private func beginSending() {
+        isSending = true
+        marking.asksRetake = false
     }
 
     private func postText(location: MomentLocationBody) async -> Bool {
@@ -175,5 +192,16 @@ extension MomentsComposerModel {
         camera.stop(discarding: true)
         preparation?.cancel()
         discardPrepared()
+    }
+}
+
+extension MomentsComposerModel.Draft {
+    /// What the create request calls it.
+    var kind: MomentKind {
+        switch self {
+        case .photo: .photo
+        case .video: .video
+        case .text: .text
+        }
     }
 }

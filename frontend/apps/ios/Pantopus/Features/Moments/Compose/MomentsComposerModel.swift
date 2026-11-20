@@ -107,6 +107,8 @@ final class MomentsComposerModel {
     private(set) var preparing = false
     var error: String?
     var isPosting = false
+    /// From the request that makes the Moment until that Post ends: Retake can't drop the draft then (`+Posting`).
+    var isSending = false
     /// The place names' sheet over the Post sheet, kept here so a fold on the iPhone Duo leaves it as it was.
     var picksPlace = false
     /// The place picker (search and the venues around the pin) over the Post sheet, kept here for the same reason.
@@ -323,8 +325,11 @@ final class MomentsComposerModel {
         draft = .text
     }
 
-    /// Retake (P3) or Edit (P4): back to the camera, or to the text.
+    /// Retake (P3) or Edit (P4): back to the camera, or to the text. While Post only waits (for the fix, or for the
+    /// file to be made ready) it cancels that Post, and no Moment is made; once the request that makes the Moment has
+    /// gone out it does nothing until the Post ends, so the Moment never loses its file.
     func retake() {
+        guard !isSending else { return }
         preparation?.cancel()
         if case .text = draft {} else { discardPrepared() }
         draft = nil
