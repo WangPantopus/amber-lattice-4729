@@ -37,10 +37,9 @@ struct MomentsPostStage: View {
 
     private var phoneStage: some View {
         ZStack(alignment: .top) {
-            retakeButton
-                .padding(.leading, Spacing.s3)
+            phonePills
+                .padding(.horizontal, Spacing.s3)
                 .padding(.top, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 0) {
                 Spacer(minLength: 120)
                 // The sheet is as tall as what's in it, up to the room there is (less with the keyboard up).
@@ -69,9 +68,7 @@ struct MomentsPostStage: View {
     var backdrop: some View {
         switch model.draft {
         case let .photo(image):
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
+            MomentsMarkedPhoto(image: image, marks: model.marking.marks)
                 .overlay(Color.black.opacity(0.3))
                 .accessibilityLabel("The photo you're posting")
         case let .video(url):
@@ -109,24 +106,6 @@ struct MomentsPostStage: View {
                 player?.seek(to: .zero)
                 player?.play()
             }
-    }
-
-    var retakeButton: some View {
-        let isText = model.draft == .text
-        return Button { model.retake() } label: {
-            HStack(spacing: Spacing.s1) {
-                Icon(.chevronLeft, size: 20, strokeWidth: 2.2, color: .white)
-                Text(isText ? "Edit" : "Retake").font(.system(size: 15, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.leading, Spacing.s2)
-            .padding(.trailing, 14)
-            .frame(height: 40)
-            .background(Capsule().fill(Color.black.opacity(isText ? 0.25 : 0.42)))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("moments.post.retake")
     }
 }
 

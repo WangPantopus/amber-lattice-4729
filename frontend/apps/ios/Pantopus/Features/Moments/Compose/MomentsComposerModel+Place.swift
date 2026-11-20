@@ -34,6 +34,25 @@ extension MomentsComposerModel {
         }
     }
 
+    /// A place picked in the place picker: a venue near the pin names the Moment and moves its pin there (the server
+    /// finds it again by its id). Only venues are offered (see the sheet's filter).
+    func pickVenue(_ tag: PostPlaceTag) {
+        guard let id = tag.placeId, id.hasPrefix("osm:"), let basePin else { return }
+        placeKey = nil
+        venue = MomentVenue(placeId: id, name: tag.name, latitude: tag.latitude, longitude: tag.longitude, around: basePin)
+        findsPlace = false
+        // The Sky: a place picked turns "Pin it at a place" on.
+        if place?.sky != nil { pinsAtPlace = true }
+    }
+
+    /// "Remove location" in the place picker: back to the name the spot gets by itself.
+    func clearVenue() {
+        venue = nil
+        findsPlace = false
+        // The Sky: with no place picked the Moment is where it was taken again.
+        pinsAtPlace = false
+    }
+
     /// The Post sheet's "Don't show where". It stays on when there's no pin; it needs a connection.
     func setNoLocation(_ on: Bool) {
         if !on, noLocationLocked { return }
