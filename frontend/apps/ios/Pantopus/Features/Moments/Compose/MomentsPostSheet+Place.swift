@@ -5,7 +5,8 @@
 //  The Post sheet's place row (the name others will read; for an exact pin it
 //  opens the short list of names, or the place picker around the pin, the
 //  Pulse composer's, founder 2026-11-11), the place picker itself, the
-//  "Taken Oct 3" line for an old album photo or video, and "Show elevation".
+//  "Taken Oct 3" line for an old album photo or video, the Live line for the
+//  camera's own shot (board L1), "Show elevation" and "Show the weather".
 //
 
 import SwiftUI
@@ -53,6 +54,35 @@ extension MomentsPostSheet {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(taken). Everyone will see this date.")
         .accessibilityIdentifier("moments.post.taken")
+    }
+
+    /// "Live · Taken here just now. Everyone will see that." (board L1): a photo or video the camera made just now,
+    /// here. While the Sky's "Share later" is picked it will read Taken here when it's shared, and says so
+    /// (coordinator, 2026-11-20).
+    var liveRow: some View {
+        let later = model.sharesAt != nil
+        let lead = later ? "Taken here" : "Live"
+        let rest = later ? "Everyone will see that." : "Taken here just now. Everyone will see that."
+        let words = Text(lead)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(later ? Theme.Color.appText : MomentsPalette.liveDot)
+        let more = Text(rest)
+            .font(.system(size: 13))
+            .foregroundStyle(Theme.Color.appTextSecondary)
+        return HStack(spacing: Spacing.s2) {
+            if later {
+                Icon(.mapPin, size: 18, strokeWidth: 2.2, color: Theme.Color.appTextSecondary)
+            } else {
+                MomentsLiveSign(size: 18, color: MomentsPalette.liveDot)
+            }
+            Text("\(words)  \(more)")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Spacing.s0)
+        }
+        .padding(.horizontal, Spacing.s1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(lead). \(rest)")
+        .accessibilityIdentifier("moments.post.live")
     }
 
     /// The place row; for an exact pin a button with a chevron: the short list of names when more than one fits the
@@ -153,5 +183,25 @@ extension MomentsPostSheet {
         .padding(.horizontal, Spacing.s1)
         .frame(minHeight: 52)
         .accessibilityIdentifier("moments.post.height")
+    }
+
+    /// "Show the weather" (board L1): the weather a Moment taken here keeps, as it is right now. Only beside the Live
+    /// line, once the weather has answered (`offersWeather`).
+    func weatherRow(_ weather: MomentWeatherDTO) -> some View {
+        Toggle(isOn: Binding(get: { model.live.showWeather }, set: { model.live.showWeather = $0 })) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Show the weather")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Theme.Color.appText)
+                Text("\(weather.text), as it is here right now")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.Color.appTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Theme.Color.primarySolid)
+        .padding(.horizontal, Spacing.s1)
+        .frame(minHeight: 52)
+        .accessibilityIdentifier("moments.post.weather")
     }
 }

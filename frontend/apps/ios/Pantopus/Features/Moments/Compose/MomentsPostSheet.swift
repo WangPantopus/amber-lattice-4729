@@ -196,6 +196,8 @@ struct MomentsPostSheet: View {
                 .padding(.top, model.noLocationOn && mapHeight > 0 ? (asCard ? 16 : 11) : 10)
             if let taken = model.takenLine {
                 takenRow(taken).padding(.top, 2)
+            } else if model.showsLive {
+                liveRow.padding(.top, 2)
             }
             if model.pin == nil, model.locating == .unavailable, !model.noLocationOn {
                 Text("Turn on location for Pantopus in Settings to post a Moment.")
@@ -221,6 +223,9 @@ struct MomentsPostSheet: View {
                 heightRow(feet: feet)
             } else if model.greysHeight {
                 greyHeightRow
+            }
+            if model.offersWeather, let weather = model.live.weather {
+                weatherRow(weather)
             }
             if model.sky != nil, !model.shareLaterChoices.isEmpty {
                 shareLaterRow
