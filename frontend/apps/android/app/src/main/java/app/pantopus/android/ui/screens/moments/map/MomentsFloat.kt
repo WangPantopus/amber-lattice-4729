@@ -211,6 +211,7 @@ internal fun FloatRingItem(
                     seen = ring.seen,
                     preview = ring.ring.preview,
                     tail = false,
+                    live = ring.live,
                     modifier =
                         Modifier.graphicsLayer {
                             scaleX = scale
@@ -237,7 +238,7 @@ internal fun AreaRingItem(
         modifier = Modifier.ringTap(ring, null, remember { MutableInteractionSource() }, onTap).size(MOMENT_PIN_WIDTH),
         contentAlignment = Alignment.Center,
     ) {
-        MomentMapPin(author = ring.author, seen = ring.seen, preview = ring.ring.preview, tail = false)
+        MomentMapPin(author = ring.author, seen = ring.seen, preview = ring.ring.preview, tail = false, live = ring.live)
     }
 }
 

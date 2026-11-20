@@ -264,7 +264,8 @@ private val DiscShape =
  * A ring on the map (board M1): a 64 × 72 pin in the surface color with the face inside the ring and the check of a
  * verified resident at its lower right. [seen] holds each Moment's watched state, oldest first. With a [preview] the
  * ring holds a small look at the newest Moment and the face is a badge at its lower left (`MomentPinPreview.kt`).
- * Without its [tail] it is the 64 × 64 disc that floats over its spot by day (`MomentsFloat.kt`).
+ * Without its [tail] it is the 64 × 64 disc that floats over its spot by day (`MomentsFloat.kt`). A [live] ring (API
+ * v4.1: a Moment taken at its spot in the last 15 minutes) carries a small green dot on the ring at its upper right.
  */
 @Composable
 fun MomentMapPin(
@@ -273,6 +274,7 @@ fun MomentMapPin(
     modifier: Modifier = Modifier,
     preview: MomentRingPreviewDto? = null,
     tail: Boolean = true,
+    live: Boolean = false,
 ) {
     Box(modifier = modifier.size(width = 64.dp, height = if (tail) 72.dp else 64.dp)) {
         Canvas(modifier = Modifier.fillMaxSize().pantopusShadow(PinShadow, if (tail) PinShape else DiscShape)) {
@@ -293,6 +295,18 @@ fun MomentMapPin(
         MomentPinInside(author = author, preview = preview)
         if (author.verified) {
             MomentVerifiedCheck(size = 18.dp, modifier = Modifier.offset(x = 44.dp, y = 42.dp))
+        }
+        if (live) {
+            // On the ring at half past one, with a white edge so it reads over the ring's green and a picture alike.
+            Box(
+                modifier =
+                    Modifier
+                        .offset(x = 46.dp, y = 4.dp)
+                        .size(14.dp)
+                        .background(Color.White, CircleShape)
+                        .padding(2.5.dp)
+                        .background(PantopusColors.momentLive, CircleShape),
+            )
         }
     }
 }

@@ -318,6 +318,7 @@ private fun RingItem(
                 seen = ring.seen,
                 // A small look at their newest Moment inside the ring, when the map read one (`MomentPinPreview.kt`).
                 preview = ring.ring.preview,
+                live = ring.live,
             )
             if (height != null && tag == MomentTagSide.AFTER) RingHeightTag(height)
         }

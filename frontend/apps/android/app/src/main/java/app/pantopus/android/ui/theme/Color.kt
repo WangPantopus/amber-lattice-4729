@@ -810,6 +810,13 @@ object PantopusColors {
     /** The Pantopus curator's mark on a ring — `#0284C7` on white. */
     val momentBrand = Color(0xFF0284C7)
 
+    /**
+     * The Live mark (boards L1–L3): its green on the dark stage, the viewer's "Live from here" pill — `#34D399`; and on
+     * white, a live ring's dot and the "Live now" chip's glyph while off — `#047857`.
+     */
+    val momentLiveOnStage = Color(0xFF34D399)
+    val momentLive = Color(0xFF047857)
+
     /** P4's at-home notice: amber tint, its border, the house glyph and the line. */
     val momentHomeNoticeBg = Color(0xFFFFFBEB)
     val momentHomeNoticeBorder = Color(0xFFFDE68A)
