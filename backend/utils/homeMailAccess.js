@@ -118,8 +118,8 @@ async function householdHomeIds(userId) {
 }
 
 /**
- * householdHomeIds, but throws on a read failure: for a caller that must tell "no homes" from "the read broke" (a
- * Moment's Live mark, which must never show at home: services/moments/momentPlace.isAtHome with `onFailure`).
+ * householdHomeIds, but throws on a read failure: for a caller that must tell "no homes" from "the read broke"
+ * (Moments, which must never show a home: services/moments/momentPlace.isAtHome with `onFailure`).
  */
 async function householdHomeIdsOrThrow(userId) {
   if (!userId) return [];
