@@ -37,6 +37,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -303,7 +304,7 @@ private fun PadStrip(
                 .border(1.dp, PantopusColors.cardNoteEdge, RoundedCornerShape(Radii.xs))
                 .semantics { contentDescription = if (hasInk) "Your signature" else "Space to sign your name" }
                 .testTag("cardSignArea")
-                .pointerInput(Unit) { sign(strokes, live, onInk) },
+                .pointerInput(Unit) { sign(live, onInk) { strokes.add(it) } },
     ) {
         val unit = size.width / CardSignature.WIDTH
         val line = CardSignatureInk.LINE * unit
@@ -326,16 +327,21 @@ private fun PadStrip(
     }
 }
 
-/** Each finger down to up is one stroke, in box units, every point the phone saw (its history too, for smooth ink). */
+/**
+ * Each finger down to up is one stroke ([onStroke]), in box units ([box] wide and high: the signature's 400 × 100 here,
+ * 0 to 1 on a Moment's photo), every point the phone saw (its history too, for smooth ink); [live] holds the stroke
+ * being drawn.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
-private suspend fun PointerInputScope.sign(
-    strokes: SnapshotStateList<List<Float>>,
+internal suspend fun PointerInputScope.sign(
     live: SnapshotStateList<Float>,
     onInk: () -> Unit,
+    box: Size = Size(CardSignature.WIDTH.toFloat(), CardSignature.HEIGHT.toFloat()),
+    onStroke: (List<Float>) -> Unit,
 ) {
     fun add(at: Offset) {
-        live += (at.x / size.width * CardSignature.WIDTH).coerceIn(0f, CardSignature.WIDTH.toFloat())
-        live += (at.y / size.height * CardSignature.HEIGHT).coerceIn(0f, CardSignature.HEIGHT.toFloat())
+        live += (at.x / size.width * box.width).coerceIn(0f, box.width)
+        live += (at.y / size.height * box.height).coerceIn(0f, box.height)
     }
     awaitEachGesture {
         val down = awaitFirstDown()
@@ -351,7 +357,7 @@ private suspend fun PointerInputScope.sign(
                 it.consume()
             }
         } while (change?.pressed == true)
-        strokes.add(live.toList())
+        onStroke(live.toList())
         live.clear()
     }
 }

@@ -818,4 +818,18 @@ object PantopusColors {
 
     /** The Post sheet's switch track while off — `#E9E9EB`. */
     val momentSwitchTrack = Color(0xFFE9E9EB)
+
+    /** Text and Draw on a Moment's photo (boards T2 and T3): the six inks, the same on iPhone. */
+    val momentInkWhite = Color(0xFFFFFFFF)
+    val momentInkBlack = Color(0xFF111827)
+    val momentInkYellow = Color(0xFFFACC15)
+    val momentInkRed = Color(0xFFDC2626)
+    val momentInkSky = Color(0xFF38BDF8)
+    val momentInkGreen = Color(0xFF22C55E)
+
+    /** The marks editor's fade under its inks (its top one is the viewer's [momentTopFade]). */
+    val momentMarksBottomFade = Color(0xB8000000)
+
+    /** The dashed line where the viewer's top bar ends, so nothing important goes under it. */
+    val momentMarksGuide = Color(0x80FFFFFF)
 }
