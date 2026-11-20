@@ -25,8 +25,9 @@ object MomentMarksPainter {
     private const val SHADOW_BLUR = 0.12f
     private const val SHADOW_DROP = 0.04f
 
-    /** The middle of the picture, across or down. */
-    private const val MIDDLE = 0.5f
+    /** A plain label's box around its words (it has no plate), in letter sizes. */
+    private const val PLAIN_ACROSS = 0.12f
+    private const val PLAIN_DOWN = 0.06f
 
     /** How many times [keptIn] shrinks a label's letters to fit. */
     private const val FIT_PASSES = 3
@@ -44,7 +45,8 @@ object MomentMarksPainter {
             val pixels = ArrayList<Float>(stroke.points.size)
             stroke.points.forEachIndexed { at, value -> pixels += value * if (at % 2 == 0) width else height }
             ink.color = stroke.ink.color.toArgb()
-            ink.strokeWidth = stroke.width * width
+            // Never thinner than a pixel, even on a small picture.
+            ink.strokeWidth = (stroke.width * width).coerceAtLeast(1f)
             canvas.drawPath(CardSignatureInk.path(listOf(pixels)), ink)
         }
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -88,9 +90,14 @@ object MomentMarksPainter {
             }
         val words = label.text.ifEmpty { " " }
         val metrics = paint.fontMetrics
+        val (across, down) = padding(label, letters)
+        // Lines break at 13.1 letter sizes, or at the width a label may take (less its padding) where that's narrower:
+        // a landscape picture shows only its middle third.
+        val room = MomentMarkRules.labelBox(width.roundToInt(), height.roundToInt()).width * width - across * 2
+        val wrap = minOf(MomentMarkRules.WRAP_LETTERS * letters, room).roundToInt().coerceAtLeast(letters.roundToInt().coerceAtLeast(1))
         val text =
             StaticLayout.Builder
-                .obtain(words, 0, words.length, paint, (MomentMarkRules.WRAP_LETTERS * letters).roundToInt().coerceAtLeast(1))
+                .obtain(words, 0, words.length, paint, wrap)
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setLineSpacing(MomentMarkRules.LINE_HEIGHT * letters - (metrics.descent - metrics.ascent), 1f)
                 .setIncludePad(false)
@@ -98,8 +105,6 @@ object MomentMarksPainter {
         // The box hugs the widest line; the lines are centred in the layout's own width, so the drawing shifts by half
         // of what's left over.
         val widest = (0 until text.lineCount).maxOf { text.getLineWidth(it) }
-        val across = MomentMarkRules.PAD_ACROSS * letters
-        val down = MomentMarkRules.PAD_DOWN * letters
         val boxWidth = widest + across * 2
         val boxHeight = text.height + down * 2
         val centreX = label.x * width
@@ -108,57 +113,71 @@ object MomentMarksPainter {
         return LabelLayout(text, box, MomentMarkRules.CORNER * letters, across - (text.width - widest) / 2, down)
     }
 
-    /** The label's letters: the ink, or on a sign dark letters (white ones on a black sign). */
+    /** A label's padding around its words, across and down, for letters [letters] px tall (a plain label has no plate). */
+    fun padding(
+        label: MomentLabel,
+        letters: Float,
+    ): Pair<Float, Float> =
+        if (label.style == MomentLabelStyle.Plain) {
+            PLAIN_ACROSS * letters to PLAIN_DOWN * letters
+        } else {
+            MomentMarkRules.PAD_ACROSS * letters to MomentMarkRules.PAD_DOWN * letters
+        }
+
+    /** The label's letters: the ink, or on a sign dark letters (white ones on a black or red sign, which read better). */
     fun letterColor(label: MomentLabel): Color =
         when {
             label.style != MomentLabelStyle.Sign -> label.ink.color
-            label.ink == MomentInk.Black -> PantopusColors.momentInkWhite
+            label.ink == MomentInk.Black || label.ink == MomentInk.Red -> PantopusColors.momentInkWhite
             else -> PantopusColors.momentInkBlack
         }
 
-    /** The box behind the letters: none for plain words, dark for a label, the ink for a sign. */
+    /** The plate behind the letters: none for plain words; dark for a label (light under black ink); the ink for a sign. */
     fun boxColor(label: MomentLabel): Color? =
         when (label.style) {
             MomentLabelStyle.Plain -> null
-            MomentLabelStyle.Label -> PantopusColors.momentMarksLabelBox
+            MomentLabelStyle.Label ->
+                if (label.ink == MomentInk.Black) PantopusColors.momentMarksLabelPlate else PantopusColors.momentMarksLabelBox
             MomentLabelStyle.Sign -> label.ink.color
         }
 
     /**
-     * [label] kept inside the part of a picture [width] × [height] px every phone shows: its letters no larger than lets
-     * its box fit there (and between the smallest the picture check reads and the largest), its whole box inside it
-     * (its middle on that part's middle if even the smallest letters don't fit).
+     * [label] kept where a label may go on a picture [width] × [height] px ([MomentMarkRules.labelBox]): its letters no
+     * larger than lets its box fit there (and between the smallest the picture check reads and the largest), its whole
+     * box inside it (its middle on that part's middle if even the smallest letters don't fit).
      */
     fun keptIn(
         label: MomentLabel,
         width: Int,
         height: Int,
     ): MomentLabel {
-        val (shownWidth, shownHeight) = MomentMarkRules.everyPhoneShows(width, height)
-        var sized = label.copy(size = label.size.coerceIn(MomentMarkRules.SMALLEST_LETTERS, MomentMarkRules.LARGEST_LETTERS))
+        val allowed = MomentMarkRules.labelBox(width, height)
+        val smallest = MomentMarkRules.smallestLetters(width, height)
+        var sized = label.copy(size = label.size.coerceIn(smallest, MomentMarkRules.LARGEST_LETTERS))
         var box = layout(sized, width.toFloat(), height.toFloat()).box
         // Smaller letters wrap differently, so a couple of passes settle it.
         var passes = 0
         while (passes++ < FIT_PASSES) {
-            val fits = min(shownWidth * width / box.width(), shownHeight * height / box.height())
-            if (fits >= 1f || sized.size <= MomentMarkRules.SMALLEST_LETTERS) break
-            sized = sized.copy(size = (sized.size * fits).coerceAtLeast(MomentMarkRules.SMALLEST_LETTERS))
+            val fits = min(allowed.width * width / box.width(), allowed.height * height / box.height())
+            if (fits >= 1f || sized.size <= smallest) break
+            sized = sized.copy(size = (sized.size * fits).coerceAtLeast(smallest))
             box = layout(sized, width.toFloat(), height.toFloat()).box
         }
         return sized.copy(
-            x = kept(sized.x, box.width() / width / 2, shownWidth),
-            y = kept(sized.y, box.height() / height / 2, shownHeight),
+            x = kept(sized.x, box.width() / width / 2, allowed.left, allowed.right),
+            y = kept(sized.y, box.height() / height / 2, allowed.top, allowed.bottom),
         )
     }
 
-    /** A middle at [at] with [half] of the box each side, inside a centred part [shown] wide (all shares of 1). */
+    /** A middle at [at] with [half] of the box each side, inside [from] to [to] (all shares of 1). */
     private fun kept(
         at: Float,
         half: Float,
-        shown: Float,
+        from: Float,
+        to: Float,
     ): Float {
-        val low = (1f - shown) / 2 + half
-        val high = (1f + shown) / 2 - half
-        return if (low > high) MIDDLE else at.coerceIn(low, high)
+        val low = from + half
+        val high = to - half
+        return if (low > high) (from + to) / 2 else at.coerceIn(low, high)
     }
 }

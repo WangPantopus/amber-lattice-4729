@@ -10,8 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -85,10 +85,16 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Where the viewer's top bar ends, below the status bar: its progress bars (9 + 3 dp) and its header (48 dp), in
- * `MomentsViewerScreen`. The editor marks that line so nothing important goes under it.
+ * Where this phone's viewer top bar ends, below the status bar: its progress bars (9 + 3 dp) and its header (48 dp),
+ * in `MomentsViewerScreen`. The editor's top fade covers it and a little more.
  */
 private val VIEWER_TOP_BAR = 60.dp
+
+/**
+ * How far above the frame's bottom edge a label stops, clear of Text's controls: the hint, looks and inks (about 205 dp
+ * up from the screen's bottom), less the 68 dp reply bar the frame stops above, plus room for the picked label's handle.
+ */
+private val TOOLS_ABOVE_FRAME_BOTTOM = 150.dp
 
 /** The viewer's reply bar under the picture: its frame stops above it, with rounded corners (`MomentsViewerScreen`). */
 private val VIEWER_REPLY_BAR = 68.dp
@@ -202,7 +208,6 @@ internal fun MomentsMarksEditor(
                     .background(Brush.verticalGradient(listOf(Color.Transparent, PantopusColors.momentMarksBottomFade)))
                     .clearAndSetSemantics {},
         )
-        ViewerTopBarLine()
         TopButtons(editing = editing, onCancel = cancel, onUndo = { onEdit { it.undone() } }, onDone = { onClose(true) })
         if (editing.tool == MomentMarksTool.Draw) {
             Widths(
@@ -253,7 +258,7 @@ private fun DrawTools(
             style = TextStyle(shadow = Shadow(PantopusColors.momentMarksShadow, offset = Offset(0f, 1f), blurRadius = 2f)),
         )
         Spacer(Modifier.height(Spacing.s3))
-        Inks(picked = editing.ink, onPick = { ink -> onEdit { it.copy(ink = ink) } })
+        Inks(picked = editing.ink, onPick = { ink -> onEdit { it.copy(ink = ink) } }, group = "Ink color")
     }
 }
 
@@ -305,33 +310,61 @@ private fun MarksCanvas(
         val density = LocalDensity.current
         // The width picked is in dp on this screen; the line keeps it as a share of the picture's width as shown.
         val lineWidth = with(density) { editing.width.points.dp.toPx() } / (picture.width * scale)
-        // A new label's letters: 22 dp on this screen, kept as a share of the picture's width.
-        val letters = with(density) { MomentMarkRules.NEW_LABEL_POINTS.dp.toPx() } / (picture.width * scale)
-        val stroke by rememberUpdatedState { points: List<Float> -> onEdit { it.drawn(points, lineWidth) } }
-        val tapped by rememberUpdatedState {
-            onEdit { if (it.selected != null) it.unpicked() else it.withNewLabel(letters) }
-        }
-        val text = editing.tool == MomentMarksTool.Text
-        LaunchedEffect(editing.addsLabel) { if (editing.addsLabel) onEdit { it.withNewLabel(letters) } }
         val drawnWidth = picture.width * scale
         val drawnHeight = picture.height * scale
+        // Labels stop above the editor's controls (the hint, looks and inks).
+        val floor = frameHeight - with(density) { TOOLS_ABOVE_FRAME_BOTTOM.toPx() } - (frameHeight - drawnHeight) / 2
+        val frame = LabelFrame(drawnWidth, drawnHeight, picture.width, picture.height, floor)
+        // A new label's letters: 22 dp on this screen, kept as a share of the picture's width (never below the smallest).
+        val letters = with(density) { MomentMarkRules.NEW_LABEL_POINTS.dp.toPx() } / drawnWidth
+        val stroke by rememberUpdatedState { points: List<Float> -> onEdit { it.drawn(points, lineWidth) } }
+        // A tap on the picture: while typing it only ends the typing; otherwise a new label goes where it landed.
+        val tapped by rememberUpdatedState { at: Offset ->
+            onEdit {
+                if (it.typing) it.typingEnded() else it.withNewLabel(at.x / drawnWidth, at.y / drawnHeight, letters, frame::kept)
+            }
+        }
+        val pinched by rememberUpdatedState { zoom: Float ->
+            onEdit { e -> e.picked?.let { e.changed(frame.moved(it, 0f, 0f, zoom)) } ?: e }
+        }
+        val text = editing.tool == MomentMarksTool.Text
+        // Text opens with a label 40% down the frame, above where the keyboard comes up.
+        val firstDown = (MomentMarkRules.NEW_LABEL_DOWN * frameHeight - (frameHeight - drawnHeight) / 2) / drawnHeight
+        LaunchedEffect(editing.addsLabel) { if (editing.addsLabel) onEdit { it.withNewLabel(0.5f, firstDown, letters, frame::kept) } }
         Box(modifier = Modifier.requiredSize(with(density) { drawnWidth.toDp() }, with(density) { drawnHeight.toDp() })) {
             val touches =
                 Modifier.matchParentSize().pointerInput(text) {
-                    if (text) stillTaps { tapped() } else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
+                    if (text) tapsAndPinches(tapped, pinched) else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
                 }
             MarksPicture(image, editing, live, lineWidth, touches)
-            if (text) TextLabels(editing, LabelFrame(drawnWidth, drawnHeight, picture.width, picture.height), onEdit)
+            TopBarLine(MomentMarkRules.labelBox(picture.width, picture.height).top)
+            if (text) TextLabels(editing, frame, onEdit)
         }
     }
 }
 
-/** A tap that stays put: a swipe across the picture isn't one (it would add a label). */
-private suspend fun PointerInputScope.stillTaps(onTap: () -> Unit) {
+/**
+ * Text's touches on the picture away from the labels: a tap that stays put ([onTap], where it landed; a swipe isn't
+ * one), and a pinch anywhere, which resizes the picked label ([onZoom]).
+ */
+private suspend fun PointerInputScope.tapsAndPinches(
+    onTap: (Offset) -> Unit,
+    onZoom: (Float) -> Unit,
+) {
     awaitEachGesture {
         val down = awaitFirstDown()
-        val up = waitForUpOrCancellation()
-        if (up != null && (up.position - down.position).getDistance() < viewConfiguration.touchSlop) onTap()
+        var still = true
+        do {
+            val event = awaitPointerEvent()
+            if (event.changes.count { it.pressed } > 1) {
+                still = false
+                event.calculateZoom().takeIf { it != 1f }?.let(onZoom)
+                event.changes.forEach { it.consume() }
+            } else if (event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
+                still = false
+            }
+        } while (event.changes.any { it.pressed })
+        if (still) onTap(down.position)
     }
 }
 
@@ -373,26 +406,19 @@ private fun MarksPicture(
     }
 }
 
-/** A dashed line where the viewer's top bar ends (it covers the picture above it). */
+/**
+ * A dashed line at the top of where labels may go, [top] down the picture: the lowest line any phone's top bar reaches
+ * in it, drawn at the same place on both phones. Drawn across the whole picture (the frame crops it).
+ */
 @Composable
-private fun ViewerTopBarLine() {
-    Canvas(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = VIEWER_TOP_BAR)
-                .height(1.dp)
-                .clearAndSetSemantics {},
-    ) {
-        val dash = 5.dp.toPx()
-        drawLine(
-            PantopusColors.momentMarksGuide,
-            start = Offset(0f, 0f),
-            end = Offset(size.width, 0f),
-            strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)),
-        )
+private fun TopBarLine(top: Float) {
+    Canvas(modifier = Modifier.fillMaxSize().clearAndSetSemantics {}) {
+        val dashes = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 5.dp.toPx()))
+        val y = top * size.height
+        val width = 1.dp.toPx()
+        // A dark shade under the white dashes, so the line shows on a light picture too.
+        drawLine(PantopusColors.momentMarksGuideShade, Offset(0f, y + width), Offset(size.width, y + width), width, pathEffect = dashes)
+        drawLine(PantopusColors.momentMarksGuide, Offset(0f, y), Offset(size.width, y), width, pathEffect = dashes)
     }
 }
 
@@ -511,9 +537,10 @@ private fun Widths(
 internal fun Inks(
     picked: MomentInk,
     onPick: (MomentInk) -> Unit,
+    group: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Ink color" },
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = group },
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
     ) {
         MomentInk.entries.forEach { ink ->

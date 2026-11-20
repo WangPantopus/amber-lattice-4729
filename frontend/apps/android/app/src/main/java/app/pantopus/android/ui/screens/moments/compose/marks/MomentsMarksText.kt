@@ -47,9 +47,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -75,28 +79,34 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
 import kotlin.math.roundToInt
 
-/** A label's place on the picture as drawn: [width] × [height] px, the picture itself [pictureWidth] × [pictureHeight]. */
+/**
+ * A label's place on the picture as drawn: [width] × [height] px, the picture itself [pictureWidth] × [pictureHeight];
+ * [floor] is where the editor's own controls start (px down the drawn picture), which a label stays above so it can
+ * always be picked up again.
+ */
 internal class LabelFrame(
     val width: Float,
     val height: Float,
     val pictureWidth: Int,
     val pictureHeight: Int,
+    val floor: Float = Float.MAX_VALUE,
 ) {
-    /** [label] kept inside the part every phone shows. */
-    fun kept(label: MomentLabel): MomentLabel = MomentMarksPainter.keptIn(label, pictureWidth, pictureHeight)
+    /** [label] kept inside the part every phone shows, and above the editor's controls. */
+    fun kept(label: MomentLabel): MomentLabel {
+        val inside = MomentMarksPainter.keptIn(label, pictureWidth, pictureHeight)
+        val box = MomentMarksPainter.layout(inside, width, height).box
+        val top = MomentMarkRules.labelBox(pictureWidth, pictureHeight).top * height
+        val lift = (box.bottom - floor).coerceAtMost(box.top - top)
+        return if (lift > 0f) inside.copy(y = inside.y - lift / height) else inside
+    }
 
-    /** [label] moved by [dx], [dy] px and scaled by [zoom], kept inside the part every phone shows. */
+    /** [label] moved by [dx], [dy] px and scaled by [zoom], kept as [kept] keeps it. */
     fun moved(
         label: MomentLabel,
         dx: Float,
         dy: Float,
         zoom: Float = 1f,
-    ): MomentLabel =
-        MomentMarksPainter.keptIn(
-            label.copy(x = label.x + dx / width, y = label.y + dy / height, size = label.size * zoom),
-            pictureWidth,
-            pictureHeight,
-        )
+    ): MomentLabel = kept(label.copy(x = label.x + dx / width, y = label.y + dy / height, size = label.size * zoom))
 }
 
 /**
@@ -162,7 +172,7 @@ private fun Modifier.labelActions(
     onDelete: () -> Unit,
 ): Modifier =
     semantics {
-        contentDescription = "Label: ${label.text}"
+        contentDescription = "Words on the picture: ${label.text}"
         role = Role.Button
         onClick(label = "Change the words") {
             onEdit()
@@ -270,37 +280,45 @@ private fun LabelField(
     val letterColor = MomentMarksPainter.letterColor(label)
     val box = MomentMarksPainter.boxColor(label)
     val shape = RoundedCornerShape(with(density) { laid.corner.toDp() })
-    val across = MomentMarkRules.PAD_ACROSS * letters
-    val down = MomentMarkRules.PAD_DOWN * letters
+    val (across, down) = MomentMarksPainter.padding(label, letters)
+    // A label typed in low on the picture is raised above the keyboard and the controls over it, and goes back after.
+    val window = LocalView.current.rootView.height
+    val keyboardTop = window - WindowInsets.ime.getBottom(density)
+    val clear = with(density) { (TYPING_TOOLS + Spacing.s2).toPx() }
+    var bottom by remember { mutableStateOf(0f) }
+    val raise = (bottom - (keyboardTop - clear)).coerceAtLeast(0f).takeIf { keyboardUp } ?: 0f
+    val style =
+        with(density) {
+            TextStyle(
+                color = letterColor,
+                fontSize = letters.toSp(),
+                lineHeight = (letters * MomentMarkRules.LINE_HEIGHT).toSp(),
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                shadow =
+                    if (label.style == MomentLabelStyle.Plain) {
+                        Shadow(PantopusColors.momentMarksShadow, Offset(0f, letters * 0.04f), letters * 0.12f)
+                    } else {
+                        null
+                    },
+            )
+        }
     BasicTextField(
         value = label.text,
         // Words that make the label wider or taller keep it inside the part every phone shows.
         onValueChange = { text -> onEdit { it.typed(text).let { typed -> typed.picked?.let { typed.changed(frame.kept(it)) } ?: typed } } },
-        textStyle =
-            with(density) {
-                TextStyle(
-                    color = letterColor,
-                    fontSize = letters.toSp(),
-                    lineHeight = (letters * MomentMarkRules.LINE_HEIGHT).toSp(),
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    shadow =
-                        if (label.style == MomentLabelStyle.Plain) {
-                            Shadow(PantopusColors.momentMarksShadow, Offset(0f, letters * 0.04f), letters * 0.12f)
-                        } else {
-                            null
-                        },
-                )
-            },
+        textStyle = style,
         cursorBrush = SolidColor(letterColor),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         modifier =
             Modifier
                 .centredAt(laid.box.centerX(), laid.box.centerY(), (laid.text.width + across * 2).roundToInt())
+                .onGloballyPositioned { bottom = it.boundsInWindow().bottom }
+                .graphicsLayer { translationY = -raise }
                 .pickedOutline(laid.corner)
                 .focusRequester(focus)
                 .testTag("moments.marks.field")
-                .semantics { contentDescription = "The label's words" },
+                .semantics { contentDescription = "Words on the picture" },
         decorationBox = { field ->
             Box(
                 modifier =
@@ -308,10 +326,22 @@ private fun LabelField(
                         .then(if (box != null) Modifier.background(box, shape) else Modifier)
                         .padding(horizontal = with(density) { across.toDp() }, vertical = with(density) { down.toDp() }),
                 contentAlignment = Alignment.Center,
-            ) { field() }
+            ) {
+                if (label.text.isEmpty()) {
+                    Text(
+                        text = "Type here",
+                        style = style.copy(color = letterColor.copy(alpha = 0.6f)),
+                        modifier = Modifier.clearAndSetSemantics {},
+                    )
+                }
+                field()
+            }
         },
     )
 }
+
+/** How tall Text's controls over the keyboard are while a label is typed: the looks, a gap, the inks, the margin. */
+private val TYPING_TOOLS = 44.dp + 14.dp + 44.dp + Spacing.s6
 
 /** Lays the content out as small as it measures (at most [maxWidth] px) with its middle at [x], [y] of the parent. */
 private fun Modifier.centredAt(
@@ -327,8 +357,9 @@ private fun Modifier.centredAt(
     }
 
 /**
- * Text's controls under the picture (board T2): the hint, the three styles and the six inks. While a label is typed only
- * the inks sit above the keyboard, so the label in the middle stays in view; they keep the keyboard up.
+ * Text's controls under the picture (board T2): the hint, the three looks and the six inks. While a label is typed the
+ * hint gives way and the looks shrink to their "Aa", so the label stays in view above the keyboard; they keep the
+ * keyboard up.
  */
 @Composable
 internal fun TextTools(
@@ -339,7 +370,7 @@ internal fun TextTools(
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (!editing.typing) {
             Text(
-                text = "Drag to move. Pinch to resize.",
+                text = if (editing.marks.labels.isEmpty()) "Tap the picture to add words." else "Drag to move. Pinch to resize.",
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
@@ -347,18 +378,18 @@ internal fun TextTools(
                 style = TextStyle(shadow = Shadow(PantopusColors.momentMarksShadow, offset = Offset(0f, 1f), blurRadius = 2f)),
             )
             Spacer(Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Label style" },
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-            ) {
-                MomentLabelStyle.entries.forEach { style ->
-                    StyleButton(style, on = style == editing.style) { onEdit { it.styled(style) } }
-                }
-            }
-            Spacer(Modifier.height(14.dp))
         }
+        Row(
+            modifier = Modifier.fillMaxWidth().keepsKeyboard().semantics { contentDescription = "Look" },
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
+            MomentLabelStyle.entries.forEach { style ->
+                StyleButton(style, on = style == editing.style, compact = editing.typing) { onEdit { it.styled(style) } }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         Box(Modifier.keepsKeyboard()) {
-            Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } })
+            Inks(picked = editing.textInk, onPick = { ink -> onEdit { it.inked(ink) } }, group = "Text color")
         }
     }
 }
@@ -368,13 +399,14 @@ internal fun TextTools(
 private fun RowScope.StyleButton(
     style: MomentLabelStyle,
     on: Boolean,
+    compact: Boolean,
     onPick: () -> Unit,
 ) {
     Column(
         modifier =
             Modifier
                 .weight(1f)
-                .height(64.dp)
+                .height(if (compact) 44.dp else 64.dp)
                 .clip(RoundedCornerShape(14.dp))
                 .background(PantopusColors.momentCameraChip)
                 .border(if (on) 2.dp else 1.dp, if (on) Color.White else PantopusColors.momentReplyOutline, RoundedCornerShape(14.dp))
@@ -403,6 +435,8 @@ private fun RowScope.StyleButton(
                 TextStyle(shadow = Shadow(PantopusColors.momentMarksShadow, blurRadius = 3f).takeIf { style == MomentLabelStyle.Plain }),
             modifier = sample.padding(horizontal = Spacing.s2, vertical = 1.dp),
         )
-        Text(text = style.spoken, color = Color.White, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold)
+        if (!compact) {
+            Text(text = style.spoken, color = Color.White, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold)
+        }
     }
 }

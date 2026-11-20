@@ -5,6 +5,7 @@ package app.pantopus.android.ui.screens.moments.compose.marks
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlin.math.max
 import kotlin.math.min
 
 /*
@@ -151,13 +152,20 @@ data class MomentMarksEditing(
     /** Undo: the last line goes. */
     fun undone(): MomentMarksEditing = copy(marks = marks.copy(strokes = marks.strokes.dropLast(1)))
 
-    /** A new label in the middle with the keyboard up, letters [size] (a share of the picture's width), if there's room. */
-    fun withNewLabel(size: Float): MomentMarksEditing {
-        val settled = typingEnded().copy(addsLabel = false)
+    /**
+     * A new label with the keyboard up, if there's room: its middle at [x], [y], letters [size] (shares of the picture),
+     * then [kept] inside the part every phone shows.
+     */
+    fun withNewLabel(
+        x: Float,
+        y: Float,
+        size: Float,
+        kept: (MomentLabel) -> MomentLabel,
+    ): MomentMarksEditing {
+        val settled = unpicked().copy(addsLabel = false)
         if (!settled.roomForLabel) return settled
         val id = (settled.marks.labels.maxOfOrNull { it.id } ?: 0) + 1
-        val letters = size.coerceIn(MomentMarkRules.SMALLEST_LETTERS, MomentMarkRules.LARGEST_LETTERS)
-        val label = MomentLabel(id, "", 0.5f, 0.5f, letters, style, textInk)
+        val label = kept(MomentLabel(id, "", x, y, size, style, textInk))
         return settled.copy(marks = settled.marks.copy(labels = settled.marks.labels + label), selected = id, typing = true)
     }
 
@@ -213,14 +221,21 @@ object MomentMarkRules {
     /** The most lines one picture keeps: Undo goes back one at a time, and the drawing stays cheap to redraw. */
     const val MAX_STROKES = 200
 
-    /**
-     * The smallest letters, as a share of the picture's width: about 14 px on a tall photo in the 1024-px copy the
-     * picture check reads.
-     */
-    const val SMALLEST_LETTERS = 0.025f
+    /** Letters at least this tall in the 1024-px copy the picture check reads. */
+    private const val CHECK_LETTERS_PX = 16f
+    private const val CHECK_LONG_EDGE = 1024f
+
+    /** The smallest letters, as a share of the picture's width, that the picture check still reads (16 px of 1024). */
+    fun smallestLetters(
+        pictureWidth: Int,
+        pictureHeight: Int,
+    ): Float = CHECK_LETTERS_PX * max(1f, pictureHeight.toFloat() / pictureWidth.coerceAtLeast(1)) / CHECK_LONG_EDGE
 
     /** A new label's letters, in dp on the screen showing the picture (board T2). */
     const val NEW_LABEL_POINTS = 22f
+
+    /** Where Text puts its first label: this far down the editor's frame, above where the keyboard comes up. */
+    const val NEW_LABEL_DOWN = 0.4f
 
     /** The largest letters a pinch makes, as a share of the picture's width. */
     const val LARGEST_LETTERS = 0.15f
@@ -246,15 +261,41 @@ object MomentMarkRules {
     private const val WIDEST_FRAME = 0.63f
 
     /**
-     * The part of a picture every phone shows, centred, as shares of its width and height: as wide as a 9:21 screen
-     * shows and as tall as iPhone's shortest viewer frame shows. Labels stay inside it; drawing doesn't. Tablets and
-     * unfolded phones are not promised.
+     * The share of a viewer frame its top bar covers on the phone where it covers the most: about 16% measured on an
+     * iPhone 17 and a 720 × 1280 Android phone, with a little room.
      */
-    fun everyPhoneShows(
+    private const val TOP_BAR = 0.17f
+
+    /**
+     * Where a label may go on a picture, in its own coordinates (shares of 1): as wide as a 9:21 screen shows, as tall
+     * as iPhone SE's viewer frame shows, and below the lowest line any phone's top bar reaches in it. The whole label
+     * stays inside; drawing isn't held to it; the editor's dashed line is drawn at its top. Tablets and unfolded phones
+     * are not promised.
+     */
+    fun labelBox(
         pictureWidth: Int,
         pictureHeight: Int,
-    ): Pair<Float, Float> {
+    ): LabelBox {
         val aspect = pictureWidth.toFloat() / pictureHeight.coerceAtLeast(1)
-        return min(1f, NARROWEST_FRAME / aspect) to min(1f, aspect / WIDEST_FRAME)
+        val width = min(1f, NARROWEST_FRAME / aspect)
+        val height = min(1f, aspect / WIDEST_FRAME)
+        return LabelBox(
+            left = (1f - width) / 2,
+            top = (1f - height) / 2 + TOP_BAR * height,
+            right = (1f + width) / 2,
+            bottom = (1f + height) / 2,
+        )
     }
+}
+
+/** Where a label may go ([MomentMarkRules.labelBox]), in the picture's own coordinates. */
+@Immutable
+data class LabelBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
 }
