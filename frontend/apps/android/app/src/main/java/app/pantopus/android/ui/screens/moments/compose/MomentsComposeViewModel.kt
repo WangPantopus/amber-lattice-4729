@@ -871,13 +871,13 @@ class MomentsComposeViewModel
             val editing = current.marking ?: return
             marksKeeper.closed(editing)
             val photo = (current.media as? MomentMediaFile.Photo)?.takeIf { keep && !current.posting }
-            if (photo == null || editing.marks == current.marks) {
+            if (photo == null || editing.result == current.marks) {
                 _state.update { it.copy(marking = null) }
                 return
             }
-            _state.update { it.copy(marking = null, marks = editing.marks) }
+            _state.update { it.copy(marking = null, marks = editing.result) }
             marksKeeper.draw(
-                editing.marks,
+                editing.result,
                 photo.file,
                 onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
                 onFailed = { drawn -> _state.update { it.copy(marks = drawn, notice = MARKS_FAILED) } },

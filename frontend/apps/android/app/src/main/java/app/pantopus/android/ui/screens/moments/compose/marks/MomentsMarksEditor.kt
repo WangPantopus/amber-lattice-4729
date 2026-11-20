@@ -8,7 +8,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,9 +19,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -30,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,11 +52,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -97,6 +106,15 @@ internal fun MomentsMarksPills(
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         MarksPill(
+            label = "Text",
+            spoken = "Write on the photo",
+            enabled = enabled,
+            onClick = { onOpen(MomentMarksTool.Text) },
+            modifier = Modifier.testTag("moments.post.text"),
+        ) {
+            Text(text = "Aa", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+        }
+        MarksPill(
             label = "Draw",
             spoken = "Draw on the photo",
             enabled = enabled,
@@ -140,9 +158,10 @@ private fun MarksPill(
 }
 
 /**
- * Text and Draw on the photo (boards T2 and T3): the picture fills the screen as the viewer shows it, the marks over it,
- * a line where the viewer's top bar ends. Draw: a finger draws in the ink and width picked; Undo takes the last line
- * back. Done keeps the marks; the X (and Back) drops what changed in this visit, asking first when something did.
+ * Text and Draw on the photo (boards T2 and T3): the picture in the viewer's own frame, the marks over it, a line where
+ * the viewer's top bar ends. Draw: a finger draws in the ink and width picked; Undo takes the last line back. Text: a
+ * new label waits in the middle with the keyboard up; labels move, resize and change ([TextLabels]). Done keeps the
+ * marks; the X (and Back) drops what changed in this visit, asking first when something did.
  */
 @Composable
 internal fun MomentsMarksEditor(
@@ -163,7 +182,7 @@ internal fun MomentsMarksEditor(
                 .pointerInput(Unit) { detectTapGestures { } }
                 .testTag("moments.marks"),
     ) {
-        if (picture != null) MarksCanvas(picture, editing, onStroke = { points, width -> onEdit { it.drawn(points, width) } })
+        if (picture != null) MarksCanvas(picture, editing, onEdit)
         // The viewer's own top fade, over the strip its top bar covers and a little below.
         Box(
             modifier =
@@ -192,25 +211,18 @@ internal fun MomentsMarksEditor(
                 modifier = Modifier.align(Alignment.CenterEnd).padding(end = Spacing.s3),
             )
         }
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s6),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "Draw with your finger.",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.6f), offset = Offset(0f, 1f), blurRadius = 2f)),
-            )
-            Spacer(Modifier.height(Spacing.s3))
-            Inks(picked = editing.ink, onPick = { ink -> onEdit { it.copy(ink = ink) } })
+        val tools =
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s6)
+        if (editing.tool == MomentMarksTool.Text) {
+            val density = LocalDensity.current
+            val keyboard = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
+            TextTools(editing, onEdit, tools.padding(bottom = with(density) { keyboard.toDp() }))
+        } else {
+            DrawTools(editing, onEdit, tools)
         }
     }
     if (asksDiscard) {
@@ -221,6 +233,27 @@ internal fun MomentsMarksEditor(
                 onClose(false)
             },
         )
+    }
+}
+
+/** Draw's hint and inks (board T3). */
+@Composable
+private fun DrawTools(
+    editing: MomentMarksEditing,
+    onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = "Draw with your finger.",
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            style = TextStyle(shadow = Shadow(PantopusColors.momentMarksShadow, offset = Offset(0f, 1f), blurRadius = 2f)),
+        )
+        Spacer(Modifier.height(Spacing.s3))
+        Inks(picked = editing.ink, onPick = { ink -> onEdit { it.copy(ink = ink) } })
     }
 }
 
@@ -246,14 +279,15 @@ private fun DiscardChanges(
 
 /**
  * The picture filling the viewer's frame (the whole width, above its reply bar), cropped as the viewer crops it, with
- * its marks drawn by [MomentMarksPainter] (the routine the photo that posts is drawn with). Each finger down to up is
- * a line, in the picture's own coordinates.
+ * its marks drawn by [MomentMarksPainter] (the routine the photo that posts is drawn with). Draw: each finger down to
+ * up is a line, in the picture's own coordinates. Text: the labels take the touches; a tap away from them puts the
+ * label being typed away, or with none picked adds a new one.
  */
 @Composable
 private fun MarksCanvas(
     picture: Bitmap,
     editing: MomentMarksEditing,
-    onStroke: (List<Float>, Float) -> Unit,
+    onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
 ) {
     val image = remember(picture) { picture.asImageBitmap() }
     val live = remember { mutableStateListOf<Float>() }
@@ -271,28 +305,71 @@ private fun MarksCanvas(
         val density = LocalDensity.current
         // The width picked is in dp on this screen; the line keeps it as a share of the picture's width as shown.
         val lineWidth = with(density) { editing.width.points.dp.toPx() } / (picture.width * scale)
-        val stroke by rememberUpdatedState { points: List<Float> -> onStroke(points, lineWidth) }
-        Canvas(
-            modifier =
-                Modifier
-                    .requiredSize(with(density) { (picture.width * scale).toDp() }, with(density) { (picture.height * scale).toDp() })
-                    .testTag("moments.marks.picture")
-                    .semantics { contentDescription = "The photo you're posting. Draw on it with one finger." }
-                    .pointerInput(Unit) { sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) } },
-        ) {
-            drawImage(
-                image,
-                dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-                filterQuality = FilterQuality.Medium,
-            )
-            val marks =
-                if (live.isEmpty()) {
-                    editing.marks
-                } else {
-                    editing.marks.copy(strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth))
-                }
-            drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, size.width, size.height) }
+        // A new label's letters: 22 dp on this screen, kept as a share of the picture's width.
+        val letters = with(density) { MomentMarkRules.NEW_LABEL_POINTS.dp.toPx() } / (picture.width * scale)
+        val stroke by rememberUpdatedState { points: List<Float> -> onEdit { it.drawn(points, lineWidth) } }
+        val tapped by rememberUpdatedState {
+            onEdit { if (it.selected != null) it.unpicked() else it.withNewLabel(letters) }
         }
+        val text = editing.tool == MomentMarksTool.Text
+        LaunchedEffect(editing.addsLabel) { if (editing.addsLabel) onEdit { it.withNewLabel(letters) } }
+        val drawnWidth = picture.width * scale
+        val drawnHeight = picture.height * scale
+        Box(modifier = Modifier.requiredSize(with(density) { drawnWidth.toDp() }, with(density) { drawnHeight.toDp() })) {
+            val touches =
+                Modifier.matchParentSize().pointerInput(text) {
+                    if (text) stillTaps { tapped() } else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
+                }
+            MarksPicture(image, editing, live, lineWidth, touches)
+            if (text) TextLabels(editing, LabelFrame(drawnWidth, drawnHeight, picture.width, picture.height), onEdit)
+        }
+    }
+}
+
+/** A tap that stays put: a swipe across the picture isn't one (it would add a label). */
+private suspend fun PointerInputScope.stillTaps(onTap: () -> Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        val up = waitForUpOrCancellation()
+        if (up != null && (up.position - down.position).getDistance() < viewConfiguration.touchSlop) onTap()
+    }
+}
+
+/** The picture and its marks, the line being drawn among them; a label being typed is drawn by its text field. */
+@Composable
+private fun MarksPicture(
+    image: ImageBitmap,
+    editing: MomentMarksEditing,
+    live: List<Float>,
+    lineWidth: Float,
+    modifier: Modifier,
+) {
+    val typed = editing.selected.takeIf { editing.typing }
+    Canvas(
+        modifier =
+            modifier
+                .testTag("moments.marks.picture")
+                .semantics {
+                    contentDescription =
+                        if (editing.tool == MomentMarksTool.Text) {
+                            "The photo you're posting. Tap it to add a label."
+                        } else {
+                            "The photo you're posting. Draw on it with one finger."
+                        }
+                },
+    ) {
+        drawImage(
+            image,
+            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+            filterQuality = FilterQuality.Medium,
+        )
+        val marks =
+            if (live.isEmpty()) {
+                editing.marks
+            } else {
+                editing.marks.copy(strokes = editing.marks.strokes + MomentStroke(live.toList(), editing.ink, lineWidth))
+            }
+        drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, size.width, size.height, skip = typed) }
     }
 }
 
@@ -431,7 +508,7 @@ private fun Widths(
 
 /** The six inks (boards T2 and T3): the one picked is ringed. */
 @Composable
-private fun Inks(
+internal fun Inks(
     picked: MomentInk,
     onPick: (MomentInk) -> Unit,
 ) {

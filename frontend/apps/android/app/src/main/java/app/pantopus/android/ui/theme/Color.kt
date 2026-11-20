@@ -839,4 +839,8 @@ object PantopusColors {
 
     /** The dashed line where the viewer's top bar ends, so nothing important goes under it. */
     val momentMarksGuide = Color(0x80FFFFFF)
+
+    /** Text's "Label" box (black at 66%, board T2), and plain letters' soft shadow. */
+    val momentMarksLabelBox = Color(0xA8000000)
+    val momentMarksShadow = Color(0x99000000)
 }
