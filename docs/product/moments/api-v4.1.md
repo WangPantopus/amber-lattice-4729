@@ -18,13 +18,15 @@ only when all of these hold, and otherwise drops it without an error:
 1. `kind` is `photo` or `video` (never a text card).
 2. `location.source` is `gps`: a fix of where the author is, at most 5 minutes old (as today). A `capture` location
    (an album item pinned where its file says) and `none` never keep it.
-3. No `taken_at` older than a day was kept (an album item that says "Taken Oct 3" never reads "Taken here").
+3. The request has no top-level `taken_at`, however recent: the apps send it only for an album item, so its presence
+   means the library. (An album item that says "Taken Oct 3" never reads "Taken here".)
 4. The Moment is shown at its exact pin: not shown as an area (`show_area`), not floating (the Sky: at home, or sent
    with `show_area`), not with no location. A pin at a public place picked by name keeps it; that pin is the place's
    own point, no farther than `pick_within_m` from the author.
-5. The author is not at home: the spot they post from is not within 60 m of a home they live at. With the Sky off a
-   picked place moves the pin, so the server asks both at the place and where the author stands. When the author's
-   homes can't be read, the mark is dropped (it fails closed); where the Moment goes is decided as before.
+5. The author is known not to be at home: the spot they post from is not within 60 m of a home they live at. With the
+   Sky off a picked place moves the pin, so the server also asks at the point the phone sent, before the pin moves.
+   When the author's homes can't be read, the mark is dropped (it fails closed): nothing is stored, so no read shows
+   it and no ring carries its `live_until`. Where the Moment goes is decided as in v4.0.
 
 These are the places a height is never kept (`store.shownAltitude`), plus rules 2, 3 and 5's failure case. Every read
 checks the stored Moment again (`store.takenHere`), so a Moment at home, shown as an area, floating or with no location
@@ -78,8 +80,13 @@ kind, label }` only with it.
 | Field | Meaning |
 | --- | --- |
 | `temp_f` | Whole degrees Fahrenheit at the pin. An app that shows Celsius converts it. |
-| `kind` | The sky, one of nine: `clear`, `partly_cloudy`, `cloudy`, `fog`, `rain`, `snow`, `sleet`, `thunderstorm`, `wind`. For the pill's icon. |
-| `label` | The words the pill shows: `Clear`, `Partly cloudy`, `Cloudy`, `Fog`, `Rain`, `Snow`, `Sleet`, `Thunderstorm` or `Windy`, by `kind`; but `Wind 38 mph` (the speed rounded) whenever the wind is 25 mph or more, whatever the sky. Then `kind` still names the sky (snow in a gale is `kind: "snow"`, `label: "Wind 38 mph"`). |
+| `kind` | One of nine: `clear`, `partly_cloudy`, `cloudy`, `fog`, `rain`, `snow`, `sleet`, `thunderstorm`, `wind`. The pill's icon comes from it. |
+| `label` | The words the pill shows, which always agree with `kind`: `Clear`, `Partly cloudy`, `Cloudy`, `Fog`, `Rain`, `Snow`, `Sleet`, `Thunderstorm` or `Windy`, or `Wind 38 mph` (below). |
+
+**Strong wind.** When the sky's own kind is `clear`, `partly_cloudy`, `cloudy` or `wind` and the wind is 25 mph or
+more, `kind` is `wind` and `label` is `Wind N mph` (the speed rounded). With `rain`, `snow`, `sleet`, `fog` or
+`thunderstorm`, `kind` and `label` stay the sky's own, whatever the wind (snow in a gale reads `Snow`). Below 25 mph a
+windy sky reads `Windy`.
 
 The pill reads `${temp_f}°F · ${label}` ("31°F · Snow").
 
@@ -115,10 +122,14 @@ Every Moment's JSON adds (`GET /:id`, `GET /batch`, `GET /mine`, the map's `sche
 
 ## `GET /api/moments/map` and `GET /api/moments/people`
 
-Every ring adds `live_until: string | null`: the latest `live_until` among its Moments, for the "Live now" chip and the
-live dot. It is set only when the ring's newest Moment, the one its point and place are, is itself an exact pin away
-from home, so the dot never sits on a pin at home or on an area; otherwise, and for every ring in `unplaced`, it is
-`null`. A ring is live while now is before its `live_until`. The briefs in a ring's `moments[]` don't change.
+Every ring adds `live_until: string | null`, for the "Live now" chip and the live dot:
+
+- When the ring's newest Moment (the one its point and place are) is itself an exact pin away from home, it is the
+  latest `live_until` among the ring's Moments that keep the mark and weren't shared later, or `null` when none does.
+- Otherwise it is `null`, whatever the ring's other Moments say: the dot never sits on a pin at home or on an area.
+  Every ring in `unplaced` is `null`.
+
+A ring is live while now is before its `live_until`. The briefs in a ring's `moments[]` don't change.
 
 ## Privacy
 

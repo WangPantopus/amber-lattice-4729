@@ -7,7 +7,8 @@
 // ~5 km for 10 minutes) within a short budget, takes only a fresh reading (served live or from that cache, never the
 // hours-old copy Open-Meteo falls back on when it is down, nor a failure), and folds the sky into nine plain kinds
 // (placeIntelligenceService.mapConditionCode), because the two sources name finer conditions differently. Strong wind
-// reads "Wind 38 mph" whatever the sky. It never throws and never waits past its budget: no reading, no stamp.
+// under a dry sky reads "Wind 38 mph" (kind `wind`); rain, snow, sleet, fog and storms keep their own words, so the
+// icon (from `kind`) and the words always agree. It never throws and never waits past its budget: no reading, no stamp.
 
 const logger = require('../../utils/logger');
 const { fetchWeather } = require('../context/weatherProvider');
@@ -20,8 +21,9 @@ const BUDGET_MS = 2000;
 const FRESH_SOURCES = new Set(['live', 'cache']);
 // A backstop on top of the source: a reading older than this is never shown as now.
 const MAX_AGE_MS = 30 * 60 * 1000;
-// From this wind speed the stamp names the wind instead of the sky.
+// From this wind speed the stamp names the wind instead of a dry sky (clear, partly cloudy, cloudy or windy).
 const STRONG_WIND_MPH = 25;
+const WIND_OVER = new Set(['clear', 'partly_cloudy', 'cloudy', 'wind']);
 const WORDS = {
   clear: 'Clear',
   partly_cloudy: 'Partly cloudy',
@@ -44,7 +46,8 @@ function numberOf(value) {
 
 /**
  * The stamp a fetchWeather result makes, { temp_f, kind, label }, or null when it isn't a fresh reading of the
- * temperature and the sky. `kind` is one of KINDS (the sky, for the pill's icon); `label` the words the pill shows.
+ * temperature and the sky. `kind` is one of KINDS (for the pill's icon); `label` the words the pill shows, always
+ * `kind`'s word except "Wind N mph" (with kind `wind`) when a dry sky has wind of STRONG_WIND_MPH or more.
  */
 function stampOf(result, now = Date.now()) {
   if (!result || !FRESH_SOURCES.has(result.source) || !result.current) return null;
@@ -55,11 +58,14 @@ function stampOf(result, now = Date.now()) {
   if (temp == null || !current.condition_code) return null;
   // Read here, not at load: the Moments store reads stored stamps through this module without Place's services.
   const { mapConditionCode } = require('../placeIntelligenceService');
-  const kind = mapConditionCode(current.condition_code);
+  const sky = mapConditionCode(current.condition_code);
   const wind = numberOf(current.wind_mph);
-  const label = wind != null && wind >= STRONG_WIND_MPH ? `Wind ${Math.round(wind)} mph` : WORDS[kind];
   // `|| 0`: a reading just below 0°F rounds to 0, never to -0.
-  return { temp_f: Math.round(temp) || 0, kind, label };
+  const temp_f = Math.round(temp) || 0;
+  if (WIND_OVER.has(sky) && wind != null && wind >= STRONG_WIND_MPH) {
+    return { temp_f, kind: 'wind', label: `Wind ${Math.round(wind)} mph` };
+  }
+  return { temp_f, kind: sky, label: WORDS[sky] };
 }
 
 /** The weather stamp at a point right now, or null: within `budgetMs`, never throws. */

@@ -237,32 +237,34 @@ async function townAt(latitude, longitude) {
   return (await settle(townAndStreet(latitude, longitude), 'reverse'))?.town || FALLBACK_LABEL;
 }
 
-/** Whether the point is within AT_HOME_M of a home the person lives at (homeAt; false when the homes can't be read). */
-async function isAtHome(userId, latitude, longitude) {
-  return (await homeAt(userId, latitude, longitude)).atHome;
-}
-
 /**
- * Whether the point is within AT_HOME_M of a home the person lives at, and whether that is known: { atHome, known }.
- * `known` is false when their homes couldn't be read; `atHome` is then false, as isAtHome has always answered, and
- * the Live mark (API v4.1), which says its author is at the pin now, is dropped (it fails closed).
+ * Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds). When their homes can't be
+ * read it answers `onFailure`: false unless asked otherwise, as it always has. The Live mark (API v4.1) asks with
+ * `onFailure: null`, so it can tell "not at home" from "unknown" and drop itself on the second.
  */
-async function homeAt(userId, latitude, longitude) {
-  const { householdHomeIdsOrThrow } = require('../../utils/homeMailAccess');
-  try {
-    const homeIds = await householdHomeIdsOrThrow(userId);
-    if (!homeIds.length) return { atHome: false, known: true };
-    const { data, error } = await supabaseAdmin.from('Home').select('id, location').in('id', homeIds);
-    if (error) throw new Error(error.message);
-    const atHome = (data || []).some((home) => {
-      const point = parsePostGISPoint(home.location);
-      return point && haversineMeters(latitude, longitude, point.latitude, point.longitude) <= AT_HOME_M;
-    });
-    return { atHome, known: true };
-  } catch (error) {
-    logger.warn('moments.at_home_failed', { error: error.message });
-    return { atHome: false, known: false };
+async function isAtHome(userId, latitude, longitude, { onFailure = false } = {}) {
+  const { householdHomeIds, householdHomeIdsOrThrow } = require('../../utils/homeMailAccess');
+  let homeIds;
+  if (onFailure === false) {
+    homeIds = await householdHomeIds(userId);
+  } else {
+    try {
+      homeIds = await householdHomeIdsOrThrow(userId);
+    } catch (error) {
+      logger.warn('moments.at_home_failed', { error: error.message });
+      return onFailure;
+    }
   }
+  if (!homeIds.length) return false;
+  const { data, error } = await supabaseAdmin.from('Home').select('id, location').in('id', homeIds);
+  if (error) {
+    logger.warn('moments.at_home_failed', { error: error.message });
+    return onFailure;
+  }
+  return (data || []).some((home) => {
+    const point = parsePostGISPoint(home.location);
+    return point && haversineMeters(latitude, longitude, point.latitude, point.longitude) <= AT_HOME_M;
+  });
 }
 
 /**
@@ -278,6 +280,6 @@ function labelKind(labels, label) {
 }
 
 module.exports = {
-  labelsAt, pickedLabel, labelKind, isAtHome, homeAt, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
+  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
   FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
 };

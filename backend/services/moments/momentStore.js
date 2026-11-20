@@ -905,8 +905,9 @@ function shownAltitude(reading, { atHome = false, showArea = false, unplaced = f
 /**
  * Whether a new Moment keeps the Live mark its author's app sent (`taken_here`: its own camera made it just now). Only
  * a photo or video from a fresh fix of where its author is (`gps`; never an album item pinned where its file says,
- * `capture`), with no taken time older than a day, at its exact pin away from home: never at home, shown as an area,
- * floating or with no location, whatever the app sent. The same places a height is never kept (shownAltitude).
+ * `capture`), sent with no taken time (`takenAt`: the apps send one only for an album item), at its exact pin away
+ * from home: never at home, shown as an area, floating or with no location, whatever the app sent. The same places a
+ * height is never kept (shownAltitude). The route also drops it when the author's homes can't be read.
  */
 function markKept({ kind, source, atHome = false, showArea = false, unplaced = false, floating = false, takenAt = null }) {
   return (kind === 'photo' || kind === 'video') && source === 'gps' && !atHome && !showArea && !unplaced && !floating
