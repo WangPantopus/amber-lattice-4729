@@ -94,7 +94,7 @@ struct MomentsComposer: View {
             Button("Keep editing", role: .cancel) {}
                 .accessibilityIdentifier("moments.post.retake.keep")
         } message: {
-            Text("What you drew on it won't be saved.")
+            Text("What you drew or wrote on it won't be saved.")
         }
         // A fold or a turn switches layouts at once.
         .readsMomentsDuoScreen(Binding(get: { duo }, set: { screen in

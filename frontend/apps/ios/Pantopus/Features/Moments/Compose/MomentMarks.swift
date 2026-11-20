@@ -79,9 +79,15 @@ struct MomentMarks: Equatable {
     static let maxLetters = 80
     /// The most lines one picture keeps: Undo goes back one at a time, and the drawing stays cheap to redraw.
     static let maxStrokes = 200
-    /// The smallest letters a label may have, as a share of the picture's width: the picture check reads a copy
-    /// 1024 px on its longest side, where this is at least about 14 px on a tall photo.
-    static let minLetterSize: CGFloat = 0.025
+    /// The smallest letters a label may have on a picture `aspect` wide (width over height), as a share of its
+    /// width: 16 px in the copy the picture check reads, which is 1024 px on its longest side (0.016 of a landscape
+    /// picture's width, 0.028 of a 9:16 one's).
+    static func minLetterSize(aspect: CGFloat) -> CGFloat {
+        16 * max(1, 1 / max(aspect, 0.01)) / 1024
+    }
+
+    /// The largest letters, as a share of the picture's width.
+    static let maxLetterSize: CGFloat = 0.14
     /// A new label's letters, on the screen showing the picture (board T2).
     static let newLetterPoints: CGFloat = 22
 

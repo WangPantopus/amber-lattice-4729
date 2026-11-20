@@ -6,7 +6,10 @@
 //  what goes up: the live canvas over the picture (the editor, the Post
 //  screen) and the photo flattened for the upload. The flatten works on a
 //  copy at most 2048 px on its longest side, at scale 1 and opaque, off the
-//  main thread, then hands it to the usual photo export.
+//  main thread, then hands it to the usual photo export. A label is laid out
+//  where the picture is 1000 units wide, whatever size it's drawn at, so its
+//  words break into the same lines on the screen and in the upload; its
+//  letters are a share of the picture's width, never the phone's text size.
 //
 
 import SwiftUI
@@ -31,6 +34,8 @@ enum MomentMarksDrawing {
             context.setLineWidth(max(stroke.width * size.width, 1))
             context.strokePath()
         }
+        // Words over lines.
+        drawLabels(marks.labels, in: context, size: size)
     }
 
     /// `image` redrawn upright at most 2048 px on its longest side (scale 1, opaque), with `marks` drawn in.
@@ -58,6 +63,124 @@ enum MomentMarksDrawing {
         try await Task.detached(priority: .userInitiated) {
             try MomentsMediaExport.photo(flatten(base, marks), into: folder)
         }.value
+    }
+}
+
+// MARK: - Labels (board T2)
+
+extension MomentMarksDrawing {
+    /// The width the picture has while a label is laid out.
+    static let unit: CGFloat = 1000
+    /// A label's lines break at 13.2 times its letter size (288 of 390 points at 22, board T2), so a pinch scales the
+    /// whole label without rewrapping it, or at the width every phone shows when that is narrower (a landscape picture
+    /// shows a third of its width); the letters' lines are 1.27 times their size apart (28 at 22).
+    static let wrap: CGFloat = 13.2
+    static let lineHeight: CGFloat = 1.27
+
+    /// A label laid out, in units where the picture is 1000 wide: its words and the rectangle they are drawn in (as
+    /// wide as its lines may be, the words centered), and its plate (the label or the sign; the words' box when plain).
+    struct LaidLabel {
+        let words: NSAttributedString
+        let edge: NSAttributedString?
+        let wordsRect: CGRect
+        let box: CGRect
+        let plate: UIColor?
+        let radius: CGFloat
+    }
+
+    /// `label` on a picture `aspect` wide (width over height).
+    static func lay(_ label: MomentMarks.Label, aspect: CGFloat) -> LaidLabel {
+        let em = label.size * unit
+        let pad = padding(label.style, em: em)
+        let widest = max(em, min(em * wrap, MomentMarks.safeBox(aspect: aspect).width * unit - 2 * pad.width))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.minimumLineHeight = em * lineHeight
+        paragraph.maximumLineHeight = em * lineHeight
+        let font = UIFont.systemFont(ofSize: em, weight: .bold)
+        let look = looks(label)
+        let words = NSAttributedString(
+            string: label.text,
+            attributes: [.font: font, .foregroundColor: look.ink, .paragraphStyle: paragraph]
+        )
+        let fits = words.boundingRect(
+            with: CGSize(width: widest, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        let size = CGSize(width: ceil(max(fits.width, em * 0.5)), height: ceil(max(fits.height, em * lineHeight)))
+        let center = CGPoint(x: label.center.x * unit, y: label.center.y * unit / max(aspect, 0.01))
+        let box = CGRect(
+            x: center.x - size.width / 2 - pad.width,
+            y: center.y - size.height / 2 - pad.height,
+            width: size.width + 2 * pad.width,
+            height: size.height + 2 * pad.height
+        )
+        let edge = look.edge.map { color in
+            NSAttributedString(string: label.text, attributes: [
+                .font: font, .paragraphStyle: paragraph, .strokeColor: color, .strokeWidth: 16
+            ])
+        }
+        return LaidLabel(
+            words: words,
+            edge: edge,
+            wordsRect: CGRect(x: center.x - widest / 2, y: center.y - size.height / 2, width: widest, height: size.height),
+            box: box,
+            plate: look.plate,
+            radius: label.style == .plain ? 0 : em * 0.45
+        )
+    }
+
+    /// The room around a label's words: a little for plain letters' edge; for a label or a sign 0.64 and 0.41 of the
+    /// letter size across and down (14 and 9 at 22, board T2).
+    static func padding(_ style: MomentMarks.Style, em: CGFloat) -> CGSize {
+        style == .plain ? CGSize(width: em * 0.12, height: em * 0.06) : CGSize(width: em * 0.64, height: em * 0.41)
+    }
+
+    /// A label's colors: its letters, its plate (none when plain) and plain letters' edge.
+    struct Look {
+        let ink: UIColor
+        let plate: UIColor?
+        let edge: UIColor?
+    }
+
+    /// Plain: letters in the ink with a thin dark edge (light for black ink). Label: letters in the ink on black at
+    /// 66% (white at 88% for black ink). Sign: a plate in the ink, dark letters on light inks, white on black and red.
+    static func looks(_ label: MomentMarks.Label) -> Look {
+        let ink = MomentsPalette.ink(label.ink.rawValue)
+        let dark = MomentsPalette.ink(MomentMarks.Ink.black.rawValue)
+        let black = label.ink == .black
+        switch label.style {
+        case .plain:
+            return Look(ink: ink, plate: nil, edge: black ? UIColor.white.withAlphaComponent(0.7) : UIColor.black.withAlphaComponent(0.45))
+        case .label:
+            return Look(ink: ink, plate: black ? UIColor.white.withAlphaComponent(0.88) : UIColor.black.withAlphaComponent(0.66), edge: nil)
+        case .sign:
+            let darkLetters = [.white, .yellow, .sky, .green].contains(label.ink)
+            return Look(ink: darkLetters ? dark : .white, plate: ink, edge: nil)
+        }
+    }
+
+    /// Draws the labels with words over a picture `size` big in `context` (origin at its top-left corner).
+    static func drawLabels(_ labels: [MomentMarks.Label], in context: CGContext, size: CGSize) {
+        let shown = labels.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !shown.isEmpty, size.width > 0, size.height > 0 else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.scaleBy(x: size.width / unit, y: size.width / unit)
+        UIGraphicsPushContext(context)
+        defer { UIGraphicsPopContext() }
+        for label in shown {
+            let laid = lay(label, aspect: size.width / size.height)
+            if let plate = laid.plate {
+                context.setFillColor(plate.cgColor)
+                context.addPath(UIBezierPath(roundedRect: laid.box, cornerRadius: laid.radius).cgPath)
+                context.fillPath()
+            }
+            laid.edge?.draw(with: laid.wordsRect, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            laid.words.draw(with: laid.wordsRect, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+        }
     }
 }
 

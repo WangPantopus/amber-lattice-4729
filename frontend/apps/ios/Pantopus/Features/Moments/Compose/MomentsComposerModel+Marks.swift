@@ -4,8 +4,8 @@
 //
 //  Text and Draw on the photo on the Post screen (boards T1–T3): the marks
 //  the picture carries, the editor while it's open and what's being changed
-//  in it, all held by the composer's model so a fold on the iPhone Duo keeps
-//  them. Done flattens the marks into the photo that goes up
+//  in it (the line being drawn, the label being typed or moved), all held by
+//  the composer's model so a fold on the iPhone Duo keeps them. Done flattens the marks into the photo that goes up
 //  (`use(marked:_:)`); the X drops what changed in that visit. A new picture
 //  starts clean (the draft's `didSet`), so several picked together never
 //  carry one's marks to the next.
@@ -33,6 +33,19 @@ final class MomentsMarking {
     /// Draw's ink and line width (board T3 starts yellow, medium).
     var ink = MomentMarks.Ink.yellow
     var width = MomentMarks.Width.medium
+    /// Text: the label with the keyboard, and the one picked (a pinch resizes it, the look and ink apply to it).
+    private(set) var typing: UUID?
+    private(set) var picked: UUID?
+    /// Text's look and ink for the next label (board T2 starts on Label, white): the picked label's once one is.
+    private(set) var style = MomentMarks.Style.label
+    private(set) var textInk = MomentMarks.Ink.white
+    /// The picture's shape (width over height): what the part every phone shows is worked out from.
+    @ObservationIgnored private(set) var aspect: CGFloat = 1
+    /// Text was opened: a new label appears in the middle with the keyboard up (once, so a fold doesn't add another).
+    @ObservationIgnored var addsLabel = false
+    /// Where a label was when a drag or a pinch on it began.
+    @ObservationIgnored private var movedFrom: CGPoint?
+    @ObservationIgnored private var sizedFrom: CGFloat?
     /// The editor's X asks first when something changed in this visit.
     var asksCancel = false
     /// Retake asks first when the picture has marks.
@@ -40,6 +53,14 @@ final class MomentsMarking {
     /// A finger is drawing a line.
     @ObservationIgnored private var drawing = false
     @ObservationIgnored private var making: Task<Void, Never>?
+
+    /// The marks the canvas draws while editing: all but the label being typed in, which is a text field.
+    var shown: MomentMarks {
+        guard let typing else { return editing }
+        var shown = editing
+        shown.labels.removeAll { $0.id == typing }
+        return shown
+    }
 
     /// Something changed in this visit to the editor.
     var changed: Bool {
@@ -57,6 +78,8 @@ final class MomentsMarking {
         asksCancel = false
         asksRetake = false
         drawing = false
+        typing = nil
+        picked = nil
     }
 
     /// Opens the editor on `image` with the marks it has, still editable. The 2048 px copy is made the first time.
@@ -64,6 +87,9 @@ final class MomentsMarking {
         self.tool = tool
         editing = marks
         drawing = false
+        (typing, picked) = (nil, nil)
+        aspect = image.size.height > 0 ? image.size.width / image.size.height : 1
+        addsLabel = tool == .text && marks.labels.count < MomentMarks.maxLabels
         isOpen = true
         guard base == nil, making == nil else { return }
         making = Task { [weak self] in
@@ -78,6 +104,7 @@ final class MomentsMarking {
         self.marks = marks
         self.base = base
         editing = marks
+        (typing, picked) = (nil, nil)
         isOpen = false
     }
 
@@ -85,6 +112,7 @@ final class MomentsMarking {
     func cancel() {
         editing = marks
         asksCancel = false
+        (typing, picked) = (nil, nil)
         isOpen = false
     }
 
@@ -118,6 +146,151 @@ final class MomentsMarking {
     }
 }
 
+// MARK: - Text (board T2)
+
+extension MomentsMarking {
+    func label(_ id: UUID) -> MomentMarks.Label? {
+        editing.labels.first { $0.id == id }
+    }
+
+    /// A new label, typed in at once, at `point` (picture coordinates): false at five labels.
+    @discardableResult
+    func addLabel(at point: CGPoint, pictureWidth: CGFloat) -> Bool {
+        guard isOpen, tool == .text, pictureWidth > 0 else { return false }
+        endTyping()
+        guard editing.labels.count < MomentMarks.maxLabels else { return false }
+        let label = clamped(MomentMarks.Label(
+            id: UUID(),
+            text: "",
+            style: style,
+            ink: textInk,
+            center: point,
+            size: MomentMarks.newLetterPoints / pictureWidth
+        ))
+        editing.labels.append(label)
+        (typing, picked) = (label.id, label.id)
+        return true
+    }
+
+    /// A tap on a label: it takes the keyboard (the one typed in before is finished first).
+    func startTyping(_ id: UUID) {
+        guard typing != id else { return }
+        endTyping()
+        guard label(id) != nil else { return }
+        typing = id
+        pick(id)
+    }
+
+    /// The keyboard went away: a label left empty goes.
+    func endTyping() {
+        guard let id = typing else { return }
+        typing = nil
+        guard label(id)?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return }
+        editing.labels.removeAll { $0.id == id }
+        if picked == id { picked = nil }
+    }
+
+    /// What's typed in the label with the keyboard, up to 80 characters.
+    func type(_ text: String) {
+        guard let id = typing else { return }
+        update(id) { $0.text = String(text.prefix(MomentMarks.maxLetters)) }
+    }
+
+    /// The label picked takes the look and ink row.
+    func pick(_ id: UUID) {
+        picked = id
+        if let label = label(id) { (style, textInk) = (label.style, label.ink) }
+    }
+
+    /// A finger dragging a label, `translation` in picture coordinates since it came down. The label also stays
+    /// between `rows` (picture heights), clear of the editor's own buttons, so it can always be picked up again.
+    func drag(_ id: UUID, by translation: CGSize, within rows: ClosedRange<CGFloat>) {
+        guard let label = label(id) else { return }
+        if movedFrom == nil {
+            movedFrom = label.center
+            pick(id)
+        }
+        guard let from = movedFrom else { return }
+        update(id) { moved in
+            moved.center = CGPoint(x: from.x + translation.width, y: from.y + translation.height)
+            let half = MomentMarksDrawing.lay(moved, aspect: aspect).box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
+            moved.center.y = Self.within(moved.center.y, rows.lowerBound + half, rows.upperBound - half)
+        }
+    }
+
+    func endDrag() {
+        movedFrom = nil
+    }
+
+    /// Two fingers pinching anywhere on the picture: the picked label grows or shrinks.
+    func pinch(_ magnification: CGFloat) {
+        guard let id = typing ?? picked, let label = label(id) else { return }
+        if sizedFrom == nil { sizedFrom = label.size }
+        guard let from = sizedFrom else { return }
+        update(id) { $0.size = from * magnification }
+    }
+
+    func endPinch() {
+        sizedFrom = nil
+    }
+
+    /// The look row: for the picked label, and the next one.
+    func setStyle(_ style: MomentMarks.Style) {
+        self.style = style
+        if let id = typing ?? picked { update(id) { $0.style = style } }
+    }
+
+    /// The ink row: for the picked label, and the next one.
+    func setTextInk(_ ink: MomentMarks.Ink) {
+        textInk = ink
+        if let id = typing ?? picked { update(id) { $0.ink = ink } }
+    }
+
+    /// VoiceOver's moves: a step across or down the picture.
+    func nudge(_ id: UUID, dx: CGFloat, dy: CGFloat) {
+        pick(id)
+        update(id) { $0.center = CGPoint(x: $0.center.x + dx, y: $0.center.y + dy) }
+    }
+
+    /// VoiceOver's Bigger and Smaller.
+    func scale(_ id: UUID, by factor: CGFloat) {
+        pick(id)
+        update(id) { $0.size *= factor }
+    }
+
+    /// Changes one label and holds it to the part every phone shows.
+    private func update(_ id: UUID, _ change: (inout MomentMarks.Label) -> Void) {
+        guard let index = editing.labels.firstIndex(where: { $0.id == id }) else { return }
+        var label = editing.labels[index]
+        change(&label)
+        editing.labels[index] = clamped(label)
+    }
+
+    /// `label` inside the part every phone shows: letters no smaller than the picture check reads and no larger than
+    /// fit there, and its middle where the whole label stays inside.
+    func clamped(_ label: MomentMarks.Label) -> MomentMarks.Label {
+        var label = label
+        let safe = MomentMarks.safeBox(aspect: aspect)
+        let unit = MomentMarksDrawing.unit
+        let tall = unit / max(aspect, 0.01)
+        let smallest = MomentMarks.minLetterSize(aspect: aspect)
+        label.size = min(max(label.size, smallest), MomentMarks.maxLetterSize)
+        var laid = MomentMarksDrawing.lay(label, aspect: aspect)
+        while laid.box.width > safe.width * unit + 0.5 || laid.box.height > safe.height * tall + 0.5, label.size > smallest {
+            label.size = max(smallest, label.size * 0.95)
+            laid = MomentMarksDrawing.lay(label, aspect: aspect)
+        }
+        let half = CGSize(width: laid.box.width / 2 / unit, height: laid.box.height / 2 / tall)
+        label.center.x = Self.within(label.center.x, safe.minX + half.width, safe.maxX - half.width)
+        label.center.y = Self.within(label.center.y, safe.minY + half.height, safe.maxY - half.height)
+        return label
+    }
+
+    private static func within(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+        low > high ? (low + high) / 2 : min(max(value, low), high)
+    }
+}
+
 extension MomentsComposerModel {
     /// Text and Draw are offered on a photo. They are off while a Post is going (it would swap the file being sent).
     var offersMarks: Bool {
@@ -133,12 +306,14 @@ extension MomentsComposerModel {
 
     /// The editor's Done: nothing changed closes it; else the photo goes up with the marks drawn in.
     func applyMarks() {
+        marking.endTyping()
         guard marking.changed, case let .photo(image) = draft else { return marking.cancel() }
         use(marked: marking.base ?? image, marking.editing)
     }
 
     /// The editor's X: asks first when something changed.
     func cancelMarks() {
+        marking.endTyping()
         if marking.changed {
             marking.asksCancel = true
         } else {

@@ -18,19 +18,30 @@ struct MomentsMarksEditor: View {
     let model: MomentsComposerModel
     let image: UIImage
     @Environment(\.momentsDuoScreen) var duo
+    /// Where the keyboard's top is on the screen (the screen's bottom while it's down), and where the looks and inks
+    /// begin: a label being typed in stays above both.
+    @State var keyboardTop: CGFloat = .infinity
+    @State var footerTop: CGFloat = .infinity
 
     var marking: MomentsMarking {
         model.marking
     }
 
     var body: some View {
-        // The safe area as this cover has it (the keyboard never moves the picture).
-        GeometryReader { geo in
-            let insets = geo.safeAreaInsets
-            let width = geo.size.width + insets.leading + insets.trailing
-            screen(size: CGSize(width: width, height: geo.size.height + insets.top + insets.bottom), insets: insets)
+        ZStack {
+            // The safe area as this cover has it (the keyboard never moves the picture).
+            GeometryReader { geo in
+                let insets = geo.safeAreaInsets
+                let width = geo.size.width + insets.leading + insets.trailing
+                screen(size: CGSize(width: width, height: geo.size.height + insets.top + insets.bottom), insets: insets)
+            }
+            .ignoresSafeArea(.keyboard)
+            // The keyboard's top, from a layer that gives way to it.
+            Color.clear
+                .ignoresSafeArea(.container)
+                .allowsHitTesting(false)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { keyboardTop = $0 }
         }
-        .ignoresSafeArea(.keyboard)
         .alert("Discard your changes?", isPresented: Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })) {
             Button("Discard", role: .destructive) { marking.cancel() }
                 .accessibilityIdentifier("moments.marks.discard")
@@ -45,10 +56,28 @@ struct MomentsMarksEditor: View {
     /// Everything in the screen's own points, from its top-left corner.
     private func screen(size: CGSize, insets: EdgeInsets) -> some View {
         let frame = pictureFrame(size)
-        let room = controlRoom(frame, size: size, insets: insets)
+        let full = controlRoom(frame, size: size, insets: insets)
+        // With the keyboard up, the looks and inks sit right above it.
+        let typing = keyboardTop < size.height - max(insets.bottom, 1) - 1
+        let room = typing ? CGRect(
+            x: full.minX,
+            y: full.minY,
+            width: full.width,
+            height: max(min(full.maxY, keyboardTop - Spacing.s2) - full.minY, 0)
+        ) : full
         return ZStack(alignment: .topLeading) {
             Color.black
             MomentsMarksDrawArea(marking: marking, image: image, size: frame.size)
+                .overlay {
+                    if marking.tool == .text {
+                        MomentsMarksTextLayer(
+                            marking: marking,
+                            image: image,
+                            size: frame.size,
+                            free: (room.minY + 48 - frame.minY)...max(room.minY + 48 - frame.minY, footerTop - frame.minY - Spacing.s1)
+                        )
+                    }
+                }
                 .overlay(alignment: .top) { viewerStrip(frame, insets: insets) }
                 .overlay(alignment: .bottom) {
                     LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
@@ -60,10 +89,13 @@ struct MomentsMarksEditor: View {
             VStack(spacing: 0) {
                 topBar
                 Spacer(minLength: Spacing.s2)
-                drawFooter(width: room.width)
+                Group {
+                    if marking.tool == .text { textFooter(width: room.width, typing: typing) } else { drawFooter(width: room.width) }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { footerTop = $0 }
             }
             .frame(width: room.width, height: room.height)
-            .overlay(alignment: .trailing) { widthColumn }
+            .overlay(alignment: .trailing) { if marking.tool == .draw { widthColumn } }
             .offset(x: room.minX, y: room.minY)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
@@ -147,7 +179,7 @@ struct MomentsMarksEditor: View {
         HStack(spacing: Spacing.s2) {
             roundButton(.x, size: 22, label: "Cancel", id: "moments.marks.cancel") { model.cancelMarks() }
             Spacer(minLength: Spacing.s2)
-            MomentsMarksUndo(marking: marking)
+            if marking.tool == .draw { MomentsMarksUndo(marking: marking) }
             Button { model.applyMarks() } label: {
                 Text("Done")
                     .scaledFont(15, weight: .bold)
