@@ -4,7 +4,8 @@
 //
 //  Text (board T2): a label appears in the middle with the keyboard up. Three
 //  looks (Plain, Label, Sign) and the six inks; drag to move, pinch anywhere
-//  on the picture to resize; tap a label to change it; one left empty goes.
+//  on the picture (or drag the corner circle) to resize; tap a label to change
+//  it; one left empty goes.
 //  Up to five labels of 80 characters, no rotation. Labels stay inside the
 //  part of the picture every phone shows, and never shrink below what the
 //  picture check can read. VoiceOver moves and resizes a label with actions.
@@ -116,8 +117,8 @@ struct MomentsMarksTextLayer: View {
                 // While typing, a tap there only closes the keyboard.
                 .closesKeyboardFirst()
                 .accessibilityHidden(true)
-            ForEach(marking.editing.labels.filter { $0.id != marking.typing }) { label in
-                labelArea(label, fill: fill, scale: scale)
+            ForEach(Array(marking.editing.labels.enumerated()), id: \.element.id) { index, label in
+                if label.id != marking.typing { labelArea(label, index: index, fill: fill, scale: scale) }
             }
             if let label = marking.typing.flatMap(marking.label) {
                 field(label, fill: fill, scale: scale)
@@ -147,7 +148,7 @@ struct MomentsMarksTextLayer: View {
 
     /// A label as the canvas draws it: here only its place, to tap, drag and read aloud, and the dashed frame and the
     /// resize mark when it's the picked one.
-    private func labelArea(_ label: MomentMarks.Label, fill: CGRect, scale: CGFloat) -> some View {
+    private func labelArea(_ label: MomentMarks.Label, index: Int, fill: CGRect, scale: CGFloat) -> some View {
         let box = onScreen(MomentMarksDrawing.lay(label, aspect: marking.aspect).box, fill: fill, scale: scale)
         let picked = marking.picked == label.id
         return Color.clear
@@ -157,7 +158,6 @@ struct MomentsMarksTextLayer: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                         .padding(-6)
-                        .overlay(alignment: .bottomTrailing) { resizeMark.offset(x: 19, y: 19) }
                         .allowsHitTesting(false)
                 }
             }
@@ -179,6 +179,10 @@ struct MomentsMarksTextLayer: View {
                     }
                     .onEnded { _ in marking.endDrag() }
             )
+            // After the label's own touch area, which would otherwise leave out the corner circle.
+            .overlay(alignment: .bottomTrailing) {
+                if picked { resizeMark(center: CGPoint(x: box.midX, y: box.midY)).offset(x: 28, y: 28) }
+            }
             .position(x: box.midX, y: box.midY)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Words on the picture: \(label.text)")
@@ -189,17 +193,30 @@ struct MomentsMarksTextLayer: View {
             .accessibilityAction(named: "Move down") { marking.nudge(label.id, dx: 0, dy: 0.05) }
             .accessibilityAction(named: "Move left") { marking.nudge(label.id, dx: -0.05, dy: 0) }
             .accessibilityAction(named: "Move right") { marking.nudge(label.id, dx: 0.05, dy: 0) }
-            .accessibilityAction(named: "Bigger") { marking.scale(label.id, by: 1.15) }
-            .accessibilityAction(named: "Smaller") { marking.scale(label.id, by: 1 / 1.15) }
-            .accessibilityIdentifier("moments.marks.label")
+            .accessibilityAction(named: "Make larger") { marking.scale(label.id, by: 1.2) }
+            .accessibilityAction(named: "Make smaller") { marking.scale(label.id, by: 1 / 1.2) }
+            .accessibilityAction(named: "Delete") { marking.delete(label.id) }
+            .accessibilityIdentifier("moments.marks.label.\(index)")
     }
 
-    /// The white circle at a picked label's corner (board T2): drawn only, the pinch does the resizing.
-    private var resizeMark: some View {
+    /// The white circle at a picked label's corner (board T2), in a 44-pt touch area: dragging it resizes the label as
+    /// a pinch does, by how much farther from the label's middle the finger goes.
+    private func resizeMark(center: CGPoint) -> some View {
         Icon(.maximize, size: 14, strokeWidth: 2.6, color: Color(uiColor: MomentsPalette.ink(MomentMarks.Ink.black.rawValue)))
             .frame(width: 26, height: 26)
             .background(Circle().fill(Color.white))
             .shadow(color: .black.opacity(0.4), radius: 1.5, x: 0, y: 1)
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
+                    .onChanged { value in
+                        let from = hypot(value.startLocation.x - center.x, value.startLocation.y - center.y)
+                        let now = hypot(value.location.x - center.x, value.location.y - center.y)
+                        if from > 1 { marking.pinch(now / from) }
+                    }
+                    .onEnded { _ in marking.endPinch() }
+            )
             .accessibilityHidden(true)
     }
 

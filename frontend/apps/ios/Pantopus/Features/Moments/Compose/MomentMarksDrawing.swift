@@ -71,10 +71,10 @@ enum MomentMarksDrawing {
 extension MomentMarksDrawing {
     /// The width the picture has while a label is laid out.
     static let unit: CGFloat = 1000
-    /// A label's lines break at 13.2 times its letter size (288 of 390 points at 22, board T2), so a pinch scales the
+    /// A label's lines break at 13.1 times its letter size (288 of 390 points at 22, board T2), so a pinch scales the
     /// whole label without rewrapping it, or at the width every phone shows when that is narrower (a landscape picture
     /// shows a third of its width); the letters' lines are 1.27 times their size apart (28 at 22).
-    static let wrap: CGFloat = 13.2
+    static let wrap: CGFloat = 13.1
     static let lineHeight: CGFloat = 1.27
 
     /// A label laid out, in units where the picture is 1000 wide: its words and the rectangle they are drawn in (as

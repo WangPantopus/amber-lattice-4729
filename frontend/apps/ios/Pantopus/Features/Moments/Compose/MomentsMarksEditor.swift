@@ -4,9 +4,10 @@
 //
 //  Text and Draw on the photo being posted (boards T2, T3). The picture is
 //  shown in the viewer's own frame (the phone's full width above the reply
-//  bar, filled and cropped as people will see it), with the strip the
-//  viewer's top bar covers marked. On the iPhone Duo it is the same card the
-//  Post screen shows for each pose, with the controls over it. X drops what
+//  bar, filled and cropped as people will see it), with a dashed line where
+//  labels may begin, below the lowest any viewer's top bar reaches. On the
+//  iPhone Duo it is the same card the Post screen shows for each pose, with
+//  the controls over it. X drops what
 //  changed in this visit (asking first when something did); Done keeps it.
 //  The editor is a branch of the composer's stack and its state lives in the
 //  composer's model (`MomentsMarking`), so a fold keeps it.
@@ -78,7 +79,7 @@ struct MomentsMarksEditor: View {
                         )
                     }
                 }
-                .overlay(alignment: .top) { viewerStrip(frame, insets: insets) }
+                .overlay(alignment: .top) { viewerStrip(frame) }
                 .overlay(alignment: .bottom) {
                     LinearGradient(colors: [.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
                         .frame(height: min(200, frame.height / 3))
@@ -149,24 +150,21 @@ struct MomentsMarksEditor: View {
         }
     }
 
-    /// The strip the viewer's top bar covers (its progress bars, face, name, place and buttons), as the viewer darkens
-    /// it, with a dashed line where it ends.
-    func viewerStrip(_ frame: CGRect, insets: EdgeInsets) -> some View {
-        let barsTop = duo.pose == .phone
-            ? insets.top + 8
-            : max(12, insets.top, duo.occludedBottom(from: frame.minX, to: frame.maxX)) - frame.minY
-        // Bars 3 pt, 9 pt to the header, the header 48 pt.
-        let covered = max(barsTop + 60, 0)
+    /// The viewer's top gradient, and a dashed line where labels may begin: below the lowest line any phone's viewer
+    /// top bar reaches in this picture (`MomentMarks.safeBox`), the same place in the picture on every phone.
+    func viewerStrip(_ frame: CGRect) -> some View {
+        let fill = MomentMarks.fill(image.size, in: frame.size)
+        let line = max(fill.minY + MomentMarks.safeBox(aspect: image.size.width / max(image.size.height, 1)).minY * fill.height, 0)
         return ZStack(alignment: .top) {
             LinearGradient(colors: [Color.black.opacity(0.55), .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: max(covered + 90, 170))
+                .frame(height: max(line + 60, 170))
             Path { path in
                 path.move(to: CGPoint(x: 0, y: 0.5))
                 path.addLine(to: CGPoint(x: frame.width, y: 0.5))
             }
             .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
             .frame(height: 1)
-            .offset(y: covered)
+            .offset(y: line)
         }
         .frame(width: frame.width, alignment: .top)
         .allowsHitTesting(false)

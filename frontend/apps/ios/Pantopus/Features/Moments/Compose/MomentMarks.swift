@@ -87,7 +87,7 @@ struct MomentMarks: Equatable {
     }
 
     /// The largest letters, as a share of the picture's width.
-    static let maxLetterSize: CGFloat = 0.14
+    static let maxLetterSize: CGFloat = 0.15
     /// A new label's letters, on the screen showing the picture (board T2).
     static let newLetterPoints: CGFloat = 22
 
@@ -98,15 +98,20 @@ struct MomentMarks: Equatable {
     /// not promised.
     static let narrowestFrame: CGFloat = 9.0 / 21.0
     static let widestFrame: CGFloat = 0.63
+    /// The most of a viewer's frame its top bar covers (the bars, face, name and place), on the tallest bar any phone
+    /// has (about 16% measured on an iPhone 17 and a 720 x 1280 Android phone), with a little room.
+    static let topBar: CGFloat = 0.17
 
-    /// The part of a picture `aspect` wide (width over height) that every phone's viewer shows, in picture
-    /// coordinates: a centered box, as wide as the narrowest frame shows and as tall as the widest one does.
-    /// Labels stay inside it; drawing is not held to it.
+    /// Where a label may go on a picture `aspect` wide (width over height), in picture coordinates: the part every
+    /// phone's viewer shows (a centered box, as wide as the narrowest frame shows and as tall as the widest one does),
+    /// below the lowest line any viewer's top bar reaches in it. The whole label stays inside; drawing is not held to
+    /// it. The editor's dashed line is its top.
     static func safeBox(aspect: CGFloat) -> CGRect {
         guard aspect > 0 else { return CGRect(x: 0, y: 0, width: 1, height: 1) }
         let width = min(1, narrowestFrame / aspect)
         let height = min(1, aspect / widestFrame)
-        return CGRect(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+        let top = 0.5 - (0.5 - topBar) * height
+        return CGRect(x: (1 - width) / 2, y: top, width: width, height: 0.5 + height / 2 - top)
     }
 
     /// Where a picture `image` big lands when it fills `frame` (centered, cropped, as the viewer shows it), in the

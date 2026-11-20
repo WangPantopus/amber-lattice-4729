@@ -252,10 +252,17 @@ extension MomentsMarking {
         update(id) { $0.center = CGPoint(x: $0.center.x + dx, y: $0.center.y + dy) }
     }
 
-    /// VoiceOver's Bigger and Smaller.
+    /// VoiceOver's Make larger and Make smaller.
     func scale(_ id: UUID, by factor: CGFloat) {
         pick(id)
         update(id) { $0.size *= factor }
+    }
+
+    /// VoiceOver's Delete.
+    func delete(_ id: UUID) {
+        if typing == id { typing = nil }
+        if picked == id { picked = nil }
+        editing.labels.removeAll { $0.id == id }
     }
 
     /// Changes one label and holds it to the part every phone shows.
