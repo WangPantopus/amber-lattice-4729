@@ -57,6 +57,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -184,12 +185,15 @@ fun MomentsComposeScreen(
     }
     BackHandler(enabled = state.step != ComposeStep.Review && state.text.isNotBlank()) { asksDiscard = true }
     BackHandler(enabled = state.step == ComposeStep.Review) {
-        if (state.media != null) {
+        // While a Post is making its Moment, Back stays on the sheet (the upload needs the photo or video).
+        if (state.media != null && state.canRetake) {
             asksDiscard = true
         } else {
             viewModel.backFromReview()
         }
     }
+    // Nor does "Discard this Moment?" stay up over it (asked while a video was still getting ready).
+    LaunchedEffect(state.canRetake) { if (!state.canRetake) asksDiscard = false }
 
     Box(modifier = Modifier.fillMaxSize().background(PantopusColors.momentStage).semantics { testTagsAsResourceId = true }) {
         when (state.step) {
@@ -742,9 +746,10 @@ private fun ReviewStep(
                     .statusBarsPadding()
                     .padding(start = Spacing.s3, top = 11.dp)
                     .height(40.dp)
+                    .alpha(if (state.canRetake) 1f else 0.5f)
                     .clip(RoundedCornerShape(Radii.xl2))
                     .background(if (state.media != null) PantopusColors.momentCameraChip else Color.Black.copy(alpha = 0.25f))
-                    .clickable(role = Role.Button, onClick = onBack)
+                    .clickable(enabled = state.canRetake, role = Role.Button, onClick = onBack)
                     .padding(start = Spacing.s2, end = 14.dp)
                     .testTag("moments.post.retake"),
             verticalAlignment = Alignment.CenterVertically,

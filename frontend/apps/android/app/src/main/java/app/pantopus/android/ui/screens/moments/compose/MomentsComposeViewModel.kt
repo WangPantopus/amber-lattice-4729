@@ -213,6 +213,12 @@ data class MomentsComposeUiState(
             }
 
     /**
+     * Retake, Edit and Back can leave the Post sheet: not while a Post is making its Moment, whose upload needs the photo
+     * or video on the sheet. A video still getting ready can be left (no Moment yet: Post just stops waiting).
+     */
+    val canRetake: Boolean get() = !posting || readying != null
+
+    /**
      * The camera's and the card's chip: where it will pin, or "Your home" at home, as the Post sheet says (others read
      * the town, never the place the home sits at).
      */
@@ -622,6 +628,11 @@ class MomentsComposeViewModel
                     _state.update { it.copy(posting = false, readying = null) }
                     throw cancelled
                 }
+            // Retake in the instant the video got ready (before this resumed): that Post ends here too, no Moment made.
+            if (_state.value.media != media) {
+                _state.update { it.copy(posting = false, readying = null) }
+                return null
+            }
             _state.update { it.copy(readying = null) }
             return when (ready) {
                 is VideoReady.Ready -> ready.videos
@@ -815,10 +826,11 @@ class MomentsComposeViewModel
             }
         }
 
-        /** P3's Retake (a photo or video) or Edit (a text card). */
+        /** P3's Retake (a photo or video) or Edit (a text card); never while a Post is making its Moment ([canRetake]). */
         fun backFromReview() {
-            requestId = java.util.UUID.randomUUID().toString()
             val current = _state.value
+            if (!current.canRetake) return
+            requestId = java.util.UUID.randomUUID().toString()
             dropPreparation()
             current.media?.file?.delete()
             marksKeeper.drop()
