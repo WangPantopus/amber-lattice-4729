@@ -23,12 +23,13 @@ only when all of these hold, and otherwise drops it without an error:
 4. The Moment is shown at its exact pin: not shown as an area (`show_area`), not floating (the Sky: at home, or sent
    with `show_area`), not with no location. A pin at a public place picked by name keeps it; that pin is the place's
    own point, no farther than `pick_within_m` from the author.
-5. The author is known not to be at home: the spot they post from is not within 60 m of a home they live at. With the
-   Sky off a picked place moves the pin, so the server also asks at the point the phone sent, before the pin moves.
-   When the author's homes can't be read, the mark is dropped (it fails closed): nothing is stored, so no read shows
-   it and no ring carries its `live_until`. Where the Moment goes is decided as in v4.0.
+5. The author is not at home: the spot they post from is not within 60 m of a home they live at. With the Sky off a
+   picked place moves the pin, so the server also asks at the point the phone sent, before the pin moves. When the
+   author's homes can't be read, the server counts them as at home (since 2026-11-20, for where the Moment goes too:
+   it floats over its area with the Sky on, says its town and keeps no height), so the mark is dropped: nothing is
+   stored, no read shows it and no ring carries its `live_until`. Someone with no home is never at home.
 
-These are the places a height is never kept (`store.shownAltitude`), plus rules 2, 3 and 5's failure case. Every read
+These are the places a height is never kept (`store.shownAltitude`), plus rules 2 and 3. Every read
 checks the stored Moment again (`store.takenHere`), so a Moment at home, shown as an area, floating or with no location
 never reads as taken here, whatever was stored.
 
@@ -49,7 +50,8 @@ Adds, only when the request sent `weather: true`:
 The weather is looked up after the home check and only away from home, alongside the other lookups; it adds at most
 2 seconds to the answer and usually nothing (the place lookups take longer). A request without `weather: true` looks
 nothing up and its answer has no `weather` key, so apps from before add no weather reads. Unchanged: every other field,
-`at_home` included (the app hides the Live line at home).
+`at_home` included (the app hides the Live line at home). When the author's homes can't be read, `at_home` is true,
+as `POST /api/moments` will treat it (and so `can_show_height` and `can_pin` are false).
 
 ## `POST /api/moments`
 

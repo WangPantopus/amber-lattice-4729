@@ -239,8 +239,9 @@ async function townAt(latitude, longitude) {
 
 /**
  * Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds). When their homes can't be
- * read it answers `onFailure`: false unless asked otherwise, as it always has. The Live mark (API v4.1) asks with
- * `onFailure: null`, so it can tell "not at home" from "unknown" and drop itself on the second.
+ * read it answers `onFailure`: false unless asked otherwise, as it always has. The Moments routes ask with
+ * `onFailure: true`: a failed read counts as at home, so it never shows where its author lives (the Moment floats over
+ * its area with the Sky on, says its town, keeps no height and no Live mark). Someone with no home is never at home.
  */
 async function isAtHome(userId, latitude, longitude, { onFailure = false } = {}) {
   const { householdHomeIds, householdHomeIdsOrThrow } = require('../../utils/homeMailAccess');
