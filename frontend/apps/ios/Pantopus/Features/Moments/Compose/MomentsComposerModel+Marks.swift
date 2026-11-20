@@ -282,7 +282,7 @@ extension MomentsMarking {
     }
 
     /// `label` inside the part every phone shows: letters no smaller than the picture check reads and no larger than
-    /// fit there, and its middle where the whole label stays inside.
+    /// fit there with every word on one line, and its middle where the whole label stays inside.
     func clamped(_ label: MomentMarks.Label) -> MomentMarks.Label {
         var label = label
         let safe = MomentMarks.safeBox(aspect: aspect)
@@ -291,7 +291,14 @@ extension MomentsMarking {
         let smallest = MomentMarks.minLetterSize(aspect: aspect)
         label.size = min(max(label.size, smallest), MomentMarks.maxLetterSize)
         var laid = MomentMarksDrawing.lay(label, aspect: aspect)
-        while laid.box.width > safe.width * unit + 0.5 || laid.box.height > safe.height * tall + 0.5, label.size > smallest {
+        /// Smaller while it overflows the box, or while a word that could fit a whole line (13.1 letters) doesn't fit the
+        /// line it has (it would break inside the word). A longer word (a web address) keeps the size and breaks.
+        func breaksWord() -> Bool {
+            let word = MomentMarksDrawing.longestWord(label)
+            return word > laid.wordsRect.width && word <= label.size * unit * MomentMarksDrawing.wrap
+        }
+        while laid.box.width > safe.width * unit + 0.5 || laid.box.height > safe.height * tall + 0.5 || breaksWord(),
+              label.size > smallest {
             label.size = max(smallest, label.size * 0.95)
             laid = MomentMarksDrawing.lay(label, aspect: aspect)
         }

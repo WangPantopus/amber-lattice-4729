@@ -133,6 +133,15 @@ extension MomentMarksDrawing {
         )
     }
 
+    /// The widest single word of `label`, in the same units as `lay`: its letters shrink until this fits on a line.
+    static func longestWord(_ label: MomentMarks.Label) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: label.size * unit, weight: .bold)
+        let widest = label.text.split(whereSeparator: \.isWhitespace)
+            .map { NSAttributedString(string: String($0), attributes: [.font: font]).size().width }
+            .max() ?? 0
+        return ceil(widest)
+    }
+
     /// The room around a label's words: a little for plain letters' edge; for a label or a sign 0.64 and 0.41 of the
     /// letter size across and down (14 and 9 at 22, board T2).
     static func padding(_ style: MomentMarks.Style, em: CGFloat) -> CGSize {
