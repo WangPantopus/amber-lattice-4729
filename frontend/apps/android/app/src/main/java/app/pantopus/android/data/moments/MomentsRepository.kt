@@ -301,7 +301,10 @@ class MomentsRepository
         suspend fun placePreview(
             latitude: Double,
             longitude: Double,
-        ): NetworkResult<MomentPlacePreviewDto> = safeApiCall { api.placePreview(MomentPointBody(latitude, longitude)) }
+            /** API v4.1: also the weather "Show the weather" would keep; only at the author's own fix. */
+            weather: Boolean = false,
+        ): NetworkResult<MomentPlacePreviewDto> =
+            safeApiCall { api.placePreview(MomentPointBody(latitude, longitude, weather = true.takeIf { weather })) }
 
         /** With location off: only the 18+ state and whether you have a connection (contract v3.4). */
         suspend fun postingPreview(): NetworkResult<MomentPlacePreviewDto> = safeApiCall { api.placePreview(MomentPointBody()) }

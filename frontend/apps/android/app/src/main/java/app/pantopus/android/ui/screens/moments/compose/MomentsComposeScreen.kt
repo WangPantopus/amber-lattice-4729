@@ -199,7 +199,8 @@ fun MomentsComposeScreen(
                     hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
                     askCamera = { cameraPermission.launch(Manifest.permission.CAMERA) },
                     onClose = closeOrAsk,
-                    onCaptured = viewModel::captured,
+                    // The in-app camera: a Moment taken here, just now (the Live mark).
+                    onCaptured = { media -> viewModel.captured(media, fromCamera = true) },
                     onLibrary = openLibrary,
                     onText = { viewModel.showStep(ComposeStep.Text) },
                     onNotice = { message -> if (message != null) viewModel.showNotice(message) else viewModel.clearNotice() },
@@ -230,6 +231,7 @@ fun MomentsComposeScreen(
                     onFindPlace = { viewModel.findPlace(true) },
                     onNoLocation = viewModel::setNoLocation,
                     onShowHeight = viewModel::setShowHeight,
+                    onShowWeather = viewModel::setShowWeather,
                     sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                 )
         }
@@ -701,6 +703,7 @@ private fun ReviewStep(
     onFindPlace: () -> Unit,
     onNoLocation: (Boolean) -> Unit,
     onShowHeight: (Boolean) -> Unit,
+    onShowWeather: (Boolean) -> Unit,
     sky: MomentsSkyActions,
 ) {
     // Under the marks editor, TalkBack reads only the editor.
@@ -781,6 +784,7 @@ private fun ReviewStep(
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,
             onShowHeight = onShowHeight,
+            onShowWeather = onShowWeather,
             sky = sky,
         )
     }
