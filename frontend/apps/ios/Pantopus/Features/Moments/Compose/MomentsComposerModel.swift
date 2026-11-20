@@ -299,20 +299,16 @@ final class MomentsComposerModel {
             return
         }
         draft = .video(url)
-        // A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own.
-        let ranges = MomentsMediaExport.parts(of: seconds)
-        prepare(ranges.map { range in
-            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil) }
-        })
+        prepareVideo(url, seconds: seconds)
     }
 
-    /// The marks editor's Done (`+Marks`): the photo, at most 2048 px, carries `marks`. The draft and its export
-    /// change in one step, and the export draws them in off the main thread, so a Post tapped next waits for them.
-    func use(marked base: UIImage, _ marks: MomentMarks) {
-        guard !isPosting, case .photo = draft else { return }
-        draft = .photo(base)
-        marking.keep(marks, base: base)
-        prepare([{ folder in try await MomentMarksDrawing.export(base, marks, into: folder) }])
+    /// A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own, with the
+    /// marks (`overlay`) over every frame of each.
+    private func prepareVideo(_ url: URL, seconds: Double, overlay: MomentsVideoEncoder.Overlay? = nil) {
+        let ranges = MomentsMediaExport.parts(of: seconds)
+        prepare(ranges.map { range in
+            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil, overlay: overlay) }
+        })
     }
 
     /// P2's Next: the text card goes to the Post sheet.
@@ -407,5 +403,29 @@ final class MomentsComposerModel {
     var basePin: CLLocationCoordinate2D? {
         if let capture { return CLLocationCoordinate2D(latitude: capture.latitude, longitude: capture.longitude) }
         return fix.map { CLLocationCoordinate2D(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
+    }
+}
+
+// MARK: - Text and Draw's Done
+
+extension MomentsComposerModel {
+    /// The marks editor's Done (`+Marks`): the photo, at most 2048 px, carries `marks`. The draft and its export
+    /// change in one step, and the export draws them in off the main thread, so a Post tapped next waits for them.
+    func use(marked base: UIImage, _ marks: MomentMarks) {
+        guard !isPosting, case .photo = draft else { return }
+        draft = .photo(base)
+        marking.keep(marks, base: base)
+        prepare([{ folder in try await MomentMarksDrawing.export(base, marks, into: folder) }])
+    }
+
+    /// The same for a video: every part is exported again with the marks over every frame; Post waits for it.
+    func use(marked url: URL, video: (size: CGSize, seconds: Double), _ marks: MomentMarks) {
+        guard !isPosting, case .video = draft else { return }
+        draft = .video(url)
+        marking.keep(marks, base: nil, video: video)
+        // The export running for the video as it was is no longer wanted.
+        preparation?.cancel()
+        let aspect = video.size.width / max(video.size.height, 1)
+        prepareVideo(url, seconds: video.seconds, overlay: MomentMarksDrawing.overlay(marks, aspect: aspect))
     }
 }

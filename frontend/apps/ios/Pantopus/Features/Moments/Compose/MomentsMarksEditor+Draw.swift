@@ -9,6 +9,7 @@
 //  shows.
 //
 
+import AVFoundation
 import SwiftUI
 
 extension MomentsMarksEditor {
@@ -100,41 +101,76 @@ extension MomentsMarksEditor {
     }
 }
 
-/// The picture as the viewer frames it (filling `size`), its marks, and a finger drawing a line on it. Its own view:
-/// it redraws with every point, the editor's controls don't.
+/// The picture as the viewer frames it (filling `size`, a video playing muted), its marks, and a finger drawing a line
+/// on it. Its own view: it redraws with every point, the editor's controls don't.
 struct MomentsMarksDrawArea: View {
     let marking: MomentsMarking
-    let image: UIImage
+    let media: MomentsMarkedMedia
     let size: CGSize
     /// Text: VoiceOver's "Add words", which adds a label as opening Text does.
     var addWords: (() -> Void)?
 
     var body: some View {
-        let fill = MomentMarks.fill(image.size, in: size)
-        // The label being typed in is its text field (`MomentsMarksTextLayer`), not drawn under it.
-        MomentsMarkedPhoto(image: image, marks: marking.shown)
-            .frame(width: size.width, height: size.height)
-            .clipped()
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        let point = CGPoint(
-                            x: (value.location.x - fill.minX) / fill.width,
-                            y: (value.location.y - fill.minY) / fill.height
-                        )
-                        marking.draw(at: point, pictureWidth: fill.width)
-                    }
-                    .onEnded { _ in marking.endLine() },
-                // Text: the labels' own layer takes the touches.
-                isEnabled: marking.tool == .draw
-            )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("The photo you're posting")
-            .accessibilityHint(marking.tool == .draw ? "Draw on it with one finger." : "")
-            .accessibilityActions {
-                if let addWords { Button("Add words", action: addWords) }
+        let fill = MomentMarks.fill(media.size, in: size)
+        Group {
+            switch media {
+            case let .photo(image): Image(uiImage: image).resizable().scaledToFill()
+            case let .video(url, _): MomentsMarksVideo(url: url)
             }
-            .accessibilityIdentifier("moments.marks.picture")
+        }
+        .frame(width: size.width, height: size.height)
+        // An overlay, so the marks (as large as the whole picture, cropped edges included) never resize the frame.
+        // The label being typed in is its text field (`MomentsMarksTextLayer`), not drawn under it.
+        .overlay(alignment: .topLeading) {
+            MomentMarksCanvas(marks: marking.shown)
+                .frame(width: fill.width, height: fill.height)
+                .offset(x: fill.minX, y: fill.minY)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onChanged { value in
+                    let point = CGPoint(
+                        x: (value.location.x - fill.minX) / fill.width,
+                        y: (value.location.y - fill.minY) / fill.height
+                    )
+                    marking.draw(at: point, pictureWidth: fill.width)
+                }
+                .onEnded { _ in marking.endLine() },
+            // Text: the labels' own layer takes the touches.
+            isEnabled: marking.tool == .draw
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(media.isVideo ? "The video you're posting" : "The photo you're posting")
+        .accessibilityHint(marking.tool == .draw ? "Draw on it with one finger." : "")
+        .accessibilityActions {
+            if let addWords { Button("Add words", action: addWords) }
+        }
+        .accessibilityIdentifier("moments.marks.picture")
+    }
+}
+
+/// The video under the marks: muted and looping, on a player of its own (the Post screen keeps its own).
+private struct MomentsMarksVideo: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        MomentsVideoSurface(player: player ?? AVPlayer())
+            .onAppear {
+                if player == nil {
+                    let looping = AVPlayer(url: url)
+                    looping.isMuted = true
+                    player = looping
+                }
+                player?.play()
+            }
+            .onDisappear { player?.pause() }
+            .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)) { note in
+                guard let item = note.object as? AVPlayerItem, item === player?.currentItem else { return }
+                player?.seek(to: .zero)
+                player?.play()
+            }
     }
 }

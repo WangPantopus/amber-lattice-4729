@@ -118,7 +118,10 @@ extension MomentsPostStage {
                 .accessibilityLabel("The photo you're posting")
         case let .video(url):
             Color.black
-                .overlay { videoSurface(url: url) }
+                .overlay {
+                    videoSurface(url: url)
+                        .overlay { MomentMarksOverVideo(marks: model.marking.marks, picture: model.marking.video?.size) }
+                }
                 .clipped()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("The video you're posting")

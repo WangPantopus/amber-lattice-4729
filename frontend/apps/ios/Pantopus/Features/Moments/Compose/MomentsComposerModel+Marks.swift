@@ -23,6 +23,8 @@ final class MomentsMarking {
 
     /// The photo at 2048 px or less, made when the editor first opens: what Done draws the marks onto.
     private(set) var base: UIImage?
+    /// A video's picture as it's shown and its length (read when the editor first opens on it).
+    private(set) var video: (size: CGSize, seconds: Double)?
     /// The marks on the Post screen's picture: what Done kept.
     private(set) var marks = MomentMarks()
     /// The editor is showing.
@@ -72,6 +74,7 @@ final class MomentsMarking {
         making?.cancel()
         making = nil
         base = nil
+        video = nil
         marks = MomentMarks()
         editing = MomentMarks()
         isOpen = false
@@ -82,16 +85,17 @@ final class MomentsMarking {
         picked = nil
     }
 
-    /// Opens the editor on `image` with the marks it has, still editable. The 2048 px copy is made the first time.
-    func open(_ tool: Tool, on image: UIImage) {
+    /// Opens the editor on a picture `size` big (a photo's, or a video's as shown) with the marks it has, still
+    /// editable. For a photo, the 2048 px copy is made the first time.
+    func open(_ tool: Tool, size: CGSize, photo image: UIImage?) {
         self.tool = tool
         editing = marks
         drawing = false
         (typing, picked) = (nil, nil)
-        aspect = image.size.height > 0 ? image.size.width / image.size.height : 1
+        aspect = size.height > 0 ? size.width / size.height : 1
         addsLabel = tool == .text && marks.labels.count < MomentMarks.maxLabels
         isOpen = true
-        guard base == nil, making == nil else { return }
+        guard let image, base == nil, making == nil else { return }
         making = Task { [weak self] in
             let made = await MomentMarksDrawing.base(image)
             guard !Task.isCancelled else { return }
@@ -99,10 +103,16 @@ final class MomentsMarking {
         }
     }
 
-    /// Done: the picture carries `marks` now, drawn on `base`.
-    func keep(_ marks: MomentMarks, base: UIImage) {
+    /// A video on the Post screen: its picture's size and length, for the editor and for Done.
+    func opened(video size: CGSize, seconds: Double) {
+        video = (size, seconds)
+    }
+
+    /// Done: the picture carries `marks` now, drawn on `base` (a photo's) or over every frame (a video's).
+    func keep(_ marks: MomentMarks, base: UIImage?, video: (size: CGSize, seconds: Double)? = nil) {
         self.marks = marks
         self.base = base
+        self.video = video
         editing = marks
         (typing, picked) = (nil, nil)
         isOpen = false
@@ -313,24 +323,71 @@ extension MomentsMarking {
     }
 }
 
-extension MomentsComposerModel {
-    /// Text and Draw are offered on a photo. They are off while a Post is going (it would swap the file being sent).
-    var offersMarks: Bool {
-        if case .photo = draft { return true }
+/// What the marks editor shows under the marks: the photo, or the video (as shown, after the phone's rotation).
+enum MomentsMarkedMedia {
+    case photo(UIImage)
+    case video(URL, size: CGSize)
+
+    var size: CGSize {
+        switch self {
+        case let .photo(image): image.size
+        case let .video(_, size): size
+        }
+    }
+
+    var isVideo: Bool {
+        if case .video = self { return true }
         return false
     }
+}
 
-    /// The Post screen's Text or Draw pill.
-    func openMarks(_ tool: MomentsMarking.Tool) {
-        guard !isPosting, case let .photo(image) = draft else { return }
-        marking.open(tool, on: image)
+extension MomentsComposerModel {
+    /// Text and Draw are offered on a photo or a video. They are off while a Post is going (it would swap the file
+    /// being sent).
+    var offersMarks: Bool {
+        switch draft {
+        case .photo, .video: true
+        case .text, nil: false
+        }
     }
 
-    /// The editor's Done: nothing changed closes it; else the photo goes up with the marks drawn in.
+    /// What the open editor marks.
+    var markedMedia: MomentsMarkedMedia? {
+        switch draft {
+        case let .photo(image): .photo(image)
+        case let .video(url): marking.video.map { .video(url, size: $0.size) }
+        case .text, nil: nil
+        }
+    }
+
+    /// The Post screen's Text or Draw pill. A video's size and length are read first (once).
+    func openMarks(_ tool: MomentsMarking.Tool) {
+        guard !isPosting else { return }
+        switch draft {
+        case let .photo(image):
+            marking.open(tool, size: image.size, photo: image)
+        case let .video(url):
+            if let video = marking.video { return marking.open(tool, size: video.size, photo: nil) }
+            Task {
+                guard let shown = await MomentsMediaExport.shown(url), draft == .video(url), !isPosting else { return }
+                marking.opened(video: shown.size, seconds: shown.seconds)
+                marking.open(tool, size: shown.size, photo: nil)
+            }
+        case .text, nil:
+            return
+        }
+    }
+
+    /// The editor's Done: nothing changed closes it; else the photo goes up with the marks drawn in, or the video is
+    /// exported again with them over every frame of every part.
     func applyMarks() {
         marking.endTyping()
-        guard marking.changed, case let .photo(image) = draft else { return marking.cancel() }
-        use(marked: marking.base ?? image, marking.editing)
+        guard marking.changed else { return marking.cancel() }
+        switch draft {
+        case let .photo(image): use(marked: marking.base ?? image, marking.editing)
+        case let .video(url): if let video = marking.video { use(marked: url, video: video, marking.editing) }
+        case .text, nil: marking.cancel()
+        }
     }
 
     /// The editor's X: asks first when something changed.
@@ -343,7 +400,7 @@ extension MomentsComposerModel {
         }
     }
 
-    /// Retake on a photo with marks asks first ("Discard this Moment?").
+    /// Retake on a picture with marks asks first ("Discard this Moment?").
     func askRetake() {
         if marking.marks.isEmpty {
             retake()

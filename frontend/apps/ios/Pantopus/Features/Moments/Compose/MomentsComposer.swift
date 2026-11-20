@@ -29,9 +29,9 @@ struct MomentsComposer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if model.marking.isOpen, case let .photo(image) = model.draft {
-                // Text and Draw on the photo (`MomentsMarksEditor`): in this stack, not a cover, so a fold keeps it.
-                MomentsMarksEditor(model: model, image: image)
+            if model.marking.isOpen, let media = model.markedMedia {
+                // Text and Draw (`MomentsMarksEditor`): in this stack, not a cover, so a fold keeps it.
+                MomentsMarksEditor(model: model, media: media)
                     .environment(\.colorScheme, .dark)
             } else if model.draft != nil {
                 // Posted: the next of several picked together takes the sheet; after the last, the composer closes.
