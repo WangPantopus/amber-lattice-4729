@@ -323,6 +323,12 @@ area), the server decides, whatever an app's sheet says:
   and every read checks again. A map ring carries `live_until` only when the Moment its point shows is such a pin. A
   Moment shared later reads "Taken here", never "Live". Its weather stamp is read by the server at the pin (a phone's
   value is never stored) and kept only with the mark; the preview looks the weather up only away from home.
+- **A home lookup that fails counts as at home** (founder, 2026-11-20): when the author's homes can't be read, posting
+  a Moment treats them as at home for everything that shows where they are. With the Sky on it floats over its area;
+  either way it says its town and keeps no height or Live mark, a place picked beside a home takes no pin, and the
+  preview answers `at_home: true`, so the Post sheet shows what the post will do. The post still succeeds and the
+  failure is logged (`moments.at_home_failed`). Someone with no home is never at home. Before, a failed read counted
+  as "not at home" and a Moment made at home kept its exact pin, the place's name and its height.
 - **Files carry no location:** photo EXIF and video location tags are removed on upload (`photoMetadata.js`,
   `videoMetadata.js`); files sit in private storage behind 15-minute signed links and are deleted 7 days after the
   Moment ends (sooner when its author deletes it) unless a report holds them. Deleting the account deletes all of

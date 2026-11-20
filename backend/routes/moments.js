@@ -118,12 +118,13 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
     }).and('latitude', 'longitude'), req.body);
     const placed = at.latitude != null;
     const sky = await store.skyOn(req.user);
-    // null: the author's homes couldn't be read (`at_home` then answers false, as before).
-    const homeCheck = placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude, { onFailure: null }) : false;
-    // Asked for after the home check, and only when the point is known not to be at home, so a point at home is never
-    // sent to the weather source from here.
+    // A failed home read answers at home, as POST / will treat it: the sheet then offers what the post will do (only the
+    // area with the Sky on, no height, no pin at a place).
+    const homeCheck = placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude, { onFailure: true }) : false;
+    // Asked for after the home check, and only away from home, so a point at home is never sent to the weather source
+    // from here.
     const weatherRead = at.weather && placed
-      ? homeCheck.then((home) => (home === false ? momentWeather.weatherAt(at.latitude, at.longitude) : null))
+      ? homeCheck.then((home) => (home ? null : momentWeather.weatherAt(at.latitude, at.longitude)))
       : null;
     const [labels, home, heights, adult, connections, pickWithin, weather] = await Promise.all([
       placed ? momentPlace.labelsAt(at.latitude, at.longitude, { pinnableOnly: sky })
@@ -139,7 +140,7 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       sky && placed ? momentPlace.pickWithinM(at.latitude, at.longitude) : momentPlace.PICK_PLACE_M,
       weatherRead,
     ]);
-    const atHome = home === true;
+    const atHome = Boolean(home);
     // pick_within_m: how far from the pin the place picker's venues may be (POST / takes a venue_id within it).
     res.json({
       ...labels,
@@ -203,15 +204,12 @@ async function skyPreview(userId, at, atHome) {
  */
 async function skyPlacement(userId, body) {
   const { latitude, longitude } = body.location;
-  // Where the Moment goes follows `atHome` as before (false when the homes can't be read); `homeKnown` is for the Live
-  // mark only, which an unknown answer drops.
-  const home = await momentPlace.isAtHome(userId, latitude, longitude, { onFailure: null });
-  const [atHome, homeKnown] = [home === true, home !== null];
-  if (atHome || body.show_area) {
-    return { atHome, homeKnown, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
-  }
+  // A home read that fails counts as at home: the Moment floats and keeps no height, so a failure never shows where its
+  // author lives (the post still succeeds).
+  const atHome = await momentPlace.isAtHome(userId, latitude, longitude, { onFailure: true });
+  if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
   const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
-  if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, homeKnown, venue: null, area: null };
+  if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
   const within = await momentPlace.pickWithinM(latitude, longitude, { picked: Boolean(body.venue_id || venueKey) });
   let venue = null;
   if (body.venue_id) {
@@ -226,11 +224,12 @@ async function skyPlacement(userId, body) {
     venue = await momentPlace.namingPlace(latitude, longitude);
     if (!venue) throw store.fail(422, 'NO_PLACE_HERE', 'There is no public place to pin this Moment at here.');
   }
-  if (venue && await momentPlace.isAtHome(userId, venue.latitude, venue.longitude)) venue = null;
+  // A place whose home check fails takes no pin either.
+  if (venue && await momentPlace.isAtHome(userId, venue.latitude, venue.longitude, { onFailure: true })) venue = null;
   if (venue && haversineMeters(latitude, longitude, venue.latitude, venue.longitude) > within) {
     venue = { ...venue, latitude, longitude };
   }
-  return { atHome, homeKnown, venue, area: null };
+  return { atHome, venue, area: null };
 }
 
 /**
@@ -357,7 +356,7 @@ router.post('/', createLimiter, async (req, res) => {
     const { latitude, longitude } = location;
     let found;
     let atHome;
-    // Whether the author is known not to be at home where they stand (the Live mark is kept only then).
+    // Whether the author is away from home where they stand (the Live mark is kept only then; a failed read is home).
     let markHomeClear = false;
     if (unplaced) {
       [found, atHome] = [{ place_label: null, area_label: null, places: [] }, false];
@@ -365,23 +364,23 @@ router.post('/', createLimiter, async (req, res) => {
       // A pin at a place says the place's name; a Moment over its area the area's town, read at the area's point.
       const town = area ? await momentPlace.townAt(area.latitude, area.longitude) : null;
       [found, atHome] = [{ place_label: venue ? venue.label : town, area_label: town, places: [] }, placed.atHome];
-      markHomeClear = placed.homeKnown && !placed.atHome;
+      markHomeClear = !placed.atHome;
     } else if (sky) {
       // Where it was taken: the names that fit the spot, as before the Sky (only places that can take a pin).
       [found, atHome] = [await momentPlace.labelsAt(latitude, longitude, { pinnableOnly: true }), false];
-      markHomeClear = placed.homeKnown && !placed.atHome;
+      markHomeClear = !placed.atHome;
     } else {
-      // A picked place moves the pin, so for the Live mark "at home" is also asked at the point the phone sent. Null:
-      // the homes couldn't be read (atHome then false, as before; the mark is dropped).
+      // A failed home read counts as at home here too: the town's name, no height. A picked place moves the pin, so for
+      // the Live mark "at home" is also asked at the point the phone sent.
       const [labelsHere, home, spot] = await Promise.all([
         momentPlace.labelsAt(latitude, longitude),
-        momentPlace.isAtHome(req.user.id, latitude, longitude, { onFailure: null }),
+        momentPlace.isAtHome(req.user.id, latitude, longitude, { onFailure: true }),
         venue && body.taken_here
-          ? momentPlace.isAtHome(req.user.id, body.location.latitude, body.location.longitude, { onFailure: null })
+          ? momentPlace.isAtHome(req.user.id, body.location.latitude, body.location.longitude, { onFailure: true })
           : false,
       ]);
-      [found, atHome] = [labelsHere, home === true];
-      markHomeClear = home === false && spot === false;
+      [found, atHome] = [labelsHere, home];
+      markHomeClear = !home && !spot;
     }
     // The name the author picked for this point, worked out again here; an area or at-home Moment says the town.
     const labels = venue
@@ -395,8 +394,8 @@ router.post('/', createLimiter, async (req, res) => {
     const altitude = reading && (await store.heightsOn(req.user)) ? reading : null;
     const takenAt = store.takenAtShown(body.location.source === 'capture' ? body.location.taken_at : body.taken_at);
     // The Live mark (API v4.1): kept only for a camera photo or video at its exact pin away from home, the places a
-    // height is kept, and only when the author's home is known not to be where they stand (a failed home read drops
-    // it); newMomentRow decides again on what it stores. Its weather is read here, within its budget, never taken from
+    // height is kept (a failed home read counts as home, so it drops the mark); newMomentRow decides again on what it
+    // stores. Its weather is read here, within its budget, never taken from
     // the phone.
     // Any top-level `taken_at` means an album item (the apps send it for nothing else): no mark, however recent.
     const marked = body.taken_here && markHomeClear && store.markKept({
