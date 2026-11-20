@@ -186,9 +186,11 @@ data class MomentMarksEditing(
     fun changed(label: MomentLabel): MomentMarksEditing =
         copy(marks = marks.copy(labels = marks.labels.map { if (it.id == label.id) label else it }))
 
-    /** The picked label's words, at most 80 characters. */
-    fun typed(text: String): MomentMarksEditing =
-        picked?.let { changed(it.copy(text = text.take(MomentMarkRules.MAX_LABEL_CHARS))) } ?: this
+    /** The picked label's words, at most 80 characters (never cutting an emoji or other two-part letter in half). */
+    fun typed(text: String): MomentMarksEditing {
+        val kept = text.take(MomentMarkRules.MAX_LABEL_CHARS).let { if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it }
+        return picked?.let { changed(it.copy(text = kept)) } ?: this
+    }
 
     /** Typing stops (a tap elsewhere, the keyboard put away): the label stays picked; one left empty is removed. */
     fun typingEnded(): MomentMarksEditing {

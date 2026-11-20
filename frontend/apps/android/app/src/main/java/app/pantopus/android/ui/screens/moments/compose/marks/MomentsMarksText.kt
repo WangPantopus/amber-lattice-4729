@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -68,6 +70,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -77,6 +80,7 @@ import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
@@ -90,14 +94,23 @@ internal class LabelFrame(
     val pictureWidth: Int,
     val pictureHeight: Int,
     val floor: Float = Float.MAX_VALUE,
+    val ceiling: Float = 0f,
 ) {
-    /** [label] kept inside the part every phone shows, and above the editor's controls. */
+    /**
+     * [label] kept inside the part every phone shows, below the editor's top buttons ([ceiling]) and above its bottom
+     * controls ([floor]), so it can always be picked up again; the top buttons win where both can't be met.
+     */
     fun kept(label: MomentLabel): MomentLabel {
         val inside = MomentMarksPainter.keptIn(label, pictureWidth, pictureHeight)
         val box = MomentMarksPainter.layout(inside, width, height).box
-        val top = MomentMarkRules.labelBox(pictureWidth, pictureHeight).top * height
-        val lift = (box.bottom - floor).coerceAtMost(box.top - top)
-        return if (lift > 0f) inside.copy(y = inside.y - lift / height) else inside
+        val upper = max(ceiling, MomentMarkRules.labelBox(pictureWidth, pictureHeight).top * height)
+        val shift =
+            when {
+                box.top < upper -> upper - box.top
+                box.bottom > floor -> -(box.bottom - floor).coerceAtMost(box.top - upper)
+                else -> 0f
+            }
+        return if (shift != 0f) inside.copy(y = inside.y + shift / height) else inside
     }
 
     /** [label] moved by [dx], [dy] px and scaled by [zoom], kept as [kept] keeps it. */
@@ -276,7 +289,7 @@ private fun LabelField(
             onEdit { it.typingEnded() }
         }
     }
-    val letters = laid.text.paint.textSize
+    val letters = laid.letters
     val letterColor = MomentMarksPainter.letterColor(label)
     val box = MomentMarksPainter.boxColor(label)
     val shape = RoundedCornerShape(with(density) { laid.corner.toDp() })
@@ -295,14 +308,11 @@ private fun LabelField(
                 lineHeight = (letters * MomentMarkRules.LINE_HEIGHT).toSp(),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                shadow =
-                    if (label.style == MomentLabelStyle.Plain) {
-                        Shadow(PantopusColors.momentMarksShadow, Offset(0f, letters * 0.04f), letters * 0.12f)
-                    } else {
-                        null
-                    },
+                // Unhinted, like the painter's letters, so the words wrap where the photo's do.
+                textMotion = TextMotion.Animated,
             )
         }
+    val edge = MomentMarksPainter.edgeColor(label)
     BasicTextField(
         value = label.text,
         // Words that make the label wider or taller keep it inside the part every phone shows.
@@ -312,7 +322,7 @@ private fun LabelField(
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         modifier =
             Modifier
-                .centredAt(laid.box.centerX(), laid.box.centerY(), (laid.text.width + across * 2).roundToInt())
+                .centredAt(laid.box.centerX(), laid.box.centerY(), (laid.wrap + across * 2).roundToInt())
                 .onGloballyPositioned { bottom = it.boundsInWindow().bottom }
                 .graphicsLayer { translationY = -raise }
                 .pickedOutline(laid.corner)
@@ -331,6 +341,13 @@ private fun LabelField(
                     Text(
                         text = "Type here",
                         style = style.copy(color = letterColor.copy(alpha = 0.6f)),
+                        modifier = Modifier.clearAndSetSemantics {},
+                    )
+                } else if (edge != null) {
+                    // Plain letters' edge behind the words being typed, as the photo will have it.
+                    BasicText(
+                        text = label.text,
+                        style = style.copy(color = edge, drawStyle = Stroke(MomentMarksPainter.EDGE * letters, join = StrokeJoin.Round)),
                         modifier = Modifier.clearAndSetSemantics {},
                     )
                 }

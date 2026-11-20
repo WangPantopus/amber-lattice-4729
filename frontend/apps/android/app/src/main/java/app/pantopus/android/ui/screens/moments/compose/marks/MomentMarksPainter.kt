@@ -11,7 +11,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardSignatureInk
 import app.pantopus.android.ui.theme.PantopusColors
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -21,16 +20,21 @@ import kotlin.math.roundToInt
  * out by [layout], the same in both.
  */
 object MomentMarksPainter {
-    /** Plain letters' soft shadow, in letter sizes. */
-    private const val SHADOW_BLUR = 0.12f
-    private const val SHADOW_DROP = 0.04f
+    /**
+     * Labels are laid out on a picture this many units wide and then scaled, so their lines break the same at every
+     * size: on the editor's screen, in the text field and in the 2048-px photo (iPhone lays out at 1000 units too).
+     */
+    private const val LAYOUT_WIDTH = 1000f
+
+    /** Plain letters' thin edge, in letter sizes (an edge scales with the picture; a shadow's blur doesn't). */
+    const val EDGE = 0.08f
 
     /** A plain label's box around its words (it has no plate), in letter sizes. */
     private const val PLAIN_ACROSS = 0.12f
     private const val PLAIN_DOWN = 0.06f
 
     /** How many times [keptIn] shrinks a label's letters to fit. */
-    private const val FIT_PASSES = 3
+    private const val FIT_PASSES = 4
 
     /** [skip]: a label the editor draws itself while its words are typed. */
     fun draw(
@@ -59,41 +63,66 @@ object MomentMarksPainter {
             }
             val restore = canvas.save()
             canvas.translate(laid.box.left + laid.padAcross, laid.box.top + laid.padDown)
+            canvas.scale(laid.scale, laid.scale)
+            edgeColor(label)?.let { edge ->
+                // Plain letters: the edge first, then the letters over it.
+                laid.text.paint.apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = EDGE * laid.text.paint.textSize
+                    strokeJoin = Paint.Join.ROUND
+                    color = edge.toArgb()
+                }
+                laid.text.draw(canvas)
+                laid.text.paint.apply {
+                    style = Paint.Style.FILL
+                    color = letterColor(label).toArgb()
+                }
+            }
             laid.text.draw(canvas)
             canvas.restoreToCount(restore)
         }
     }
 
-    /** A label laid out on a picture [width] px wide: its words, and its box around them, centred on its middle. */
+    /**
+     * A label laid out on a picture [width] px wide: its words (laid out at [LAYOUT_WIDTH] units and drawn at [scale]),
+     * and its box around them in px, centred on its middle; [letters] and [wrap] are the letter size and line width
+     * in px.
+     */
     class LabelLayout(
         val text: StaticLayout,
         val box: RectF,
         val corner: Float,
         val padAcross: Float,
         val padDown: Float,
-    )
+        val scale: Float,
+        /** The longest word over the line width: above 1, a word had to break in the middle. */
+        val wordOverflow: Float = 0f,
+    ) {
+        val letters: Float get() = text.paint.textSize * scale
+        val wrap: Float get() = text.width * scale
+    }
 
     fun layout(
         label: MomentLabel,
         width: Float,
         height: Float,
     ): LabelLayout {
-        val letters = label.size * width
+        val scale = width / LAYOUT_WIDTH
+        val letters = label.size * LAYOUT_WIDTH
         val paint =
             TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = letters
                 typeface = Typeface.DEFAULT_BOLD
                 color = letterColor(label).toArgb()
-                if (label.style == MomentLabelStyle.Plain) {
-                    setShadowLayer(SHADOW_BLUR * letters, 0f, SHADOW_DROP * letters, PantopusColors.momentMarksShadow.toArgb())
-                }
+                isLinearText = true
+                isSubpixelText = true
             }
         val words = label.text.ifEmpty { " " }
         val metrics = paint.fontMetrics
         val (across, down) = padding(label, letters)
         // Lines break at 13.1 letter sizes, or at the width a label may take (less its padding) where that's narrower:
         // a landscape picture shows only its middle third.
-        val room = MomentMarkRules.labelBox(width.roundToInt(), height.roundToInt()).width * width - across * 2
+        val room = MomentMarkRules.labelBox(width.roundToInt(), height.roundToInt()).width * LAYOUT_WIDTH - across * 2
         val wrap = minOf(MomentMarkRules.WRAP_LETTERS * letters, room).roundToInt().coerceAtLeast(letters.roundToInt().coerceAtLeast(1))
         val text =
             StaticLayout.Builder
@@ -105,12 +134,21 @@ object MomentMarksPainter {
         // The box hugs the widest line; the lines are centred in the layout's own width, so the drawing shifts by half
         // of what's left over.
         val widest = (0 until text.lineCount).maxOf { text.getLineWidth(it) }
-        val boxWidth = widest + across * 2
-        val boxHeight = text.height + down * 2
+        val boxWidth = (widest + across * 2) * scale
+        val boxHeight = (text.height + down * 2) * scale
         val centreX = label.x * width
         val centreY = label.y * height
         val box = RectF(centreX - boxWidth / 2, centreY - boxHeight / 2, centreX + boxWidth / 2, centreY + boxHeight / 2)
-        return LabelLayout(text, box, MomentMarkRules.CORNER * letters, across - (text.width - widest) / 2, down)
+        val longestWord = words.split(' ', '\n').maxOf { paint.measureText(it) }
+        return LabelLayout(
+            text = text,
+            box = box,
+            corner = MomentMarkRules.CORNER * letters * scale,
+            padAcross = (across - (text.width - widest) / 2) * scale,
+            padDown = down * scale,
+            scale = scale,
+            wordOverflow = longestWord / wrap,
+        )
     }
 
     /** A label's padding around its words, across and down, for letters [letters] px tall (a plain label has no plate). */
@@ -122,6 +160,14 @@ object MomentMarksPainter {
             PLAIN_ACROSS * letters to PLAIN_DOWN * letters
         } else {
             MomentMarkRules.PAD_ACROSS * letters to MomentMarkRules.PAD_DOWN * letters
+        }
+
+    /** Plain letters' edge: black 45%, or white 70% under black ink (iPhone's look); none on a plate. */
+    fun edgeColor(label: MomentLabel): Color? =
+        when {
+            label.style != MomentLabelStyle.Plain -> null
+            label.ink == MomentInk.Black -> PantopusColors.momentMarksEdgeLight
+            else -> PantopusColors.momentMarksEdgeDark
         }
 
     /** The label's letters: the ink, or on a sign dark letters (white ones on a black or red sign, which read better). */
@@ -154,15 +200,17 @@ object MomentMarksPainter {
         val allowed = MomentMarkRules.labelBox(width, height)
         val smallest = MomentMarkRules.smallestLetters(width, height)
         var sized = label.copy(size = label.size.coerceIn(smallest, MomentMarkRules.LARGEST_LETTERS))
-        var box = layout(sized, width.toFloat(), height.toFloat()).box
-        // Smaller letters wrap differently, so a couple of passes settle it.
+        var laid = layout(sized, width.toFloat(), height.toFloat())
+        // Smaller letters wrap differently, so a few passes settle it; a word is never broken in the middle to fit.
         var passes = 0
         while (passes++ < FIT_PASSES) {
-            val fits = min(allowed.width * width / box.width(), allowed.height * height / box.height())
+            val box = laid.box
+            val fits = minOf(allowed.width * width / box.width(), allowed.height * height / box.height(), 1f / laid.wordOverflow)
             if (fits >= 1f || sized.size <= smallest) break
             sized = sized.copy(size = (sized.size * fits).coerceAtLeast(smallest))
-            box = layout(sized, width.toFloat(), height.toFloat()).box
+            laid = layout(sized, width.toFloat(), height.toFloat())
         }
+        val box = laid.box
         return sized.copy(
             x = kept(sized.x, box.width() / width / 2, allowed.left, allowed.right),
             y = kept(sized.y, box.height() / height / 2, allowed.top, allowed.bottom),

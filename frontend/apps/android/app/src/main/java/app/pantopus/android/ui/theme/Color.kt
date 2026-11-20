@@ -844,5 +844,9 @@ object PantopusColors {
     /** Text's "Label" plate (black at 66%, board T2; white at 88% under black ink), and plain letters' soft shadow. */
     val momentMarksLabelBox = Color(0xA8000000)
     val momentMarksLabelPlate = Color(0xE0FFFFFF)
+
+    /** Plain letters' thin edge: black 45%, or white 70% under black ink. */
+    val momentMarksEdgeDark = Color(0x73000000)
+    val momentMarksEdgeLight = Color(0xB3FFFFFF)
     val momentMarksShadow = Color(0x99000000)
 }

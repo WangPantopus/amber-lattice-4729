@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,11 +62,13 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -95,6 +98,9 @@ private val VIEWER_TOP_BAR = 60.dp
  * up from the screen's bottom), less the 68 dp reply bar the frame stops above, plus room for the picked label's handle.
  */
 private val TOOLS_ABOVE_FRAME_BOTTOM = 150.dp
+
+/** How far below the frame's top (and the status bar) a label stays, clear of the X and Done: 11 + 44 dp and a gap. */
+private val TOP_BUTTONS_BELOW_FRAME_TOP = 63.dp
 
 /** The viewer's reply bar under the picture: its frame stops above it, with rounded corners (`MomentsViewerScreen`). */
 private val VIEWER_REPLY_BAR = 68.dp
@@ -314,7 +320,10 @@ private fun MarksCanvas(
         val drawnHeight = picture.height * scale
         // Labels stop above the editor's controls (the hint, looks and inks).
         val floor = frameHeight - with(density) { TOOLS_ABOVE_FRAME_BOTTOM.toPx() } - (frameHeight - drawnHeight) / 2
-        val frame = LabelFrame(drawnWidth, drawnHeight, picture.width, picture.height, floor)
+        // And below the editor's top buttons (with the phone turned sideways, the label box's top can be above them).
+        val ceiling =
+            WindowInsets.statusBars.getTop(density) + with(density) { TOP_BUTTONS_BELOW_FRAME_TOP.toPx() } - (frameHeight - drawnHeight) / 2
+        val frame = LabelFrame(drawnWidth, drawnHeight, picture.width, picture.height, floor, ceiling)
         // A new label's letters: 22 dp on this screen, kept as a share of the picture's width (never below the smallest).
         val letters = with(density) { MomentMarkRules.NEW_LABEL_POINTS.dp.toPx() } / drawnWidth
         val stroke by rememberUpdatedState { points: List<Float> -> onEdit { it.drawn(points, lineWidth) } }
@@ -331,12 +340,22 @@ private fun MarksCanvas(
         // Text opens with a label 40% down the frame, above where the keyboard comes up.
         val firstDown = (MomentMarkRules.NEW_LABEL_DOWN * frameHeight - (frameHeight - drawnHeight) / 2) / drawnHeight
         LaunchedEffect(editing.addsLabel) { if (editing.addsLabel) onEdit { it.withNewLabel(0.5f, firstDown, letters, frame::kept) } }
+        // TalkBack's "Add words" on the picture: a label where opening Text puts one.
+        val view = LocalView.current
+        val addWords by rememberUpdatedState {
+            if (editing.roomForLabel) {
+                onEdit { it.withNewLabel(0.5f, firstDown, letters, frame::kept) }
+            } else {
+                @Suppress("DEPRECATION")
+                view.announceForAccessibility("Five labels is the most.")
+            }
+        }
         Box(modifier = Modifier.requiredSize(with(density) { drawnWidth.toDp() }, with(density) { drawnHeight.toDp() })) {
             val touches =
                 Modifier.matchParentSize().pointerInput(text) {
                     if (text) tapsAndPinches(tapped, pinched) else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
                 }
-            MarksPicture(image, editing, live, lineWidth, touches)
+            MarksPicture(image, editing, live, lineWidth, touches, onAddWords = { addWords() })
             TopBarLine(MomentMarkRules.labelBox(picture.width, picture.height).top)
             if (text) TextLabels(editing, frame, onEdit)
         }
@@ -376,19 +395,22 @@ private fun MarksPicture(
     live: List<Float>,
     lineWidth: Float,
     modifier: Modifier,
+    onAddWords: () -> Unit,
 ) {
     val typed = editing.selected.takeIf { editing.typing }
+    val text = editing.tool == MomentMarksTool.Text
     Canvas(
         modifier =
             modifier
                 .testTag("moments.marks.picture")
                 .semantics {
-                    contentDescription =
-                        if (editing.tool == MomentMarksTool.Text) {
-                            "The photo you're posting. Tap it to add a label."
-                        } else {
-                            "The photo you're posting. Draw on it with one finger."
+                    contentDescription = if (text) "The photo you're posting." else "The photo you're posting. Draw on it with one finger."
+                    if (text) {
+                        onClick(label = "Add words") {
+                            onAddWords()
+                            true
                         }
+                    }
                 },
     ) {
         drawImage(
