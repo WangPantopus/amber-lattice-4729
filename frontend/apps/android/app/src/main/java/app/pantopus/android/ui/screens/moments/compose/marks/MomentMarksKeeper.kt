@@ -41,23 +41,27 @@ internal class MomentMarksKeeper(
     private var drawing: Job? = null
     private var drawnOk = true
 
-    /** The ink and line width picked last, for the editor's next visit. */
+    /** The ink, line width and label style picked last, for the editor's next visit. */
     private var ink = MomentInk.Yellow
     private var width = MomentLineWidth.Medium
+    private var textInk = MomentInk.White
+    private var style = MomentLabelStyle.Label
 
     /** The marks are still being drawn into the photo: Post waits. */
     val busy: Boolean get() = drawing?.isActive == true
 
-    /** The editor opening with [tool] on [marks], with the ink and width picked last. */
+    /** The editor opening with [tool] on [marks], with what was picked last; Text adds a label to type. */
     fun editing(
         tool: MomentMarksTool,
         marks: MomentMarks,
-    ): MomentMarksEditing = MomentMarksEditing(tool, marks, marks, ink, width)
+    ): MomentMarksEditing = MomentMarksEditing(tool, marks, marks, ink, width, textInk, style, addsLabel = tool == MomentMarksTool.Text)
 
-    /** The editor closed (Done or the X): its ink and width stay picked. */
+    /** The editor closed (Done or the X): its ink, width and style stay picked. */
     fun closed(editing: MomentMarksEditing) {
         ink = editing.ink
         width = editing.width
+        textInk = editing.textInk
+        style = editing.style
     }
 
     /** Reads the editor's copy of the photo [shown] on the sheet, or of its original when marks are drawn into it. */

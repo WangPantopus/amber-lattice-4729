@@ -270,7 +270,7 @@ fun MomentsComposeScreen(
                     Text(
                         when {
                             !onSheet -> "What you wrote won't be saved."
-                            !state.marks.isEmpty -> "What you drew on it won't be saved."
+                            !state.marks.isEmpty -> "What you drew or wrote on it won't be saved."
                             state.media is MomentMediaFile.Video -> "Your video won't be saved."
                             else -> "Your photo won't be saved."
                         },
