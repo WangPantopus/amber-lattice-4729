@@ -251,7 +251,8 @@ async function isAtHome(userId, latitude, longitude, { onFailure = false } = {})
     try {
       homeIds = await householdHomeIdsOrThrow(userId);
     } catch (error) {
-      logger.warn('moments.at_home_failed', { error: error.message });
+      // An error, as householdHomeIds logs it: a household read that fails matters more here, not less.
+      logger.error('moments.at_home_failed', { read: 'household', error: error.message });
       return onFailure;
     }
   }

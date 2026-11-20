@@ -38,7 +38,7 @@ New optional request field:
 
 | Field | Meaning |
 | --- | --- |
-| `weather: bool` | Default `false`. Ask for the weather the Post sheet's "Show the weather" row shows. Send it only for a draft the app's camera made (the row is offered only then). |
+| `weather: bool` | Default `false`. Ask for the weather the Post sheet's "Show the weather" row shows. Send it on a preview made at the author's own fix (the one the composer makes when it opens, and any later one at the fix), never on a preview at a library item's capture point. The app shows the row only for a camera draft. |
 
 Adds, only when the request sent `weather: true`:
 
