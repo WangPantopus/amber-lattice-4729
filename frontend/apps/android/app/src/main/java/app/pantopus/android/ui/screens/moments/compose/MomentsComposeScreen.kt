@@ -792,7 +792,9 @@ private fun ReviewStep(
             onAudience = onAudience,
             onCaption = onCaption,
             onPost = onPost,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            // Never over the Retake / Text / Draw row (11 dp down, 40 dp tall): the sheet stops 12 dp under it, and on a
+            // short screen its own content scrolls in that height while Post stays at its bottom.
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + 40.dp + Spacing.s3),
             onPlace = onPlace,
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,
