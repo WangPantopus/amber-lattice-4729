@@ -372,14 +372,19 @@ object MomentMedia {
         height: Int,
     ): Int = if (height > width) (VIDEO_SHORT_SIDE.toFloat() * height / width).roundToEven() else VIDEO_SHORT_SIDE
 
-    /** [marks] drawn on a clear picture the size the video exports at, to lay over every frame. */
+    /**
+     * [marks] drawn on a clear picture the size the video exports at, to lay over every frame. Its labels break their
+     * lines for the video's shown shape, as in the editor (its first frame), not the export size's rounded one.
+     */
     private fun overlay(
         file: File,
         marks: MomentMarks,
     ): Bitmap {
         val (width, height) = exportSize(file)
+        val (shownWidth, shownHeight) = displaySize(file)
         val overlay = Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-        MomentMarksPainter.draw(Canvas(overlay), marks, overlay.width.toFloat(), overlay.height.toFloat())
+        val shape = shownWidth.toFloat() / shownHeight.coerceAtLeast(1)
+        MomentMarksPainter.draw(Canvas(overlay), marks, overlay.width.toFloat(), overlay.height.toFloat(), shape = shape)
         return overlay
     }
 
