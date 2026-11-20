@@ -56,20 +56,24 @@ extension MomentsMarksEditor {
         }
     }
 
-    /// One look: "Aa" drawn in it over its name (board T2), 64 pt tall; 44 while typing.
+    /// One look: "Aa" drawn as board T2 draws it, whatever the ink (Plain white letters, Label white letters on the dark
+    /// plate, Sign dark letters on a yellow sign), over its name; 64 pt tall, 44 while typing.
     private func styleButton(_ style: MomentMarks.Style, compact: Bool) -> some View {
         let selected = marking.style == style
-        let sample = MomentMarks.Label(id: UUID(), text: "Aa", style: style, ink: marking.textInk, center: .zero, size: 0)
-        let look = MomentMarksDrawing.looks(sample)
+        let sample: (letters: UIColor, plate: UIColor?) = switch style {
+        case .plain: (.white, nil)
+        case .label: (.white, UIColor.black.withAlphaComponent(0.8))
+        case .sign: (MomentsPalette.ink(MomentMarks.Ink.black.rawValue), MomentsPalette.ink(MomentMarks.Ink.yellow.rawValue))
+        }
         return Button { marking.setStyle(style) } label: {
             VStack(spacing: 4) {
                 Text("Aa")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color(uiColor: look.ink))
-                    .padding(.horizontal, look.plate == nil ? 0 : Spacing.s2)
+                    .foregroundStyle(Color(uiColor: sample.letters))
+                    .padding(.horizontal, sample.plate == nil ? 0 : Spacing.s2)
                     .padding(.vertical, 1)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(uiColor: look.plate ?? .clear)))
-                    .shadow(color: .black.opacity(look.plate == nil ? 0.8 : 0), radius: 2, x: 0, y: 1)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(uiColor: sample.plate ?? .clear)))
+                    .shadow(color: .black.opacity(sample.plate == nil ? 0.8 : 0), radius: 2, x: 0, y: 1)
                 if !compact {
                     Text(style.rawValue.capitalized)
                         .scaledFont(12, weight: selected ? .bold : .semibold)
@@ -135,8 +139,7 @@ struct MomentsMarksTextLayer: View {
             // Text opened: a label in the middle of what shows above the keyboard, typed in at once.
             guard marking.addsLabel else { return }
             marking.addsLabel = false
-            let at = CGPoint(x: (size.width / 2 - fill.minX) / fill.width, y: (size.height * 0.4 - fill.minY) / fill.height)
-            if marking.addLabel(at: at, pictureWidth: fill.width, within: rows(fill)) { focused = true }
+            if Self.addLabel(marking: marking, picture: image.size, size: size, free: free) { focused = true }
         }
         .onChange(of: marking.typing, initial: true) { _, typing in
             if typing != nil, !focused { focused = true }
@@ -189,8 +192,21 @@ struct MomentsMarksTextLayer: View {
 
     /// Between the editor's top bar and its controls, as picture heights: where a label is dragged or added.
     private func rows(_ fill: CGRect) -> ClosedRange<CGFloat> {
+        Self.rows(fill, free: free)
+    }
+
+    private static func rows(_ fill: CGRect, free: ClosedRange<CGFloat>) -> ClosedRange<CGFloat> {
         let top = (free.lowerBound - fill.minY) / fill.height
         return top...max(top, (free.upperBound - fill.minY) / fill.height)
+    }
+
+    /// A new label in the middle across, 40% down the frame (above where the keyboard comes up): when Text opens, and
+    /// VoiceOver's "Add words". False at five labels.
+    @discardableResult
+    static func addLabel(marking: MomentsMarking, picture: CGSize, size: CGSize, free: ClosedRange<CGFloat>) -> Bool {
+        let fill = MomentMarks.fill(picture, in: size)
+        let at = CGPoint(x: (size.width / 2 - fill.minX) / fill.width, y: (size.height * 0.4 - fill.minY) / fill.height)
+        return marking.addLabel(at: at, pictureWidth: fill.width, within: rows(fill, free: free))
     }
 
     /// A label read aloud, with VoiceOver's moves and sizes.

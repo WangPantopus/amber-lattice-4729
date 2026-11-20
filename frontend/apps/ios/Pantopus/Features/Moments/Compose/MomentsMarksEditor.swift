@@ -29,19 +29,24 @@ struct MomentsMarksEditor: View {
     }
 
     var body: some View {
-        ZStack {
+        asksBeforeCancel(ZStack {
             screenLayer
             keyboardReader
-        }
-        .alert("Discard your changes?", isPresented: Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })) {
+        })
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(.escape) { model.cancelMarks() }
+        .accessibilityIdentifier("moments.marks")
+    }
+
+    /// The X's question when something changed in this visit.
+    private func asksBeforeCancel(_ content: some View) -> some View {
+        let asks = Binding(get: { marking.asksCancel }, set: { marking.asksCancel = $0 })
+        return content.alert("Discard your changes?", isPresented: asks) {
             Button("Discard", role: .destructive) { marking.cancel() }
                 .accessibilityIdentifier("moments.marks.discard")
             Button("Keep editing", role: .cancel) {}
                 .accessibilityIdentifier("moments.marks.keep")
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityAction(.escape) { model.cancelMarks() }
-        .accessibilityIdentifier("moments.marks")
     }
 
     /// The safe area as this cover has it (the keyboard never moves the picture).
@@ -74,17 +79,14 @@ struct MomentsMarksEditor: View {
             width: full.width,
             height: max(min(full.maxY, keyboardTop - Spacing.s2) - full.minY, 0)
         ) : full
+        // Between the top bar's buttons and the bottom controls: where labels are put and dragged.
+        let free = (room.minY + 48 - frame.minY)...max(room.minY + 48 - frame.minY, footerTop - frame.minY - Spacing.s1)
         return ZStack(alignment: .topLeading) {
             Color.black
-            MomentsMarksDrawArea(marking: marking, image: image, size: frame.size)
+            MomentsMarksDrawArea(marking: marking, image: image, size: frame.size, addWords: addWords(frame: frame, free: free))
                 .overlay {
                     if marking.tool == .text {
-                        MomentsMarksTextLayer(
-                            marking: marking,
-                            image: image,
-                            size: frame.size,
-                            free: (room.minY + 48 - frame.minY)...max(room.minY + 48 - frame.minY, footerTop - frame.minY - Spacing.s1)
-                        )
+                        MomentsMarksTextLayer(marking: marking, image: image, size: frame.size, free: free)
                     }
                 }
                 .overlay(alignment: .top) { viewerStrip(frame) }
@@ -155,6 +157,16 @@ struct MomentsMarksEditor: View {
         case .closed: UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24, style: .continuous)
         case .wide: UnevenRoundedRectangle(topLeadingRadius: 28, bottomLeadingRadius: 28, bottomTrailingRadius: 28, topTrailingRadius: 28)
         case .upright, .table: UnevenRoundedRectangle()
+        }
+    }
+
+    /// Text: VoiceOver's "Add words" on the picture, a label as opening Text adds; at five it says so.
+    private func addWords(frame: CGRect, free: ClosedRange<CGFloat>) -> (() -> Void)? {
+        guard marking.tool == .text else { return nil }
+        return { [marking, image] in
+            if !MomentsMarksTextLayer.addLabel(marking: marking, picture: image.size, size: frame.size, free: free) {
+                AccessibilityNotification.Announcement("Five labels is the most.").post()
+            }
         }
     }
 
