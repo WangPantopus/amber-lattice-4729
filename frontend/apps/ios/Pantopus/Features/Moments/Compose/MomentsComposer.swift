@@ -29,7 +29,11 @@ struct MomentsComposer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if model.draft != nil {
+            if model.marking.isOpen, case let .photo(image) = model.draft {
+                // Text and Draw on the photo (`MomentsMarksEditor`): in this stack, not a cover, so a fold keeps it.
+                MomentsMarksEditor(model: model, image: image)
+                    .environment(\.colorScheme, .dark)
+            } else if model.draft != nil {
                 // Posted: the next of several picked together takes the sheet; after the last, the composer closes.
                 MomentsPostStage(model: model) {
                     Task { if await !model.moveOn() { onClose() } }
@@ -79,6 +83,18 @@ struct MomentsComposer: View {
                 .accessibilityIdentifier("moments.compose.keep")
         } message: {
             Text("What you wrote won't be saved.")
+        }
+        // Retake on a photo with marks (`+Marks`): on the model, so a fold keeps the question.
+        .alert(
+            "Discard this Moment?",
+            isPresented: Binding(get: { model.marking.asksRetake }, set: { model.marking.asksRetake = $0 })
+        ) {
+            Button("Discard", role: .destructive) { model.retake() }
+                .accessibilityIdentifier("moments.post.retake.discard")
+            Button("Keep editing", role: .cancel) {}
+                .accessibilityIdentifier("moments.post.retake.keep")
+        } message: {
+            Text("What you drew on it won't be saved.")
         }
         // A fold or a turn switches layouts at once.
         .readsMomentsDuoScreen(Binding(get: { duo }, set: { screen in

@@ -6,10 +6,10 @@
 //  Closed (C8): the phone's sheet in the column beside the side strip, over
 //  the picture, with a smaller map so it all fits. Open sideways, flat or
 //  like a book (O9, B2): the picture whole on the left half, in the Moment's
-//  tall shape, with Retake; the options as a card on the right, ending above
-//  the keyboard while a caption is typed. Upright (U3), and on a table until
-//  its own layout: the picture whole over a blurred copy of itself, and the
-//  phone's sheet, 431 wide, in the middle.
+//  tall shape, with Retake (and Text and Draw on a photo); the options as a
+//  card on the right, ending above the keyboard while a caption is typed.
+//  Upright (U3), and on a table until its own layout: the picture whole over
+//  a blurred copy of itself, and the phone's sheet, 431 wide, in the middle.
 //
 
 import SwiftUI
@@ -26,7 +26,7 @@ extension MomentsPostStage {
                     .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24, style: .continuous))
             }
             .ignoresSafeArea()
-            retakeButton
+            pillRow
                 .padding(.leading, Spacing.s3)
                 .padding(.top, Spacing.s3)
             VStack(spacing: 0) {
@@ -54,7 +54,7 @@ extension MomentsPostStage {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .overlay(alignment: .topLeading) {
-                        retakeButton.padding(Spacing.s3)
+                        pillRow.padding(Spacing.s3)
                     }
                     .offset(x: left, y: card.minY)
             }
@@ -89,7 +89,7 @@ extension MomentsPostStage {
             .ignoresSafeArea()
             // Level with the clock corner's top, on the left where nothing covers the screen (board U3).
             GeometryReader { _ in
-                retakeButton
+                pillRow
                     .padding(.leading, 20)
                     .padding(.top, 28)
             }
@@ -112,11 +112,7 @@ extension MomentsPostStage {
         switch model.draft {
         case let .photo(image):
             Color(white: 0.067)
-                .overlay {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                }
+                .overlay { MomentsMarkedPhoto(image: image, marks: model.marking.marks) }
                 .clipped()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("The photo you're posting")

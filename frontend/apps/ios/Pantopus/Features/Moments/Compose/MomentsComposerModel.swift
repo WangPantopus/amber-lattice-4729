@@ -50,7 +50,11 @@ final class MomentsComposerModel {
     }
 
     var mode: Mode = .camera
-    private(set) var draft: Draft?
+    /// A new picture (or none) starts with no marks: several picked together never carry one's marks to the next.
+    private(set) var draft: Draft? {
+        didSet { marking.clear() }
+    }
+
     private(set) var locating: Locating = .locating
     private(set) var place: MomentPlacePreviewDTO?
     /// The server has said what this spot reads as and whether the 18+ answer is on file (or couldn't be reached).
@@ -109,6 +113,8 @@ final class MomentsComposerModel {
     var findsPlace = false
     /// The camera, held here so a fold on the iPhone Duo (which builds the camera screen again) keeps a recording going.
     let camera = MomentsCameraModel()
+    /// Text and Draw on the photo (`+Marks`): its marks and the editor, held here so a fold keeps them.
+    let marking = MomentsMarking()
 
     static let textLimit = 200
     static let captionLimit = 100
@@ -297,6 +303,15 @@ final class MomentsComposerModel {
         })
     }
 
+    /// The marks editor's Done (`+Marks`): the photo, at most 2048 px, carries `marks`. The draft and its export
+    /// change in one step, and the export draws them in off the main thread, so a Post tapped next waits for them.
+    func use(marked base: UIImage, _ marks: MomentMarks) {
+        guard !isPosting, case .photo = draft else { return }
+        draft = .photo(base)
+        marking.keep(marks, base: base)
+        prepare([{ folder in try await MomentMarksDrawing.export(base, marks, into: folder) }])
+    }
+
     /// P2's Next: the text card goes to the Post sheet.
     func finishText() {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -389,24 +404,5 @@ final class MomentsComposerModel {
     var basePin: CLLocationCoordinate2D? {
         if let capture { return CLLocationCoordinate2D(latitude: capture.latitude, longitude: capture.longitude) }
         return fix.map { CLLocationCoordinate2D(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) }
-    }
-
-    /// A place picked in the place picker: a venue near the pin names the Moment and moves its pin there (the server
-    /// finds it again by its id). Only venues are offered (see the sheet's filter).
-    func pickVenue(_ tag: PostPlaceTag) {
-        guard let id = tag.placeId, id.hasPrefix("osm:"), let basePin else { return }
-        placeKey = nil
-        venue = MomentVenue(placeId: id, name: tag.name, latitude: tag.latitude, longitude: tag.longitude, around: basePin)
-        findsPlace = false
-        // The Sky: a place picked turns "Pin it at a place" on.
-        if place?.sky != nil { pinsAtPlace = true }
-    }
-
-    /// "Remove location" in the place picker: back to the name the spot gets by itself.
-    func clearVenue() {
-        venue = nil
-        findsPlace = false
-        // The Sky: with no place picked the Moment is where it was taken again.
-        pinsAtPlace = false
     }
 }
