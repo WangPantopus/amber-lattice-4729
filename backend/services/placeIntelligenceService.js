@@ -1882,6 +1882,8 @@ module.exports = {
   withBudget,
   withinBudget,
   failedSections,
+  // The nine weather kinds, shared with a Moment's weather stamp (moments/momentWeather.js).
+  mapConditionCode,
   // Exported for unit testing.
   resolveTier,
   bandAccess,

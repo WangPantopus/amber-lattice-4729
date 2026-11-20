@@ -316,6 +316,13 @@ area), the server decides, whatever an app's sheet says:
   author. No speed is kept, only whether the Moment was posted from the air (`flying`). Viewers get the height only
   while the flag is on for them (`GET /api/moments/…`, and each ring of `GET /api/moments/map`). The map answer's
   `heights_on` says only whether the flag is on for the caller.
+- **The Live mark, never at home:** a photo or video the app's camera made reads "Live from here" for 15 minutes,
+  then "Taken here" (`taken_here`, `live_until`; [API v4.1](product/moments/api-v4.1.md), 2026-11-20). The server keeps
+  it only for a fresh GPS fix shown at its exact pin away from home: never at home (asked where the author stands, and
+  dropped when their homes can't be read), shown as an area, floating or with no location, nor for an album item,
+  and every read checks again. A map ring carries `live_until` only when the Moment its point shows is such a pin. A
+  Moment shared later reads "Taken here", never "Live". Its weather stamp is read by the server at the pin (a phone's
+  value is never stored) and kept only with the mark; the preview looks the weather up only away from home.
 - **Files carry no location:** photo EXIF and video location tags are removed on upload (`photoMetadata.js`,
   `videoMetadata.js`); files sit in private storage behind 15-minute signed links and are deleted 7 days after the
   Moment ends (sooner when its author deletes it) unless a report holds them. Deleting the account deletes all of

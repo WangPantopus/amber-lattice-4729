@@ -237,20 +237,32 @@ async function townAt(latitude, longitude) {
   return (await settle(townAndStreet(latitude, longitude), 'reverse'))?.town || FALLBACK_LABEL;
 }
 
-/** Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds; fails closed to false). */
+/** Whether the point is within AT_HOME_M of a home the person lives at (homeAt; false when the homes can't be read). */
 async function isAtHome(userId, latitude, longitude) {
-  const { householdHomeIds } = require('../../utils/homeMailAccess');
-  const homeIds = await householdHomeIds(userId);
-  if (!homeIds.length) return false;
-  const { data, error } = await supabaseAdmin.from('Home').select('id, location').in('id', homeIds);
-  if (error) {
+  return (await homeAt(userId, latitude, longitude)).atHome;
+}
+
+/**
+ * Whether the point is within AT_HOME_M of a home the person lives at, and whether that is known: { atHome, known }.
+ * `known` is false when their homes couldn't be read; `atHome` is then false, as isAtHome has always answered, and
+ * the Live mark (API v4.1), which says its author is at the pin now, is dropped (it fails closed).
+ */
+async function homeAt(userId, latitude, longitude) {
+  const { householdHomeIdsOrThrow } = require('../../utils/homeMailAccess');
+  try {
+    const homeIds = await householdHomeIdsOrThrow(userId);
+    if (!homeIds.length) return { atHome: false, known: true };
+    const { data, error } = await supabaseAdmin.from('Home').select('id, location').in('id', homeIds);
+    if (error) throw new Error(error.message);
+    const atHome = (data || []).some((home) => {
+      const point = parsePostGISPoint(home.location);
+      return point && haversineMeters(latitude, longitude, point.latitude, point.longitude) <= AT_HOME_M;
+    });
+    return { atHome, known: true };
+  } catch (error) {
     logger.warn('moments.at_home_failed', { error: error.message });
-    return false;
+    return { atHome: false, known: false };
   }
-  return (data || []).some((home) => {
-    const point = parsePostGISPoint(home.location);
-    return point && haversineMeters(latitude, longitude, point.latitude, point.longitude) <= AT_HOME_M;
-  });
 }
 
 /**
@@ -266,6 +278,6 @@ function labelKind(labels, label) {
 }
 
 module.exports = {
-  labelsAt, pickedLabel, labelKind, isAtHome, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
+  labelsAt, pickedLabel, labelKind, isAtHome, homeAt, venueNear, namingPlace, venueForKey, townAt, pickWithinM, closeArea,
   FALLBACK_LABEL, AT_HOME_M, PICK_PLACE_M,
 };
