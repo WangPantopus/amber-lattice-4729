@@ -140,6 +140,11 @@ final class MomentsMapViewModel {
         didSet { if timeFilter != oldValue { memo.reset() } }
     }
 
+    /// "Live now" (`MomentsLiveChip.swift`): only rings live now; kept while the app runs, like the time filter.
+    var liveOnly = false {
+        didSet { if liveOnly != oldValue { memo.reset() } }
+    }
+
     /// The clock the end times are read against; moved on each read and each minute.
     private(set) var now = Date() {
         didSet { memo.reset() }
@@ -317,12 +322,15 @@ final class MomentsMapViewModel {
 
     // MARK: - What shows
 
-    /// Every ring read, with what was watched or hidden since, and only Moments still running and inside the time filter.
+    /// Every ring read, with what was watched or hidden since, and only Moments still running and inside the time filter
+    /// (and only live rings while "Live now" is on).
     var currentRings: [MomentRingDTO] {
         // Read even when remembered, so a screen that shows them is redrawn when they change.
-        _ = (rings, now, timeFilter)
+        _ = (rings, now, timeFilter, liveOnly)
         return memo.current {
-            MomentsMapMemo.running(rings, now: now, watched: watched, hidden: hiddenAuthors, since: timeFilter.since(now))
+            MomentsMapMemo.running(
+                rings, now: now, watched: watched, hidden: hiddenAuthors, since: timeFilter.since(now), liveOnly: liveOnly
+            )
         }
     }
 
@@ -417,19 +425,6 @@ final class MomentsMapViewModel {
     }
 
     // MARK: - Crowded spots
-
-    /// Board M2: the strip shows only this spot, and the pill takes you back.
-    /// `camera`: where back goes, when it isn't where the map is now (the open Duo's card had moved it).
-    func focus(on cluster: MomentsCluster, from camera: MapCamera? = nil) {
-        let title = cluster.placeName ?? areaName ?? "This spot"
-        focus = MomentsFocus(
-            title: title,
-            ringIds: Set(cluster.rings.map(\.id)),
-            previousCamera: camera ?? lastCamera,
-            latitude: cluster.coordinate.latitude,
-            longitude: cluster.coordinate.longitude
-        )
-    }
 
     /// Asks the view to move the camera (the moves and their rules: `MomentsMapViewModel+Moves.swift`).
     func ask(_ request: MomentsPlaceRequest) {

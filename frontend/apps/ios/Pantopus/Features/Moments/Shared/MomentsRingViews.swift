@@ -162,6 +162,15 @@ struct MomentRingPin: View {
                 MomentVerifiedCheck()
                     .offset(x: 44, y: 42)
             }
+            // Live now (v4.1, board L3): a small green dot at the top right. The map clears the ring's time once it
+            // passes (`MomentsMapMemo.running`), so the dot goes with it.
+            if ring.isLive(at: Date()) {
+                Circle()
+                    .fill(MomentsPalette.liveDot)
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().stroke(MomentsPalette.pinSurface, lineWidth: 2.5))
+                    .offset(x: 47, y: 3)
+            }
         }
         .frame(width: Self.size.width, height: tail ? Self.size.height : Self.size.width, alignment: .topLeading)
         .compositingGroup()

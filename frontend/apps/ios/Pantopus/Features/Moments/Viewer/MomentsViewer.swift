@@ -271,8 +271,8 @@ extension MomentsViewer {
                     onClose: { model.close() }
                 )
                 .padding(.top, 9)
-                if let taken = model.metaTaken {
-                    MomentsTakenPill(taken: taken)
+                if let meta = model.metaPills {
+                    MomentsMetaPills(meta: meta)
                 }
             }
             .opacity(model.holding || zooming ? 0 : 1)

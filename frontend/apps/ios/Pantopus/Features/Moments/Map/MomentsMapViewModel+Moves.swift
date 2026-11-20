@@ -14,11 +14,31 @@
 //  - The map opens on you: what's new just outside the view is framed with
 //    you, and with nothing in view at all the nearest Moments are.
 //
+//  Also here: opening a crowded spot, which the tap on its bubble zooms into.
+//
 
 import Foundation
 import MapKit
+import SwiftUI
 
 extension MomentsMapViewModel {
+    // MARK: - A crowded spot
+
+    /// Board M2: the strip shows only this spot, and the pill takes you back.
+    /// `camera`: where back goes, when it isn't where the map is now (the open Duo's card had moved it).
+    func focus(on cluster: MomentsCluster, from camera: MapCamera? = nil) {
+        let title = cluster.placeName ?? areaName ?? "This spot"
+        focus = MomentsFocus(
+            title: title,
+            ringIds: Set(cluster.rings.map(\.id)),
+            previousCamera: camera ?? lastCamera,
+            latitude: cluster.coordinate.latitude,
+            longitude: cluster.coordinate.longitude
+        )
+    }
+
+    // MARK: - Moves
+
     /// The place under a Moment's name, tapped in the viewer.
     func showPlace(latitude: Double, longitude: Double) {
         ask(MomentsPlaceRequest(latitude: latitude, longitude: longitude))
@@ -57,9 +77,11 @@ extension MomentsMapViewModel {
                 zoom: 14 - step * 2
             )
             guard let reply: MomentsMapResponse = try? await MomentsAPI.send(box.endpoint, api: api) else { return }
-            // Only what the time filter shows is worth a move.
+            // Only what the time filter and "Live now" show is worth a move.
             let since = timeFilter.since(Date())
-            let placed = reply.rings.filter { !$0.noLocation }.compactMap { $0.posted(since: since) }
+            let placed = reply.rings
+                .filter { !$0.noLocation && (!liveOnly || $0.isLive(at: Date())) }
+                .compactMap { $0.posted(since: since) }
             let fresh = placed.filter { ring in !ring.mine && ring.moments.contains { !$0.seen } }
             // With something in view only what's new is worth a move; with nothing, anything is.
             var wanted = fresh.isEmpty && nothingInView ? placed : fresh
