@@ -30,6 +30,9 @@ public enum MomentsPalette {
     public static let pinSurface = dynamic(light: 0xFFFFFF, dark: 0x161B22)
     /// The tint behind "21h left" and "Replied" in Seen by, and the empty card's icon.
     public static let tint = dynamic(light: 0xE0F2FE, dark: 0x122A3D)
+    /// The Live mark (boards L2, L3): the sign on the viewer's dark pill, and the dot on a live ring's pin.
+    public static let live = rgb(0x34D399)
+    public static let liveDot = dynamic(light: 0x059669, dark: 0x34D399)
 
     /// A text card's two gradient stops (160°, top to bottom), by its background name.
     public static func card(_ name: String?) -> (top: Color, bottom: Color) {
