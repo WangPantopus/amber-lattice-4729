@@ -79,6 +79,21 @@ public struct MomentWeatherDTO: Decodable, Sendable, Hashable {
     }
 }
 
+/// The weather in a place-preview asked with `weather: true` (v4.1): the stamp a Moment taken here would keep now, or
+/// nil (`null` at home, with no fresh reading within 2 seconds, from a server before v4.1, or one that can't be read).
+public struct MomentPreviewWeatherDTO: Decodable, Sendable {
+    public let weather: MomentWeatherDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case weather
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try? decoder.container(keyedBy: CodingKeys.self)
+        weather = try? c?.decodeIfPresent(MomentWeatherDTO.self, forKey: .weather)
+    }
+}
+
 extension MomentRingDTO {
     /// A ring's `live_until` (v4.1): the latest among its Moments that keep the mark, only when the Moment it is drawn
     /// at is itself an exact pin away from home; nil otherwise, and on every ring in `unplaced`.

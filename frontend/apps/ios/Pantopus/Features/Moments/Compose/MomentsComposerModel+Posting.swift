@@ -47,13 +47,16 @@ extension MomentsComposerModel {
         }
         // A long video's parts share one id, named after the first part's folder: a second tap sends the same.
         let seriesId = ready.count > 1 ? ready[0].0.lowercased() : nil
+        // The Live mark, decided once for every part: a tap that carries on follows what the server kept on the first.
+        let marks = made.first.map(MomentLiveFields.init(following:)) ?? liveFields(sending: pinAt)
         for (index, part) in ready.enumerated() where index >= made.count {
             var body = createBody(
                 kind: kind,
                 location: pinAt,
                 // The outbox folder's id names this part of this Post tap: a retry returns the same Moment.
                 requestId: part.0.lowercased(),
-                caption: index == 0 ? trimmedCaption : ""
+                caption: index == 0 ? trimmedCaption : "",
+                marks: marks
             )
             body.series = seriesId.map { MomentSeriesDTO(id: $0, index: index + 1, count: ready.count) }
             do {
@@ -115,7 +118,13 @@ extension MomentsComposerModel {
     }
 
     /// The create request for what's on the Post sheet.
-    private func createBody(kind: MomentKind, location: MomentLocationBody, requestId: String, caption: String) -> MomentCreateBody {
+    private func createBody(
+        kind: MomentKind,
+        location: MomentLocationBody,
+        requestId: String,
+        caption: String,
+        marks: MomentLiveFields = MomentLiveFields()
+    ) -> MomentCreateBody {
         var body = MomentCreateBody(
             kind: kind,
             hours: hours,
@@ -139,6 +148,9 @@ extension MomentsComposerModel {
         // The Sky: pin at the place (the venue picked, else the one that names the spot), and "Share later".
         body.pin = pinsHere ? "place" : nil
         body.shareLater = shareLaterBody
+        // The Live mark and the weather (v4.1, `+Live`): only for the camera's own shot, while it still holds.
+        body.takenHere = marks.takenHere
+        body.showWeather = marks.showWeather
         return body
     }
 

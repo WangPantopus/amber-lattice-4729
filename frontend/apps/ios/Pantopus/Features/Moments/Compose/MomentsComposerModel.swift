@@ -115,6 +115,8 @@ final class MomentsComposerModel {
     let camera = MomentsCameraModel()
     /// Text and Draw on the photo (`+Marks`): its marks and the editor, held here so a fold keeps them.
     let marking = MomentsMarking()
+    /// The camera's shot, for the Live mark and the weather (`+Live`).
+    let live = MomentsLiveShot()
 
     static let textLimit = 200
     static let captionLimit = 100
@@ -143,9 +145,10 @@ final class MomentsComposerModel {
     init(location: any LocationProviding = DeviceLocationProvider.shared, defaults: UserDefaults = .standard) {
         self.location = location
         self.defaults = defaults
-        camera.onPhoto = { [weak self] image in self?.use(photo: image) }
+        // The camera's own photo or video is also the shot for the Live mark (`+Live`).
+        camera.onPhoto = { [weak self] image in self?.tookPhoto(image) }
         camera.onVideo = { [weak self] url in
-            Task { await self?.use(video: url) }
+            Task { await self?.tookVideo(url) }
         }
     }
 
@@ -329,8 +332,8 @@ final class MomentsComposerModel {
         if capture != nil, let fix { Task { await preview(latitude: fix.coordinate.latitude, longitude: fix.coordinate.longitude) } }
         capture = nil
         takenAt = nil
-        waiting = []
-        pickedTogether = 0
+        (waiting, pickedTogether) = ([], 0)
+        live.clear()
     }
 
     /// The one on the sheet has posted: the next of the ones picked together takes the sheet, with its own place and
