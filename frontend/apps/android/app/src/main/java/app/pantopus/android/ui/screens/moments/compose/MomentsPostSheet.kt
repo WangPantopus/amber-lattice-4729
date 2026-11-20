@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.R
 import app.pantopus.android.data.moments.MomentHeight
+import app.pantopus.android.ui.screens.moments.components.LiveGlyph
 import app.pantopus.android.ui.screens.moments.components.MomentSelfFace
 import app.pantopus.android.ui.sky.SkyWords
 import app.pantopus.android.ui.theme.PantopusColors
@@ -113,6 +114,7 @@ fun MomentsPostSheet(
     onFindPlace: () -> Unit = {},
     onNoLocation: (Boolean) -> Unit = {},
     onShowHeight: (Boolean) -> Unit = {},
+    onShowWeather: (Boolean) -> Unit = {},
     sky: MomentsSkyActions = MomentsSkyActions(),
 ) {
     // A venue picked in the place picker moves the pin off the home (the server checks its point again).
@@ -199,6 +201,9 @@ fun MomentsPostSheet(
                     )
                 }
             }
+            // A photo or video the camera just took, at its exact pin away from home: everyone will see it's live (API v4.1),
+            // or, shared later, that it was taken here (it never reads Live then).
+            if (state.offersLive) LiveRow(later = state.shareLaterChoice != null)
             if (atHome && !state.showArea) {
                 Row(
                     modifier =
@@ -291,6 +296,8 @@ fun MomentsPostSheet(
                 HeightRow(line = line, on = state.showHeight, onShowHeight = onShowHeight)
             }
             if (state.greysHeight && !state.offersHeight) SkyGreyHeightRow()
+            // The weather at the fix, for a Moment with the Live line; none when no fresh reading came (API v4.1).
+            state.weatherLine?.let { line -> WeatherRow(line = line, on = state.showWeather, onShowWeather = onShowWeather) }
             if (state.shareLaterChoices.isNotEmpty()) {
                 SkyShareLaterRow(state = state, onShareLater = sky.onShareLater, onChoice = sky.onShareLaterChoice)
             }
@@ -719,6 +726,95 @@ private fun HeightRow(
         )
     }
 }
+
+/**
+ * Board L1's line under the place: "Live · Taken here just now. Everyone will see that." While the Sky's "Share later"
+ * is picked the Moment never reads Live, so the line says what viewers will see: "Taken here · Everyone will see that."
+ * with the viewer's pin (coordinator, 2026-11-20).
+ */
+@Composable
+private fun LiveRow(later: Boolean) {
+    val title = if (later) "Taken here" else "Live"
+    val line = if (later) LATER_LINE else LIVE_LINE
+    Row(
+        modifier =
+            Modifier
+                .padding(start = Spacing.s5, end = Spacing.s5, top = 2.dp)
+                .fillMaxWidth()
+                .testTag("moments.post.live")
+                .clearAndSetSemantics { contentDescription = "$title. $line" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        if (later) {
+            PantopusIconImage(
+                icon = PantopusIcon.MapPin,
+                contentDescription = null,
+                size = 18.dp,
+                strokeWidth = 2.2f,
+                tint = PantopusColors.appTextSecondary,
+            )
+            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
+        } else {
+            LiveGlyph(color = PantopusColors.momentLive, size = 18.dp)
+            Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.momentLive)
+        }
+        Text(
+            text = line,
+            fontSize = 13.sp,
+            color = PantopusColors.appTextSecondary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/** "Show the weather" (board L1) with the reading at the fix; on unless turned off last time. */
+@Composable
+private fun WeatherRow(
+    line: String,
+    on: Boolean,
+    onShowWeather: (Boolean) -> Unit,
+) {
+    val reading = "$line, as it is here right now"
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.s5)
+                .padding(top = 6.dp)
+                .heightIn(min = 52.dp)
+                .clickable(role = Role.Switch) { onShowWeather(!on) }
+                .testTag("moments.post.weather")
+                .clearAndSetSemantics {
+                    contentDescription = "Show the weather. $reading"
+                    role = Role.Switch
+                    selected = on
+                },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(text = "Show the weather", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = PantopusColors.appText)
+            Text(text = reading, fontSize = 12.5.sp, lineHeight = 16.sp, color = PantopusColors.appTextSecondary)
+        }
+        Switch(
+            checked = on,
+            onCheckedChange = onShowWeather,
+            colors =
+                SwitchDefaults.colors(
+                    checkedTrackColor = PantopusColors.primary600,
+                    uncheckedTrackColor = PantopusColors.momentSwitchTrack,
+                    uncheckedBorderColor = PantopusColors.momentSwitchTrack,
+                    uncheckedThumbColor = Color.White,
+                ),
+        )
+    }
+}
+
+private const val LIVE_LINE = "Taken here just now. Everyone will see that."
+private const val LATER_LINE = "Everyone will see that."
 
 @Composable
 private fun SectionLabel(text: String) {

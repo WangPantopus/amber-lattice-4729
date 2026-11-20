@@ -36,6 +36,7 @@ import app.pantopus.android.ui.screens.compose.pulse.PickedPlace
 import app.pantopus.android.ui.screens.compose.pulse.readPickedPlace
 import app.pantopus.android.ui.screens.moments.MomentsRoutes
 import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
+import app.pantopus.android.ui.screens.moments.components.line
 import app.pantopus.android.ui.screens.moments.components.takenLabel
 import app.pantopus.android.ui.screens.moments.components.takenLongAgo
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
@@ -167,6 +168,10 @@ data class MomentsComposeUiState(
     val marks: MomentMarks = MomentMarks(),
     /** The marks editor while it is open. */
     val marking: MomentMarksEditing? = null,
+    /** The Live mark (API v4.1): the photo or video on the sheet came from the in-app camera, not the album. */
+    val fromCamera: Boolean = false,
+    /** "Show the weather": on unless this person turned it off last time (kept per account on this phone). */
+    val showWeather: Boolean = true,
 ) {
     val kind: String
         get() =
@@ -240,6 +245,22 @@ data class MomentsComposeUiState(
     /** What goes with the post: the reading, only while the row is on the sheet and switched on. */
     val shownHeight: MomentAltitudeBody?
         get() = pin?.height?.takeIf { offersHeight && showHeight }?.let { MomentAltitudeBody(it.meters, it.accuracyMeters, it.speedMps) }
+
+    /**
+     * The Live line (board L1, API v4.1): a photo or video the camera just took, pinned at the fix, shown at its exact
+     * pin and known to be away from home: where the server keeps the mark. Never for the album, an area, a floating
+     * Moment, no location, or at home (nor when the preview couldn't say whether this is home).
+     */
+    val offersLive: Boolean
+        get() =
+            fromCamera && media != null && pin?.capture == false && takenAt == null && !noLocationOn && !floats &&
+                place?.atHome == false
+
+    /** "31°F · Snow" for "Show the weather": the preview's reading at the fix, while the Live line shows; null without one. */
+    val weatherLine: String? get() = place?.weather?.takeIf { offersLive }?.line()?.first
+
+    /** What goes with the post: `show_weather` only while the row is on the sheet (so with the Live line) and switched on. */
+    val sendsWeather: Boolean get() = weatherLine != null && showWeather
 }
 
 /**
@@ -269,6 +290,7 @@ class MomentsComposeViewModel
                     hours = choices.getInt("$accountId.hours", DEFAULT_HOURS).takeIf { it in ALLOWED_HOURS } ?: DEFAULT_HOURS,
                     audience = choices.getString("$accountId.audience", null).takeIf { it in ALLOWED_AUDIENCES } ?: "nearby",
                     showHeight = choices.getBoolean("$accountId.showHeight", false),
+                    showWeather = choices.getBoolean("$accountId.showWeather", true),
                 ),
             )
         val state: StateFlow<MomentsComposeUiState> = _state.asStateFlow()
@@ -319,7 +341,8 @@ class MomentsComposeViewModel
                     return@launch
                 }
                 val here = ComposePin(fix.latitude, fix.longitude, fix.at, capture = false)
-                when (val preview = repository.placePreview(here.latitude, here.longitude)) {
+                // At the author's own fix: also the weather a camera Moment taken here would keep (API v4.1).
+                when (val preview = repository.placePreview(here.latitude, here.longitude, weather = true)) {
                     is NetworkResult.Success -> {
                         val height = fixHeightFor(preview.data)
                         _state.update {
@@ -421,6 +444,8 @@ class MomentsComposeViewModel
         fun captured(
             media: MomentMediaFile,
             takenAt: Instant? = null,
+            /** The in-app camera made it just now (the Live mark); an album item pinned here passes false. */
+            fromCamera: Boolean = false,
         ) {
             forgetMarks()
             val current = _state.value
@@ -433,6 +458,7 @@ class MomentsComposeViewModel
                     venue = it.venueFor(current.here),
                     pinsAtPlace = it.pinsAtPlaceFor(current.here),
                     takenAt = takenAt,
+                    fromCamera = fromCamera,
                     step = ComposeStep.Review,
                     caption = "",
                     notice = null,
@@ -617,6 +643,8 @@ class MomentsComposeViewModel
                 _state.update {
                     it.copy(
                         media = media,
+                        // From the album: never the Live mark.
+                        fromCamera = false,
                         pin = pin,
                         place = place,
                         hasConnections = place?.hasConnections ?: it.hasConnections,
@@ -795,6 +823,9 @@ class MomentsComposeViewModel
 
         fun setShowHeight(on: Boolean) = _state.update { it.copy(showHeight = on) }
 
+        /** "Show the weather" on the Post sheet (API v4.1). */
+        fun setShowWeather(on: Boolean) = _state.update { it.copy(showWeather = on) }
+
         /** A name from the place list: the first (automatic) one goes back to no pick. */
         fun pickPlace(key: String) =
             _state.update { current ->
@@ -878,6 +909,9 @@ class MomentsComposeViewModel
                         // The Sky: pin at the place (the venue picked, else the one naming the spot), and "Share later".
                         pin = "place".takeIf { current.pinsHere },
                         shareLater = current.shareLaterChoice?.key,
+                        // The Live mark and the weather stamp (API v4.1): only what the sheet showed; the server checks again.
+                        takenHere = true.takeIf { current.offersLive },
+                        showWeather = true.takeIf { current.sendsWeather },
                     )
                 if (publish(body, current, videos, usable.latitude to usable.longitude, retried)) {
                     saveChoices(current)
@@ -1014,11 +1048,15 @@ class MomentsComposeViewModel
             if (videos.none { it.video == media.file }) runCatching { media.file.delete() }
         }
 
-        /** The next sheet opens with this one's "How long", "Who sees it" and "Show elevation" (on this phone, per account). */
+        /**
+         * The next sheet opens with this one's "How long", "Who sees it", "Show elevation" and "Show the weather" (on this
+         * phone, per account).
+         */
         private fun saveChoices(posted: MomentsComposeUiState) {
             val saved = choices.edit().putInt("$accountId.hours", posted.hours).putString("$accountId.audience", posted.audience)
             // Only a sheet that offered the switch says what the person wants.
             if (posted.offersHeight) saved.putBoolean("$accountId.showHeight", posted.showHeight)
+            if (posted.weatherLine != null) saved.putBoolean("$accountId.showWeather", posted.showWeather)
             saved.apply()
         }
 
