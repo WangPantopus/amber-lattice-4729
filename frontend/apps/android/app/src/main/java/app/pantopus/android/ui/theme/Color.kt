@@ -818,4 +818,11 @@ object PantopusColors {
 
     /** The Post sheet's switch track while off — `#E9E9EB`. */
     val momentSwitchTrack = Color(0xFFE9E9EB)
+
+    /**
+     * The Live mark (boards L1–L3): its green on the dark stage, the viewer's "Live from here" pill — `#34D399`; and on
+     * white, a live ring's dot and the "Live now" chip's glyph while off — `#047857`.
+     */
+    val momentLiveOnStage = Color(0xFF34D399)
+    val momentLive = Color(0xFF047857)
 }

@@ -63,6 +63,8 @@ data class MomentRingUi(
     val seen: List<Boolean>,
     /** From the middle of the map. */
     val distanceMeters: Double,
+    /** Live now (API v4.1): its `live_until` is still ahead, as of the map's last minute. Its pin carries a green dot. */
+    val live: Boolean = false,
 ) {
     val id: String get() = ring.id
     val author: MomentAuthorDto get() = ring.author
@@ -87,6 +89,7 @@ data class MomentRingUi(
             name,
             count,
             if (anyNew) "new" else "watched",
+            if (live) "live" else null,
             placeLabel?.let { "at $it" },
             height?.spoken,
             if (author.verified) "verified resident" else null,
@@ -234,24 +237,32 @@ class MomentsMapViewModel
         /** How far back the map shows Moments from (`MomentsTimeFilter.kt`); kept while the app runs. */
         val timeFilter: StateFlow<MomentsTimeFilter> = _timeFilter.asStateFlow()
 
-        /** The clock the time filter is read against, moved each minute while the map shows ([tick]). */
+        private val _liveOnly = MutableStateFlow(false)
+
+        /** The "Live now" chip (`MomentsLiveChip.kt`): only live rings show. Kept while the app runs, as the time filter. */
+        val liveOnly: StateFlow<Boolean> = _liveOnly.asStateFlow()
+
+        /** The clock the time filter and the live dots are read against, moved each minute while the map shows ([tick]). */
         private val clock = MutableStateFlow(Instant.now())
 
-        /** The oldest posting time shown; null for all of them. */
-        private val since = combine(_timeFilter, clock) { filter, now -> filter.since(now) }
+        /** The oldest posting time shown (null for all of them), and whether only live rings show. */
+        private val filters = combine(_timeFilter, _liveOnly, clock) { filter, liveOnly, now -> filter.since(now) to liveOnly }
 
-        /** The rings with what's been watched here, nearest the middle of the map first, inside the time filter. */
+        /** The rings with what's been watched here, nearest the middle of the map first, inside the time and live filters. */
         val rings: StateFlow<List<MomentRingUi>> =
             combine(
                 _state.map { it.rings },
                 repository.watched,
                 repository.reported,
                 viewCenter,
-                since,
-            ) { rings, watched, reported, center, cutoff ->
+                filters,
+            ) { rings, watched, reported, center, (cutoff, liveOnly) ->
                 val now = Instant.now()
                 rings.mapNotNull { all ->
                     val ring = all.postedSince(cutoff) ?: return@mapNotNull null
+                    // "Live now" hides the rest, as the time filter does; a ring's dot goes once its time is up.
+                    val liveRing = ring.liveAt(now)
+                    if (liveOnly && !liveRing) return@mapNotNull null
                     // A Moment leaves the moment its time is up, before the next read, and one you reported at once.
                     val live =
                         ring.moments.filter { brief ->
@@ -266,6 +277,7 @@ class MomentsMapViewModel
                             center
                                 ?.takeIf { !ring.noLocation }
                                 ?.let { (lat, lng) -> metersBetween(lat, lng, ring.latitude, ring.longitude) } ?: 0.0,
+                        live = liveRing,
                     )
                 }
             }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -385,7 +397,13 @@ class MomentsMapViewModel
             _timeFilter.value = filter
         }
 
-        /** The minute moved on: with the time filter on, Moments that have grown too old leave the map. */
+        /** The "Live now" chip: on shows only live rings, off shows them all again. */
+        fun toggleLiveOnly() {
+            clock.value = Instant.now()
+            _liveOnly.update { !it }
+        }
+
+        /** The minute moved on: with the time filter on, Moments that have grown too old leave the map; live dots end. */
         fun tick() {
             clock.value = Instant.now()
         }
@@ -569,14 +587,16 @@ class MomentsMapViewModel
             // The first read can come before the camera reports where it settled: wait for the one after.
             if (!looksAround || state.spot != null || !area.box.shows(center.latitude, center.longitude)) return
             looksAround = false
-            // Only what the time filter shows counts, and is worth a move.
-            val cutoff = _timeFilter.value.since(Instant.now())
-            val nothingInView =
-                rings.none { !it.noLocation && area.box.holds(it.latitude, it.longitude) && it.postedSince(cutoff) != null }
+            // Only what the time and live filters show counts, and is worth a move.
+            val checkedAt = Instant.now()
+            val cutoff = _timeFilter.value.since(checkedAt)
+            val liveOnly = _liveOnly.value
+            val shows = { ring: MomentRingDto -> ring.postedSince(cutoff)?.takeIf { !liveOnly || it.liveAt(checkedAt) } }
+            val nothingInView = rings.none { !it.noLocation && area.box.holds(it.latitude, it.longitude) && shows(it) != null }
             viewModelScope.launch {
                 val found =
                     lookAround(center.latitude, center.longitude, nothingInView, repository.watched.value) { box, zoom ->
-                        repository.lookAt(box.south, box.west, box.north, box.east, zoom)?.mapNotNull { it.postedSince(cutoff) }
+                        repository.lookAt(box.south, box.west, box.north, box.east, zoom)?.mapNotNull(shows)
                     }
                 // Unless the map was moved, a spot opened or the center changed while it looked.
                 val now = _state.value
