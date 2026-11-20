@@ -565,6 +565,8 @@ class MomentsComposeViewModel
             dropPreparation()
             if (media !is MomentMediaFile.Video) return
             readyProgress = 0f
+            // Text and Draw on the video go over every frame of every part.
+            val marks = _state.value.marks
             preparation =
                 viewModelScope.async {
                     val limits = limits()
@@ -575,8 +577,9 @@ class MomentsComposeViewModel
                         try {
                             parts.forEachIndexed { at, part ->
                                 // A video posted as one Moment is exported whole (the camera's may go up as it is).
+                                val stretch = part.takeIf { parts.size > 1 }
                                 made +=
-                                    MomentMedia.prepareVideo(context, media, part.takeIf { parts.size > 1 }, limits.videoBytes) { done ->
+                                    MomentMedia.prepareVideo(context, media, stretch, limits.videoBytes, marks) { done ->
                                         readyProgress = (at + done) / parts.size
                                         _state.update { if (it.readying != null) it.copy(readying = readyProgress) else it }
                                     }
@@ -849,13 +852,13 @@ class MomentsComposeViewModel
             }
         }
 
-        /** The Post screen's Text or Draw pill: the editor opens on the photo's marks (never while a Post is in flight). */
+        /** The Post screen's Text or Draw pill: the editor opens on the marks (never while a Post is in flight). */
         fun openMarks(tool: MomentMarksTool) {
             val current = _state.value
-            val photo = current.media as? MomentMediaFile.Photo ?: return
+            val media = current.media ?: return
             if (current.posting || current.marking != null) return
             _state.update { it.copy(marking = marksKeeper.editing(tool, it.marks)) }
-            marksKeeper.read(photo.file) { _state.update { it.copy(marking = null, notice = MARKS_UNREADABLE) } }
+            marksKeeper.read(media) { _state.update { it.copy(marking = null, notice = MARKS_UNREADABLE) } }
         }
 
         /** A change in the open editor: a line drawn or undone, an ink or a width picked. */
@@ -864,24 +867,30 @@ class MomentsComposeViewModel
 
         /**
          * The editor's Done ([keep]) or its X. Done draws the marks into a new copy of the photo, which then posts (Post
-         * waits for it); the photo as it came is kept, to change the marks again. Nothing changes under a Post in flight.
+         * waits for it); the photo as it came is kept, to change the marks again. On a video it exports the video again
+         * with the marks over every frame (and every part); Post waits for that as for any video. Nothing changes under a
+         * Post in flight.
          */
         fun closeMarks(keep: Boolean) {
             val current = _state.value
             val editing = current.marking ?: return
             marksKeeper.closed(editing)
-            val photo = (current.media as? MomentMediaFile.Photo)?.takeIf { keep && !current.posting }
-            if (photo == null || editing.result == current.marks) {
+            val media = current.media?.takeIf { keep && !current.posting }
+            if (media == null || editing.result == current.marks) {
                 _state.update { it.copy(marking = null) }
                 return
             }
             _state.update { it.copy(marking = null, marks = editing.result) }
-            marksKeeper.draw(
-                editing.result,
-                photo.file,
-                onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
-                onFailed = { drawn -> _state.update { it.copy(marks = drawn, notice = MARKS_FAILED) } },
-            )
+            when (media) {
+                is MomentMediaFile.Video -> prepare(media)
+                is MomentMediaFile.Photo ->
+                    marksKeeper.draw(
+                        editing.result,
+                        media.file,
+                        onDrawn = { file -> _state.update { it.copy(media = MomentMediaFile.Photo(file)) } },
+                        onFailed = { drawn -> _state.update { it.copy(marks = drawn, notice = MARKS_FAILED) } },
+                    )
+            }
         }
 
         /** Another picture takes the sheet: it starts with no marks, and nothing kept for the last one stays. */
