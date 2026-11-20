@@ -17,13 +17,14 @@ function skyOn(viewer) {
  * A venue tag at a point: { pinnable, atHome }. `pinnable`: the picker's venue (an `osm:` id) is found near the point
  * and may take a pin (it has a point; a Mapbox place id can't be looked up again and counts as one the
  * picker listed). `atHome`: the point is within ~60 m of a home the author lives at, so the post floats and says only
- * its town.
+ * its town. A failed read of the author's homes counts as at home (founder, 2026-11-20), so a failure never puts an
+ * exact pin by their home; someone with no home is never at home.
  */
 async function venueCheck({ userId, placeId, latitude, longitude }) {
   const momentPlace = require('./moments/momentPlace');
   const [venue, atHome] = await Promise.all([
     String(placeId || '').startsWith('osm:') ? momentPlace.venueNear(placeId, latitude, longitude) : { pinnable: true },
-    momentPlace.isAtHome(userId, latitude, longitude),
+    momentPlace.isAtHome(userId, latitude, longitude, { onFailure: true }),
   ]);
   return { pinnable: Boolean(venue?.pinnable), atHome };
 }
