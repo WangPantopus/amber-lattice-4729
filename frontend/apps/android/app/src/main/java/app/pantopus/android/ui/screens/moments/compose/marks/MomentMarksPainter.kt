@@ -41,13 +41,18 @@ object MomentMarksPainter {
     /** How many times [keptIn] shrinks a label's letters to fit. */
     private const val FIT_PASSES = 4
 
-    /** [skip]: a label the editor draws itself while its words are typed. */
+    /**
+     * [skip]: a label the editor draws itself while its words are typed. [shape]: the picture's width over its height
+     * as the editor showed it, where [width] × [height] only comes close (a video's export size is rounded to whole
+     * pixels), so the labels' lines break where they did in the editor.
+     */
     fun draw(
         canvas: Canvas,
         marks: MomentMarks,
         width: Float,
         height: Float,
         skip: Int? = null,
+        shape: Float = width / height,
     ) {
         val ink = CardSignatureInk.paint(multiply = false)
         for (stroke in marks.strokes) {
@@ -61,7 +66,7 @@ object MomentMarksPainter {
         val box = Paint(Paint.ANTI_ALIAS_FLAG)
         for (label in marks.labels) {
             if (label.id == skip || label.text.isBlank()) continue
-            val laid = layout(label, width, height)
+            val laid = layout(label, width, height, shape)
             boxColor(label)?.let { fill ->
                 box.color = fill.toArgb()
                 canvas.drawRoundRect(laid.box, laid.corner, laid.corner, box)
@@ -109,6 +114,7 @@ object MomentMarksPainter {
         label: MomentLabel,
         width: Float,
         height: Float,
+        shape: Float = width / height,
     ): LabelLayout {
         val scale = width / LAYOUT_WIDTH
         val letters = label.size * LAYOUT_WIDTH
@@ -116,7 +122,7 @@ object MomentMarksPainter {
         val words = label.text.ifEmpty { " " }
         val metrics = paint.fontMetrics
         val (across, down) = padding(label, letters)
-        val wrap = lineWidth(label, letters, width, height)
+        val wrap = lineWidth(label, letters, shape)
         val text =
             StaticLayout.Builder
                 .obtain(words, 0, words.length, paint, wrap)
@@ -157,16 +163,16 @@ object MomentMarksPainter {
 
     /**
      * Where a label's lines break, in layout units: at 13.1 letter sizes, or at the width a label may take (less its
-     * padding) where that's narrower (a landscape picture shows only its middle third).
+     * padding) where that's narrower (a landscape picture shows only its middle third); [shape] is the picture's width
+     * over its height.
      */
     private fun lineWidth(
         label: MomentLabel,
         letters: Float,
-        width: Float,
-        height: Float,
+        shape: Float,
     ): Int {
         val (across, _) = padding(label, letters)
-        val room = MomentMarkRules.labelBox(width / height).width * LAYOUT_WIDTH - across * 2
+        val room = MomentMarkRules.labelBox(shape).width * LAYOUT_WIDTH - across * 2
         return minOf(MomentMarkRules.WRAP_LETTERS * letters, room).roundToInt().coerceAtLeast(letters.roundToInt().coerceAtLeast(1))
     }
 
@@ -184,7 +190,7 @@ object MomentMarksPainter {
         val paint = labelPaint(label, letters)
         val longest = label.text.split(' ', '\n').maxOfOrNull { paint.measureText(it) } ?: return null
         if (longest > MomentMarkRules.WRAP_LETTERS * letters) return null
-        return longest / lineWidth(label, letters, width, height)
+        return longest / lineWidth(label, letters, width / height)
     }
 
     /** A label's padding around its words, across and down, for letters [letters] px tall (a plain label has no plate). */

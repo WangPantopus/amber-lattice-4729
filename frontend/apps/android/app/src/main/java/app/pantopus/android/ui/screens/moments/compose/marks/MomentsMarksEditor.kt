@@ -3,8 +3,10 @@
 package app.pantopus.android.ui.screens.moments.compose.marks
 
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +39,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -48,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -58,9 +62,12 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -78,12 +85,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import app.pantopus.android.ui.screens.mailbox.cards.sign
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
+import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -107,19 +123,21 @@ private val VIEWER_REPLY_BAR = 68.dp
 private val VIEWER_CORNER = 18.dp
 
 /**
- * The Post screen's Text and Draw pills (board T1), in Retake's style, at its top right, for a photo; off while a Post
- * is in flight.
+ * The Post screen's Text and Draw pills (board T1), in Retake's style, at its top right, for a photo or a [video]; off
+ * while a Post is in flight.
  */
 @Composable
 internal fun MomentsMarksPills(
     enabled: Boolean,
     onOpen: (MomentMarksTool) -> Unit,
     modifier: Modifier = Modifier,
+    video: Boolean = false,
 ) {
+    val what = if (video) "video" else "photo"
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
         MarksPill(
             label = "Text",
-            spoken = "Write on the photo",
+            spoken = "Write on the $what",
             enabled = enabled,
             onClick = { onOpen(MomentMarksTool.Text) },
             modifier = Modifier.testTag("moments.post.text"),
@@ -128,7 +146,7 @@ internal fun MomentsMarksPills(
         }
         MarksPill(
             label = "Draw",
-            spoken = "Draw on the photo",
+            spoken = "Draw on the $what",
             enabled = enabled,
             onClick = { onOpen(MomentMarksTool.Draw) },
             modifier = Modifier.testTag("moments.post.draw"),
@@ -181,6 +199,7 @@ internal fun MomentsMarksEditor(
     editing: MomentMarksEditing,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     onClose: (keep: Boolean) -> Unit,
+    video: File? = null,
 ) {
     var asksDiscard by remember { mutableStateOf(false) }
     val cancel = { if (editing.changed) asksDiscard = true else onClose(false) }
@@ -194,7 +213,7 @@ internal fun MomentsMarksEditor(
                 .pointerInput(Unit) { detectTapGestures { } }
                 .testTag("moments.marks"),
     ) {
-        if (picture != null) MarksCanvas(picture, editing, onEdit)
+        if (picture != null) MarksCanvas(picture, editing, onEdit, video)
         // The viewer's own top fade, over the strip its top bar covers and a little below.
         Box(
             modifier =
@@ -299,6 +318,7 @@ private fun MarksCanvas(
     picture: Bitmap,
     editing: MomentMarksEditing,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
+    video: File?,
 ) {
     val image = remember(picture) { picture.asImageBitmap() }
     val live = remember { mutableStateListOf<Float>() }
@@ -355,11 +375,59 @@ private fun MarksCanvas(
                 Modifier.matchParentSize().pointerInput(text) {
                     if (text) tapsAndPinches(tapped, pinched) else sign(live, onInk = {}, box = Size(1f, 1f)) { stroke(it) }
                 }
-            MarksPicture(image, editing, live, lineWidth, touches, Size(drawnWidth, drawnHeight), onAddWords = { addWords() })
+            // A video plays, muted and looping, under its marks; its first frame shows until it does.
+            if (video != null) {
+                Image(image, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
+                EditorVideo(video, Modifier.matchParentSize())
+            }
+            MarksPicture(
+                image.takeIf { video == null },
+                editing,
+                live,
+                lineWidth,
+                touches,
+                Size(drawnWidth, drawnHeight),
+                onAddWords = { addWords() },
+            )
             TopBarLine(MomentMarkRules.labelBox(picture.width, picture.height).top)
             if (text) TextLabels(editing, frame, onEdit)
         }
     }
+}
+
+/** The editor's own small player (the viewer's is its own): the video muted and looping, filling its box. */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun EditorVideo(
+    file: File,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    val player =
+        remember(file) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                repeatMode = Player.REPEAT_MODE_ALL
+                volume = 0f
+                prepare()
+            }
+        }
+    DisposableEffect(player) { onDispose { player.release() } }
+    LifecycleResumeEffect(player) {
+        player.play()
+        onPauseOrDispose { player.pause() }
+    }
+    AndroidView(
+        factory = { viewContext ->
+            PlayerView(viewContext).apply {
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { view -> view.player = player },
+        modifier = modifier.clearAndSetSemantics {},
+    )
 }
 
 /**
@@ -390,7 +458,7 @@ private suspend fun PointerInputScope.tapsAndPinches(
 /** The picture and its marks, the line being drawn among them; a label being typed is drawn by its text field. */
 @Composable
 private fun MarksPicture(
-    image: ImageBitmap,
+    image: ImageBitmap?,
     editing: MomentMarksEditing,
     live: List<Float>,
     lineWidth: Float,
@@ -400,12 +468,13 @@ private fun MarksPicture(
 ) {
     val typed = editing.selected.takeIf { editing.typing }
     val text = editing.tool == MomentMarksTool.Text
+    val what = if (image == null) "The video you're posting." else "The photo you're posting."
     Canvas(
         modifier =
             modifier
                 .testTag("moments.marks.picture")
                 .semantics {
-                    contentDescription = if (text) "The photo you're posting." else "The photo you're posting. Draw on it with one finger."
+                    contentDescription = if (text) what else "$what Draw on it with one finger."
                     if (text) {
                         onClick(label = "Add words") {
                             onAddWords()
@@ -414,11 +483,9 @@ private fun MarksPicture(
                     }
                 },
     ) {
-        drawImage(
-            image,
-            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-            filterQuality = FilterQuality.Medium,
-        )
+        if (image != null) {
+            drawImage(image, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.Medium)
+        }
         val marks =
             if (live.isEmpty()) {
                 editing.marks
@@ -427,6 +494,27 @@ private fun MarksPicture(
             }
         // The picture's exact drawn size (the canvas is whole pixels), so labels lay out from its exact shape.
         drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, drawn.width, drawn.height, skip = typed) }
+    }
+}
+
+/**
+ * [marks] over a picture [pictureWidth] × [pictureHeight] filling this box cropped (as `ContentScale.Crop` shows it):
+ * the Post screen's video still, whose marks are laid over every frame when it exports.
+ */
+@Composable
+internal fun MomentMarksOver(
+    pictureWidth: Int,
+    pictureHeight: Int,
+    marks: MomentMarks,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier.clipToBounds().clearAndSetSemantics {}) {
+        val scale = max(size.width / pictureWidth.coerceAtLeast(1), size.height / pictureHeight.coerceAtLeast(1))
+        val width = pictureWidth * scale
+        val height = pictureHeight * scale
+        translate((size.width - width) / 2, (size.height - height) / 2) {
+            drawIntoCanvas { MomentMarksPainter.draw(it.nativeCanvas, marks, width, height) }
+        }
     }
 }
 

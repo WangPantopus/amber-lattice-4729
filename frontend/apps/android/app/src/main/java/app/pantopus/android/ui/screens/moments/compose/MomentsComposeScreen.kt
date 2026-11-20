@@ -13,7 +13,6 @@ package app.pantopus.android.ui.screens.moments.compose
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
@@ -100,6 +99,8 @@ import app.pantopus.android.ui.screens.moments.components.MomentCardBackground
 import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.screens.moments.components.StageKeyboardResize
 import app.pantopus.android.ui.screens.moments.components.momentCardGradient
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksOver
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
@@ -242,7 +243,13 @@ fun MomentsComposeScreen(
         // Text and Draw on the photo, over the Post screen (its own Back handler takes Back while it's up).
         state.marking?.let { editing ->
             val picture by viewModel.marksPicture.collectAsStateWithLifecycle()
-            MomentsMarksEditor(picture = picture, editing = editing, onEdit = viewModel::editMarks, onClose = viewModel::closeMarks)
+            MomentsMarksEditor(
+                picture = picture,
+                editing = editing,
+                onEdit = viewModel::editMarks,
+                onClose = viewModel::closeMarks,
+                video = (state.media as? MomentMediaFile.Video)?.file,
+            )
         }
         // The place picker (the Pulse composer's) around the Moment's pin: venues within reach of it, and search.
         val pin = state.pin
@@ -720,7 +727,7 @@ private fun ReviewStep(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-            is MomentMediaFile.Video -> VideoStill(media)
+            is MomentMediaFile.Video -> VideoStill(media, state.marks)
             null ->
                 Box(
                     modifier = Modifier.fillMaxSize().momentCardGradient(state.background).statusBarsPadding().padding(top = 54.dp),
@@ -769,10 +776,11 @@ private fun ReviewStep(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        if (state.media is MomentMediaFile.Photo) {
+        if (state.media != null) {
             MomentsMarksPills(
                 enabled = !state.posting,
                 onOpen = onMarks,
+                video = state.media is MomentMediaFile.Video,
                 modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s3, top = 11.dp),
             )
         }
@@ -795,22 +803,14 @@ private fun ReviewStep(
     }
 }
 
-/** A video's first frame behind the Post sheet. */
+/** A video's first frame behind the Post sheet, with its marks (Text and Draw) where they go on every frame. */
 @Composable
-private fun VideoStill(media: MomentMediaFile.Video) {
+private fun VideoStill(
+    media: MomentMediaFile.Video,
+    marks: MomentMarks,
+) {
     val still by produceState<android.graphics.Bitmap?>(null, media.file) {
-        value =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        retriever.setDataSource(media.file.path)
-                        retriever.getFrameAtTime(0)
-                    } finally {
-                        retriever.release()
-                    }
-                }.getOrNull()
-            }
+        value = withContext(Dispatchers.IO) { MomentMedia.videoStill(media.file) }
     }
     still?.let {
         androidx.compose.foundation.Image(
@@ -819,6 +819,7 @@ private fun VideoStill(media: MomentMediaFile.Video) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
+        if (!marks.isEmpty) MomentMarksOver(it.width, it.height, marks, Modifier.fillMaxSize())
     }
 }
 

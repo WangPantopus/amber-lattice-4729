@@ -5,6 +5,8 @@ package app.pantopus.android.ui.screens.moments.compose.marks
 import android.content.Context
 import android.graphics.Bitmap
 import app.pantopus.android.data.moments.MomentMarksFlatten
+import app.pantopus.android.data.moments.MomentMedia
+import app.pantopus.android.data.moments.MomentMediaFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,19 +66,26 @@ internal class MomentMarksKeeper(
         style = editing.style
     }
 
-    /** Reads the editor's copy of the photo [shown] on the sheet, or of its original when marks are drawn into it. */
+    /**
+     * Reads the editor's copy of what's on the sheet: the photo (its original when marks are drawn into it), or a
+     * video's first frame, which gives the editor the video's shape and shows until it plays.
+     */
     fun read(
-        shown: File,
+        shown: MomentMediaFile,
         onUnreadable: () -> Unit,
     ) {
-        val source = original ?: shown
+        val video = shown is MomentMediaFile.Video
+        val source = if (video) shown.file else original ?: shown.file
         if (pictureOf == source) return
         reading?.cancel()
         pictureOf = source
         _picture.value = null
         reading =
             scope.launch {
-                val read = withContext(Dispatchers.Default) { MomentMarksFlatten.picture(source) }
+                val read =
+                    withContext(Dispatchers.Default) {
+                        if (video) MomentMedia.videoStill(source) else MomentMarksFlatten.picture(source)
+                    }
                 if (read != null) {
                     _picture.value = read
                 } else {
