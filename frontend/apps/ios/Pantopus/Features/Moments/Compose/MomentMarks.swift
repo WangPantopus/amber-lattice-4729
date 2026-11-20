@@ -98,9 +98,11 @@ struct MomentMarks: Equatable {
     /// not promised.
     static let narrowestFrame: CGFloat = 9.0 / 21.0
     static let widestFrame: CGFloat = 0.63
-    /// The most of a viewer's frame its top bar covers (the bars, face, name and place), on the tallest bar any phone
-    /// has (about 16% measured on an iPhone 17 and a 720 x 1280 Android phone), with a little room.
-    static let topBar: CGFloat = 0.17
+    /// The most of a viewer's frame its top covers: the bars, face, name and place, and one row of pills under them
+    /// (Live or Taken here or Taken on a date, and the weather). Measured with both pills, the row ends at 19.5% on an
+    /// iPhone 17 and 19.2% on an iPhone SE; the tallest is about 21% (a 720 x 1280 Android phone). This leaves a few
+    /// points more. A second row, when the pills wrap on the narrowest phones, isn't covered.
+    static let topBar: CGFloat = 0.23
 
     /// Where a label may go on a picture `aspect` wide (width over height), in picture coordinates: the part every
     /// phone's viewer shows (a centered box, as wide as the narrowest frame shows and as tall as the widest one does),
