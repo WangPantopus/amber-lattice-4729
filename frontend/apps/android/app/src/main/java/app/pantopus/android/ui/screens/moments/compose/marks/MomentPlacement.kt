@@ -36,11 +36,9 @@ data class MomentPlacement(
         return abs(width - cover) <= cover * SAME && abs(x - 0.5f) <= SAME && abs(y - 0.5f) <= SAME && normalised(turn) == 0f
     }
 
-    /** Inside the limits: 0.25 to 4 times cover's width, the middle on the canvas. */
-    fun limited(shape: Float): MomentPlacement {
-        val cover = coverWidth(shape)
-        return copy(width = width.coerceIn(cover * SMALLEST, cover * LARGEST), x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f))
-    }
+    /** Inside the limits: a quarter of the canvas's width up to 4 times cover's, the middle on the canvas. */
+    fun limited(shape: Float): MomentPlacement =
+        copy(width = width.coerceIn(SMALLEST, coverWidth(shape) * LARGEST), x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f))
 
     /** Sticking: the turn to a quarter turn within 3°, the middle's x and y each to 0.5 within 0.015. */
     fun stuck(): MomentPlacement {
@@ -69,8 +67,7 @@ data class MomentPlacement(
         turnBy: Float,
         shape: Float,
     ): MomentPlacement {
-        val cover = coverWidth(shape)
-        val sized = (width * zoom).coerceIn(cover * SMALLEST, cover * LARGEST)
+        val sized = (width * zoom).coerceIn(SMALLEST, coverWidth(shape) * LARGEST)
         val scale = sized / width
         val radians = Math.toRadians(turnBy.toDouble())
         val dx = x * canvas.width - centroid.x
@@ -87,7 +84,10 @@ data class MomentPlacement(
         const val CANVAS_HEIGHT = 2048
         val CANVAS = IntSize(CANVAS_WIDTH, CANVAS_HEIGHT)
 
-        /** The limits on the picture's width, as shares of cover's. */
+        /**
+         * The limits on the picture's width: a quarter of the canvas's, whatever its shape (so a wide picture can show
+         * whole inside the part every phone shows), up to 4 times cover's.
+         */
         private const val SMALLEST = 0.25f
         private const val LARGEST = 4f
 
@@ -175,5 +175,24 @@ internal fun MomentMarksEditing.reset(picture: IntSize): MomentMarksEditing =
         else -> copy(placement = null, marks = marks.changedState(picture.shape, back = true).heldTo(picture))
     }
 
-/** The size the editor shows and the marks are made on: the canvas while the picture is placed, else the picture. */
-internal fun MomentMarksEditing.surface(picture: IntSize): IntSize = if (placement != null) MomentPlacement.CANVAS else picture
+/**
+ * The size the editor shows and the marks are made on: the canvas while the picture is placed, and in Resize always (it
+ * opens on the canvas with the picture at cover); else the picture.
+ */
+internal fun MomentMarksEditing.surface(picture: IntSize): IntSize =
+    if (placement != null || tool == MomentMarksTool.Resize) MomentPlacement.CANVAS else picture
+
+/**
+ * Resize's view of an as-taken picture of [picture] px: where it sits on the canvas (at cover), and its marks shown over
+ * it there as the first change away from cover will place them. Nothing changes until a gesture does.
+ */
+internal fun MomentMarksEditing.shownOnCanvas(picture: IntSize): MomentMarksEditing =
+    if (tool != MomentMarksTool.Resize || placement != null) {
+        this
+    } else {
+        copy(marks = marks.changedState(picture.shape, back = false).heldTo(MomentPlacement.CANVAS))
+    }
+
+/** Where the picture of [picture] px is drawn on the canvas: its placement, or at cover in Resize while it's as taken. */
+internal fun MomentMarksEditing.shownPlacement(picture: IntSize): MomentPlacement? =
+    placement ?: MomentPlacement.cover(picture.shape).takeIf { tool == MomentMarksTool.Resize }

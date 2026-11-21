@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -280,6 +281,7 @@ fun MomentsComposeScreen(
                         when {
                             !onSheet -> "What you wrote won't be saved."
                             !state.marks.isEmpty -> "What you drew or wrote on it won't be saved."
+                            state.placement != null -> "How you resized it won't be saved."
                             state.media is MomentMediaFile.Video -> "Your video won't be saved."
                             else -> "Your photo won't be saved."
                         },
@@ -749,10 +751,17 @@ private fun ReviewStep(
                 }
         }
         if (state.media != null) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clearAndSetSemantics {})
-        // Retake at the left, the pills at the right (icons alone when their words don't fit beside Retake).
+        // Retake at the left, the pills at the right: a pill that doesn't fit beside Retake drops to a second row.
+        val density = LocalDensity.current
+        var topRows by remember { mutableStateOf(40.dp) }
         Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = Spacing.s3, end = Spacing.s3, top = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = Spacing.s3, end = Spacing.s3, top = 11.dp)
+                    .onSizeChanged { topRows = with(density) { it.height.toDp() } },
+            verticalAlignment = Alignment.Top,
         ) {
             Row(
                 modifier =
@@ -802,9 +811,10 @@ private fun ReviewStep(
             onAudience = onAudience,
             onCaption = onCaption,
             onPost = onPost,
-            // Never over the Retake / Text / Draw row (11 dp down, 40 dp tall): the sheet stops 12 dp under it, and on a
-            // short screen its own content scrolls in that height while Post stays at its bottom.
-            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + 40.dp + Spacing.s3),
+            // Never over the Retake / Text / Draw / Resize rows (11 dp down, 40 dp each, a second row while the pills wrap):
+            // the sheet stops 12 dp under them, and on a short screen its own content scrolls in that height while Post
+            // stays at its bottom.
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + topRows + Spacing.s3),
             onPlace = onPlace,
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,

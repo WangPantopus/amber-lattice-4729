@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -71,7 +70,8 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -87,7 +87,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -130,8 +129,8 @@ private val VIEWER_CORNER = 18.dp
 
 /**
  * The Post screen's Text, Draw and (for a photo, [resize]) Resize pills (board T1), in Retake's style, at its top right,
- * for a photo or a [video]; off while a Post is in flight. Where their words don't fit in the width they're given
- * (beside Retake on a narrow phone), they show their icons alone, with the same spoken names.
+ * for a photo or a [video]; off while a Post is in flight. They keep their words: a pill that doesn't fit beside the ones
+ * before it in the width given (beside Retake) drops to a row below, right-aligned, so Resize sits under Draw.
  */
 @Composable
 internal fun MomentsMarksPills(
@@ -141,62 +140,83 @@ internal fun MomentsMarksPills(
     video: Boolean = false,
     resize: Boolean = false,
 ) {
-    SubcomposeLayout(modifier) { constraints ->
-        val free = constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity)
-        var row = subcompose(false) { PillRow(enabled, onOpen, video, resize, compact = false) }.map { it.measure(free) }
-        if (row.maxOf { it.width } > constraints.maxWidth) {
-            row = subcompose(true) { PillRow(enabled, onOpen, video, resize, compact = true) }.map { it.measure(free) }
-        }
-        layout(row.maxOf { it.width }, row.maxOf { it.height }) { row.forEach { it.place(0, 0) } }
-    }
-}
-
-@Composable
-private fun PillRow(
-    enabled: Boolean,
-    onOpen: (MomentMarksTool) -> Unit,
-    video: Boolean,
-    resize: Boolean,
-    compact: Boolean,
-) {
     val what = if (video) "video" else "photo"
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        MarksPill(
-            label = "Text".takeUnless { compact },
-            spoken = "Write on the $what",
-            enabled = enabled,
-            onClick = { onOpen(MomentMarksTool.Text) },
-            modifier = Modifier.testTag("moments.post.text"),
-        ) {
-            Text(text = "Aa", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
-        }
-        MarksPill(
-            label = "Draw".takeUnless { compact },
-            spoken = "Draw on the $what",
-            enabled = enabled,
-            onClick = { onOpen(MomentMarksTool.Draw) },
-            modifier = Modifier.testTag("moments.post.draw"),
-        ) {
-            PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 18.dp, tint = Color.White)
-        }
-        if (resize) {
+    Layout(
+        content = {
             MarksPill(
-                label = "Resize".takeUnless { compact },
-                spoken = "Resize the $what",
+                label = "Text",
+                spoken = "Write on the $what",
                 enabled = enabled,
-                onClick = { onOpen(MomentMarksTool.Resize) },
-                modifier = Modifier.testTag("moments.post.resize"),
+                onClick = { onOpen(MomentMarksTool.Text) },
+                modifier = Modifier.testTag("moments.post.text"),
             ) {
-                PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 18.dp, tint = Color.White)
+                Text(text = "Aa", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+            }
+            MarksPill(
+                label = "Draw",
+                spoken = "Draw on the $what",
+                enabled = enabled,
+                onClick = { onOpen(MomentMarksTool.Draw) },
+                modifier = Modifier.testTag("moments.post.draw"),
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 18.dp, tint = Color.White)
+            }
+            if (resize) {
+                MarksPill(
+                    label = "Resize",
+                    spoken = "Resize the $what",
+                    enabled = enabled,
+                    onClick = { onOpen(MomentMarksTool.Resize) },
+                    modifier = Modifier.testTag("moments.post.resize"),
+                ) {
+                    PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 18.dp, tint = Color.White)
+                }
+            }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val gap = Spacing.s2.roundToPx()
+        val pills = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val rows = pillRows(pills, constraints.maxWidth, gap)
+        val rowWidth = { row: List<Placeable> -> row.sumOf { it.width } + gap * (row.size - 1) }
+        val width = rows.maxOf(rowWidth)
+        val rowHeight = pills.maxOf { it.height }
+        layout(width, rows.size * rowHeight + gap * (rows.size - 1)) {
+            rows.forEachIndexed { at, row ->
+                var x = width - rowWidth(row)
+                row.forEach { pill ->
+                    pill.place(x, at * (rowHeight + gap))
+                    x += pill.width + gap
+                }
             }
         }
     }
 }
 
-/** One pill: its icon and [label], or its icon alone in a round button when [label] is null. */
+/** [pills] in order, in rows at most [maxWidth] wide with [gap] between them; a pill that doesn't fit starts a new row. */
+private fun pillRows(
+    pills: List<Placeable>,
+    maxWidth: Int,
+    gap: Int,
+): List<List<Placeable>> {
+    val rows = mutableListOf<MutableList<Placeable>>()
+    var used = 0
+    pills.forEach { pill ->
+        val row = rows.lastOrNull()
+        if (row == null || used + gap + pill.width > maxWidth) {
+            rows += mutableListOf(pill)
+            used = pill.width
+        } else {
+            row += pill
+            used += gap + pill.width
+        }
+    }
+    return rows
+}
+
 @Composable
 private fun MarksPill(
-    label: String?,
+    label: String,
     spoken: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -207,22 +227,21 @@ private fun MarksPill(
         modifier =
             modifier
                 .height(40.dp)
-                .widthIn(min = 40.dp)
                 .alpha(if (enabled) 1f else 0.5f)
                 .clip(RoundedCornerShape(Radii.xl2))
                 .background(PantopusColors.momentCameraChip)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                .padding(start = if (label != null) Spacing.s3 else 10.dp, end = if (label != null) 14.dp else 10.dp)
+                .padding(start = Spacing.s3, end = 14.dp)
                 .clearAndSetSemantics {
                     contentDescription = spoken
                     role = Role.Button
                     if (!enabled) disabled()
                 },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         leading()
-        if (label != null) Text(text = label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(text = label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -298,7 +317,12 @@ internal fun MomentsMarksEditor(
                 ResizeTools(
                     editing,
                     onReset = { picture?.let { shown -> onEdit { it.reset(IntSize(shown.width, shown.height)) } } },
-                    modifier = tools,
+                    // Wholly inside the picture, whatever the phone: the frame stops the reply bar's height above the bottom.
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(start = Spacing.s4, end = Spacing.s4, bottom = VIEWER_REPLY_BAR + Spacing.s3),
                 )
         }
     }
@@ -402,8 +426,12 @@ private fun MarksCanvas(
     val backdrop = remember(picture) { MomentPlacementPainter.backdrop(picture) }
     val live = remember { mutableStateListOf<Float>() }
     val pictureSize = IntSize(picture.width, picture.height)
-    // Marks are made on what's shown: the picture as taken, or the canvas it's placed on.
+    // Marks are made on what's shown: the picture as taken, or the canvas it's placed on (in Resize, always the canvas).
     val surface = editing.surface(pictureSize)
+    // Resize opens on the canvas: an as-taken picture shows at cover there, its marks where the first change puts them.
+    val shownMarks =
+        remember(editing.marks, editing.placement == null, editing.tool, pictureSize) { editing.shownOnCanvas(pictureSize).marks }
+    val shown = editing.copy(marks = shownMarks)
     BoxWithConstraints(
         modifier =
             Modifier
@@ -461,8 +489,8 @@ private fun MarksCanvas(
                 EditorVideo(video, Modifier.matchParentSize())
             }
             MarksPicture(
-                EditorPicture(picture, image, editing.placement, backdrop).takeIf { video == null },
-                editing,
+                EditorPicture(picture, image, editing.shownPlacement(pictureSize), backdrop).takeIf { video == null },
+                shown,
                 live,
                 lineWidth,
                 touches,
