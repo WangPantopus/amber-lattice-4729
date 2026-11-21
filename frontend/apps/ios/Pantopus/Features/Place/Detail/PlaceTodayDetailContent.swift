@@ -1081,6 +1081,8 @@ struct AddressCalendarCard: View {
     @State private var nextDate = ""
     @State private var confirmed: PlaceAddressCalendarData?
     @State private var showPickupPrimer = false
+    /// The collections whose start date the editor filled in from the chosen weekday.
+    @State private var filledStart: Set<String> = []
     /// Saved while the reminder question is up: the box shows once it closes.
     @State private var savedAfterPrimer: (note: PickupSavedNote, calendar: PlaceAddressCalendarData)?
     @State private var sessionScope = HomeClaimSessionScope(api: .shared)
@@ -1406,6 +1408,7 @@ extension AddressCalendarCard {
         frequency = calendar.pickupSchedule?.recyclingFrequency ?? "not_set"
         nextDate = calendar.pickupSchedule?.recyclingNextDate ?? ""
         collections = Self.editorCollections(calendar)
+        filledStart = []
         openedVersion = calendar.pickupVersion
         errorText = nil
         flyerMessage = nil
@@ -1499,6 +1502,8 @@ extension AddressCalendarCard {
         let pattern = collectionPattern(row)
         return VStack(alignment: .leading, spacing: 8) {
             Picker("\(label) repeats", selection: Binding(get: { pattern }, set: { value in
+                // A date the editor filled in is the person's to choose once the pattern is no longer every week.
+                if value != "weekly-1", filledStart.remove(row.kind) != nil { collections[index].anchorDate = "" }
                 if value.hasPrefix("weekly-") {
                     collections[index].frequency = "weekly"
                     collections[index].interval = Int(value.dropFirst(7)) ?? 1
@@ -1530,7 +1535,7 @@ extension AddressCalendarCard {
                             } else {
                                 collections[index].weekdays.append(day.id)
                             }
-                            alignStartDate(index)
+                            followWeekdays(index)
                         } label: {
                             Text(String(day.label.prefix(3)))
                                 .font(.system(size: 11, weight: .semibold))
@@ -1547,6 +1552,13 @@ extension AddressCalendarCard {
             if row.frequency == "weekly" && row.interval > 1 {
                 Text("The start date anchors the collection week. Weeks begin Monday.")
                     .font(.system(size: 12)).foregroundStyle(Theme.Color.appTextSecondary)
+                if let off = startOffDays(row) {
+                    Text(off)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.Color.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("addressCalendarStartOffDays")
+                }
             }
             if row.frequency == "monthly" {
                 Text("The start date sets the pattern. Dates absent from a month are skipped; a fifth weekday means the last weekday.")
@@ -1566,6 +1578,7 @@ extension AddressCalendarCard {
                 title: row.frequency == "once" ? "Collection date" : "First collection date",
                 date: Binding(get: { anchor }, set: { date in
                     let day = Self.pickupDay(date)
+                    filledStart.remove(row.kind)
                     collections[index].anchorDate = day
                     // The end date can't precede the start.
                     if let until = collections[index].untilDate, until < day { collections[index].untilDate = day }
@@ -1617,18 +1630,33 @@ extension AddressCalendarCard {
         return gregorian
     }
 
-    /// A weekly collection's start date has to fall on one of its days (the server refuses the
-    /// schedule otherwise). An empty one, or one left on a day that is no longer chosen, becomes
-    /// the next such day; a date already on one of the days is kept (JOURNEYS 1).
-    private func alignStartDate(_ index: Int) {
+    /// Every week: the start date follows the chosen days (the next date on one of them, today
+    /// counts), on a saved schedule too, so "it changed to Thursday" is one choice and "Save
+    /// schedule". The server takes only a start date on a chosen day. Any other pattern's date
+    /// says which week it is: it stays, and `startOffDays` says when it no longer fits (JOURNEYS 1).
+    private func followWeekdays(_ index: Int) {
         let row = collections[index]
-        guard row.frequency == "weekly", !row.weekdays.isEmpty else { return }
-        let gregorian = Self.pickerCalendar
-        if let date = Self.pickerDate(row.anchorDate),
-           row.weekdays.contains(Self.weekdays[(gregorian.component(.weekday, from: date) + 5) % 7].id) { return }
+        guard row.frequency == "weekly", row.interval == 1 else { return }
+        guard !row.weekdays.isEmpty else {
+            filledStart.remove(row.kind)
+            return
+        }
         let day = suggestedDay(row)
         collections[index].anchorDate = day
+        filledStart.insert(row.kind)
         if let until = row.untilDate, until < day { collections[index].untilDate = day }
+    }
+
+    /// Every other week (or every 3 or 4): the start date is the person's to give. Says so when
+    /// it is not on a chosen day: "This date is a Tuesday. Choose a first collection date that is a Thursday."
+    private func startOffDays(_ row: PickupCollection) -> String? {
+        guard row.frequency == "weekly", row.interval > 1, !row.weekdays.isEmpty,
+              let date = Self.pickerDate(row.anchorDate) else { return nil }
+        let on = Self.weekdays[(Self.pickerCalendar.component(.weekday, from: date) + 5) % 7]
+        guard !row.weekdays.contains(on.id) else { return nil }
+        let days = Self.weekdays.filter { row.weekdays.contains($0.id) }.map(\.label)
+        let list = days.count > 1 ? "\(days.dropLast().joined(separator: ", ")) or \(days[days.count - 1])" : days[0]
+        return "This date is a \(on.label). Choose a first collection date that is a \(list)."
     }
 
     /// Where choosing a date starts: the home's today, or for a weekly
