@@ -148,6 +148,14 @@ extension MomentMarksDrawing {
         )
     }
 
+    /// The upright box around a box `size` big turned `turn` degrees: what has to fit where a label may go.
+    static func turned(_ size: CGSize, by turn: CGFloat) -> CGSize {
+        guard turn != 0 else { return size }
+        let angle = turn * .pi / 180
+        let (cosine, sine) = (abs(cos(angle)), abs(sin(angle)))
+        return CGSize(width: size.width * cosine + size.height * sine, height: size.width * sine + size.height * cosine)
+    }
+
     /// The widest single word of `label`, in the same units as `lay`: its letters shrink until this fits on a line.
     static func longestWord(_ label: MomentMarks.Label) -> CGFloat {
         let font = UIFont.systemFont(ofSize: label.size * unit, weight: .bold)
@@ -198,6 +206,14 @@ extension MomentMarksDrawing {
         defer { UIGraphicsPopContext() }
         for label in shown {
             let laid = lay(label, aspect: aspect)
+            context.saveGState()
+            defer { context.restoreGState() }
+            // Laid out as if upright, then turned about its middle.
+            if label.turn != 0 {
+                context.translateBy(x: laid.box.midX, y: laid.box.midY)
+                context.rotate(by: label.turn * .pi / 180)
+                context.translateBy(x: -laid.box.midX, y: -laid.box.midY)
+            }
             if let plate = laid.plate {
                 context.setFillColor(plate.cgColor)
                 context.addPath(UIBezierPath(roundedRect: laid.box, cornerRadius: laid.radius).cgPath)

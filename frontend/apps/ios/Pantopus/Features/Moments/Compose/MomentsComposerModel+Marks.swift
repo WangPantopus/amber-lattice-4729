@@ -60,9 +60,10 @@ final class MomentsMarking {
     @ObservationIgnored private(set) var pictureAspect: CGFloat = 1
     /// Text was opened: a new label appears in the middle with the keyboard up (once, so a fold doesn't add another).
     @ObservationIgnored var addsLabel = false
-    /// Where a label was when a drag or a pinch on it began.
+    /// Where a label was when a drag, a pinch or a twist on it began.
     @ObservationIgnored private var movedFrom: CGPoint?
     @ObservationIgnored private var sizedFrom: CGFloat?
+    @ObservationIgnored var turnedFrom: CGFloat?
     /// The editor's X asks first when something changed in this visit.
     var asksCancel = false
     /// Retake asks first when the picture has marks.
@@ -274,10 +275,11 @@ extension MomentsMarking {
         }
     }
 
-    /// `label` with its middle where its whole box stays between `rows` (picture heights), when it fits there.
+    /// `label` with its middle where its whole (turned) box stays between `rows` (picture heights), when it fits there.
     private func hold(_ label: MomentMarks.Label, within rows: ClosedRange<CGFloat>) -> MomentMarks.Label {
         var label = label
-        let half = MomentMarksDrawing.lay(label, aspect: aspect).box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
+        let box = MomentMarksDrawing.turned(MomentMarksDrawing.lay(label, aspect: aspect).box.size, by: label.turn)
+        let half = box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
         label.center.y = Self.within(label.center.y, rows.lowerBound + half, rows.upperBound - half)
         return label
     }
@@ -330,7 +332,7 @@ extension MomentsMarking {
     }
 
     /// Changes one label and holds it to the part every phone shows.
-    private func update(_ id: UUID, _ change: (inout MomentMarks.Label) -> Void) {
+    func update(_ id: UUID, _ change: (inout MomentMarks.Label) -> Void) {
         guard let index = editing.labels.firstIndex(where: { $0.id == id }) else { return }
         var label = editing.labels[index]
         change(&label)
@@ -338,7 +340,8 @@ extension MomentsMarking {
     }
 
     /// `label` inside the part every phone shows: letters no smaller than the picture check reads and no larger than
-    /// fit there with every word on one line, and its middle where the whole label stays inside.
+    /// fit there with every word on one line, and its middle where the whole label (the upright box around it, when it's
+    /// turned) stays inside.
     func clamped(_ label: MomentMarks.Label) -> MomentMarks.Label {
         var label = label
         let safe = MomentMarks.safeBox(aspect: aspect)
@@ -353,12 +356,14 @@ extension MomentsMarking {
             let word = MomentMarksDrawing.longestWord(label)
             return word > laid.wordsRect.width && word <= label.size * unit * MomentMarksDrawing.wrap
         }
-        while laid.box.width > safe.width * unit + 0.5 || laid.box.height > safe.height * tall + 0.5 || breaksWord(),
+        var box = MomentMarksDrawing.turned(laid.box.size, by: label.turn)
+        while box.width > safe.width * unit + 0.5 || box.height > safe.height * tall + 0.5 || breaksWord(),
               label.size > smallest {
             label.size = max(smallest, label.size * 0.95)
             laid = MomentMarksDrawing.lay(label, aspect: aspect)
+            box = MomentMarksDrawing.turned(laid.box.size, by: label.turn)
         }
-        let half = CGSize(width: laid.box.width / 2 / unit, height: laid.box.height / 2 / tall)
+        let half = CGSize(width: box.width / 2 / unit, height: box.height / 2 / tall)
         label.center.x = Self.within(label.center.x, safe.minX + half.width, safe.maxX - half.width)
         label.center.y = Self.within(label.center.y, safe.minY + half.height, safe.maxY - half.height)
         return label
