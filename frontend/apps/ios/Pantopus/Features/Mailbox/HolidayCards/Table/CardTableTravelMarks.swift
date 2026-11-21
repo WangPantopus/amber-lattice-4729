@@ -31,15 +31,20 @@ struct CardTravelEnvelope: Equatable {
     let miles: Int
     /// The journey page's id, for Copy link (travelling card plan Part 7).
     var journey: String?
+    /// The towns the share slip counts, when the server counts them (a sender's Sent card); otherwise the postmarks and
+    /// this person's own town.
+    var slipTowns: Int?
+    /// The words above the envelope say how far it came: only on a card received (`miles` is how far it came to them).
+    var tellsHowFar = true
 
     /// The share picture's slip: "5 TOWNS · 2,692 MILES", counting the town it reached, this person's.
     var slipLine: String {
-        "\(CardTravelWords.towns(marks.count + 1)) · \(CardTravelWords.miles(miles))".uppercased()
+        "\(CardTravelWords.towns(slipTowns ?? marks.count + 1)) · \(CardTravelWords.miles(miles))".uppercased()
     }
 
     /// "It came 2,692 miles through 4 towns to reach you."; nil on its first stop, which says nothing more than today.
     var cameLine: String? {
-        guard marks.count > 1 else { return nil }
+        guard tellsHowFar, marks.count > 1 else { return nil }
         return "It came \(CardTravelWords.miles(miles)) through \(CardTravelWords.towns(marks.count)) to reach you."
     }
 }
@@ -48,12 +53,34 @@ extension CardTravelEnvelope {
     /// The reader's envelope from the server's travel; nil for a card that doesn't travel or has no postmark yet.
     init?(_ travel: CardTravel?, year: Int) {
         guard let travel, !travel.postmarks.isEmpty else { return nil }
-        marks = travel.postmarks.map { stop in
+        marks = Self.marks(travel.postmarks, year: year)
+        miles = travel.miles
+        journey = travel.journey
+    }
+
+    /// A sender's own card in Sent (Sent's `travel.postmarks`): its envelope's postmarks, and for its share slip the
+    /// towns and miles since it left them. The words above the envelope say nothing more.
+    init?(sent travel: SentCardTravel?, year: Int) {
+        guard let travel, !travel.postmarks.isEmpty else { return nil }
+        marks = Self.marks(travel.postmarks, year: year)
+        miles = travel.miles
+        journey = travel.journey
+        slipTowns = travel.towns
+        tellsHowFar = false
+    }
+
+    /// A card being sealed (the start's look, or a pass-on): its postmarks so far and the one the seal strikes.
+    init(sealing marks: [CardTravelMark]) {
+        self.marks = marks
+        miles = 0
+        tellsHowFar = false
+    }
+
+    static func marks(_ stops: [CardTravelStop], year: Int) -> [CardTravelMark] {
+        stops.map { stop in
             let day = CardTravelWords.postmarkDay(stop.on)
             return CardTravelMark(town: stop.town, state: stop.state, day: day?.day ?? "", year: day?.year ?? year)
         }
-        miles = travel.miles
-        journey = travel.journey
     }
 }
 

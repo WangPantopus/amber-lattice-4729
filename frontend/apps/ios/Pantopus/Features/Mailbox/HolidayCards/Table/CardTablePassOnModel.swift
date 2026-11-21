@@ -204,7 +204,7 @@ final class CardTablePassOnModel {
         do {
             let look: CardPassOnPreview = try await api.request(HolidayCardEndpoints.passOnPreview(cardId: cardId, body))
             if let kept = look.passOn.town { town = kept }
-            openSealing()
+            openSealing(striking: look.passOn.postmark)
         } catch {
             if HolidayCardFlowViewModel.refusalCode(error) == "CARD_TRAVEL_NEEDS_TOWN" {
                 town = nil
@@ -225,12 +225,12 @@ final class CardTablePassOnModel {
         }
     }
 
-    /// The table, note side up on its open envelope: the sealing moment as it is for a card.
-    private func openSealing() {
+    /// The table, note side up on its open envelope: the sealing moment as it is for a card. The envelope carries the
+    /// towns so far, and the seal's thump strikes the postmark of the town it leaves now (as the web does).
+    private func openSealing(striking postmark: CardTravelStop?) {
         guard let pick else { return }
-        var card = content
-        card.travel = nil
-        let sealed = CardTableContent(
+        let card = content
+        var sealed = CardTableContent(
             design: card.design,
             number: card.number,
             caption: card.caption,
@@ -249,6 +249,8 @@ final class CardTablePassOnModel {
             verse: card.verse,
             signature: signature
         )
+        let marks = (content.travel?.marks ?? []) + CardTravelEnvelope.marks(postmark.map { [$0] } ?? [], year: card.year)
+        sealed.travel = marks.isEmpty ? nil : CardTravelEnvelope(sealing: marks)
         let model = CardTableModel(content: sealed, startsOnTable: true)
         model.beginSending(CardTableSendingSetup(
             toFirstName: pick.firstName ?? "",
