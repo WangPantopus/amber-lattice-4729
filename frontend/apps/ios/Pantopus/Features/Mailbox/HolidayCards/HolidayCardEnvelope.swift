@@ -62,7 +62,7 @@ struct HolidayCardEnvelopePiece: View {
 
                 if model.card?.sealed == true {
                     // The wax seal and its words, as on Android (plan 1.5).
-                    HStack(spacing: 10) {
+                    HStack(alignment: .bottom, spacing: 10) {
                         sealMark
                             .frame(width: 58, height: 58)
                         if LaunchFeatures.cardTable {
@@ -73,6 +73,10 @@ struct HolidayCardEnvelopePiece: View {
                                 .foregroundStyle(MailPaper.cardEnvelopeLabel)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
+                                // Level with the foot of the wax, under the address: centred on the seal, the words ran
+                                // into the address's second line (the street under a name). The type is fixed, so the
+                                // gap holds at every text size.
+                                .padding(.bottom, 6)
                         }
                     }
                     .frame(maxHeight: .infinity, alignment: .bottomLeading)
