@@ -29,6 +29,16 @@ extension MomentsMarking {
         }
     }
 
+    /// The same for a video, from its first frame.
+    func sampleBackdrop(video url: URL) {
+        guard backdrop == nil, sampling == nil else { return }
+        sampling = Task { [weak self] in
+            let colors = await MomentPlacementDrawing.backdrop(ofVideo: url)
+            guard !Task.isCancelled, let self else { return }
+            backdrop = colors
+        }
+    }
+
     /// The picture placed at `next`; at cover it's as taken again. When it changes state the marks move to the new
     /// state's coordinates, staying over what the picture shows at cover, and its labels are held to the new shape's
     /// rules as after any move. Back to as taken in a visit that began as taken, the marks are the visit's own again,
@@ -131,9 +141,8 @@ extension MomentsMarking {
 }
 
 extension MomentsComposerModel {
-    /// Resize is offered on a photo (on a video from step R2), and off while a Post is going, as Text and Draw are.
+    /// Resize is offered on a photo or a video, and off while a Post is going, as Text and Draw are.
     var offersResize: Bool {
-        if case .photo = draft { return true }
-        return false
+        offersMarks
     }
 }

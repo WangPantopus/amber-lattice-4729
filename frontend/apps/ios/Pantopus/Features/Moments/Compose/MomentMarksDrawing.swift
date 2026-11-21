@@ -234,7 +234,12 @@ struct MomentsMarkedPhoto: View {
 
     var body: some View {
         if let placement {
-            MomentsPlacedPhoto(image: image, placement: placement, backdrop: backdrop, marks: marks)
+            MomentsPlacedPicture(
+                aspect: image.size.width / max(image.size.height, 1),
+                placement: placement,
+                backdrop: backdrop,
+                marks: marks
+            ) { MomentsPlacedImage(image: image) }
         } else {
             Image(uiImage: image)
                 .resizable()

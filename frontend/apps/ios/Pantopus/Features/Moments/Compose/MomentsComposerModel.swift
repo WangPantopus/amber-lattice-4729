@@ -308,11 +308,16 @@ final class MomentsComposerModel {
     }
 
     /// A video longer than one Moment's is cut into equal parts, each made ready as a Moment of its own, with the
-    /// marks (`overlay`) over every frame of each.
-    private func prepareVideo(_ url: URL, seconds: Double, overlay: MomentsVideoEncoder.Overlay? = nil) {
+    /// marks (`overlay`) over every frame of each, and each placed on its canvas the same way (`placing`).
+    private func prepareVideo(
+        _ url: URL, seconds: Double, overlay: MomentsVideoEncoder.Overlay? = nil, placing: MomentsVideoEncoder.Placing? = nil
+    ) {
         let ranges = MomentsMediaExport.parts(of: seconds)
         prepare(ranges.map { range in
-            { folder in try await MomentsMediaExport.video(at: url, into: folder, part: ranges.count > 1 ? range : nil, overlay: overlay) }
+            { folder in
+                let part = ranges.count > 1 ? range : nil
+                return try await MomentsMediaExport.video(at: url, into: folder, part: part, overlay: overlay, placing: placing)
+            }
         })
     }
 
@@ -440,14 +445,18 @@ extension MomentsComposerModel {
         }
     }
 
-    /// The same for a video: every part is exported again with the marks over every frame; Post waits for it.
-    func use(marked url: URL, video: (size: CGSize, seconds: Double), _ marks: MomentMarks) {
+    /// The same for a video: every part is exported again with the marks over every frame, and on its 9:16 canvas when
+    /// it's placed; Post waits for it.
+    func use(marked url: URL, video: (size: CGSize, seconds: Double), _ marks: MomentMarks, placement: MomentPlacement? = nil) {
         guard !isPosting, case .video = draft else { return }
+        let backdrop = marking.backdrop
         draft = .video(url)
-        marking.keep(marks, base: nil, video: video)
+        marking.keep(marks, base: nil, video: video, placement: placement, backdrop: backdrop)
+        if placement != nil, backdrop == nil { marking.sampleBackdrop(video: url) }
         // The export running for the video as it was is no longer wanted.
         preparation?.cancel()
-        let aspect = video.size.width / max(video.size.height, 1)
-        prepareVideo(url, seconds: video.seconds, overlay: MomentMarksDrawing.overlay(marks, aspect: aspect))
+        let aspect = placement == nil ? video.size.width / max(video.size.height, 1) : MomentPlacement.canvas
+        let placing = placement.map { MomentsVideoEncoder.Placing(placement: $0, backdrop: backdrop) }
+        prepareVideo(url, seconds: video.seconds, overlay: MomentMarksDrawing.overlay(marks, aspect: aspect), placing: placing)
     }
 }

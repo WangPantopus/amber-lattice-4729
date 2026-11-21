@@ -46,8 +46,8 @@ extension MomentsComposerModel {
         // Retake as the wait ended has dropped the files already: stop before a Moment is made for them.
         guard stillOn(preparing) else { return false }
         guard !ready.isEmpty else {
-            // A video whose marks couldn't be put on it never posts without them; say so again.
-            let marked = kind == .video && !marking.marks.isEmpty
+            // A video whose marks or placement couldn't be put on it never posts without them; say so again.
+            let marked = kind == .video && (!marking.marks.isEmpty || marking.placement != nil)
             if error == nil { error = marked ? MomentsMediaExport.marksFailed : "Couldn't get that ready to post. Try another one." }
             return false
         }

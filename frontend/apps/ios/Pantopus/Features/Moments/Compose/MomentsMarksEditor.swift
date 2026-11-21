@@ -127,8 +127,8 @@ struct MomentsMarksEditor: View {
     /// The picture under the marks: Resize's, which the fingers move, or Draw and Text's.
     @ViewBuilder
     private func pictureArea(frame: CGRect, free: ClosedRange<CGFloat>) -> some View {
-        if marking.tool == .resize, case let .photo(image) = media {
-            MomentsResizeArea(marking: marking, image: image, size: frame.size)
+        if marking.tool == .resize {
+            MomentsResizeArea(marking: marking, media: media, size: frame.size)
         } else {
             MomentsMarksDrawArea(
                 marking: marking,

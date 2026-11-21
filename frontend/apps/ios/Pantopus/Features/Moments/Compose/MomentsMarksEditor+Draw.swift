@@ -124,7 +124,16 @@ struct MomentsMarksDrawArea: View {
                 } else {
                     Image(uiImage: image).resizable().scaledToFill()
                 }
-            case let .video(url, _): MomentsMarksVideo(url: url)
+            case let .video(url, picture):
+                if let placement = marking.editingPlacement {
+                    MomentPlacedCanvas(aspect: picture.width / max(picture.height, 1), placement: placement, backdrop: marking.backdrop) {
+                        MomentsMarksVideo(url: url)
+                    }
+                    .frame(width: fill.width, height: fill.height)
+                    .position(x: fill.midX, y: fill.midY)
+                } else {
+                    MomentsMarksVideo(url: url)
+                }
             }
         }
         .frame(width: size.width, height: size.height)
@@ -161,7 +170,7 @@ struct MomentsMarksDrawArea: View {
 }
 
 /// The video under the marks: muted and looping, on a player of its own (the Post screen keeps its own).
-private struct MomentsMarksVideo: View {
+struct MomentsMarksVideo: View {
     let url: URL
     @State private var player: AVPlayer?
 
