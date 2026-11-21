@@ -2353,16 +2353,43 @@ router.post('/cards/shared', verifyToken, cardSharedLimiter, validate(cardShared
  * GET /api/mailbox/cards/share-video/:design
  * The video a card shares as (launch key card_share_video): the picture's card arriving on the table, made once per
  * picture (frontend/apps/web/scripts/film-card-videos.cjs) and kept in public storage. It never holds a note or a name,
- * so it is the same for everyone who shares that picture. 404 while the key is off or for a picture that isn't one of
- * the cards: the apps then show only pictures. A sealed card's sheet doesn't ask.
+ * so it is the same for everyone who shares that picture. 404 while the key is off, for a picture that isn't one of
+ * the cards, or for one whose film isn't in storage yet (a new picture before its film is uploaded): the apps then show
+ * only pictures. A sealed card's sheet doesn't ask.
  */
-router.get('/cards/share-video/:design', verifyToken, (req, res) => {
+router.get('/cards/share-video/:design', verifyToken, async (req, res) => {
   if (!cardShareVideoOn()) return sendCardsOff(res);
   const design = holidayCards.designById(String(req.params.design || ''));
   if (!design) return sendCardsOff(res);
+  const url = getPublicUrl(`card-videos/v1/${design.id}.mp4`);
+  if (!(await cardFilmStored(url))) return sendCardsOff(res);
   res.set('Cache-Control', 'private, max-age=3600');
-  return res.json({ url: getPublicUrl(`card-videos/v1/${design.id}.mp4`), width: 1080, height: 1920 });
+  return res.json({ url, width: 1080, height: 1920 });
 });
+
+// Whether a picture's film is in public storage, asked of the storage itself (one HEAD request): a film that is there is
+// remembered until the server restarts (films are never taken away; a changed one goes to a new folder), a missing one
+// for 10 minutes, so a film the founder uploads shows its Video choice within 10 minutes, with no server change.
+const CARD_FILM_MISSING_MS = 10 * 60 * 1000;
+const cardFilms = new Map(); // url -> { stored: true } | { stored: false, until } | { asking: Promise<boolean> }
+async function cardFilmStored(url) {
+  const known = cardFilms.get(url);
+  if (known?.stored) return true;
+  if (known?.asking) return known.asking;
+  if (known && Date.now() < known.until) return false;
+  const asking = fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(4000) })
+    .then((response) => response.ok)
+    .catch((error) => {
+      logger.warn('Card film check failed', { url, error: error.message });
+      return false;
+    })
+    .then((stored) => {
+      cardFilms.set(url, stored ? { stored: true } : { stored: false, until: Date.now() + CARD_FILM_MISSING_MS });
+      return stored;
+    });
+  cardFilms.set(url, { asking });
+  return asking;
+}
 
 // ---- A card's own photo and voice (launch key holiday_card_memories; services/holidayCardMedia) ----
 // Added as soon as it's chosen, one at a time, each its own private File and S3 object. A send names them by id
