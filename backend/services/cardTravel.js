@@ -574,7 +574,11 @@ async function publicJourney(journey, now = new Date()) {
   });
   const ons = tree.stops.map((s) => s.on).filter(Boolean).sort();
   const days = ons.length > 1 ? holidayCards.daysBetween(ons[0], ons[ons.length - 1]) : 0;
-  const goal = await goalLine(now);
+  // The goal line never fails a journey: without it the page leaves the line out.
+  const goal = await goalLine(now).catch((err) => {
+    logger.warn('Travelling card goal not read for a journey', { error: err.message });
+    return null;
+  });
   return {
     id: String(journey),
     card: design ? { design: design.id, number: design.number, caption: design.caption, slug: design.slug, table: design.table,
@@ -593,9 +597,26 @@ async function publicJourney(journey, now = new Date()) {
 }
 
 let goalKept = null;
-/** All cards this Christmas: the states reached, the journeys and their miles. Kept for five minutes. */
+let goalReading = null;
+/**
+ * All cards this Christmas: the states reached, the journeys and their miles. Kept for five minutes; when they end, one
+ * read refreshes it (every request meanwhile shares that read) and the kept value answers while it runs. Throws only
+ * when there is no kept value and the read fails.
+ */
 async function goalLine(now = new Date()) {
   if (goalKept && goalKept.until > now.getTime()) return goalKept.value;
+  if (!goalReading) {
+    goalReading = readGoal()
+      .then((value) => { goalKept = { value, until: Date.now() + GOAL_KEEP_MS }; return value; })
+      .finally(() => { goalReading = null; });
+    goalReading.catch((err) => logger.warn('Travelling card goal not read', { error: err.message }));
+  }
+  // Stale: answer with it now; the shared read replaces it (a failure keeps it, and the next request tries again).
+  if (goalKept) return goalKept.value;
+  return goalReading;
+}
+
+async function readGoal() {
   const states = new Set();
   const journeys = new Set();
   let total = 0;
@@ -618,10 +639,8 @@ async function goalLine(now = new Date()) {
     }
     if (!data || data.length < PAGE) break;
   }
-  const value = { states: states.size, of: STATES_OF, state_codes: [...states].sort(), travelling: journeys.size, miles: total,
+  return { states: states.size, of: STATES_OF, state_codes: [...states].sort(), travelling: journeys.size, miles: total,
     line: `All cards this Christmas: ${states.size} of ${STATES_OF} states.` };
-  goalKept = { value, until: now.getTime() + GOAL_KEEP_MS };
-  return value;
 }
 
 // ---- Reaching a town and telling people ----
@@ -712,6 +731,21 @@ async function tellJourney(journey, now = new Date()) {
     }
   }
   const toldNow = new Map();
+  const tell = (holder, arrivals) => {
+    for (const row of arrivals) {
+      if (!toldNow.has(row.id)) toldNow.set(row.id, new Set());
+      toldNow.get(row.id).add(holder);
+    }
+  };
+  // Someone whose account is gone can never be told: counted as told, so the journey isn't read again for them.
+  if (owed.size) {
+    const { data: present, error: presentError } = await supabaseAdmin.from('User').select('id').in('id', [...owed.keys()]);
+    if (presentError) throw new Error(presentError.message);
+    const here = new Set((present || []).map((u) => String(u.id)));
+    for (const [holder, { arrivals }] of owed) {
+      if (!here.has(holder)) { tell(holder, arrivals); owed.delete(holder); }
+    }
+  }
   for (const [holder, { sent, arrivals }] of owed) {
     const zone = (await mailDelivery.personTimeZone(holder)) || mailDelivery.FALLBACK_TIME_ZONE;
     // Never in someone's night: a later run tells them once it's 7 a.m. where they live.
@@ -742,10 +776,7 @@ async function tellJourney(journey, now = new Date()) {
       metadata: { mail_id: sent.id, journey: String(journey) },
     });
     if (!created) continue;
-    for (const row of arrivals) {
-      if (!toldNow.has(row.id)) toldNow.set(row.id, new Set());
-      toldNow.get(row.id).add(holder);
-    }
+    tell(holder, arrivals);
   }
   for (const [id, holders] of toldNow) {
     const row = tree.byId.get(id);

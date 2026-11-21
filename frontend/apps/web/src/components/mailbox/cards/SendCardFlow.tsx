@@ -2562,8 +2562,9 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       {townFor ? (
         <TownSheet
           onDone={() => { const next = townFor.then; setTownFor(null); setTravel(true); if (next) next(); }}
-          // Closed without a town: a card turned on to travel goes back to an ordinary card.
-          onClose={() => { if (!townFor.then) setTravel(false); setTownFor(null); }}
+          // Closed without a town (from the switch, "Seal and send" or "Look it over"): the card goes back to an ordinary
+          // card, as on the iPhone and Android, so the sheet doesn't open again on the next press.
+          onClose={() => { setTravel(false); setTownFor(null); }}
         />
       ) : null}
       {sealing ? (

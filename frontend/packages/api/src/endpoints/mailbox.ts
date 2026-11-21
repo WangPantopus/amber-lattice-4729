@@ -1277,7 +1277,8 @@ export interface CardJourney {
   state_codes: string[];
   days: number;
   travelling: boolean;
-  goal: CardJourneyGoal;
+  /** Null when the server couldn't count it just now: leave the line out. */
+  goal: CardJourneyGoal | null;
 }
 
 /** GET /api/mailbox/cards/journeys/:journey (public). */

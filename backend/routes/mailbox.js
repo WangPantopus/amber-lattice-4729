@@ -2186,6 +2186,8 @@ router.get('/cards', verifyToken, async (req, res) => {
   try {
     const senderId = req.user.id;
     const now = new Date();
+    // The sender's town for "Let it travel" (card_travel), read alongside the rest, never after it.
+    const travelTown = cardTravel.travelOn() ? cardTravel.townLabel(senderId).catch(() => null) : null;
     const timeZone = (await mailDelivery.personTimeZone(senderId)) || mailDelivery.FALLBACK_TIME_ZONE;
     const [today] = await cardsSentToday(senderId, timeZone, now);
     const arrivals = (byEmail, all = false) => holidayCards.arrivalsFor({ byEmail, all, timeZone, now, nextRound: mailDelivery.nextRound });
@@ -2227,8 +2229,7 @@ router.get('/cards', verifyToken, async (req, res) => {
       // "Let it travel" (launch key card_travel): the switch is on to begin with (D5), the sender's town ("Boise, ID", or
       // null: the apps ask "Where does it start?" once, D4) and how many people one person may pass a card to (D1).
       // Absent while the key is off: the apps show no switch.
-      ...(cardTravel.travelOn() ? { travel: { on: true, town: await cardTravel.townLabel(senderId).catch(() => null),
-        places: cardTravel.PLACES } } : {}),
+      ...(travelTown ? { travel: { on: true, town: await travelTown, places: cardTravel.PLACES } } : {}),
     });
   } catch (err) {
     logger.error('Cards read error', { error: err.message, userId: req.user.id });
@@ -3710,10 +3711,11 @@ router.post('/cards/:id/pass-on/take-back', verifyToken, async (req, res) => {
   }
 });
 
-// The public journey routes: no sign-in, rate limited by network address as the card link page's routes are.
+// The public journey routes: no sign-in, rate limited by network address. 600 a minute: the web's own servers read
+// them for every journey page and picture (each journey kept 60 seconds there), and must never be shut out.
 const journeyLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: 600,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: clientIpKey,

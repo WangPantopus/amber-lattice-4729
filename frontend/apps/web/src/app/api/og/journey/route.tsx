@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
   let journey: CardJourney | null = null;
   if (UUID.test(id)) {
     try {
-      const res = await fetch(`${API_BASE}/api/mailbox/cards/journeys/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+      // Kept 60 seconds per journey (and the picture itself five minutes by the browser and CDN).
+      const res = await fetch(`${API_BASE}/api/mailbox/cards/journeys/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' }, next: { revalidate: 60 } });
       if (res.ok) journey = ((await res.json()) as { journey: CardJourney }).journey;
     } catch {
       journey = null;
