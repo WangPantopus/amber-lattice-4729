@@ -81,6 +81,12 @@ class VerifyEmailViewModel
 
         private var signingIn = false
 
+        /** True while the sign-in under way is a quiet one (a return to the app, a check): a tap then waits for it. */
+        private var signingInQuietly = false
+
+        /** A tap of "Already confirmed?" made during a quiet sign-in: answered from that sign-in's result. */
+        private var tapDuringQuietSignIn: ((String?) -> Unit)? = null
+
         /**
          * Signs in with the password typed at sign-up once the email is
          * confirmed. [asked] (the "Already confirmed?" tap) says "not confirmed
@@ -91,21 +97,13 @@ class VerifyEmailViewModel
             asked: Boolean = false,
             onUnavailable: (String?) -> Unit = {},
         ) {
-            if (signingIn) return
-            signingIn = true
-            viewModelScope.launch {
-                try {
-                    val email = _uiState.value.email
-                    when (authRepository.signInAfterConfirmation(email)) {
-                        AuthRepository.ConfirmedSignIn.SignedIn -> Unit
-                        AuthRepository.ConfirmedSignIn.NotConfirmedYet ->
-                            if (asked) _uiState.update { it.copy(notConfirmedYet = true) }
-                        AuthRepository.ConfirmedSignIn.Unavailable -> if (asked) onUnavailable(email)
-                    }
-                } finally {
-                    signingIn = false
-                }
+            if (signingIn) {
+                if (asked && signingInQuietly) tapDuringQuietSignIn = onUnavailable
+                return
             }
+            signingIn = true
+            signingInQuietly = !asked
+            viewModelScope.launch { signInNow(tap = onUnavailable.takeIf { asked }) }
         }
 
         private var watchStartedAtMs: Long? = null
@@ -134,19 +132,40 @@ class VerifyEmailViewModel
                 if (clock.millis() + wait - startedAt > WATCH_WINDOW_MS) return
                 delay(wait)
                 watchChecks++
-                val outcome = signInOnceQuietly()
+                // Null: another sign-in was under way, so this check wasn't needed.
+                val outcome =
+                    if (signingIn) {
+                        null
+                    } else {
+                        signingIn = true
+                        signingInQuietly = true
+                        signInNow(tap = null)
+                    }
                 if (outcome != null && outcome != AuthRepository.ConfirmedSignIn.NotConfirmedYet) return
             }
         }
 
-        /** One quiet try; null when another sign-in (a tap, a return to the app) is already under way. */
-        private suspend fun signInOnceQuietly(): AuthRepository.ConfirmedSignIn? {
-            if (signingIn) return null
-            signingIn = true
-            return try {
-                authRepository.signInAfterConfirmation(_uiState.value.email)
+        /**
+         * The sign-in its caller marked under way ([signingIn]). [tap] is the
+         * "Already confirmed?" tap that asked for it, if one did; a tap made
+         * while a quiet one runs gets the same answer.
+         */
+        private suspend fun signInNow(tap: ((String?) -> Unit)?): AuthRepository.ConfirmedSignIn {
+            try {
+                val email = _uiState.value.email
+                val outcome = authRepository.signInAfterConfirmation(email)
+                (tap ?: tapDuringQuietSignIn)?.let { onUnavailable ->
+                    when (outcome) {
+                        AuthRepository.ConfirmedSignIn.SignedIn -> Unit
+                        AuthRepository.ConfirmedSignIn.NotConfirmedYet -> _uiState.update { it.copy(notConfirmedYet = true) }
+                        AuthRepository.ConfirmedSignIn.Unavailable -> onUnavailable(email)
+                    }
+                }
+                return outcome
             } finally {
                 signingIn = false
+                signingInQuietly = false
+                tapDuringQuietSignIn = null
             }
         }
 
