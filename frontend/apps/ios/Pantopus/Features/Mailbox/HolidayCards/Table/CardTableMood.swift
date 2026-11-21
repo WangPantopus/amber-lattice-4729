@@ -17,11 +17,11 @@ enum CardTableMood: Equatable {
     /// `letter`: a letter, not a card (plan Part 10): no snow, candle, glint or bounce.
     case nostalgia, reverence, santa, letter
 
-    /// By the picture's number, as the server's collections hold them: 59-67 Christmas with Jesus Christ, 50-58
+    /// By the picture's number, as the server's collections hold them: 59-89 Christmas with Jesus Christ, 50-58
     /// Christmas with Santa, every other picture nostalgia.
     init(number: Int?) {
         switch number ?? 0 {
-        case 59...67: self = .reverence
+        case 59...89: self = .reverence
         case 50...58: self = .santa
         default: self = .nostalgia
         }

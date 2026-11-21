@@ -158,7 +158,7 @@ Table colours: the rule above, on the painting (which gives 59–67's recorded c
 
 **"Pick a card".** It prints a verse card's whole verse under the card, and the Android app makes every card of a collection small enough to leave room for the longest verse in it. So the list "Pick a card" reads carries that verse only for a verse no longer than Matthew 2:11, the longest of 59–67 (`pickACardDesign` in `holidayCards.js`). The six longer passages (75, 77, 79, 82, 88 and 89) show their reference there and are read on the picture. An opened card's "Read the verse", Sent, and the public card pages still carry every verse whole.
 
-**The table's mood** comes from the picture's number in each app. The website treats 59–89 as Christmas with Jesus Christ (candlelight, the star stamp); the iPhone and Android apps know 59–67.
+**The table's mood** comes from the picture's number in each app. The website, and the iPhone and Android apps from #4585 and #4586 on, treat 59–89 as Christmas with Jesus Christ (candlelight, the star stamp); the app builds already in the stores know only 59–67, so they open 68–89 on the everyday table until the next builds. Android also sets a passage's reference in the serif from #4586 on (before, its pattern knew only a single verse, so a passage's reference was written in the pen).
 
 Card 71 is John 3:16, which card 61 already carries, so its public page is `/cards/john-3-16-nicodemus`.
 
