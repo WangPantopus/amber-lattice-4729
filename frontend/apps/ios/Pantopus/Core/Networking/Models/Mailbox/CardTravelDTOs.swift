@@ -159,3 +159,87 @@ struct CardTravelLenient<T: Decodable & Sendable>: Decodable {
         value = try? T(from: decoder)
     }
 }
+
+// MARK: - Letting a card travel (plan Part 2)
+
+/// `travel` on `GET /api/mailbox/cards`: the switch shows only when the server sends this with `on`.
+public struct HolidayCardsTravel: Decodable, Sendable, Hashable {
+    public let on: Bool
+    /// "Boise, ID", or nil when the sender has no town yet (they're asked once, D4).
+    public let town: String?
+    /// How many people one person may pass a card to (two, D1).
+    public let places: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case on, town, places
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        on = (try? c.decodeIfPresent(Bool.self, forKey: .on)) ?? false
+        town = (try? c.decodeIfPresent(String.self, forKey: .town)).flatMap { $0.isEmpty ? nil : $0 }
+        places = (try? c.decodeIfPresent(Int.self, forKey: .places)) ?? 2
+    }
+
+    public init(on: Bool, town: String?, places: Int) {
+        self.on = on
+        self.town = town
+        self.places = places
+    }
+}
+
+/// One town `GET /api/mailbox/cards/towns?q=` offers (NOTES "The server's shapes" 2).
+public struct CardTownMatch: Decodable, Sendable, Hashable, Identifiable {
+    /// What `PUT /cards/town` keeps ("zip:98660", or a place's id).
+    public let id: String
+    public let town: String
+    public let state: String
+    /// "Vancouver, WA".
+    public let label: String
+    public let zip: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, town, state, label, zip
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        town = (try? c.decodeIfPresent(String.self, forKey: .town)) ?? ""
+        state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? ""
+        let label = try? c.decodeIfPresent(String.self, forKey: .label)
+        self.label = label ?? (state.isEmpty ? town : "\(town), \(state)")
+        zip = try? c.decodeIfPresent(String.self, forKey: .zip)
+    }
+}
+
+/// The answer of `GET /api/mailbox/cards/towns?q=`: up to 8 towns; without `q`, the town nearest where the person's
+/// location says they are ("Use Vancouver, WA"), or none.
+public struct CardTownsResponse: Decodable, Sendable, Hashable {
+    public let towns: [CardTownMatch]
+    public let suggested: CardTownMatch?
+
+    private enum CodingKeys: String, CodingKey {
+        case towns, suggested
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        towns = ((try? c.decodeIfPresent([CardTravelLenient<CardTownMatch>].self, forKey: .towns)) ?? []).compactMap(\.value)
+        suggested = try? c.decodeIfPresent(CardTownMatch.self, forKey: .suggested)
+    }
+}
+
+/// The body of `PUT /api/mailbox/cards/town`: an `id` from the list; kept in the profile's town fields.
+public struct CardTownBody: Encodable, Sendable {
+    public let id: String
+
+    public init(_ match: CardTownMatch) {
+        id = match.id
+    }
+}
+
+/// The answer of `PUT /api/mailbox/cards/town`: the town as it's kept ("Vancouver, WA").
+public struct CardTownAnswer: Decodable, Sendable, Hashable {
+    public let town: String?
+}
