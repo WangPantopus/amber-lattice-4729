@@ -1198,7 +1198,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     <div className="mb-3 -mx-1 rounded-2xl border border-sky-200 bg-sky-50 py-2 pl-3.5 pr-1 flex items-center gap-2.5" role="status">
       <Eye aria-hidden="true" className="w-5 h-5 shrink-0 text-app-link" strokeWidth={2} />
       <div className="min-w-0 flex-1">
-        <p className="text-[0.9375rem] leading-5 font-semibold text-app">Previewing as {audienceInfo.label.toLowerCase()}</p>
+        <p className="text-[0.9375rem] leading-5 font-semibold text-app">Previewing as {audienceInfo.label.charAt(0).toLowerCase() + audienceInfo.label.slice(1)}</p>
         <p className="text-[0.8125rem] leading-[1.125rem] text-app-muted">{audienceInfo.detail}</p>
       </div>
       <button type="button" onClick={leaveOwnerPreview} className="min-h-[44px] px-3 text-[1.0625rem] font-semibold text-app-link hover:underline">
