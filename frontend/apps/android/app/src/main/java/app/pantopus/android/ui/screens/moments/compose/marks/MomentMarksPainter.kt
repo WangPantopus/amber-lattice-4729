@@ -13,7 +13,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import app.pantopus.android.ui.screens.mailbox.cards.table.CardSignatureInk
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Draws a picture's marks onto an `android.graphics.Canvas` [width] × [height] px that holds the whole picture. The one
@@ -41,6 +44,9 @@ object MomentMarksPainter {
     /** How many times [keptIn] shrinks a label's letters to fit. */
     private const val FIT_PASSES = 4
 
+    /** Half a pixel's rounding allowed when [fitsTurned] compares boxes. */
+    private const val FIT_SLACK = 0.5f
+
     /**
      * [skip]: a label the editor draws itself while its words are typed. [shape]: the picture's width over its height
      * as the editor showed it, where [width] × [height] only comes close (a video's export size is rounded to whole
@@ -67,11 +73,13 @@ object MomentMarksPainter {
         for (label in marks.labels) {
             if (label.id == skip || label.text.isBlank()) continue
             val laid = layout(label, width, height, shape)
+            val restore = canvas.save()
+            // Laid out upright, then turned about its middle.
+            if (label.turn != 0f) canvas.rotate(label.turn, laid.box.centerX(), laid.box.centerY())
             boxColor(label)?.let { fill ->
                 box.color = fill.toArgb()
                 canvas.drawRoundRect(laid.box, laid.corner, laid.corner, box)
             }
-            val restore = canvas.save()
             canvas.translate(laid.box.left + laid.padAcross, laid.box.top + laid.padDown)
             canvas.scale(laid.scale, laid.scale)
             edgeColor(label)?.let { edge ->
@@ -193,6 +201,20 @@ object MomentMarksPainter {
         return longest / lineWidth(label, letters, width / height)
     }
 
+    /** The upright box around [box] turned [turn] degrees about its middle. */
+    fun turnedBounds(
+        box: RectF,
+        turn: Float,
+    ): RectF {
+        if (turn == 0f) return box
+        val radians = Math.toRadians(turn.toDouble())
+        val cos = abs(cos(radians)).toFloat()
+        val sin = abs(sin(radians)).toFloat()
+        val halfWidth = (box.width() * cos + box.height() * sin) / 2
+        val halfHeight = (box.width() * sin + box.height() * cos) / 2
+        return RectF(box.centerX() - halfWidth, box.centerY() - halfHeight, box.centerX() + halfWidth, box.centerY() + halfHeight)
+    }
+
     /** A label's padding around its words, across and down, for letters [letters] px tall (a plain label has no plate). */
     fun padding(
         label: MomentLabel,
@@ -231,8 +253,9 @@ object MomentMarksPainter {
 
     /**
      * [label] kept where a label may go on a picture [width] × [height] px ([MomentMarkRules.labelBox]): its letters no
-     * larger than lets its box fit there (and between the smallest the picture check reads and the largest), its whole
-     * box inside it (its middle on that part's middle if even the smallest letters don't fit).
+     * larger than lets its box (the upright box around it when it's turned) fit there, between the smallest the picture
+     * check reads and the largest, and that whole box inside it (its middle on that part's middle if even the smallest
+     * letters don't fit).
      */
     fun keptIn(
         label: MomentLabel,
@@ -246,7 +269,7 @@ object MomentMarksPainter {
         // Smaller letters wrap differently, so a few passes settle it; a word is never broken in the middle to fit.
         var passes = 0
         while (passes++ < FIT_PASSES) {
-            val box = laid.box
+            val box = turnedBounds(laid.box, sized.turn)
             // A word that could fit a whole line is never broken in the middle to fit; a longer one keeps its size.
             val word = wordOverflow(sized, width.toFloat(), height.toFloat())?.let { 1f / it } ?: Float.MAX_VALUE
             val fits = minOf(allowed.width * width / box.width(), allowed.height * height / box.height(), word)
@@ -254,11 +277,26 @@ object MomentMarksPainter {
             sized = sized.copy(size = (sized.size * fits).coerceAtLeast(smallest))
             laid = layout(sized, width.toFloat(), height.toFloat())
         }
-        val box = laid.box
+        val box = turnedBounds(laid.box, sized.turn)
         return sized.copy(
             x = kept(sized.x, box.width() / width / 2, allowed.left, allowed.right),
             y = kept(sized.y, box.height() / height / 2, allowed.top, allowed.bottom),
         )
+    }
+
+    /**
+     * [label] turned can be held where a label may go on a picture [width] × [height] px: once kept ([keptIn]), the upright
+     * box around it fits there. A twist that can't fit isn't applied (step R3).
+     */
+    fun fitsTurned(
+        label: MomentLabel,
+        width: Int,
+        height: Int,
+    ): Boolean {
+        val allowed = MomentMarkRules.labelBox(width, height)
+        val kept = keptIn(label, width, height)
+        val box = turnedBounds(layout(kept, width.toFloat(), height.toFloat()).box, kept.turn)
+        return box.width() <= allowed.width * width + FIT_SLACK && box.height() <= allowed.height * height + FIT_SLACK
     }
 
     /** A middle at [at] with [half] of the box each side, inside [from] to [to] (all shares of 1). */

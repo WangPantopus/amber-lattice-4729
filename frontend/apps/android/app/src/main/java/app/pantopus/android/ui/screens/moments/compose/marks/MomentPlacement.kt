@@ -41,19 +41,16 @@ data class MomentPlacement(
         copy(width = width.coerceIn(SMALLEST, coverWidth(shape) * LARGEST), x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f))
 
     /** Sticking: the turn to a quarter turn within 3°, the middle's x and y each to 0.5 within 0.015. */
-    fun stuck(): MomentPlacement {
-        val turned = normalised(turn)
-        val quarter = (turned / QUARTER).roundToInt() * QUARTER
-        return copy(
-            turn = if (abs(turned - quarter) <= TURN_STICKS) normalised(quarter) else turned,
+    fun stuck(): MomentPlacement =
+        copy(
+            turn = stuckTurn(turn),
             x = if (abs(x - 0.5f) <= MIDDLE_STICKS) 0.5f else x,
             y = if (abs(y - 0.5f) <= MIDDLE_STICKS) 0.5f else y,
         )
-    }
 
     /** Which values sit where they stick (one bit each: a quarter turn, the middle across, the middle down). */
     val caught: Int
-        get() = (if (turn % QUARTER == 0f) 1 else 0) or (if (x == 0.5f) 2 else 0) or (if (y == 0.5f) 4 else 0)
+        get() = (if (onQuarter(turn)) 1 else 0) or (if (x == 0.5f) 2 else 0) or (if (y == 0.5f) 4 else 0)
 
     /**
      * A gesture on the canvas drawn [canvas] px: fingers around [centroid] (px on the canvas) moved by [pan], spread by
@@ -91,8 +88,6 @@ data class MomentPlacement(
         private const val SMALLEST = 0.25f
         private const val LARGEST = 4f
 
-        private const val QUARTER = 90f
-        private const val TURN_STICKS = 3f
         private const val MIDDLE_STICKS = 0.015f
 
         /** Closer than this is cover still (a TalkBack resize and its undo come back within a rounding of it). */
@@ -117,6 +112,19 @@ data class MomentPlacement(
         }
     }
 }
+
+private const val QUARTER = 90f
+private const val TURN_STICKS = 3f
+
+/** A turn (the picture's or a label's) in (−180, 180], stuck to a quarter turn within 3° of one. */
+internal fun stuckTurn(degrees: Float): Float {
+    val turned = MomentPlacement.normalised(degrees)
+    val quarter = (turned / QUARTER).roundToInt() * QUARTER
+    return if (abs(turned - quarter) <= TURN_STICKS) MomentPlacement.normalised(quarter) else turned
+}
+
+/** The turn sits on a quarter turn, where it sticks. */
+internal fun onQuarter(turn: Float): Boolean = turn % QUARTER == 0f
 
 /** The shape of a picture [size] px: width over height. */
 internal val IntSize.shape: Float get() = width.toFloat() / height.coerceAtLeast(1)

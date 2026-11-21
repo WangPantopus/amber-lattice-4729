@@ -88,6 +88,8 @@ data class MomentLabel(
     val size: Float,
     val style: MomentLabelStyle,
     val ink: MomentInk,
+    /** Degrees clockwise about its middle, in (−180, 180] (step R3); 0 when made. */
+    val turn: Float = 0f,
 )
 
 /** Everything written and drawn on one picture. */
@@ -260,9 +262,10 @@ object MomentMarkRules {
     const val PAD_ACROSS = 0.64f
     const val CORNER = 0.45f
 
-    /** TalkBack's steps: a move is 5% of the picture, a resize a fifth. */
+    /** TalkBack's steps: a move is 5% of the picture, a resize a fifth, a turn 15°. */
     const val MOVE_STEP = 0.05f
     const val SIZE_STEP = 1.2f
+    const val TURN_STEP = 15f
 
     /** The narrowest frame a viewer shows a Moment in (a 9:21 phone) and the widest (iPhone SE's, less its reply bar). */
     private const val NARROWEST_FRAME = 9f / 21f
