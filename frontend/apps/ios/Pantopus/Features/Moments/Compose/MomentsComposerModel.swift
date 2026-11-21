@@ -170,6 +170,7 @@ final class MomentsComposerModel {
     func start() async {
         guard !started else { return }
         started = true
+        MomentsLibraryLoader.sweepCopies(keeping: draft?.video)
         restoreChoices()
         // How long a video may be now, and how large its file: asked once each time the composer opens.
         Task { await MomentsLimits.refresh() }
@@ -282,6 +283,8 @@ final class MomentsComposerModel {
             }
             capture = point
             await useVideo(url)
+            // Too long to post after all: nothing will read the copy.
+            if draft != .video(url) { MomentsLibraryLoader.dropCopy(url) }
         default:
             guard let image = await MomentsLibraryLoader.image(for: asset) else {
                 error = "Couldn't open that photo."
@@ -328,6 +331,7 @@ final class MomentsComposerModel {
         guard !isSending else { return }
         preparation?.cancel()
         if case .text = draft {} else { discardPrepared() }
+        MomentsLibraryLoader.dropCopy(draft?.video)
         draft = nil
         error = nil
         if capture != nil, let fix { Task { await preview(latitude: fix.coordinate.latitude, longitude: fix.coordinate.longitude) } }
@@ -340,6 +344,8 @@ final class MomentsComposerModel {
     /// The one on the sheet has posted: the next of the ones picked together takes the sheet, with its own place and
     /// words and the same "How long" and "Who sees it". False when none is left: the composer closes.
     func moveOn() async -> Bool {
+        // The one that posted: the outbox has its files now, so its library copy goes.
+        MomentsLibraryLoader.dropCopy(draft?.video)
         guard !waiting.isEmpty else { return false }
         isPosting = true
         defer { isPosting = false }
