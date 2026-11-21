@@ -872,9 +872,8 @@ class MomentsComposeViewModel
         /**
          * The editor's Done ([keep]) or its X. Done draws the marks into a new copy of the photo (on the 9:16 canvas where
          * Resize placed it), which then posts (Post waits for it); the photo as it came is kept, to change them again. On a
-         * video it exports the video again
-         * with the marks over every frame (and every part); Post waits for that as for any video. Nothing changes under a
-         * Post in flight.
+         * video it exports the video again with the marks over every frame (and every part); Post waits for that as for any
+         * video. Nothing changes under a Post in flight.
          */
         fun closeMarks(keep: Boolean) {
             val current = _state.value
