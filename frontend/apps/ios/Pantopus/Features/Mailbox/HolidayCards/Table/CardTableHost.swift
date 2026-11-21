@@ -8,6 +8,8 @@
 //  up from the cover, not the screen under it. Closing it goes back.
 //
 
+// swiftlint:disable file_length
+
 import SwiftUI
 
 extension CardTableContent {
@@ -230,6 +232,9 @@ private struct MailCardTablePage: View {
     @State private var reportsSender = false
     @State private var confirmsBlock = false
     @State private var blockInFlight = false
+    /// This reader has blocked the card's sender (just now, or before it opened): no Write back and no Block, as on the
+    /// web.
+    @State private var senderBlocked = false
     /// Write back (experience plan Part 3): the sheet to write on, and the joined card once written.
     @State private var writingBack = false
     @State private var joined: CardReplyPair?
@@ -320,6 +325,7 @@ private struct MailCardTablePage: View {
             .task(id: sendBackPerson?.id) { await checkSendBack() }
             .onAppear(perform: offerNextCard)
             .task(id: model.content.sealed) { await readExchange() }
+            .task(id: senderPersonId) { await readBlocked() }
             .fullScreenCover(isPresented: $writingBack) {
                 CardTableReplySheet(cardId: viewModel.mailId, content: model.content) { sent in
                     writingBack = false
@@ -341,7 +347,7 @@ private struct MailCardTablePage: View {
         let exchange: HolidayCardExchange? = try? await APIClient.shared.request(HolidayCardEndpoints.exchange(cardId: viewModel.mailId))
         guard let exchange, !Task.isCancelled else { return }
         let first = model.content.firstName
-        if exchange.canReply {
+        if exchange.canReply, !senderBlocked {
             model.writeBack = CardTableMenuItem(
                 title: CardReplyWords.writeBack(first),
                 identifier: "cardTableWriteBack",
@@ -473,14 +479,25 @@ private struct MailCardTablePage: View {
             items.append(CardTableMenuItem(title: memories ? "Report this card" : "Report", identifier: "cardTableMenuReport") {
                 reportsSender = true
             })
-            items.append(CardTableMenuItem(
-                title: memories ? "Block \(model.content.firstName)" : "Block",
-                identifier: "cardTableMenuBlock"
-            ) {
-                confirmsBlock = true
-            })
+            if !senderBlocked {
+                items.append(CardTableMenuItem(
+                    title: memories ? "Block \(model.content.firstName)" : "Block",
+                    identifier: "cardTableMenuBlock"
+                ) {
+                    confirmsBlock = true
+                })
+            }
         }
         return items
+    }
+
+    /// Whether this reader already blocked the card's sender, so a card opened again offers no Block (the exchange read
+    /// already leaves out Write back then). A failed read leaves Block offered: blocking again changes nothing.
+    private func readBlocked() async {
+        guard let senderPersonId, !senderBlocked else { return }
+        let blocks = try? await APIClient.shared.request(BlocksEndpoints.blocked, as: UserBlocksResponse.self)
+        guard let blocks, !Task.isCancelled, blocks.blocked.contains(where: { $0.userId == senderPersonId }) else { return }
+        senderBlocked = true
     }
 
     private func block() async {
@@ -489,7 +506,11 @@ private struct MailCardTablePage: View {
         defer { blockInFlight = false }
         do {
             _ = try await APIClient.shared.request(BlocksEndpoints.block(userId: senderPersonId))
+            // Nothing can go to them now: no Send a card, no Write back (the server refuses a reply after a block), and
+            // no second Block. The web does the same.
+            senderBlocked = true
             model.sendBack = nil
+            model.writeBack = nil
             model.showToast("\(model.content.firstName) is blocked.")
         } catch {
             model.showToast("Couldn't block \(model.content.firstName). Check your connection and try again.")

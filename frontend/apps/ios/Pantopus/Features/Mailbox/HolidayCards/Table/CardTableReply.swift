@@ -246,7 +246,11 @@ struct CardTableReplySheet: View {
             signature: signature
         )
         do {
-            let answer: CardReplyAnswer = try await APIClient.shared.request(HolidayCardEndpoints.reply(cardId: cardId, body))
+            // Read as a card answer, so a reply the server turns down for good (a block, a card that's gone) shows its
+            // own sentence, not "try again".
+            let answer: CardReplyAnswer = try await HolidayCardFlowViewModel.answer(
+                HolidayCardEndpoints.reply(cardId: cardId, body), api: .shared
+            )
             sent = answer.reply
             // No envelope: the sheet slides up off the table with the paper sound.
             sounds.play(.slide)
@@ -267,7 +271,9 @@ struct CardTableReplySheet: View {
         refusal = nil
         defer { takingBack = false }
         do {
-            let _: CardReplyTakeBack = try await APIClient.shared.request(HolidayCardEndpoints.takeBackReply(cardId: cardId))
+            let _: CardReplyTakeBack = try await HolidayCardFlowViewModel.answer(
+                HolidayCardEndpoints.takeBackReply(cardId: cardId), api: .shared
+            )
             onClose(true)
         } catch {
             refusal = HolidayCardFlowViewModel.refusal(error, fallback: "Couldn’t take your reply back just now. Try again in a moment.")
