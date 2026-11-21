@@ -56,7 +56,7 @@ class NavigationDrawerProjectionTest {
         assertEquals(
             listOf(
                 "my-homes", "my-businesses", "connections", "mailbox", "profile-and-privacy",
-                "beacon-updates", "search", "discover-neighbors",
+                "beacon-updates", "search", "discover-people",
                 "my-beacon", "my-listings", "my-pulse", "support-trains", "my-tasks", "my-bids",
                 "offers-and-bids", "post-task", "wallet-and-payments",
                 "settings", "help-and-support",
