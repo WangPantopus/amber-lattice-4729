@@ -1,7 +1,6 @@
 import { cache } from 'react';
-import { unstable_cache } from 'next/cache';
 import type { Metadata } from 'next';
-import type { CardJourney, CardJourneyGoal } from '@pantopus/api';
+import type { CardJourneyGoal } from '@pantopus/api';
 import { ANDROID_PLAY_STORE_URL, API_BASE_URL, APP_NAME, APP_WEB_URL, IOS_APP_STORE_APP_ID, IOS_APP_STORE_URL, chosenUsername } from '@pantopus/utils';
 
 const API_BASE = API_BASE_URL.replace(/\/+$/, '');
@@ -17,7 +16,7 @@ export function normalizePublicProfileIdentifier(value: string): string {
   return String(value || '').trim().replace(/^@+/, '');
 }
 
-async function fetchPublicJson<T>(
+export async function fetchPublicJson<T>(
   path: string,
   options: { noStore?: boolean } = {},
 ): Promise<PublicFetchResult<T>> {
@@ -61,20 +60,6 @@ export type PublicCardDesigns = {
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */
 export const fetchPublicCardDesigns = cache(async (): Promise<PublicFetchResult<PublicCardDesigns>> => (
   fetchPublicJson<PublicCardDesigns>('/api/mailbox/cards/designs')
-));
-
-/**
- * A travelling card's journey (server key card_travel; 404 while it's off or there is no such journey). Towns and dates
- * only. Kept 60 seconds per journey on the web's servers, so a journey shared widely is read from the API about once a
- * minute, whatever the page's own rendering; a failed read (5xx, no answer) isn't kept.
- */
-const readCardJourney = unstable_cache(async (id: string): Promise<PublicFetchResult<CardJourney>> => {
-  const result = await fetchPublicJson<{ journey: CardJourney }>(`/api/mailbox/cards/journeys/${encodeURIComponent(id)}`, { noStore: true });
-  if (!result.data && result.status !== 404) throw new Error(`journey read ${result.status}`);
-  return { data: result.data?.journey ?? null, status: result.status };
-}, ['card-journey-v1'], { revalidate: 60 });
-export const fetchCardJourney = cache(async (id: string): Promise<PublicFetchResult<CardJourney>> => (
-  readCardJourney(id).catch(() => ({ data: null, status: 500 }))
 ));
 
 /** All cards this Christmas (D3), for /cards (404 while the travelling card is off). */

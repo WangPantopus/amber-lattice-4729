@@ -8,7 +8,7 @@ import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { APP_WEB_URL } from '@pantopus/utils';
 import JourneyPage, { JourneyTrouble } from '@/components/mailbox/cards/JourneyPage';
-import { fetchCardJourney } from '@/lib/publicShare';
+import { fetchCardJourney } from '@/lib/cardJourney';
 
 export const dynamic = 'force-dynamic';
 
