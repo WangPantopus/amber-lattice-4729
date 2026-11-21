@@ -4,22 +4,22 @@
 //
 //  Text (board T2): a label appears in the middle with the keyboard up. Three
 //  looks (Plain, Label, Sign) and the six inks; drag to move, pinch anywhere
-//  on the picture (or drag the corner circle) to resize; tap a label to change
-//  it; one left empty goes.
-//  Up to five labels of 80 characters, no rotation. Labels stay inside the
-//  part of the picture every phone shows, and never shrink below what the
-//  picture check can read. VoiceOver moves and resizes a label with actions.
+//  on the picture (or drag the corner circle) to resize, twist to turn (step
+//  R3); tap a label to change it, upright while it's typed in; one left empty
+//  goes. Up to five labels of 80 characters. Labels stay inside the part of
+//  the picture every phone shows, and never shrink below what the picture
+//  check can read. VoiceOver moves, resizes and turns a label with actions.
 //
 
 import SwiftUI
 
 extension MomentsMarksEditor {
-    /// "Drag to move. Pinch to resize." over the three looks and the six inks. While typing, only the looks and inks,
+    /// "Drag to move. Pinch to resize. Twist to turn." over the three looks and the six inks. While typing, only the looks and inks,
     /// right above the keyboard.
     func textFooter(width: CGFloat, typing: Bool) -> some View {
         VStack(spacing: typing ? Spacing.s2 : 14) {
             if !typing {
-                Text(marking.editing.labels.isEmpty ? "Tap the picture to add words." : "Drag to move. Pinch to resize.")
+                Text(marking.editing.labels.isEmpty ? "Tap the picture to add words." : "Drag to move. Pinch to resize. Twist to turn.")
                     .scaledFont(13, weight: .medium)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -136,6 +136,12 @@ struct MomentsMarksTextLayer: View {
                 .onChanged { marking.pinch($0.magnification) }
                 .onEnded { _ in marking.endPinch() }
         )
+        // The same two fingers twist the picked label.
+        .simultaneousGesture(
+            RotateGesture()
+                .onChanged { marking.twist($0.rotation.degrees) }
+                .onEnded { _ in marking.endTwist() }
+        )
         .onAppear {
             // Text opened: a label in the middle of what shows above the keyboard, typed in at once.
             guard marking.addsLabel else { return }
@@ -168,7 +174,8 @@ struct MomentsMarksTextLayer: View {
         let handled: some View = area.overlay(alignment: .bottomTrailing) {
             if picked { resizeMark(center: CGPoint(x: box.midX, y: box.midY)).offset(x: 28, y: 28) }
         }
-        return spoken(handled.position(x: box.midX, y: box.midY), label: label, index: index)
+        // Turned with the label, so it's grabbed and tapped by its turned shape.
+        return spoken(handled.rotationEffect(.degrees(label.turn)).position(x: box.midX, y: box.midY), label: label, index: index)
     }
 
     /// The picked label's dashed frame (board T2).
@@ -228,6 +235,8 @@ struct MomentsMarksTextLayer: View {
         return moves
             .accessibilityAction(named: "Make larger") { marking.scale(id, by: 1.2) }
             .accessibilityAction(named: "Make smaller") { marking.scale(id, by: 1 / 1.2) }
+            .accessibilityAction(named: "Turn left") { marking.turnLabel(id, by: -15) }
+            .accessibilityAction(named: "Turn right") { marking.turnLabel(id, by: 15) }
             .accessibilityAction(named: "Delete") { marking.delete(id) }
     }
 

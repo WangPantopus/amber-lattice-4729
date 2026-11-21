@@ -23,8 +23,8 @@ struct MomentMarks: Equatable {
         var width: CGFloat
     }
 
-    /// Words on the picture (Text): where its middle is, in picture coordinates, and its letter size as a share of
-    /// the picture's width. No rotation.
+    /// Words on the picture (Text): where its middle is, in picture coordinates, its letter size as a share of the
+    /// picture's width, and its turn about its middle (step R3).
     struct Label: Equatable, Identifiable {
         let id: UUID
         var text: String
@@ -32,6 +32,8 @@ struct MomentMarks: Equatable {
         var ink: Ink
         var center: CGPoint
         var size: CGFloat
+        /// Degrees clockwise, in (-180, 180]; 0 when made.
+        var turn: CGFloat = 0
     }
 
     /// The six inks (boards T2, T3); the colors are `MomentsPalette.ink(_:)`.

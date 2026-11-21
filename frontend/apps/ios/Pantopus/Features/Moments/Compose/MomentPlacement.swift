@@ -84,7 +84,8 @@ struct MomentPlacement: Equatable {
         return turn
     }
 
-    private static func quarter(near turn: CGFloat) -> CGFloat? {
+    /// The quarter turn `turn` is within 3 degrees of, if any (labels stick the same way, step R3).
+    static func quarter(near turn: CGFloat) -> CGFloat? {
         let quarter = (turn / 90).rounded() * 90
         guard abs(turn - quarter) <= stickDegrees else { return nil }
         return normalized(quarter)
