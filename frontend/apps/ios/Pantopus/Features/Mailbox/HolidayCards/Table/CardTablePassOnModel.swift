@@ -102,8 +102,8 @@ final class CardTablePassOnModel {
         switch pick {
         case let .person(_, name):
             "Free. It leaves with the morning mail. Only \(HolidayCardWords.firstName(name)) reads your note."
-        case .email:
-            "Free. We email them now."
+        case let .email(address):
+            "Free. We email \(address) now."
         case .link:
             "Free. Share the link yourself."
         case nil:
