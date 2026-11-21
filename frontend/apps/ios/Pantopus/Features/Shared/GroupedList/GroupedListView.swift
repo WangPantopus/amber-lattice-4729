@@ -395,10 +395,12 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
     }
 
     /// A14.5 — horizontally scrolling single-select value chips under
-    /// the row label (briefing send time, quiet-hours bounds). The raw
-    /// option string is both the label and the wire value. Half folded
-    /// like a book, the strip keeps to the larger side of the fold and
-    /// scrolls there, as on a phone, instead of putting chips on the crease.
+    /// the row label (briefing send time, quiet-hours bounds). The data
+    /// source names each option (`chipLabel`); the raw option stays the
+    /// wire value and the chip's id. The strip opens with the selected
+    /// chip in view. Half folded like a book, the strip keeps to the
+    /// larger side of the fold and scrolls there, as on a phone, instead
+    /// of putting chips on the crease.
     private func chipStrip(rowId: String, options: [String], selected: String) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -425,6 +427,7 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .id(option)
                     .accessibilityIdentifier("groupedListChipOption_\(rowId)_\(option)")
                     .accessibilityLabel(label)
                     .accessibilityAddTraits(traits)
@@ -433,6 +436,7 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
             .padding(.trailing, Spacing.s1)
         }
         .accessibilityIdentifier("groupedListChipStrip_\(rowId)")
+        .opensOnChip(selected)
         .besideFold()
     }
 
@@ -639,5 +643,16 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
 private extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+private extension View {
+    /// Opens a chip strip with the chip whose id is `selected` in view: a later choice can start past the edge
+    /// (12-hour labels are wider; "8:00 AM" does on a phone). With no anchor the strip scrolls only as far as
+    /// that takes, so a strip that already shows its choice opens as it always did.
+    func opensOnChip(_ selected: String) -> some View {
+        ScrollViewReader { scroller in
+            self.onAppear { scroller.scrollTo(selected) }
+        }
     }
 }
