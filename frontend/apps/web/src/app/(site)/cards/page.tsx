@@ -41,9 +41,10 @@ export default async function AllCardsPage({ searchParams }: { searchParams: Pro
   if (!data) return <PublicCardsTrouble />;
   const inviteCode = shareRefFrom((await searchParams).ref);
   const store = await phoneStore('/app/mailbox/cards', inviteCode);
-  // The shared goal (travelling card Part 8): only while the travelling card is on (404 otherwise) and the server answers.
+  // The shared goal (travelling card Part 8): only while the travelling card is on (404 otherwise), the server answers,
+  // and at least one card is travelling (an empty map and "0 of 50 states" say nothing on the day it's switched on).
   return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null}
-    goal={goal.data ? <CardsGoal goal={goal.data} /> : null} />;
+    goal={goal.data && goal.data.travelling > 0 ? <CardsGoal goal={goal.data} /> : null} />;
 }
 
 /**
