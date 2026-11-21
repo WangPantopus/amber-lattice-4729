@@ -91,7 +91,11 @@ internal fun HolidayCardTablePage(
     val replyState by replies.state.collectAsStateWithLifecycle()
     var showsJoined by rememberSaveable { mutableStateOf(false) }
     val onTable = card.onTable(letter)
-    val reply = replyAction(replyState, onTable.fromFirst, onWrite = replies::open, onJoined = { showsJoined = true })
+    // Once the reader blocks the sender here, the card no longer offers to write back to them.
+    val blocked by senderActions.blocked.collectAsStateWithLifecycle()
+    val reply =
+        replyAction(replyState, onTable.fromFirst, onWrite = replies::open, onJoined = { showsJoined = true })
+            .takeUnless { blocked }
     CardTableDialog(
         card = onTable,
         firstOpen = card.firstOpen,

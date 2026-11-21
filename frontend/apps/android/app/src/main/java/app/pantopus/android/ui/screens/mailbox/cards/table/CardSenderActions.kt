@@ -46,6 +46,14 @@ class CardSenderActionsViewModel
 
         private var checked: String? = null
 
+        private val _blocked = MutableStateFlow(false)
+
+        /**
+         * The reader blocked whoever sent this card here: nothing on the card offers to write to them any more ("Write
+         * back" goes at once, as on the web; reopened, the server's `can_reply` says no).
+         */
+        val blocked: StateFlow<Boolean> = _blocked.asStateFlow()
+
         fun checkSendBack(userId: String) {
             if (checked == userId) return
             checked = userId
@@ -73,6 +81,7 @@ class CardSenderActionsViewModel
                     when (blocks.block(userId)) {
                         is NetworkResult.Success -> {
                             _canSendBack.value = false
+                            _blocked.value = true
                             "You blocked $who. You won't get mail from them. You can unblock them in Settings."
                         }
                         is NetworkResult.Failure -> "Couldn't block $who. Check your connection and try again."
