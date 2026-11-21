@@ -50,8 +50,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.net.HttpURLConnection.HTTP_CONFLICT
@@ -229,6 +232,8 @@ class TodayTabViewModel
         private val keyguard = context.getSystemService(KeyguardManager::class.java)
         private val _pickupPrimerHomeId = MutableStateFlow<String?>(null)
         override val pickupPrimerHomeId = _pickupPrimerHomeId.asStateFlow()
+        private val _pickupSaved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        override val pickupSaved: Flow<Unit> = _pickupSaved.asSharedFlow()
 
         override fun dismissPickupPrimer() {
             _pickupPrimerHomeId.value = null
@@ -791,6 +796,7 @@ class TodayTabViewModel
         ) {
             if (!pickupCurrent(id, version)) return
             if (offerPrimer && !calendar.needsPickupDay) _pickupPrimerHomeId.value = id
+            if (!calendar.needsPickupDay) _pickupSaved.tryEmit(Unit)
             refresh()
         }
 

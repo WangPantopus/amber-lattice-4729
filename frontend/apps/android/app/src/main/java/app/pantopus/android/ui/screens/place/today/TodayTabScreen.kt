@@ -68,6 +68,7 @@ import app.pantopus.android.ui.screens.place.PlaceVerifyBanner
 import app.pantopus.android.ui.screens.place.components.placeCard
 import app.pantopus.android.ui.screens.place.detail.AgendaActions
 import app.pantopus.android.ui.screens.place.detail.LocalPlaceDetailRetry
+import app.pantopus.android.ui.screens.place.detail.PickupJourney
 import app.pantopus.android.ui.screens.place.detail.PlaceTodayDetailContent
 import app.pantopus.android.ui.screens.place.detail.SkySharePantopus
 import app.pantopus.android.ui.screens.place.detail.TodayAlertsCheck
@@ -84,6 +85,7 @@ import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -122,6 +124,10 @@ fun TodayTabScreen(
     radonHomeId: String? = null,
     /** The radon question was opened, or this Today can't open it (another place): the request ends. */
     onRadonShown: () -> Unit = {},
+    /** Place's "See it in Today" for this Home: "Coming up at home" shows with the next pickup's entry lit, once. */
+    pickupHomeId: String? = null,
+    /** The entry was lit, or this Today can't show it (another place): the request ends. */
+    onPickupShown: () -> Unit = {},
     /** A Needs you row's link (AI assistant phase 3), opened with the deep-link router. */
     onOpenLink: (String) -> Unit = DeepLinkRouter::handle,
     /** Share's "Or share in Pantopus": the Pulse composer or a chat with today's sky; null leaves them out. */
@@ -187,6 +193,28 @@ fun TodayTabScreen(
             (shown as? TodayTabUiState.Loaded)?.calendarHomeId != radonHomeId
         ) {
             onRadonShown()
+        }
+    }
+    // A schedule saved on Place a moment ago: Today reads again, so the entry to light is there.
+    // The entry is chosen only from that fresh read: a copy kept from before the save may still hold the old day.
+    var pickupRead by remember { mutableStateOf(false) }
+    LaunchedEffect(pickupHomeId) {
+        pickupRead = false
+        if (pickupHomeId != null) {
+            half = TodayHalf.Home
+            // The tab may not have come up yet: load() marks it shown, so the forced read runs.
+            viewModel.load()
+            viewModel.refresh(force = true)
+            viewModel.refreshing.first { !it }
+            pickupRead = true
+        }
+    }
+    LaunchedEffect(pickupHomeId, state) {
+        val shown = state
+        if (pickupHomeId != null && shown != TodayTabUiState.Loading &&
+            (shown as? TodayTabUiState.Loaded)?.calendarHomeId != pickupHomeId
+        ) {
+            onPickupShown()
         }
     }
     ReportContentShown("today", state.showsContent)
@@ -328,6 +356,11 @@ fun TodayTabScreen(
                                 christmas = christmasCountdown(cardsOpen, onSendChristmasCard),
                                 // The city's day before an address: the rest needs the street, last on the page.
                                 last = current.area?.let { { TodayAreaAddAddressCard(onAdd = onTypeAddress) } },
+                                pickup =
+                                    PickupJourney(
+                                        litRequested = homeId != null && pickupHomeId == homeId && pickupRead,
+                                        onLitShown = onPickupShown,
+                                    ),
                             )
                         CompositionLocalProvider(LocalPlaceDetailRetry provides viewModel::pull) {
                             PlaceTodayDetailContent(

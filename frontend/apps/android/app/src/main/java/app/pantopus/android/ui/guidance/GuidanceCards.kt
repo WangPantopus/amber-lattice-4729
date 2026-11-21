@@ -120,6 +120,9 @@ data class GuidancePointer(
 object GuidanceCatalog {
     private const val GOT_IT = "Got it"
 
+    /** Card 16's button while the home has no pickup schedule. */
+    const val SET_PICKUP_DAY = "Set pickup day"
+
     /** 1. Place, the first time a new account reaches it. Without the second line for someone who joined by invitation. */
     fun welcome(joinedByInvitation: Boolean = false): GuidanceCentre =
         GuidanceCentre(
@@ -254,8 +257,11 @@ object GuidanceCatalog {
 
     // ── 16–23: right after doing something for the first time (new accounts only) ──
 
-    /** 16. Place, right after “Set up this Home” finishes. */
-    fun doneHomeSetup(): GuidanceCentre =
+    /**
+     * 16. Place, right after “Set up this Home” finishes. While the home has no pickup schedule ([setsPickupDay]) its
+     * button opens the pickup editor.
+     */
+    fun doneHomeSetup(setsPickupDay: Boolean = false): GuidanceCentre =
         GuidanceCentre(
             id = GuidanceIds.DONE_HOME_SETUP,
             title = "Your home is set up",
@@ -265,7 +271,7 @@ object GuidanceCatalog {
                     GuidanceLine(GuidanceIcon.Users, "“Members” is where you invite the people you live with."),
                     GuidanceLine(GuidanceIcon.Bell, "Tell Pantopus your pickup day and it will remind you the night before."),
                 ),
-            button = GOT_IT,
+            button = if (setsPickupDay) SET_PICKUP_DAY else GOT_IT,
         )
 
     /** 17. Place, first open after the address becomes verified. The mail line only where the Mailbox is on. */

@@ -42,6 +42,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -89,6 +90,7 @@ import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.homes.HomeTaskEditPatch
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.sheetKeyboardRules
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens.ballot.BallotGovernmentsSheet
 import app.pantopus.android.ui.screens.ballot.BallotPlacement
 import app.pantopus.android.ui.screens.ballot.BallotTodayCard
@@ -104,6 +106,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -196,6 +199,8 @@ data class TodayTabParts(
     val christmas: (@Composable () -> Unit)? = null,
     /** Last on the page: a city kept before an address shows "Add your address for the rest" (TABCARD §4a); null: none. */
     val last: (@Composable () -> Unit)? = null,
+    /** The pickup-day journey: the editor opened for tip card 16, "See it in Today", the next pickup lit. */
+    val pickup: PickupJourney = PickupJourney(),
 )
 
 /**
@@ -207,7 +212,7 @@ data class TodayTabParts(
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun PlaceTodayDetailContent(
     intel: PlaceIntelligence,
     viewModel: AddressCalendarActions? = null,
@@ -235,6 +240,8 @@ fun PlaceTodayDetailContent(
     val calendarEnv = intel.section(PlaceSectionId.ADDRESS_CALENDAR)
     val shownCalendar = rememberShownCalendar(intel, calendarEnv, viewModel)
     val needsPickup = shownCalendar?.needsPickupDay == true && viewModel != null
+    val pickupState = remember(viewModel?.calendarHomeId) { PickupJourneyState() }
+    PickupSavedEffect(viewModel, pickupState)
     val alertsEnv = intel.section(PlaceSectionId.ALERTS)
     val active = alertsEnv?.alerts?.active?.takeIf { alertsCheck == TodayAlertsCheck.CURRENT && alertsEnv.isLive() }.orEmpty()
     val openPickup = {
@@ -292,6 +299,20 @@ fun PlaceTodayDetailContent(
                 guest = intel.viewer?.role == "nonresident",
             )
         }
+    val guest = intel.viewer?.role == "nonresident"
+    PickupEditorRequestEffect(tab.pickup, ready = viewModel != null && shownCalendar != null, open = openPickup)
+    PickupLitRequestEffect(
+        tab.pickup,
+        // The household's next pickup; a copy read before the save doesn't have it yet.
+        target =
+            items.firstOrNull { item ->
+                (item.source as? AgendaSource.Calendar)?.event?.let { it.isPickupEntry && it.isHouseholds } == true
+            },
+        inWindow = { item -> item.date < now.toLocalDate().plusDays(TodayAgenda.WINDOW_DAYS) },
+        state = pickupState,
+        agenda = targets.agenda,
+        showCalendar = { calendarOpen = it },
+    )
     // What waits on the person, before what is coming up at home (phase 3 brief section 3).
     val agendaTasks = remember(items, now.toLocalDate()) { agendaTaskIds(items, now.toLocalDate()) }
     tab.needsYou?.invoke(agendaTasks)
@@ -306,16 +327,26 @@ fun PlaceTodayDetailContent(
             now = now,
             actions =
                 tab.actions.copy(
-                    onEditPickup = viewModel?.let { { openPickup() } },
+                    // A guest of the home sees its pickup day and can't change it.
+                    onEditPickup = viewModel?.takeUnless { guest }?.let { { openPickup() } },
                     onOpenBallot = onOpenBallot,
                     onOpenGovernments = { governments = it },
                 ),
             calendarOpen = calendarOpen,
+            litId = pickupState.litKey,
+            modifier = Modifier.bringIntoViewRequester(targets.agenda),
             onToggleCalendar = calendarEnv?.let { { calendarOpen = !calendarOpen } },
             unavailable = calendarEnv?.takeIf { shownCalendar == null }?.let { env -> { PlaceDetailFallbackCard(env) } },
             calendar = {
                 Column(modifier = Modifier.bringIntoViewRequester(targets.calendar)) {
-                    AddressCalendarSection(calendarEnv, shownCalendar, viewModel, pickupOpenTrigger)
+                    AddressCalendarSection(
+                        calendarEnv,
+                        shownCalendar,
+                        viewModel,
+                        pickupOpenTrigger,
+                        pickupState,
+                        tab.pickup.onSeeInToday,
+                    )
                 }
             },
             plans = tab.plansBlock,
@@ -526,6 +557,7 @@ private fun aqiColor(data: PlaceAirQualityData): Color =
 /** Where "Weather details", the air and daylight sides and "Set pickup days" scroll to. */
 @OptIn(ExperimentalFoundationApi::class)
 private class TodayTargets {
+    val agenda = BringIntoViewRequester()
     val setup = BringIntoViewRequester()
     val calendar = BringIntoViewRequester()
     val conditions = BringIntoViewRequester()
@@ -558,11 +590,13 @@ private fun AddressCalendarSection(
     data: PlaceAddressCalendarData?,
     viewModel: AddressCalendarActions?,
     openTrigger: Int,
+    pickup: PickupJourneyState,
+    onSeeInToday: (() -> Unit)?,
 ) {
     env ?: return
     Column(modifier = Modifier.padding(top = 4.dp)) {
         if (data != null) {
-            AddressCalendarCard(data, viewModel, openTrigger)
+            AddressCalendarCard(data, viewModel, openTrigger, pickup, onSeeInToday)
             PlaceSourceNote(data.source ?: "Pantopus registry", "next ${data.windowDays} days")
         } else {
             PlaceDetailFallbackCard(env)
@@ -768,12 +802,15 @@ private fun GoodDayListRow(
 // everything else comes from the registry. Parity twin of the iOS
 // `AddressCalendarCard`.
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-@Suppress("CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 private fun AddressCalendarCard(
     data: PlaceAddressCalendarData,
     viewModel: AddressCalendarActions?,
     openTrigger: Int = 0,
+    pickup: PickupJourneyState = remember { PickupJourneyState() },
+    onSeeInToday: (() -> Unit)? = null,
 ) {
     // The editor opens on demand ("Set pickup days", the schedule toggle), never by itself; a save closes it.
     var picking by rememberSaveable { mutableStateOf(false) }
@@ -781,11 +818,42 @@ private fun AddressCalendarCard(
     LaunchedEffect(openTrigger) { if (openTrigger > 0) picking = true }
     val busy = viewModel?.calendarBusy?.collectAsStateWithLifecycle()?.value ?: false
     val errorText = viewModel?.calendarError?.collectAsStateWithLifecycle()?.value
+    // The saved box: after a save from this screen that set a schedule, once the reminder question has closed.
+    val asking = viewModel?.pickupPrimerHomeId?.collectAsStateWithLifecycle()?.value != null
+    val savedTitle = pickup.saved?.takeIf { data.pickupSchedule != null && !picking && !asking }?.let(::pickupSavedTitle)
+    val nextPickup = data.upcoming.firstOrNull { it.isPickupEntry && it.isHouseholds }
+    val savedBox = remember { BringIntoViewRequester() }
+    val litEntry = remember { BringIntoViewRequester() }
+    // Whatever opens the editor (the schedule toggle, a tapped entry, a button elsewhere) brings it into view.
+    val editorTop = remember { BringIntoViewRequester() }
+    LaunchedEffect(picking) {
+        if (picking) {
+            withFrameNanos { }
+            editorTop.bringIntoView()
+        }
+    }
+    LaunchedEffect(savedTitle != null, pickup.saves, nextPickup?.let(::pickupEntryKey)) {
+        if (savedTitle == null || nextPickup == null || pickup.litSave == pickup.saves) return@LaunchedEffect
+        pickup.litSave = pickup.saves
+        withFrameNanos { }
+        savedBox.bringIntoView()
+        // On the Today tab the entry itself comes into view; elsewhere the box and its button do.
+        if (onSeeInToday == null) litEntry.bringIntoView()
+        pickup.light(pickupEntryKey(nextPickup))
+    }
     Column(
-        modifier = Modifier.fillMaxWidth().placeCard().padding(16.dp).testTag("place.today.addressCalendar"),
+        // The whole card: taller than the screen with the editor open, so it comes into view from its top.
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(editorTop)
+                .placeCard()
+                .padding(16.dp)
+                .testTag("place.today.addressCalendar"),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         CalendarHeader(windowDays = data.windowDays, picking = picking, canPick = viewModel != null) { if (!busy) picking = !picking }
+        savedTitle?.let { PickupSavedBox(it, onSeeInToday, Modifier.bringIntoViewRequester(savedBox)) }
         // A tapped day shows only its dates; "Show every date" (or the day again) brings them all back.
         var selectedDay by rememberSaveable(data.today) { mutableStateOf<String?>(null) }
         if (!picking && data.upcoming.isNotEmpty()) {
@@ -798,7 +866,7 @@ private fun AddressCalendarCard(
             )
         }
         when {
-            picking && viewModel != null -> PickupScheduleEditor(data, viewModel, busy)
+            picking && viewModel != null -> PickupScheduleEditor(data, viewModel, busy, onSave = { pickup.pending = it })
             data.needsPickupDay && viewModel != null -> PickupPrompt { picking = true }
         }
         errorText?.let { Text(it, fontSize = 12.5.sp, color = PantopusColors.error) }
@@ -807,7 +875,13 @@ private fun AddressCalendarCard(
         if (day != null && shown.isEmpty()) {
             Text("Nothing on this day.", fontSize = 13.5.sp, lineHeight = 19.sp, color = PantopusColors.appTextSecondary)
         } else {
-            UpcomingEvents(data.copy(upcoming = shown), canSetPickupDay = viewModel != null)
+            UpcomingEvents(
+                data.copy(upcoming = shown),
+                canSetPickupDay = viewModel != null,
+                onPickupEntry = viewModel?.let { { if (!busy) picking = true } },
+                litKey = pickup.litKey,
+                litEntry = litEntry,
+            )
         }
         if (day != null) TodayTextAction("Show every date", onClick = { selectedDay = null })
         data.taxNote?.let {
@@ -877,10 +951,15 @@ private fun PickupPrompt(onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UpcomingEvents(
     data: PlaceAddressCalendarData,
     canSetPickupDay: Boolean,
+    /** A tap on a pickup entry opens the editor, for a person who may change the schedule. */
+    onPickupEntry: (() -> Unit)? = null,
+    litKey: String? = null,
+    litEntry: BringIntoViewRequester? = null,
 ) {
     val setupMessage = data.pickupSetupMessage.takeIf { canSetPickupDay }
     setupMessage?.let { message ->
@@ -897,7 +976,25 @@ private fun UpcomingEvents(
         return
     }
     data.upcoming.forEach { event ->
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+        val lit = litKey != null && pickupEntryKey(event) == litKey
+        val opensEditor = onPickupEntry?.takeIf { event.isPickupEntry }
+        Row(
+            modifier =
+                Modifier
+                    .then(if (lit && litEntry != null) Modifier.bringIntoViewRequester(litEntry) else Modifier)
+                    .pickupLit(pickupLitColor(lit), outsetY = 5.dp)
+                    .then(
+                        if (opensEditor != null) {
+                            Modifier
+                                .clickable(role = Role.Button, onClickLabel = "Open the pickup schedule", onClick = opensEditor)
+                                .testTag(pickupEntryTag(event))
+                        } else {
+                            Modifier
+                        },
+                    ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(event.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PantopusColors.appText)
                 event.detail?.takeIf { it.isNotBlank() }?.let {
@@ -1842,3 +1939,64 @@ private fun agendaTaskIds(
         .ifEmpty { listOfNotNull(items.firstOrNull()) }
         .mapNotNull { (it.source as? AgendaSource.Task)?.task?.id }
         .toSet()
+
+/** Tip card 16's "Set pickup day": the editor opens once the calendar is on screen, and the request ends. */
+@Composable
+private fun PickupEditorRequestEffect(
+    journey: PickupJourney,
+    ready: Boolean,
+    open: () -> Unit,
+) {
+    LaunchedEffect(journey.editorRequested, ready) {
+        if (journey.editorRequested && ready) {
+            open()
+            journey.onEditorOpened()
+        }
+    }
+}
+
+/**
+ * "See it in Today": once Today has the household's next pickup ([target]), "Coming up at home" comes into view with
+ * its entry lit; an entry past the agenda's week is lit in the two-week calendar instead. The request ends there, or
+ * after a wait when this Today never gets one (another home's, a failed read).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+@Suppress("LongParameterList")
+private fun PickupLitRequestEffect(
+    journey: PickupJourney,
+    target: AgendaItem?,
+    inWindow: (AgendaItem) -> Boolean,
+    state: PickupJourneyState,
+    agenda: BringIntoViewRequester,
+    showCalendar: (Boolean) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val headroom = with(LocalDensity.current) { PICKUP_LIT_HEADROOM.toPx() }
+    // A tip card over Today (its first visit) doesn't use up the entry's three seconds.
+    val guidance = LocalGuidance.current
+    LaunchedEffect(journey.litRequested, target?.id) {
+        if (!journey.litRequested) return@LaunchedEffect
+        if (target == null) {
+            delay(PICKUP_LIT_WAIT_MS)
+            journey.onLitShown()
+            return@LaunchedEffect
+        }
+        showCalendar(!inWindow(target))
+        // The lighting outlives this effect, which ends with the request.
+        scope.launch {
+            withFrameNanos { }
+            agenda.bringIntoView()
+            // Scrolled up to it, the section stops at the very top, under Today's header: leave room above it.
+            agenda.bringIntoView(Rect(0f, -headroom, 1f, 0f))
+            state.light(target.id, covered = { guidance?.showing != null })
+        }
+        journey.onLitShown()
+    }
+}
+
+/** Today's header lies over the top of its page: "Coming up at home" comes into view below it. */
+private val PICKUP_LIT_HEADROOM = 96.dp
+
+/** How long "See it in Today" waits for Today to show the saved schedule before giving up. */
+private const val PICKUP_LIT_WAIT_MS = 8000L
