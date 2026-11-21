@@ -34,6 +34,7 @@ import {
   type CentreCardContent, type PointerContent,
 } from './cards';
 import { PICKUP_EDITOR_HASH } from '@/components/place/detail/pickupSaved';
+import { todayHouseOn } from '@/lib/todayHouse';
 import GuidanceCard from './GuidanceCard';
 import GuidancePointer from './GuidancePointer';
 import { currentScreen, screenForPath, subscribeScreen, type GuidanceScreenReport } from './screens';
@@ -118,7 +119,8 @@ function tabCardFor(userId: string, screen: GuidanceScreenReport, computer: bool
       if (screen.facts.savedAddress && !isSeen(userId, 'place_saved')) return placeSavedCard();
       return null;
     case 'today':
-      return isSeen(userId, 'tab_today') ? null : todayCard({ aroundYou: !!findAnchor('todayHalfToggle') });
+      // While the house on Today is on, the picture and its card say this themselves: no tip card (JOURNEYS).
+      return todayHouseOn() || isSeen(userId, 'tab_today') ? null : todayCard({ aroundYou: !!findAnchor('todayHalfToggle') });
     case 'mail':
       return !launchFeatures.mailbox || isSeen(userId, 'tab_mail') ? null : mailCard({ letters: launchFeatures.mailExtras });
     case 'pulse':

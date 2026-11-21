@@ -284,3 +284,20 @@ export async function getConversations(options?: { order: 'oldest' | 'newest' })
 export async function deleteConversation(id: string): Promise<{ message: string }> {
   return del<{ message: string }>(`/api/ai/conversations/${id}`);
 }
+
+/** One thing that waits on the person (GET /api/ai/needs-you): the apps' Today "Needs you" rows. */
+export interface NeedsYouItem {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string | null;
+  due_at?: string | null;
+  /** The apps' link (pantopus://…): each client opens its own screen for it. */
+  link?: string | null;
+  subject?: { type: string; id: string | null; home_id?: string | null } | null;
+}
+
+/** What waits on the person, most urgent first (at most 20). */
+export async function getNeedsYou(): Promise<{ items: NeedsYouItem[]; partial?: boolean }> {
+  return get('/api/ai/needs-you');
+}

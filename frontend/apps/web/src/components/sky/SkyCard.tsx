@@ -13,8 +13,9 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { skyHint } from './skyHint';
 import type { TodaySkyInput } from './todaySky';
+import type { SkyHousePresses } from './TodaySkyCanvas';
 
-type Scene = ComponentType<{ input: TodaySkyInput }>;
+type Scene = ComponentType<{ input: TodaySkyInput; presses?: SkyHousePresses | null; onReadingRoom?: (right: number | null) => void }>;
 
 // Kept for the session: reopening Today draws the sky at once.
 let loadedScene: Scene | null = null;
@@ -61,8 +62,10 @@ const READING = { textShadow: '0 2px 6px rgba(0,0,0,.28)', padding: '14px 110px 
 const CHIP = { background: 'rgba(2,6,23,.45)', textShadow: 'none', padding: '4px 9px' };
 
 /** The Weather box: "NOW", the temperature, the condition and its chips, over the sky. */
-export default function SkyCard({ input, at, temp, label, chips, className = '' }: {
+export default function SkyCard({ input, at, temp, label, chips, className = '', presses = null }: {
   input: TodaySkyInput;
+  /** The house on Today (`input.objects`): what its mailbox, note and bins open. */
+  presses?: SkyHousePresses | null;
   /** When the reading was taken (ms): the plain sky's time of day. */
   at: number;
   temp: number | null;
@@ -71,14 +74,19 @@ export default function SkyCard({ input, at, temp, label, chips, className = '' 
   className?: string;
 }) {
   const Scene = useTodayScene();
+  // The house on Today: at least 320 px tall on a phone-width column (188 as before on a computer), and the
+  // reading keeps left of the larger home. It lets presses through to the picture's buttons under it.
+  const larger = !!input.objects;
+  const [room, setRoom] = useState<number | null>(null);
+  const reading = larger ? { ...READING, pointerEvents: 'none' as const, ...(room != null ? { paddingRight: room } : {}) } : READING;
   return (
     <div
-      className={`relative overflow-hidden text-white ${className}`}
-      style={{ background: skyHint(input.condition, at, input.sunrise, input.sunset), minHeight: 188 }}
+      className={`relative overflow-hidden text-white ${larger ? 'min-h-[320px] md:min-h-[188px]' : ''} ${className}`}
+      style={{ background: skyHint(input.condition, at, input.sunrise, input.sunset), ...(larger ? {} : { minHeight: 188 }) }}
     >
-      {Scene ? <Scene input={input} /> : null}
-      <div className="absolute inset-0" style={SKY_OVER} aria-hidden="true" />
-      <div className="relative" style={READING}>
+      {Scene ? <Scene input={input} presses={larger ? presses : null} onReadingRoom={larger ? setRoom : undefined} /> : null}
+      <div className="absolute inset-0 pointer-events-none" style={SKY_OVER} aria-hidden="true" />
+      <div className="relative" style={reading}>
         <div className="font-bold" style={{ fontSize: 14, letterSpacing: '.9px' }}>NOW</div>
         {temp != null && (
           <div className="flex items-start font-light">

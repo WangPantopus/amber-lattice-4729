@@ -67,6 +67,19 @@ const WEEKDAYS: { id: PickupWeekday; label: string }[] = [
   { id: 'SU', label: 'Sun' },
 ];
 
+const DAY_WORDS: Record<PickupWeekday, string> = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday', SU: 'Sunday' };
+const DAY_ORDER: PickupWeekday[] = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+/** Every other week (or every 3 or 4): the start date is the person's to give. Says so when it is not on a chosen day. */
+function startOffDays(row: PickupCollection): string | null {
+  if (!row.anchor_date || row.weekdays.length === 0) return null;
+  const on = DAY_ORDER[new Date(`${row.anchor_date}T12:00:00Z`).getUTCDay()];
+  if (!on || row.weekdays.includes(on)) return null;
+  const days = WEEKDAYS.filter((d) => row.weekdays.includes(d.id)).map((d) => DAY_WORDS[d.id]);
+  const list = days.length > 1 ? `${days.slice(0, -1).join(', ')} or ${days[days.length - 1]}` : days[0];
+  return `This date is a ${DAY_WORDS[on]}. Choose a first collection date that is a ${list}.`;
+}
+
 // How long the next pickup's entry stays lit after a save, or after "See it in Today".
 const LIT_MS = 3000;
 const LIT_TICK_MS = 250;
@@ -141,9 +154,14 @@ function EventRow({ e, onOpen, hintId, lit = false, rowRef }: EventRowProps) {
   );
 }
 
+/** What the page around the card asks of it: open the editor ("Change day"), or show a schedule saved elsewhere. */
+export type PickupCardAsk = { n: number; kind: 'edit' } | { n: number; kind: 'show' } | { n: number; kind: 'saved'; collections: PickupCollection[] };
+
 export interface AddressCalendarCardProps {
   homeId: string | null;
   data: PlaceAddressCalendarData;
+  /** A new `n` is a new ask (the Today page's question card, the bins in the picture, the "Needs you" pickup row). */
+  ask?: PickupCardAsk | null;
   /**
    * The card on the Today tab. A saved schedule's green box has no button there: the next pickup's entry is
    * scrolled into view and lit instead, as it is when "See it in Today" brings the person here.
@@ -157,7 +175,7 @@ export default function AddressCalendarCard({ homeId, ...rest }: AddressCalendar
   return <HouseholdCalendar key={homeId ?? 'preview'} homeId={homeId} {...rest} />;
 }
 
-function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday }: AddressCalendarCardProps) {
+function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday, ask = null }: AddressCalendarCardProps) {
   const queryClient = useQueryClient();
   const [confirmed, setConfirmed] = useState<PlaceAddressCalendarData | null>(null);
   useEffect(() => { setConfirmed(null); }, [data]);
@@ -237,6 +255,22 @@ function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday }: Addr
     // Once, when the card first shows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // The page asked: the editor, the schedule's place in the list, or the green box for a schedule it just saved.
+  const answered = useRef(0);
+  useEffect(() => {
+    if (!ask || ask.n === answered.current) return;
+    answered.current = ask.n;
+    if (ask.kind === 'edit') { if (homeId) openEditor(); return; }
+    if (ask.kind === 'saved') {
+      const title = pickupSavedTitle(ask.collections);
+      setSavedTitle(title);
+      setAnnounce(title ?? '');
+      setPicking(false);
+    }
+    lightNextPickup(calendar.upcoming ?? []);
+    // Only a new ask.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask]);
   useEffect(() => {
     if (!showEditor) return;
     const el = editorRef.current;
@@ -366,13 +400,13 @@ function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday }: Addr
                   {WEEKDAYS.map(day => <button key={day.id} type="button" aria-label={`${label} ${day.label}`} aria-pressed={row.weekdays.includes(day.id)}
                     onClick={() => {
                       const weekdays = row.weekdays.includes(day.id) ? row.weekdays.filter(d => d !== day.id) : [...row.weekdays, day.id];
-                      // Every week: a chosen day fills an empty start date with the next such day. A date filled in this
-                      // way follows the chosen days (the server takes only a start date on one of them) until one is typed.
-                      const fill = row.interval === 1 && (!row.anchor_date || filledStart.current.has(kind));
-                      if (!fill) { update(kind, { weekdays }); return; }
+                      // Every week: the start date follows the chosen day (the next date on one of them, today counts),
+                      // on a saved schedule too, so "it changed to Thursday" is one choice and "Save schedule". The server
+                      // takes only a start date on a chosen day. Any other pattern's date says which week it is: it stays.
+                      if (row.interval !== 1) { update(kind, { weekdays }); return; }
                       const first = weekdays.map(d => nextDateOn(d, calendar.today)).sort()[0] ?? '';
                       if (first) filledStart.current.add(kind); else filledStart.current.delete(kind);
-                      update(kind, { weekdays, anchor_date: first });
+                      update(kind, first ? { weekdays, anchor_date: first } : { weekdays });
                     }}
                     className="px-3 py-1.5 rounded-lg border border-app-border bg-app-surface text-[13px]">{day.label}{row.weekdays.includes(day.id) ? ' ✓' : ''}</button>)}
                 </div>}
@@ -386,6 +420,7 @@ function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday }: Addr
                     className="mt-1 w-full rounded-lg border border-app-border bg-app-surface p-2" />
                 </label>}
                 {row.frequency === 'weekly' && row.interval > 1 && <p className="text-[12px] text-app-text-secondary">The start date anchors the collection week. Weeks begin Monday.</p>}
+                {row.frequency === 'weekly' && row.interval > 1 && startOffDays(row) ? <p role="status" className="text-[12.5px] font-medium text-app-warning">{startOffDays(row)}</p> : null}
                 {row.frequency === 'monthly' && <p className="text-[12px] text-app-text-secondary">The start date sets the monthly pattern. Dates absent from a month are skipped; a fifth weekday means the last weekday.</p>}
               </div>}
             </fieldset>;

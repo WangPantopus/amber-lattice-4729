@@ -17,6 +17,7 @@ import { mailCard, placeSavedCard, pulseCard, todayCard, welcomeCard, type Centr
 import { replayCard } from '@/components/guidance/replay';
 import { isSeen } from '@/components/guidance/store';
 import { useProfileGuidance } from '@/components/guidance/profileGuidance';
+import { useTodayHouse } from '@/lib/todayHouse';
 
 export default function GuidanceTipsPage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function GuidanceTipsPage() {
   const user = me.data;
   const userId = user?.id;
   const guidance = useProfileGuidance(userId);
+  const houseOn = useTodayHouse();
   const on = !!guidance?.enabled && user?.accountType !== 'business';
 
   useEffect(() => {
@@ -54,7 +56,8 @@ export default function GuidanceTipsPage() {
   const tips: { id: string; title: string; card: () => CentreCardContent }[] = [
     { id: 'welcome', title: 'Welcome to Pantopus', card: () => welcomeCard({ computer: computer(), invited }) },
     ...(hasSavedAddress ? [{ id: 'place_saved', title: 'This is your Place', card: placeSavedCard }] : []),
-    { id: 'tab_today', title: 'Today', card: () => todayCard({ aroundYou: false }) },
+    // Not while the house on Today is on: Today's picture and its card say it themselves.
+    ...(houseOn ? [] : [{ id: 'tab_today', title: 'Today', card: () => todayCard({ aroundYou: false }) }]),
     ...(launchFeatures.mailbox ? [{ id: 'tab_mail', title: 'Mail', card: () => mailCard({ letters: launchFeatures.mailExtras }) }] : []),
     { id: 'tab_pulse', title: 'Pulse', card: pulseCard },
   ];

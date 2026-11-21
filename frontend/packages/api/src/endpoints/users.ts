@@ -78,7 +78,24 @@ export async function getMyProfile(): Promise<UserProfile> {
     lastProfileGuidance = { guidance: response.guidance, userId: user?.id ?? null };
     profileGuidanceListeners.forEach((listener) => listener(response.guidance, user?.id ?? null));
   }
+  // The house on Today's switch, another top-level key: a missing key (an older server) is off.
+  lastTodayHouse = response.today_house === true;
+  todayHouseListeners.forEach((listener) => listener(lastTodayHouse));
   return user;
+}
+
+type TodayHouseListener = (on: boolean) => void;
+const todayHouseListeners = new Set<TodayHouseListener>();
+let lastTodayHouse = false;
+
+/**
+ * Hears `today_house` of every GET /api/users/profile that getMyProfile reads (the latest one at once): whether
+ * Today draws the house's mailbox, note and lantern (JOURNEYS, 2026-11-21). Answers the unsubscribe.
+ */
+export function onProfileTodayHouse(listener: TodayHouseListener): () => void {
+  todayHouseListeners.add(listener);
+  listener(lastTodayHouse);
+  return () => { todayHouseListeners.delete(listener); };
 }
 
 type ProfileGuidanceListener = (guidance: GuidanceState, userId: string | null) => void;
