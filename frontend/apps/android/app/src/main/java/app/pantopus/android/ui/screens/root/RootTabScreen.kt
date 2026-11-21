@@ -125,6 +125,7 @@ import app.pantopus.android.ui.screens.businesses.pages.BUSINESS_PAGES_BUSINESS_
 import app.pantopus.android.ui.screens.businesses.pages.BusinessPagesScreen
 import app.pantopus.android.ui.screens.businesses.payments.BusinessPaymentsScreen
 import app.pantopus.android.ui.screens.businesses.team.BusinessTeamScreen
+import app.pantopus.android.ui.screens.ceremonial_mail.CeremonialMailViewModel
 import app.pantopus.android.ui.screens.ceremonial_mail.CeremonialMailWizardScreen
 import app.pantopus.android.ui.screens.ceremonial_mail_open.CeremonialMailOpenScreen
 import app.pantopus.android.ui.screens.compose.gig.GigChecklistLink
@@ -1268,6 +1269,19 @@ private object ChildRoutes {
 
     /** Ceremonial Mail Compose wizard (T3.7). */
     const val CEREMONIAL_MAIL = "mailbox/compose-letter"
+
+    /** The wizard's registered route: [CEREMONIAL_MAIL], or with a person chosen (a letter's Reply, [ceremonialMailTo]). */
+    const val CEREMONIAL_MAIL_ROUTE =
+        "$CEREMONIAL_MAIL?${CeremonialMailViewModel.LETTER_TO_USER_KEY}={${CeremonialMailViewModel.LETTER_TO_USER_KEY}}" +
+            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}={${CeremonialMailViewModel.LETTER_TO_NAME_KEY}}"
+
+    /** The letter form with [userId] chosen on its first step (a letter's Reply, to the one who wrote it). */
+    fun ceremonialMailTo(
+        userId: String,
+        name: String,
+    ): String =
+        "$CEREMONIAL_MAIL?${CeremonialMailViewModel.LETTER_TO_USER_KEY}=${Uri.encode(userId)}" +
+            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}=${Uri.encode(name)}"
 
     /** Ceremonial Mail Open reader (T3.8). `:id` is the Mail UUID. */
     const val CEREMONIAL_MAIL_OPEN_ID_KEY = "mailId"
@@ -6884,7 +6898,23 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onDismiss = { navController.popBackStack() },
                     )
                 }
-                mailComposable(navController, ChildRoutes.CEREMONIAL_MAIL) {
+                mailComposable(
+                    navController,
+                    ChildRoutes.CEREMONIAL_MAIL_ROUTE,
+                    arguments =
+                        listOf(
+                            navArgument(CeremonialMailViewModel.LETTER_TO_USER_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                            navArgument(CeremonialMailViewModel.LETTER_TO_NAME_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
+                ) {
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
                     // Launch cut #8 (Mail extras): hidden for the first launch.
                     if (!LaunchFeatures.mailExtras) return@mailComposable LaunchCutPlaceholder("Letters", navController)
@@ -6911,8 +6941,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     if (!LaunchFeatures.mailExtras) return@mailComposable LaunchCutPlaceholder("Letters", navController)
                     CeremonialMailOpenScreen(
                         onBack = { navController.popBackStack() },
-                        onWriteBack = {
-                            navController.navigate(ChildRoutes.CEREMONIAL_MAIL)
+                        // Reply: the letter form with the letter's sender chosen.
+                        onWriteBack = { to ->
+                            navController.navigate(ChildRoutes.ceremonialMailTo(to.userId, to.name))
                         },
                     )
                 }

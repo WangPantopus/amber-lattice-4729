@@ -6,8 +6,10 @@ import androidx.lifecycle.SavedStateHandle
 import app.pantopus.android.data.api.models.mailbox.v2.DrawerMail
 import app.pantopus.android.data.api.models.mailbox.v2.MailboxV2Item
 import app.pantopus.android.data.api.models.mailbox.v2.MailboxV2ItemResponse
+import app.pantopus.android.data.api.models.settings.UserBlocksResponse
 import app.pantopus.android.data.api.net.NetworkError
 import app.pantopus.android.data.api.net.NetworkResult
+import app.pantopus.android.data.blocks.BlocksRepository
 import app.pantopus.android.data.mailbox.MailboxRepository
 import com.squareup.moshi.adapters.Rfc3339DateJsonAdapter
 import io.mockk.coEvery
@@ -29,10 +31,12 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class CeremonialMailOpenViewModelTest {
     private val repository: MailboxRepository = mockk()
+    private val blocks: BlocksRepository = mockk()
     private val dispatcher = StandardTestDispatcher()
 
     @Before fun setUp() {
         Dispatchers.setMain(dispatcher)
+        coEvery { blocks.blocked() } returns NetworkResult.Success(UserBlocksResponse(blocked = emptyList()))
     }
 
     @After fun tearDown() {
@@ -90,7 +94,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun load_projects_letter_from_object_payload() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             val loaded = vm.state.value as CeremonialMailOpenUiState.Loaded
@@ -109,7 +113,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun missing_object_payload_falls_back_to_defaults() =
         runTest(dispatcher) {
             stubItem(objectPayloadJson = null, senderTrust = "none")
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             val letter = (vm.state.value as CeremonialMailOpenUiState.Loaded).letter
@@ -123,7 +127,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun load_failure_transitions_error() =
         runTest(dispatcher) {
             coEvery { repository.item(any()) } returns NetworkResult.Failure(NetworkError.Server(500, null))
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             assertTrue(vm.state.value is CeremonialMailOpenUiState.Error)
@@ -131,7 +135,7 @@ class CeremonialMailOpenViewModelTest {
 
     @Test fun blank_mail_id_short_circuits_to_error() =
         runTest(dispatcher) {
-            val vm = CeremonialMailOpenViewModel(repository, savedState(mailId = ""))
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState(mailId = ""))
             vm.load()
             assertTrue(vm.state.value is CeremonialMailOpenUiState.Error)
         }
@@ -139,7 +143,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun start_breaking_seal_cycles_to_open() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             vm.startBreakingSeal()
@@ -154,7 +158,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun start_breaking_seal_with_skip_jumps_straight_to_open() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             // Reduce-motion path — the screen passes `skipAnimation = true`
@@ -185,7 +189,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun start_breaking_seal_ignored_when_not_sealed() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             vm.openImmediately()
@@ -197,7 +201,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun open_immediately_skips_animation() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             vm.openImmediately()
@@ -210,7 +214,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun enter_replying_and_reset_to_open() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             vm.openImmediately()
@@ -229,7 +233,7 @@ class CeremonialMailOpenViewModelTest {
     @Test fun voice_playback_toggle_flips_flag() =
         runTest(dispatcher) {
             stubItem()
-            val vm = CeremonialMailOpenViewModel(repository, savedState())
+            val vm = CeremonialMailOpenViewModel(repository, blocks, savedState())
             vm.load()
             advanceUntilIdle()
             assertTrue(!vm.isVoicePlaying.value)

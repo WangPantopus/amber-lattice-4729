@@ -5,11 +5,14 @@ package app.pantopus.android.ui.screens.ceremonial_mail_open
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.pantopus.android.data.api.models.settings.UserBlocksResponse
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.api.net.displayMessage
+import app.pantopus.android.data.blocks.BlocksRepository
 import app.pantopus.android.data.mailbox.MailboxRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +26,7 @@ class CeremonialMailOpenViewModel
     @Inject
     constructor(
         private val repository: MailboxRepository,
+        private val blocks: BlocksRepository,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val mailId: String = savedStateHandle.get<String>(MAIL_ID_KEY) ?: ""
@@ -86,9 +90,11 @@ class CeremonialMailOpenViewModel
             }
             _state.value = CeremonialMailOpenUiState.Loading
             viewModelScope.launch {
+                // Reply writes to the letter's sender, never to someone the reader blocked (the server refuses that).
+                val blocked = async { blocks.blocked() }
                 when (val result = repository.item(mailId)) {
                     is NetworkResult.Success -> {
-                        val letter = project(result.data, mailId)
+                        val letter = withoutBlockedReply(project(result.data, mailId), blocked.await())
                         _isSaved.value = result.data.mail.lifecycle == "filed"
                         _state.value = CeremonialMailOpenUiState.Loaded(letter, CeremonialMailPhase.Sealed)
                     }
@@ -127,6 +133,16 @@ class CeremonialMailOpenViewModel
         fun openImmediately() {
             val current = _state.value as? CeremonialMailOpenUiState.Loaded ?: return
             _state.value = current.copy(phase = CeremonialMailPhase.Open)
+        }
+
+        /** The letter with no Reply when the reader blocked its sender; a failed read of their blocks keeps Reply. */
+        private fun withoutBlockedReply(
+            letter: CeremonialMailLetter,
+            blocked: NetworkResult<UserBlocksResponse>,
+        ): CeremonialMailLetter {
+            val to = letter.replyTo ?: return letter
+            val ids = (blocked as? NetworkResult.Success)?.data?.blocked.orEmpty().map { it.userId }
+            return if (to.userId in ids) letter.copy(replyTo = null) else letter
         }
 
         fun enterReplying() {
@@ -191,7 +207,21 @@ class CeremonialMailOpenViewModel
                     voicePostscriptUri = voiceUri,
                     receivedAt = item.createdAt,
                     outcomeCtas = CeremonialMailLetter.defaultOutcomeCtas(),
+                    replyTo = replyTo(item, sender.displayName),
                 )
+            }
+
+            /**
+             * Who Reply writes to: the person who wrote the letter in their own name. A letter sent as a business (the
+             * server's `sentAsBusiness`, `backend/utils/mailSenderView.js`) and Pantopus's own letters (no sender) have
+             * no one to write back to.
+             */
+            internal fun replyTo(
+                item: app.pantopus.android.data.api.models.mailbox.v2.MailboxV2Item,
+                name: String,
+            ): CeremonialReplyTo? {
+                if (!item.senderEntityId.isNullOrEmpty() || !item.senderBusinessName.isNullOrBlank()) return null
+                return item.senderUserId?.takeIf { it.isNotBlank() }?.let { CeremonialReplyTo(it, name) }
             }
 
             /**
