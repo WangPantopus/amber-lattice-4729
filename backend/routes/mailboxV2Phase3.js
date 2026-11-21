@@ -1408,7 +1408,7 @@ router.get('/stamps', verifyToken, async (req, res) => {
       { stamp_type: 'hundred_items', name: 'Mail Centurion', description: 'Received 100 mail items', rarity: 'rare' },
       { stamp_type: 'first_package', name: 'Package Day', description: 'Received your first package', rarity: 'common' },
       { stamp_type: 'first_certified', name: 'Certified', description: 'Handled your first certified mail', rarity: 'uncommon' },
-      { stamp_type: 'first_gig', name: 'Good Neighbor', description: 'Created your first neighbor gig', rarity: 'uncommon' },
+      { stamp_type: 'first_gig', name: 'Good Turn', description: 'Created your first gig', rarity: 'uncommon' },
       { stamp_type: 'vault_organizer', name: 'Organized', description: 'Filed 10 items in vault', rarity: 'common' },
       { stamp_type: 'community_contributor', name: 'Community Voice', description: 'Shared with your community', rarity: 'uncommon' },
       { stamp_type: 'task_master', name: 'Task Master', description: 'Completed 5 mail tasks', rarity: 'uncommon' },

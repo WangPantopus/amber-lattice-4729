@@ -675,7 +675,7 @@ router.get('/', verifyToken, async (req, res) => {
       let milestone = null;
       for (const m of MILESTONES) {
         if (count >= m && milestoneSeen < m) {
-          milestone = `Your neighborhood just hit ${m} verified members!`;
+          milestone = `${m} homes near you are now verified!`;
           break;
         }
       }

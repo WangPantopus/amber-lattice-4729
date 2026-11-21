@@ -701,7 +701,7 @@ async function draftPlan(args, ctx) {
     ],
     warnings: playdate
       ? [
-        'Until you accept a family, they see only the neighborhood and the part of the day.',
+        'Until you accept a family, they see only the general area and the part of the day.',
         'Parents stay with their kids the whole time; only kids’ ages are shared, never names.',
       ]
       : [
@@ -1100,7 +1100,7 @@ async function draftPostReply(args, ctx) {
     if (!comment || comment.post_id !== post.id || comment.is_deleted) return { error: 'That reply is not on this post.' };
     parent = comment.id;
     const names = await localDisplayNames([comment.user_id]).catch(() => new Map());
-    replyingTo = `${firstNameOf({ display_name: names.get(String(comment.user_id)) }) || 'A neighbor'}: ${clip(comment.comment, 80)}`;
+    replyingTo = `${firstNameOf({ display_name: names.get(String(comment.user_id)) }) || 'Someone nearby'}: ${clip(comment.comment, 80)}`;
   }
   const draft = card('post_reply', {
     title: 'Reply',

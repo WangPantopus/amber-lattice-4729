@@ -119,7 +119,7 @@ function bookingEmailHtml({ heading, intro, whenLabel, locationLabel, manageUrl,
       </div>` : ''}
     </div>
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;">
-      <p style="color:#9ca3af;font-size:11px;margin:0;">Pantopus — Your neighborhood, organized.</p>
+      <p style="color:#9ca3af;font-size:11px;margin:0;">Pantopus — Your home, organized.</p>
       ${footerNote ? `<p style="color:#d1d5db;font-size:10px;margin:8px 0 0;">${escapeHtml(footerNote)}</p>` : ''}
     </div>
   </div>

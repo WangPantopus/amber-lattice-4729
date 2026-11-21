@@ -1063,7 +1063,7 @@ async function sendMonthlyReceipt(toEmail, receipt) {
       ${section('🤝', 'Community', [
         ['Posts created', community.posts_created],
         ['Connections made', community.connections_made],
-        ['Neighbors helped', community.neighbors_helped],
+        ['People helped', community.neighbors_helped],
       ])}
 
       ${section('⭐', 'Reputation', [
@@ -1083,7 +1083,7 @@ async function sendMonthlyReceipt(toEmail, receipt) {
     <!-- Footer -->
     <div style="background:#f9fafb; border-top:1px solid #e5e7eb; padding:16px 32px; text-align:center;">
       <p style="color:#9ca3af; font-size:11px; margin:0;">
-        Pantopus — Your neighborhood, connected.
+        Pantopus — Your home, connected.
       </p>
       <p style="color:#d1d5db; font-size:10px; margin:8px 0 0;">
         <a href="${unsubUrl}" style="color:#9ca3af; text-decoration:underline;">Unsubscribe from monthly receipts</a>
@@ -1114,7 +1114,7 @@ ${showMarketplace ? `MARKETPLACE
 ` : ''}COMMUNITY
   Posts created: ${community.posts_created}
   Connections made: ${community.connections_made}
-  Neighbors helped: ${community.neighbors_helped}
+  People helped: ${community.neighbors_helped}
 
 REPUTATION
   Current rating: ${reputation.current_rating ? reputation.current_rating.toFixed(1) : 'N/A'}

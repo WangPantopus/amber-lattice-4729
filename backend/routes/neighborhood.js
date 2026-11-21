@@ -132,7 +132,7 @@ router.get('/meter', verifyToken, async (req, res) => {
     });
   } catch (err) {
     logger.error('neighborhood/meter failed', { error: err.message });
-    return res.status(500).json({ error: 'Failed to load the neighborhood meter' });
+    return res.status(500).json({ error: 'Failed to load verified homes nearby' });
   }
 });
 

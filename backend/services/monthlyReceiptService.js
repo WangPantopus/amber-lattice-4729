@@ -217,11 +217,11 @@ async function computeMonthlyReceipt(userId, year, month) {
   const earningsDollars = Math.round(earningsTotal / 100);
   let highlight;
   if (earningsTotal > 0 && neighborsHelped > 0) {
-    highlight = `You earned $${earningsDollars} and helped ${neighborsHelped} neighbor${neighborsHelped === 1 ? '' : 's'}!`;
+    highlight = `You earned $${earningsDollars} and helped ${neighborsHelped} ${neighborsHelped === 1 ? 'person' : 'people'}!`;
   } else if (earningsTotal > 0) {
     highlight = `You earned $${earningsDollars} from ${earningsGigCount} gig${earningsGigCount === 1 ? '' : 's'} this month!`;
   } else if (neighborsHelped > 0) {
-    highlight = `You helped ${neighborsHelped} neighbor${neighborsHelped === 1 ? '' : 's'} this month!`;
+    highlight = `You helped ${neighborsHelped} ${neighborsHelped === 1 ? 'person' : 'people'} this month!`;
   } else if (postsCreated > 0) {
     highlight = `You stayed connected with ${postsCreated} post${postsCreated === 1 ? '' : 's'}!`;
   } else {

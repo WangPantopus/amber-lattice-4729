@@ -41,13 +41,13 @@ const VIEWER_LABELS = {
   // P2.7 — unified-IA §8.2 — the 7 user-facing viewer modes (plus the
   // legacy `connection` alias of `neighbor` and the `gig_participant`
   // helper kept from earlier iterations).
-  verified_local: 'Verified neighbor (same area)',
+  verified_local: 'Verified home (same area)',
   persona_audience_member: 'Follower',
   persona_follower: 'Follower',
   persona_member: 'Member',
   persona_insider: 'Insider',
   creator_follower: 'Follower',
-  neighbor: 'Neighbor',
+  neighbor: 'Someone nearby',
   connection: 'Connection',
   household_member: 'Household member',
   business_teammate: 'Business teammate',

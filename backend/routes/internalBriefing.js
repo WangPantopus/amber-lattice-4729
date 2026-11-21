@@ -852,7 +852,7 @@ router.post('/no-bid-nudge', verifyInternalApiKey, async (req, res) => {
     const title = 'Hang tight \u2014 bids are coming';
     const body = hasHome
       ? `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 more people are signing up every day. Hang tight!`
-      : `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 we're growing every day! Meanwhile, adding your home address helps neighbors trust you.`;
+      : `Your gig "${gigTitle}" hasn't received bids yet. Pantopus is just getting started \u2014 we're growing every day! Meanwhile, adding your home address helps others trust you.`;
 
     const notification = await createNotification({
       userId,
