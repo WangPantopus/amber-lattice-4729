@@ -365,7 +365,12 @@ data class SentCardTravel(
     val towns: Int? = null,
     val miles: Int? = null,
     @Json(name = "now_in") val nowIn: String? = null,
-)
+    /** The postmarks on its envelope, oldest first: one for a card that started a journey, more for one passed on. */
+    val postmarks: List<MailCardPostmark> = emptyList(),
+) {
+    /** Passed on, not started: free, never the day's card, so taking it back gives no stamp and frees no day. */
+    val passedOn: Boolean get() = postmarks.size >= 2
+}
 
 /** `POST /api/mailbox/cards`: today's card, to one person found by name or by email to someone not on Pantopus. */
 @JsonClass(generateAdapter = true)
@@ -696,6 +701,8 @@ data class SentCard(
     @Json(name = "email_to") val emailTo: String? = null,
     /** A reply this person wrote back to a card (plan Part 3): the card it answers; a letter otherwise. */
     @Json(name = "card_reply") val cardReply: CardReplyFace? = null,
+    /** A card that travels (the server's switch `card_travel`): its journey, towns, miles and the town it's in now. */
+    val travel: SentCardTravel? = null,
 )
 
 /** `POST /api/mailbox/cards/:id/email-again`: the card's email went this time. */
