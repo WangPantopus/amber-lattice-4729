@@ -110,7 +110,7 @@ struct MomentsMarksEditor: View {
                     switch marking.tool {
                     case .text: textFooter(width: room.width, typing: typing)
                     case .draw: drawFooter(width: room.width)
-                    case .resize: resizeFooter(width: room.width)
+                    case .resize: resizeFooter(width: room.width, aboveEdge: max(room.maxY - frame.maxY, 0) + Spacing.s3)
                     }
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { footerTop = $0 }
@@ -118,6 +118,7 @@ struct MomentsMarksEditor: View {
             .frame(width: room.width, height: room.height)
             .overlay(alignment: .trailing) { if marking.tool == .draw { widthColumn } }
             .offset(x: room.minX, y: room.minY)
+            if marking.tool == .resize, resetOnStrip { stripReset(below: frame, width: size.width) }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .ignoresSafeArea()

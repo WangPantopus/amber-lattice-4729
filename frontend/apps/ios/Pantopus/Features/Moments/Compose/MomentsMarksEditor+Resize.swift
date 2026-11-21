@@ -14,21 +14,35 @@ import SwiftUI
 import UIKit
 
 extension MomentsMarksEditor {
-    func resizeFooter(width: CGFloat) -> some View {
-        MomentsResizeFooter(marking: marking)
+    /// On the phone Reset sits on the strip under the picture, never across its bottom edge; in the Duo poses, where the
+    /// picture reaches the bottom, it stays inside the picture under the hint.
+    var resetOnStrip: Bool {
+        duo.pose == .phone
+    }
+
+    /// The hint, and Reset under it in the Duo poses. On the phone the hint ends `aboveEdge` points higher, inside the
+    /// picture, clear of the strip where Reset is.
+    func resizeFooter(width: CGFloat, aboveEdge: CGFloat) -> some View {
+        MomentsResizeFooter(marking: marking, withReset: !resetOnStrip)
             .frame(width: width)
+            .padding(.bottom, resetOnStrip ? aboveEdge : 0)
+    }
+
+    /// The phone's Reset: 8 pt under the picture's bottom edge, on the strip, in the middle across.
+    func stripReset(below frame: CGRect, width: CGFloat) -> some View {
+        MomentsResizeReset(marking: marking)
+            .frame(width: width)
+            .offset(y: frame.maxY + Spacing.s2)
     }
 }
 
-/// "Pinch to resize. Twist to turn. Drag to move." until the first gesture in this visit, over Reset (off while the
-/// picture is as taken). Its own view: it follows the picture's state, the rest of the editor doesn't need to.
+/// "Pinch to resize. Twist to turn. Drag to move." until the first gesture in this visit, over Reset when it's here.
+/// Its own view: it follows the picture's state, the rest of the editor doesn't need to.
 private struct MomentsResizeFooter: View {
     let marking: MomentsMarking
-    /// Reset's icon grows with its word.
-    @ScaledMetric(relativeTo: .subheadline) private var iconSize: CGFloat = 16
+    let withReset: Bool
 
     var body: some View {
-        let asTaken = marking.editingPlacement == nil
         VStack(spacing: 14) {
             Text("Pinch to resize. Twist to turn. Drag to move.")
                 .scaledFont(13, weight: .medium)
@@ -38,24 +52,36 @@ private struct MomentsResizeFooter: View {
                 // Its room is kept, so Reset doesn't jump when it goes.
                 .opacity(marking.resizeTouched ? 0 : 1)
                 .accessibilityHidden(true)
-            Button { marking.resetPlacement() } label: {
-                HStack(spacing: 6) {
-                    Icon(.rotateCcw, size: iconSize, strokeWidth: 2.4, color: .white)
-                    Text("Reset").scaledFont(15, weight: .semibold)
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, Spacing.s1)
-                .frame(minHeight: 44)
-                .background(Capsule().fill(Color.black.opacity(0.42)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.4), lineWidth: 1))
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(asTaken)
-            .opacity(asTaken ? 0.5 : 1)
-            .accessibilityIdentifier("moments.resize.reset")
+            if withReset { MomentsResizeReset(marking: marking) }
         }
+    }
+}
+
+/// Reset, off while the picture is as taken.
+private struct MomentsResizeReset: View {
+    let marking: MomentsMarking
+    /// Reset's icon grows with its word.
+    @ScaledMetric(relativeTo: .subheadline) private var iconSize: CGFloat = 16
+
+    var body: some View {
+        let asTaken = marking.editingPlacement == nil
+        Button { marking.resetPlacement() } label: {
+            HStack(spacing: 6) {
+                Icon(.rotateCcw, size: iconSize, strokeWidth: 2.4, color: .white)
+                Text("Reset").scaledFont(15, weight: .semibold)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, Spacing.s1)
+            .frame(minHeight: 44)
+            .background(Capsule().fill(Color.black.opacity(0.42)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.4), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(asTaken)
+        .opacity(asTaken ? 0.5 : 1)
+        .accessibilityIdentifier("moments.resize.reset")
     }
 }
 
