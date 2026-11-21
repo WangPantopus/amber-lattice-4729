@@ -8,7 +8,6 @@
 //  the app (D6). A card that doesn't travel gets none of it.
 //
 
-import SafariServices
 import SwiftUI
 
 struct CardTableTravelReader: ViewModifier {
@@ -16,7 +15,6 @@ struct CardTableTravelReader: ViewModifier {
     let model: CardTableModel
 
     @State private var passingOn = false
-    @State private var journey: CardJourneyPage?
 
     private var travel: CardTravel? {
         if case let .loaded(content) = viewModel.state { return content.letter?.card?.card.travel }
@@ -33,10 +31,6 @@ struct CardTableTravelReader: ViewModifier {
                     // Its places changed: the card reads them again.
                     if sent { Task { await viewModel.refresh() } }
                 }
-            }
-            .sheet(item: $journey) { page in
-                CardJourneyBrowser(url: page.url)
-                    .ignoresSafeArea()
             }
     }
 
@@ -55,7 +49,7 @@ struct CardTableTravelReader: ViewModifier {
             buttons.passOnFilled = !more
         }
         let url = travel.journey.flatMap(CardJourneyPage.init)
-        let open = { journey = url }
+        let open: () -> Void = { url?.open() }
         if url != nil {
             buttons.menu = [CardTableMenuItem(title: "See its journey", identifier: "cardTableMenuJourney", action: open)]
         }
@@ -75,7 +69,7 @@ struct CardTableTravelReader: ViewModifier {
     }
 }
 
-/// The journey's public web page (`/cards/journey/<journey>`), opened inside the app.
+/// The journey's public web page (`/cards/journey/<journey>`), opened inside the app (D6).
 struct CardJourneyPage: Identifiable {
     let url: URL
 
@@ -89,17 +83,14 @@ struct CardJourneyPage: Identifiable {
     var id: String {
         url.absoluteString
     }
-}
 
-/// The app's own browser sheet, as a link in a post opens.
-struct CardJourneyBrowser: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context _: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
+    /// The app's own browser over whatever shows, as Stripe's pages open (`ConnectWebPresenter`); it holds itself
+    /// until the browser is closed.
+    @MainActor
+    func open() {
+        let browser = ConnectWebPresenter()
+        Task { @MainActor in await browser.present(url: url) }
     }
-
-    func updateUIViewController(_: SFSafariViewController, context _: Context) {}
 }
 
 extension CardTravelWords {
