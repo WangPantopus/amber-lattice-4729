@@ -14,12 +14,12 @@
 import SwiftUI
 
 extension MomentsMarksEditor {
-    /// "Drag to move. Pinch to resize." over the three looks and the six inks. While typing, only the looks and inks,
+    /// "Drag to move. Pinch to resize. Twist to turn." over the three looks and the six inks. While typing, only the looks and inks,
     /// right above the keyboard.
     func textFooter(width: CGFloat, typing: Bool) -> some View {
         VStack(spacing: typing ? Spacing.s2 : 14) {
             if !typing {
-                Text(marking.editing.labels.isEmpty ? "Tap the picture to add words." : "Drag to move. Pinch to resize.")
+                Text(marking.editing.labels.isEmpty ? "Tap the picture to add words." : "Drag to move. Pinch to resize. Twist to turn.")
                     .scaledFont(13, weight: .medium)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
