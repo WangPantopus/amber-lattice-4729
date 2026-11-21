@@ -2212,7 +2212,8 @@ router.get('/cards', verifyToken, async (req, res) => {
       // while they can, the bought stamp they need (founder, 2026-11-11).
       media: controls.photo.usable
         ? { ...controls, bought_stamp: await boughtStampControls(senderId, postage, stamps) } : controls,
-      designs: holidayCards.DESIGNS,
+      // A long passage's verse isn't printed under its card on "Pick a card" (holidayCards.pickACardDesign).
+      designs: holidayCards.DESIGNS.map(holidayCards.pickACardDesign),
       collections: holidayCards.COLLECTIONS,
       // By email, `email` is the two choices older apps word; `email_all` the four (an email at your next 7 a.m. or on
       // Christmas morning, next_round_at and christmas_morning_at below), for apps that word them.

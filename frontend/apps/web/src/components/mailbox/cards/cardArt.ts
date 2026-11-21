@@ -53,12 +53,13 @@ function pictureNumber(number: number | null | undefined, design?: string | null
 
 /**
  * Each collection's mood on the table (design plan Part 7), by the picture's number, the same in every app:
- * Christmas with Jesus Christ (59-67) is reverence, Christmas with Santa (50-58) is Santa, every other is nostalgia.
+ * Christmas with Jesus Christ (59-89) is reverence, Christmas with Santa (50-58) is Santa, every other is nostalgia.
+ * The iPhone and Android apps know 59-67 as reverence; 68-89 (November 21) need their next builds.
  */
 export type CardMood = 'nostalgia' | 'reverence' | 'santa';
 export function cardMood(number: number | null | undefined, design?: string | null): CardMood {
   const picture = pictureNumber(number, design);
-  if (picture >= 59 && picture <= 67) return 'reverence';
+  if (picture >= 59 && picture <= 89) return 'reverence';
   if (picture >= 50 && picture <= 58) return 'santa';
   return 'nostalgia';
 }
