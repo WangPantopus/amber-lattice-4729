@@ -66,12 +66,15 @@ sealed interface RowControl {
      * A14.5 Notifications — a horizontally scrolling strip of
      * single-select value chips rendered under the row label (e.g. the
      * briefing send-time options). [selected] is the active option's raw
-     * value, which is also what gets sent to the backend.
+     * value, which is also what gets sent to the backend. With [clockTimes]
+     * the options are "HH:mm" times, shown the way the phone shows times
+     * ([app.pantopus.android.ui.components.ClockTime]).
      */
     @Immutable
     data class Chips(
         val options: List<String>,
         val selected: String,
+        val clockTimes: Boolean = false,
     ) : RowControl
 
     /**
