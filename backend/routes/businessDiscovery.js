@@ -804,7 +804,7 @@ router.get('/:businessId/neighbor-count', verifyToken, async (req, res) => {
 
     if (trustErr) {
       logger.error('Error calling get_neighbor_trust_count', { error: trustErr.message });
-      return res.status(500).json({ error: 'Failed to compute neighbor trust count' });
+      return res.status(500).json({ error: 'Failed to compute trust count' });
     }
 
     const row = Array.isArray(trustResult) ? trustResult[0] : trustResult;
@@ -862,7 +862,7 @@ router.get('/:businessId/neighbor-count', verifyToken, async (req, res) => {
     });
   } catch (err) {
     logger.error('neighbor-count error', { error: err.message, stack: err.stack });
-    res.status(500).json({ error: 'Failed to compute neighbor count' });
+    res.status(500).json({ error: 'Failed to compute nearby count' });
   }
 });
 
