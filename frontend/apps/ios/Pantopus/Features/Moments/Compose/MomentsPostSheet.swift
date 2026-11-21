@@ -68,9 +68,14 @@ struct MomentsPostStage: View {
     var backdrop: some View {
         switch model.draft {
         case let .photo(image):
-            MomentsMarkedPhoto(image: image, marks: model.marking.marks)
-                .overlay(Color.black.opacity(0.3))
-                .accessibilityLabel("The photo you're posting")
+            MomentsMarkedPhoto(
+                image: image,
+                marks: model.marking.marks,
+                placement: model.marking.placement,
+                backdrop: model.marking.backdrop
+            )
+            .overlay(Color.black.opacity(0.3))
+            .accessibilityLabel("The photo you're posting")
         case let .video(url):
             videoSurface(url: url)
                 .overlay { MomentMarksOverVideo(marks: model.marking.marks, picture: model.marking.video?.size) }

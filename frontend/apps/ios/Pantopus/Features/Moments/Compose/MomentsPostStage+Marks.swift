@@ -3,34 +3,68 @@
 //  Pantopus
 //
 //  The pills over the picture on the Post screen: Retake, and on a photo
-//  Text and Draw (board T1), which open the marks editor in that tool. On the phone Text
-//  and Draw sit at the top right; on the iPhone Duo they follow Retake in one
-//  row, because two poses keep the clock at the top right. While a Post is
-//  going Text and Draw are off.
+//  Text, Draw and Resize (board T1), which open the marks editor in that tool. On the phone
+//  they sit at the top right; on the iPhone Duo they follow Retake in one
+//  row, because two poses keep the clock at the top right. Where the row is
+//  too narrow for all four, Resize goes on a row of its own under it. While a
+//  Post is going they are off.
 //
 
 import SwiftUI
 
 extension MomentsPostStage {
-    /// The phone's top row: Retake at the left, Text and Draw at the right (board T1).
+    /// The phone's top row: Retake at the left, Text, Draw and Resize at the right (board T1); Resize under Draw where
+    /// the four don't fit across (every phone narrower than 429 points).
     var phonePills: some View {
-        HStack(spacing: Spacing.s2) {
-            retakeButton
-            Spacer(minLength: Spacing.s2)
-            markPills
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.s2) {
+                retakeButton
+                Spacer(minLength: Spacing.s2)
+                markPills(withResize: true)
+            }
+            VStack(alignment: .trailing, spacing: Spacing.s2) {
+                HStack(spacing: Spacing.s2) {
+                    retakeButton
+                    Spacer(minLength: Spacing.s2)
+                    markPills(withResize: false)
+                }
+                resizePill
+            }
         }
     }
 
-    /// The iPhone Duo's row: Retake, then Text and Draw.
+    /// The iPhone Duo's row: Retake, then Text, Draw and Resize; Resize under Retake where they don't fit across.
     var pillRow: some View {
-        HStack(spacing: Spacing.s2) {
-            retakeButton
-            markPills
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Spacing.s2) {
+                retakeButton
+                markPills(withResize: true)
+            }
+            VStack(alignment: .leading, spacing: Spacing.s2) {
+                HStack(spacing: Spacing.s2) {
+                    retakeButton
+                    markPills(withResize: false)
+                }
+                resizePill
+            }
+        }
+    }
+
+    /// Resize (step R1, a photo): a pill like Text and Draw, off while a Post is going.
+    @ViewBuilder
+    private var resizePill: some View {
+        if model.offersResize {
+            markPill(.resize, name: "Resize", id: "moments.post.resize") {
+                Icon(.maximize, size: 17, strokeWidth: 2.2, color: .white)
+                Text("Resize")
+            }
+            .disabled(model.isPosting)
+            .opacity(model.isPosting ? 0.5 : 1)
         }
     }
 
     @ViewBuilder
-    private var markPills: some View {
+    private func markPills(withResize: Bool) -> some View {
         if model.offersMarks {
             HStack(spacing: Spacing.s2) {
                 markPill(.text, name: "Text", id: "moments.post.text") {
@@ -45,6 +79,7 @@ extension MomentsPostStage {
             }
             .disabled(model.isPosting)
             .opacity(model.isPosting ? 0.5 : 1)
+            if withResize { resizePill }
         }
     }
 
