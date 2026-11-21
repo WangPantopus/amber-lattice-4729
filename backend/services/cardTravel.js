@@ -25,6 +25,7 @@
  * stop outside the United States is { town: 'Abroad', state: null, lat: null, lon: null } and adds no miles.
  */
 const crypto = require('crypto');
+const { DateTime } = require('luxon');
 const path = require('path');
 const fs = require('fs');
 const supabaseAdmin = require('../config/supabaseAdmin');
@@ -35,7 +36,9 @@ const holidayCards = require('./holidayCards');
 
 const PLACES = 2;
 const ABROAD = 'Abroad';
+const STATES_OF = 50;
 const NON_STATES = new Set(['DC']);
+const GOAL_KEEP_MS = 5 * 60 * 1000;
 
 /** Whether the travelling card is on: its key and the three it rides on. */
 const travelOn = () => areLaunchFeaturesEnabled(['mailbox', 'holiday_cards', 'card_table', 'card_travel']);
@@ -451,12 +454,16 @@ async function readerView(mailId, readerId, { now = new Date(), readerTown = und
 /**
  * Sets `card_travel` on a Mail row read for its reader (GET /api/mailbox/:id, the v2 piece routes), which
  * services/mailPiece present() puts under `card.travel`. Only for a travelling card, only for the person it went to.
- * Never throws: the card opens without its journey when it can't be read.
+ * A card in their mailbox whose town wasn't kept yet (the morning run hasn't come) reaches it now. Never throws: the
+ * card opens without its journey when it can't be read.
  */
 async function attachReaderView(mail, readerId, now = new Date()) {
   if (!mail?.mail_extracted?.card?.travel?.journey || !travelOn()) return mail;
   if (String(mail.recipient_user_id) !== String(readerId)) return mail;
   try {
+    if (!mail.mail_extracted.card.travel.to && mail.delivered_at && Date.parse(mail.delivered_at) <= now.getTime()) {
+      await reached(mail.id, { now });
+    }
     const view = await readerView(mail.id, readerId, { now });
     if (view) mail.card_travel = view;
   } catch (err) {
@@ -519,8 +526,251 @@ function holderView(tree, sent) {
   return { ...sum, stops, newest: newest ? label(newest) : null, newestStop: newest };
 }
 
+// ---- The public journey page and the shared goal ----
+
+/**
+ * GET /cards/journeys/:journey: the picture, the stops as { town, state, lat, lon, on, from, holding }, miles, towns,
+ * states, days on the road and the goal line. Nothing else: no names, addresses, notes or ids of people or mail.
+ * Null when there is no such journey.
+ */
+async function publicJourney(journey, now = new Date()) {
+  const rows = await journeyRows(journey);
+  const tree = journeyTree(rows);
+  if (!tree.first || !live(tree.first) || !tree.stops.length) return null;
+  const design = holidayCards.designById(tree.first.design);
+  const sum = totals(tree.stops);
+  const leaves = new Set();
+  tree.stops.forEach((stop, i) => {
+    const hasChild = tree.stops.some((s) => s.from === i);
+    if (!hasChild) leaves.add(i);
+  });
+  const ons = tree.stops.map((s) => s.on).filter(Boolean).sort();
+  const days = ons.length > 1 ? holidayCards.daysBetween(ons[0], ons[ons.length - 1]) : 0;
+  const goal = await goalLine(now);
+  return {
+    id: String(journey),
+    card: design ? { design: design.id, number: design.number, caption: design.caption, slug: design.slug, table: design.table,
+      paper: design.paper, height: design.height } : null,
+    stops: tree.stops.map((s, i) => ({ town: s.town, state: s.state, lat: s.lat, lon: s.lon, on: s.on, from: s.from,
+      holding: leaves.has(i) })),
+    miles: sum.miles,
+    towns: sum.towns,
+    states: sum.states,
+    states_of: STATES_OF,
+    state_codes: sum.stateCodes,
+    days,
+    travelling: holidayCards.seasonOpen(mailDelivery.FALLBACK_TIME_ZONE, now),
+    goal,
+  };
+}
+
+let goalKept = null;
+/** All cards this Christmas: the states reached, the journeys and their miles. Kept for five minutes. */
+async function goalLine(now = new Date()) {
+  if (goalKept && goalKept.until > now.getTime()) return goalKept.value;
+  const states = new Set();
+  const journeys = new Set();
+  let total = 0;
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin.from('Mail')
+      .select('id, escrow_status, travel:mail_extracted->card->travel')
+      .not('mail_extracted->card->travel', 'is', null)
+      .contains('tags', [holidayCards.CARD_TAG])
+      // By journey first, so the partial index (mail_card_travel_journey_idx) holds the rows to read.
+      .order('mail_extracted->card->travel->>journey', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    for (const row of data || []) {
+      if (!live(row) || !row.travel) continue;
+      journeys.add(row.travel.journey);
+      for (const t of [row.travel.from, row.travel.to]) if (t?.state && !NON_STATES.has(t.state)) states.add(t.state);
+      if (row.travel.to) total += miles(row.travel.from, row.travel.to);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  const value = { states: states.size, of: STATES_OF, state_codes: [...states].sort(), travelling: journeys.size, miles: total,
+    line: `All cards this Christmas: ${states.size} of ${STATES_OF} states.` };
+  goalKept = { value, until: now.getTime() + GOAL_KEEP_MS };
+  return value;
+}
+
+// ---- Reaching a town and telling people ----
+
+// Changes one card's `travel` (a key given as undefined is removed). Read again first: the rest of the row may have moved.
+async function writeTravel(row, travel) {
+  const { data: current, error } = await supabaseAdmin.from('Mail').select('mail_extracted').eq('id', row.id).maybeSingle();
+  if (error) throw new Error(error.message);
+  const card = current?.mail_extracted?.card;
+  if (!card?.travel) return false;
+  const next = { ...card.travel, ...travel(card.travel) };
+  for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key];
+  const { error: updateError } = await supabaseAdmin.from('Mail')
+    .update({ mail_extracted: { ...current.mail_extracted, card: { ...card, travel: next } } })
+    .eq('id', row.id);
+  if (updateError) throw new Error(updateError.message);
+  return true;
+}
+
+/**
+ * A card reached its person (its 7 a.m. delivery, or someone took it from an email or link): its `to` is their town,
+ * and everyone who held it on the way hears. Someone with no town yet is asked for one; their card reaches it then
+ * (reachedTownOf). Best effort: a failure is logged and the next morning run tries again.
+ */
+async function reached(mailId, { now = new Date() } = {}) {
+  if (!travelOn()) return;
+  try {
+    const { data: row, error } = await supabaseAdmin.from('Mail')
+      .select('id, recipient_user_id, delivered_at, escrow_status, travel:mail_extracted->card->travel').eq('id', mailId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row?.travel || row.travel.to || !live(row) || !row.recipient_user_id) return;
+    if (!row.delivered_at || Date.parse(row.delivered_at) > now.getTime()) return;
+    const town = await travelTown(row.recipient_user_id);
+    const zone = (await mailDelivery.personTimeZone(row.recipient_user_id)) || mailDelivery.FALLBACK_TIME_ZONE;
+    if (!town) {
+      if (!row.travel.waits_town) await writeTravel(row, () => ({ waits_town: true }));
+      return;
+    }
+    await writeTravel(row, (t) => (t.to ? {} : { to: stopOf(town, mailDelivery.localDate(new Date(row.delivered_at), zone)), waits_town: undefined }));
+    await tellJourney(row.travel.journey, now);
+  } catch (err) {
+    logger.warn('Travelling card: reaching a town failed', { mailId, error: err.message });
+  }
+}
+
+/** Someone gave their town (PUT /cards/town): the travelling cards that reached them while they had none reach it now. */
+async function reachedTownOf(userId, now = new Date()) {
+  if (!travelOn()) return;
+  try {
+    const { data, error } = await supabaseAdmin.from('Mail').select('id')
+      .eq('recipient_user_id', userId)
+      .not('mail_extracted->card->travel', 'is', null)
+      .is('mail_extracted->card->travel->>to', null)
+      .lte('delivered_at', now.toISOString())
+      .contains('tags', [holidayCards.CARD_TAG]);
+    if (error) throw new Error(error.message);
+    for (const row of data || []) await reached(row.id, { now });
+  } catch (err) {
+    logger.warn('Travelling card: town arrivals failed', { userId, error: err.message });
+  }
+}
+
+const NOTICE_TYPE = 'holiday_card_travelled';
+const NOTICE_FROM_HOUR = 7;
+const NOTICE_UNTIL_HOUR = 21;
+
+/**
+ * Tell everyone who held a journey's cards on the way about the towns it reached that they haven't heard of: one notice
+ * a day for one journey for one person (its idempotency key holds the day), so a second town the same day is counted
+ * in the next day's notice. It opens that person's own Sent card.
+ */
+async function tellJourney(journey, now = new Date()) {
+  const rows = await journeyRows(journey);
+  const tree = journeyTree(rows);
+  // Who is owed which arrivals: for each card that reached a town, every sender on its way there.
+  const owed = new Map();
+  for (const row of rows) {
+    if (!live(row) || !row.travel.to || row.travel.told_all) continue;
+    const told = new Set((row.travel.told || []).map(String));
+    for (const sent of chainTo(tree, row)) {
+      const holder = String(sent.sender_user_id || '');
+      if (!holder || told.has(holder)) continue;
+      if (!owed.has(holder)) owed.set(holder, { sent, arrivals: [] });
+      const entry = owed.get(holder);
+      entry.arrivals.push(row);
+      // Their own Sent card on the way: the one nearest the start that leads to these arrivals.
+      if (Number(sent.travel.hop) < Number(entry.sent.travel.hop)) entry.sent = sent;
+    }
+  }
+  const toldNow = new Map();
+  for (const [holder, { sent, arrivals }] of owed) {
+    const zone = (await mailDelivery.personTimeZone(holder)) || mailDelivery.FALLBACK_TIME_ZONE;
+    // Never in someone's night: a later run tells them once it's 7 a.m. where they live.
+    const hour = Number(DateTime.fromJSDate(now, { zone }).toFormat('H'));
+    if (hour < NOTICE_FROM_HOUR || hour >= NOTICE_UNTIL_HOUR) continue;
+    const day = mailDelivery.localDate(now, zone);
+    const key = `card_travel:${journey}:${holder}:${day}`;
+    const { data: had } = await supabaseAdmin.from('Notification').select('id').eq('idempotency_key', key).limit(1);
+    if (had?.length) continue;
+    const view = holderView(tree, sent);
+    const newest = arrivals.reduce((a, b) => (String(b.travel.to.on) >= String(a.travel.to.on) ? b : a));
+    const left = sent.travel.from?.town === ABROAD ? 'abroad' : `in ${sent.travel.from?.town || 'your town'}`;
+    // From the stop it left them to the newest town: the towns and miles on that way.
+    const pathRows = chainTo(tree, newest).filter((r) => Number(r.travel.hop) >= Number(sent.travel.hop));
+    const pathMiles = pathRows.reduce((sum, r) => sum + miles(r.travel.from, r.travel.to), 0);
+    const one = arrivals.length === 1;
+    const place = label(newest.travel.to);
+    const notice = one
+      ? { title: place === ABROAD ? 'Your card went abroad' : `Your card reached ${place}`,
+        body: `${pathRows.length + 1} towns and ${pathMiles.toLocaleString('en-US')} miles since it left you ${left}.` }
+      : { title: `Your card reached ${arrivals.length} more towns`,
+        body: `${view.towns} towns and ${view.miles.toLocaleString('en-US')} miles so far.` };
+    // eslint-disable-next-line global-require
+    const notificationService = require('./notificationService');
+    const created = await notificationService.createNotification({
+      userId: holder, type: NOTICE_TYPE, title: notice.title, body: notice.body, icon: '✉️',
+      link: `/app/mailbox/sent/${sent.id}`, idempotencyKey: key,
+      metadata: { mail_id: sent.id, journey: String(journey) },
+    });
+    if (!created) continue;
+    for (const row of arrivals) {
+      if (!toldNow.has(row.id)) toldNow.set(row.id, new Set());
+      toldNow.get(row.id).add(holder);
+    }
+  }
+  for (const [id, holders] of toldNow) {
+    const row = tree.byId.get(id);
+    const owedBy = new Set(chainTo(tree, row).map((r) => String(r.sender_user_id || '')).filter(Boolean));
+    await writeTravel(row, (t) => {
+      const told = [...new Set([...(t.told || []).map(String), ...holders])];
+      return { told, ...([...owedBy].every((h) => told.includes(h)) ? { told_all: true } : {}) };
+    }).catch((err) => logger.warn('Travelling card: told not kept', { mailId: id, error: err.message }));
+  }
+}
+
+/**
+ * The morning run (rides the mail notification Lambda's call, POST /api/internal/briefing/mail-morning, every five
+ * minutes): travelling cards to people whose 7 a.m. delivery has come reach their towns, and arrivals someone hasn't
+ * heard of yet because they heard of another that day are told now that it's a new day. Answers counts.
+ */
+async function runArrivals(now = new Date()) {
+  if (!travelOn()) return { skipped: true };
+  const stats = { reached: 0, journeys_told: 0 };
+  const { data: due, error } = await supabaseAdmin.from('Mail').select('id')
+    .not('mail_extracted->card->travel', 'is', null)
+    .is('mail_extracted->card->travel->>to', null)
+    .is('mail_extracted->card->travel->>waits_town', null)
+    .is('escrow_status', null)
+    .not('recipient_user_id', 'is', null)
+    .lte('delivered_at', now.toISOString())
+    .contains('tags', [holidayCards.CARD_TAG])
+    .limit(2000);
+  if (error) throw new Error(error.message);
+  for (const row of due || []) {
+    await reached(row.id, { now });
+    stats.reached += 1;
+  }
+  const { data: untold, error: untoldError } = await supabaseAdmin.from('Mail')
+    .select('journey:mail_extracted->card->travel->>journey')
+    .not('mail_extracted->card->travel->>to', 'is', null)
+    .is('mail_extracted->card->travel->>told_all', null)
+    .contains('tags', [holidayCards.CARD_TAG])
+    .limit(2000);
+  if (untoldError) throw new Error(untoldError.message);
+  for (const journey of new Set((untold || []).map((r) => r.journey).filter(Boolean))) {
+    try {
+      await tellJourney(journey, now);
+      stats.journeys_told += 1;
+    } catch (err) {
+      logger.warn('Travelling card: telling a journey failed', { journey, error: err.message });
+    }
+  }
+  return stats;
+}
+
 module.exports = {
-  PLACES, ABROAD, travelOn, loadTowns, matchTown, townById, searchTowns, nearestTown, stateCode, travelTown,
+  PLACES, ABROAD, NOTICE_TYPE, travelOn, loadTowns, matchTown, townById, searchTowns, nearestTown, stateCode, travelTown,
   townLabel, label, miles, stopOf, placeRowId, passOnDigest, journeyRows, journeyTree, chainTo, placesOf, passOnRefusal,
-  readerView, attachReaderView, previewView, sentViews, live,
+  readerView, attachReaderView, previewView, sentViews, publicJourney, goalLine, reached, reachedTownOf, tellJourney, runArrivals, live,
 };
