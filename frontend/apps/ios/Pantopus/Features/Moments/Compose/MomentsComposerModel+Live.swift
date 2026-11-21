@@ -107,7 +107,8 @@ extension MomentsComposerModel {
     /// The camera's finished video: the draft (unless it can't be posted), and the shot it was.
     func tookVideo(_ url: URL) async {
         await use(video: url)
-        if draft != nil { tookShot() }
+        // One that can't be posted is no draft, so nothing reads its file.
+        if draft == .video(url) { tookShot() } else { MomentsDraftFiles.drop(url) }
     }
 
     /// The camera made the draft just now: keep when and where, and ask the weather where it isn't home.

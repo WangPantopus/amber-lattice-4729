@@ -194,7 +194,7 @@ extension MomentsComposerModel {
         camera.stop(discarding: true)
         preparation?.cancel()
         discardPrepared()
-        MomentsLibraryLoader.dropCopy(draft?.video)
+        MomentsDraftFiles.drop(draft?.video)
     }
 }
 

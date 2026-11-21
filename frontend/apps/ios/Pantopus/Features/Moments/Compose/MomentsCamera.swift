@@ -108,7 +108,9 @@ final class MomentsCameraController: NSObject, @unchecked Sendable {
             stopRequested = false
             torch(flash)
             upright(movieOutput.connection(with: .video))
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("moment-\(UUID().uuidString).mov")
+            let url = MomentsDraftFiles.newFile(MomentsDraftFiles.cameraPrefix)
+            // Nothing removes or sweeps it while it is being written.
+            MomentsDraftFiles.beginWriting(url)
             movieOutput.startRecording(to: url, recordingDelegate: self)
         }
     }
@@ -158,6 +160,9 @@ extension MomentsCameraController: AVCapturePhotoCaptureDelegate, AVCaptureFileO
     ) {
         // Stopping at the limit reports an error that says the file is fine.
         let finished = error == nil || ((error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool) == true
+        MomentsDraftFiles.endWriting(url)
+        // A recording that didn't finish isn't anyone's.
+        if !finished { MomentsDraftFiles.drop(url) }
         queue.async { [self] in torch(false) }
         let result = finished ? url : nil
         Task { @MainActor [weak self] in self?.onVideo?(result) }
