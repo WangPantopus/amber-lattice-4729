@@ -42,34 +42,6 @@ extension CardTableContent {
     }
 }
 
-extension CardTableContent {
-    /// A card in Sent, as the other person gets it.
-    init(sent piece: MailSentPiece, from: String, mailedOn: String?) {
-        design = piece.card.design
-        number = piece.card.number
-        caption = piece.card.caption ?? ""
-        paper = piece.card.paper
-        table = piece.card.table
-        slug = piece.card.slug
-        year = piece.card.year
-        self.mailedOn = mailedOn
-        note = MailPieceModel.firstText(piece.note) ?? ""
-        fromName = from
-        toName = piece.byLink && piece.status != .claimed ? "Their name" : piece.toName
-        sealed = false
-        sealedUntil = nil
-        sealedInDays = ""
-        sealedDayCount = 0
-        signature = piece.card.signature
-        // Your own photo: never covered here.
-        photo = piece.card.photo.map {
-            CardPhoto(fileId: $0.fileId, width: $0.width, height: $0.height, alt: $0.alt, live: $0.live)
-        }
-        voice = piece.card.voice
-        mediaFrom = .sent(cardId: piece.id)
-    }
-}
-
 /// Where a tab's root shows the card table. On the open Duo a cover presented from inside side-by-side Mail is shown
 /// again each time the halves redraw, and a sheet over it (Share, Who sent it) went and came back in a loop; the tab's
 /// root stays put, so the Mail screens hand it their page. Without one (another tab) a screen presents it itself.
