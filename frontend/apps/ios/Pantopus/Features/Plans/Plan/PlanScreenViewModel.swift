@@ -117,7 +117,8 @@ final class PlanScreenViewModel {
 
     // MARK: - Reading
 
-    func load() async {
+    /// `quietly`: a re-read nobody asked for (waiting on the host) says nothing when it fails.
+    func load(quietly: Bool = false) async {
         guard isOnScreen else { return }
         readGeneration += 1
         let generation = readGeneration
@@ -146,14 +147,14 @@ final class PlanScreenViewModel {
         } catch is CancellationError {
             return
         } catch let error as APIError {
-            await showLoadFailure(error, generation: generation)
+            await showLoadFailure(error, generation: generation, quietly: quietly)
         } catch {
             guard generation == readGeneration else { return }
             if plan == nil { phase = .error("We couldn't load this plan.") }
         }
     }
 
-    private func showLoadFailure(_ error: APIError, generation: Int) async {
+    private func showLoadFailure(_ error: APIError, generation: Int, quietly: Bool) async {
         guard generation == readGeneration else { return }
         if case .notFound = error {
             plan = nil
@@ -167,7 +168,7 @@ final class PlanScreenViewModel {
             phase = .unavailable
         } else if plan == nil {
             phase = .error(error.errorDescription ?? "We couldn't load this plan.")
-        } else {
+        } else if !quietly {
             notice = "Couldn't refresh this plan. Pull down to try again."
         }
     }
