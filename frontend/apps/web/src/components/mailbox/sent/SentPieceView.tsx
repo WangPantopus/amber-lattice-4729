@@ -203,6 +203,8 @@ export default function SentPieceView({ id }: { id: string }) {
             fromName: piece.envelope.from,
             mailedOn: piece.envelope.postmarked_on || piece.sent_at,
             signature: card.signature ?? null,
+            // A travelling card (Part 7): its envelope's postmarks, and how far it has gone from here.
+            travel: piece.travel?.journey ? { journey: piece.travel.journey, postmarks: piece.travel.postmarks ?? [], towns: piece.travel.towns, miles: piece.travel.miles } : null,
           }}
           slug={card.slug}
           mine

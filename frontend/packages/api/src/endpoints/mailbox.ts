@@ -1051,7 +1051,9 @@ export interface SentPiece {
    * A card that travels (server key card_travel), counted from this card on: "{towns} towns · {miles} miles. Now in
    * {now_in}." and "See its journey". `now_in` is null until it reaches someone.
    */
-  travel?: { journey: string; towns: number; miles: number; now_in: string | null } | null;
+  travel?: { journey: string; towns: number; miles: number; now_in: string | null;
+    /** The postmarks on this card's envelope as it reached its person (its share picture). */
+    postmarks?: CardTravelPostmark[] } | null;
 }
 
 /** A step of a sent card's trail: `at` an instant (shown by the sender's clock), `on` a day by theirs. */

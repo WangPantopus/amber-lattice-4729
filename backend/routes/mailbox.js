@@ -4997,6 +4997,8 @@ router.get('/claim/:mailId', async (req, res) => {
     // A Christmas card shows its front (the stock picture, unless it's sealed until Christmas), never its note.
     const card = holidayCards.isCard(mail) ? mail.mail_extracted.card : null;
     if (card) previewText = null;
+    // A travelling card (card_travel): its envelope's postmarks and how far it came, towns and dates only (Part 7).
+    const travel = card?.travel ? await cardTravel.linkView(mail.id).catch(() => null) : null;
 
     return res.json({
       mail: {
@@ -5009,7 +5011,8 @@ router.get('/claim/:mailId', async (req, res) => {
         mailType: mail.mail_type || mail.type || null,
         outcomeDescription,
         card: card ? { holiday: card.holiday || holidayCards.SEASON.holiday, year: card.year || holidayCards.SEASON.year,
-          sealed: card.arrival === 'sealed_christmas', front: cardLinkFront(card), ...(card.by_link ? { by_link: true } : {}) } : null,
+          sealed: card.arrival === 'sealed_christmas', front: cardLinkFront(card), ...(card.by_link ? { by_link: true } : {}),
+          ...(travel ? { travel } : {}) } : null,
         // The address or number to sign in with, masked as in the sender's expiry notice. A card by link went to none.
         sentTo: card?.by_link ? '' : maskContact(mail.escrow_recipient_contact || ''),
         createdAt: mail.created_at,
