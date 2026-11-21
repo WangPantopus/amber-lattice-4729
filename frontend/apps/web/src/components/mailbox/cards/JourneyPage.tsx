@@ -46,7 +46,7 @@ export default function JourneyPage({ journey }: { journey: CardJourney }) {
           ))}
         </ol>
         <p className={styles.fine}>{daysLine(journey.days)}</p>
-        <p className={styles.goal} data-testid="journeyGoal">{journey.goal.line}</p>
+        {journey.goal ? <p className={styles.goal} data-testid="journeyGoal">{journey.goal.line}</p> : null}
         <Link href="/cards" className={styles.start} data-testid="journeyStart">Start a card of your own</Link>
       </div>
     </main>
