@@ -136,9 +136,11 @@ public struct SentCardTravel: Decodable, Sendable, Hashable {
     public let miles: Int
     /// "Tampa, FL"; nil until it has reached anyone.
     public let nowIn: String?
+    /// The postmarks on this card's envelope, oldest first, for its share picture.
+    public let postmarks: [CardTravelStop]
 
     private enum CodingKeys: String, CodingKey {
-        case journey, towns, miles
+        case journey, towns, miles, postmarks
         case nowIn = "now_in"
     }
 
@@ -148,6 +150,8 @@ public struct SentCardTravel: Decodable, Sendable, Hashable {
         towns = (try? c.decodeIfPresent(Int.self, forKey: .towns)) ?? 0
         miles = (try? c.decodeIfPresent(Int.self, forKey: .miles)) ?? 0
         nowIn = try? c.decodeIfPresent(String.self, forKey: .nowIn)
+        postmarks = ((try? c.decodeIfPresent([CardTravelLenient<CardTravelStop>].self, forKey: .postmarks)) ?? [])
+            .compactMap(\.value)
     }
 }
 
@@ -283,9 +287,11 @@ public struct CardPassOnPreview: Decodable, Sendable, Hashable {
         public let takeBackUntil: String?
         /// The sender's town ("Tampa, FL") for "Your town, Tampa, FL, goes on its journey."
         public let town: String?
+        /// The postmark this pass-on strikes, for the sealing table.
+        public let postmark: CardTravelStop?
 
         private enum CodingKeys: String, CodingKey {
-            case place, town
+            case place, town, postmark
             case toName = "to_name"
             case byEmail = "by_email"
             case byLink = "by_link"
@@ -304,6 +310,7 @@ public struct CardPassOnPreview: Decodable, Sendable, Hashable {
             arrivesOn = try? c.decodeIfPresent(String.self, forKey: .arrivesOn)
             takeBackUntil = try? c.decodeIfPresent(String.self, forKey: .takeBackUntil)
             town = try? c.decodeIfPresent(String.self, forKey: .town)
+            postmark = try? c.decodeIfPresent(CardTravelStop.self, forKey: .postmark)
         }
     }
 

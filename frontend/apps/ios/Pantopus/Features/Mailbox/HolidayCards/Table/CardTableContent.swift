@@ -98,5 +98,7 @@ extension CardTableContent {
         }
         voice = piece.card.voice
         mediaFrom = .sent(cardId: piece.id)
+        // A card that travels: its envelope's postmarks, as they see it (travelling card plan Part 7).
+        travel = CardTravelEnvelope(sent: piece.travel, year: piece.card.year)
     }
 }

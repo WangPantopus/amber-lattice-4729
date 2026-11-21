@@ -47,7 +47,7 @@ extension HolidayCardFlowViewModel {
                 opened: false
             )
             let card = preview.piece.item.card
-            return CardTableContent(
+            var content = CardTableContent(
                 design: design.id,
                 number: design.number,
                 caption: card?.caption ?? design.caption,
@@ -66,6 +66,11 @@ extension HolidayCardFlowViewModel {
                 verse: design.verse,
                 signature: cards.signature == nil ? nil : signature
             )
+            // A card that travels: the look's one postmark, the sender's town, struck at the seal's thump (Part 2).
+            if let stops = card?.travel?.postmarks, !stops.isEmpty {
+                content.travel = CardTravelEnvelope(sealing: CardTravelEnvelope.marks(stops, year: content.year))
+            }
+            return content
         }
         return CardTableContent(
             design: design.id,

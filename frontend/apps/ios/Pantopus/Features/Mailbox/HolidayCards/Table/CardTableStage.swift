@@ -228,8 +228,9 @@ struct CardTableStage: View {
             sealed: setup?.sealedForChristmas ?? content.sealed,
             reveal: model.addressing,
             isLetter: content.isLetter,
-            travelMarks: setup == nil ? model.travelMarks : [],
-            strike: model.strikeShown
+            travelMarks: model.travelMarks,
+            // Being sealed, the newest postmark waits for the table's own thump (as the web does).
+            strike: setup == nil ? model.strikeShown : CardTableAddress.progress(model.addressing, CardTableAddress.postmark)
         )
         .equatable()
         // To several people: a stack of envelopes under the top one.
