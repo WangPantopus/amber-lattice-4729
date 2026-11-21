@@ -129,9 +129,12 @@ struct BriefingNoticeView: View {
         .accessibilityIdentifier("suggestionsNotice")
     }
 
+    /// The times in the phone's own clock style ("On at 7:30 AM"), as Settings → Notifications shows them.
     private func summary(_ prefs: NotificationPreferencesDTO) -> String {
-        let morning = prefs.dailyBriefingEnabled ? "On at \(prefs.dailyBriefingTimeLocal)" : "Off"
-        let evening = prefs.eveningBriefingEnabled ? "On at \(prefs.eveningBriefingTimeLocal)" : "Off"
+        let morningTime = NotificationSettingsViewModel.clockLabel(prefs.dailyBriefingTimeLocal)
+        let eveningTime = NotificationSettingsViewModel.clockLabel(prefs.eveningBriefingTimeLocal)
+        let morning = prefs.dailyBriefingEnabled ? "On at \(morningTime)" : "Off"
+        let evening = prefs.eveningBriefingEnabled ? "On at \(eveningTime)" : "Off"
         return "Morning: \(morning)\nEvening: \(evening)"
     }
 
