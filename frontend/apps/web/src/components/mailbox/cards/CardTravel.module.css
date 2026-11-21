@@ -83,3 +83,34 @@
 .switch[aria-checked='true']::after { transform: translateX(20px); }
 .switch:focus-visible { outline: 2px solid #8b1d1d; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }
+
+/* The postmarks on a travelling card's envelope (Part 3; TravelPostmarks.tsx): today's ink, every third blue-black. */
+.pm {
+  position: absolute; overflow: visible; color: rgba(19, 13, 15, 0.8); transform: rotate(var(--r));
+  transform-origin: calc(var(--ew) * 0.135) 50%; pointer-events: none;
+}
+.pmBlue { color: rgba(14, 22, 52, 0.84); }
+.pm text { font-family: Georgia, 'Times New Roman', serif; fill: currentColor; font-weight: 700; }
+.pmMore {
+  position: absolute; right: 6.8%; bottom: 5.4%; font: 600 calc(var(--ew) * 0.0235) / 1 ui-serif, 'New York', Georgia, serif;
+  letter-spacing: 0.2em; text-transform: uppercase; color: #d8b76f;
+}
+/* Being sealed: the newest postmark lands with the table's own thump (CardTable.module.css, 1.74 s after addressing). */
+[data-send] .pmNewest { opacity: 0; }
+[data-addressed] .pmNewest { animation: pmThump 0.24s ease-out 1.74s forwards; }
+/* Just arrived: the newest is struck last. */
+.pmArrive { animation: pmThump 0.24s ease-out 0.9s backwards; }
+@keyframes pmThump {
+  from { opacity: 0; transform: rotate(var(--r)) scale(1.3); }
+  60% { opacity: 1; transform: rotate(var(--r)) scale(0.97); }
+  to { opacity: 1; transform: rotate(var(--r)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-addressed] .pmNewest { animation: none; opacity: 1; }
+  .pmArrive { animation: none; }
+}
+/* "It came 2,692 miles through 4 towns to reach you." under the table's words (sample .words small). */
+.wordsSub {
+  display: block; margin-top: 7px; font: normal 0.78125rem/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: rgba(244, 233, 214, 0.68); text-wrap: balance;
+}
