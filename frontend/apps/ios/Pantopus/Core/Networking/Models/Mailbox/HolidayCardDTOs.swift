@@ -78,9 +78,12 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
     /// "Help me write it" can be used now (the server's launch key `card_note_help`); false from older servers and
     /// with the key off: no button.
     public let noteHelp: Bool
+    /// The travelling card (server switch `card_travel`, travelling card plan Part 2): "Let it travel" shows only when
+    /// this says it's on; nil from older servers and with the switch off.
+    public let travel: HolidayCardsTravel?
 
     private enum CodingKeys: String, CodingKey {
-        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media
+        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media, travel
         case noteHelp = "note_help"
         case maxRecipients = "max_recipients"
         case postageEnabled = "postage_enabled"
@@ -126,6 +129,7 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         signature = try? c.decodeIfPresent(HolidayCardSignatureSpec.self, forKey: .signature)
         media = try? c.decodeIfPresent(HolidayCardMediaSpec.self, forKey: .media)
         noteHelp = (try? c.decodeIfPresent(Bool.self, forKey: .noteHelp)) ?? false
+        travel = try? c.decodeIfPresent(HolidayCardsTravel.self, forKey: .travel)
     }
 
     /// "Add a photo" shows (the server takes one now, and this build carries the memories), unless no bought stamp
@@ -411,9 +415,11 @@ public struct SendHolidayCardBody: Encodable, Sendable {
     public let voice: String?
     /// The photo's moving part when it goes as a Live Photo; left out for a still.
     public let photoLive: String?
+    /// "Let it travel" left on (travelling card plan Part 2): true starts a journey; left out for an ordinary card.
+    public var travel: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case design, message, arrival, to, signature, photo, voice
+        case design, message, arrival, to, signature, photo, voice, travel
         case requestId = "request_id"
         case useStamp = "use_stamp"
         case photoAlt = "photo_alt"
@@ -482,6 +488,8 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     /// True when the app words every choice by email (`arrivals.email_all`): each address keeps the list's choice,
     /// its email going at the sender's 7 a.m. or on Christmas morning. Nil (left out) keeps the older mapping.
     public let emailsKeepArrival: Bool?
+    /// "Let it travel" left on: each card of the list starts a journey of its own; left out otherwise.
+    public var travel: Bool?
 
     public struct Recipient: Encodable, Sendable {
         public let to: SendHolidayCardBody.Recipient
@@ -494,7 +502,7 @@ public struct SendHolidayCardListBody: Encodable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case design, message, arrival, recipients, signature
+        case design, message, arrival, recipients, signature, travel
         case useStamp = "use_stamp"
         case emailsKeepArrival = "emails_keep_arrival"
     }
