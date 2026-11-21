@@ -86,7 +86,7 @@ enum MomentsLibraryLoader {
         options.isNetworkAccessAllowed = true
         options.version = .current
         options.deliveryMode = .highQualityFormat
-        let target = FileManager.default.temporaryDirectory.appendingPathComponent("moment-library-\(UUID().uuidString).mov")
+        let target = FileManager.default.temporaryDirectory.appendingPathComponent("\(copyPrefix)\(UUID().uuidString).mov")
         let session: AVAssetExportSession? = await withCheckedContinuation { continuation in
             PHImageManager.default().requestExportSession(forVideo: asset, options: options, exportPreset: preset) { session, _ in
                 continuation.resume(returning: session)
@@ -96,7 +96,43 @@ enum MomentsLibraryLoader {
         session.outputURL = target
         session.outputFileType = .mov
         await session.export()
-        return session.status == .completed ? target : nil
+        guard session.status == .completed else {
+            // A copy that didn't finish isn't anyone's.
+            try? FileManager.default.removeItem(at: target)
+            return nil
+        }
+        return target
+    }
+
+    // MARK: - The copies
+
+    /// A library video's copy in the temporary folder: needed while it is the draft (the Post sheet and the marks
+    /// editor play it, its export and Text and Draw's export read it) and never after. Posting, the uploader and a
+    /// retry from the map use only the outbox's own files.
+    nonisolated static let copyPrefix = "moment-library-"
+
+    /// Removes `url` when it is one of these copies (a camera recording isn't).
+    static func dropCopy(_ url: URL?) {
+        guard let url, url.lastPathComponent.hasPrefix(copyPrefix) else { return }
+        Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Copies left by an earlier time the composer was open (the app closed with a draft on the sheet, or a pick
+    /// finished after the composer closed): all but `keeping`, and none written since this was called (a pick made
+    /// straight away).
+    static func sweepCopies(keeping: URL?) {
+        let kept = keeping?.lastPathComponent
+        let since = Date()
+        Task.detached(priority: .utility) {
+            let manager = FileManager.default
+            let folder = manager.temporaryDirectory
+            for name in (try? manager.contentsOfDirectory(atPath: folder.path)) ?? [] where name.hasPrefix(copyPrefix) && name != kept {
+                let file = folder.appendingPathComponent(name)
+                guard let written = (try? manager.attributesOfItem(atPath: file.path))?[.modificationDate] as? Date,
+                      written < since else { continue }
+                try? manager.removeItem(at: file)
+            }
+        }
     }
 }
 

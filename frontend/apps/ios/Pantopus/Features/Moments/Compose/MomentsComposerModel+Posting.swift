@@ -194,10 +194,16 @@ extension MomentsComposerModel {
         camera.stop(discarding: true)
         preparation?.cancel()
         discardPrepared()
+        MomentsLibraryLoader.dropCopy(draft?.video)
     }
 }
 
 extension MomentsComposerModel.Draft {
+    /// The video's file, for a video.
+    var video: URL? {
+        if case let .video(url) = self { url } else { nil }
+    }
+
     /// What the create request calls it.
     var kind: MomentKind {
         switch self {
