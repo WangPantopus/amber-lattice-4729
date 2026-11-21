@@ -56,6 +56,9 @@ struct CardTableTravelReader: ViewModifier {
         }
         let url = travel.journey.flatMap(CardJourneyPage.init)
         let open = { journey = url }
+        if url != nil {
+            buttons.menu = [CardTableMenuItem(title: "See its journey", identifier: "cardTableMenuJourney", action: open)]
+        }
         if travel.placesLeft == 0, !passed.isEmpty {
             let line = CardTravelWords.passedOn(passed.map(CardTravelWords.name))
             buttons.quiet.append(CardTableMenuItem(title: line, identifier: "cardTablePassedOn", action: open))

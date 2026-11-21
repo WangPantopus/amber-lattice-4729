@@ -420,6 +420,8 @@ private struct MailCardTablePage: View {
             let identifier = writeBack.identifier == "cardTableWroteBack" ? "cardTableMenuWroteBack" : "cardTableMenuWriteBack"
             items.append(CardTableMenuItem(title: writeBack.title, identifier: identifier, action: writeBack.action))
         }
+        // A travelling card: "See its journey" (travelling card plan Part 4), as the quiet row may not show it.
+        items += model.travelButtons.menu
         items.append(CardTableMenuItem(title: "Who sent it and its trail", identifier: "cardTableMenuWho") {
             viewModel.showsSenderSheet = true
         })

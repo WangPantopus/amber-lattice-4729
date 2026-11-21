@@ -16,6 +16,8 @@ struct CardTableTravelButtons {
     var passOn: CardTableMenuItem?
     var passOnFilled = true
     var quiet: [CardTableMenuItem] = []
+    /// "See its journey" in the ⋯ menu.
+    var menu: [CardTableMenuItem] = []
 }
 
 extension CardTableModel {
