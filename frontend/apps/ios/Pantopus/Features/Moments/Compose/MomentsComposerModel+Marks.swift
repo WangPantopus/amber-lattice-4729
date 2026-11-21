@@ -413,6 +413,7 @@ extension MomentsComposerModel {
         case let .photo(image):
             marking.open(tool, size: image.size, photo: image)
         case let .video(url):
+            if tool == .resize { marking.sampleBackdrop(video: url) }
             if let video = marking.video { return marking.open(tool, size: video.size, photo: nil) }
             Task {
                 guard let shown = await MomentsMediaExport.shown(url), draft == .video(url), !isPosting else { return }
@@ -431,7 +432,8 @@ extension MomentsComposerModel {
         guard marking.changed else { return marking.cancel() }
         switch draft {
         case let .photo(image): use(marked: marking.base ?? image, marking.editing, placement: marking.editingPlacement)
-        case let .video(url): if let video = marking.video { use(marked: url, video: video, marking.editing) }
+        case let .video(url):
+            if let video = marking.video { use(marked: url, video: video, marking.editing, placement: marking.editingPlacement) }
         case .text, nil: marking.cancel()
         }
     }

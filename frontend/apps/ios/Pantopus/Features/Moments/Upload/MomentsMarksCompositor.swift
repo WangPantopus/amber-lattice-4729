@@ -14,8 +14,10 @@
 
 import AVFoundation
 import CoreImage
+import CoreImage.CIFilterBuiltins
 
-/// The one instruction for a marked video: the source track, the transform onto the output frame, and the overlay.
+/// The one instruction for a marked or placed video: the source track, the transform onto the output frame, the overlay,
+/// and for a placed one (Resize) the canvas's background.
 final class MomentsMarksInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
     let timeRange = CMTimeRange(start: .zero, duration: .positiveInfinity)
     let enablePostProcessing = false
@@ -26,12 +28,23 @@ final class MomentsMarksInstruction: NSObject, AVVideoCompositionInstructionProt
     /// The layer instruction's transform, in the video's own top-left coordinates.
     let transform: CGAffineTransform
     /// The marks drawn on a clear picture the size of the output frame.
-    let overlay: CIImage
+    let overlay: CIImage?
+    /// A placed video's background: a top-to-bottom blend of its two colours, the size of the output frame.
+    let background: CIImage?
 
-    init(trackID: CMPersistentTrackID, transform: CGAffineTransform, overlay: CGImage) {
+    init(trackID: CMPersistentTrackID, transform: CGAffineTransform, overlay: CGImage?, backdrop: MomentPlacement.Backdrop?, size: CGSize) {
         self.trackID = trackID
         self.transform = transform
-        self.overlay = CIImage(cgImage: overlay)
+        self.overlay = overlay.map { CIImage(cgImage: $0) }
+        background = backdrop.flatMap { colors in
+            let blend = CIFilter.linearGradient()
+            // Core Image's y runs up: the top colour at the top.
+            blend.point0 = CGPoint(x: 0, y: size.height)
+            blend.color0 = CIColor(cgColor: colors.top.cgColor)
+            blend.point1 = .zero
+            blend.color1 = CIColor(cgColor: colors.bottom.cgColor)
+            return blend.outputImage?.cropped(to: CGRect(origin: .zero, size: size))
+        }
         requiredSourceTrackIDs = [NSNumber(value: trackID)]
     }
 }
@@ -64,8 +77,9 @@ final class MomentsMarksCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         let flipOut = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: height)
         let frame = CIImage(cvPixelBuffer: source)
             .transformed(by: flipIn.concatenating(instruction.transform).concatenating(flipOut))
-        let marked = instruction.overlay.composited(over: frame)
-            .cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
+        var marked = instruction.background.map { frame.composited(over: $0) } ?? frame
+        if let overlay = instruction.overlay { marked = overlay.composited(over: marked) }
+        marked = marked.cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
         context.render(marked, to: output)
         request.finish(withComposedVideoFrame: output)
     }

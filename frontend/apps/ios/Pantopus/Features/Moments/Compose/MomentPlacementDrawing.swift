@@ -11,6 +11,7 @@
 //  author sees is what goes up.
 //
 
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -67,6 +68,15 @@ enum MomentPlacementDrawing {
             return UIColor(cgColor: CGColor(srgbRed: sums[0] / count, green: sums[1] / count, blue: sums[2] / count, alpha: 1))
         }
         return MomentPlacement.Backdrop(top: average(0..<side / 3), bottom: average(side - side / 3..<side))
+    }
+
+    /// A video's two colours, from its first frame, upright. Nil when the frame can't be read.
+    static func backdrop(ofVideo url: URL) async -> MomentPlacement.Backdrop? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 240, height: 240)
+        guard let frame = try? await generator.image(at: .zero).image else { return nil }
+        return backdrop(of: UIImage(cgImage: frame))
     }
 
     /// Draws the canvas, `size` big, in `context` (origin at its top-left corner): the background, then `image` at
@@ -133,22 +143,22 @@ enum MomentPlacementDrawing {
     }
 }
 
-/// The canvas with the picture at its placement, filling this view's frame (which has the canvas's shape).
-struct MomentPlacedCanvas: View {
-    let image: UIImage
+/// The canvas with the picture at its placement, filling this view's frame (which has the canvas's shape): a photo, or
+/// a video playing (`picture` fills the frame it's given, which has the picture's own shape `aspect`).
+struct MomentPlacedCanvas<Picture: View>: View {
+    let aspect: CGFloat
     let placement: MomentPlacement
     let backdrop: MomentPlacement.Backdrop?
+    @ViewBuilder let picture: () -> Picture
 
     var body: some View {
         GeometryReader { geo in
             let colors = backdrop ?? .dark
-            let picture = placement.pictureSize(aspect: image.size.width / max(image.size.height, 1), on: geo.size)
+            let size = placement.pictureSize(aspect: aspect, on: geo.size)
             ZStack(alignment: .topLeading) {
                 LinearGradient(colors: [Color(uiColor: colors.top), Color(uiColor: colors.bottom)], startPoint: .top, endPoint: .bottom)
-                Image(uiImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: picture.width, height: picture.height)
+                picture()
+                    .frame(width: size.width, height: size.height)
                     .rotationEffect(.degrees(placement.turn))
                     .position(placement.pictureCenter(on: geo.size))
             }
@@ -158,17 +168,36 @@ struct MomentPlacedCanvas: View {
     }
 }
 
-/// A placed photo as the viewer shows it: the canvas filling this view (centered, cropped), with the marks over it.
-struct MomentsPlacedPhoto: View {
+extension MomentPlacedCanvas where Picture == MomentsPlacedImage {
+    init(image: UIImage, placement: MomentPlacement, backdrop: MomentPlacement.Backdrop?) {
+        self.init(aspect: image.size.width / max(image.size.height, 1), placement: placement, backdrop: backdrop) {
+            MomentsPlacedImage(image: image)
+        }
+    }
+}
+
+/// A photo on its canvas.
+struct MomentsPlacedImage: View {
     let image: UIImage
+
+    var body: some View {
+        Image(uiImage: image).resizable().interpolation(.high)
+    }
+}
+
+/// A placed photo or video as the viewer shows it: the canvas filling this view (centered, cropped), with the marks
+/// over it. One element, so the label given to it is read.
+struct MomentsPlacedPicture<Picture: View>: View {
+    let aspect: CGFloat
     let placement: MomentPlacement
     let backdrop: MomentPlacement.Backdrop?
     let marks: MomentMarks
+    @ViewBuilder let picture: () -> Picture
 
     var body: some View {
         GeometryReader { geo in
             let canvas = MomentMarks.fill(MomentPlacement.pixels, in: geo.size)
-            MomentPlacedCanvas(image: image, placement: placement, backdrop: backdrop)
+            MomentPlacedCanvas(aspect: aspect, placement: placement, backdrop: backdrop, picture: picture)
                 .overlay {
                     if !marks.isEmpty { MomentMarksCanvas(marks: marks, aspect: MomentPlacement.canvas) }
                 }
@@ -176,7 +205,6 @@ struct MomentsPlacedPhoto: View {
                 .offset(x: canvas.minX, y: canvas.minY)
         }
         .clipped()
-        // One element, so the label the Post screen gives it is read.
         .accessibilityElement(children: .ignore)
     }
 }

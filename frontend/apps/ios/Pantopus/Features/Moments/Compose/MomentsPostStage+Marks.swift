@@ -2,8 +2,8 @@
 //  MomentsPostStage+Marks.swift
 //  Pantopus
 //
-//  The pills over the picture on the Post screen: Retake, and on a photo
-//  Text, Draw and Resize (board T1), which open the marks editor in that tool. On the phone
+//  The pills over the picture on the Post screen: Retake, and on a photo or
+//  a video Text, Draw and Resize (board T1), which open the marks editor in that tool. On the phone
 //  they sit at the top right; on the iPhone Duo they follow Retake in one
 //  row, because two poses keep the clock at the top right. Where the row is
 //  too narrow, the tools that don't fit drop to a second row with their words
@@ -25,7 +25,7 @@ extension MomentsPostStage {
         pillRows(alignment: .leading)
     }
 
-    /// The tools this picture offers, in their order: Text and Draw on a photo or a video, and Resize on a photo.
+    /// The tools this picture offers, in their order: Text, Draw and Resize on a photo or a video.
     private var tools: [MomentsMarking.Tool] {
         (model.offersMarks ? [.text, .draw] : []) + (model.offersResize ? [.resize] : [])
     }
@@ -47,6 +47,22 @@ extension MomentsPostStage {
                     }
                 }
             }
+        }
+    }
+
+    /// The video as it will show: with its marks over it, or on its canvas once it's placed (Resize).
+    @ViewBuilder
+    func markedVideo(url: URL) -> some View {
+        if let placement = model.marking.placement, let picture = model.marking.video?.size {
+            MomentsPlacedPicture(
+                aspect: picture.width / max(picture.height, 1),
+                placement: placement,
+                backdrop: model.marking.backdrop,
+                marks: model.marking.marks
+            ) { videoSurface(url: url) }
+        } else {
+            videoSurface(url: url)
+                .overlay { MomentMarksOverVideo(marks: model.marking.marks, picture: model.marking.video?.size) }
         }
     }
 

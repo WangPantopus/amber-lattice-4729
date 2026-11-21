@@ -31,10 +31,15 @@ enum MomentsVideoEncoder {
     }
 
     /// Writes `range` of the video at `source` to `output` as an MP4 at `bits` a second of video, with `overlay` (the
-    /// marks drawn on a clear picture the size it's asked for) over every frame. Throws when the video can't be read
-    /// or written.
+    /// marks drawn on a clear picture the size it's asked for) over every frame, and each frame at `placing` on the 9:16
+    /// canvas when the author placed it (Resize). Throws when the video can't be read or written.
     static func encode(
-        _ source: URL, to output: URL, range: CMTimeRange, bits: Int = videoBitsPerSecond, overlay: Overlay? = nil
+        _ source: URL,
+        to output: URL,
+        range: CMTimeRange,
+        bits: Int = videoBitsPerSecond,
+        overlay: Overlay? = nil,
+        placing: Placing? = nil
     ) async throws {
         let asset = AVURLAsset(url: source)
         guard let video = try await asset.loadTracks(withMediaType: .video).first else { throw MomentsFailure.mediaRejected }
@@ -45,7 +50,7 @@ enum MomentsVideoEncoder {
             if try await track.load(.isEnabled) { sound = track }
         }
         let tracks = (video: video, sound: sound ?? sounds.first)
-        let job = try await Job(asset: asset, tracks: tracks, output: output, range: range, bits: bits, overlay: overlay)
+        let job = try await Job(asset: asset, tracks: tracks, output: output, range: range, bits: bits, marks: (overlay, placing))
         try await withTaskCancellationHandler {
             try await job.run()
         } onCancel: {
@@ -56,19 +61,39 @@ enum MomentsVideoEncoder {
     /// Draws the marks on a clear picture of the size given (the exported frame's), or nil for none.
     typealias Overlay = @Sendable (CGSize) -> CGImage?
 
-    /// The video's picture as it is exported, with the marks over it when `overlay` draws any: the layer instruction
-    /// today's export has, or the marks compositor doing the same transform (`MomentsMarksCompositor`). The system's
-    /// export uses it too, so a marked video never loses its marks there.
-    static func composition(for video: AVAssetTrack, overlay: Overlay?) async throws -> AVMutableVideoComposition {
+    /// A placed video (Resize): where its picture sits on the 9:16 canvas, and the canvas's background (read from the
+    /// first frame when the editor hadn't read it).
+    struct Placing {
+        let placement: MomentPlacement
+        let backdrop: MomentPlacement.Backdrop?
+    }
+
+    /// A placed video's frame: 9:16 at 720 on its short side, as every export is.
+    static let canvasSize = CGSize(width: 720, height: 1280)
+
+    /// The video's picture as it is exported, with the marks over it when `overlay` draws any and on its canvas when
+    /// `placing` places it: the layer instruction today's export has, or the marks compositor doing the same transform
+    /// over the canvas's background (`MomentsMarksCompositor`). The system's export uses it too, so a marked or placed
+    /// video never loses its marks or its placement there.
+    static func composition(for video: AVAssetTrack, overlay: Overlay?, placing: Placing? = nil) async throws -> AVMutableVideoComposition {
         let (natural, transform, rate) = try await video.load(.naturalSize, .preferredTransform, .nominalFrameRate)
-        let frame = frame(natural: natural, transform: transform)
+        let frame = placing.map { placed(natural: natural, transform: transform, placement: $0.placement) }
+            ?? frame(natural: natural, transform: transform)
         let frames = rate > 0 ? min(framesPerSecond, Int32(rate.rounded())) : framesPerSecond
         let composition = AVMutableVideoComposition()
         composition.renderSize = frame.size
         composition.frameDuration = CMTime(value: 1, timescale: max(1, frames))
-        if let marks = overlay?(frame.size) {
+        let marks = overlay?(frame.size)
+        if marks != nil || placing != nil {
             composition.customVideoCompositorClass = MomentsMarksCompositor.self
-            composition.instructions = [MomentsMarksInstruction(trackID: video.trackID, transform: frame.transform, overlay: marks)]
+            let instruction = MomentsMarksInstruction(
+                trackID: video.trackID,
+                transform: frame.transform,
+                overlay: marks,
+                backdrop: placing.map { $0.backdrop ?? .dark },
+                size: frame.size
+            )
+            composition.instructions = [instruction]
         } else {
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
             layer.setTransform(frame.transform, at: .zero)
@@ -82,6 +107,24 @@ enum MomentsVideoEncoder {
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
         return composition
+    }
+
+    /// The picture as it is shown (after the phone's rotation), at its placement on the 720 x 1280 canvas: the same
+    /// numbers the editor lays it out with (`MomentPlacement.pictureSize`, `pictureCenter`), drawn from the source frame
+    /// at its own size.
+    private static func placed(
+        natural: CGSize, transform: CGAffineTransform, placement: MomentPlacement
+    ) -> (size: CGSize, transform: CGAffineTransform) {
+        let shown = CGRect(origin: .zero, size: natural).applying(transform)
+        let picture = placement.pictureSize(aspect: shown.width / max(shown.height, 1), on: canvasSize)
+        let middle = placement.pictureCenter(on: canvasSize)
+        let fitted = transform
+            .concatenating(CGAffineTransform(translationX: -shown.minX, y: -shown.minY))
+            .concatenating(CGAffineTransform(scaleX: picture.width / max(shown.width, 1), y: picture.height / max(shown.height, 1)))
+            .concatenating(CGAffineTransform(translationX: -picture.width / 2, y: -picture.height / 2))
+            .concatenating(CGAffineTransform(rotationAngle: placement.turn * .pi / 180))
+            .concatenating(CGAffineTransform(translationX: middle.x, y: middle.y))
+        return (canvasSize, fitted)
     }
 
     /// The picture as it is shown (after the phone's rotation), scaled to 720 px on its short side, never up.
@@ -120,10 +163,10 @@ enum MomentsVideoEncoder {
             output: URL,
             range: CMTimeRange,
             bits: Int,
-            overlay: Overlay?
+            marks: (overlay: Overlay?, placing: Placing?)
         ) async throws {
             let (video, sound) = tracks
-            let composition = try await MomentsVideoEncoder.composition(for: video, overlay: overlay)
+            let composition = try await MomentsVideoEncoder.composition(for: video, overlay: marks.overlay, placing: marks.placing)
             let size = composition.renderSize
             let frames = composition.frameDuration.timescale
             start = range.start

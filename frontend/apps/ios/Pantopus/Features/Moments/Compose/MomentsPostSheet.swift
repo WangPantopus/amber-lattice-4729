@@ -79,8 +79,7 @@ struct MomentsPostStage: View {
             .overlay(Color.black.opacity(0.3))
             .accessibilityLabel("The photo you're posting")
         case let .video(url):
-            videoSurface(url: url)
-                .overlay { MomentMarksOverVideo(marks: model.marking.marks, picture: model.marking.video?.size) }
+            markedVideo(url: url)
                 .overlay(Color.black.opacity(0.3))
                 .accessibilityLabel("The video you're posting")
         case .text:

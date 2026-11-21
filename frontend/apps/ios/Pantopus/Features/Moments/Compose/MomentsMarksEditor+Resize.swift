@@ -90,16 +90,26 @@ private struct MomentsResizeReset: View {
 /// taken), the outline of what every phone shows while it moves, and the fingers moving it.
 struct MomentsResizeArea: View {
     let marking: MomentsMarking
-    let image: UIImage
+    /// The photo, or the video playing muted.
+    let media: MomentsMarkedMedia
     let size: CGSize
 
     var body: some View {
         let canvas = MomentMarks.fill(MomentPlacement.pixels, in: size)
         let marks = marksFrame(canvas)
         ZStack {
-            MomentPlacedCanvas(image: image, placement: marking.shownPlacement, backdrop: marking.backdrop)
-                .frame(width: canvas.width, height: canvas.height)
-                .position(x: canvas.midX, y: canvas.midY)
+            MomentPlacedCanvas(
+                aspect: media.size.width / max(media.size.height, 1),
+                placement: marking.shownPlacement,
+                backdrop: marking.backdrop
+            ) {
+                switch media {
+                case let .photo(image): MomentsPlacedImage(image: image)
+                case let .video(url, _): MomentsMarksVideo(url: url)
+                }
+            }
+            .frame(width: canvas.width, height: canvas.height)
+            .position(x: canvas.midX, y: canvas.midY)
             MomentMarksCanvas(marks: marking.editing, aspect: marking.aspect)
                 .frame(width: marks.width, height: marks.height)
                 .position(x: marks.midX, y: marks.midY)
@@ -109,7 +119,7 @@ struct MomentsResizeArea: View {
         .clipped()
         .overlay { MomentsResizeTouches(marking: marking, canvas: canvas) }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("The photo you're posting")
+        .accessibilityLabel(media.isVideo ? "The video you're posting" : "The photo you're posting")
         .accessibilityActions { spokenActions }
         .accessibilityIdentifier("moments.resize.picture")
     }

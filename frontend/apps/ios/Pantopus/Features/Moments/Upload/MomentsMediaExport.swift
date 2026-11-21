@@ -128,13 +128,18 @@ enum MomentsMediaExport {
         }
     }
 
-    /// What's said when a video's marks can't be put on it: it isn't posted without them.
-    static let marksFailed = "Couldn't put your text and drawing on this video. Tap Done in Text or Draw to try again."
+    /// What's said when a video's marks or its placement can't be put on it: it isn't posted without them.
+    static let marksFailed = "Couldn't put your changes on this video. Tap Done in Text, Draw or Resize to try again."
 
     /// An MP4 at 720p with its sound, its poster and two frames: the whole video, or the `part` of it this Moment is,
-    /// with `overlay` (Text and Draw) over every frame. The poster and frames come from the file, so they carry it too.
+    /// with `overlay` (Text and Draw) over every frame and each frame at `placing` on the 9:16 canvas (Resize). The
+    /// poster and frames come from the file, so they carry it too.
     static func video(
-        at source: URL, into folder: URL, part: CMTimeRange? = nil, overlay: MomentsVideoEncoder.Overlay? = nil
+        at source: URL,
+        into folder: URL,
+        part: CMTimeRange? = nil,
+        overlay: MomentsVideoEncoder.Overlay? = nil,
+        placing: MomentsVideoEncoder.Placing? = nil
     ) async throws -> MomentPreparedMedia {
         let seconds = await duration(of: source)
         guard seconds > 0 else { throw MomentsFailure.mediaRejected }
@@ -143,24 +148,32 @@ enum MomentsMediaExport {
         let output = folder.appendingPathComponent(name)
         let range = part ?? CMTimeRange(start: .zero, duration: CMTime(seconds: min(seconds, maxVideoSeconds), preferredTimescale: 600))
         let kept = range.duration.seconds
+        // The background's colours, from the first frame, when the editor hadn't read them.
+        var placing = placing
+        if let placed = placing, placed.backdrop == nil {
+            let colors = await MomentPlacementDrawing.backdrop(ofVideo: source)
+            placing = MomentsVideoEncoder.Placing(placement: placed.placement, backdrop: colors)
+        }
         try? FileManager.default.removeItem(at: output)
         do {
             var bits = MomentsVideoEncoder.videoBits(seconds: kept, maxBytes: maxVideoBytes)
-            try await MomentsVideoEncoder.encode(source, to: output, range: range, bits: bits, overlay: overlay)
+            try await MomentsVideoEncoder.encode(source, to: output, range: range, bits: bits, overlay: overlay, placing: placing)
             // An encoder that ran over its bit rate (it is asked for an average) gets one more go, at what fits.
             let made = fileBytes(output)
             if made > maxVideoBytes {
                 bits = Int(Double(bits) * Double(maxVideoBytes) / Double(made) * 0.9)
                 try? FileManager.default.removeItem(at: output)
-                try await MomentsVideoEncoder.encode(source, to: output, range: range, bits: max(bits, 800_000), overlay: overlay)
+                try await MomentsVideoEncoder.encode(
+                    source, to: output, range: range, bits: max(bits, 800_000), overlay: overlay, placing: placing
+                )
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             // A video the encoder can't take still posts, through the system's own export (not one let go meanwhile),
-            // with the same marks or not at all.
+            // with the same marks and placement or not at all.
             try Task.checkCancellation()
-            try await systemExport(source, to: output, range: range, overlay: overlay)
+            try await systemExport(source, to: output, range: range, changes: (overlay, placing))
         }
         // Said here, before the Moment is made, not after its file has gone up and been refused.
         guard fileBytes(output) <= maxVideoBytes else { throw MomentsFailure.mediaTooLarge }
@@ -181,21 +194,24 @@ enum MomentsMediaExport {
         _ source: URL,
         to output: URL,
         range: CMTimeRange,
-        overlay: MomentsVideoEncoder.Overlay?
+        changes: (overlay: MomentsVideoEncoder.Overlay?, placing: MomentsVideoEncoder.Placing?)
     ) async throws {
         let asset = AVURLAsset(url: source)
-        // Marks go through the encoder's own composition (`MomentsMarksCompositor`).
+        // Marks and the placement go through the encoder's own composition (`MomentsMarksCompositor`).
+        let changed = changes.overlay != nil || changes.placing != nil
         var marked: AVVideoComposition?
-        if let overlay {
+        if changed {
             guard let track = try? await asset.loadTracks(withMediaType: .video).first,
-                  let composition = try? await MomentsVideoEncoder.composition(for: track, overlay: overlay)
+                  let composition = try? await MomentsVideoEncoder.composition(
+                      for: track, overlay: changes.overlay, placing: changes.placing
+                  )
             else { throw MomentsFailure.other(marksFailed) }
             marked = composition
         }
         for preset in [AVAssetExportPreset1280x720, AVAssetExportPreset960x540, AVAssetExportPreset640x480] {
             try? FileManager.default.removeItem(at: output)
             guard let exporter = AVAssetExportSession(asset: asset, presetName: preset) else {
-                throw overlay == nil ? MomentsFailure.mediaRejected : MomentsFailure.other(marksFailed)
+                throw changed ? MomentsFailure.other(marksFailed) : MomentsFailure.mediaRejected
             }
             exporter.videoComposition = marked
             exporter.outputURL = output
@@ -206,7 +222,7 @@ enum MomentsMediaExport {
             exporter.timeRange = range
             await exporter.export()
             guard exporter.status == .completed
-            else { throw overlay == nil ? MomentsFailure.mediaRejected : MomentsFailure.other(marksFailed) }
+            else { throw changed ? MomentsFailure.other(marksFailed) : MomentsFailure.mediaRejected }
             if fileBytes(output) <= roomyVideoBytes { return }
         }
     }
