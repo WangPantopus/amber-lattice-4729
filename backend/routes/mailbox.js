@@ -2353,16 +2353,57 @@ router.post('/cards/shared', verifyToken, cardSharedLimiter, validate(cardShared
  * GET /api/mailbox/cards/share-video/:design
  * The video a card shares as (launch key card_share_video): the picture's card arriving on the table, made once per
  * picture (frontend/apps/web/scripts/film-card-videos.cjs) and kept in public storage. It never holds a note or a name,
- * so it is the same for everyone who shares that picture. 404 while the key is off or for a picture that isn't one of
- * the cards: the apps then show only pictures. A sealed card's sheet doesn't ask.
+ * so it is the same for everyone who shares that picture. 404 while the key is off, for a picture that isn't one of
+ * the cards, or for one whose film isn't in storage yet (a new picture before its film is uploaded): the apps then show
+ * only pictures. A sealed card's sheet doesn't ask.
  */
-router.get('/cards/share-video/:design', verifyToken, (req, res) => {
+router.get('/cards/share-video/:design', verifyToken, async (req, res) => {
   if (!cardShareVideoOn()) return sendCardsOff(res);
   const design = holidayCards.designById(String(req.params.design || ''));
   if (!design) return sendCardsOff(res);
+  const url = getPublicUrl(`card-videos/v1/${design.id}.mp4`);
+  if (!(await cardFilmStored(url))) return sendCardsOff(res);
   res.set('Cache-Control', 'private, max-age=3600');
-  return res.json({ url: getPublicUrl(`card-videos/v1/${design.id}.mp4`), width: 1080, height: 1920 });
+  return res.json({ url, width: 1080, height: 1920 });
 });
+
+// Whether a picture's film is in public storage, asked of the storage itself (one request for its first byte). A film
+// that is there is remembered until the server restarts (films are never taken away; a changed one goes to a new
+// folder). A plain "not there" (404 or 403, or Supabase storage's 400 whose body says 404) is remembered for 10 minutes,
+// so a film the founder uploads shows its Video choice within 10 minutes, with no server change. A check with no clear
+// answer (a timeout, a network error, a 5xx, anything else) is asked again after a minute, so one slow moment at the
+// storage doesn't hide a film that is there for long.
+const CARD_FILM_MISSING_MS = 10 * 60 * 1000;
+const CARD_FILM_UNCLEAR_MS = 60 * 1000;
+const cardFilms = new Map(); // url -> { stored: true } | { stored: false, until } | { asking: Promise<boolean> }
+async function cardFilmStored(url) {
+  const known = cardFilms.get(url);
+  if (known?.stored) return true;
+  if (known?.asking) return known.asking;
+  if (known && Date.now() < known.until) return false;
+  const asking = fetch(url, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(4000) })
+    .then(async (response) => {
+      if (response.ok) {
+        await response.body?.cancel().catch(() => {});
+        return { stored: true };
+      }
+      const said = await response.text().catch(() => '');
+      const missing = response.status === 404 || response.status === 403
+        || (response.status === 400 && /"statusCode"\s*:\s*"40[34]"/.test(said));
+      if (!missing) logger.warn('Card film check had no clear answer', { url, status: response.status });
+      return { stored: false, until: Date.now() + (missing ? CARD_FILM_MISSING_MS : CARD_FILM_UNCLEAR_MS) };
+    })
+    .catch((error) => {
+      logger.warn('Card film check failed', { url, error: error.message });
+      return { stored: false, until: Date.now() + CARD_FILM_UNCLEAR_MS };
+    })
+    .then((answer) => {
+      cardFilms.set(url, answer);
+      return answer.stored;
+    });
+  cardFilms.set(url, { asking });
+  return asking;
+}
 
 // ---- A card's own photo and voice (launch key holiday_card_memories; services/holidayCardMedia) ----
 // Added as soon as it's chosen, one at a time, each its own private File and S3 object. A send names them by id
