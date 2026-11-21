@@ -18,6 +18,8 @@ struct MomentsPostStage: View {
     let model: MomentsComposerModel
     let onPosted: () -> Void
     @State var player: AVPlayer?
+    /// How tall the pills are (one row or two): the closed Duo's sheet starts below them.
+    @State var pillsHeight: CGFloat = 40
     @Environment(\.momentsDuoScreen) var duo
 
     var body: some View {

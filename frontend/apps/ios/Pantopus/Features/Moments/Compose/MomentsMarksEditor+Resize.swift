@@ -101,15 +101,16 @@ struct MomentsResizeArea: View {
     }
 
     /// The part every phone shows: as wide as the narrowest viewer frame shows the canvas, as tall as the widest one
-    /// does (0.762 x 0.893 of it), centered. White over a dark line, so it shows on light pictures and dark ones.
+    /// does (0.762 x 0.893 of it), centered. A thin solid white line over a dark one, so it shows on light pictures and
+    /// dark ones, and isn't taken for the dashed line where labels may start.
     private func outline(_ canvas: CGRect) -> some View {
         let width = min(1, MomentMarks.narrowestFrame / MomentPlacement.canvas) * canvas.width
         let height = min(1, MomentPlacement.canvas / MomentMarks.widestFrame) * canvas.height
-        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let shape = Rectangle()
         return ZStack {
-            shape.stroke(Color.black.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+            shape.stroke(Color.black.opacity(0.4), lineWidth: 1)
                 .offset(y: 1)
-            shape.stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+            shape.stroke(Color.white.opacity(0.9), lineWidth: 1)
         }
         .frame(width: width, height: height)
         .position(x: canvas.midX, y: canvas.midY)

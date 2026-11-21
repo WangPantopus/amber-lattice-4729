@@ -27,7 +27,8 @@ struct MomentPlacement: Equatable {
     static let canvas: CGFloat = 9.0 / 16.0
     /// The canvas as it goes up, in pixels.
     static let pixels = CGSize(width: 1152, height: 2048)
-    /// The picture's width, from a quarter of cover's to four times it.
+    /// The picture's width: at least a quarter of the canvas's width, whatever its shape, so a wide picture can show
+    /// whole inside the part every phone shows; at most four times cover's.
     static let smallest: CGFloat = 0.25
     static let largest: CGFloat = 4
     /// Sticking: the turn to a quarter turn within 3 degrees, the middle's x and y to the canvas's middle within 0.015.
@@ -51,12 +52,12 @@ struct MomentPlacement: Equatable {
         return abs(width - cover) <= cover * 0.001 && center == CGPoint(x: 0.5, y: 0.5) && turn == 0
     }
 
-    /// Held to the limits: the width within a quarter and four times cover's, the middle on the canvas, the turn in
-    /// (-180, 180].
+    /// Held to the limits: the width between a quarter of the canvas's and four times cover's, the middle on the canvas,
+    /// the turn in (-180, 180].
     func held(aspect: CGFloat) -> MomentPlacement {
         let cover = Self.coverWidth(aspect: aspect)
         return MomentPlacement(
-            width: min(max(width, cover * Self.smallest), cover * Self.largest),
+            width: min(max(width, Self.smallest), cover * Self.largest),
             center: CGPoint(x: min(max(center.x, 0), 1), y: min(max(center.y, 0), 1)),
             turn: Self.normalized(turn)
         )

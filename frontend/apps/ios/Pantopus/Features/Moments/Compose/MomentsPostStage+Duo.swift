@@ -29,10 +29,12 @@ extension MomentsPostStage {
             // Inside the column, so a row too wide for it wraps (`pillRow`).
             pillRow
                 .frame(width: max(duo.column.width - 2 * Spacing.s3, 0), alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillsHeight = $0 }
                 .padding(.leading, Spacing.s3)
                 .padding(.top, Spacing.s3)
             VStack(spacing: 0) {
-                Spacer(minLength: 96)
+                // Below the pills, a second row of them too.
+                Spacer(minLength: max(96, Spacing.s3 + pillsHeight + Spacing.s2))
                 sheet(mapHeight: 110)
                     .layoutPriority(1)
             }

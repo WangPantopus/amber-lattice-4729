@@ -31,15 +31,21 @@ extension MomentsMarking {
 
     /// The picture placed at `next`; at cover it's as taken again. When it changes state the marks move to the new
     /// state's coordinates, staying over what the picture shows at cover, and its labels are held to the new shape's
-    /// rules as after any move.
+    /// rules as after any move. Back to as taken in a visit that began as taken, the marks are the visit's own again,
+    /// exactly: marks can't change in Resize, and the arithmetic back isn't exact (nor does it undo a label the canvas's
+    /// box held in).
     func place(_ next: MomentPlacement) {
         let placed = next.isCover(aspect: pictureAspect) ? nil : next
         guard (placed == nil) != (editingPlacement == nil) else {
             editingPlacement = placed
             return
         }
-        var moved = placed == nil ? editing.taken(aspect: pictureAspect) : editing.placed(aspect: pictureAspect)
         editingPlacement = placed
+        if placed == nil, placement == nil {
+            moveMarks(marks)
+            return
+        }
+        var moved = placed == nil ? editing.taken(aspect: pictureAspect) : editing.placed(aspect: pictureAspect)
         moved.labels = moved.labels.map(clamped)
         moveMarks(moved)
     }
@@ -58,7 +64,7 @@ extension MomentsMarking {
     func move(by move: CGVector, scale: CGFloat, turn: CGFloat, around anchor: CGPoint) {
         guard let from = gesture else { return }
         let cover = MomentPlacement.coverWidth(aspect: pictureAspect)
-        let width = min(max(from.width * scale, cover * MomentPlacement.smallest), cover * MomentPlacement.largest)
+        let width = min(max(from.width * scale, MomentPlacement.smallest), cover * MomentPlacement.largest)
         let grown = width / max(from.width, 0.0001)
         let angle = turn * .pi / 180
         // The middle in canvas widths, so a turn keeps its shape.
