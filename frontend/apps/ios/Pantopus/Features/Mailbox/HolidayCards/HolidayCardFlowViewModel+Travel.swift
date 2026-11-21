@@ -54,11 +54,12 @@ extension HolidayCardFlowViewModel {
         }
     }
 
-    /// "Cancel": turned on with no town, the switch goes back off; a seal that was waiting doesn't go.
+    /// "Cancel" with no town yet: the card can't travel from nowhere, so the switch goes back off (as on Android); a
+    /// seal that was waiting doesn't go, and "Seal and send" then sends an ordinary card.
     func townCancelled() {
         asksTown = false
-        if afterTown == nil, startTown == nil { travels = false }
         afterTown = nil
+        if startTown == nil { travels = false }
     }
 
     /// The server said the sender has no town yet (`CARD_TRAVEL_NEEDS_TOWN`): ask, then try again. True when it was that.
