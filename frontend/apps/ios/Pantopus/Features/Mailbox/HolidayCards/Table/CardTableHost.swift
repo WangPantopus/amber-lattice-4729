@@ -8,8 +8,6 @@
 //  up from the cover, not the screen under it. Closing it goes back.
 //
 
-// swiftlint:disable file_length
-
 import SwiftUI
 
 extension CardTableContent {
