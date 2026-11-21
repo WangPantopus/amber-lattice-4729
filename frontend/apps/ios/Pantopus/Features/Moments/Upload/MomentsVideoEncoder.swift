@@ -110,6 +110,8 @@ enum MomentsVideoEncoder {
         /// When a sample last went from a reader to the writer, and whether the watch gave the export up.
         private let beat = OSAllocatedUnfairLock(initialState: Date())
         private let stalled = OSAllocatedUnfairLock(initialState: false)
+        /// Set by `cancel()`: each track's loop reads no more samples once it is.
+        private let stopping = OSAllocatedUnfairLock(initialState: false)
         private let start: CMTime
 
         init(
@@ -194,6 +196,10 @@ enum MomentsVideoEncoder {
                     guard Date().timeIntervalSince(beat.withLock { $0 }) > stallSeconds else { continue }
                     stalled.withLock { $0 = true }
                     cancel()
+                    // A read that is stuck never sees that: if the tracks still haven't finished a little later, only
+                    // stopping the readers from here frees it, as before. (They have if this task was cancelled.)
+                    try? await Task.sleep(for: .seconds(2))
+                    if !Task.isCancelled { stopReaders() }
                     return
                 }
             }
@@ -203,6 +209,8 @@ enum MomentsVideoEncoder {
                 }
             }
             watch.cancel()
+            // Every track's loop has ended, so no read is in progress: the readers can be stopped now.
+            if stopping.withLock({ $0 }) { stopReaders() }
             guard reader.status == .completed, soundReader?.status ?? .completed == .completed, writer.status == .writing else {
                 let refused = writer.status == .failed || reader.status == .failed || soundReader?.status == .failed
                     || stalled.withLock { $0 }
@@ -213,7 +221,15 @@ enum MomentsVideoEncoder {
             guard writer.status == .completed else { throw MomentsFailure.mediaRejected }
         }
 
+        /// Stops the export, from any thread: the task being cancelled (Retake, the composer closing), the watch, or a
+        /// track whose sample the writer refused. Each track's loop sees it before its next read and finishes its
+        /// track, and `run()` stops the readers once they all have. Stopping a reader from here while its track was
+        /// inside `copyNextSampleBuffer()` on its own queue crashed the app in MediaToolbox.
         func cancel() {
+            stopping.withLock { $0 = true }
+        }
+
+        private func stopReaders() {
             reader.cancelReading()
             soundReader?.cancelReading()
         }
@@ -225,7 +241,7 @@ enum MomentsVideoEncoder {
                 pairs[index].input.requestMediaDataWhenReady(on: queue) { [self] in
                     let (input, output) = pairs[index]
                     while input.isReadyForMoreMediaData {
-                        if let sample = output.copyNextSampleBuffer() {
+                        if !stopping.withLock({ $0 }), let sample = output.copyNextSampleBuffer() {
                             if input.append(sample) {
                                 beat.withLock { $0 = Date() }
                                 continue
