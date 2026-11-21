@@ -30,7 +30,7 @@ struct CardTablePassOnPage: View {
         GeometryReader { geo in
             ZStack(alignment: .top) {
                 HolidayCardTableCloth(table: model.content.table)
-                if case let .sideways(hingeX, _) = CardTableFoldReader.fold(geo, insets: EdgeInsets()) {
+                if case let .sideways(hingeX, true) = CardTableFoldReader.fold(geo, insets: EdgeInsets()) {
                     book(hingeX: hingeX, size: geo.size)
                 } else {
                     phone(width: geo.size.width)
