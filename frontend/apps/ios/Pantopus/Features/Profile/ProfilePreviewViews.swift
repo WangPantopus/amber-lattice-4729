@@ -34,7 +34,7 @@ public enum ProfileAudience: String, CaseIterable, Sendable, Hashable, Identifia
     var detail: String {
         switch self {
         case .anyone: "People who aren't signed in, like someone you text your link to."
-        case .neighbors: "People on Pantopus you aren't connected to."
+        case .neighbors: "Signed-in people you aren't connected to."
         case .connections: "They also see posts you shared only with connections."
         }
     }
