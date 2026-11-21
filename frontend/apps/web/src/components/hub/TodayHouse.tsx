@@ -3,11 +3,12 @@
 // ============================================================
 // The house on Today, in words (JOURNEYS, founder approval 2026-11-21; behind the profile's `today_house`).
 //
-// Under Today's picture: one question that is already answered ("Bins go out Tuesday. Remind you Monday
-// night?") while the home still runs on its city's general schedule, and the "Needs you" card, which says
+// Under Today's picture: one question that is already answered ("Bins go out Tuesday. Is that your day?")
+// while the home still runs on its city's general schedule, and the "Needs you" card, which says
 // what the picture shows: mail that came, what waits on the person (GET /api/ai/needs-you, the list the
 // apps' card reads), and tomorrow's pickup. With nothing to list it says so instead of hiding.
-// The same words as the iPhone and Android apps.
+// The same words as the iPhone and Android apps, except the question: the apps ask "Remind you Monday night?"
+// and turn the reminder on; the web cannot set one, so it asks only whether that is the day.
 // ============================================================
 
 import { useState } from 'react';
@@ -91,7 +92,7 @@ export function TodayPickupQuestion({ event, saving, error, onYes, onChange }: {
   return (
     <section data-testid="today.house.question" aria-labelledby="today-house-question" className="rounded-2xl border border-primary-300 bg-primary-50 p-4 dark:border-primary-700 dark:bg-primary-900/20">
       <h2 id="today-house-question" className="text-[17px] font-bold leading-6 text-app-text">
-        {`Bins go out ${DAY_WORDS[day]}. Remind you ${DAY_WORDS[(day + 6) % 7]} night?`}
+        {`Bins go out ${DAY_WORDS[day]}. Is that your day?`}
       </h2>
       <p className="mt-1 text-[13px] leading-[18px] text-app-text-secondary">
         {event.confidence === 'unverified'
@@ -102,7 +103,7 @@ export function TodayPickupQuestion({ event, saving, error, onYes, onChange }: {
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <button type="button" data-testid="today.house.question.yes" disabled={saving} onClick={onYes}
           className="min-h-[44px] rounded-xl bg-primary-600 px-3 text-[15px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60">
-          {saving ? 'Saving…' : 'Yes, remind me'}
+          {saving ? 'Saving…' : `Yes, ${DAY_WORDS[day]}`}
         </button>
         <button type="button" data-testid="today.house.question.change" disabled={saving} onClick={onChange}
           className="min-h-[44px] rounded-xl border border-app-border-strong bg-app-surface px-3 text-[15px] font-semibold text-primary-600 hover:bg-app-hover disabled:opacity-60 dark:text-primary-400">

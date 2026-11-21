@@ -279,7 +279,7 @@ export default function HubTodayPage() {
   });
   const upcoming = houseOn ? homeCalendar.data?.calendar?.upcoming : undefined;
   // The card's own asks: the editor ("Change day"), the schedule's place in the list (the bins, the pickup row),
-  // and the green box after "Yes, remind me".
+  // and the green box after the question's "Yes, Tuesday".
   const [pickupAsk, setPickupAsk] = useState<PickupCardAsk | null>(null);
   const askN = useRef(0);
   const showPickups = () => setPickupAsk({ n: ++askN.current, kind: 'show' });
@@ -312,7 +312,8 @@ export default function HubTodayPage() {
     setSavingQuestion(true);
     setQuestionError(null);
     try {
-      // The same request the editor's "Save schedule" sends. (The web sends no reminders of its own: the apps do.)
+      // The same request the editor's "Save schedule" sends. The web sets no reminder (that is a phone's), so its
+      // question asks only "Is that your day?".
       const saved = await api.setPickupDay(calendarHomeId, {
         collections: generalSchedule(calendarNow.upcoming ?? []),
         ...(calendarNow.pickup_version ? { expected_version: calendarNow.pickup_version } : {}),
