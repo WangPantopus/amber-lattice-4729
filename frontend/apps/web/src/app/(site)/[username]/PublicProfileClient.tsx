@@ -1060,7 +1060,7 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
   const fullName = realName || 'Pantopus member';
   // Other people get no first name, so "Connect with …" uses the name's first word, as the apps do.
   const shownFirstName = realName ? firstWord(realName) : null;
-  const firstName = shownFirstName || 'this neighbor';
+  const firstName = shownFirstName || 'this person';
   const photoUrl = shownProfile.profile_picture_url || shownProfile.avatar_url || shownProfile.profilePicture || null;
   // "Your account name, Rowan Park-Lee, stays private.": only when it differs from the name neighbors see.
   const accountName = lpView?.account?.displayName?.trim() || '';
@@ -1314,12 +1314,12 @@ function ProfileContent({ username, initialProfile, ownerHome = false }: PublicP
     },
     featuredSkills.length === 0 && {
       key: 'skills', icon: <HandHeart className="w-5 h-5" />, title: 'Add what you help with',
-      detail: 'Neighbors who need a hand can find you. Only you see this tip.',
+      detail: 'People who need a hand can find you. Only you see this tip.',
       onOpen: () => router.push('/app/profile/edit#helps-with'),
     },
     !(Array.isArray(shownProfile.prompts) && shownProfile.prompts.length > 0) && {
       key: 'prompt', icon: <MessageSquareQuote className="w-5 h-5" />, title: 'Answer a prompt',
-      detail: 'Give neighbors an easy way to start a conversation. Only you see this tip.',
+      detail: 'Give people an easy way to start a conversation. Only you see this tip.',
       onOpen: () => router.push('/app/profile/edit#prompts'),
     },
     // Reposts can't be pinned: the tip is for a person with a post of their own.
