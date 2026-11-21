@@ -116,7 +116,7 @@ struct HomeInvitationDecisionView: View {
             Text(
                 """
                 Household permissions determine what you can open or manage. \
-                This invitation gives you household access. To send neighbor messages \
+                This invitation gives you household access. To send messages between homes \
                 or get a residency letter, verify the address yourself.
                 """
             )

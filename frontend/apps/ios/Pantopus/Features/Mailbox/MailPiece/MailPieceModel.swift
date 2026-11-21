@@ -79,7 +79,7 @@ enum MailPieceTrust {
         case .utility: "Verified utility"
         case .pantopus: "From Pantopus"
         case .pantopusBusiness: "Business on Pantopus"
-        case .neighbor: "Pantopus neighbor"
+        case .neighbor: "Pantopus member"
         case .unknown: "Unverified sender"
         }
     }
@@ -90,7 +90,7 @@ enum MailPieceTrust {
         switch self {
         case .pantopus: nil
         case .pantopusBusiness: "a business on Pantopus"
-        case .neighbor: "a Pantopus neighbor"
+        case .neighbor: "a Pantopus member"
         default: label.lowercased()
         }
     }

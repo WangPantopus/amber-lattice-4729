@@ -154,7 +154,7 @@ final class MyListingsViewModel: ListOfRowsDataSource {
             ListOfRowsState.EmptyContent(
                 icon: .camera,
                 headline: "No active listings",
-                subcopy: "Post your first item to start hearing from neighbors.",
+                subcopy: "Post your first item to start hearing from people near you.",
                 ctaTitle: "List something",
                 onCTA: onCompose
             )

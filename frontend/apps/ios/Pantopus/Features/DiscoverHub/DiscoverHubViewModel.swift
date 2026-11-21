@@ -477,7 +477,7 @@ public final class DiscoverHubViewModel: ListOfRowsDataSource {
             headline: "Nothing to discover yet",
             subcopy:
             "You're early to this block. People, businesses, gigs, and listings " +
-                "will appear here as neighbors verify and join. Check back soon."
+                "will appear here as homes near you verify and join. Check back soon."
         )
     }
 

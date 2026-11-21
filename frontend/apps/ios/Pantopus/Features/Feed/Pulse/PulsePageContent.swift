@@ -234,7 +234,7 @@ public enum PulsePageWords {
 public extension PulsePostDTO {
     /// The post as one card.
     func pageCard(now: Date = Date(), timeZone: TimeZone = .current) -> PulsePageCard {
-        let name = author?.displayName.flatMap { $0.isEmpty ? nil : $0 } ?? "A neighbor"
+        let name = author?.displayName.flatMap { $0.isEmpty ? nil : $0 } ?? "Someone nearby"
         let topicValue = topic.flatMap(PulseTopic.init(stored:))
         let endsAt = PulsePageWords.parseDate(status?.endsAt)
         let ends: String? = if type == "alert", let endsAt, endsAt > now {

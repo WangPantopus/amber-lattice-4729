@@ -340,9 +340,9 @@ public enum ExploreMapSampleData {
         let titles: [ExploreKind: String] = [
             .task: "Help wanted nearby",
             .item: "For sale nearby",
-            .post: "Neighbor asked a question",
+            .post: "Someone nearby asked a question",
             .spot: "Local spot",
-            .home: "Neighborhood home"
+            .home: "Home nearby"
         ]
         let metas: [ExploreKind: String] = [
             .task: "$35",

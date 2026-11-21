@@ -19,14 +19,14 @@ public struct TrustedNeighborsView: View {
 
     public var body: some View {
         ContentDetailShell(
-            title: "Trusted neighbors",
+            title: "Trusted people",
             onBack: onBack,
             header: { EmptyView() },
             body: {
                 EmptyState(
                     icon: .users,
-                    headline: "No trusted neighbors yet",
-                    subcopy: "Trusted neighbors can receive packages and help with access when you're away. Approved neighbors will appear here."
+                    headline: "No trusted people yet",
+                    subcopy: "Trusted people can receive packages and help with access when you're away. People you approve will appear here."
                 )
             },
             cta: { EmptyView() }

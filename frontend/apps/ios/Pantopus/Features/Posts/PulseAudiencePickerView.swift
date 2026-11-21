@@ -15,7 +15,7 @@ struct PulseAudiencePickerView: View {
                         .pulseFont(.body)
                         .foregroundStyle(Theme.Color.appText)
                     if viewModel.conversation?.post.readScope == "public" {
-                        Button("Verified neighbors of the town") { selection = nil
+                        Button("Verified homes in the town") { selection = nil
                             confirmsAudience = true
                         }
                         .pulseFont(.button)
@@ -60,7 +60,7 @@ struct PulseAudiencePickerView: View {
                 .accessibilityIdentifier("pulseAudienceConfirm")
                 Button("Cancel", role: .cancel) { selection = nil }
             } message: {
-                Text("Only verified neighbors of \(selection?.title ?? "the town") will be able to read this. You can't widen it later.")
+                Text("Only verified homes in \(selection?.title ?? "the town") will be able to read this. You can't widen it later.")
             }
             .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
         }
@@ -76,7 +76,7 @@ struct PulseAudiencePickerView: View {
                 Button { selection = area
                     confirmsAudience = true
                 } label: {
-                    Text("Verified neighbors of \(area.title)")
+                    Text("Verified homes in \(area.title)")
                         .pulseFont(.button)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
@@ -86,7 +86,7 @@ struct PulseAudiencePickerView: View {
             EmptyState(
                 icon: .mapPin,
                 headline: "No narrower area available",
-                subcopy: "No open street or neighborhood is available for this post and your verified home.",
+                subcopy: "No open street or area is available for this post and your verified home.",
                 cta: .init(title: "Try again") { await areas.load(postAreaId: viewModel.conversation?.post.about?.areaId) }
             )
         case let .error(message):

@@ -52,7 +52,7 @@ public struct AboutView: View {
         VStack(alignment: .leading, spacing: Spacing.s4) {
             infoCard(
                 heading: "Mission",
-                body: "A trusted neighborhood platform. We help neighbors swap goods, find help, " +
+                body: "Built around your home. We help people who live near each other swap goods, find help, " +
                     "and stay in touch — without the noise of a public feed."
             )
             infoCard(

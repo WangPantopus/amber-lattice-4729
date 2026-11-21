@@ -100,7 +100,7 @@ struct PackageDetailLayout: View {
         if let onAskNeighbor {
             let isPreDelivery = package.status != .delivered
             items.append(
-                MailOverflowItem(id: "askNeighbor", icon: .usersRound, label: "Ask a Verified Neighbor") { @Sendable in
+                MailOverflowItem(id: "askNeighbor", icon: .usersRound, label: "Ask a verified home") { @Sendable in
                     Task { @MainActor in onAskNeighbor(isPreDelivery) }
                 }
             )

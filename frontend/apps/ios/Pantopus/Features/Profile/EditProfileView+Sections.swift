@@ -24,7 +24,7 @@ extension EditProfileView {
         let tagline = viewModel.fields[.tagline]?.value.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let bio = viewModel.fields[.bio]?.value.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return VStack(alignment: .leading, spacing: Spacing.s2) {
-            Text("How neighbors see you · updates as you type")
+            Text("How others see you · updates as you type")
                 .scaledFont(13, weight: .semibold)
                 .foregroundStyle(Theme.Color.appTextMuted)
             VStack(alignment: .leading, spacing: Spacing.s0) {
@@ -80,7 +80,7 @@ extension EditProfileView {
             )
             .background(PreviewTypingAnchor())
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Preview: how neighbors see you")
+            .accessibilityLabel("Preview: how others see you")
             .accessibilityIdentifier("editProfilePreview")
         }
         .padding(.horizontal, Spacing.s4)
@@ -93,7 +93,7 @@ extension EditProfileView {
             icon: .shieldCheck,
             tint: Theme.Color.home,
             background: Theme.Color.homeBg,
-            title: "Neighbors see this",
+            title: "Others see this",
             subtitle: "Shown on your profile and next to your posts, comments and messages."
         )
         .accessibilityIdentifier("editProfileNeighborsHeader")
@@ -182,7 +182,7 @@ extension EditProfileView {
                 Text("Profile photo")
                     .scaledFont(15, weight: .semibold)
                     .foregroundStyle(Theme.Color.appText)
-                Text(hasPhoto ? neighbors.photoNote : "Neighbors see your initials until you add one.")
+                Text(hasPhoto ? neighbors.photoNote : "Others see your initials until you add one.")
                     .scaledFont(13)
                     .foregroundStyle(Theme.Color.appTextMuted)
             }
@@ -206,7 +206,7 @@ extension EditProfileView {
                     .clipShape(Capsule())
             }
             .disabled(neighbors.busy != nil || neighbors.loaded == nil)
-            .accessibilityLabel(hasPhoto ? "Change the photo neighbors see" : "Add the photo neighbors see")
+            .accessibilityLabel(hasPhoto ? "Change the photo others see" : "Add the photo others see")
             .accessibilityIdentifier("editProfileNeighborPhoto")
         }
     }
@@ -216,7 +216,7 @@ extension EditProfileView {
         let neighbors = viewModel.neighbors
         return VStack(alignment: .leading, spacing: Spacing.s1) {
             PantopusTextField(
-                "Name neighbors see",
+                "Name others see",
                 text: Binding(get: { neighbors.nameText }, set: { neighbors.editName($0) }),
                 state: neighbors.nameError.map { .error($0) } ?? .default,
                 isDirty: neighbors.isNameChanged,
@@ -249,7 +249,7 @@ extension EditProfileView {
     var accountPhotoSection: some View {
         FormFieldGroup("Account photo") {
             avatarSection
-            Text("Your account uses it. Neighbors see the profile photo above.")
+            Text("Your account uses it. Others see the profile photo above.")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -265,7 +265,7 @@ extension EditProfileView {
                 PlaceRow(
                     icon: .home,
                     title: "Home address",
-                    detail: "Never shown. Neighbors see “Verified neighbor” and your city.",
+                    detail: "Never shown. Others see “Verified home” and your city.",
                     value: nil,
                     identifier: "editProfileHomeAddress"
                 ),

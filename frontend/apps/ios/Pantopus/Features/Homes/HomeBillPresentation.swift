@@ -54,8 +54,8 @@ enum HomeBillPresentation {
         }
         let neighbors = benchmark.avgAmounts[index]
         let label = amount(neighbors, currency: currency)
-        if mine > neighbors { return "\(period) · Above the \(label) neighborhood average" }
-        if mine < neighbors { return "\(period) · Below the \(label) neighborhood average" }
-        return "\(period) · In line with the \(label) neighborhood average"
+        if mine > neighbors { return "\(period) · Above the \(label) nearby average" }
+        if mine < neighbors { return "\(period) · Below the \(label) nearby average" }
+        return "\(period) · In line with the \(label) nearby average"
     }
 }

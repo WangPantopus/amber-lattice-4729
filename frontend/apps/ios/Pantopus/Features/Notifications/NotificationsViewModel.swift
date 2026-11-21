@@ -238,7 +238,7 @@ public enum NotificationCategory: Sendable, Hashable {
 
 private let notificationsUnreadEmptySubcopy =
     "No unread notifications. Replies, mentions, claim updates, " +
-    "and safety alerts from your neighborhood will land here."
+    "and safety alerts from near you will land here."
 
 @Observable
 @MainActor

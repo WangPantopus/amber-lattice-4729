@@ -41,7 +41,7 @@ public final class NewMessageViewModel {
     public let emptyBody =
         "Find people by name or username, " +
         "or invite someone who isn't on Pantopus yet."
-    public let emptySearchHints = ["A neighbor's name", "A username", "A local business"]
+    public let emptySearchHints = ["A person's name", "A username", "A local business"]
 
     private let api: APIClient
     /// Today's "Send in a chat" can send to a group chat too.
@@ -451,7 +451,7 @@ public final class NewMessageViewModel {
         // Unified conversation DTO has no city / state today; surface
         // the kind+verified hint instead so the row's secondary line
         // isn't blank.
-        if dto.isVerified == true { return "Verified neighbor" }
+        if dto.isVerified == true { return "Verified home" }
         return nil
     }
 

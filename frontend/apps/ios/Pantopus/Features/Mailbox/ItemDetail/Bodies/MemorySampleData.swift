@@ -49,7 +49,7 @@ public enum MemorySampleData {
             MemoryFact(
                 kind: .others,
                 label: "Others on the thread",
-                value: "6 neighbors helped search"
+                value: "6 people helped search"
             )
         ],
         elfFresh: MemoryElfContent(

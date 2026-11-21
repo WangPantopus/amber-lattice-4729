@@ -325,7 +325,7 @@ public struct GigsFeedView: View {
         Button(action: onOpenSearch) {
             HStack(spacing: 10) {
                 Icon(.search, size: 17, color: Theme.Color.appTextSecondary)
-                Text("Search gigs, skills, neighborhoods…")
+                Text("Search gigs, skills, areas…")
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                 Spacer()

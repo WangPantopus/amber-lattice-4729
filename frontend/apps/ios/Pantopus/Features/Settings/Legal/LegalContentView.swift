@@ -404,11 +404,11 @@ private struct LegacyLegalContentView: View {
     }
 
     private static let acceptableUse: [Block] = [
-        .paragraph("Pantopus is a neighborhood platform. Help keep it kind, useful, and honest."),
+        .paragraph("Pantopus is built around real homes and real people. Help keep it kind, useful, and honest."),
         .heading("Not allowed"),
         .bullet("Harassment, threats, or hate speech."),
         .bullet("Spam, including unsolicited promotion of unrelated businesses."),
-        .bullet("Impersonating a neighbor or a business."),
+        .bullet("Impersonating another person or a business."),
         .bullet("Posting illegal content or coordinating illegal activity."),
         .heading("Enforcement"),
         .paragraph(

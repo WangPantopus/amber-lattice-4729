@@ -85,7 +85,7 @@ public struct CommunityBody: View {
         switch subtype {
         case .event:
             [
-                "Hi neighbors - quick reminder that we are doing the spring playground cleanup this Saturday from 9 to 11 AM.",
+                "Hi everyone - quick reminder that we are doing the spring playground cleanup this Saturday from 9 to 11 AM.",
                 "If you have gardening gloves please bring them. We will have spares from the tool library and a few extra rakes."
             ]
         case .poll:
@@ -95,7 +95,7 @@ public struct CommunityBody: View {
             ]
         case .neighborhoodUpdate:
             [
-                "Sharing the latest neighborhood notes so everyone has the same plan before the weekend."
+                "Sharing the latest local notes so everyone has the same plan before the weekend."
             ]
         }
     }
@@ -191,7 +191,7 @@ private struct CommunityBodyBadgeCard: View {
         if let founded = community.group.founded {
             parts.append(founded)
         }
-        return parts.isEmpty ? "Verified neighborhood group" : parts.joined(separator: " - ")
+        return parts.isEmpty ? "Verified local group" : parts.joined(separator: " - ")
     }
 }
 
@@ -240,12 +240,12 @@ private struct CommunityBodyInsightCard: View {
         }
         switch community.subtype {
         case .event:
-            return "\(community.attendeeCount) neighbors are going" +
+            return "\(community.attendeeCount) people are going" +
                 (community.attendeesFromBlock.map { " - \($0) from your block." } ?? ".")
         case .poll:
-            return "A quick neighborhood poll is open. Your response helps the group pick the next step."
+            return "A quick local poll is open. Your response helps the group pick the next step."
         case .neighborhoodUpdate:
-            return "A verified neighborhood update was sent to households near you."
+            return "A verified update was sent to households near you."
         }
     }
 
@@ -253,7 +253,7 @@ private struct CommunityBodyInsightCard: View {
         switch community.subtype {
         case .event:
             [
-                (.users, "\(community.attendeeCount) neighbors going"),
+                (.users, "\(community.attendeeCount) going"),
                 (.calendar, community.event?.timeRange ?? "Schedule included"),
                 (.info, community.event?.weatherSummary ?? "Details are ready")
             ]
@@ -265,7 +265,7 @@ private struct CommunityBodyInsightCard: View {
             ]
         case .neighborhoodUpdate:
             [
-                (.radio, "Neighborhood-wide note"),
+                (.radio, "Area-wide note"),
                 (.shieldCheck, "Verified sender"),
                 (.messageCircle, "Discussion thread linked")
             ]
@@ -465,7 +465,7 @@ private struct CommunityBodyUpdateCard: View {
 
     var body: some View {
         CommunityBodyCard(noPadding: true) {
-            CommunityBodyCardHeader(title: "Neighborhood update")
+            CommunityBodyCardHeader(title: "Local update")
             VStack(alignment: .leading, spacing: Spacing.s3) {
                 HStack(alignment: .top, spacing: Spacing.s2) {
                     Icon(.radio, size: 18, color: Theme.Color.home)
@@ -641,7 +641,7 @@ private struct CommunityBodyMessageCard: View {
                         .pantopusTextStyle(.caption)
                         .fontWeight(.bold)
                         .foregroundStyle(Theme.Color.appText)
-                    Text("posted by neighbor")
+                    Text("posted by someone nearby")
                         .pantopusTextStyle(.caption)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }
@@ -841,8 +841,8 @@ private struct CommunityBodyCardHeader: View {
 
 private extension CommunityUpdateInfo {
     static let fallback = CommunityUpdateInfo(
-        headline: "Neighborhood update",
-        summary: "A verified neighborhood group shared a new update.",
+        headline: "Local update",
+        summary: "A verified local group shared a new update.",
         items: ["Open the Pulse thread for discussion.", "Household members can be added to the thread."],
         statusLabel: "Verified community mail",
         footerLabel: nil

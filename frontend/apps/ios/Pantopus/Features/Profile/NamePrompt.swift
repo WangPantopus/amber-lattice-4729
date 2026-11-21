@@ -162,7 +162,7 @@ struct NamePromptSheet: View {
                         .pantopusTextStyle(.h2)
                         .foregroundStyle(Theme.Color.appText)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Add your name so your household and neighbors know who you are.")
+                    Text("Add your name so your household and others know who you are.")
                         .pantopusTextStyle(.body)
                         .foregroundStyle(Theme.Color.appTextSecondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -568,12 +568,12 @@ private struct BrandLockup: View {
     var body: some View {
         VStack(spacing: Spacing.s2) {
             PantopusLockup(size: 36)
-            Text("Your neighborhood, verified.")
+            Text("Your home, verified.")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Pantopus — Your neighborhood, verified.")
+        .accessibilityLabel("Pantopus — Your home, verified.")
     }
 }
 

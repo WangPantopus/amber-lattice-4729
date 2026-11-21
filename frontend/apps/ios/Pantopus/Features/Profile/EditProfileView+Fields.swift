@@ -63,7 +63,7 @@ extension EditProfileView {
             contactVisibilityToggle(
                 .showEmail,
                 label: "Show on my profile",
-                subtitle: "Neighbors who open your profile can see your email address."
+                subtitle: "People who open your profile can see your email address."
             )
             textField(
                 .phoneNumber,
@@ -75,7 +75,7 @@ extension EditProfileView {
             contactVisibilityToggle(
                 .showPhone,
                 label: "Show on my profile",
-                subtitle: "Neighbors who open your profile can see your phone number."
+                subtitle: "People who open your profile can see your phone number."
             )
             dateOfBirthField
         }

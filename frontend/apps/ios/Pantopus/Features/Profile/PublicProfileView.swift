@@ -264,7 +264,7 @@ public struct PublicProfileView: View {
         } message: {
             Text("They aren't notified. You can send a new request later.")
         }
-        .alert("Verified neighbor", isPresented: $showTrustExplainer) {
+        .alert("Verified home", isPresented: $showTrustExplainer) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(trustExplainer)

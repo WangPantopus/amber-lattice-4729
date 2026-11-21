@@ -108,7 +108,7 @@ struct ConnectSheet: View {
                 .accessibilityLabel("Add a note (optional)")
                 .accessibilityIdentifier("connectSheetNote")
             if note.isEmpty {
-                Text("Hi \(firstName), I'm a neighbor nearby. Would love to connect!")
+                Text("Hi \(firstName), I live nearby. Would love to connect!")
                     .scaledFont(16)
                     .foregroundStyle(Theme.Color.appTextMuted)
                     .padding(.horizontal, 14)

@@ -425,7 +425,7 @@ struct OwnerEditFrame: View {
             EmptyBlock(
                 icon: .fileText,
                 title: "Add a description",
-                message: "Tell neighbors what makes your business worth hiring.",
+                message: "Tell people what makes your business worth hiring.",
                 cta: EmptyBlock.CTA(label: "Add", icon: .plus, action: onEditPage)
             )
         }
@@ -438,7 +438,7 @@ struct OwnerEditFrame: View {
             EmptyBlock(
                 icon: .clock,
                 title: "Set your hours",
-                message: "Add opening hours so neighbors know when you're available.",
+                message: "Add opening hours so people know when you're available.",
                 cta: EmptyBlock.CTA(label: "Add", icon: .plus, action: onEditPage)
             )
         }
@@ -451,7 +451,7 @@ struct OwnerEditFrame: View {
             EmptyBlock(
                 icon: .mapPin,
                 title: "Add a service area",
-                message: "Show neighbors where you work.",
+                message: "Show people where you work.",
                 cta: EmptyBlock.CTA(label: "Add", icon: .plus, action: onEditPage)
             )
         }

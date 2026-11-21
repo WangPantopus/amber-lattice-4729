@@ -108,7 +108,7 @@ public struct ChatListView: View {
             Text("No conversations yet")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
-            Text("Message a neighbor to get started.")
+            Text("Message someone to get started.")
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)
@@ -198,7 +198,7 @@ public struct ChatListView: View {
             case .unread: ("No unread messages", "You\u{2019}re all caught up.")
             case .gigs: ("No gig conversations", "Conversations about gigs show up here.")
             case .market: ("No Market conversations", "Conversations about Market listings show up here.")
-            case .all: ("No conversations yet", "Message a neighbor to get started.")
+            case .all: ("No conversations yet", "Message someone to get started.")
             }
         return VStack(spacing: Spacing.s1) {
             Text(copy.headline)

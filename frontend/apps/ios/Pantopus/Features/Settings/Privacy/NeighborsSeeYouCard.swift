@@ -24,7 +24,7 @@ struct NeighborsSeeYouCard: View {
                 HStack(spacing: Spacing.s3) {
                     avatar
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("How neighbors see you")
+                        Text("How others see you")
                             .pantopusTextStyle(.body)
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.Color.appText)
@@ -58,7 +58,7 @@ struct NeighborsSeeYouCard: View {
     private var subtitle: String {
         guard let view = viewModel.loaded else {
             return viewModel.state == .failed
-                ? "Couldn't load how neighbors see you. Tap to edit."
+                ? "Couldn't load how others see you. Tap to edit."
                 : "Your name and photo on your posts, comments and chats. Your account name stays private."
         }
         let handle = view.profile.handle.flatMap { MadeUpUsername.chosen($0) }.map { " · @\($0)" } ?? ""

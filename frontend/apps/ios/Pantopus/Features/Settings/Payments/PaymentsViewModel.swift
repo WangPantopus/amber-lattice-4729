@@ -666,7 +666,7 @@ public final class PaymentsViewModel {
             id: "payouts.stripe",
             leadingBrand: .stripe,
             label: "Stripe Connect",
-            subtext: "Receive payments from neighbors",
+            subtext: "Receive payments from others",
             trailing: .ctaChip(label: "Connect", tone: .primary)
         ),
         payoutMethod: PaymentsPayoutRow(

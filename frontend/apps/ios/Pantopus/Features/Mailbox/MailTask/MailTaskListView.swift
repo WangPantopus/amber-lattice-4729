@@ -258,7 +258,7 @@ public struct MailTaskListView: View {
             if row.isConvertedToGig {
                 HStack(spacing: Spacing.s1) {
                     Icon(.usersRound, size: 12, color: Theme.Color.business)
-                    Text("Posted as a neighbor task")
+                    Text("Posted as a task")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.Color.business)
                 }
@@ -274,7 +274,7 @@ public struct MailTaskListView: View {
                         } else {
                             Icon(.usersRound, size: 14, color: Theme.Color.business)
                         }
-                        Text("Convert to neighbor gig")
+                        Text("Convert to a gig")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Theme.Color.business)
                     }
@@ -384,7 +384,7 @@ public struct MailTaskListView: View {
                     Button(action: { viewModel.postAsNeighborTask() }, label: {
                         HStack(spacing: Spacing.s2) {
                             Icon(.usersRound, size: 15, color: Theme.Color.business)
-                            Text("Post as Neighbor Task Instead")
+                            Text("Post as a Task Instead")
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Theme.Color.business)
                         }
