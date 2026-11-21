@@ -29,6 +29,13 @@ struct CardTravelEnvelope: Equatable {
     let marks: [CardTravelMark]
     /// Straight-line miles from town to town to reach this person.
     let miles: Int
+    /// The journey page's id, for Copy link (travelling card plan Part 7).
+    var journey: String?
+
+    /// The share picture's slip: "5 TOWNS · 2,692 MILES", counting the town it reached, this person's.
+    var slipLine: String {
+        "\(CardTravelWords.towns(marks.count + 1)) · \(CardTravelWords.miles(miles))".uppercased()
+    }
 
     /// "It came 2,692 miles through 4 towns to reach you."; nil on its first stop, which says nothing more than today.
     var cameLine: String? {
@@ -46,6 +53,7 @@ extension CardTravelEnvelope {
             return CardTravelMark(town: stop.town, state: stop.state, day: day?.day ?? "", year: day?.year ?? year)
         }
         miles = travel.miles
+        journey = travel.journey
     }
 }
 
