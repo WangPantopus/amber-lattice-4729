@@ -125,7 +125,9 @@ final class MomentsCameraModel {
         if recording { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
         recording = false
         clock?.cancel()
-        guard let url, !discardsVideo else { return }
+        guard let url else { return }
+        // Cut short by the composer closing: it isn't posted, so its file goes.
+        guard !discardsVideo else { return MomentsDraftFiles.drop(url) }
         onVideo?(url)
     }
 
