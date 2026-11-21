@@ -1154,6 +1154,446 @@
    "cut_percent": 0.0,
    "lum": 0.335,
    "warm": 0.202
+  },
+  {
+   "id": "christmas-2026-68",
+   "number": 68,
+   "caption": "Luke 2:11 (KJV)",
+   "verse": "For unto you is born this day in the city of David a Saviour, which is Christ the Lord.",
+   "slug": "luke-2-11",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.298,
+   "warm": 0.178,
+   "band": 200,
+   "painting_top": 165
+  },
+  {
+   "id": "christmas-2026-69",
+   "number": 69,
+   "caption": "Matthew 3:17 (KJV)",
+   "verse": "And lo a voice from heaven, saying, This is my beloved Son, in whom I am well pleased.",
+   "slug": "matthew-3-17",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.506,
+   "warm": 0.165,
+   "band": 200,
+   "painting_top": 40
+  },
+  {
+   "id": "christmas-2026-70",
+   "number": 70,
+   "caption": "Matthew 4:10–11 (KJV)",
+   "verse": "10 Then saith Jesus unto him, Get thee hence, Satan: for it is written, Thou shalt worship the Lord thy God, and him only shalt thou serve. 11 Then the devil leaveth him, and, behold, angels came and ministered unto him.",
+   "slug": "matthew-4-10-11",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.435,
+   "warm": 0.144,
+   "band": 200,
+   "painting_top": 50
+  },
+  {
+   "id": "christmas-2026-71",
+   "number": 71,
+   "caption": "John 3:16 (KJV)",
+   "verse": "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.",
+   "slug": "john-3-16-nicodemus",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.305,
+   "warm": 0.165,
+   "band": 156,
+   "painting_top": 35
+  },
+  {
+   "id": "christmas-2026-72",
+   "number": 72,
+   "caption": "John 4:14 (KJV)",
+   "verse": "But whosoever drinketh of the water that I shall give him shall never thirst; but the water that I shall give him shall be in him a well of water springing up into everlasting life.",
+   "slug": "john-4-14",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.427,
+   "warm": 0.179,
+   "band": 200,
+   "painting_top": 45
+  },
+  {
+   "id": "christmas-2026-73",
+   "number": 73,
+   "caption": "Matthew 5:44 (KJV)",
+   "verse": "But I say unto you, Love your enemies, bless them that curse you, do good to them that hate you, and pray for them which despitefully use you, and persecute you.",
+   "slug": "matthew-5-44",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.459,
+   "warm": 0.179,
+   "band": 200,
+   "painting_top": 150
+  },
+  {
+   "id": "christmas-2026-74",
+   "number": 74,
+   "caption": "Mark 1:41 (KJV)",
+   "verse": "And Jesus, moved with compassion, put forth his hand, and touched him, and saith unto him, I will; be thou clean.",
+   "slug": "mark-1-41",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.421,
+   "warm": 0.149,
+   "band": 200,
+   "painting_top": 40
+  },
+  {
+   "id": "christmas-2026-75",
+   "number": 75,
+   "caption": "Mark 2:10–12 (KJV)",
+   "verse": "10 But that ye may know that the Son of man hath power on earth to forgive sins, (he saith to the sick of the palsy,) 11 I say unto thee, Arise, and take up thy bed, and go thy way into thine house. 12 And immediately he arose, took up the bed, and went forth before them all; insomuch that they were all amazed, and glorified God, saying, We never saw it on this fashion.",
+   "slug": "mark-2-10-12",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.406,
+   "warm": 0.172,
+   "band": 259,
+   "painting_top": 0
+  },
+  {
+   "id": "christmas-2026-76",
+   "number": 76,
+   "caption": "John 6:11 (KJV)",
+   "verse": "And Jesus took the loaves; and when he had given thanks, he distributed to the disciples, and the disciples to them that were set down; and likewise of the fishes as much as they would.",
+   "slug": "john-6-11",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.466,
+   "warm": 0.198,
+   "band": 200,
+   "painting_top": 5
+  },
+  {
+   "id": "christmas-2026-77",
+   "number": 77,
+   "caption": "Matthew 14:30–31 (KJV)",
+   "verse": "30 But when he saw the wind boisterous, he was afraid; and beginning to sink, he cried, saying, Lord, save me. 31 And immediately Jesus stretched forth his hand, and caught him, and said unto him, O thou of little faith, wherefore didst thou doubt?",
+   "slug": "matthew-14-30-31",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.344,
+   "warm": -0.044,
+   "band": 244,
+   "painting_top": 25
+  },
+  {
+   "id": "christmas-2026-78",
+   "number": 78,
+   "caption": "Luke 15:20 (KJV)",
+   "verse": "And he arose, and came to his father. But when he was yet a great way off, his father saw him, and had compassion, and ran, and fell on his neck, and kissed him.",
+   "slug": "luke-15-20",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.408,
+   "warm": 0.271,
+   "band": 200,
+   "painting_top": 60
+  },
+  {
+   "id": "christmas-2026-79",
+   "number": 79,
+   "caption": "Mark 10:14–16 (KJV)",
+   "verse": "14 But when Jesus saw it, he was much displeased, and said unto them, Suffer the little children to come unto me, and forbid them not: for of such is the kingdom of God. 15 Verily I say unto you, Whosoever shall not receive the kingdom of God as a little child, he shall not enter therein. 16 And he took them up in his arms, put his hands upon them, and blessed them.",
+   "slug": "mark-10-14-16",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.442,
+   "warm": 0.202,
+   "band": 259,
+   "painting_top": 60
+  },
+  {
+   "id": "christmas-2026-80",
+   "number": 80,
+   "caption": "John 11:25–26 (KJV)",
+   "verse": "25 Jesus said unto her, I am the resurrection, and the life: he that believeth in me, though he were dead, yet shall he live: 26 And whosoever liveth and believeth in me shall never die. Believest thou this?",
+   "slug": "john-11-25-26",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.433,
+   "warm": 0.228,
+   "band": 200,
+   "painting_top": 100
+  },
+  {
+   "id": "christmas-2026-81",
+   "number": 81,
+   "caption": "John 13:14–15 (KJV)",
+   "verse": "14 If I then, your Lord and Master, have washed your feet; ye also ought to wash one another’s feet. 15 For I have given you an example, that ye should do as I have done to you.",
+   "slug": "john-13-14-15",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.359,
+   "warm": 0.24,
+   "band": 200,
+   "painting_top": 80
+  },
+  {
+   "id": "christmas-2026-82",
+   "number": 82,
+   "caption": "Luke 22:19–20 (KJV)",
+   "verse": "19 And he took bread, and gave thanks, and brake it, and gave unto them, saying, This is my body which is given for you: this do in remembrance of me. 20 Likewise also the cup after supper, saying, This cup is the new testament in my blood, which is shed for you.",
+   "slug": "luke-22-19-20",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.295,
+   "warm": 0.222,
+   "band": 244,
+   "painting_top": 50
+  },
+  {
+   "id": "christmas-2026-83",
+   "number": 83,
+   "caption": "Luke 22:42 (KJV)",
+   "verse": "Saying, Father, if thou be willing, remove this cup from me: nevertheless not my will, but thine, be done.",
+   "slug": "luke-22-42",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.243,
+   "warm": 0.075,
+   "band": 200,
+   "painting_top": 30
+  },
+  {
+   "id": "christmas-2026-84",
+   "number": 84,
+   "caption": "1 Peter 2:24 (KJV)",
+   "verse": "Who his own self bare our sins in his own body on the tree, that we, being dead to sins, should live unto righteousness: by whose stripes ye were healed.",
+   "slug": "1-peter-2-24",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.311,
+   "warm": 0.099,
+   "band": 200,
+   "painting_top": 0
+  },
+  {
+   "id": "christmas-2026-85",
+   "number": 85,
+   "caption": "John 19:30 (KJV)",
+   "verse": "When Jesus therefore had received the vinegar, he said, It is finished: and he bowed his head, and gave up the ghost.",
+   "slug": "john-19-30",
+   "table": "#2c4071",
+   "tone": "dusk",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.287,
+   "warm": 0.098,
+   "band": 200,
+   "painting_top": 65
+  },
+  {
+   "id": "christmas-2026-86",
+   "number": 86,
+   "caption": "Matthew 28:6 (KJV)",
+   "verse": "He is not here: for he is risen, as he said. Come, see the place where the Lord lay.",
+   "slug": "matthew-28-6",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.39,
+   "warm": 0.153,
+   "band": 200,
+   "painting_top": 65
+  },
+  {
+   "id": "christmas-2026-87",
+   "number": 87,
+   "caption": "John 20:18 (KJV)",
+   "verse": "Mary Magdalene came and told the disciples that she had seen the Lord, and that he had spoken these things unto her.",
+   "slug": "john-20-18",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.461,
+   "warm": 0.147,
+   "band": 200,
+   "painting_top": 36
+  },
+  {
+   "id": "christmas-2026-88",
+   "number": 88,
+   "caption": "John 21:17 (KJV)",
+   "verse": "He saith unto him the third time, Simon, son of Jonas, lovest thou me? Peter was grieved because he said unto him the third time, Lovest thou me? And he said unto him, Lord, thou knowest all things; thou knowest that I love thee. Jesus saith unto him, Feed my sheep.",
+   "slug": "john-21-17",
+   "table": "#6e4b30",
+   "tone": "umber",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.442,
+   "warm": 0.132,
+   "band": 244,
+   "painting_top": 25
+  },
+  {
+   "id": "christmas-2026-89",
+   "number": 89,
+   "caption": "Matthew 28:18–20 (KJV)",
+   "verse": "18 And Jesus came and spake unto them, saying, All power is given unto me in heaven and in earth. 19 Go ye therefore, and teach all nations, baptizing them in the name of the Father, and of the Son, and of the Holy Ghost: 20 Teaching them to observe all things whatsoever I have commanded you: and, lo, I am with you alway, even unto the end of the world. Amen.",
+   "slug": "matthew-28-18-20",
+   "table": "#704b51",
+   "tone": "wine",
+   "crop": [
+    0,
+    0,
+    1214,
+    1295
+   ],
+   "cut_percent": 0.0,
+   "lum": 0.482,
+   "warm": 0.177,
+   "band": 259,
+   "painting_top": 155
   }
  ]
 }

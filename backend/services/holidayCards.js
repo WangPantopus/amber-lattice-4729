@@ -34,11 +34,13 @@ const designIdOf = (number) => `christmas-2026-${String(number).padStart(2, '0')
 
 // The collections "Pick a card" shows, in this order, each with its pictures (by number) in grid order (founder,
 // 2026-10-31; Christmas with Santa 2026-11-07; the nativity pictures 2026-11-08, renamed Christmas with Jesus Christ
-// and moved to the front the same day). A picture can move to another collection; its number stays. The collection's
-// id stays first-christmas: nothing but this list reads it.
+// and moved to the front the same day; 22 more of the founder's pictures of Jesus's life after them, 2026-11-21). A
+// picture can move to another collection; its number stays. The collection's id stays first-christmas: nothing but this
+// list reads it.
 const COLLECTIONS = [
   ['first-christmas', 'Christmas with Jesus Christ', 'For the faithful, and anyone who loves the Christmas story.',
-    [59, 60, 61, 62, 63, 64, 65, 66, 67]],
+    [59, 60, 61, 62, 63, 64, 65, 66, 67,
+      68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89]],
   ['as-a-kid', 'Christmas as a Kid', 'For families with kids, and anyone who misses being one.',
     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]],
   ['with-friends', 'Christmas with Friends', 'For the friends who feel like family.', [18, 19, 20, 21, 22, 26, 31]],
@@ -58,11 +60,17 @@ const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((d
 // the cloth it lies on (launch key card_table). 1–17 are the founder's own (2026-10-30); 18–49 came in five groups on
 // 2026-10-31; 50–58 are the founder's Santa pictures (2026-11-07), which have no border, so their paper is one cream.
 // 59–67 are the founder's nativity pictures (2026-11-08), each with its whole King James verse printed under the
-// painting, so the caption is the verse's reference (its book and numbers joined by a no-break space).
+// painting, so the caption is the verse's reference (its book and numbers joined by a no-break space). 68–89 are 22 more
+// of the founder's pictures, from Jesus's birth to the Great Commission (2026-11-21), made the same way; a passage of
+// two or three verses has an en dash in its reference ("Matthew 4:10–11 (KJV)").
 // A number is never reused: every app picks the card's stamp from it.
-// The whole King James verse printed under each nativity picture (59–67), by its public page, as the apps show it
-// below the card in readable type ("Read the verse", design plan 6.2, 2026-11-09). The text is the NATIVITY kit's
-// nativity.json (KJV, public domain in the US; Project Gutenberg #10), word for word as printed on the picture.
+// The whole King James verse printed under each Christmas with Jesus Christ picture (59–89), by its public page, as the
+// apps show it below the card in readable type ("Read the verse", design plan 6.2, 2026-11-09). The text is Project
+// Gutenberg's KJV, ebook 10 (public domain in the US), word for word as printed on the picture, with two changes: a
+// passage whose last verse runs on into the next ends with a full stop (Matthew 2:14, Matthew 5:44), and John 20:18
+// reads "the Lord" as the founder gave it (Gutenberg prints "LORD" there). In a passage each verse starts with its own
+// number, tied to its first word by a no-break space (the picture prints it small). Plain digits, not superscript ones:
+// the iPhone's serif (New York) has only ¹ ² ³ of them, so the others would print in another font.
 const VERSES = new Map([
   ['isaiah-9-6', 'For unto us a child is born, unto us a son is given: and the government shall be upon his shoulder: and his name shall be called Wonderful, Counsellor, The mighty God, The everlasting Father, The Prince of Peace.'],
   ['luke-2-7', 'And she brought forth her firstborn son, and wrapped him in swaddling clothes, and laid him in a manger; because there was no room for them in the inn.'],
@@ -73,6 +81,28 @@ const VERSES = new Map([
   ['matthew-2-11', 'And when they were come into the house, they saw the young child with Mary his mother, and fell down, and worshipped him: and when they had opened their treasures, they presented unto him gifts; gold, and frankincense and myrrh.'],
   ['matthew-2-14', 'When he arose, he took the young child and his mother by night, and departed into Egypt.'],
   ['john-8-12', 'Then spake Jesus again unto them, saying, I am the light of the world: he that followeth me shall not walk in darkness, but shall have the light of life.'],
+  ['luke-2-11', 'For unto you is born this day in the city of David a Saviour, which is Christ the Lord.'],
+  ['matthew-3-17', 'And lo a voice from heaven, saying, This is my beloved Son, in whom I am well pleased.'],
+  ['matthew-4-10-11', '10\u00a0Then saith Jesus unto him, Get thee hence, Satan: for it is written, Thou shalt worship the Lord thy God, and him only shalt thou serve. 11\u00a0Then the devil leaveth him, and, behold, angels came and ministered unto him.'],
+  ['john-3-16-nicodemus', 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'],
+  ['john-4-14', 'But whosoever drinketh of the water that I shall give him shall never thirst; but the water that I shall give him shall be in him a well of water springing up into everlasting life.'],
+  ['matthew-5-44', 'But I say unto you, Love your enemies, bless them that curse you, do good to them that hate you, and pray for them which despitefully use you, and persecute you.'],
+  ['mark-1-41', 'And Jesus, moved with compassion, put forth his hand, and touched him, and saith unto him, I will; be thou clean.'],
+  ['mark-2-10-12', '10\u00a0But that ye may know that the Son of man hath power on earth to forgive sins, (he saith to the sick of the palsy,) 11\u00a0I say unto thee, Arise, and take up thy bed, and go thy way into thine house. 12\u00a0And immediately he arose, took up the bed, and went forth before them all; insomuch that they were all amazed, and glorified God, saying, We never saw it on this fashion.'],
+  ['john-6-11', 'And Jesus took the loaves; and when he had given thanks, he distributed to the disciples, and the disciples to them that were set down; and likewise of the fishes as much as they would.'],
+  ['matthew-14-30-31', '30\u00a0But when he saw the wind boisterous, he was afraid; and beginning to sink, he cried, saying, Lord, save me. 31\u00a0And immediately Jesus stretched forth his hand, and caught him, and said unto him, O thou of little faith, wherefore didst thou doubt?'],
+  ['luke-15-20', 'And he arose, and came to his father. But when he was yet a great way off, his father saw him, and had compassion, and ran, and fell on his neck, and kissed him.'],
+  ['mark-10-14-16', '14\u00a0But when Jesus saw it, he was much displeased, and said unto them, Suffer the little children to come unto me, and forbid them not: for of such is the kingdom of God. 15\u00a0Verily I say unto you, Whosoever shall not receive the kingdom of God as a little child, he shall not enter therein. 16\u00a0And he took them up in his arms, put his hands upon them, and blessed them.'],
+  ['john-11-25-26', '25\u00a0Jesus said unto her, I am the resurrection, and the life: he that believeth in me, though he were dead, yet shall he live: 26\u00a0And whosoever liveth and believeth in me shall never die. Believest thou this?'],
+  ['john-13-14-15', '14\u00a0If I then, your Lord and Master, have washed your feet; ye also ought to wash one another’s feet. 15\u00a0For I have given you an example, that ye should do as I have done to you.'],
+  ['luke-22-19-20', '19\u00a0And he took bread, and gave thanks, and brake it, and gave unto them, saying, This is my body which is given for you: this do in remembrance of me. 20\u00a0Likewise also the cup after supper, saying, This cup is the new testament in my blood, which is shed for you.'],
+  ['luke-22-42', 'Saying, Father, if thou be willing, remove this cup from me: nevertheless not my will, but thine, be done.'],
+  ['1-peter-2-24', 'Who his own self bare our sins in his own body on the tree, that we, being dead to sins, should live unto righteousness: by whose stripes ye were healed.'],
+  ['john-19-30', 'When Jesus therefore had received the vinegar, he said, It is finished: and he bowed his head, and gave up the ghost.'],
+  ['matthew-28-6', 'He is not here: for he is risen, as he said. Come, see the place where the Lord lay.'],
+  ['john-20-18', 'Mary Magdalene came and told the disciples that she had seen the Lord, and that he had spoken these things unto her.'],
+  ['john-21-17', 'He saith unto him the third time, Simon, son of Jonas, lovest thou me? Peter was grieved because he said unto him the third time, Lovest thou me? And he said unto him, Lord, thou knowest all things; thou knowest that I love thee. Jesus saith unto him, Feed my sheep.'],
+  ['matthew-28-18-20', '18\u00a0And Jesus came and spake unto them, saying, All power is given unto me in heaven and in earth. 19\u00a0Go ye therefore, and teach all nations, baptizing them in the name of the Father, and of the Son, and of the Holy Ghost: 20\u00a0Teaching them to observe all things whatsoever I have commanded you: and, lo, I am with you alway, even unto the end of the world. Amen.'],
 ]);
 const DESIGNS = [
   ['Home for Christmas.', '#f7eee0', 1054, 'home-for-christmas', '#2c4071'],
@@ -142,6 +172,28 @@ const DESIGNS = [
   ['Matthew\u00a02:11 (KJV)', '#f7f0e2', 1022, 'matthew-2-11', '#704b51'],
   ['Matthew\u00a02:14 (KJV)', '#f7f0e2', 1022, 'matthew-2-14', '#2c4071'],
   ['John\u00a08:12 (KJV)', '#f7f0e2', 1022, 'john-8-12', '#6e4b30'],
+  ['Luke\u00a02:11 (KJV)', '#f7f0e2', 1022, 'luke-2-11', '#6e4b30'],
+  ['Matthew\u00a03:17 (KJV)', '#f7f0e2', 1022, 'matthew-3-17', '#704b51'],
+  ['Matthew\u00a04:10–11 (KJV)', '#f7f0e2', 1022, 'matthew-4-10-11', '#6e4b30'],
+  ['John\u00a03:16 (KJV)', '#f7f0e2', 1022, 'john-3-16-nicodemus', '#2c4071'],
+  ['John\u00a04:14 (KJV)', '#f7f0e2', 1022, 'john-4-14', '#6e4b30'],
+  ['Matthew\u00a05:44 (KJV)', '#f7f0e2', 1022, 'matthew-5-44', '#704b51'],
+  ['Mark\u00a01:41 (KJV)', '#f7f0e2', 1022, 'mark-1-41', '#6e4b30'],
+  ['Mark\u00a02:10–12 (KJV)', '#f7f0e2', 1022, 'mark-2-10-12', '#6e4b30'],
+  ['John\u00a06:11 (KJV)', '#f7f0e2', 1022, 'john-6-11', '#704b51'],
+  ['Matthew\u00a014:30–31 (KJV)', '#f7f0e2', 1022, 'matthew-14-30-31', '#2c4071'],
+  ['Luke\u00a015:20 (KJV)', '#f7f0e2', 1022, 'luke-15-20', '#6e4b30'],
+  ['Mark\u00a010:14–16 (KJV)', '#f7f0e2', 1022, 'mark-10-14-16', '#6e4b30'],
+  ['John\u00a011:25–26 (KJV)', '#f7f0e2', 1022, 'john-11-25-26', '#6e4b30'],
+  ['John\u00a013:14–15 (KJV)', '#f7f0e2', 1022, 'john-13-14-15', '#6e4b30'],
+  ['Luke\u00a022:19–20 (KJV)', '#f7f0e2', 1022, 'luke-22-19-20', '#6e4b30'],
+  ['Luke\u00a022:42 (KJV)', '#f7f0e2', 1022, 'luke-22-42', '#2c4071'],
+  ['1\u00a0Peter\u00a02:24 (KJV)', '#f7f0e2', 1022, '1-peter-2-24', '#2c4071'],
+  ['John\u00a019:30 (KJV)', '#f7f0e2', 1022, 'john-19-30', '#2c4071'],
+  ['Matthew\u00a028:6 (KJV)', '#f7f0e2', 1022, 'matthew-28-6', '#6e4b30'],
+  ['John\u00a020:18 (KJV)', '#f7f0e2', 1022, 'john-20-18', '#704b51'],
+  ['John\u00a021:17 (KJV)', '#f7f0e2', 1022, 'john-21-17', '#6e4b30'],
+  ['Matthew\u00a028:18–20 (KJV)', '#f7f0e2', 1022, 'matthew-28-18-20', '#704b51'],
 ].map(([caption, paper, height, slug, table], index) => {
   const id = designIdOf(index + 1);
   return {
@@ -151,6 +203,18 @@ const DESIGNS = [
   };
 });
 const DESIGN_BY_ID = new Map(DESIGNS.map((design) => [design.id, design]));
+
+// "Pick a card" prints a verse card's whole verse under the card, and the Android app makes every card of a collection
+// small enough to leave room for the longest verse in it. So the list "Pick a card" reads (GET /api/mailbox/cards)
+// carries that text only for a verse no longer than Matthew 2:11, the longest of 59–67: no card shows smaller there than
+// before 68–89 came (design review, 2026-11-21). A longer passage shows its reference under the card and is read on the
+// picture. An opened card's "Read the verse" (cardView) and the public card pages still carry every verse whole.
+const PICK_A_CARD_VERSE_MAX = VERSES.get('matthew-2-11').length;
+function pickACardDesign(design) {
+  if (!design.verse || design.verse.length <= PICK_A_CARD_VERSE_MAX) return design;
+  const { verse, ...rest } = design;
+  return rest;
+}
 
 // When a card comes: with the next morning's mail, the next morning sealed until Christmas, or on Christmas morning.
 // A card to someone not on Pantopus comes when they open the email (`now`), sealed until Christmas or not.
@@ -707,7 +771,8 @@ async function sentLine(userId, now = new Date()) {
 
 module.exports = {
   REPLY_TAG, REPLY_SUBJECT, isReply, replyRowId, replyDigest, replyView, uuidOf,
-  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
+  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, pickACardDesign, PERSON_ARRIVALS, EMAIL_ARRIVALS,
+  EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
   designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,
