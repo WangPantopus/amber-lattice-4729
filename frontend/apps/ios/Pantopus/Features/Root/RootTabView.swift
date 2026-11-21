@@ -184,6 +184,12 @@ public final class RootTabModel {
     /// "Add radon test information" (Place's risk list): Today opens its
     /// home setup on this Home's radon question once, then clears it (as on Android).
     public var todayRadonHomeId: String?
+    /// "Set pickup day" on the tip card "Your home is set up": this Home's Today page on
+    /// Place opens with its pickup editor once, then clears it (JOURNEYS 1).
+    public var pickupEditorHomeId: String?
+    /// "See it in Today" after a pickup schedule is saved on Place: the Today tab shows
+    /// "Coming up at home" with this Home's next pickup lit once, then clears it.
+    public var todayPickupLitHomeId: String?
     /// The side menu is open (each tab's menu button sets it; the drawer,
     /// hosted by `RootTabView`, clears it when it closes).
     public var showsNavigationMenu = false

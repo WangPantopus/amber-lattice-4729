@@ -152,6 +152,8 @@ struct GuidanceHomeFacts: Equatable {
     let setUpAt: String?
     /// The person joined by a household invitation (they didn't set it up).
     let invited: Bool
+    /// The home has no pickup schedule of its own yet (card 16's button opens the pickup editor).
+    var needsPickupDay = false
 }
 
 /// The words of every card (GUIDE spec §5), exactly as approved.
@@ -161,6 +163,7 @@ enum GuidanceCatalog {
         case .welcome: welcome(variants)
         case .tabToday: tabToday(variants)
         case .tabMail: tabMail(variants)
+        case .doneHomeSetup: doneHomeSetup(variants)
         case .doneVerified: doneVerified(variants)
         default: fixedCards[id]
         }
@@ -169,7 +172,7 @@ enum GuidanceCatalog {
     /// The centre cards whose words never change.
     private static let fixedCards = Dictionary(uniqueKeysWithValues: [
         placeSaved, tabPulse, tabMoments, tabPlans,
-        doneHomeSetup, doneFirstPost, doneFirstMoment, doneFirstPlan, doneConnected, doneFirstLetter, doneHousehold,
+        doneFirstPost, doneFirstMoment, doneFirstPlan, doneConnected, doneFirstLetter, doneHousehold,
         nextAddAddress, nextSetupHome, nextVerify, nextInvite,
         newPlans
     ].map { ($0.id, $0) })
@@ -330,16 +333,19 @@ enum GuidanceCatalog {
 
     // MARK: - Right after doing something for the first time
 
-    private static let doneHomeSetup = GuidanceCentreCard(
-        id: .doneHomeSetup,
-        title: "Your home is set up",
-        rows: [
-            GuidanceRow(icon: .circleCheck, text: "“Tasks” is a shared to-do list for your home."),
-            GuidanceRow(icon: .users, text: "“Members” is where you invite the people you live with."),
-            GuidanceRow(icon: .bell, text: "Tell Pantopus your pickup day and it will remind you the night before.")
-        ],
-        button: "Got it"
-    )
+    /// While the home has no pickup schedule, the button opens the pickup editor (JOURNEYS 1).
+    private static func doneHomeSetup(_ variants: GuidanceVariants) -> GuidanceCentreCard {
+        GuidanceCentreCard(
+            id: .doneHomeSetup,
+            title: "Your home is set up",
+            rows: [
+                GuidanceRow(icon: .circleCheck, text: "“Tasks” is a shared to-do list for your home."),
+                GuidanceRow(icon: .users, text: "“Members” is where you invite the people you live with."),
+                GuidanceRow(icon: .bell, text: "Tell Pantopus your pickup day and it will remind you the night before.")
+            ],
+            button: variants.home?.needsPickupDay == true ? "Set pickup day" : "Got it"
+        )
+    }
 
     private static func doneVerified(_ variants: GuidanceVariants) -> GuidanceCentreCard {
         var rows = [

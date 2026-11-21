@@ -87,8 +87,20 @@ struct PlaceDashboardView: View {
             verified: verified,
             verifiable: !verified && (intel.verifyAvailable ?? (intel.tier == .t3)),
             setUpAt: mine?.occupancy?.startAt ?? mine?.home.createdAt,
-            invited: invited
+            invited: invited,
+            needsPickupDay: Self.needsPickupDay(intel)
         )
+    }
+
+    /// The address calendar still has no pickup schedule of the household's own.
+    private static func needsPickupDay(_ intel: PlaceIntelligence) -> Bool {
+        intel.groups.flatMap(\.sections).compactMap(\.addressCalendar).first?.needsPickupDay == true
+    }
+
+    /// "Set pickup day" on the tip card "Your home is set up": Today at this address, on its pickup editor.
+    private func openPickupEditor() {
+        rootTabs?.pickupEditorHomeId = viewModel.homeId
+        viewModel.onOpenDetail(.today)
     }
 
     private var verifyAddress: String {
@@ -158,6 +170,8 @@ struct PlaceDashboardView: View {
         .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
         // The guidance reminder "Verify your address": its button opens the verify step, as "Verify address" does.
         .guidanceAction(.nextVerify, active: isRoot) { showVerify = true }
+        // "Your home is set up": while the home has no pickup schedule its button opens the pickup editor.
+        .guidanceAction(.doneHomeSetup, active: isRoot && guidanceVariants.home?.needsPickupDay == true) { openPickupEditor() }
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return
