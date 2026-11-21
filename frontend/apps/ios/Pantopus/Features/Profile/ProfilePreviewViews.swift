@@ -140,7 +140,6 @@ struct ProfilePreviewMenu: View {
             .padding(.bottom, Spacing.s5)
         }
         .background(Theme.Color.appSurface)
-        .presentationDragIndicator(.visible)
         .accessibilityIdentifier("profilePreviewMenu")
     }
 

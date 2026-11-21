@@ -151,6 +151,8 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
     case wifi
     case building2 = "building-2"
     case smartphone
+    /// An iPad's row in Settings → Devices & sessions.
+    case tablet
     case wallet
     case hash
 
@@ -596,6 +598,7 @@ public enum PantopusIcon: String, CaseIterable, Sendable {
         case .wifi: "wifi"
         case .building2: "building.2"
         case .smartphone: "iphone"
+        case .tablet: "ipad"
         case .wallet: "wallet.pass"
         case .hash: "number"
         case .tv: "tv"
