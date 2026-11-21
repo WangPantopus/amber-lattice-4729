@@ -64,6 +64,9 @@ final class MomentsMarking {
     @ObservationIgnored private var movedFrom: CGPoint?
     @ObservationIgnored private var sizedFrom: CGFloat?
     @ObservationIgnored var turnedFrom: CGFloat?
+    /// Text: between the editor's top buttons and its bottom controls, as picture heights, with the keyboard down. After
+    /// any change a label is held there, as a drag holds it, so it can always be picked up again. Set by the Text layer.
+    @ObservationIgnored var labelRows: ClosedRange<CGFloat>?
     /// The editor's X asks first when something changed in this visit.
     var asksCancel = false
     /// Retake asks first when the picture has marks.
@@ -119,7 +122,7 @@ final class MomentsMarking {
         editingPlacement = placement
         drawing = false
         (typing, picked) = (nil, nil)
-        (resizeTouched, resizeMoving, gesture) = (false, false, nil)
+        (resizeTouched, resizeMoving, gesture, labelRows) = (false, false, nil, nil)
         pictureAspect = size.height > 0 ? size.width / size.height : 1
         addsLabel = tool == .text && marks.labels.count < MomentMarks.maxLabels
         isOpen = true
@@ -243,7 +246,10 @@ extension MomentsMarking {
     func endTyping() {
         guard let id = typing else { return }
         typing = nil
-        guard label(id)?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else { return }
+        guard label(id)?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true else {
+            // Typed in above the keyboard, it may have grown past the controls: held now, as after any change.
+            return update(id) { _ in }
+        }
         editing.labels.removeAll { $0.id == id }
         if picked == id { picked = nil }
     }
@@ -275,12 +281,13 @@ extension MomentsMarking {
         }
     }
 
-    /// `label` with its middle where its whole (turned) box stays between `rows` (picture heights), when it fits there.
+    /// `label` with its middle where its whole (turned) box stays between `rows` (picture heights); where it's taller
+    /// than they are, its top stays below the top buttons (the top buttons win, as on Android).
     private func hold(_ label: MomentMarks.Label, within rows: ClosedRange<CGFloat>) -> MomentMarks.Label {
         var label = label
         let box = MomentMarksDrawing.turned(MomentMarksDrawing.lay(label, aspect: aspect).box.size, by: label.turn)
         let half = box.height / 2 / (MomentMarksDrawing.unit / max(aspect, 0.01))
-        label.center.y = Self.within(label.center.y, rows.lowerBound + half, rows.upperBound - half)
+        label.center.y = max(rows.lowerBound + half, min(label.center.y, rows.upperBound - half))
         return label
     }
 
@@ -331,12 +338,18 @@ extension MomentsMarking {
         editing.labels.removeAll { $0.id == id }
     }
 
-    /// Changes one label and holds it to the part every phone shows.
+    /// Changes one label and holds it to the part every phone shows, and, unless it's being typed in (it stays above
+    /// the keyboard instead), between the editor's top buttons and its bottom controls: every change, as a drag.
     func update(_ id: UUID, _ change: (inout MomentMarks.Label) -> Void) {
         guard let index = editing.labels.firstIndex(where: { $0.id == id }) else { return }
         var label = editing.labels[index]
         change(&label)
-        editing.labels[index] = clamped(label)
+        let inside = clamped(label)
+        guard let rows = labelRows, id != typing else {
+            editing.labels[index] = inside
+            return
+        }
+        editing.labels[index] = clamped(hold(inside, within: rows))
     }
 
     /// `label` inside the part every phone shows: letters no smaller than the picture check reads and no larger than
