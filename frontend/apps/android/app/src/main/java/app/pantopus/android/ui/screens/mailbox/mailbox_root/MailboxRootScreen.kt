@@ -254,13 +254,14 @@ fun MailboxRootScreen(
     confirmTakeBack?.let { card ->
         TakeBackDialog(
             byEmail = card.byEmail,
+            byLink = card.byLink,
             onTakeBack = {
                 confirmTakeBack = null
                 sentList.takeBack(card.id)
             },
             onKeep = { confirmTakeBack = null },
             freesToday = MailSentWords.sentToday(card, zone),
-            postage = cards?.postageEnabled == true,
+            postage = MailSentWords.stampComesBack(card, cards?.postageEnabled == true),
             notEmailedYet = MailSentWords.notEmailedYet(card),
         )
     }
