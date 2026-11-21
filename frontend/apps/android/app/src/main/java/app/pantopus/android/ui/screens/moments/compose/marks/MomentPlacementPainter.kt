@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Shader
 import androidx.compose.runtime.Immutable
 import kotlin.math.max
@@ -76,17 +78,60 @@ object MomentPlacementPainter {
         val restore = canvas.save()
         // Nothing past the canvas's edges: the upload ends there.
         canvas.clipRect(0f, 0f, width, height)
-        val fill = Paint().apply { shader = LinearGradient(0f, 0f, 0f, height, backdrop.top, backdrop.bottom, Shader.TileMode.CLAMP) }
-        canvas.drawRect(0f, 0f, width, height, fill)
-        val scale = placement.width * width / picture.width
-        val matrix =
-            Matrix().apply {
-                setScale(scale, scale)
-                postTranslate(-picture.width * scale / 2, -picture.height * scale / 2)
-                postRotate(placement.turn)
-                postTranslate(placement.x * width, placement.y * height)
-            }
+        fillBackdrop(canvas, backdrop, width, height)
+        val matrix = pictureMatrix(picture.width, picture.height, placement, width, height)
         canvas.drawBitmap(picture, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         canvas.restoreToCount(restore)
+    }
+
+    /**
+     * A placed video's background, to lay over every frame (the export draws each frame at its placement first): the
+     * [backdrop] over the canvas [width] × [height] px, clear where a picture [pictureWidth] × [pictureHeight] sits at
+     * [placement], a pixel inside its edges so the frame's own edge is covered smoothly.
+     */
+    fun drawBackdropAround(
+        canvas: Canvas,
+        pictureWidth: Int,
+        pictureHeight: Int,
+        placement: MomentPlacement,
+        backdrop: Backdrop,
+        width: Float,
+        height: Float,
+    ) {
+        fillBackdrop(canvas, backdrop, width, height)
+        val restore = canvas.save()
+        val matrix = pictureMatrix(pictureWidth, pictureHeight, placement, width, height)
+        canvas.concat(matrix)
+        val inset = 1f / (placement.width * width / pictureWidth)
+        val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
+        canvas.drawRect(inset, inset, pictureWidth - inset, pictureHeight - inset, clear)
+        canvas.restoreToCount(restore)
+    }
+
+    private fun fillBackdrop(
+        canvas: Canvas,
+        backdrop: Backdrop,
+        width: Float,
+        height: Float,
+    ) {
+        val fill = Paint().apply { shader = LinearGradient(0f, 0f, 0f, height, backdrop.top, backdrop.bottom, Shader.TileMode.CLAMP) }
+        canvas.drawRect(0f, 0f, width, height, fill)
+    }
+
+    /** Maps a picture [pictureWidth] × [pictureHeight] px onto the canvas [width] × [height] px at [placement]. */
+    private fun pictureMatrix(
+        pictureWidth: Int,
+        pictureHeight: Int,
+        placement: MomentPlacement,
+        width: Float,
+        height: Float,
+    ): Matrix {
+        val scale = placement.width * width / pictureWidth
+        return Matrix().apply {
+            setScale(scale, scale)
+            postTranslate(-pictureWidth * scale / 2, -pictureHeight * scale / 2)
+            postRotate(placement.turn)
+            postTranslate(placement.x * width, placement.y * height)
+        }
     }
 }

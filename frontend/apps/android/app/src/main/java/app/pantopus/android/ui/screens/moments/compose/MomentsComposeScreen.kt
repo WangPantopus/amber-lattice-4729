@@ -104,6 +104,8 @@ import app.pantopus.android.ui.screens.moments.components.momentCardGradient
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarks
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksOver
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentMarksTool
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacedStill
+import app.pantopus.android.ui.screens.moments.compose.marks.MomentPlacement
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksEditor
 import app.pantopus.android.ui.screens.moments.compose.marks.MomentsMarksPills
 import app.pantopus.android.ui.screens.moments.viewer.StageSystemBars
@@ -731,7 +733,7 @@ private fun ReviewStep(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-            is MomentMediaFile.Video -> VideoStill(media, state.marks)
+            is MomentMediaFile.Video -> VideoStill(media, state.marks, state.placement)
             null ->
                 Box(
                     modifier = Modifier.fillMaxSize().momentCardGradient(state.background).statusBarsPadding().padding(top = 54.dp),
@@ -798,8 +800,6 @@ private fun ReviewStep(
                     enabled = !state.posting,
                     onOpen = onMarks,
                     video = state.media is MomentMediaFile.Video,
-                    // Resize: photos (videos from step R2).
-                    resize = state.media is MomentMediaFile.Photo,
                 )
             }
         }
@@ -825,16 +825,24 @@ private fun ReviewStep(
     }
 }
 
-/** A video's first frame behind the Post sheet, with its marks (Text and Draw) where they go on every frame. */
+/**
+ * A video's first frame behind the Post sheet, with its marks (Text and Draw) where they go on every frame, on the 9:16
+ * canvas at its [placement] when Resize placed it.
+ */
 @Composable
 private fun VideoStill(
     media: MomentMediaFile.Video,
     marks: MomentMarks,
+    placement: MomentPlacement?,
 ) {
     val still by produceState<android.graphics.Bitmap?>(null, media.file) {
         value = withContext(Dispatchers.IO) { MomentMedia.videoStill(media.file) }
     }
     still?.let {
+        if (placement != null) {
+            MomentPlacedStill(it, placement, marks, spoken = "Your video", modifier = Modifier.fillMaxSize())
+            return@let
+        }
         androidx.compose.foundation.Image(
             bitmap = it.asImageBitmap(),
             contentDescription = "Your video",

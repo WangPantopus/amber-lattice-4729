@@ -2,6 +2,7 @@
 
 package app.pantopus.android.ui.screens.moments.compose.marks
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,10 +33,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -75,6 +80,7 @@ internal fun ResizeLayer(
     frame: Size,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
     modifier: Modifier = Modifier,
+    video: Boolean = false,
 ) {
     val view = LocalView.current
     val scale = max(frame.width / MomentPlacement.CANVAS_WIDTH, frame.height / MomentPlacement.CANVAS_HEIGHT)
@@ -113,19 +119,20 @@ internal fun ResizeLayer(
                         moving = false
                     }
                 }.testTag("moments.resize.picture")
-                .placementActions(picture, onEdit),
+                .placementActions(picture, if (video) "The video you're posting." else "The photo you're posting.", onEdit),
     ) {
         if (moving) PartEveryPhoneShows(corner, canvas, Modifier.matchParentSize())
     }
 }
 
-/** TalkBack's way to do what fingers do: resize, turn and move the picture of [picture] px, and Reset. */
+/** TalkBack's way to do what fingers do: resize, turn and move the picture of [picture] px ([spoken]), and Reset. */
 private fun Modifier.placementActions(
     picture: IntSize,
+    spoken: String,
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
 ): Modifier =
     semantics {
-        contentDescription = "The photo you're posting."
+        contentDescription = spoken
         val shape = picture.shape
         val steps: List<Pair<String, (MomentPlacement) -> MomentPlacement>> =
             listOf(
@@ -251,6 +258,32 @@ internal fun ResizeTools(
         ) {
             PantopusIconImage(icon = PantopusIcon.RefreshCw, contentDescription = null, size = 18.dp, tint = Color.White)
             Text(text = "Reset", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/**
+ * The Post screen's still of a placed video: its first frame on the canvas at [placement] over the background, with the
+ * [marks], filling this box cropped, as viewers will see it; TalkBack reads it as [spoken].
+ */
+@Composable
+internal fun MomentPlacedStill(
+    still: Bitmap,
+    placement: MomentPlacement,
+    marks: MomentMarks,
+    spoken: String,
+    modifier: Modifier = Modifier,
+) {
+    val backdrop = remember(still) { MomentPlacementPainter.backdrop(still) }
+    Canvas(modifier = modifier.clipToBounds().clearAndSetSemantics { contentDescription = spoken }) {
+        val scale = max(size.width / MomentPlacement.CANVAS_WIDTH, size.height / MomentPlacement.CANVAS_HEIGHT)
+        val width = MomentPlacement.CANVAS_WIDTH * scale
+        val height = MomentPlacement.CANVAS_HEIGHT * scale
+        translate((size.width - width) / 2, (size.height - height) / 2) {
+            drawIntoCanvas {
+                MomentPlacementPainter.draw(it.nativeCanvas, still, placement, backdrop, width, height)
+                MomentMarksPainter.draw(it.nativeCanvas, marks, width, height)
+            }
         }
     }
 }

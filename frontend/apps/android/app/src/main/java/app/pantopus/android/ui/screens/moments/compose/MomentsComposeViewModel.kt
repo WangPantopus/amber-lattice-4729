@@ -568,8 +568,9 @@ class MomentsComposeViewModel
             dropPreparation()
             if (media !is MomentMediaFile.Video) return
             readyProgress = 0f
-            // Text and Draw on the video go over every frame of every part.
+            // Text and Draw on the video go over every frame of every part, and so does where Resize placed it.
             val marks = _state.value.marks
+            val placement = _state.value.placement
             preparation =
                 viewModelScope.async {
                     val limits = limits()
@@ -582,7 +583,7 @@ class MomentsComposeViewModel
                                 // A video posted as one Moment is exported whole (the camera's may go up as it is).
                                 val stretch = part.takeIf { parts.size > 1 }
                                 made +=
-                                    MomentMedia.prepareVideo(context, media, stretch, limits.videoBytes, marks) { done ->
+                                    MomentMedia.prepareVideo(context, media, stretch, limits.videoBytes, marks, placement) { done ->
                                         readyProgress = (at + done) / parts.size
                                         _state.update { if (it.readying != null) it.copy(readying = readyProgress) else it }
                                     }
