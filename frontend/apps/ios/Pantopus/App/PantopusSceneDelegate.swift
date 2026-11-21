@@ -27,8 +27,10 @@ final class PantopusSceneDelegate: NSObject, UIWindowSceneDelegate {
     /// the top left, where iPadOS 26 and later put the window buttons of a
     /// window that isn't full screen. The minimal style gives the buttons a
     /// slim strip of their own above the app: the window's top safe area grows
-    /// by it, so every screen, cover and sheet stays below them. Full screen
-    /// there are no buttons and nothing moves; iPhones have none.
+    /// by it, so every screen, cover and sheet stays below them. In a window
+    /// tiled into the screen's top-left corner they share the status bar's
+    /// row, or sit just under it, where `WindowControlsClearance` makes room.
+    /// Full screen there are no buttons and nothing moves; iPhones have none.
     @available(iOS 26.0, *)
     func preferredWindowingControlStyle(for _: UIWindowScene) -> UIWindowScene.WindowingControlStyle {
         .minimal
