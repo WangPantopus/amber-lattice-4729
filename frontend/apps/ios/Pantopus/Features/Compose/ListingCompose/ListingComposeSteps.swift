@@ -89,8 +89,8 @@ public enum ListingComposeCategory: String, CaseIterable, Codable, Sendable, Has
         case .goods: "Sell something you own."
         case .rentals: "Rent something out by the day or week."
         case .vehicles: "Cars, bikes, scooters, trailers."
-        case .free: "Give something away to a neighbor."
-        case .wanted: "Ask the neighborhood for something."
+        case .free: "Give something away to someone nearby."
+        case .wanted: "Ask people near you for something."
         }
     }
 
@@ -215,7 +215,7 @@ public enum ListingComposeFulfillment: String, CaseIterable, Codable, Sendable, 
     public var subtitle: String {
         switch self {
         case .pickup: "Buyer comes to you."
-        case .delivery: "You drop off within the neighborhood."
+        case .delivery: "You drop off nearby."
         }
     }
 

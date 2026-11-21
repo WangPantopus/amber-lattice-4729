@@ -103,7 +103,7 @@ struct BusinessCatalogCategoriesView: View {
     // MARK: - Pieces
 
     private var emptyCopy: some View {
-        Text("No categories yet. Group your services and products so neighbors can scan your page faster.")
+        Text("No categories yet. Group your services and products so people can scan your page faster.")
             .font(.system(size: 12.5))
             .foregroundStyle(Theme.Color.appTextSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)

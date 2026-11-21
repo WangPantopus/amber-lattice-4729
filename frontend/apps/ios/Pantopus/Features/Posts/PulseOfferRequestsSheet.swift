@@ -60,7 +60,7 @@ struct PulseOfferRequestsSheet: View {
 
     private func requestRow(_ claim: PulseOfferClaimDTO, offer: PulseOfferDTO?) -> some View {
         VStack(alignment: .leading, spacing: Spacing.s2) {
-            Text(claim.author?.displayName ?? "A neighbor").pulseFont(.button)
+            Text(claim.author?.displayName ?? "Someone nearby").pulseFont(.button)
             if let label = claim.author?.label.flatMap(PulseAuthorLabel.init(rawValue:)) {
                 Text(label.text).pulseFont(.footnote).foregroundStyle(Theme.Color.appTextSecondary)
             }

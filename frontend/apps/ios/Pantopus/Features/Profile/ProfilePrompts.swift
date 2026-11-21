@@ -31,7 +31,7 @@ public enum ProfilePromptCatalog {
         Entry(key: "something_learning", text: "Something I'm learning…"),
         Entry(key: "lived_here_since", text: "I've lived here since…"),
         Entry(key: "best_way_to_say_hi", text: "Best way to say hi…"),
-        Entry(key: "neighborhood_tradition", text: "A neighborhood tradition I love…")
+        Entry(key: "neighborhood_tradition", text: "A local tradition I love…")
     ]
 
     /// At most three answers, each up to 120 characters (the server's checks).

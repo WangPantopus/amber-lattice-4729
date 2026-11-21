@@ -331,7 +331,7 @@ public final class SettingsIndexViewModel: GroupedListDataSource {
     static func visibilitySubtext(_ raw: String?) -> String? {
         switch (raw ?? "").lowercased() {
         case "public": "Anyone"
-        case "registered": "Signed-in neighbors"
+        case "registered": "Signed-in people"
         case "private": "Only you"
         default: nil
         }

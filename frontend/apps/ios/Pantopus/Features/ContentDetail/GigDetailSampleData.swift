@@ -85,7 +85,7 @@ enum GigDetailSampleData {
                     iconTone: .primary,
                     title: "Be the first to bid",
                     subtitle: "Fresh posts usually get a hire in the first hour. First three bids land at the top of the list.",
-                    footerPill: "7 neighbors viewing"
+                    footerPill: "7 people viewing"
                 ))
             ],
             trustCapsules: [],

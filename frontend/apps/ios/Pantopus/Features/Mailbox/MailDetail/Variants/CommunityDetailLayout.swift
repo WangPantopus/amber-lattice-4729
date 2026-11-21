@@ -125,7 +125,7 @@ struct CommunityDetailLayout: View {
         }
         let neighbors = community.attendeeCount
         let block = community.attendeesFromBlock ?? 0
-        var line = "\(neighbors) neighbor\(neighbors == 1 ? "" : "s") going"
+        var line = "\(neighbors) going"
         if block > 0 { line += " · \(block) from your block" }
         if let weather = community.event?.weatherSummary {
             line += ". Weather: \(weather.lowercased())."
@@ -140,7 +140,7 @@ struct CommunityDetailLayout: View {
         bullets.append(
             AIElfBullet(
                 icon: .users,
-                label: "\(community.attendeeCount) neighbors going",
+                label: "\(community.attendeeCount) going",
                 text: community.attendeesFromBlock.map { "\($0) from your block" }
             )
         )
@@ -821,7 +821,7 @@ private struct CommunityBodyCard: View {
                     Text(authorName)
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.Color.appText)
-                    Text("posted by neighbor")
+                    Text("posted by someone nearby")
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.Color.appTextSecondary)
                 }
@@ -940,7 +940,7 @@ private struct CommunitySenderCard: View {
                     }
                     HStack(spacing: Spacing.s1) {
                         Icon(.shieldCheck, size: 11, color: Theme.Color.success)
-                        Text("Verified neighbor")
+                        Text("Verified home")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(Theme.Color.success)
                     }

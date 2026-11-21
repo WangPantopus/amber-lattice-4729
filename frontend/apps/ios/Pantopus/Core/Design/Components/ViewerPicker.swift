@@ -87,7 +87,7 @@ public enum ViewerAudience: Sendable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .public: "Public"
         case .personaAudience: "Persona audience"
-        case .neighbor: "Neighbor"
+        case .neighbor: "Someone nearby"
         case .connection: "Connection"
         case .gigParticipant: "Gig participant"
         case .household: "Household"

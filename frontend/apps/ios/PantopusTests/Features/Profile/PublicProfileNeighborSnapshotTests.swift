@@ -46,7 +46,7 @@ final class PublicProfileNeighborSnapshotTests: XCTestCase {
         XCTAssertEqual(c.reviewCount, 47)
         XCTAssertEqual(c.primaryCtaLabel, "Message")
         XCTAssertEqual(c.hero.identity, .personal)
-        XCTAssertEqual(c.hero.kicker, "Neighbor since 2022")
+        XCTAssertEqual(c.hero.kicker, "On Pantopus since 2022")
         XCTAssertEqual(c.verifications.count, 4)
         XCTAssertFalse(c.reviews.isEmpty, "Populated frame has a featured review")
         XCTAssertNil(c.mutuals, "Populated frame has no mutual-neighbors strip")

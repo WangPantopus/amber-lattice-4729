@@ -39,7 +39,7 @@ public enum FuzzStop: String, Sendable, Hashable, CaseIterable {
         case .block: "Block"
         case .quarterMile: "Quarter mile"
         case .halfMile: "Half mile"
-        case .neighborhood: "Neighborhood"
+        case .neighborhood: "Area"
         }
     }
 }

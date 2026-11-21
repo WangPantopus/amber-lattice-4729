@@ -875,7 +875,7 @@ private struct BillSharingRow: View {
                             .pantopusTextStyle(.small)
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.Color.appText)
-                        Text("Help neighbors compare costs. Only averages are shared — never individual amounts.")
+                        Text("Help homes near you compare costs. Only averages are shared — never individual amounts.")
                             .pantopusTextStyle(.caption)
                             .foregroundStyle(Theme.Color.appTextSecondary)
                     }
@@ -973,7 +973,7 @@ private struct BillTrendRow: View {
         guard let benchmark, !benchmark.insufficientData,
               let peerIndex = benchmark.months.firstIndex(of: month),
               benchmark.avgAmounts.indices.contains(peerIndex) else { return "No comparison for this month" }
-        return "Neighborhood average: \(HomeBillPresentation.amount(benchmark.avgAmounts[peerIndex], currency: currency))"
+        return "Nearby average: \(HomeBillPresentation.amount(benchmark.avgAmounts[peerIndex], currency: currency))"
     }
 
     private func monthlyLabel(_ index: Int) -> String {

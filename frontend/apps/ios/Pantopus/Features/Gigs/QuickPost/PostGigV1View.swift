@@ -310,7 +310,7 @@ private struct PostGigV1DescriptionField: View {
             PostGigV1FieldLabel("Description", required: true)
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
-                    Text("Tell neighbors what to carry, where to meet, and any stairs or timing constraints.")
+                    Text("Tell helpers what to carry, where to meet, and any stairs or timing constraints.")
                         .pantopusTextStyle(.small)
                         .foregroundStyle(Theme.Color.appTextMuted)
                         .padding(.horizontal, Spacing.s3)

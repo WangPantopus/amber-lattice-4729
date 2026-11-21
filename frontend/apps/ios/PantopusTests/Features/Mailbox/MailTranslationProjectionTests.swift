@@ -74,7 +74,7 @@ final class MailTranslationProjectionTests: XCTestCase {
         XCTAssertEqual(content.paragraphs.first?.english, "Dear neighbor,")
         XCTAssertEqual(content.sender.name, "Lucía Herrera")
         XCTAssertEqual(content.sender.initials, "LH")
-        XCTAssertEqual(content.sender.kind, "Verified neighbor")
+        XCTAssertEqual(content.sender.kind, "Verified home")
         // No translator-notes glossary exists on the wire.
         XCTAssertTrue(content.glossary.isEmpty)
         XCTAssertFalse(content.confirmed)

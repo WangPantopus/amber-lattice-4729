@@ -195,7 +195,7 @@ public final class ViewAsViewModel {
             id: "mutuals",
             icon: .users,
             label: "Mutual connections",
-            disclosure: shared ? .visible("Mutual neighbors in common") : .hidden
+            disclosure: shared ? .visible("Connections in common") : .hidden
         )
     }
 
@@ -221,7 +221,7 @@ public final class ViewAsViewModel {
             ViewAsBadge(
                 id: "resident",
                 icon: set.contains("verified_resident") ? .badgeCheck : .lock,
-                label: "Verified neighbor",
+                label: "Verified home",
                 isOn: set.contains("verified_resident")
             ),
             ViewAsBadge(

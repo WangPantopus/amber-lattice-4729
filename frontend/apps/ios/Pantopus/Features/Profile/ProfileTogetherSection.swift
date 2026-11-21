@@ -121,7 +121,7 @@ public struct ProfileTogetherLine: Identifiable, Hashable, Sendable {
         let others = max(0, shared.connectionCount - names.count)
         var parts: [Part] = [.plain("You both know ")]
         if names.isEmpty {
-            parts.append(.bold("\(others) \(others == 1 ? "neighbor" : "neighbors")"))
+            parts.append(.bold("\(others) \(others == 1 ? "person" : "people")"))
         } else if others == 0 {
             parts += listed(names)
         } else {

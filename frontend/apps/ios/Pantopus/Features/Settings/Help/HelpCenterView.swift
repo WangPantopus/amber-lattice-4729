@@ -142,7 +142,7 @@ public struct HelpCenterView: View {
         Section(heading: gettingStarted, items: [
             Item(
                 question: "Why do I need to verify my email?",
-                answer: "Verifying your email unlocks posting, messaging, and trust signals other neighbors look for. " +
+                answer: "Verifying your email unlocks posting, messaging, and trust signals other people look for. " +
                     "It also lets us send you a Magic Link if you forget your password."
             ),
             Item(

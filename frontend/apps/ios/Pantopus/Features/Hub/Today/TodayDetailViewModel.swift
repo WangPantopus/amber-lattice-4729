@@ -329,7 +329,7 @@ final class TodayDetailViewModel {
 
 extension TodayDetailViewModel {
     /// The Share card's line: what Share sends.
-    static let shareSubtitle = "Send today's weather and signals to a neighbor"
+    static let shareSubtitle = "Send today's weather and signals to someone"
 
     /// "Sun & sky" from today's sunrise and sunset, in the place's timezone. Nil when the
     /// feed has no sun times, so the card is left out rather than showing made-up ones.

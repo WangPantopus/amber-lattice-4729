@@ -220,7 +220,7 @@ public struct UnboxingView: View {
             Text("Need help assembling?")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.Color.appTextStrong)
-            Text("Post a task and a Verified Neighbor will help. Package details are pre-filled.")
+            Text("Post a task and someone with a verified home will help. Package details are pre-filled.")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
             Button(action: { Task { await viewModel.postAssemblyGig() } }, label: {

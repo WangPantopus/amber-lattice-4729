@@ -103,7 +103,7 @@ struct OwnerLiveBar: View {
             Button { onPreview() } label: {
                 HStack(spacing: Spacing.s1) {
                     Icon(.eye, size: 13, color: Theme.Color.appText)
-                    Text("View as neighbor")
+                    Text("View as the public")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(Theme.Color.appText)
                 }
@@ -117,7 +117,7 @@ struct OwnerLiveBar: View {
                 .clipShape(RoundedRectangle(cornerRadius: Radii.md, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("View as neighbor")
+            .accessibilityLabel("View as the public")
             .accessibilityIdentifier("businessOwner.viewAsNeighbor")
         }
         .padding(.horizontal, Spacing.s4)

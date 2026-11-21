@@ -176,7 +176,7 @@ struct BusinessCatalogItemEditorView: View {
             )
             toggleRow(
                 title: "Save as draft",
-                subtitle: "Drafts stay hidden from neighbors until you switch them to active.",
+                subtitle: "Drafts stay hidden from others until you switch them to active.",
                 isOn: $draft.isDraft,
                 identifier: "businessCatalog.editor.draft"
             )

@@ -78,7 +78,7 @@ enum LegalDocs {
         sections: [
             LegalDocSection(title: "Overview", blocks: [
                 .rich([
-                    .t("Pantopus is a neighborhood platform that lets you keep separate "),
+                    .t("Pantopus is a home-centered platform that lets you keep separate "),
                     .b("Personal"),
                     .t(", "),
                     .b("Home"),
@@ -117,7 +117,7 @@ enum LegalDocs {
                 .paragraph(
                     "We log device type, app version, approximate location (derived from " +
                         "IP), and which features you interact with. This helps us debug issues " +
-                        "and tell you how busy your neighborhood is, without ever attaching " +
+                        "and tell you how busy your area is, without ever attaching " +
                         "precise GPS to your account."
                 )
             ]),
@@ -147,7 +147,7 @@ enum LegalDocs {
                     .t(" identity does not show your home address; your "),
                     .b("Home"),
                     .t(
-                        " identity does not reveal your personal phone number to neighbors " +
+                        " identity does not reveal your personal phone number to others " +
                             "unless you explicitly opt in."
                     )
                 ]),

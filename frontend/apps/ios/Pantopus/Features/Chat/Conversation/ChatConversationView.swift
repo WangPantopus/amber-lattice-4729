@@ -2821,7 +2821,7 @@ private struct ChatConversationHeader: View {
         case let .person(_, _, locality, verified, online):
             // "Verified neighbor" only when the person's verified badge
             // says so; otherwise the locality alone, or no subtitle.
-            let status: String? = online ? "Active now" : (verified ? "Verified neighbor" : nil)
+            let status: String? = online ? "Active now" : (verified ? "Verified home" : nil)
             let parts = [status, locality].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         case let .group(_, memberCount):

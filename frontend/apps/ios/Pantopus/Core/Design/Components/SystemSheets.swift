@@ -67,7 +67,7 @@ public enum InviteLinks {
     }
 
     public static let inviteMessage =
-        "Join me on Pantopus — your neighborhood for trusted home help and your whole household in one place."
+        "Join me on Pantopus — everything about your home, trusted home help and your whole household in one place."
 
     /// Items handed to `UIActivityViewController` for an invite share: the
     /// words and the person's own invite link.

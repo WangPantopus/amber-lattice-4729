@@ -812,10 +812,10 @@ public struct GenericMailBody: View {
         .healthcare: "Healthcare mail. Review the appointment, billing, or coverage details inside.",
         .membership: "A membership update. Check your status, benefits, or renewal date.",
         .delivery: "A delivery update. Track the latest status and expected arrival.",
-        .social: "A neighborhood message. Catch up on what's happening nearby.",
+        .social: "A local message. Catch up on what's happening nearby.",
         .party: "A personal invite. Open it for the details and let the host know if you're coming.",
         .records: "An archived record. Filed for safekeeping — open it any time from your Vault.",
-        .general: "Mail from your neighborhood. Open it to read the full message."
+        .general: "Mail from near you. Open it to read the full message."
     ]
 
     private static func explainer(for category: MailItemCategory) -> String {

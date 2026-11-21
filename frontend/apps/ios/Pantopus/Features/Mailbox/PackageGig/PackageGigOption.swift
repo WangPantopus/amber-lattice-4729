@@ -42,28 +42,28 @@ public struct PackageGigOption: Sendable, Hashable, Identifiable {
             type: .hold,
             icon: .mailbox,
             title: "Hold Package",
-            subtitle: "Neighbor holds it until you return",
+            subtitle: "Someone nearby holds it until you return",
             availablePreDelivery: true
         ),
         PackageGigOption(
             type: .inside,
             icon: .home,
             title: "Put Inside",
-            subtitle: "Neighbor moves it inside your porch/garage",
+            subtitle: "Someone nearby moves it inside your porch/garage",
             availablePreDelivery: true
         ),
         PackageGigOption(
             type: .sign,
             icon: .fileSignature,
             title: "Sign for Me",
-            subtitle: "Neighbor signs on your behalf",
+            subtitle: "Someone nearby signs on your behalf",
             availablePreDelivery: true
         ),
         PackageGigOption(
             type: .assembly,
             icon: .wrench,
             title: "Help Assemble",
-            subtitle: "Neighbor helps with assembly after delivery",
+            subtitle: "Someone nearby helps with assembly after delivery",
             availablePreDelivery: false
         ),
         PackageGigOption(

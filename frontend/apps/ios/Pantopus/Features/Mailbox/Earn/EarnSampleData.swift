@@ -30,7 +30,7 @@ public enum EarnSampleData {
         ),
         EarnWayToEarn(
             kind: .refer,
-            title: "Refer a neighbor",
+            title: "Refer someone",
             meta: "+$10 when they finish a task",
             accent: .home
         ),

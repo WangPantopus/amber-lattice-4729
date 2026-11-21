@@ -24,7 +24,7 @@ struct PulseConversationReplyView: View {
 
     private var authorName: String {
         let name = reply.author?.displayName ?? ""
-        return name.isEmpty ? "A neighbor" : name
+        return name.isEmpty ? "Someone nearby" : name
     }
 
     private var meta: String {

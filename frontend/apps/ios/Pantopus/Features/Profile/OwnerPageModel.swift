@@ -41,8 +41,8 @@ public enum ProfileOwnerTip: String, CaseIterable, Sendable, Hashable, Identifia
         switch self {
         case .addPhoto: "Your initials show until you do. Only you see this tip."
         case .writeTagline: "One line about you, in bold under your name. Only you see this tip."
-        case .addSkills: "Neighbors look for help nearby. Only you see this tip."
-        case .answerPrompt: "A short answer gives neighbors something to say hi about. Only you see this tip."
+        case .addSkills: "People look for help nearby. Only you see this tip."
+        case .answerPrompt: "A short answer gives people something to say hi about. Only you see this tip."
         case .pinPost: "Show your best posts first: use ⋯ on a post. Only you see this tip."
         }
     }
@@ -146,7 +146,7 @@ public final class OwnerPageModel {
         guard let receipt = monthlyReceipt else { return nil }
         var parts: [String] = []
         let helped = receipt.community.neighborsHelped
-        if helped > 0 { parts.append("\(helped) \(helped == 1 ? "neighbor" : "neighbors") helped") }
+        if helped > 0 { parts.append("\(helped) \(helped == 1 ? "person" : "people") helped") }
         let posts = receipt.community.postsCreated
         if posts > 0 { parts.append("\(posts) \(posts == 1 ? "post" : "posts")") }
         let connections = receipt.community.connectionsMade

@@ -353,7 +353,7 @@ struct NeighborProfileLayout: View {
                 NeighborVerificationLedger(items: content.verifications)
 
                 if let mutuals = content.mutuals {
-                    NeighborSectionTitle("Neighbors in common", action: "See all")
+                    NeighborSectionTitle("Connections in common", action: "See all")
                     NeighborMutualsStrip(mutuals: mutuals)
                 }
 
@@ -386,7 +386,7 @@ struct NeighborProfileLayout: View {
             EmptyState(
                 icon: .messageCircle,
                 headline: "No posts yet",
-                subcopy: "Neighborhood posts from \(content.hero.name) will appear here."
+                subcopy: "Nearby posts from \(content.hero.name) will appear here."
             )
             .frame(minHeight: 200)
         } else {
@@ -839,7 +839,7 @@ struct NeighborMutualsStrip: View {
                 }
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(mutuals.count) mutual \(mutuals.count == 1 ? "neighbor" : "neighbors")")
+                Text("\(mutuals.count) \(mutuals.count == 1 ? "connection" : "connections") in common")
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.Color.appText)
                 Text(mutuals.names)
@@ -858,7 +858,7 @@ struct NeighborMutualsStrip: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(mutuals.count) mutual neighbors: \(mutuals.names)")
+        .accessibilityLabel("\(mutuals.count) connections in common: \(mutuals.names)")
         .accessibilityIdentifier("publicProfileNeighborMutuals")
     }
 }

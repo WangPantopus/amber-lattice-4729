@@ -185,7 +185,7 @@ extension PublicProfileView {
             rows.append(ProfileAccountRow(
                 id: "invite",
                 icon: .userPlus,
-                title: "Invite neighbors",
+                title: "Invite people",
                 value: owner.inviteJoinedLabel,
                 action: .invite
             ))
