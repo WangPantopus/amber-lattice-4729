@@ -256,16 +256,26 @@ function downloadCalendar(planId: string, plan: PublicPlan, location: string, pa
 
 // ── The bring list (H2) ──────────────────────────────────────
 
+/** The thing as the sentence after a claim names it: "Bread" → "bread"; "IPA" stays (its second letter is a capital). */
+function claimedThing(label: string): string {
+  const text = label.trim();
+  const second = text.charAt(1);
+  return second && second === second.toLowerCase() && second !== second.toUpperCase() ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
 /**
  * W3's bring list: who is bringing what, "I'll bring it", "You're bringing it" with "Give back", and "Bring something
  * else" when the host lets guests add. Each change answers the whole list; someone who got there first is named.
+ * After a claim goes through, a green line at the top says what was claimed and who can see it (JOURNEYS, 2026-11-21);
+ * it shows the latest claim and goes away on "Give back" or on leaving the page.
  */
-function BringList({ planId, initial }: { planId: string; initial: PublicPlanBring }) {
+function BringList({ planId, initial, hostFirst }: { planId: string; initial: PublicPlanBring; hostFirst: string }) {
   const [bring, setBring] = useState<PublicPlanBring>(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState('');
+  const [claimed, setClaimed] = useState<string | null>(null);
 
   async function call(path: string, method: 'POST' | 'DELETE', body?: Record<string, unknown>, key = path) {
     setBusy(key);
@@ -297,7 +307,16 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
     if (await call('/items', 'POST', { label: text }, 'add')) {
       setLabel('');
       setAdding(false);
+      setClaimed(text);
     }
+  }
+
+  async function claim(item: PublicPlanBring['items'][number]) {
+    if (await call(`/${item.id}/claim`, 'POST')) setClaimed(item.label);
+  }
+
+  async function giveBack(item: PublicPlanBring['items'][number]) {
+    if (await call(`/${item.id}/claim`, 'DELETE')) setClaimed(null);
   }
 
   return (
@@ -305,6 +324,15 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
       <div className="flex items-baseline justify-between gap-3 pb-1">
         <h2 id="bring-title" className="text-base font-semibold leading-[22px]">What will you bring?</h2>
         <span className="text-sm text-app-text-secondary">{`${bring.open_count} still open`}</span>
+      </div>
+      {/* Always here, so a screen reader reads the sentence when it appears. */}
+      <div role="status">
+        {claimed ? (
+          <p data-testid="plan.bring.claimed" className="mb-1 mt-1 flex items-start gap-2.5 rounded-xl border border-app-success-light bg-app-success-bg px-3 py-2.5 text-sm leading-5 text-app-success">
+            <span className="mt-px flex-none" aria-hidden="true">{Glyph.check('h-[18px] w-[18px]')}</span>
+            <span><strong className="font-semibold">{`You’re bringing ${claimedThing(claimed)}.`}</strong>{` ${hostFirst} and the other guests can see it.`}</span>
+          </p>
+        ) : null}
       </div>
       <ul className="divide-y divide-app-border">
         {bring.items.map((item) => (
@@ -321,7 +349,7 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
               <button
                 type="button"
                 disabled={busy !== null}
-                onClick={() => call(`/${item.id}/claim`, 'DELETE')}
+                onClick={() => giveBack(item)}
                 className="min-h-[44px] flex-none px-2 text-sm font-semibold text-app-link disabled:opacity-50"
               >
                 Give back
@@ -337,7 +365,7 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
               <button
                 type="button"
                 disabled={busy !== null}
-                onClick={() => call(`/${item.id}/claim`, 'POST')}
+                onClick={() => claim(item)}
                 aria-label={`I’ll bring ${item.label}`}
                 className="flex min-h-[44px] flex-none items-center gap-2 rounded-xl border border-app-link px-4 text-sm font-semibold text-app-link disabled:opacity-50"
               >
@@ -1048,7 +1076,7 @@ function GuestAnswerPage(props: GuestAnswerProps) {
             <p className="whitespace-pre-line text-base leading-6 text-app-text">{forGuest.guest_note}</p>
           </section>
         ) : null}
-        {forGuest.bring ? <BringList key={forGuest.bring.rev} planId={planId} initial={forGuest.bring} /> : null}
+        {forGuest.bring ? <BringList key={forGuest.bring.rev} planId={planId} initial={forGuest.bring} hostFirst={hostFirst} /> : null}
         <section className="flex flex-col gap-2 rounded-2xl bg-app-surface-sunken px-4 py-4">
           <p className="text-base font-semibold leading-[22px]">The group chat is in the app</p>
           <p className="text-sm leading-5 text-app-text-secondary">{`So are day-of updates, the photos afterwards and ${hostFirst}'s next plan.`}</p>
