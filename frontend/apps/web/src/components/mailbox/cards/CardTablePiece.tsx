@@ -331,7 +331,9 @@ export default function CardTablePiece({
           ) : null}
           {sheet === 'share' ? (
             <CardShareSheet
-              details={{ card, note: piece.content || '', fromName: from, mailedOn: piece.postmark?.date || piece.created_at, signature: card.signature ?? null }}
+              details={{ card, note: piece.content || '', fromName: from, mailedOn: piece.postmark?.date || piece.created_at, signature: card.signature ?? null,
+                // A travelling card (Part 7): its envelope's postmarks, and the towns and miles with the reader's own town.
+                travel: travel?.journey ? { journey: travel.journey, postmarks: travel.postmarks, towns: travel.towns + 1, miles: travel.miles } : null }}
               slug={piece.card?.slug}
               onClose={() => setSheet(null)}
             />

@@ -136,3 +136,42 @@ export function travelCameLine(travel: { miles: number; towns: number } | null |
   if (!travel || travel.towns < 2) return null;
   return `It came ${travel.miles.toLocaleString('en-US')} miles through ${travel.towns} towns to reach you.`;
 }
+
+const escSvg = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * The same postmarks as one standalone SVG over the whole envelope (1200 x 1392, its address side), for pictures drawn
+ * on a canvas (the share pictures, Part 7): no names, only the towns and days. "+ 4 more towns" included.
+ */
+export function postmarksSvgString(marks: CardTravelPostmark[]): string {
+  const shown = marks.slice(-SLOTS.length);
+  const more = marks.length - shown.length;
+  const W = 1200;
+  const ring = 0.27 * W;
+  const k = ring / 120;
+  const body = shown.map((mark, slot) => {
+    const [x, y, r] = SLOTS[slot];
+    const cx = (x / 100) * W;
+    const cy = (y / 100) * 1392;
+    const top = postmarkTop(mark);
+    const { day, year } = dayOf(mark.on);
+    const ink = slot % 3 === 1 ? 'rgba(14,22,52,0.84)' : 'rgba(19,13,15,0.8)';
+    const waves = slot === 0 ? [36, 48, 60, 72, 84].map((yy) => `<path d="M124,${yy} q13,-9 26,0 t26,0 t26,0 t26,0" fill="none" stroke="${ink}" stroke-width="3.4" stroke-linecap="round"/>`).join('') : '';
+    return `<g transform="translate(${(cx - ring / 2).toFixed(1)} ${(cy - ring / 2).toFixed(1)}) rotate(${r} ${ring / 2} ${ring / 2}) scale(${k.toFixed(4)})" filter="url(#ink)">`
+      + `<circle cx="60" cy="60" r="55.5" fill="none" stroke="${ink}" stroke-width="3.2"/><circle cx="60" cy="60" r="34" fill="none" stroke="${ink}" stroke-width="1.9"/>`
+      + `<text font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="${ink}" font-size="${top.size.toFixed(2)}" letter-spacing="${TOP_SPACING}"><textPath href="#t" startOffset="50%" text-anchor="middle">${escSvg(top.text)}</textPath></text>`
+      + `<text font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="${ink}" font-size="8.2" letter-spacing="1.6"><textPath href="#b" startOffset="50%" text-anchor="middle">PANTOPUS POST</textPath></text>`
+      + `<text font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="${ink}" x="60" y="59" text-anchor="middle" font-size="15.5">${day}</text>`
+      + `<text font-family="Georgia, 'Times New Roman', serif" font-weight="700" fill="${ink}" x="60" y="74" text-anchor="middle" font-size="11.5">${year}</text>${waves}</g>`;
+  }).join('');
+  const moreText = more > 0
+    ? `<text x="${W * 0.932}" y="${1392 * 0.946}" text-anchor="end" font-family="ui-serif, Georgia, serif" font-weight="600" font-size="${(0.0235 * W).toFixed(1)}" letter-spacing="${(0.0235 * W * 0.2).toFixed(1)}" fill="#d8b76f">+ ${more} MORE ${more === 1 ? 'TOWN' : 'TOWNS'}</text>`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1392" width="1200" height="1392"><defs>`
+    + '<path id="t" d="M 18.5,60 A 41.5,41.5 0 0 1 101.5,60"/><path id="b" d="M 10,60 A 50,50 0 0 0 110,60"/>'
+    + '<filter id="ink" x="-8%" y="-8%" width="116%" height="116%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" result="n"/>'
+    + '<feDisplacementMap in="SourceGraphic" in2="n" scale="1.5" xChannelSelector="R" yChannelSelector="G" result="d"/>'
+    + '<feTurbulence type="fractalNoise" baseFrequency="0.3" numOctaves="3" seed="11" result="s"/>'
+    + '<feColorMatrix in="s" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -3.2 0 0 0 2.75" result="m"/><feComposite in="d" in2="m" operator="in"/></filter>'
+    + `</defs>${body}${moreText}</svg>`;
+}

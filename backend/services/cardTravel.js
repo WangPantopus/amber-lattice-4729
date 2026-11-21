@@ -480,6 +480,32 @@ function previewView(travel) {
     pass_on_refusal: null };
 }
 
+/** The postmarks on the way to a card's person, oldest first: the town each card on the way left, and the day. */
+function postmarksTo(tree, row) {
+  return chainTo(tree, row).map((c) => c.travel.from).filter(Boolean).map((f) => ({ town: f.town, state: f.state ?? null, on: f.on }));
+}
+
+/**
+ * A travelling card on its link's page (GET /claim/:mailId; Part 7), for whoever holds the link: the postmarks on its
+ * envelope, the towns, and the miles it came to its sender's town (where the person opening it lives isn't known yet).
+ * Null for a card that doesn't travel, or while the key is off.
+ */
+async function linkView(mailId) {
+  if (!travelOn()) return null;
+  const { data: own, error } = await supabaseAdmin.from('Mail').select('id, journey:mail_extracted->card->travel->>journey')
+    .eq('id', mailId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!own?.journey) return null;
+  const tree = journeyTree(await journeyRows(own.journey));
+  const row = tree.byId.get(mailId);
+  if (!row) return null;
+  const chain = chainTo(tree, row);
+  let total = 0;
+  for (let i = 1; i < chain.length; i += 1) total += miles(chain[i - 1].travel.from, chain[i].travel.from);
+  const postmarks = postmarksTo(tree, row);
+  return { postmarks, towns: postmarks.length, miles: total };
+}
+
 // A journey row in the shape holidayCards.sentSummary reads.
 function childAsMail(row) {
   return { id: row.id, escrow_status: row.escrow_status, delivered_at: row.delivered_at, created_at: row.created_at,
@@ -504,7 +530,9 @@ async function sentViews(mails) {
     const row = tree.byId.get(mail.id);
     if (!row) continue;
     const view = holderView(tree, row);
-    out.set(mail.id, { journey: row.travel.journey, towns: view.towns, miles: view.miles, now_in: view.newest });
+    out.set(mail.id, { journey: row.travel.journey, towns: view.towns, miles: view.miles, now_in: view.newest,
+      // The postmarks on this card's envelope as it reached its person (its share picture, Part 7).
+      postmarks: postmarksTo(tree, row) });
   }
   return out;
 }
@@ -772,5 +800,5 @@ async function runArrivals(now = new Date()) {
 module.exports = {
   PLACES, ABROAD, NOTICE_TYPE, travelOn, loadTowns, matchTown, townById, searchTowns, nearestTown, stateCode, travelTown,
   townLabel, label, miles, stopOf, placeRowId, passOnDigest, journeyRows, journeyTree, chainTo, placesOf, passOnRefusal,
-  readerView, attachReaderView, previewView, sentViews, publicJourney, goalLine, reached, reachedTownOf, tellJourney, runArrivals, live,
+  readerView, attachReaderView, previewView, sentViews, linkView, publicJourney, goalLine, reached, reachedTownOf, tellJourney, runArrivals, live,
 };
