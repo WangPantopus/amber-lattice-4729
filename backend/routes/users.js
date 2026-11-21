@@ -2972,6 +2972,8 @@ router.get('/profile', verifyToken, async (req, res) => {
       },
       invite_progress: inviteProgress,
       guidance: guidanceFor(userData),
+      // The house on Today (utils/featureFlags.js `todayHouseEnabled`): the apps treat a missing key as off.
+      today_house: todayHouseEnabled(),
     });
   } catch (err) {
     logger.error('Profile fetch error', { error: err.message, userId: req.user.id });
@@ -2985,7 +2987,7 @@ router.get('/profile', verifyToken, async (req, res) => {
 // { "<card id>": { "times": <int>, "last_at": "<ISO time>" } }, so a card closed on one app stays closed on the others.
 // The profile above carries `guidance` = { enabled, new_account, seen }; both routes below answer { guidance }.
 // (Required here, not at the top: scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up.)
-const { guidanceCardsEnabled } = require('../utils/featureFlags');
+const { guidanceCardsEnabled, todayHouseEnabled } = require('../utils/featureFlags');
 const GUIDANCE_CARD_IDS = new Set([
   // First open of each screen.
   'welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments', 'tab_plans',
