@@ -175,6 +175,8 @@ export default function CardTable({
   reply = null,
   nextCard = null,
   sendMoment = null,
+  passOn = null,
+  journey = null,
   onShare,
   onClose,
   overlay,
@@ -207,6 +209,10 @@ export default function CardTable({
   nextCard?: { count: number; onOpen: () => void } | null;
   /** Sealing it by hand instead of opening it. */
   sendMoment?: SendMoment | null;
+  /** "Pass it on" (travelling card Part 4): beside "Turn it back" once the card is turned over; filled, or quiet after one. */
+  passOn?: (TableMenuItem & { quiet?: boolean }) | null;
+  /** "See its journey" (Part 4): the first quiet button once the card is turned over. */
+  journey?: TableMenuItem | null;
   onShare?: () => void;
   onClose: () => void;
   /** Sheets and dialogs that belong over the table. */
@@ -592,11 +598,16 @@ export default function CardTable({
   // a card, as on the iPhone and Android. On a reader's card (it has a ⋯ menu) "Share this card" is never in the row: it
   // keeps its corner button and its ⋯ line. The sender's own look at a card from Sent keeps it as its one quiet button.
   // The row's room is kept while any of them can be offered, so the card never moves when they show.
-  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || writeBack || sendBack || (quietShare && !menu.length));
+  const rowRoom = !sendMoment && !isLetter && Boolean(nextCard || journey || writeBack || sendBack || (quietShare && !menu.length));
   const quietButtons = ([
     nextCard && nextShown ? {
       key: 'next', full: `Open the next card (${nextCard.count} more)`, short: `Next card (${nextCard.count} more)`,
       spoken: `Open the next card, ${nextCard.count} more waiting`, testId: 'cardTableNextCard', onSelect: nextCard.onOpen,
+    } : null,
+    // A travelling card (Part 4): "See its journey" joins the row, before "Write back"; what doesn't fit is under ⋯.
+    journey && turnedOver ? {
+      key: 'journey', full: journey.label, short: journey.short || journey.label, spoken: journey.spoken || journey.label,
+      testId: 'cardTableJourney', onSelect: journey.onSelect,
     } : null,
     writeBack && turnedOver ? {
       key: 'write', full: writeBack.label, short: writeBack.short || writeBack.label, spoken: writeBack.spoken || writeBack.label,
@@ -933,6 +944,18 @@ export default function CardTable({
                 >
                   {primary || 'Turn it over'}
                 </button>
+                {/* "Pass it on" beside "Turn it back" (travelling card Part 4): filled, or quiet once it went to one person. */}
+                {passOn && turnedOver && !sendMoment && !ui.enlarged ? (
+                  <button
+                    type="button"
+                    className={passOn.quiet ? styles.primary : travelStyles.passOnFilled}
+                    data-ui
+                    data-testid="cardTablePassOn"
+                    onClick={() => { setMenuOpen(false); passOn.onSelect(); }}
+                  >
+                    {passOn.label}
+                  </button>
+                ) : null}
                 {printButton ? (
                   <button type="button" className={styles.primary} data-ui data-testid="cardTableReadInPrint" onClick={() => openPrint(printsReply ? 'reply' : 'card')}>Read it in print</button>
                 ) : null}

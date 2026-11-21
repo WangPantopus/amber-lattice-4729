@@ -3595,8 +3595,9 @@ router.put('/cards/town', verifyToken, cardSignatureLimiter, validate(travelTown
 /**
  * POST /api/mailbox/cards/:id/pass-on/preview  (the body of POST /cards/:id/pass-on)
  * Look it over for a pass-on: every check the pass-on runs, storing and sending nothing. { pass_on: { place, to_name,
- * by_email, by_link?, arrives_at, arrives_on, take_back_until, town } }. `town` is the sender's town as it goes on the
- * journey ("Tampa, FL"). A request whose card is already stored answers 409 CARD_REQUEST_SENT with it.
+ * by_email, by_link?, arrives_at, arrives_on, take_back_until, town, postmark } }. `town` is the sender's town as it
+ * goes on the journey ("Tampa, FL"); `postmark` the one this pass-on strikes ({ town, state, on }). A request whose card
+ * is already stored answers 409 CARD_REQUEST_SENT with it.
  */
 router.post('/cards/:id/pass-on/preview', verifyToken, validate(passOnSchema), async (req, res) => {
   if (!cardTravel.travelOn()) return travelRoutesOff(res);
@@ -3608,7 +3609,9 @@ router.post('/cards/:id/pass-on/preview', verifyToken, validate(passOnSchema), a
     const { card, toEmail, delivery } = checked.checked;
     return res.json({ pass_on: { place: checked.place, to_name: card.to_name, by_email: Boolean(toEmail),
       ...(card.by_link ? { by_link: true } : {}), arrives_at: toEmail || card.by_link ? null : delivery.delivered_at,
-      arrives_on: card.arrives_on || null, take_back_until: card.take_back_until || null, town: cardTravel.label(checked.town) } });
+      arrives_on: card.arrives_on || null, take_back_until: card.take_back_until || null, town: cardTravel.label(checked.town),
+      // The postmark this pass-on strikes (the town it leaves, today where its sender lives), for the sealing table.
+      postmark: { town: card.travel.from.town, state: card.travel.from.state ?? null, on: card.travel.from.on } } });
   } catch (err) {
     logger.error('Card pass-on preview error', { error: err.message, cardId: req.params.id, userId });
     return res.status(503).json({ error: 'Couldn’t check your card just now. Try again in a moment.', code: 'CARD_UNAVAILABLE' });
