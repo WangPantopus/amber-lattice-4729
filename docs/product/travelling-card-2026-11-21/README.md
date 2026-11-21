@@ -26,11 +26,11 @@ Nothing here is a second system. Each piece extends one that is built and on sta
 | A person's town | `Home.city` and `Home.state` for someone with a home; `User.city`, `User.state`, `User.zipcode` otherwise. |
 | Old app versions | Both phone apps ignore fields they don't know, so a travelling card opens as an ordinary card in a store build made before this. |
 
-## Decisions
+## Decided by the founder
 
-Defaults are what gets built unless the founder says otherwise.
+On November 21 the founder was shown these six decisions with their defaults and asked whether to start the build sessions with them. The answer: "Yes, start them". The six are final.
 
-| | Decision | Default |
+| | Decision | Decided |
 |---|---|---|
 | D1 | How many people one person may pass a card to | **Two.** With one, a card dies at the first person who does nothing. With two the journey is a tree, and the map shows its branches. |
 | D2 | First names on the journey page | **No.** Towns and dates only. |
@@ -240,4 +240,4 @@ The founder's own steps: try it on staging, promote `dev` to production, switch 
 - Recording the opening and sending it back.
 - A photo or voice greeting on a passed-on card, and "Help me write it" on its note.
 - A native map on the phones.
-- First names on the journey page (D2), unless the founder says yes.
+- First names on the journey page (D2).
