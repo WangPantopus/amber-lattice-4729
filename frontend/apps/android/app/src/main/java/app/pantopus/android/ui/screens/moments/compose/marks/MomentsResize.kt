@@ -264,17 +264,18 @@ internal fun ResizeTools(
 
 /**
  * The Post screen's still of a placed video: its first frame on the canvas at [placement] over the background, with the
- * [marks], filling this box cropped, as viewers will see it.
+ * [marks], filling this box cropped, as viewers will see it; TalkBack reads it as [spoken].
  */
 @Composable
 internal fun MomentPlacedStill(
     still: Bitmap,
     placement: MomentPlacement,
     marks: MomentMarks,
+    spoken: String,
     modifier: Modifier = Modifier,
 ) {
     val backdrop = remember(still) { MomentPlacementPainter.backdrop(still) }
-    Canvas(modifier = modifier.clipToBounds().clearAndSetSemantics {}) {
+    Canvas(modifier = modifier.clipToBounds().clearAndSetSemantics { contentDescription = spoken }) {
         val scale = max(size.width / MomentPlacement.CANVAS_WIDTH, size.height / MomentPlacement.CANVAS_HEIGHT)
         val width = MomentPlacement.CANVAS_WIDTH * scale
         val height = MomentPlacement.CANVAS_HEIGHT * scale

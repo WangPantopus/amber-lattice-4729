@@ -840,7 +840,7 @@ private fun VideoStill(
     }
     still?.let {
         if (placement != null) {
-            MomentPlacedStill(it, placement, marks, Modifier.fillMaxSize())
+            MomentPlacedStill(it, placement, marks, spoken = "Your video", modifier = Modifier.fillMaxSize())
             return@let
         }
         androidx.compose.foundation.Image(
