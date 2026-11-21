@@ -199,8 +199,7 @@ struct PlaceDashboardView: View {
                     onClose: { showSwitcher = false }
                 )
             )
-            .presentationDetentsFittingContentOnIPad([.medium, .large])
-            .presentationDragIndicator(.hidden)
+            .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .hidden)
         }
         .sheet(isPresented: $showsChanges) {
             if case let .loaded(intel) = viewModel.state {
