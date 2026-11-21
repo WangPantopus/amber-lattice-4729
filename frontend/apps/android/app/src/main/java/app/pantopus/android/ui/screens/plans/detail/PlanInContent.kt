@@ -4,20 +4,26 @@ package app.pantopus.android.ui.screens.plans.detail
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +52,7 @@ import app.pantopus.android.data.plans.takesKids
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PrimaryButton
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
+import app.pantopus.android.ui.screens.plans.bring.PlanBringClaimed
 import app.pantopus.android.ui.screens.plans.bring.PlanBringGuestCard
 import app.pantopus.android.ui.screens.plans.colors
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
@@ -62,13 +69,15 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Radii
 import app.pantopus.android.ui.theme.Spacing
+import kotlinx.coroutines.launch
 
 /**
  * J7: you're in. The exact place, the host's note, the people going and the group chat, only for people who are
  * in. [reveal] slides "You're in" up 8 dp and fades it in (300 to 450 ms of the reveal; a crossfade under Reduce
  * Motion).
  */
-@Suppress("LongParameterList")
+@OptIn(ExperimentalFoundationApi::class)
+@Suppress("LongParameterList", "LongMethod")
 @Composable
 internal fun ColumnScope.PlanInBody(
     plan: PlanDto,
@@ -88,15 +97,23 @@ internal fun ColumnScope.PlanInBody(
     onExtrasChanged: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    // "See what to bring" on the banner: while things are still open and this person has claimed none, a tap brings
+    // the bring list into view.
+    val bringCard = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    val seeBring =
+        plan.bring
+            ?.takeIf { bring != null && it.openCount > 0 && it.items.none { item -> item.claim?.mine == true } }
+            ?.let { list -> PlanSeeBring(list.openCount) { scope.launch { bringCard.bringIntoView() } } }
     if (plan.myRequest?.reconfirmNeeded == true) StillComingCard(plan, busy, onStillComing)
     if (plan.isOnline) {
         // Board Online: the kind and "Online", the title, when and "Online · hosted from Camas", then "You're in" and
         // the link's card. No place, no map, no directions (Plans step 3).
         PlanTitleBlock(plan)
-        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer, seeBring)
         PlanOnlineLinkCard(plan, hosting = false)
     } else {
-        InBanner(plan, reveal, reduceMotion, onChangeAnswer)
+        InBanner(plan, reveal, reduceMotion, onChangeAnswer, seeBring)
         InPlaceTitle(plan)
     }
     // Business track B2: "Paid $18.00" and "Receipt" under the title, once the guest paid for the spot.
@@ -123,6 +140,8 @@ internal fun ColumnScope.PlanInBody(
             onClaim = { bring.onClaim(it.id) },
             onGiveBack = { bring.onGiveBack(it.id) },
             onAdd = bring.onAdd,
+            claimed = bring.claimed?.let { PlanBringClaimed(it, plan.hostFirst) },
+            modifier = Modifier.bringIntoViewRequester(bringCard),
         )
     }
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -250,11 +269,13 @@ internal fun PlanFriendInviteRow(
 }
 
 @Composable
+@Suppress("CyclomaticComplexMethod")
 private fun InBanner(
     plan: PlanDto,
     reveal: Boolean,
     reduceMotion: Boolean,
     onChangeAnswer: (() -> Unit)? = null,
+    seeBring: PlanSeeBring? = null,
 ) {
     val progress = remember { Animatable(if (reveal) 0f else 1f) }
     LaunchedEffect(reveal) {
@@ -295,13 +316,50 @@ private fun InBanner(
                 alpha = progress.value
                 translationY = if (reduceMotion) 0f else (1f - progress.value) * 8.dp.toPx()
             },
+        footer = seeBring?.let { see -> { SeeBringRow(see) } },
     )
+}
+
+/** The banner's "See what to bring": how many things are still open, and the way to the bring list. */
+internal data class PlanSeeBring(
+    val open: Int,
+    val onClick: () -> Unit,
+)
+
+/** Under a hairline in "You're in": a bag, "See what to bring" and "{n} still open"; a tap goes to the bring list. */
+@Composable
+private fun SeeBringRow(see: PlanSeeBring) {
+    Column {
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).height(1.dp).background(PantopusColors.successLight))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clickable(role = Role.Button, onClick = see.onClick)
+                    .padding(horizontal = 14.dp, vertical = Spacing.s2)
+                    .testTag("plan.inBanner.bring"),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
+            PantopusIconImage(icon = PantopusIcon.ShoppingBag, contentDescription = null, size = 18.dp, tint = PantopusColors.primary600)
+            Text(
+                text = "See what to bring",
+                style = PantopusTextStyle.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PantopusColors.primary600,
+                modifier = Modifier.weight(1f),
+            )
+            Text(text = "${see.open} still open", style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
+        }
+    }
 }
 
 /** What a guest can do on the bring list (A8 item 2), and the line under it. */
 internal data class PlanBringActions(
     val busy: Boolean,
     val notice: String?,
+    /** What this person last said they'd bring on this visit ("Bread"); null: none. */
+    val claimed: String?,
     val onClaim: (String) -> Unit,
     val onGiveBack: (String) -> Unit,
     val onAdd: (String) -> Unit,

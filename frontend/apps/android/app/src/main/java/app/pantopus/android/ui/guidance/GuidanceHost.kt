@@ -314,6 +314,14 @@ class GuidanceViewModel
             action = if (setsPickupDay) GuidanceAction.SetPickupDay else REMINDER_ACTIONS[current.card.id]
         }
 
+        /**
+         * A link or a notification is opening another screen (an invitation's plan) under the card on screen: the card
+         * steps aside without counting as seen, and shows again on its own screen. A replay stays.
+         */
+        fun stepAside() {
+            if (showing?.replay == false) showing = null
+        }
+
         /** The Tips list: [card] again, which doesn't change its count. */
         fun replay(card: GuidanceCentre) {
             showing = GuidanceShowing(card, replay = true)
@@ -412,6 +420,7 @@ private fun rememberGuidanceCalm(viewModel: GuidanceViewModel): Boolean {
     LaunchedEffect(pendingLink) {
         if (pendingLink != null) {
             linkSettling = true
+            viewModel.stepAside()
         } else if (linkSettling) {
             delay(LINK_SETTLE_MS)
             linkSettling = false

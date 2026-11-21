@@ -423,6 +423,7 @@ import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
 import app.pantopus.android.ui.screens.place.verify.PhoneCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyStatusScreen
+import app.pantopus.android.ui.screens.plans.FirstPlanViewModel
 import app.pantopus.android.ui.screens.plans.PlansExternalRoutes
 import app.pantopus.android.ui.screens.plans.PlansGateViewModel
 import app.pantopus.android.ui.screens.plans.PlansRoutes
@@ -2689,11 +2690,25 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val namePrompt: NamePromptViewModel = hiltViewModel()
     val namePromptDeciding by namePrompt.deciding.collectAsStateWithLifecycle()
     val namePromptForm by namePrompt.form.collectAsStateWithLifecycle()
+    // A new account opens on the plan that brought the person, once: the notices and tip cards wait for the answer,
+    // and then for the person to leave the plan (a plan on top already holds them back).
+    val firstPlan: FirstPlanViewModel = hiltViewModel()
+    val firstPlanDeciding by firstPlan.deciding.collectAsStateWithLifecycle()
+    val firstPlanId by firstPlan.planId.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { firstPlan.evaluate() }
+    LaunchedEffect(firstPlanId) {
+        val id = firstPlanId ?: return@LaunchedEffect
+        // Over the first tab, so Back lands on the app's usual first screen. A link that is opening wins.
+        if (DeepLinkRouter.pending.value == null) navController.navigate(PlansRoutes.plan(id)) { launchSingleTop = true }
+        firstPlan.opened()
+    }
     val noticesMayShow =
         topRoute in NOTICE_ROUTES &&
             !(topRoute == PantopusRoute.Place.path && placeArrivalOpen) &&
             !namePromptDeciding &&
-            namePromptForm == null
+            namePromptForm == null &&
+            !firstPlanDeciding &&
+            firstPlanId == null
     val briefingNotice: BriefingNoticeViewModel = hiltViewModel()
     BriefingNotice(
         onManage = { navController.navigate(ChildRoutes.SETTINGS_NOTIFICATIONS) },
@@ -2710,7 +2725,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         briefingNoticeShowing != null ||
             (topRoute in NOTICE_ROUTES && !briefingNoticeChecked) ||
             namePromptDeciding ||
-            namePromptForm != null
+            namePromptForm != null ||
+            firstPlanDeciding ||
+            firstPlanId != null
     val drawerBusy = navDrawerState.isOpen || navDrawerState.isAnimationRunning
     SideEffect { guidance?.reportRoot(drawerOpen = drawerBusy, noticesBusy = guidanceNoticesBusy) }
 
