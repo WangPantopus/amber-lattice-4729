@@ -291,6 +291,10 @@ data class MailboxV2Item(
      * avatar-tap → public profile navigation in P17.
      */
     @Json(name = "sender_user_id") val senderUserId: String? = null,
+    /** The business a letter was sent as (`Mail.sender_entity_id`); null for a person's own letter and older ones. */
+    @Json(name = "sender_entity_id") val senderEntityId: String? = null,
+    /** The business name a letter carries (older business letters name the business only here). */
+    @Json(name = "sender_business_name") val senderBusinessName: String? = null,
     val `package`: JsonValue?,
     val packageInfo: JsonValue? = null,
     @Json(name = "timeline") val packageTimeline: JsonArrayValue = emptyList(),
