@@ -176,5 +176,7 @@ struct MomentsPlacedPhoto: View {
                 .offset(x: canvas.minX, y: canvas.minY)
         }
         .clipped()
+        // One element, so the label the Post screen gives it is read.
+        .accessibilityElement(children: .ignore)
     }
 }

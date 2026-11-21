@@ -30,7 +30,7 @@ final class MomentsMarking {
     private(set) var marks = MomentMarks()
     /// Where Done left the picture on the canvas (Resize, `+Resize`); nil: as taken.
     private(set) var placement: MomentPlacement?
-    /// While the editor is open: where the picture is being moved to, nil while it's at cover. Changed only by
+    /// While the editor is open: where the picture is being moved to, nil while it's at cover. Resize changes it through
     /// `place(_:)`, which moves the marks when the picture changes state.
     var editingPlacement: MomentPlacement?
     /// The placed canvas's background, read from the photo when the editor first opens on it.

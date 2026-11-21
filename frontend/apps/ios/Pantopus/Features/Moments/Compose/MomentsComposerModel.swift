@@ -428,6 +428,8 @@ extension MomentsComposerModel {
         let backdrop = marking.backdrop
         draft = .photo(base)
         marking.keep(marks, base: base, placement: placement, backdrop: backdrop)
+        // Done before the colours were read: the Post screen reads them again (the export reads them for itself).
+        if placement != nil, backdrop == nil { marking.sampleBackdrop(base) }
         if let placement {
             let export: @MainActor (URL) async throws -> MomentPreparedMedia = { folder in
                 try await MomentPlacementDrawing.export(base, at: placement, backdrop: backdrop, marks, into: folder)
