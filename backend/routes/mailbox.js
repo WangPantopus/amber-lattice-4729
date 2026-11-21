@@ -3583,6 +3583,7 @@ router.put('/cards/town', verifyToken, cardSignatureLimiter, validate(travelTown
       .update({ city: town.town, state: town.state, zipcode }).eq('id', userId);
     if (updateError) throw new Error(updateError.message);
     const shown = cardTravel.label(await cardTravel.travelTown(userId)) || cardTravel.label(town);
+    cardTravel.reachedTownOf(userId).catch(() => {});
     logger.info('Travelling card town kept', { userId });
     return res.json({ town: shown });
   } catch (err) {
@@ -3703,6 +3704,54 @@ router.post('/cards/:id/pass-on/take-back', verifyToken, async (req, res) => {
   } catch (err) {
     logger.error('Card pass-on take-back error', { error: err.message, mailId: id, userId });
     return res.status(503).json({ error: 'Couldn’t take your card back just now. Try again in a moment.', code: 'CARD_UNAVAILABLE' });
+  }
+});
+
+// The public journey routes: no sign-in, rate limited by network address as the card link page's routes are.
+const journeyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+  message: { error: 'Too many at once. Try again in a minute.', code: 'CARD_JOURNEY_LIMIT' },
+});
+
+/**
+ * GET /api/mailbox/cards/journeys
+ * Public: all cards this Christmas (D3): { states, of: 50, state_codes, travelling, miles, line: "All cards this
+ * Christmas: 31 of 50 states." }. Kept for five minutes.
+ */
+router.get('/cards/journeys', journeyLimiter, async (req, res) => {
+  if (!cardTravel.travelOn()) return travelRoutesOff(res);
+  try {
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.json({ goal: await cardTravel.goalLine() });
+  } catch (err) {
+    logger.error('Card journeys read error', { error: err.message });
+    return res.status(503).json({ error: 'Couldn’t load the journeys just now. Try again in a moment.', code: 'CARD_UNAVAILABLE' });
+  }
+});
+
+/**
+ * GET /api/mailbox/cards/journeys/:journey
+ * Public, no sign-in: one card's journey (services/cardTravel publicJourney): its picture, its stops as { town, state,
+ * lat, lon, on, from, holding } (`from`: the index of the stop it came from; `holding`: a town holding the card now),
+ * miles, towns, states, days and the goal line. Towns and dates only: never a name, address, note or id of a person or
+ * of mail. 404 when there is no such journey.
+ */
+router.get('/cards/journeys/:journey', journeyLimiter, async (req, res) => {
+  if (!cardTravel.travelOn()) return travelRoutesOff(res);
+  const notHere = () => res.status(404).json({ error: 'This journey isn’t here.', code: 'CARD_JOURNEY_NOT_FOUND' });
+  if (!UUID_REGEX.test(req.params.journey)) return notHere();
+  try {
+    const journey = await cardTravel.publicJourney(req.params.journey.toLowerCase());
+    if (!journey) return notHere();
+    res.set('Cache-Control', 'public, max-age=60');
+    return res.json({ journey });
+  } catch (err) {
+    logger.error('Card journey read error', { error: err.message });
+    return res.status(503).json({ error: 'Couldn’t load this journey just now. Try again in a moment.', code: 'CARD_UNAVAILABLE' });
   }
 });
 
@@ -5121,7 +5170,16 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
     // It arrives as the claimer's own letter, for them alone (Personal drawer, attention only), not as mail for
     // everyone at their Home. A Christmas card sealed until Christmas opens on Christmas morning where they live.
     const card = holidayCards.isCard(mail) ? mail.mail_extracted.card : null;
-
+    // A travelling card (card_travel) never comes back to someone it has already been to on its way.
+    if (card?.travel?.parent && cardTravel.travelOn()) {
+      const tree = cardTravel.journeyTree(await cardTravel.journeyRows(card.travel.journey));
+      const own = tree.byId.get(mail.id);
+      const heldBy = new Set((own ? cardTravel.chainTo(tree, own) : []).flatMap((row) => [row.sender_user_id, row.recipient_user_id])
+        .filter(Boolean).map(String));
+      if (heldBy.has(String(claimerId))) {
+        return res.status(409).json({ error: 'This card has already been to you. Send the link back so someone else can have it.', code: 'CARD_TRAVEL_BEEN_THERE' });
+      }
+    }
     let cardFields = {};
     if (card?.arrival === 'sealed_christmas') {
       const zone = (await mailDelivery.personTimeZone(claimerId)) || mailDelivery.FALLBACK_TIME_ZONE;
@@ -5203,6 +5261,8 @@ router.post('/claim/:mailId', verifyToken, async (req, res) => {
       } catch (notifErr) {
         logger.warn('Escrow claim notification failed', { error: notifErr.message, mailId });
       }
+      // A travelling card (card_travel) reached a town: its towns, and everyone who held it on the way hears.
+      if (card?.travel) await cardTravel.reached(mailId);
     })();
 
     return claimedAnswer();

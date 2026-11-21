@@ -171,6 +171,8 @@ const LAUNCH_NOTIFICATION_TYPE_FEATURES = {
   holiday_card_claimed: ['mailbox', 'holiday_cards'],
   holiday_card_expired: ['mailbox', 'holiday_cards'],
   holiday_card_email_failed: ['mailbox', 'holiday_cards'],
+  // 18. The travelling card: a card someone held reached another town (services/cardTravel).
+  holiday_card_travelled: ['mailbox', 'holiday_cards', 'card_table', 'card_travel'],
   // 11. The Pulse redesign: follow alerts, Helpful and thanks notices, offer requests and the
   // Ask reminder. The October 13 Pulse's reply and mention notices are not here.
   pulse_follow_reply: ['pulse_redesign'],
