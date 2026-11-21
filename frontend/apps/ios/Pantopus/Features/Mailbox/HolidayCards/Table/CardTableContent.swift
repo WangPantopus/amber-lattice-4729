@@ -72,3 +72,31 @@ enum CardMediaFrom: Equatable {
         }
     }
 }
+
+extension CardTableContent {
+    /// A card in Sent, as the other person gets it.
+    init(sent piece: MailSentPiece, from: String, mailedOn: String?) {
+        design = piece.card.design
+        number = piece.card.number
+        caption = piece.card.caption ?? ""
+        paper = piece.card.paper
+        table = piece.card.table
+        slug = piece.card.slug
+        year = piece.card.year
+        self.mailedOn = mailedOn
+        note = MailPieceModel.firstText(piece.note) ?? ""
+        fromName = from
+        toName = piece.byLink && piece.status != .claimed ? "Their name" : piece.toName
+        sealed = false
+        sealedUntil = nil
+        sealedInDays = ""
+        sealedDayCount = 0
+        signature = piece.card.signature
+        // Your own photo: never covered here.
+        photo = piece.card.photo.map {
+            CardPhoto(fileId: $0.fileId, width: $0.width, height: $0.height, alt: $0.alt, live: $0.live)
+        }
+        voice = piece.card.voice
+        mediaFrom = .sent(cardId: piece.id)
+    }
+}

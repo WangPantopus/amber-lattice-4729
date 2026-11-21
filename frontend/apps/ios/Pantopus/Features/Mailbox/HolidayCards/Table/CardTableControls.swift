@@ -222,6 +222,8 @@ struct CardTableControls: View {
             reservesSecondary: model.reservesSecondary || model.reservesNext,
             // Under a card: one row, two at most (the design check, Nov 17); after sealing, all three as before.
             oneRow: model.sending == nil,
+            passOn: model.passOnButton,
+            passOnFilled: model.travelButtons.passOnFilled,
             beside: model.printIsButton
                 ? CardTableMenuItem(title: CardTableBookmark.print.title, identifier: CardTableBookmark.print.identifier) {
                     model.bookmark = .print
@@ -258,6 +260,10 @@ struct CardTableAct: View {
     /// fit with their full words they take their short ones; if those don't fit either (the largest text), only the
     /// first shows. The rest are in the ⋯ menu.
     var oneRow = false
+    /// A travelling card's "Pass it on" beside the main one, filled; quiet ("Pass it on to one more") when not
+    /// `passOnFilled` (travelling card plan Part 4).
+    var passOn: CardTableMenuItem?
+    var passOnFilled = true
     /// A second full button beside the main one ("Read it in print" with larger text, plan Part 2).
     var beside: CardTableMenuItem?
     /// The hint is a link ("Read the verse", plan 6.2; "Read it in print", plan Part 2): its identifier and action.
@@ -268,11 +274,11 @@ struct CardTableAct: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            if let beside {
+            if beside != nil || passOn != nil {
                 // Side by side, or one under the other when they don't fit.
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { mainButtons(beside) }
-                    VStack(spacing: 8) { mainButtons(beside) }
+                    HStack(spacing: 10) { mainButtons }
+                    VStack(spacing: 8) { mainButtons }
                 }
             } else {
                 primaryButton
@@ -335,25 +341,38 @@ private extension CardTableAct {
             .accessibilityHidden(title == nil)
     }
 
-    /// The main button and the one beside it; where there's no main button (the open Duo), the other alone.
+    /// The main button and the ones beside it; where there's no main button (the open Duo), the others alone.
     @ViewBuilder
-    func mainButtons(_ beside: CardTableMenuItem) -> some View {
+    var mainButtons: some View {
         if title != nil {
             primaryButton
         }
-        glassButton(beside.title, identifier: beside.identifier, action: beside.action)
+        if let beside {
+            glassButton(beside.title, identifier: beside.identifier, action: beside.action)
+        }
+        if let passOn {
+            glassButton(passOn.title, identifier: passOn.identifier, filled: passOnFilled, action: passOn.action)
+                .accessibilityLabel(passOn.spoken ?? passOn.title)
+        }
     }
 
-    func glassButton(_ text: String, identifier: String, action: @escaping () -> Void) -> some View {
+    /// A glass button, or filled with cream (Pass it on).
+    func glassButton(_ text: String, identifier: String, filled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text)
                 .font(.system(size: primarySize, weight: .semibold))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(MailPaper.tableCream)
+                .foregroundStyle(filled ? MailPaper.tableSlipInk : MailPaper.tableCream)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)
-                .background { CardTableGlass(shape: Capsule()) }
+                .background {
+                    if filled {
+                        Capsule().fill(MailPaper.tableCream)
+                    } else {
+                        CardTableGlass(shape: Capsule())
+                    }
+                }
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

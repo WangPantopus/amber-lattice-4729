@@ -132,6 +132,8 @@ final class CardTableModel {
     var zoomedOnce = false
     /// "Send {first name} a card" (plan Part 3), set by the reader's page once the server says a card can go to them.
     var sendBack: CardTableMenuItem?
+    /// A travelling card's Pass it on and quiet row (travelling card plan Part 4), set by the reader's page.
+    var travelButtons = CardTableTravelButtons()
     /// "Write back to {first name}", or "You wrote back" (experience plan Part 3), set by the reader's page.
     var writeBack: CardTableMenuItem?
     /// "Open the next card (2 more)" (experience plan Part 4), set by the reader's page when the Mailbox list it came
