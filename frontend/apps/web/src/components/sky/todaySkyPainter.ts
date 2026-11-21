@@ -14,6 +14,7 @@
 import type { SkyDraw } from './SkyCanvas';
 import { hillY, mixColor, paintGroundShadow, paintLand, paintSkyGradient, paintSmokeVeil, rgba } from './skyLand';
 import { homeLeftReach, homeRightReach, homeWallHeight, type SkyHome, type SkyRoof, type TodayScene } from './todaySky';
+import { houseSpots, type HouseSpots } from './houseSpots';
 
 /** The frame being painted. */
 interface SkyFrame {
@@ -603,11 +604,13 @@ function paintChimneySmoke(ctx: CanvasRenderingContext2D, scene: TodayScene, x: 
 }
 
 /** A round tree and a pine beside the home; both lean with the wind. The round tree blossoms in spring, turns in autumn and is bare in winter. */
-function paintTrees(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene, house: string, x: number, y: number, time: number): void {
+function paintTrees(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene, house: string, x: number, y: number, time: number, larger = false): void {
   const { home, season, wind } = scene;
   const night = scene.moment.phase === 'night';
   const lean = wind.lean(time, !f.animate);
   const reach = homeRightReach(home);
+  // On the larger ground a tree that would cross the card's edge gives way, as the pine does past a garage.
+  if (larger && x + 11 + reach + 11 > f.w - 1) return;
   ctx.save();
   ctx.translate(x + 11 + reach, y + 2);
   ctx.rotate(lean);
@@ -650,7 +653,7 @@ function paintTrees(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScen
   ctx.restore();
   // Past a garage the pine needs more room; on a narrow card it gives way rather than crossing the edge.
   const pineX = x + 35 + reach;
-  if (home.garage !== 'none' && pineX + 9 > f.w - 2) return;
+  if ((larger || home.garage !== 'none') && pineX + 9 > f.w - 2) return;
   ctx.save();
   ctx.translate(pineX, y + 3);
   ctx.rotate(lean * 0.7);
@@ -730,8 +733,61 @@ function paintAir(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene,
   if (family === 'storm' && f.animate) paintLightning(ctx, f, time);
 }
 
-function paintHome(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene, time: number): void {
-  const { family, moment, home } = scene;
+const FLAG_RED = '#EF4444';
+const PALE = '#C7D2E8';
+
+/**
+ * The house on Today: a mailbox left of the bins (its red flag up while mail waits) and a white note on the door.
+ * In the card's own pixels, at the sizes the larger ground was drawn for. The post and box follow the horizon's
+ * colour as the house does; the flag and the note keep their own, with a thin outline in the house's colour by day.
+ */
+function paintObjects(ctx: CanvasRenderingContext2D, scene: TodayScene, spots: HouseSpots, house: string, night: boolean, shown: (key: string, on: boolean) => number): void {
+  const objects = scene.objects;
+  if (!objects) return;
+  const outline = (left: number, top: number, width: number, height: number) => {
+    if (night) return;
+    ctx.strokeStyle = house;
+    ctx.lineWidth = 0.75;
+    ctx.strokeRect(left, top, width, height);
+  };
+  const box = shown('mailbox', objects.mailbox);
+  if (box > 0) {
+    const [mx, my] = spots.mailbox.foot;
+    ctx.save();
+    ctx.globalAlpha = box;
+    // A dark silhouette by day, as the house is; after dark it is paler than the ground so it still reads.
+    ctx.fillStyle = night ? mixColor(house, PALE, 0.34) : house;
+    ctx.fillRect(mx - 1.5, my - 24, 3, 24);
+    ctx.fillStyle = night ? mixColor(house, PALE, 0.62) : mixColor(house, PALE, 0.1);
+    ctx.beginPath();
+    roundedRect(ctx, mx - 11, my - 36, 22, 12, 3.5);
+    ctx.fill();
+    const flag = shown('flag', objects.flagUp);
+    if (flag > 0) {
+      ctx.globalAlpha = box * flag;
+      ctx.fillRect(mx + 7.5, my - 49, 1.6, 13);
+      ctx.fillStyle = FLAG_RED;
+      ctx.fillRect(mx + 9.1, my - 49, 10, 6);
+      outline(mx + 9.1, my - 49, 10, 6);
+    }
+    ctx.restore();
+  } else {
+    shown('flag', false);
+  }
+  const note = shown('note', objects.note);
+  if (note > 0) {
+    const [nx, ny] = spots.note;
+    ctx.save();
+    ctx.globalAlpha = note;
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(nx - 5, ny - 4, 10, 8);
+    outline(nx - 5, ny - 4, 10, 8);
+    ctx.restore();
+  }
+}
+
+function paintHome(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene, time: number, spots: HouseSpots | null): void {
+  const { family, moment } = scene;
   const night = moment.phase === 'night';
   const snow = family === 'snow';
   if (snow) paintSnowGround(ctx, f, night);
@@ -746,21 +802,46 @@ function paintHome(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene
     door: lit ? rgba(WINDOW_GLOW, 0.55) : mixColor(bottom, INK, 0.55),
     garageDoor: (tone) => mixColor(tone, bottom, 0.18),
   };
-  const x = f.w * HOME_X;
-  const y = f.horizon + 7;
+  if (spots) {
+    // The house on Today: the same home, bins and trees, drawn larger about the door's foot. The trees measure
+    // the card's right edge from there, in the group's own units.
+    ctx.save();
+    ctx.translate(spots.x, spots.y);
+    ctx.scale(spots.scale, spots.scale);
+    paintGround(ctx, { ...f, w: (f.w - spots.x) / spots.scale }, scene, light, house, snow, 0, 0, time, true);
+    ctx.restore();
+    return;
+  }
+  paintGround(ctx, f, scene, light, house, snow, f.w * HOME_X, f.horizon + 7, time, false);
+}
+
+/** The home, the bins, the chimney's smoke and the trees, about the door's foot at (x, y). */
+function paintGround(ctx: CanvasRenderingContext2D, f: SkyFrame, scene: TodayScene, light: HomeLight, house: string, snow: boolean, x: number, y: number, time: number, larger: boolean): void {
+  const { home } = scene;
   if (home.kind === 'townhouse') paintTownhouses(ctx, home, light, house, x, y);
   else if (home.kind === 'apartment') paintApartment(ctx, light, house, x, y);
   else if (home.kind === 'mobile') paintMobileHome(ctx, light, house, x, y);
   else paintHouse(ctx, home, light, house, snow, x, y);
   if (scene.bins.length) paintBins(ctx, scene, light, house, x, y);
   if (scene.cold && f.animate && home.chimney) paintChimneySmoke(ctx, scene, x, y, time);
-  paintTrees(ctx, f, scene, house, x, y, time);
+  paintTrees(ctx, f, scene, house, x, y, time, larger);
 }
 
 /** One card's painter: the sun or moon rises into place once, when the card first paints. */
 export function todaySkyPainter(): SkyDraw<TodayScene> {
   let firstFrame = NaN;
+  // When each thing on the larger house first showed: it fades in over 300 ms (at once without motion).
+  const since: Record<string, number> = {};
   return (ctx, w, H, _hour, t, scene, seeds, animate) => {
+    const shown = (key: string, on: boolean): number => {
+      if (!on) {
+        delete since[key];
+        return 0;
+      }
+      if (!animate) return 1;
+      since[key] ??= t;
+      return Math.min(1, (t - since[key]) / 300);
+    };
     const horizon = H * HORIZON;
     const s = scene.colors;
     const f: SkyFrame = { w, H, s, horizon, animate };
@@ -774,9 +855,17 @@ export function todaySkyPainter(): SkyDraw<TodayScene> {
       paintSkyGradient(ctx, w, H, horizon, s);
       paintAir(ctx, f, scene, time, rise);
       if (scene.smoke > 0) paintSmokeVeil(ctx, w, horizon, scene.smoke);
-      paintLand(ctx, w, H, horizon, s, scene.dark, { homes: scene.lights, cells: false }, HOME_X, seeds, animate ? t : 0, animate);
-      paintHome(ctx, f, scene, time);
+      const spots = scene.objects ? houseSpots(w, H, scene) : null;
+      paintLand(ctx, w, H, horizon, s, scene.dark, { homes: scene.lights, cells: false }, spots ? spots.x / w : HOME_X, seeds, animate ? t : 0, animate);
+      paintHome(ctx, f, scene, time, spots);
       paintGroundShadow(ctx, w, H, horizon);
+      // In front of the ground's shadow, so the flag and the note keep their own colours.
+      if (spots) {
+        const night = scene.moment.phase === 'night';
+        const bottom = scene.colors[2];
+        const house = scene.family === 'snow' ? (night ? '#2C3850' : '#5E7088') : mixColor(bottom, INK, night ? 0.75 : 0.72);
+        paintObjects(ctx, scene, spots, house, night, shown);
+      }
       // Fog hugs the ground, in front of the home and below the reading.
       if (scene.family === 'fog') paintFog(ctx, f, scene.moment.phase === 'night', time);
       if (scene.frost) paintFrost(ctx, f);

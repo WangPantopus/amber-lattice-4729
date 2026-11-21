@@ -39,7 +39,7 @@ export function isRecentMove(moveInDate: string | null | undefined, now = new Da
 export type JustMovedStepId = 'pickup' | 'mail' | 'money' | 'civic' | 'block';
 
 export const JUST_MOVED_STEPS: { id: JustMovedStepId; icon: LucideIcon; label: string; payoff: string; href: string }[] = [
-  { id: 'pickup', icon: Trash2, label: 'Set your pickup day', payoff: 'Reminders the night before, every week', href: '/app/place/today' },
+  { id: 'pickup', icon: Trash2, label: 'Set your pickup day', payoff: 'Reminders the night before, every week', href: '/app/place/today#pickup-schedule' },
   // Launch cut #10 (Mailbox): no mail step while the mailbox is hidden.
   ...(launchFeatures.mailbox ? [{ id: 'mail' as const, icon: Mailbox, label: "Send back the previous resident's mail", payoff: 'One tap returns it; yours gets filed', href: '/app/mailbox/settings/mail-day' }] : []),
   { id: 'money', icon: Zap, label: 'Utilities, rebates, and rates', payoff: 'What this address qualifies for, and when taxes are due', href: '/app/place/money' },
