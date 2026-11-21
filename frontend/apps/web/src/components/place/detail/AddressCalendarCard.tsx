@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -27,6 +27,7 @@ import {
   School,
   Vote,
   Info,
+  CircleCheck,
 } from 'lucide-react';
 import * as api from '@pantopus/api';
 import type { PickupWeekday } from '@pantopus/api';
@@ -34,6 +35,9 @@ import type { PlaceAddressCalendarData, PlaceCalendarEvent, PlaceCalendarKind, P
 import { queryKeys } from '@/lib/query-keys';
 import { toast } from '@/components/ui/toast-store';
 import { IconTile } from '@/components/archetypes/place';
+import {
+  PICKUP_EDITOR_HASH, PICKUP_KINDS, eventKey, nextDateOn, nextPickup, pickupSavedTitle, startingCollections, takePickupLight,
+} from './pickupSaved';
 
 const KIND_ICON: Record<PlaceCalendarKind, LucideIcon> = {
   garbage: Trash2,
@@ -63,7 +67,13 @@ const WEEKDAYS: { id: PickupWeekday; label: string }[] = [
   { id: 'SU', label: 'Sun' },
 ];
 
-const PICKUP_KINDS: PlaceCalendarKind[] = ['garbage', 'recycling', 'yard_waste', 'bulk_pickup'];
+// How long the next pickup's entry stays lit after a save, or after "See it in Today".
+const LIT_MS = 3000;
+const LIT_TICK_MS = 250;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
 
 // Same wording as the apps' holiday line.
 function holidayMoveLine(e: PlaceCalendarEvent): string | null {
@@ -78,16 +88,27 @@ function whenLabel(e: PlaceCalendarEvent): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function EventRow({ e }: { e: PlaceCalendarEvent }) {
+interface EventRowProps {
+  e: PlaceCalendarEvent;
+  /** A pickup entry, for someone who may change the schedule: a tap opens the pickup editor. */
+  onOpen?: () => void;
+  /** The id of the words a screen reader adds to a tappable entry. */
+  hintId?: string;
+  /** The next pickup, lit for a moment after a save or "See it in Today". */
+  lit?: boolean;
+  rowRef?: (el: HTMLLIElement | null) => void;
+}
+
+function EventRow({ e, onOpen, hintId, lit = false, rowRef }: EventRowProps) {
   const Icon = KIND_ICON[e.kind] ?? CalendarDays;
   const soon = e.days_until <= e.lead_days;
-  return (
-    <li className="flex items-start gap-3 py-2.5">
-      <IconTile icon={Icon} tone={soon ? 'home' : 'muted'} size={32} />
+  const body = (
+    <>
+      <IconTile icon={Icon} tone={soon || lit ? 'home' : 'muted'} size={32} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-[14.5px] font-semibold text-app-text truncate">{e.title}</span>
-          <span className={`shrink-0 text-[12.5px] font-semibold tabular-nums ${soon ? 'text-app-home' : 'text-app-text-secondary'}`}>{whenLabel(e)}</span>
+          <span className={`shrink-0 text-[12.5px] font-semibold tabular-nums ${soon || lit ? 'text-app-home' : 'text-app-text-secondary'}`}>{whenLabel(e)}</span>
         </div>
         {e.detail ? <p className="text-[12.5px] leading-[17px] text-app-text-secondary mt-0.5">{e.detail}</p> : null}
         {holidayMoveLine(e) ? <p className="text-[12.5px] leading-[17px] text-app-text-secondary mt-0.5">{holidayMoveLine(e)}</p> : null}
@@ -96,6 +117,26 @@ function EventRow({ e }: { e: PlaceCalendarEvent }) {
           {e.confidence === 'unverified' ? ' · unconfirmed, please double-check' : ''}
         </p>
       </div>
+    </>
+  );
+  // The lit entry's green reaches a little past the text, as on the phones; it fades in and out unless
+  // the person asked for less motion.
+  const shape = `flex items-start gap-3 rounded-xl py-2.5 -mx-2 px-2 w-[calc(100%+1rem)] transition-colors duration-500 motion-reduce:transition-none ${lit ? 'bg-app-success-bg' : ''}`;
+  return (
+    <li ref={rowRef} data-lit={lit ? 'true' : undefined} className="scroll-mt-24">
+      {onOpen ? (
+        <button
+          type="button"
+          data-testid={`pickup.entry.${e.date}`}
+          aria-describedby={hintId}
+          onClick={onOpen}
+          className={`${shape} text-left ${lit ? '' : 'hover:bg-app-hover'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500`}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={shape}>{body}</div>
+      )}
     </li>
   );
 }
@@ -103,21 +144,30 @@ function EventRow({ e }: { e: PlaceCalendarEvent }) {
 export interface AddressCalendarCardProps {
   homeId: string | null;
   data: PlaceAddressCalendarData;
+  /**
+   * The card on the Today tab. A saved schedule's green box has no button there: the next pickup's entry is
+   * scrolled into view and lit instead, as it is when "See it in Today" brings the person here.
+   */
+  onToday?: boolean;
+  /** Place's card: the green box's "See it in Today". Left out, the box has no button. */
+  onSeeInToday?: () => void;
 }
 
-export default function AddressCalendarCard({ homeId, data }: AddressCalendarCardProps) {
-  return <HouseholdCalendar key={homeId ?? 'preview'} homeId={homeId} data={data} />;
+export default function AddressCalendarCard({ homeId, ...rest }: AddressCalendarCardProps) {
+  return <HouseholdCalendar key={homeId ?? 'preview'} homeId={homeId} {...rest} />;
 }
 
-function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
+function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday }: AddressCalendarCardProps) {
   const queryClient = useQueryClient();
   const [confirmed, setConfirmed] = useState<PlaceAddressCalendarData | null>(null);
   useEffect(() => { setConfirmed(null); }, [data]);
   const calendar = confirmed ?? data;
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
-  const [picking, setPicking] = useState(data.needs_pickup_day);
-  const [collections, setCollections] = useState<PickupCollection[]>(data.pickup_schedule?.collections ?? []);
+  // Place's card opens on the editor while the home has no schedule; the Today tab's stays a list with
+  // "Pickup schedule" one tap away.
+  const [picking, setPicking] = useState(data.needs_pickup_day && !onToday);
+  const [collections, setCollections] = useState<PickupCollection[]>(() => startingCollections(data));
   // The schedule this form started from. A save sends it back, so a change
   // saved meanwhile on another device is not silently undone.
   const [openedVersion, setOpenedVersion] = useState(data.pickup_version);
@@ -125,6 +175,21 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
   // A collection's end date when its first date field got focus. Typing a date passes other dates
   // on the way ("12/10" before "12/01"), so the end date follows the start from there.
   const untilAtFocus = useRef<{ kind: PickupCollection['kind']; until: string | null } | null>(null);
+  // Start dates the editor filled in from a chosen weekday. Right for "every week" on any such day; for any other
+  // pattern the date says which week or month, so a filled-in one is taken back and the person gives the real one.
+  const filledStart = useRef(new Set<PickupCollection['kind']>());
+  // After a save that sets a schedule: the green box's title, until the person leaves the screen.
+  const [savedTitle, setSavedTitle] = useState<string | null>(null);
+  // Read once by a screen reader when the box appears.
+  const [announce, setAnnounce] = useState('');
+  // The entry lit for a moment (its list key), and a count that asks for it to be scrolled into view.
+  const [lit, setLit] = useState<string | null>(null);
+  const [showLit, setShowLit] = useState(0);
+  const [showEditor, setShowEditor] = useState(0);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const litRef = useRef<HTMLLIElement | null>(null);
+  const entryHintId = useId();
 
   const upcoming = calendar.upcoming ?? [];
   // A home whose pickups still need a day hears how to start them, as in the apps.
@@ -142,6 +207,65 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
   const valid = collections.length > 0 && collections.every(row => row.anchor_date
     && (row.frequency !== 'weekly' || row.weekdays.length > 0));
 
+  const lightNextPickup = (events: PlaceCalendarEvent[]) => {
+    const next = nextPickup(events);
+    setLit(next ? eventKey(next) : null);
+    setShowLit((n) => n + 1);
+  };
+  // The editor, opened by a pickup entry, the tip card's "Set pickup day", or "Pickup schedule".
+  const openEditor = () => {
+    setCollections(startingCollections(calendar));
+    filledStart.current.clear();
+    setOpenedVersion(calendar.pickup_version);
+    setError(null);
+    setPicking(true);
+    setShowEditor((n) => n + 1);
+  };
+
+  // Brought here by "See it in Today", or by the tip card's "Set pickup day" (a link ending #pickup-schedule).
+  const arrived = useRef(false);
+  useEffect(() => {
+    if (arrived.current) return;
+    arrived.current = true;
+    if (onToday && takePickupLight()) lightNextPickup(data.upcoming ?? []);
+    if (homeId && typeof window !== 'undefined' && window.location.hash === PICKUP_EDITOR_HASH) {
+      setPicking(true);
+      setShowEditor((n) => n + 1);
+      // Used once: a reload shows the page as it is, not the editor again.
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    }
+    // Once, when the card first shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!showEditor) return;
+    const el = editorRef.current;
+    if (!el) return;
+    el.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    el.focus({ preventScroll: true });
+  }, [showEditor]);
+  // The lit entry (the Today tab), or the card with its box (Place), comes into view; the light goes out again.
+  useEffect(() => {
+    if (!showLit) return;
+    // Place: the card's top, so the box and the dates under it clear the phone's bottom bar.
+    const target = onToday ? litRef.current ?? cardRef.current : cardRef.current;
+    target?.scrollIntoView?.({ block: onToday ? 'center' : 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    // About three seconds of being seen: a card over the page (a first-visit tip) or the scroll on the way
+    // to the entry doesn't use the time up.
+    let seen = 0;
+    const timer = window.setInterval(() => {
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const at = litRef.current?.getBoundingClientRect();
+      if (at && (at.bottom < 0 || at.top > window.innerHeight)) return;
+      seen += LIT_TICK_MS;
+      if (seen < LIT_MS) return;
+      window.clearInterval(timer);
+      setLit(null);
+      setAnnounce('');
+    }, LIT_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [showLit, onToday]);
+
   const save = async (reset = false) => {
     if (!homeId || busy.current || (!reset && !valid)) return;
     busy.current = true;
@@ -155,7 +279,16 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
       setConfirmed(response.calendar);
       setCollections(response.calendar.pickup_schedule?.collections ?? []);
       setOpenedVersion(response.calendar.pickup_version);
-      toast.success(reset ? 'Household pickup schedule cleared.' : 'Pickup schedule saved to your household calendar.');
+      filledStart.current.clear();
+      // A saved schedule answers with the green box above the dates; a cleared one with the toast as before.
+      const title = reset ? null : pickupSavedTitle(response.calendar.pickup_schedule?.collections ?? collections);
+      setSavedTitle(title);
+      setAnnounce(title ?? '');
+      if (title) lightNextPickup(response.calendar.upcoming ?? []);
+      else {
+        setLit(null);
+        toast.success(reset ? 'Household pickup schedule cleared.' : 'Pickup schedule saved to your household calendar.');
+      }
       setPicking(false);
       void queryClient.invalidateQueries({ queryKey: queryKeys.placeIntelligence(homeId) });
       void queryClient.invalidateQueries({ queryKey: ['household-calendar', homeId] });
@@ -179,12 +312,13 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
   };
 
   return (
-    <div className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4">
+    <div ref={cardRef} className="bg-app-surface border border-app-border rounded-2xl shadow-sm p-4 scroll-mt-40">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-app-text-secondary">Next {data.window_days} days at this address</span>
         {homeId ? (
           <button type="button" disabled={saving} onClick={() => {
-            setCollections(calendar.pickup_schedule?.collections ?? []);
+            setCollections(startingCollections(calendar));
+            filledStart.current.clear();
             setOpenedVersion(calendar.pickup_version);
             setError(null);
             setPicking((p) => !p);
@@ -195,7 +329,7 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
       </div>
 
       {picking && homeId ? (
-        <div className="mt-2 mb-3 rounded-xl bg-app-surface-sunken p-3">
+        <div ref={editorRef} tabIndex={-1} className="mt-2 mb-3 rounded-xl bg-app-surface-sunken p-3 scroll-mt-40 focus:outline-none">
           <p className="text-[13px] text-app-text-strong mb-2">Choose the collections your household uses.</p>
           {(['garbage', 'recycling', 'yard_waste', 'bulk_pickup'] as const).map(kind => {
             const row = collections.find(item => item.kind === kind);
@@ -211,9 +345,10 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
                 <label className="block text-[13px]">{label} repeats
                   <select aria-label={`${label} repeats`} value={pattern} onChange={e => {
                     const value = e.target.value;
-                    update(kind, value.startsWith('weekly-') ? { frequency: 'weekly', interval: Number(value.slice(7)) }
-                      : value.startsWith('monthly-') ? { frequency: 'monthly', interval: row.frequency === 'monthly' ? row.interval : 1, monthly_mode: value.slice(8) as PickupCollection['monthly_mode'] }
-                      : { frequency: 'once', interval: 1, until_date: null });
+                    const takeBack = value !== 'weekly-1' && filledStart.current.delete(kind) ? { anchor_date: '' } : {};
+                    update(kind, value.startsWith('weekly-') ? { frequency: 'weekly', interval: Number(value.slice(7)), ...takeBack }
+                      : value.startsWith('monthly-') ? { frequency: 'monthly', interval: row.frequency === 'monthly' ? row.interval : 1, monthly_mode: value.slice(8) as PickupCollection['monthly_mode'], ...takeBack }
+                      : { frequency: 'once', interval: 1, until_date: null, ...takeBack });
                   }} className="mt-1 w-full rounded-lg border border-app-border bg-app-surface p-2">
                     {[1, 2, 3, 4].map(n => <option key={n} value={`weekly-${n}`}>{n === 1 ? 'Every week' : `Every ${n} weeks`}</option>)}
                     <option value="monthly-day_of_month">Monthly on this date</option>
@@ -229,11 +364,20 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
                 </label>}
                 {row.frequency === 'weekly' && <div className="flex flex-wrap gap-1.5" aria-label={`${label} days`}>
                   {WEEKDAYS.map(day => <button key={day.id} type="button" aria-label={`${label} ${day.label}`} aria-pressed={row.weekdays.includes(day.id)}
-                    onClick={() => update(kind, { weekdays: row.weekdays.includes(day.id) ? row.weekdays.filter(d => d !== day.id) : [...row.weekdays, day.id] })}
+                    onClick={() => {
+                      const weekdays = row.weekdays.includes(day.id) ? row.weekdays.filter(d => d !== day.id) : [...row.weekdays, day.id];
+                      // Every week: a chosen day fills an empty start date with the next such day. A date filled in this
+                      // way follows the chosen days (the server takes only a start date on one of them) until one is typed.
+                      const fill = row.interval === 1 && (!row.anchor_date || filledStart.current.has(kind));
+                      if (!fill) { update(kind, { weekdays }); return; }
+                      const first = weekdays.map(d => nextDateOn(d, calendar.today)).sort()[0] ?? '';
+                      if (first) filledStart.current.add(kind); else filledStart.current.delete(kind);
+                      update(kind, { weekdays, anchor_date: first });
+                    }}
                     className="px-3 py-1.5 rounded-lg border border-app-border bg-app-surface text-[13px]">{day.label}{row.weekdays.includes(day.id) ? ' ✓' : ''}</button>)}
                 </div>}
                 <label className="block text-[13px]">{row.frequency === 'once' ? `${label} collection date` : `${label} first collection date`}
-                  <input aria-label={`${label} collection date`} type="date" value={row.anchor_date} onChange={e => moveStart(row, e.target.value)}
+                  <input aria-label={`${label} collection date`} type="date" value={row.anchor_date} onChange={e => { filledStart.current.delete(kind); moveStart(row, e.target.value); }}
                     onFocus={() => { untilAtFocus.current = { kind, until: row.until_date ?? null }; }} onBlur={() => { untilAtFocus.current = null; }}
                     className="mt-1 w-full rounded-lg border border-app-border bg-app-surface p-2" />
                 </label>
@@ -255,6 +399,26 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
         </div>
       ) : null}
 
+      {/* Read once when a schedule is saved; the box below is what the eye sees. */}
+      <p role="status" className="sr-only">{announce}</p>
+      {savedTitle && !picking ? (
+        <div data-testid="pickup.saved" className="mt-2 mb-2 rounded-xl border border-app-success-light bg-app-success-bg p-3.5 scroll-mt-24">
+          <div className="flex items-start gap-2.5">
+            <CircleCheck size={20} strokeWidth={2} aria-hidden className="shrink-0 mt-0.5 text-app-success" />
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold leading-5 text-app-success">{savedTitle}</p>
+              <p className="text-[13px] leading-[18px] text-app-success mt-0.5">People in this home can see it.</p>
+            </div>
+          </div>
+          {onSeeInToday && !onToday ? (
+            <button type="button" data-testid="pickup.saved.seeToday" onClick={onSeeInToday}
+              className="mt-3 w-full rounded-lg bg-primary-600 px-3 py-2.5 text-white text-[14px] font-semibold hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">
+              See it in Today
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {upcoming.length === 0 ? (
         <div className="flex items-start gap-2.5 py-3">
           <Info size={16} strokeWidth={2} className="shrink-0 mt-0.5 text-app-text-muted" />
@@ -263,10 +427,22 @@ function HouseholdCalendar({ homeId, data }: AddressCalendarCardProps) {
       ) : (
         <>
           {setupMessage ? <p className="text-[13.5px] text-app-text-secondary leading-[19px] py-2">{setupMessage}</p> : null}
+          {homeId ? <span id={entryHintId} hidden>Opens the pickup schedule</span> : null}
           <ul className="divide-y divide-app-border-subtle">
-            {upcoming.map((e) => (
-              <EventRow key={`${e.rule_id}:${e.date}`} e={e} />
-            ))}
+            {upcoming.map((e) => {
+              const key = eventKey(e);
+              const isLit = lit === key;
+              return (
+                <EventRow
+                  key={key}
+                  e={e}
+                  lit={isLit}
+                  rowRef={isLit ? (el) => { litRef.current = el; } : undefined}
+                  hintId={entryHintId}
+                  onOpen={homeId && PICKUP_KINDS.includes(e.kind) ? openEditor : undefined}
+                />
+              );
+            })}
           </ul>
         </>
       )}

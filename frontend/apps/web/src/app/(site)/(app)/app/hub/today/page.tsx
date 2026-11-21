@@ -34,6 +34,8 @@ import BallotTodaySection, { useBallotToday } from '@/components/ballot/BallotTo
 import { claimInReviewNote, claimsInReview, myClaimsQuery } from '@/lib/myHomes';
 import { VerifyBanner } from '@/components/archetypes/place';
 import TodayDetail from '@/components/place/detail/TodayDetail';
+import AddressCalendarCard from '@/components/place/detail/AddressCalendarCard';
+import { TODAY_COMING_UP_ID } from '@/components/place/detail/pickupSaved';
 import SkyCard from '@/components/sky/SkyCard';
 import type { TodaySkyInput } from '@/components/sky/todaySky';
 import { claimWaitingLabel } from '@/components/homes/ClaimApprovalChecklist';
@@ -244,6 +246,17 @@ export default function HubTodayPage() {
   const homeType = location?.source === 'primary_home' && primaryHome?.role_base !== 'guest' && primaryHome?.role_base !== 'service_provider'
     ? primaryHome?.home_type
     : null;
+  // Coming up at home (JOURNEYS, 2026-11-21): your home's dates for the next two weeks, in the card Place's Today
+  // page shows, read through the household's own endpoint (a refusal leaves the section out). A saved pickup
+  // schedule's "See it in Today" lands here.
+  const calendarHomeId = briefing && !areaView ? primaryHome?.id ?? null : null;
+  const homeCalendar = useQuery({
+    queryKey: ['household-calendar', calendarHomeId],
+    queryFn: () => api.getAddressCalendar(calendarHomeId as string),
+    enabled: hasToken && !!calendarHomeId,
+    staleTime: 0,
+    retry: false,
+  });
   const sky = useMemo<TodaySkyInput | null>(() => (weather ? {
     condition: weather.condition_code,
     tempF: weather.current_temp_f,
@@ -282,7 +295,7 @@ export default function HubTodayPage() {
     setRefreshing(true);
     try {
       await Promise.all([query.refetch(), claim ? claimTodayQuery.refetch() : null, areaView ? areaQuery.refetch() : null,
-        aroundData ? around.refetch() : null]);
+        aroundData ? around.refetch() : null, calendarHomeId ? homeCalendar.refetch() : null]);
     } finally { setRefreshing(false); }
   };
 
@@ -539,6 +552,14 @@ export default function HubTodayPage() {
             {/* Christmas cards (TABCARD 2a): the countdown, under the sky and what needs you (ballot, alerts), above
                 the rest of the day. Shown once hydrated: it goes by this browser's date. */}
             {hydrated ? <ChristmasCountdown /> : null}
+
+            {/* Coming up at home: the household's next two weeks, with the pickup schedule one tap away */}
+            {calendarHomeId && homeCalendar.data?.calendar ? (
+              <section id={TODAY_COMING_UP_ID} aria-labelledby="today-coming-up" className="scroll-mt-24">
+                <h2 id="today-coming-up" className="mb-2 px-1 text-base font-bold text-app-text">Coming up at home</h2>
+                <AddressCalendarCard homeId={calendarHomeId} data={homeCalendar.data.calendar} onToday />
+              </section>
+            ) : null}
 
             {/* Seasonal tip — only when the ranked signals did not already
                 surface it as a card (they usually do; showing both read as

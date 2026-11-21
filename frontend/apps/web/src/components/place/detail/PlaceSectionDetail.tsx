@@ -297,7 +297,7 @@ export default function PlaceSectionDetail({ section }: { section: string }) {
 
   return (
     <DetailShell section={section} hidden={hidden}>
-      {meta.group === 'today' && <TodayDetail intelligence={intelligence} homeId={homeId} />}
+      {meta.group === 'today' && <TodayDetail intelligence={intelligence} homeId={homeId} todayShowsThisHome={!!homeId && homeId === homeQuery.data?.home?.id} />}
       {meta.group === 'your_home' && <YourHomeDetail intelligence={intelligence} homeId={homeId} />}
       {meta.group === 'risk_readiness' && <RiskDetail intelligence={intelligence} homeId={homeId} />}
       {meta.group === 'your_block' && <BlockDetail intelligence={intelligence} homeId={homeId} />}

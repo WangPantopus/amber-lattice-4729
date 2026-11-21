@@ -33,6 +33,7 @@ import {
   placeSavedCard, pointerById, pulseCard, setUpHomeCard, todayCard, verifiedCard, verifyReminderCard, welcomeCard,
   type CentreCardContent, type PointerContent,
 } from './cards';
+import { PICKUP_EDITOR_HASH } from '@/components/place/detail/pickupSaved';
 import GuidanceCard from './GuidanceCard';
 import GuidancePointer from './GuidancePointer';
 import { currentScreen, screenForPath, subscribeScreen, type GuidanceScreenReport } from './screens';
@@ -135,7 +136,7 @@ function centreCardById(id: string, screen: GuidanceScreenReport, computer: bool
     case 'tab_today': return todayCard({ aroundYou: !!findAnchor('todayHalfToggle') });
     case 'tab_mail': return mailCard({ letters: launchFeatures.mailExtras });
     case 'tab_pulse': return pulseCard();
-    case 'done_home_setup': return homeSetUpCard();
+    case 'done_home_setup': return homeSetUpCard({ needsPickupDay: !!screen.facts.home?.needsPickupDay });
     case 'done_verified': return verifiedCard({ mailbox: launchFeatures.mailbox });
     case 'done_first_post': return firstPostCard();
     case 'done_connected': return connectedCard();
@@ -177,7 +178,7 @@ function afterActionCard(userId: string, { screen, hasPosted, members, connected
   const fresh = (id: string) => !isSeen(userId, id);
   switch (screen.name) {
     case 'place':
-      if (f.home && !f.invited && fresh('done_home_setup')) return homeSetUpCard();
+      if (f.home && !f.invited && fresh('done_home_setup')) return homeSetUpCard({ needsPickupDay: !!f.home.needsPickupDay });
       if (f.home?.verified && fresh('done_verified')) return verifiedCard({ mailbox: launchFeatures.mailbox });
       if (f.home && members !== undefined && members >= 2 && fresh('done_household')) return householdCard();
       return null;
@@ -374,7 +375,7 @@ export default function GuidanceHost({
     if (oneShownThisOpen()) return null;
     // Right after doing something: not held back by a card shown earlier on this visit.
     const done = eligible ? afterActionCard(userId, context) : null;
-    if (done) return { kind: 'card', card: done };
+    if (done) return { kind: 'card', card: done, facts: report.facts };
     if (visit.current.shown) return null;
     // Introductions: older accounts too (none is switched on yet).
     const intro = ACTIVE_INTRODUCTIONS.find((id) => !isSeen(userId, id));
@@ -428,7 +429,7 @@ export default function GuidanceHost({
   }, [active, pathname]);
 
   // Every way a card closes counts as seen, except a replay from "Tips for each screen".
-  // A reminder's button also opens its next step.
+  // A reminder's button also opens its next step, and so does “Set pickup day” on “Your home is set up”.
   const runAction = useCallback((card: CentreCardContent, facts: GuidanceScreenReport['facts'] | undefined) => {
     const homeId = facts?.home?.id;
     switch (card.action) {
@@ -448,6 +449,12 @@ export default function GuidanceHost({
       case 'invite':
         if (homeId) router.push(`/app/homes/${homeId}/members?invite=1`);
         break;
+      case 'pickup_day': {
+        // The pickup editor is on Place's Today page, where “Set your pickup day” goes; a switched place stays switched.
+        const switched = new URLSearchParams(window.location.search).get('home');
+        router.push(`/app/place/today${switched ? `?home=${encodeURIComponent(switched)}` : ''}${PICKUP_EDITOR_HASH}`);
+        break;
+      }
       default:
         break;
     }
