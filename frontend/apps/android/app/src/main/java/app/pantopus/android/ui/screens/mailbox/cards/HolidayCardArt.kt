@@ -77,8 +77,8 @@ object HolidayCardArt {
     /** The caption's hand: Nothing You Could Do (SIL Open Font License, `assets/licenses`). */
     val captionHand = FontFamily(Font(R.font.nothing_you_could_do))
 
-    /** Christmas with Jesus Christ: pictures 59–67, each with its whole verse printed under the painting. */
-    private val VERSE_NUMBERS = 59..67
+    /** Christmas with Jesus Christ: pictures 59–89, each with its whole verse printed under the painting. */
+    private val VERSE_NUMBERS = 59..89
 
     /**
      * Whether a card's caption is a verse's reference ("John 3:16 (KJV)"), set in the card's serif italic rather than the
@@ -89,8 +89,11 @@ object HolidayCardArt {
         caption: String,
     ): Boolean = number in VERSE_NUMBERS || VERSE_REFERENCE.containsMatchIn(caption)
 
-    /** A caption ending in `<chapter>:<verse>`, with "(KJV)" or not: as the web tells a verse's reference. */
-    private val VERSE_REFERENCE = Regex("""\d+:\d+(\s*\(KJV\))?\s*$""")
+    /**
+     * A caption ending in `<chapter>:<verse>`, or a passage's `<chapter>:<verse>–<verse>`, with "(KJV)" or not: as the web
+     * tells a verse's reference.
+     */
+    private val VERSE_REFERENCE = Regex("""\d+:\d+([-–]\d+)?(\s*\(KJV\))?\s*$""")
 
     /** [captionIsVerse] for a design id ("christmas-2026-61"). */
     fun captionIsVerse(

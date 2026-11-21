@@ -35,7 +35,7 @@ import kotlin.random.Random
 
 /**
  * The mood a card's picture sets on the table (plan Part 7). The apps map collection to mood themselves, by the
- * picture's number: Christmas with Jesus Christ (59–67) is reverence, Christmas with Santa (50–58) is Santa, and every
+ * picture's number: Christmas with Jesus Christ (59–89) is reverence, Christmas with Santa (50–58) is Santa, and every
  * other collection, and any picture not known yet, is nostalgia.
  */
 internal enum class CardMood {
@@ -57,7 +57,7 @@ internal enum class CardMood {
         ): CardMood {
             val picture = number ?: design.substringAfterLast('-').toIntOrNull() ?: return Nostalgia
             return when (picture) {
-                in 59..67 -> Reverence
+                in 59..89 -> Reverence
                 in 50..58 -> Santa
                 else -> Nostalgia
             }
