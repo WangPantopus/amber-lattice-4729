@@ -182,7 +182,7 @@ enum class PreviewAudience(
     Neighbors(
         "neighbors",
         "People on Pantopus",
-        "People on Pantopus you aren't connected to.",
+        "Signed-in people you aren't connected to.",
         "Previewing as people on Pantopus",
         "What people you aren't connected to see.",
     ),
