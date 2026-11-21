@@ -5,7 +5,7 @@
 
 import apiClient, { get, post, put, del, patch } from '../client';
 import type { Mail, AdCampaign, ApiResponse } from '@pantopus/types';
-import type { CardTravel, MailCard, MailCardReply, MailItemV2 } from './mailboxV2';
+import type { CardTravel, CardTravelPostmark, MailCard, MailCardReply, MailItemV2 } from './mailboxV2';
 import type { CardLinkFront } from './mailCompose';
 
 export interface MailboxSummary {
@@ -1220,6 +1220,8 @@ export interface PassOnPreview {
   arrives_on: string | null;
   take_back_until: string | null;
   town: string | null;
+  /** The postmark this pass-on strikes: the town it leaves and today where its sender lives. */
+  postmark?: CardTravelPostmark;
 }
 
 /** POST /api/mailbox/cards/:id/pass-on/preview: every check passing it on runs; nothing is stored or sent. */

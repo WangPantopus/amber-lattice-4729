@@ -50,7 +50,7 @@ import { cardMood, cardPicture, clockTime, emailGoesAt, firstNameOf, SERIF, shor
 type Step = 'to' | 'pick' | 'write' | 'seal' | 'look' | 'sent';
 /** Someone on a list (digital stamps on): a person found by name, or an address. */
 type ListEntry = { kind: 'person'; userId: string; name: string } | { kind: 'email'; email: string };
-type Recipient = ListEntry | { kind: 'link' }
+export type Recipient = ListEntry | { kind: 'link' }
   /** Two or more people or addresses: a card each (POST /cards/batch). */
   | { kind: 'list'; entries: ListEntry[] };
 
@@ -156,7 +156,7 @@ function lookIsUnavailable(error: MailboxApiError | null): boolean {
 }
 
 /** The server's own sentence when it sent one (a card that can't go yet, a limit), else what went wrong. */
-function sendMessage(error: MailboxApiError | null, byEmail = false): string {
+export function sendMessage(error: MailboxApiError | null, byEmail = false): string {
   if (error?.serverCode && error.status < 500) return error.message;
   if (error?.serverCode === 'CARD_UNAVAILABLE') return error.message;
   // The server's own check of the address, stricter than ours (it knows which endings an address can have).
@@ -184,7 +184,7 @@ async function pickContactEmail(): Promise<string | null> {
   }
 }
 
-function firstName(name: string): string {
+export function firstName(name: string): string {
   return name.split(/\s+/)[0] || name;
 }
 
@@ -222,7 +222,7 @@ function envelopeName(to: Recipient): string {
 }
 
 /** How a sent card arrives, in a sentence. */
-function arrivalLine(card: SentHolidayCard): string {
+export function arrivalLine(card: SentHolidayCard): string {
   const who = card.to_name || 'They';
   if (card.status === 'withdrawn') return 'You took this card back.';
   if (card.by_link) {
@@ -269,7 +269,7 @@ function sendWords(to: Recipient): string {
   return to.kind === 'link' ? 'Seal it and get the link' : 'Seal and send';
 }
 
-function takeBackLine(card: SentHolidayCard): string | null {
+export function takeBackLine(card: SentHolidayCard): string | null {
   if (!card.can_take_back) return null;
   if (card.by_link) return 'You can take it back until someone opens it.';
   if (card.by_email) return 'You can take it back until they open it.';
@@ -312,15 +312,18 @@ function StepHeader({ step, title, onBack, headingRef, trailing = null }: { step
 
 // ── Step 1: who it's for ─────────────────────────────────────
 
-function ToStep({
+export function ToStep({
   onChoose,
   max = 1,
   listed = [],
   onToggle,
   onAdd,
   onContinue,
+  onPaper = false,
 }: {
   onChoose: (to: Recipient) => void;
+  /** On the cream paper of a sheet (Pass it on): the same picker, its lines always in the paper's ink. */
+  onPaper?: boolean;
   /** How many one card can go to at once; more than one (digital stamps on): people and addresses go on a list. */
   max?: number;
   listed?: ListEntry[];
@@ -342,6 +345,7 @@ function ToStep({
   const many = max > 1;
   const chosen = new Set(listed.map(entryKey));
   const full = listed.length >= max;
+  const m = onPaper ? 'text-[#4e5563]' : muted;
 
   // A list: the people and addresses on it, each taken off with its ×, and the button on to the next step.
   const list = many ? (
@@ -363,7 +367,7 @@ function ToStep({
           ))}
         </ul>
       ) : null}
-      <p className={`mt-2.5 text-[13px] leading-[18px] ${muted}`}>
+      <p className={`mt-2.5 text-[13px] leading-[18px] ${m}`}>
         {full ? `That’s ${max}, the most for one send. ` : null}Each person gets their own card. No one sees who else got one.
       </p>
     </div>
@@ -417,7 +421,7 @@ function ToStep({
           placeholder="name@example.com"
           className="mt-2 h-12 w-full rounded-xl border border-[#d6cbb6] bg-[#fffdf8] px-4 text-[16px] text-[#111827] focus:border-[#8b1d1d] focus:outline-none focus:ring-2 focus:ring-[#8b1d1d]/30"
         />
-        <p className={`mt-2 text-[14px] leading-5 ${muted}`}>
+        <p className={`mt-2 text-[14px] leading-5 ${m}`}>
           They get an email saying you sent them a Christmas card. They join Pantopus with this address to open it. The
           email never shows your note.
         </p>
@@ -451,13 +455,13 @@ function ToStep({
       </div>
       <div aria-live="polite" className="mt-3">
         {debounced.trim().length < 2 ? (
-          <p className={`px-1 text-[14px] leading-5 ${muted}`}>Type two letters or more of their name.</p>
+          <p className={`px-1 text-[14px] leading-5 ${m}`}>Type two letters or more of their name.</p>
         ) : results.isPending ? (
-          <p className={`flex items-center gap-2 px-1 text-[14px] ${muted}`}><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Looking…</p>
+          <p className={`flex items-center gap-2 px-1 text-[14px] ${m}`}><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Looking…</p>
         ) : results.isError ? (
           <p role="alert" className="px-1 text-[14px] text-[#a81a1a]">Couldn&rsquo;t search just now. {mailLoadMessage(results.error)}</p>
         ) : people.length === 0 ? (
-          <p className={`px-1 text-[14px] leading-5 ${muted}`}>No one by that name. Check the spelling, or send it to their email.</p>
+          <p className={`px-1 text-[14px] leading-5 ${m}`}>No one by that name. Check the spelling, or send it to their email.</p>
         ) : (
           <ul className="divide-y divide-[#e7dcc6] overflow-hidden rounded-xl border border-[#e3d8c3] bg-[#fffdf8]">
             {people.map((person) => {
@@ -496,7 +500,7 @@ function ToStep({
       </div>
       {/* Sending to someone not on Pantopus already invites them (design plan 11.6): said once, above both ways. */}
       {launchFeatures.cardTable ? (
-        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${muted}`}>They don&rsquo;t need Pantopus yet. They join to open it.</p>
+        <p data-testid="sendCardInviteLine" className={`mt-5 text-center text-[14px] leading-5 ${m}`}>They don&rsquo;t need Pantopus yet. They join to open it.</p>
       ) : null}
       <button
         type="button"
@@ -516,12 +520,12 @@ function ToStep({
             type="button"
             data-testid="sendCardByLink"
             onClick={() => onChoose({ kind: 'link' })}
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold text-[#8b1d1d] hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d] [@media(prefers-color-scheme:dark)]:text-[#e8b996]"
+            className={`flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold text-[#8b1d1d] hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d]${onPaper ? '' : ' [@media(prefers-color-scheme:dark)]:text-[#e8b996]'}`}
           >
             <Link2 className="h-[18px] w-[18px]" aria-hidden />
             Send it by link
           </button>
-          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${muted}`}>Text it, or paste it anywhere. The first person to open it keeps the card.</p>
+          <p className={`mx-auto mt-0.5 max-w-[340px] text-[13px] leading-[18px] ${m}`}>Text it, or paste it anywhere. The first person to open it keeps the card.</p>
         </div>
       ) : null}
     </div>
