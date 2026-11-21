@@ -42,6 +42,9 @@ export default function CardRack({
   const dragRef = useRef<{ id: number; x0: number; y0: number; moved: boolean } | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const design = designs[at] ?? designs[0];
+  // A collection with verse cards keeps every card at the size that leaves room for a verse, so a card doesn't change size
+  // when it's swiped to one whose passage is too long to print under it (Christmas with Jesus Christ, 68-89).
+  const roomForVerse = designs.some((d) => d.verse);
   const atRef = useRef(at);
   atRef.current = at;
 
@@ -152,7 +155,7 @@ export default function CardRack({
         >
           <div
             key={design.id}
-            className={`${styles.card} ${design.verse ? styles.withVerse : ''} ${drag ? styles.dragging : ''}`}
+            className={`${styles.card} ${roomForVerse ? styles.withVerse : ''} ${drag ? styles.dragging : ''}`}
             style={{ transform: `translateX(${drag}px) rotate(-1.4deg)` }}
             role="img"
             aria-label={`${design.caption}${design.verse ? `. ${design.verse}` : ''}`}
