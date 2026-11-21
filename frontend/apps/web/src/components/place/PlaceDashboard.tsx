@@ -223,12 +223,16 @@ export default function PlaceDashboard({ openVerify = false }: {
   const invited = homes.length > 0 && homes.every((h) => h.occupancy?.verification_source === 'household');
   const verifiable = !claim && intelligence.tier === 'T3' && intelligence.verify_available !== false;
   const shownHome = homes.find((h) => h.id === shownHomeId);
+  // “Your home is set up” offers “Set pickup day” while the calendar still runs on a general schedule.
+  const calendarSection = intelligence.groups.flatMap((g) => g.sections).find((s) => s.id === 'address_calendar');
+  const needsPickupDay = calendarSection?.status === 'ready' && !!(calendarSection.data as { needs_pickup_day?: boolean } | null)?.needs_pickup_day;
   const home = !claim && shownHomeId ? {
     id: shownHomeId,
     tier: intelligence.tier,
     verified: intelligence.tier === 'T4',
     setUpAt: shownHome?.occupancy?.start_at ?? shownHome?.created_at ?? null,
     privateSetup: shownHome?.access_kind === 'private_setup',
+    needsPickupDay,
   } : undefined;
 
   return (

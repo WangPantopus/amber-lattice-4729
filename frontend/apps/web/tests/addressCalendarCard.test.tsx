@@ -36,9 +36,10 @@ beforeEach(() => {
 
 it('requires explicit save and does not invent recycling when unknown', async () => {
   show();
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Garbage' }));
+  // A home with no schedule opens with Garbage on and weekly; the chosen day fills the start date.
+  expect(screen.getByRole('checkbox', { name: 'Garbage' })).toBeChecked();
   fireEvent.click(screen.getByRole('button', { name: 'Garbage Thu' }));
-  fireEvent.change(screen.getByLabelText('Garbage collection date'), { target: { value: '2026-09-03' } });
+  expect(screen.getByLabelText('Garbage collection date')).toHaveValue('2026-09-03');
   expect(setPickupDay).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
   await screen.findByText('Garbage day');
@@ -49,9 +50,7 @@ it('requires explicit save and does not invent recycling when unknown', async ()
 
 it('requires the actual next recycling date and supports a different weekday', async () => {
   show();
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Garbage' }));
   fireEvent.click(screen.getByRole('button', { name: 'Garbage Thu' }));
-  fireEvent.change(screen.getByLabelText('Garbage collection date'), { target: { value: '2026-09-03' } });
   fireEvent.click(screen.getByRole('checkbox', { name: 'Recycling' }));
   fireEvent.change(screen.getByLabelText('Recycling repeats'), { target: { value: 'weekly-2' } });
   fireEvent.click(screen.getByRole('button', { name: 'Recycling Fri' }));

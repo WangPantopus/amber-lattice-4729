@@ -16,8 +16,8 @@ export type GuidanceIconName =
 
 export type GuidanceLine = readonly [GuidanceIconName, string];
 
-/** What a reminder's button opens besides closing it (spec §5, cards 24-27). */
-export type GuidanceAction = 'add_address' | 'setup_home' | 'verify' | 'invite';
+/** What a card's button opens besides closing it (spec §5, cards 24-27; card 16 while the home has no pickup schedule). */
+export type GuidanceAction = 'add_address' | 'setup_home' | 'verify' | 'invite' | 'pickup_day';
 
 /** A centre card as it shows: a title, up to three rows, one button. */
 export interface CentreCardContent {
@@ -108,12 +108,16 @@ export function pulseCard(): CentreCardContent {
 
 // ── Right after doing something for the first time (16–23; 19 and 20 are phones only) ──
 
-/** 16. Place, right after “Set up this home” finishes. */
-export function homeSetUpCard(): CentreCardContent {
+/**
+ * 16. Place, right after “Set up this home” finishes. While the home has no pickup schedule, the button reads
+ * “Set pickup day” and opens the pickup editor for that home, besides closing the card (JOURNEYS, 2026-11-21).
+ */
+export function homeSetUpCard({ needsPickupDay = false }: { needsPickupDay?: boolean } = {}): CentreCardContent {
   return {
     id: 'done_home_setup',
     title: 'Your home is set up',
-    button: 'Got it',
+    button: needsPickupDay ? 'Set pickup day' : 'Got it',
+    ...(needsPickupDay ? { action: 'pickup_day' as const } : {}),
     lines: [
       ['circle-check', '“Tasks” is a shared to-do list for your home.'],
       ['users', '“Members” is where you invite the people you live with.'],
