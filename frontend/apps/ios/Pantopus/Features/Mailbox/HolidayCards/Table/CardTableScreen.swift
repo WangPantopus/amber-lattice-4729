@@ -30,6 +30,8 @@ struct CardTableScreen: View {
     @State private var actHeight: CGFloat = 0
     /// With larger text: "Turn it back" and "Read it in print" side by side, or one under the other (plan Part 2).
     @State private var printActHeight: CGFloat = 0
+    /// A travelling card: "Turn it back" with "Pass it on" beside it (travelling card plan Part 4).
+    @State private var passActHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .title3) private var wordsSize: CGFloat = 18
@@ -52,7 +54,8 @@ struct CardTableScreen: View {
                 screen: screen,
                 trailingStrip: strip,
                 safeTop: insets.top,
-                bottomControls: max(actHeight, model.largerText ? printActHeight : 0) + insets.bottom + 8,
+                bottomControls: max(actHeight, model.largerText ? printActHeight : 0, model.travelButtons.passOn == nil ? 0 : passActHeight)
+                    + insets.bottom + 8,
                 // The card's own photo and greeting keep room under the turned-over card on a phone (memories plan
                 // step 4); nothing lies there while a card is being sealed.
                 keepsMediaRoom: model.sending == nil
@@ -217,6 +220,21 @@ struct CardTableScreen: View {
                 .frame(width: max(0, width - 32))
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { printActHeight = $0 }
+            if model.travelButtons.passOn != nil {
+                CardTableAct(
+                    title: "Turn it back",
+                    hint: "",
+                    primarySize: primarySize,
+                    hintSize: hintSize,
+                    reservesSecondary: model.reservesSecondary || model.reservesNext,
+                    oneRow: true,
+                    passOn: CardTableMenuItem(title: "Pass it on to one more", identifier: "") {},
+                    beside: model.largerText ? CardTableMenuItem(title: CardTableBookmark.print.title, identifier: "") {} : nil
+                ) {}
+                    .frame(width: max(0, width - 32))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { passActHeight = $0 }
+            }
         }
         .hidden()
         .accessibilityHidden(true)

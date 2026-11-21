@@ -243,3 +243,80 @@ public struct CardTownBody: Encodable, Sendable {
 public struct CardTownAnswer: Decodable, Sendable, Hashable {
     public let town: String?
 }
+
+// MARK: - Passing it on (plan Part 4; NOTES "The server's shapes" 7 and 8)
+
+/// The body of `POST /api/mailbox/cards/:id/pass-on` and its preview: who gets it next, the note, the signature, one
+/// request ID per draft and the place it takes (`next_place`).
+public struct CardPassOnBody: Encodable, Sendable {
+    public let to: SendHolidayCardBody.Recipient
+    public let message: String
+    public let signature: CardSignature?
+    public let requestId: String
+    public let place: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case to, message, signature, place
+        case requestId = "request_id"
+    }
+
+    public init(to: SendHolidayCardBody.Recipient, message: String, signature: CardSignature?, requestId: String, place: Int) {
+        self.to = to
+        self.message = message
+        self.signature = signature
+        self.requestId = requestId
+        self.place = place
+    }
+}
+
+/// The answer of `POST /api/mailbox/cards/:id/pass-on/preview`: what would happen, nothing stored.
+public struct CardPassOnPreview: Decodable, Sendable, Hashable {
+    public let passOn: Look
+
+    public struct Look: Decodable, Sendable, Hashable {
+        public let place: Int?
+        public let toName: String?
+        public let byEmail: Bool
+        public let byLink: Bool
+        public let arrivesAt: String?
+        public let arrivesOn: String?
+        public let takeBackUntil: String?
+        /// The sender's town ("Tampa, FL") for "Your town, Tampa, FL, goes on its journey."
+        public let town: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case place, town
+            case toName = "to_name"
+            case byEmail = "by_email"
+            case byLink = "by_link"
+            case arrivesAt = "arrives_at"
+            case arrivesOn = "arrives_on"
+            case takeBackUntil = "take_back_until"
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            place = try? c.decodeIfPresent(Int.self, forKey: .place)
+            toName = try? c.decodeIfPresent(String.self, forKey: .toName)
+            byEmail = (try? c.decodeIfPresent(Bool.self, forKey: .byEmail)) ?? false
+            byLink = (try? c.decodeIfPresent(Bool.self, forKey: .byLink)) ?? false
+            arrivesAt = try? c.decodeIfPresent(String.self, forKey: .arrivesAt)
+            arrivesOn = try? c.decodeIfPresent(String.self, forKey: .arrivesOn)
+            takeBackUntil = try? c.decodeIfPresent(String.self, forKey: .takeBackUntil)
+            town = try? c.decodeIfPresent(String.self, forKey: .town)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case passOn = "pass_on"
+    }
+}
+
+/// The answer of `POST /api/mailbox/cards/:id/pass-on/take-back`: its place is free again.
+public struct CardPassOnTakeBack: Decodable, Sendable, Hashable {
+    public let takenBack: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case takenBack = "taken_back"
+    }
+}

@@ -336,6 +336,7 @@ private struct MailCardTablePage: View {
             .fullScreenCover(item: $joined) { pair in
                 CardTableJoinedPage(pair: pair, closeLabel: "Back to the card") { joined = nil }
             }
+            .modifier(CardTableTravelReader(viewModel: viewModel, model: model))
     }
 
     /// The card and its reply (experience plan Part 3): "Write back to {first name}" when the server says this reader

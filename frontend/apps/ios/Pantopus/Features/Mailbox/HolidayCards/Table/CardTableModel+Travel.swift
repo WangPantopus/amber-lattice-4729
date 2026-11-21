@@ -9,7 +9,23 @@
 
 import Foundation
 
+/// A travelling card's buttons on its reader's table (travelling card plan Part 4), as the reader's page sets them from
+/// the server's answer: "Pass it on" filled beside "Turn it back", "Pass it on to one more" quiet after one, none after
+/// two; and the quiet row's travel items.
+struct CardTableTravelButtons {
+    var passOn: CardTableMenuItem?
+    var passOnFilled = true
+    var quiet: [CardTableMenuItem] = []
+}
+
 extension CardTableModel {
+    /// "Pass it on" with the card turned over (and on the open Duo, where both sides show); nil otherwise.
+    var passOnButton: CardTableMenuItem? {
+        guard step == .out, sending == nil, !content.sealed, !content.isLetter, !isZoomed, cardBackIsUp || fold.isSpread
+        else { return nil }
+        return travelButtons.passOn
+    }
+
     /// The postmarks on the envelope, oldest first; empty for a card that doesn't travel.
     var travelMarks: [CardTravelMark] {
         content.travel?.marks ?? []

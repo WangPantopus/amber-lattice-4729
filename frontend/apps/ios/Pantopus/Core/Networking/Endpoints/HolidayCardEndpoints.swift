@@ -170,4 +170,22 @@ public enum HolidayCardEndpoints {
     public static func setTown(_ body: CardTownBody) -> Endpoint {
         Endpoint(method: .put, path: "/api/mailbox/cards/town", body: body)
     }
+
+    /// `POST /api/mailbox/cards/:id/pass-on/preview` — route `backend/routes/mailbox.js` (travelling card routes). The
+    /// same checks as passing it on, nothing stored; `:id` is the card the caller received.
+    public static func passOnPreview(cardId: String, _ body: CardPassOnBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on/preview", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/pass-on` — route `backend/routes/mailbox.js` (travelling card routes). The same card
+    /// goes on, free, with this note; answers as `POST /cards` does (a repeat of the request ID, the same card).
+    public static func passOn(cardId: String, _ body: CardPassOnBody) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on", body: body)
+    }
+
+    /// `POST /api/mailbox/cards/:id/pass-on/take-back` — route `backend/routes/mailbox.js` (travelling card routes).
+    /// `:id` is the passed-on card; its place is free again.
+    public static func takeBackPassOn(cardId: String) -> Endpoint {
+        Endpoint(method: .post, path: "/api/mailbox/cards/\(cardId)/pass-on/take-back")
+    }
 }
