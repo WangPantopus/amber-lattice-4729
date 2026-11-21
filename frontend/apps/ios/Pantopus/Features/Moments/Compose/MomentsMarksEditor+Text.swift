@@ -154,6 +154,12 @@ struct MomentsMarksTextLayer: View {
         .onChange(of: focused) { _, isFocused in
             if !isFocused { marking.endTyping() }
         }
+        // Where every label is held after a change, as a drag holds it: taken with the keyboard down, so a label typed
+        // in is held against the controls, not the keyboard, once typing ends.
+        .onChange(of: rows(fill), initial: true) { _, rows in
+            guard rows.upperBound.isFinite, marking.typing == nil || marking.labelRows == nil else { return }
+            marking.labelRows = rows
+        }
     }
 
     /// A label as the canvas draws it: here only its place, to tap, drag and read aloud, and the dashed frame and the
