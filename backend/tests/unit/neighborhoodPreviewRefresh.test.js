@@ -34,7 +34,7 @@ it('the unlock threshold is always a milestone and carries the door-opening copy
   expect(row.last_milestone_notified).toBe(24);
   const sent = notificationService.createBulkNotifications.mock.calls[0][0];
   expect(sent).toHaveLength(24);
-  expect(sent[0]).toMatchObject({ type: 'density_milestone', title: 'Your neighborhood is open', link: '/app/nearby', metadata: { milestone: 24, unlocked: true } });
+  expect(sent[0]).toMatchObject({ type: 'density_milestone', title: 'The map near you is open', link: '/app/nearby', metadata: { milestone: 24, unlocked: true } });
   expect(sent[0].body).toMatch(/24 households/);
 });
 

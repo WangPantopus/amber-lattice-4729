@@ -58,10 +58,10 @@ async function postCards(rows, { viewerId, homes, areas, fallbackArea, blockedId
     const author = { userId: raw.user_id, origin: raw.origin, accountType: raw.creator?.account_type, identityType };
     if (!contexts.has(raw.user_id)) contexts.set(raw.user_id, homeAreaContext(raw.user_id));
     const label = await labelFor(author, about?.id, await contexts.get(raw.user_id));
-    let name = post.author?.displayName || post.creator?.displayName || 'Neighbor';
+    let name = post.author?.displayName || post.creator?.displayName || 'Someone nearby';
     // Public town content uses the chosen public identity's first name, never legal-name fields.
     if ((raw.read_scope === 'public' || publicResponse) && !['pantopus', 'official', 'business'].includes(label)) {
-      name = name.trim().split(/\s+/)[0] || 'Neighbor';
+      name = name.trim().split(/\s+/)[0] || 'Someone nearby';
     }
     const action = type === 'lost_found'
       ? raw.lost_found_type === 'found' ? ['its_mine', "It's mine"] : ['seen_it', 'Seen it']

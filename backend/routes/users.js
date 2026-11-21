@@ -4366,7 +4366,7 @@ router.get('/public/join/:code', async (req, res) => {
     // anyone without one) by the account (services/chatPeople.js).
     const { loadChatPeople, chatPersonRow } = require('../services/chatPeople');
     const shownReferrer = referrer ? chatPersonRow(referrer, await loadChatPeople([referrer.id])) : null;
-    const referrerName = shownReferrer?.name || shownReferrer?.first_name || chosenUsernameOrNull(shownReferrer?.username) || 'A neighbor';
+    const referrerName = shownReferrer?.name || shownReferrer?.first_name || chosenUsernameOrNull(shownReferrer?.username) || 'Someone';
 
     res.json({
       valid: true,

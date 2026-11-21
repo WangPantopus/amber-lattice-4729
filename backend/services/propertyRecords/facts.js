@@ -85,7 +85,7 @@ const FACTS = {
   county: { section: 'records', label: 'County', format: 'name', scope: 'parcel' },
   fips: { section: 'records', label: 'County code (FIPS)', format: 'code', scope: 'parcel' },
   municipality: { section: 'records', label: 'Municipality', format: 'name', scope: 'parcel' },
-  neighborhood: { section: 'records', label: 'Neighborhood', format: 'name', scope: 'parcel' },
+  neighborhood: { section: 'records', label: 'County area', format: 'name', scope: 'parcel' },
   subdivision: { section: 'records', label: 'Subdivision', format: 'name', scope: 'parcel' },
   tax_code_area: { section: 'records', label: 'Tax code area', format: 'code', scope: 'parcel' },
   school_district: { section: 'records', label: 'School district', format: 'name', scope: 'parcel' },

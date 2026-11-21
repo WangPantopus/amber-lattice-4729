@@ -88,8 +88,8 @@ async function authorProjector(context, people, distance) {
       const label = await labelFor({ userId: person.user_id, accountType: person.author?.account_type,
         origin: person.author?.account_type === 'curator' ? 'curator' : null,
         identityType: person.author?.account_type === 'business' ? 'business' : 'local' }, area?.id, authorHomes);
-      let name = identity?.displayName || 'Neighbor';
-      if (post.read_scope === 'public' && label !== 'official') name = name.trim().split(/\s+/)[0] || 'Neighbor';
+      let name = identity?.displayName || 'Someone nearby';
+      if (post.read_scope === 'public' && label !== 'official') name = name.trim().split(/\s+/)[0] || 'Someone nearby';
       const home = authorHomes.primary?.verified
         ? await checked(db.from('Home').select('location').eq('id', authorHomes.primary.id).maybeSingle()) : null;
       const point = parsePoint(home?.location);
@@ -125,8 +125,8 @@ async function repliesFor(context, after) {
   const thanked = new Set(thanks.map(row => row.comment_id));
   const { identityByUser, authorFor } = await authorProjector(context, rows, distance);
   const asker = identityByUser.get(post.user_id);
-  let helpfulTo = asker?.displayName || 'Neighbor';
-  if (post.read_scope === 'public') helpfulTo = helpfulTo.trim().split(/\s+/)[0] || 'Neighbor';
+  let helpfulTo = asker?.displayName || 'Someone nearby';
+  if (post.read_scope === 'public') helpfulTo = helpfulTo.trim().split(/\s+/)[0] || 'Someone nearby';
   const topology = new Map(topologyRows.map(row => [row.id, row.parent_comment_id]));
   const result = await Promise.all(rows.map(async row => {
     const removed = row.is_deleted === true || !row.user_id;

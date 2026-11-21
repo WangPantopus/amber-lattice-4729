@@ -445,7 +445,7 @@ function canPostToAudience({ postAs, audience, postType, trustLevel, homeId, rol
     if (!allowedRoles.includes(roleBase)) {
       return {
         allowed: false,
-        reason: 'Only Home Owners and Admins can publish neighborhood posts as this Home.',
+        reason: 'Only Home Owners and Admins can publish nearby posts as this Home.',
       };
     }
   }

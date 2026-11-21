@@ -384,7 +384,7 @@ const QUESTION_AGAIN_MS = 48 * HOUR_MS;
 
 /** "Ana", "Ana and Ben", "Ana, Ben and Cy", "Ana, Ben and 3 others". */
 function namesText(names) {
-  if (names.length <= 1) return names[0] || 'A neighbor';
+  if (names.length <= 1) return names[0] || 'Someone nearby';
   if (names.length === 2) return `${names[0]} and ${names[1]}`;
   if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
   return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
@@ -419,7 +419,7 @@ async function checkQuestion(ask, all, now) {
 
   const people = [...new Set(theirs.map((reply) => String(reply.user_id)))];
   const shown = await localDisplayNames(people).catch(() => new Map());
-  const names = people.map((id) => firstNameOf({ display_name: shown.get(id) }) || 'A neighbor');
+  const names = people.map((id) => firstNameOf({ display_name: shown.get(id) }) || 'Someone nearby');
   const question = clip(ask.title, 50) || clip(ask.content, 50) || 'your question';
   // They already said thanks after the latest reply: only Mark solved is offered.
   const lastTheirs = theirs[theirs.length - 1];

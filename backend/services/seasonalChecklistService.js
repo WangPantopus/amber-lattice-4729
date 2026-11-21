@@ -59,7 +59,7 @@ const SEASON_CHECKLISTS = {
   holiday_season: [
     { item_key: 'light_installation', title: 'Install holiday lights safely', description: 'Check cords for damage. Use outdoor-rated lights.', gig_category: 'Handyman', gig_title: 'Holiday light installation', sort: 1 },
     { item_key: 'deep_clean', title: 'Deep clean before holiday guests', description: 'Kitchen, bathrooms, guest rooms.', gig_category: 'Cleaning', gig_title: 'Holiday deep cleaning', sort: 2 },
-    { item_key: 'package_security', title: 'Set up package theft prevention', description: 'Delivery instructions, camera, neighbor coordination.', sort: 3 },
+    { item_key: 'package_security', title: 'Set up package theft prevention', description: 'Delivery instructions, camera, a plan with someone nearby.', sort: 3 },
   ],
 };
 

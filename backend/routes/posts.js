@@ -904,7 +904,7 @@ router.post('/precheck', verifyToken, async (req, res) => {
     if (calloutPatterns.some(p => p.test(content || '')) && surface === 'place') {
       flags.push({
         type: 'callout_risk',
-        message: 'Avoid naming or identifying specific neighbors. Pantopus is not a call-out platform.',
+        message: 'Avoid naming or identifying specific people. Pantopus is not a call-out platform.',
         suggestedAction: 'remove_names',
       });
     }
@@ -915,7 +915,7 @@ router.post('/precheck', verifyToken, async (req, res) => {
     if (surface === 'place' && politicsWords.some(w => lowerContent.includes(w))) {
       suggestions.push({
         type: 'politics_in_nearby',
-        message: 'Political content in the Nearby feed is shown only to neighbors who opt in. Consider posting to Connections/Following instead for broader reach.',
+        message: 'Political content in the Nearby feed is shown only to people who opt in. Consider posting to Connections/Following instead for broader reach.',
         suggestedAction: 'move_to_connections',
       });
     }
@@ -1202,7 +1202,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       };
 
       if (postAs === 'home' && requestedAudience === 'neighborhood' && !['owner', 'admin'].includes(roleBase)) {
-          return res.status(403).json({ error: 'Only Home Owners and Admins can publish neighborhood posts as this Home.' });
+          return res.status(403).json({ error: 'Only Home Owners and Admins can publish nearby posts as this Home.' });
       }
     }
 

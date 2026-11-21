@@ -14,7 +14,7 @@ const ERRORS = {
   POST_NOT_FOUND: [404, 'This conversation is not available.'],
   NOT_POST_AUTHOR: [403, 'Only the person who posted can change who can read it.'],
   INVALID_SCOPE: [400, 'Choose who can read this post.'],
-  NEEDS_AREA: [400, 'Choose the street or neighborhood.'],
+  NEEDS_AREA: [400, 'Choose the street or area.'],
   CANNOT_WIDEN: [409, "Who can read a post can only get narrower. Delete it to start over."],
   NEEDS_VERIFIED_ADDRESS: [403, 'A verified address in this area is needed.'],
   AUDIENCE_NOT_ALLOWED: [403, "Who can read this post can't be changed."],

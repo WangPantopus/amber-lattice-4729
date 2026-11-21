@@ -252,9 +252,9 @@ const buildSeedMailItem = (userId, index) => {
     statement: 'Monthly statement available',
     notice: 'Building maintenance notice',
     package: 'Package delivery update',
-    newsletter: 'Neighborhood weekly digest',
+    newsletter: 'Local weekly digest',
     ad: 'Local offer: coffee and bakery',
-    promotion: 'Limited-time neighborhood discount',
+    promotion: 'Limited-time local discount',
     document: 'Important document for your records',
     other: 'Mailbox test message'
   };
@@ -426,7 +426,7 @@ function cardLinkFront(card) {
 async function claimPagePerson(senderUserId, storedDisplay) {
   const person = (await loadChatPeople([senderUserId])).get(String(senderUserId));
   return {
-    senderName: person?.displayName || storedDisplay || 'A neighbor',
+    senderName: person?.displayName || storedDisplay || 'Someone nearby',
     // A personal letter needs a verified home to be sent (POST /send); this says whether the sender still has one.
     senderVerified: await hasVerifiedSenderHome(senderUserId),
   };

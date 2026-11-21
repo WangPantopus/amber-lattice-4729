@@ -356,7 +356,7 @@ router.post('/', verifyToken, sendBurstLimiter, validate(sendSchema), async (req
       .gte('created_at', weekAgo);
     if ((recentCount || 0) >= WEEKLY_SEND_CAP) {
       return res.status(429).json({
-        error: "You've reached this week's limit. This keeps neighbor messages calm and low-volume.",
+        error: "You've reached this week's limit. This keeps messages between homes calm and low-volume.",
       });
     }
 
@@ -488,7 +488,7 @@ router.post('/:id/reply', verifyToken, validate(replySchema), async (req, res) =
     const access = await replyAccess(row, userId);
     if (!access.canReply) {
       return res.status(403).json({
-        error: access.blockedByViewer ? "You've blocked this neighbor, so replies are off." : 'Replies to this message are off.',
+        error: access.blockedByViewer ? "You've blocked this sender, so replies are off." : 'Replies to this message are off.',
       });
     }
 
@@ -512,7 +512,7 @@ router.post('/:id/reply', verifyToken, validate(replySchema), async (req, res) =
       await createNotification({
         userId: row.sender_user_id,
         type: 'neighbor_message_reply',
-        title: 'A verified neighbor replied',
+        title: 'A verified home replied',
         body: reply.body,
         icon: '🏡',
         link: '/app/place',
@@ -626,7 +626,7 @@ router.post('/:id/block', verifyToken, async (req, res) => {
   } catch (err) {
     if (err.code === 'BLOCK_CHECK_UNAVAILABLE') return res.status(503).json({ error: err.message, code: err.code });
     logger.error('neighborMessages.block_error', { error: err.message, userId });
-    return res.status(500).json({ error: 'Failed to block neighbor.' });
+    return res.status(500).json({ error: 'Failed to block this sender.' });
   }
 });
 

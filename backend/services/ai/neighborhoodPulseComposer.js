@@ -182,7 +182,7 @@ function buildCommunityDensity() {
   // Placeholder — will be replaced by communityIntelligenceService later
   return {
     neighbor_count: 0,
-    density_message: 'No Pantopus neighbors yet — be the first to post!',
+    density_message: 'No one near you on Pantopus yet — be the first to post!',
     invite_cta: true,
   };
 }

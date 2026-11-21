@@ -12,7 +12,7 @@
  * @module serializers/neighborMessageSerializer
  */
 
-const ANON_SENDER_LABEL = 'A verified neighbor nearby';
+const ANON_SENDER_LABEL = 'A verified home nearby';
 const BLOCK_LABEL = 'On your block';
 
 /**

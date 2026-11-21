@@ -397,7 +397,7 @@ router.patch('/me', verifyToken, validate(updateLocalProfileSchema), async (req,
       // apps would show the account name instead.
       const displayName = req.body.display_name.replace(/\s+/g, ' ').trim();
       if (isKnownMadeUpUsername(displayName)) {
-        return res.status(400).json({ code: 'DISPLAY_NAME_INVALID', error: 'Choose a name for neighbors to see.' });
+        return res.status(400).json({ code: 'DISPLAY_NAME_INVALID', error: 'Choose a name for others to see.' });
       }
       updates.display_name = displayName;
     }
