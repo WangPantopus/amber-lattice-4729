@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -66,6 +67,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -175,7 +177,8 @@ fun MomentsComposeScreen(
         onPauseOrDispose { }
     }
     // Closing with something to lose asks first (REVIEW item 8): a written card from the camera or the card, or a photo
-    // or video on the Post sheet (Back there goes back to the camera; Retake asks only when the photo has marks).
+    // or video on the Post sheet (Back there goes back to the camera; Retake asks only when the photo has marks or was
+    // resized).
     var asksDiscard by remember { mutableStateOf(false) }
     val closeOrAsk: () -> Unit = {
         if (state.text.isNotBlank()) {
@@ -224,8 +227,8 @@ fun MomentsComposeScreen(
                 ReviewStep(
                     state = state,
                     avatarUrl = viewModel.avatarUrl,
-                    // Retake asks first when the photo has marks on it.
-                    onBack = { if (state.marks.isEmpty) viewModel.backFromReview() else asksDiscard = true },
+                    // Retake asks first when the photo has marks on it or was resized.
+                    onBack = { if (state.marks.isEmpty && state.placement == null) viewModel.backFromReview() else asksDiscard = true },
                     onMarks = viewModel::openMarks,
                     onShowArea = viewModel::setShowArea,
                     onHours = viewModel::setHours,
@@ -240,7 +243,7 @@ fun MomentsComposeScreen(
                     sky = MomentsSkyActions(viewModel::setPinAtPlace, viewModel::setShareLater, viewModel::pickShareLater),
                 )
         }
-        // Text and Draw on the photo, over the Post screen (its own Back handler takes Back while it's up).
+        // Text, Draw and Resize on the photo, over the Post screen (its own Back handler takes Back while it's up).
         state.marking?.let { editing ->
             val picture by viewModel.marksPicture.collectAsStateWithLifecycle()
             MomentsMarksEditor(
@@ -278,6 +281,7 @@ fun MomentsComposeScreen(
                         when {
                             !onSheet -> "What you wrote won't be saved."
                             !state.marks.isEmpty -> "What you drew or wrote on it won't be saved."
+                            state.placement != null -> "How you resized it won't be saved."
                             state.media is MomentMediaFile.Video -> "Your video won't be saved."
                             else -> "Your photo won't be saved."
                         },
@@ -747,42 +751,57 @@ private fun ReviewStep(
                 }
         }
         if (state.media != null) Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)).clearAndSetSemantics {})
+        // Retake at the left, the pills at the right: a pill that doesn't fit beside Retake drops to a second row.
+        val density = LocalDensity.current
+        var topRows by remember { mutableStateOf(40.dp) }
         Row(
             modifier =
                 Modifier
+                    .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(start = Spacing.s3, top = 11.dp)
-                    .height(40.dp)
-                    .alpha(if (state.canRetake) 1f else 0.5f)
-                    .clip(RoundedCornerShape(Radii.xl2))
-                    .background(if (state.media != null) PantopusColors.momentCameraChip else Color.Black.copy(alpha = 0.25f))
-                    .clickable(enabled = state.canRetake, role = Role.Button, onClick = onBack)
-                    .padding(start = Spacing.s2, end = 14.dp)
-                    .testTag("moments.post.retake"),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+                    .padding(start = Spacing.s3, end = Spacing.s3, top = 11.dp)
+                    .onSizeChanged { topRows = with(density) { it.height.toDp() } },
+            verticalAlignment = Alignment.Top,
         ) {
-            PantopusIconImage(
-                icon = PantopusIcon.ChevronLeft,
-                contentDescription = null,
-                size = 20.dp,
-                strokeWidth = 2.2f,
-                tint = Color.White,
-            )
-            Text(
-                text = if (state.media != null) "Retake" else "Edit",
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        if (state.media != null) {
-            MomentsMarksPills(
-                enabled = !state.posting,
-                onOpen = onMarks,
-                video = state.media is MomentMediaFile.Video,
-                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(end = Spacing.s3, top = 11.dp),
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .height(40.dp)
+                        .alpha(if (state.canRetake) 1f else 0.5f)
+                        .clip(RoundedCornerShape(Radii.xl2))
+                        .background(if (state.media != null) PantopusColors.momentCameraChip else Color.Black.copy(alpha = 0.25f))
+                        .clickable(enabled = state.canRetake, role = Role.Button, onClick = onBack)
+                        .padding(start = Spacing.s2, end = 14.dp)
+                        .testTag("moments.post.retake"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s1),
+            ) {
+                PantopusIconImage(
+                    icon = PantopusIcon.ChevronLeft,
+                    contentDescription = null,
+                    size = 20.dp,
+                    strokeWidth = 2.2f,
+                    tint = Color.White,
+                )
+                Text(
+                    text = if (state.media != null) "Retake" else "Edit",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            // Measured before the weighted space, the pills get the width Retake and this gap leave.
+            Spacer(Modifier.width(Spacing.s2))
+            Spacer(Modifier.weight(1f))
+            if (state.media != null) {
+                MomentsMarksPills(
+                    enabled = !state.posting,
+                    onOpen = onMarks,
+                    video = state.media is MomentMediaFile.Video,
+                    // Resize: photos (videos from step R2).
+                    resize = state.media is MomentMediaFile.Photo,
+                )
+            }
         }
         MomentsPostSheet(
             state = state,
@@ -792,9 +811,10 @@ private fun ReviewStep(
             onAudience = onAudience,
             onCaption = onCaption,
             onPost = onPost,
-            // Never over the Retake / Text / Draw row (11 dp down, 40 dp tall): the sheet stops 12 dp under it, and on a
-            // short screen its own content scrolls in that height while Post stays at its bottom.
-            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + 40.dp + Spacing.s3),
+            // Never over the Retake / Text / Draw / Resize rows (11 dp down, 40 dp each, a second row while the pills wrap):
+            // the sheet stops 12 dp under them, and on a short screen its own content scrolls in that height while Post
+            // stays at its bottom.
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding().padding(top = 11.dp + topRows + Spacing.s3),
             onPlace = onPlace,
             onFindPlace = onFindPlace,
             onNoLocation = onNoLocation,
