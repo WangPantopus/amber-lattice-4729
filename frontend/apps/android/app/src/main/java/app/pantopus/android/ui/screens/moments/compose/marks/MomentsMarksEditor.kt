@@ -4,6 +4,7 @@ package app.pantopus.android.ui.screens.moments.compose.marks
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -16,6 +17,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,6 +74,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -87,6 +90,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -128,9 +132,9 @@ private val VIEWER_REPLY_BAR = 68.dp
 private val VIEWER_CORNER = 18.dp
 
 /**
- * The Post screen's Text, Draw and (for a photo, [resize]) Resize pills (board T1), in Retake's style, at its top right,
- * for a photo or a [video]; off while a Post is in flight. They keep their words: a pill that doesn't fit beside the ones
- * before it in the width given (beside Retake) drops to a row below, right-aligned, so Resize sits under Draw.
+ * The Post screen's Text, Draw and Resize pills (board T1), in Retake's style, at its top right, for a photo or a
+ * [video]; off while a Post is in flight. They keep their words: a pill that doesn't fit beside the ones before it in
+ * the width given (beside Retake) drops to a row below, right-aligned, so Resize sits under Draw.
  */
 @Composable
 internal fun MomentsMarksPills(
@@ -138,7 +142,6 @@ internal fun MomentsMarksPills(
     onOpen: (MomentMarksTool) -> Unit,
     modifier: Modifier = Modifier,
     video: Boolean = false,
-    resize: Boolean = false,
 ) {
     val what = if (video) "video" else "photo"
     Layout(
@@ -161,16 +164,14 @@ internal fun MomentsMarksPills(
             ) {
                 PantopusIconImage(icon = PantopusIcon.Pencil, contentDescription = null, size = 18.dp, tint = Color.White)
             }
-            if (resize) {
-                MarksPill(
-                    label = "Resize",
-                    spoken = "Resize the $what",
-                    enabled = enabled,
-                    onClick = { onOpen(MomentMarksTool.Resize) },
-                    modifier = Modifier.testTag("moments.post.resize"),
-                ) {
-                    PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 18.dp, tint = Color.White)
-                }
+            MarksPill(
+                label = "Resize",
+                spoken = "Resize the $what",
+                enabled = enabled,
+                onClick = { onOpen(MomentMarksTool.Resize) },
+                modifier = Modifier.testTag("moments.post.resize"),
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Maximize, contentDescription = null, size = 18.dp, tint = Color.White)
             }
         },
         modifier = modifier,
@@ -483,13 +484,11 @@ private fun MarksCanvas(
         Box(modifier = Modifier.requiredSize(with(density) { drawnWidth.toDp() }, with(density) { drawnHeight.toDp() })) {
             // Each reads the latest of its state when it's called (the touches outlive this composition).
             val touches = Modifier.matchParentSize().toolTouches(editing.tool, { tapped(it) }, { pinched(it) }, live) { stroke(it) }
-            // A video plays, muted and looping, under its marks; its first frame shows until it does.
-            if (video != null) {
-                Image(image, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
-                EditorVideo(video, Modifier.matchParentSize())
-            }
+            // A video plays, muted and looping, under its marks (at its placement once Resize placed it).
+            val base = EditorPicture(picture, image, editing.shownPlacement(pictureSize), backdrop)
+            if (video != null) VideoUnder(video, base, Size(drawnWidth, drawnHeight))
             MarksPicture(
-                EditorPicture(picture, image, editing.shownPlacement(pictureSize), backdrop).takeIf { video == null },
+                base.takeIf { video == null },
                 shown,
                 live,
                 lineWidth,
@@ -501,7 +500,7 @@ private fun MarksCanvas(
             if (text) TextLabels(editing, frame, onEdit)
         }
         if (editing.tool == MomentMarksTool.Resize) {
-            ResizeLayer(editing, pictureSize, Size(frameWidth, frameHeight), onEdit, Modifier.matchParentSize())
+            ResizeLayer(editing, pictureSize, Size(frameWidth, frameHeight), onEdit, Modifier.matchParentSize(), video = video != null)
         }
     }
 }
@@ -522,13 +521,30 @@ private fun Modifier.toolTouches(
         }
     }
 
-/** The editor's own small player (the viewer's is its own): the video muted and looping, filling its box. */
+/**
+ * A video under its marks, filling the box [drawn] px: as taken, its first frame shows until it plays; placed, the
+ * canvas's background and the first frame at the placement, with the playing video over that frame.
+ */
+@Composable
+private fun BoxScope.VideoUnder(
+    file: File,
+    picture: EditorPicture,
+    drawn: Size,
+) {
+    val placement = picture.placement
+    if (placement == null) {
+        Image(picture.image, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
+        EditorVideo(file, Modifier.matchParentSize())
+    } else {
+        Canvas(Modifier.matchParentSize().clearAndSetSemantics {}) { picture.draw(this, drawn) }
+        PlacedEditorVideo(file, placement, drawn, picture.bitmap.width.toFloat() / picture.bitmap.height.coerceAtLeast(1))
+    }
+}
+
+/** The editor's own small player (the viewer's is its own): the video muted and looping, playing while on screen. */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-private fun EditorVideo(
-    file: File,
-    modifier: Modifier,
-) {
+private fun rememberEditorPlayer(file: File): ExoPlayer {
     val context = LocalContext.current
     val player =
         remember(file) {
@@ -544,6 +560,49 @@ private fun EditorVideo(
         player.play()
         onPauseOrDispose { player.pause() }
     }
+    return player
+}
+
+/**
+ * A placed video playing at its [placement] on the canvas drawn [drawn] px, the video [shape] (width over height): a
+ * texture view (a surface can't be turned) laid out at the canvas's width and scaled, turned and moved like the photo.
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun PlacedEditorVideo(
+    file: File,
+    placement: MomentPlacement,
+    drawn: Size,
+    shape: Float,
+) {
+    val player = rememberEditorPlayer(file)
+    AndroidView(
+        factory = { context -> TextureView(context).also { player.setVideoTextureView(it) } },
+        modifier =
+            Modifier.clearAndSetSemantics {}.layout { measurable, constraints ->
+                val width = drawn.width.roundToInt().coerceAtLeast(1)
+                val placeable = measurable.measure(Constraints.fixed(width, (width / shape).roundToInt().coerceAtLeast(1)))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    val x = placement.x * drawn.width - placeable.width / 2f
+                    val y = placement.y * drawn.height - placeable.height / 2f
+                    placeable.placeWithLayer(x.roundToInt(), y.roundToInt()) {
+                        scaleX = placement.width
+                        scaleY = placement.width
+                        rotationZ = placement.turn
+                    }
+                }
+            },
+    )
+}
+
+/** The editor's own small player (the viewer's is its own): the video muted and looping, filling its box. */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun EditorVideo(
+    file: File,
+    modifier: Modifier,
+) {
+    val player = rememberEditorPlayer(file)
     AndroidView(
         factory = { viewContext ->
             PlayerView(viewContext).apply {
