@@ -108,6 +108,48 @@ class VerifyEmailViewModel
             }
         }
 
+        private var watchStartedAtMs: Long? = null
+        private var watchChecks = 0
+
+        /**
+         * While the screen shows, checks now and then, quietly, whether the
+         * email was confirmed somewhere else (the link opened on a computer)
+         * and signs in the way "Already confirmed? Log in" does. Each check is
+         * that same sign-in: `/login` answers 403 until the email is confirmed,
+         * and a 403 never counts against the person's sign-in limits. But every
+         * sign-in also uses Supabase Auth's per-address allowance, which all of
+         * the app's sign-ins and sign-ups share because they reach it from the
+         * server's one address, so the checks stay sparse: the first 15 s
+         * after the screen first shows, then 30 s, 1 min and every 2 min after,
+         * for 10 minutes (7 checks, never more than 4 in any 5 minutes). Any
+         * other answer (signed in, offline, refused, nothing remembered to sign
+         * in with) ends this run. The screen runs it while it is in view, so
+         * leaving the screen or the app stops it; coming back continues the
+         * same schedule within the same 10 minutes.
+         */
+        suspend fun watchForConfirmation() {
+            val startedAt = watchStartedAtMs ?: clock.millis().also { watchStartedAtMs = it }
+            while (true) {
+                val wait = WATCH_DELAYS_MS[minOf(watchChecks, WATCH_DELAYS_MS.lastIndex)]
+                if (clock.millis() + wait - startedAt > WATCH_WINDOW_MS) return
+                delay(wait)
+                watchChecks++
+                val outcome = signInOnceQuietly()
+                if (outcome != null && outcome != AuthRepository.ConfirmedSignIn.NotConfirmedYet) return
+            }
+        }
+
+        /** One quiet try; null when another sign-in (a tap, a return to the app) is already under way. */
+        private suspend fun signInOnceQuietly(): AuthRepository.ConfirmedSignIn? {
+            if (signingIn) return null
+            signingIn = true
+            return try {
+                authRepository.signInAfterConfirmation(_uiState.value.email)
+            } finally {
+                signingIn = false
+            }
+        }
+
         /**
          * Fired once from the screen's `LaunchedEffect`. If a token was
          * supplied (verification-email deep-link path), POSTs it. Sets
@@ -176,5 +218,11 @@ class VerifyEmailViewModel
             const val SOFT_GATE_KEY = "softGate"
             const val RESEND_COOLDOWN_MS: Long = 30_000
             const val VERIFY_SUCCESS_BANNER_DELAY_MS: Long = 1_500
+
+            /** Waits before each quiet check; the last one repeats. */
+            val WATCH_DELAYS_MS = listOf(15_000L, 30_000L, 60_000L, 120_000L)
+
+            /** No quiet check later than this after the screen first shows. */
+            const val WATCH_WINDOW_MS: Long = 10 * 60_000L
         }
     }
