@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -464,9 +465,8 @@ private fun MarksCanvas(
                 if (it.typing) it.typingEnded() else it.withNewLabel(at.x / drawnWidth, at.y / drawnHeight, letters, frame::kept)
             }
         }
-        val pinched by rememberUpdatedState { zoom: Float ->
-            onEdit { e -> e.picked?.let { e.changed(frame.moved(it, 0f, 0f, zoom)) } ?: e }
-        }
+        // Two fingers anywhere on the picture resize and turn the picked label.
+        val pinched = rememberPickedPinch(editing, frame, onEdit)
         val text = editing.tool == MomentMarksTool.Text
         // Text opens with a label 40% down the frame, above where the keyboard comes up.
         val firstDown = (MomentMarkRules.NEW_LABEL_DOWN * frameHeight - (frameHeight - drawnHeight) / 2) / drawnHeight
@@ -483,7 +483,7 @@ private fun MarksCanvas(
         }
         Box(modifier = Modifier.requiredSize(with(density) { drawnWidth.toDp() }, with(density) { drawnHeight.toDp() })) {
             // Each reads the latest of its state when it's called (the touches outlive this composition).
-            val touches = Modifier.matchParentSize().toolTouches(editing.tool, { tapped(it) }, { pinched(it) }, live) { stroke(it) }
+            val touches = Modifier.matchParentSize().toolTouches(editing.tool, { tapped(it) }, pinched, live) { stroke(it) }
             // A video plays, muted and looping, under its marks (at its placement once Resize placed it).
             val base = EditorPicture(picture, image, editing.shownPlacement(pictureSize), backdrop)
             if (video != null) VideoUnder(video, base, Size(drawnWidth, drawnHeight))
@@ -509,13 +509,13 @@ private fun MarksCanvas(
 private fun Modifier.toolTouches(
     tool: MomentMarksTool,
     onTap: (Offset) -> Unit,
-    onZoom: (Float) -> Unit,
+    onPinch: (Float, Float, Boolean) -> Unit,
     live: SnapshotStateList<Float>,
     onStroke: (List<Float>) -> Unit,
 ): Modifier =
     pointerInput(tool) {
         when (tool) {
-            MomentMarksTool.Text -> tapsAndPinches(onTap, onZoom)
+            MomentMarksTool.Text -> tapsAndPinches(onTap, onPinch)
             MomentMarksTool.Draw -> sign(live, onInk = {}, box = Size(1f, 1f)) { onStroke(it) }
             MomentMarksTool.Resize -> Unit
         }
@@ -618,20 +618,27 @@ private fun EditorVideo(
 
 /**
  * Text's touches on the picture away from the labels: a tap that stays put ([onTap], where it landed; a swipe isn't
- * one), and a pinch anywhere, which resizes the picked label ([onZoom]).
+ * one), and two fingers anywhere, which resize and turn the picked label ([onPinch]: the spread, the twist in degrees
+ * clockwise, and whether the two fingers have just begun).
  */
 private suspend fun PointerInputScope.tapsAndPinches(
     onTap: (Offset) -> Unit,
-    onZoom: (Float) -> Unit,
+    onPinch: (Float, Float, Boolean) -> Unit,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown()
         var still = true
+        var pinching = false
         do {
             val event = awaitPointerEvent()
             if (event.changes.count { it.pressed } > 1) {
                 still = false
-                event.calculateZoom().takeIf { it != 1f }?.let(onZoom)
+                val zoom = event.calculateZoom()
+                val turn = event.calculateRotation()
+                if (zoom != 1f || turn != 0f) {
+                    onPinch(zoom, turn, !pinching)
+                    pinching = true
+                }
                 event.changes.forEach { it.consume() }
             } else if (event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
                 still = false

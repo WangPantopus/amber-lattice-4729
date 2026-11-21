@@ -181,11 +181,11 @@ private fun PartEveryPhoneShows(
 }
 
 /**
- * Resize's gestures: [onGesture] with the fingers' centroid, how far it moved, how far they spread and how far they
- * twisted (degrees clockwise) since the last event; one finger only moves. Starts past the touch slop, as Compose's
- * transform gestures do.
+ * Resize's gestures, and a label's (step R3): [onGesture] with the fingers' centroid, how far it moved, how far they
+ * spread and how far they twisted (degrees clockwise) since the last event; one finger only moves. Starts past the touch
+ * slop, as Compose's transform gestures do.
  */
-private suspend fun PointerInputScope.detectPlacementGestures(
+internal suspend fun PointerInputScope.detectPlacementGestures(
     onStart: () -> Unit,
     onGesture: (centroid: Offset, pan: Offset, zoom: Float, turn: Float) -> Unit,
     onEnd: () -> Unit,

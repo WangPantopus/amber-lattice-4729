@@ -2,12 +2,12 @@
 
 package app.pantopus.android.ui.screens.moments.compose.marks
 
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,12 +76,15 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.pantopus.android.ui.components.keepsKeyboard
+import app.pantopus.android.ui.screens.moments.components.MomentHaptics
 import app.pantopus.android.ui.theme.PantopusColors
 import app.pantopus.android.ui.theme.PantopusIcon
 import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.Spacing
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * A label's place on the picture as drawn: [width] × [height] px, the picture itself [pictureWidth] × [pictureHeight];
@@ -102,7 +105,8 @@ internal class LabelFrame(
      */
     fun kept(label: MomentLabel): MomentLabel {
         val inside = MomentMarksPainter.keptIn(label, pictureWidth, pictureHeight)
-        val box = MomentMarksPainter.layout(inside, width, height).box
+        // The upright box around it, when it's turned.
+        val box = MomentMarksPainter.turnedBounds(MomentMarksPainter.layout(inside, width, height).box, inside.turn)
         val upper = max(ceiling, MomentMarkRules.labelBox(pictureWidth, pictureHeight).top * height)
         val shift =
             when {
@@ -120,12 +124,26 @@ internal class LabelFrame(
         dy: Float,
         zoom: Float = 1f,
     ): MomentLabel = kept(label.copy(x = label.x + dx / width, y = label.y + dy / height, size = label.size * zoom))
+
+    /**
+     * [label] turned to [turn] degrees and kept as [kept] keeps it; or as it was when, turned so, it can't fit where a
+     * label may go even moved and at the smallest letters (it keeps the last angle that fit).
+     */
+    fun turned(
+        label: MomentLabel,
+        turn: Float,
+    ): MomentLabel {
+        if (turn == label.turn) return label
+        val candidate = label.copy(turn = turn)
+        return if (MomentMarksPainter.fitsTurned(candidate, pictureWidth, pictureHeight)) kept(candidate) else label
+    }
 }
 
 /**
- * Text's labels over the picture (board T2): each takes a drag to move it, a pinch to resize it and a tap to type in it.
- * The one picked is outlined, with a handle at its corner that resizes it too; the one being typed is a text field drawn
- * as the label is. TalkBack can move, resize, change and delete each one.
+ * Text's labels over the picture (board T2): each takes a drag to move it, two fingers to resize and turn it (step R3)
+ * and a tap to type in it; a turned one is grabbed by its turned shape. The one picked is outlined, with a handle at its
+ * corner that resizes it too; the one being typed is a text field drawn upright as the label is. TalkBack can move,
+ * resize, turn, change and delete each one.
  */
 @Composable
 internal fun TextLabels(
@@ -134,7 +152,9 @@ internal fun TextLabels(
     onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
 ) {
     val now by rememberUpdatedState(frame)
+    val labelsNow by rememberUpdatedState(editing.marks.labels)
     val density = LocalDensity.current
+    val view = LocalView.current
     editing.marks.labels.forEachIndexed { index, label ->
         val laid = MomentMarksPainter.layout(label, frame.width, frame.height)
         val change = { edit: (MomentLabel) -> MomentLabel ->
@@ -151,10 +171,24 @@ internal fun TextLabels(
                     Modifier
                         .offset { IntOffset(laid.box.left.roundToInt(), laid.box.top.roundToInt()) }
                         .size(with(density) { laid.box.width().toDp() }, with(density) { laid.box.height().toDp() })
+                        // Turned about its middle, so it's touched by its turned shape.
+                        .graphicsLayer { rotationZ = label.turn }
                         .keepsKeyboard()
                         .then(if (picked) Modifier.pickedOutline(laid.corner) else Modifier)
                         .pointerInput(label.id) {
-                            detectTransformGestures { _, pan, zoom, _ -> change { now.moved(it, pan.x, pan.y, zoom) } }
+                            val twist = LabelTwist()
+                            detectPlacementGestures(
+                                onStart = { twist.start(labelsNow.firstOrNull { it.id == label.id }?.turn ?: 0f) },
+                                onGesture = { _, pan, zoom, turnBy ->
+                                    val turn = twist.by(turnBy, view)
+                                    change { current ->
+                                        // The fingers' move comes in the label's own turned frame: turned back to the picture's.
+                                        val moved = turnedBy(pan, current.turn)
+                                        now.turned(now.moved(current, moved.x, moved.y, zoom), turn)
+                                    }
+                                },
+                                onEnd = {},
+                            )
                         }.pointerInput(label.id) { detectTapGestures { onEdit { it.editing(label.id) } } }
                         .testTag("moments.marks.label.$index")
                         .labelActions(label, onEdit = { onEdit { it.editing(label.id) } }, onChange = change, frame = now) {
@@ -163,12 +197,18 @@ internal fun TextLabels(
             )
             if (picked) {
                 val handle = with(density) { HANDLE.toPx() }
+                // At the label's bottom right corner, turned with it.
+                val corner = turnedBy(Offset(laid.box.width() / 2, laid.box.height() / 2), label.turn)
+                val cornerX = laid.box.centerX() + corner.x
+                val cornerY = laid.box.centerY() + corner.y
                 ResizeHandle(
-                    Modifier.offset { IntOffset((laid.box.right - handle / 2).roundToInt(), (laid.box.bottom - handle / 2).roundToInt()) },
+                    Modifier.offset { IntOffset((cornerX - handle / 2).roundToInt(), (cornerY - handle / 2).roundToInt()) },
                 ) { dx, dy ->
                     change { current ->
                         val box = MomentMarksPainter.layout(current, now.width, now.height).box
-                        now.moved(current, 0f, 0f, 1f + (dx + dy) / (box.width() + box.height()))
+                        // Outward along the label's own diagonal makes it larger.
+                        val along = turnedBy(Offset(dx, dy), -current.turn)
+                        now.moved(current, 0f, 0f, 1f + (along.x + along.y) / (box.width() + box.height()))
                     }
                 }
             }
@@ -176,7 +216,73 @@ internal fun TextLabels(
     }
 }
 
-/** TalkBack's way to do what fingers do on a label: change its words, move it, resize it, delete it. */
+/**
+ * A twist's turn for a label (step R3): kept unstuck while the fingers are down, so a turn that sticks can be pulled
+ * away again, and stuck when shown, with a light tick when it newly catches on a quarter turn.
+ */
+internal class LabelTwist {
+    private var raw = 0f
+    private var caught = false
+
+    fun start(turn: Float) {
+        raw = turn
+        caught = onQuarter(turn)
+    }
+
+    /** The turn shown after [turnBy] more degrees. */
+    fun by(
+        turnBy: Float,
+        view: View,
+    ): Float {
+        raw += turnBy
+        val turn = stuckTurn(raw)
+        if (onQuarter(turn) && !caught) MomentHaptics.light(view)
+        caught = onQuarter(turn)
+        return turn
+    }
+}
+
+/**
+ * Two fingers anywhere on the picture in Text resize and turn the picked label, as they do on the label itself:
+ * `(zoom, turnBy, first)` per event, [first] at a gesture's start. A label being typed in (shown upright) doesn't turn.
+ * It reads the latest state when called.
+ */
+@Composable
+internal fun rememberPickedPinch(
+    editing: MomentMarksEditing,
+    frame: LabelFrame,
+    onEdit: ((MomentMarksEditing) -> MomentMarksEditing) -> Unit,
+): (Float, Float, Boolean) -> Unit {
+    val view = LocalView.current
+    val twist = remember { LabelTwist() }
+    val picked by rememberUpdatedState(editing.picked)
+    val typing by rememberUpdatedState(editing.typing)
+    val now by rememberUpdatedState(frame)
+    val edit by rememberUpdatedState(onEdit)
+    return remember {
+        { zoom: Float, turnBy: Float, first: Boolean ->
+            picked?.let { label ->
+                if (first) twist.start(label.turn)
+                val turn = if (typing) label.turn else twist.by(turnBy, view)
+                edit { e -> e.picked?.let { e.changed(now.turned(now.moved(it, 0f, 0f, zoom), turn)) } ?: e }
+            }
+        }
+    }
+}
+
+/** [offset] turned [degrees] clockwise (y down). */
+private fun turnedBy(
+    offset: Offset,
+    degrees: Float,
+): Offset {
+    if (degrees == 0f) return offset
+    val radians = Math.toRadians(degrees.toDouble())
+    val cos = cos(radians).toFloat()
+    val sin = sin(radians).toFloat()
+    return Offset(offset.x * cos - offset.y * sin, offset.x * sin + offset.y * cos)
+}
+
+/** TalkBack's way to do what fingers do on a label: change its words, move it, resize it, turn it, delete it. */
 private fun Modifier.labelActions(
     label: MomentLabel,
     onEdit: () -> Unit,
@@ -213,6 +319,14 @@ private fun Modifier.labelActions(
                 },
                 CustomAccessibilityAction("Make smaller") {
                     onChange { frame.moved(it, 0f, 0f, 1f / MomentMarkRules.SIZE_STEP) }
+                    true
+                },
+                CustomAccessibilityAction("Turn left") {
+                    onChange { frame.turned(it, stuckTurn(it.turn - MomentMarkRules.TURN_STEP)) }
+                    true
+                },
+                CustomAccessibilityAction("Turn right") {
+                    onChange { frame.turned(it, stuckTurn(it.turn + MomentMarkRules.TURN_STEP)) }
                     true
                 },
                 CustomAccessibilityAction("Delete") {
@@ -387,7 +501,12 @@ internal fun TextTools(
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (!editing.typing) {
             Text(
-                text = if (editing.marks.labels.isEmpty()) "Tap the picture to add words." else "Drag to move. Pinch to resize.",
+                text =
+                    if (editing.marks.labels.isEmpty()) {
+                        "Tap the picture to add words."
+                    } else {
+                        "Drag to move. Pinch to resize. Twist to turn."
+                    },
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
