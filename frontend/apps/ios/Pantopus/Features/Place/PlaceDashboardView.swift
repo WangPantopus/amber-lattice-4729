@@ -199,7 +199,7 @@ struct PlaceDashboardView: View {
                     onClose: { showSwitcher = false }
                 )
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetentsFittingContentOnIPad([.medium, .large])
             .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showsChanges) {
