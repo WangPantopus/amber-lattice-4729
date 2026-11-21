@@ -516,8 +516,14 @@ private fun EnvelopeFront(
                     val pen = faceArt?.pen ?: return@drawBehind
                     val moment = state.sending
                     val reveal = AddressReveal.of(moment)
-                    // A travelling card's newest postmark is struck as the envelope lands (travelling card Part 3).
-                    val strike = if (card.travel != null) state.strike else 1f
+                    // A travelling card's newest postmark is struck as the envelope lands (travelling card Part 3), or
+                    // as a pass-on is sealed, where today's postmark would land.
+                    val strike =
+                        when {
+                            card.travel == null -> 1f
+                            moment != null -> reveal.postmark
+                            else -> state.strike
+                        }
                     drawIntoCanvas { canvas ->
                         // A list: the envelopes under the top one, their edges showing.
                         if ((moment?.calls?.several ?: 1) > 1) {
@@ -627,15 +633,17 @@ private fun drawPostage(
     paints: EnvelopePaints,
     reveal: AddressReveal,
 ) {
-    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.takeIf { reveal.stamp > 0f }?.let { stamp ->
+    // A passed-on card's envelope already carries its stamp, cancelled by its first postmark (travelling card Part 4).
+    val stampOn = if (card.travels) 1f else reveal.stamp
+    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.takeIf { stampOn > 0f }?.let { stamp ->
         val left = width * 0.755f
         val top = height * 0.0345f
         val stampWidth = width * 0.2017f
         val stampHeight = stampWidth * stamp.height / stamp.width
         val saved = canvas.save()
-        val grow = 1f + 0.45f * (1f - reveal.stamp)
+        val grow = 1f + 0.45f * (1f - stampOn)
         canvas.scale(grow, grow, left + stampWidth / 2f, top + stampHeight / 2f)
-        paints.bitmap.alpha = (255 * reveal.stamp.coerceIn(0f, 1f)).toInt()
+        paints.bitmap.alpha = (255 * stampOn.coerceIn(0f, 1f)).toInt()
         canvas.drawBitmap(stamp, null, RectF(left, top, left + stampWidth, top + stampHeight), paints.bitmap)
         paints.bitmap.alpha = 255
         canvas.restoreToCount(saved)
