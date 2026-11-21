@@ -61,21 +61,34 @@ struct CardTablePassOnPage: View {
         .accessibilityIdentifier("cardPassOn")
     }
 
-    /// The card at the top, the sheet over its printed strip and on down; the whole scrolls, keyboard and all.
+    /// The card at the top, the sheet over its printed strip and on down; the whole scrolls, keyboard and all, under
+    /// the ✕'s strip. While a name or address is typed, "Who gets it next" rises to the top so the matches show above
+    /// the keyboard.
     private func phone(width: CGFloat) -> some View {
         let cardWidth = max(140, min(width - 120, 260))
-        return ScrollView {
-            VStack(spacing: 0) {
-                card(width: cardWidth)
-                CardPassOnSheet(model: model)
-                    .padding(.top, -cardWidth * 1.2 * (1 - Self.sheetTop))
-                    .frame(maxWidth: 520)
+        return VStack(spacing: 0) {
+            Color.clear.frame(height: 56)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        card(width: cardWidth)
+                        CardPassOnSheet(model: model)
+                            .padding(.top, -cardWidth * 1.2 * (1 - Self.sheetTop))
+                            .frame(maxWidth: 520)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .scrollBounceBehavior(.basedOnSize)
+                .clipped()
+                .onChange(of: model.searching) { _, searching in
+                    guard searching else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        proxy.scrollTo(CardPassOnSheet.whoAnchor, anchor: .top)
+                    }
+                }
             }
-            .padding(.top, 56)
-            .frame(maxWidth: .infinity)
         }
-        .scrollDismissesKeyboard(.interactively)
-        .scrollBounceBehavior(.basedOnSize)
     }
 
     /// The open Duo: the card on the left page, the sheet on the right.
@@ -120,6 +133,9 @@ private struct CardPassOnSheet: View {
     @ScaledMetric(relativeTo: .title3) private var titleSize: CGFloat = 22
     @ScaledMetric(relativeTo: .footnote) private var lineSize: CGFloat = 13.5
 
+    /// Where the page scrolls to while a name or address is typed.
+    static let whoAnchor = "cardPassOnWhoAnchor"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Pass it on")
@@ -132,6 +148,7 @@ private struct CardPassOnSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
             label("Who gets it next")
+                .id(Self.whoAnchor)
             CardPassOnPicker(model: model, searching: $searching)
             label(model.noteLabel)
             note
@@ -175,6 +192,7 @@ private struct CardPassOnSheet: View {
                 .ignoresSafeArea(edges: .bottom)
         }
         .environment(\.colorScheme, .light)
+        .onChange(of: searching) { _, typing in model.searching = typing }
     }
 
     private func label(_ text: String) -> some View {

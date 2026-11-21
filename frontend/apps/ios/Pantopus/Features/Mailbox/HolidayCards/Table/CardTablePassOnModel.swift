@@ -54,6 +54,8 @@ final class CardTablePassOnModel {
     private(set) var search: HolidayCardSearch = .idle
     var byEmail = false
     var email = ""
+    /// A name or an address is being typed.
+    var searching = false
     var pick: CardPassOnPick? {
         didSet { if pick != oldValue { refusal = nil } }
     }
