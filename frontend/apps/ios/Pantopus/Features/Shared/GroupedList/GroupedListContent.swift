@@ -220,6 +220,10 @@ public protocol GroupedListDataSource: AnyObject, Observable {
     /// A14.5 — tap on one option of a `.chips` row. `value` is the raw
     /// option string (already the wire value).
     func selectChip(_ rowId: String, value: String) async
+    /// What one option of a `.chips` row reads as on screen. The raw
+    /// option stays the wire value (a briefing time is sent as `HH:mm`
+    /// and shown in the phone's own clock style).
+    func chipLabel(_ rowId: String, value: String) -> String
     /// A14.5 — tap on the banner's trailing action pill (e.g. Resume).
     func tapBanner() async
     /// A14.7 — release the Privacy location-fuzz slider on `stop`.
@@ -254,6 +258,10 @@ public extension GroupedListDataSource {
 
     func toggleChannel(_: String, channel _: ChannelGlyph, isOn _: Bool) async {}
     func selectChip(_: String, value _: String) async {}
+    func chipLabel(_: String, value: String) -> String {
+        value
+    }
+
     func tapBanner() async {}
     func setFuzz(_: String, stop _: FuzzStop) async {}
 }

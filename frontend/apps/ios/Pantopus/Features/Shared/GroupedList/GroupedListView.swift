@@ -405,10 +405,11 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
                 ForEach(options, id: \.self) { option in
                     let isActive = option == selected
                     let traits: AccessibilityTraits = isActive ? [.isButton, .isSelected] : [.isButton]
+                    let label = dataSource.chipLabel(rowId, value: option)
                     Button {
                         flipChip(rowId: rowId, options: options, value: option, selected: selected)
                     } label: {
-                        Text(option)
+                        Text(label)
                             .font(.system(size: 13, weight: isActive ? .bold : .medium))
                             .foregroundStyle(isActive ? Theme.Color.primaryInkStrong : Theme.Color.appTextSecondary)
                             .padding(.horizontal, Spacing.s3)
@@ -425,7 +426,7 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("groupedListChipOption_\(rowId)_\(option)")
-                    .accessibilityLabel(option)
+                    .accessibilityLabel(label)
                     .accessibilityAddTraits(traits)
                 }
             }
@@ -614,7 +615,7 @@ public struct GroupedListView<DataSource: GroupedListDataSource>: View {
         case let .slider(stops, index):
             if stops.indices.contains(index) { parts.append("currently \(stops[index])") }
         case let .chips(_, selected):
-            parts.append("currently \(selected)")
+            parts.append("currently \(dataSource.chipLabel(row.id, value: selected))")
         case let .channelTriad(p, e, s, locked):
             for (glyph, isOn) in [(ChannelGlyph.p, p), (.e, e), (.s, s)] {
                 let word = locked.contains(glyph) ? "locked on" : (isOn ? "on" : "off")
