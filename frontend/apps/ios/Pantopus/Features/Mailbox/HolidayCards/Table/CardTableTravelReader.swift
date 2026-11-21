@@ -108,10 +108,10 @@ extension CardTravelWords {
         "You passed it on to \(names.joined(separator: " and "))."
     }
 
-    /// Who a pass went to: their first name, else the address it went to, else "a link".
+    /// Who a pass went to: their first name, else "someone by link", else the address it went to.
     static func name(_ passed: CardTravelPassed) -> String {
         if let first = passed.firstName, !first.isEmpty { return first }
-        if passed.byLink { return "a link" }
+        if passed.byLink { return "someone by link" }
         return passed.toName ?? "someone"
     }
 }
