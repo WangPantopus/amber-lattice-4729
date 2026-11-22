@@ -138,8 +138,7 @@ object HolidayCardArt {
         design: String,
     ) {
         val url = webPicture(design, thumb = false) ?: return
-        val saver = context.getSystemService(ConnectivityManager::class.java)?.restrictBackgroundStatus
-        if (saver == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED || !loadedAhead.add(url)) return
+        if (dataSaverOn(context) || !loadedAhead.add(url)) return
         val request =
             ImageRequest
                 .Builder(context)
@@ -154,6 +153,11 @@ object HolidayCardArt {
                 ).build()
         context.imageLoader.enqueue(request)
     }
+
+    /** Data Saver holds this app back: only the small pictures are read then (Pick a card's shelves). */
+    fun dataSaverOn(context: Context): Boolean =
+        context.getSystemService(ConnectivityManager::class.java)?.restrictBackgroundStatus ==
+            ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
 
     /**
      * Today's copy of [design], its border baked in: the app's own for the pictures it carries, else the website's. The
