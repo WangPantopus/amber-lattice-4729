@@ -329,6 +329,15 @@ private fun PlansSheetHost(
         reduceMotion = reduceMotion,
         modifier = Modifier.fillMaxSize(),
     ) { current ->
+        // A hosted repeating plan's Skip, Change and Stop repeating, under "Yours".
+        val seriesActions: (PlanDto) -> PlanSeriesActions = { plan ->
+            PlanSeriesActions(
+                onSkip = { viewModel.skipDate(plan) },
+                onChange = { actions.onChangePlan(plan.id) },
+                onStop = { viewModel.stopRepeating(plan) },
+                busy = state.seriesBusy,
+            )
+        }
         when {
             state.postedId != null && selected != null ->
                 if (selected.isBusiness) {
@@ -362,6 +371,8 @@ private fun PlansSheetHost(
                     onUseLocation = askLocation,
                     onUseHome = viewModel::useHome,
                     onOpenSettings = { context.openAppSettings() },
+                    // The person's own plans need no location: "Yours" shows over the request.
+                    yours = { PlansYours(state, onOpen = { actions.onOpenPlan(it.id) }, seriesActions = seriesActions) },
                 )
             state.selectedId != null && selected != null ->
                 PlanCardContent(
@@ -405,14 +416,7 @@ private fun PlansSheetHost(
                     onRetry = viewModel::refresh,
                     onOpenId = actions.onOpenPlan,
                     onHostFilter = viewModel::setHostFilter,
-                    seriesActions = { plan ->
-                        PlanSeriesActions(
-                            onSkip = { viewModel.skipDate(plan) },
-                            onChange = { actions.onChangePlan(plan.id) },
-                            onStop = { viewModel.stopRepeating(plan) },
-                            busy = state.seriesBusy,
-                        )
-                    },
+                    seriesActions = seriesActions,
                 )
         }
     }

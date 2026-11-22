@@ -570,22 +570,8 @@ internal fun PlansListContent(
             item(key = "loading") { PlanRowsSkeleton(rows = 4) }
         }
         if (state.mineShown.isNotEmpty()) {
-            // "Yours" with Plans for the holidays (board 1), "Your plans" before it.
-            item(key = "mine-title") { SectionTitle(if (state.flags.guestAnswersOn) "Yours" else "Your plans", top = 10.dp) }
-            items(state.mineShown, key = { "mine-${it.id}" }) { plan ->
-                val series = seriesActions?.takeIf { plan.isHostedSeries }
-                if (series != null) {
-                    PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
-                } else {
-                    PlanListRow(
-                        plan,
-                        first = plan == state.mineShown.first(),
-                        mine = true,
-                        onOpen = onOpen,
-                        yours = state.flags.guestAnswersOn,
-                    )
-                }
-            }
+            item(key = "mine-title") { YoursTitle(state) }
+            items(state.mineShown, key = { "mine-${it.id}" }) { plan -> YoursRow(plan, state, onOpen, seriesActions) }
         }
         sections.forEach { (title, plans) ->
             item(key = "title-$title") { SectionTitle(title, top = 14.dp) }
@@ -653,6 +639,45 @@ private fun PlansListHeader(
             PantopusIconImage(icon = PantopusIcon.Map, contentDescription = null, size = 20.dp, tint = PantopusColors.appText)
         }
         // Ask is the chrome's sparkle just above: the list stops under it now (as on iOS).
+    }
+}
+
+/** "Yours" with Plans for the holidays (board 1), "Your plans" before it. */
+@Composable
+private fun YoursTitle(state: PlansMapUiState) {
+    SectionTitle(if (state.flags.guestAnswersOn) "Yours" else "Your plans", top = 10.dp)
+}
+
+/** One of the person's own plans under "Yours": a hosted repeating plan's card, or a row. */
+@Composable
+private fun YoursRow(
+    plan: PlanDto,
+    state: PlansMapUiState,
+    onOpen: (PlanDto) -> Unit,
+    seriesActions: ((PlanDto) -> PlanSeriesActions)?,
+) {
+    val series = seriesActions?.takeIf { plan.isHostedSeries }
+    if (series != null) {
+        PlanSeriesHostCard(plan, series(plan), modifier = Modifier.padding(vertical = Spacing.s2), onOpen = { onOpen(plan) })
+    } else {
+        PlanListRow(plan, first = plan == state.mineShown.first(), mine = true, onOpen = onOpen, yours = state.flags.guestAnswersOn)
+    }
+}
+
+/**
+ * "Yours" where the list can't show yet (no location): the person's own plans, as the list shows them once location is
+ * allowed, over "See plans near you". Nothing when they have none.
+ */
+@Composable
+internal fun PlansYours(
+    state: PlansMapUiState,
+    onOpen: (PlanDto) -> Unit,
+    seriesActions: ((PlanDto) -> PlanSeriesActions)?,
+) {
+    if (state.mineShown.isEmpty()) return
+    Column(modifier = Modifier.fillMaxWidth().testTag("plansYours")) {
+        YoursTitle(state)
+        state.mineShown.forEach { plan -> YoursRow(plan, state, onOpen, seriesActions) }
     }
 }
 
@@ -1172,6 +1197,8 @@ internal fun PlansNoLocationContent(
     onUseLocation: () -> Unit,
     onUseHome: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** The person's own plans ("Yours"), over the request; null or empty: the request alone. */
+    yours: (@Composable () -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
     Column(
@@ -1179,6 +1206,7 @@ internal fun PlansNoLocationContent(
         modifier = Modifier.fillMaxWidth().reportsFit(scroll).verticalScroll(scroll).padding(top = Spacing.s1),
         verticalArrangement = Arrangement.spacedBy(Spacing.s4),
     ) {
+        yours?.invoke()
         PlanIconTile(
             icon = PantopusIcon.Navigation,
             background = PantopusColors.primary100,
