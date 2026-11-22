@@ -54,6 +54,21 @@ export function scrollerOf(el: Element | null): HTMLElement {
 
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Scrolls the page so `el` starts `offset` px below the top of what scrolls it (Safari's scrollIntoView doesn't keep
+ * the scroll-margin under a bar that stays at the top, so the distance is set here for every browser).
+ */
+export function scrollToStart(el: HTMLElement, offset: number, smooth = false) {
+  const scroller = scrollerOf(el);
+  const page = scroller === document.scrollingElement || scroller === document.documentElement;
+  const from = page ? window.scrollY : scroller.scrollTop;
+  const top = from + el.getBoundingClientRect().top - (page ? 0 : scroller.getBoundingClientRect().top) - offset;
+  (page ? window : scroller).scrollTo({ top: Math.max(0, Math.round(top)), behavior: smooth && !reducedMotion() ? 'smooth' : 'auto' });
+}
+
+/** How much of the top the app bar covers where the shelves are (`--stuck`: 56 px at phone width, none from 768 px). */
+const stuckOf = (el: Element) => parseFloat(getComputedStyle(el).getPropertyValue('--stuck')) || 0;
+
 // The first large card's picture comes alone, before any other (on a slow network the pictures on screen would otherwise
 // share it and all arrive late); the rest follow as they come near. At most 2 s, in case it never answers.
 let firstPicture = { open: true, waiting: new Set<() => void>(), timer: 0 };
@@ -299,7 +314,7 @@ export function CardShelves({ shelves, chosen, restoreTop, onOpen, onAll }: {
       const shelf = chosen ? shelves.find((s) => s.cards.some((c) => c.id === chosen)) : undefined;
       if (!shelf) return;
       const section = document.getElementById(shelfAnchor(shelf.id));
-      section?.scrollIntoView({ block: 'start' });
+      if (section) scrollToStart(section, stuckOf(el) + 8);
       const row = section?.querySelector<HTMLElement>('[data-testid^="shelfRow."]');
       const tile = row?.querySelector<HTMLElement>(`[data-card="${chosen}"]`)?.parentElement;
       if (row && tile) row.scrollLeft = Math.max(0, tile.offsetLeft - 16);
@@ -311,7 +326,8 @@ export function CardShelves({ shelves, chosen, restoreTop, onOpen, onAll }: {
   }, []);
 
   const jump = (shelf: Shelf) => {
-    document.getElementById(shelfAnchor(shelf.id))?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    const section = document.getElementById(shelfAnchor(shelf.id));
+    if (section && root.current) scrollToStart(section, stuckOf(root.current) + 8, true);
   };
 
   return (
@@ -501,7 +517,8 @@ export function CollectionPage({ shelf, chosen, onOpen }: { shelf: Shelf; chosen
                 data-testid={`collectionPart.${i}`}
                 onClick={() => {
                   setInView(i);
-                  document.getElementById(partAnchor(i))?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+                  const part = document.getElementById(partAnchor(i));
+                  if (part && root.current) scrollToStart(part, stuckOf(root.current) + (pillsRef.current?.offsetHeight ?? 0) + 4, true);
                 }}
                 className={`${PILL} ${i === inView ? PILL_ON : PILL_OFF}`}
               >
