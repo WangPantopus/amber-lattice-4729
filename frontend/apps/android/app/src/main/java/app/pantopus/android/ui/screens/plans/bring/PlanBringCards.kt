@@ -57,8 +57,11 @@ import app.pantopus.android.ui.theme.Spacing
 fun PlanBringHostCard(
     bring: PlanBringDto,
     onOpen: () -> Unit,
+    /** The green line at the top after the host's list was saved with a thing newly theirs. */
+    claimed: PlanBringClaimed? = null,
 ) {
     BringCard(title = "Bring list", count = "${bring.taken} of ${bring.items.size} taken", tag = "planBringHostCard") {
+        claimed?.let { ClaimedLine(it) }
         bring.items.forEachIndexed { index, item ->
             if (index > 0) PlanDivider()
             BringRow(item) { ClaimEnd(item) }
@@ -166,10 +169,14 @@ private fun BringCard(
     }
 }
 
-/** What a guest just said they'd bring ([label], as the list shows it) and whose plan it is ([hostFirst]). */
+/**
+ * What a person just said they'd bring ([label], as the list shows it) and whose plan it is ([hostFirst]); [byHost]
+ * when it is the host saying so on their own plan.
+ */
 data class PlanBringClaimed(
     val label: String,
     val hostFirst: String,
+    val byHost: Boolean = false,
 ) {
     /** "You're bringing bread." The first letter is lowercased when the second one is ("Bread" → "bread", "IPA" stays). */
     val bringing: String
@@ -179,8 +186,8 @@ data class PlanBringClaimed(
             return "You're bringing ${if (lower) thing.replaceFirstChar { it.lowercase() } else thing}."
         }
 
-    /** "Jo and the other guests can see it." */
-    val seenBy: String get() = "$hostFirst and the other guests can see it."
+    /** "Jo and the other guests can see it."; on the host's own plan "Your guests can see it." */
+    val seenBy: String get() = if (byHost) "Your guests can see it." else "$hostFirst and the other guests can see it."
 }
 
 /** The green line at the top of the bring list: "You're bringing bread. Jo and the other guests can see it." */

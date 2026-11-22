@@ -99,6 +99,9 @@ fun PlanDetailScreen(
     onOpenGuests: (String) -> Unit = {},
     /** The bring list for the host (Plans for the holidays, A9). */
     onOpenBring: (String) -> Unit = {},
+    /** The thing the host's bring list editor just saved as theirs ("Bread"); [onHostBringShown] once the page has it. */
+    hostBringSaved: String? = null,
+    onHostBringShown: () -> Unit = {},
     /** Business track B5: the guest's check (C1, C2). */
     onOpenCheck: (String) -> Unit = {},
     /** Business track B5: the business's guest list with money (C3). */
@@ -120,6 +123,13 @@ fun PlanDetailScreen(
         ui.notice?.let {
             toast.info(it)
             viewModel.noticeShown()
+        }
+    }
+    // Back from the bring list's editor with a thing newly the host's: the green line over the host's list.
+    LaunchedEffect(hostBringSaved) {
+        hostBringSaved?.let {
+            viewModel.hostBringSaved(it)
+            onHostBringShown()
         }
     }
     // A skipped date's next one (Plans step 2) opens in its place.
@@ -303,6 +313,7 @@ private fun PlanReady(
                     guests = ui.guests,
                     onOpenGuests = onOpenGuests,
                     onOpenBring = onOpenBring,
+                    bringClaimed = ui.bringClaimed,
                     checks = PlanChecksEntry(ui.checks, onOpenChecks),
                     onExtrasChanged = viewModel::load,
                     // The holidays' board 29: Host again, then the invite sheet on this plan's people.

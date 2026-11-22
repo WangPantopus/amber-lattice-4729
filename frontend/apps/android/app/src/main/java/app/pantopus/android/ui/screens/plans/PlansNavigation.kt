@@ -4,9 +4,11 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -28,6 +30,10 @@ import app.pantopus.android.ui.screens.plans.requests.PlanRequestsScreen
 /** The Plans pages' routes. Kept out of `RootTabScreen` so the two grow without merge conflicts. */
 object PlansRoutes {
     const val PLAN_ID_KEY = "planId"
+
+    /** The bring list's editor hands the plan's page under it the thing its save made the host's (never in a route). */
+    const val BRING_SAVED_MINE_KEY = "bringSavedMine"
+
     const val ASK_KEY = "ask"
     const val REVEAL_KEY = "reveal"
     const val INVITE_KEY = "invite"
@@ -214,9 +220,14 @@ fun NavGraphBuilder.plansRoutes(
     composable(
         route = PlansRoutes.PLAN,
         arguments = planArguments(),
-    ) {
+    ) { entry ->
+        val hostBringSaved by entry.savedStateHandle
+            .getStateFlow<String?>(PlansRoutes.BRING_SAVED_MINE_KEY, null)
+            .collectAsStateWithLifecycle()
         PlansLocals(external) {
             PlanDetailScreen(
+                hostBringSaved = hostBringSaved,
+                onHostBringShown = { entry.savedStateHandle[PlansRoutes.BRING_SAVED_MINE_KEY] = null },
                 onBack = { if (!nav.popBackStack()) external.openNearby() },
                 onOpenPlan = { id -> nav.navigate(PlansRoutes.plan(id)) },
                 onOpenRequests = { id -> nav.navigate(PlansRoutes.requests(id)) },
@@ -255,7 +266,11 @@ fun NavGraphBuilder.plansRoutes(
         route = PlansRoutes.BRING,
         arguments = listOf(navArgument(PlansRoutes.PLAN_ID_KEY) { type = NavType.StringType }),
     ) {
-        PlanBringScreen(onDone = { if (!nav.popBackStack()) external.openNearby() })
+        PlanBringScreen(
+            onDone = { if (!nav.popBackStack()) external.openNearby() },
+            // The plan's page under this editor says it once it is back on screen.
+            onSavedMine = { label -> nav.previousBackStackEntry?.savedStateHandle?.set(PlansRoutes.BRING_SAVED_MINE_KEY, label) },
+        )
     }
     composable(
         route = PlansRoutes.CHECK,
