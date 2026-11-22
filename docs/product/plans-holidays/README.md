@@ -24,6 +24,7 @@ Pantopus, with tips.
 | [07-screens-business.md](07-screens-business.md) | The business track's screens, element by element: deals, paying to join, the bill and tips |
 | [08-extras.md](08-extras.md) | The six extras, each with its design, contract and screens: find a date, chip in, gift exchange, photos afterwards, the same people again, one person paying for a group |
 | [09-handoff.md](09-handoff.md) | **Start here when picking the build up**: what is built, what is left, when it is done, and the briefs for the next sessions (November 16) |
+| [Web Plans stage 4 handoff](10-web-stage-4-handoff.md) | The signed-in web tab, stages 1–3 on `dev`, remaining iPhone parity work and the four hosted staging checks (November 21) |
 | [screens/](screens/) | The thirty-one boards as pictures (light) |
 
 ## Where the design lives outside the repository
