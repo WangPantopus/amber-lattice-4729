@@ -791,6 +791,8 @@ export interface HolidayCards {
   collections?: HolidayCardCollection[];
   /** "Pick a card" as shelves (server key card_shelves). Absent: today's screen. */
   shelves?: boolean;
+  /** The collections' ids in the order "One from each collection" draws them (SPEC E2); absent: the collections' order. */
+  opening?: string[];
   /** The arrivals open now, to a person and by email. */
   /**
    * `email` is the two choices older apps word for a card by email (now, sealed until Christmas); `email_all` (when the

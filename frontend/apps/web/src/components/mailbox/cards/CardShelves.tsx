@@ -55,6 +55,20 @@ export function scrollerOf(el: Element | null): HTMLElement {
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
+ * "One from each collection": each collection's `pick`, in the order the server's `opening` names them (SPEC E2); a
+ * collection it doesn't name follows, in the collections' order; without `opening`, the collections' order. Only this
+ * row: the shelves and the names rows keep the collections' order.
+ */
+export function openingPicks<S extends { id: string; pick?: string; cards: { id: string }[] }>(shelves: S[], opening?: string[] | null) {
+  const named = (opening ?? []).flatMap((id) => shelves.filter((shelf) => shelf.id === id));
+  const order = [...new Set([...named, ...shelves])];
+  return order.flatMap((shelf) => {
+    const card = shelf.pick ? shelf.cards.find((c) => c.id === shelf.pick) : undefined;
+    return card ? [{ shelf, card: card as S['cards'][number] }] : [];
+  });
+}
+
+/**
  * Scrolls the page so `el` starts `offset` px below the top of what scrolls it (Safari's scrollIntoView doesn't keep
  * the scroll-margin under a bar that stays at the top, so the distance is set here for every browser).
  */
@@ -293,18 +307,17 @@ export function Row({ name, cardWidth, testId, children, rowClass = styles.row, 
  * (back from step 3, or from a public card page), the page starts at the shelf that holds it; back from a collection's
  * page, where it was (`restoreTop`).
  */
-export function CardShelves({ shelves, chosen, restoreTop, onOpen, onAll }: {
+export function CardShelves({ shelves, opening = null, chosen, restoreTop, onOpen, onAll }: {
   shelves: Shelf[];
+  /** The opening row's order of collections (the server's `opening`). */
+  opening?: string[] | null;
   chosen: string | null;
   restoreTop: number | null;
   onOpen: (design: string, shelf: Shelf) => void;
   onAll: (shelf: Shelf) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const picks = useMemo(() => shelves.flatMap((shelf) => {
-    const card = shelf.pick ? shelf.cards.find((c) => c.id === shelf.pick) : undefined;
-    return card ? [{ shelf, card }] : [];
-  }), [shelves]);
+  const picks = useMemo(() => openingPicks(shelves, opening), [shelves, opening]);
   // While it renders, before any card asks for its picture: the first large card's comes first.
   useState(() => { if (picks.length) holdForFirst(); return null; });
 
