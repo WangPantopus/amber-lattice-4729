@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const supabaseAdmin = require('../config/supabaseAdmin');
+const directDb = require('../config/directDb');
 // canAccessMail / readableMail: the mailbox's per-item rule (own mail, or mail
 // for a Home whose mail the caller may read). Every per-item route checks it
 // before reading or changing anything and otherwise answers its not-found.
 const {
   getAccessibleHomeIds, trustedHomeIdsOrThrow, canAccessMail, readableMail, homesMailFilter, visibleMailFilter, visibleMailIds,
-  removedMailInfo, sendHomeMailRemovedNotice, mailReaderIdsOrThrow, mailHomesOrThrow, sendMailUnavailable,
+  removedMailInfo, sendHomeMailRemovedNotice, mailReaderIdsOrThrow, mailHomesOrThrow, mailboxHomesDirect, sendMailUnavailable,
   onlyDelivered, restoreWindowOver,
 } = require('../utils/homeMailAccess');
 const { isLaunchFeatureEnabled } = require('../utils/featureFlags');
@@ -236,22 +237,53 @@ function resolveSenderTrust(mail) {
 
 // ============ ROUTES ============
 
+// The Homes whose mail they may read, read once: the counts use them (failing closed to none, as
+// getAccessibleHomeIds does), and `homes` (the Homes this person lives at, and whether each one's mail is open to them
+// yet, D1: only after the address is proven) marks which are open. A failed read lists none rather than failing the
+// mailbox. Both reads go out together.
+function apiDrawerHomes(userId) {
+  const openRead = trustedHomeIdsOrThrow(userId);
+  const homesRead = mailHomesOrThrow(userId, { openHomeIds: openRead }).catch((error) => {
+    logger.error('GET /drawers: homes unavailable', { error: error.message });
+    return [];
+  });
+  const idsRead = openRead.catch((error) => {
+    logger.error('getAccessibleHomeIds: failing closed', { userId, error: error.message });
+    return [];
+  });
+  return Promise.all([idsRead, homesRead]).then(([homeIds, homes]) => ({ homeIds, homes }));
+}
+
+// DIRECT_DB_READS (config/directDb.js) picks the path for those two reads, as for the Home access check
+// (utils/homePermissions.js): "on" reads both in one direct query (mailboxHomesDirect) and falls back to the Data API
+// on any failure; "shadow" answers from the Data API and compares.
+async function drawerHomes(userId) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await mailboxHomesDirect(userId);
+    } catch (error) {
+      directDb.fellBack('mailbox_homes', error);
+      return apiDrawerHomes(userId);
+    }
+  }
+  if (mode !== 'shadow') return apiDrawerHomes(userId);
+  const started = performance.now();
+  const direct = mailboxHomesDirect(userId)
+    .then((value) => ({ value, ms: performance.now() - started }), (error) => ({ error }));
+  const answer = await apiDrawerHomes(userId);
+  const apiMs = performance.now() - started;
+  direct.then(({ value, ms, error }) => directDb.compared('mailbox_homes', error ? { error } : {
+    differs: ['homeIds', 'homes'].filter((part) => JSON.stringify(value[part]) !== JSON.stringify(answer[part])),
+    directMs: ms, apiMs }));
+  return answer;
+}
+
 // GET /api/mailbox/v2/drawers — Get drawer metadata (unread counts, icons)
 router.get('/drawers', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    // The Homes whose mail they may read, read once: the counts use them (failing closed to none, as
-    // getAccessibleHomeIds does), and the Homes below mark which of theirs are open with them. Both reads go out
-    // together.
-    const openRead = trustedHomeIdsOrThrow(userId);
-    const homesRead = mailHomesOrThrow(userId, { openHomeIds: openRead }).catch((error) => {
-      logger.error('GET /drawers: homes unavailable', { error: error.message });
-      return [];
-    });
-    const homeIds = await openRead.catch((error) => {
-      logger.error('getAccessibleHomeIds: failing closed', { userId, error: error.message });
-      return [];
-    });
+    const { homeIds, homes } = await drawerHomes(userId);
     const now = new Date();
 
     // Count unread + urgent per drawer in parallel. Only incoming mail counts
@@ -301,9 +333,6 @@ router.get('/drawers', verifyToken, async (req, res) => {
       }
     };
 
-    // The Homes this person lives at, and whether each one's mail is open to them yet (D1: only after the
-    // address is proven). A failed read lists none rather than failing the mailbox.
-    const homes = await homesRead;
     // Letters from Pantopus (SRV-6): the welcome letter on the first open, in the box at once, and a welcome to each
     // Home whose mail they can now open (with the morning's mail). Once each.
     await pantopusLetters.ensureWelcomeLetter(userId, { homes });
