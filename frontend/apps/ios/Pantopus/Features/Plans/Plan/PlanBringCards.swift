@@ -7,7 +7,11 @@
 //  "Still open", and "Add something" (the list, board 19). For someone who is
 //  in, "{n} still open", "I'll bring it", "You're bringing it" with "Give back",
 //  and "Bring something else" when guests may add. A claim someone else got
-//  first says so ("Dana got to that one first.").
+//  first says so ("Dana got to that one first."). JOURNEYS 2 (boards J2a and
+//  J2b): the "You're in" banner points here with "See what to bring" while
+//  things are open and this person has claimed none, and a claim that went
+//  through says who can see it ("You're bringing bread. Jo and the other
+//  guests can see it.").
 //
 
 import SwiftUI
@@ -65,6 +69,8 @@ struct PlanBringGuestCard: View {
 
     @State private var working: String?
     @State private var line: String?
+    /// The thing this person claimed last, here: the green line says who can see it. "Give back" takes it away.
+    @State private var claimed: String?
     @State private var asksForItem = false
     @State private var newItem = ""
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -77,6 +83,14 @@ struct PlanBringGuestCard: View {
         PlanCardBox(padding: 14) {
             VStack(alignment: .leading, spacing: 0) {
                 PlanBringHeader(trailing: bring.openCount == 0 ? "All taken" : "\(bring.openCount) still open")
+                if let claimed, let card = viewModel.card {
+                    PlanBringClaimedLine(
+                        thing: claimed,
+                        host: PlanCardLines.hostName(card),
+                        isHost: card.viewer?.isHost == true
+                    )
+                    .padding(.bottom, Spacing.s2)
+                }
                 ForEach(bring.items) { item in
                     Divider().overlay(Theme.Color.appBorder)
                     row(item)
@@ -106,7 +120,10 @@ struct PlanBringGuestCard: View {
         }
         .alert("Bring something else", isPresented: $asksForItem) {
             TextField("Cranberry sauce", text: $newItem)
-            Button("Add") { run("new") { await viewModel.addBringItem(newItem) } }
+            Button("Add") {
+                let label = newItem
+                run("new", claims: label) { await viewModel.addBringItem(label) }
+            }
             Button("Cancel", role: .cancel) { newItem = "" }
         } message: {
             Text("It goes on the list as yours.")
@@ -138,7 +155,7 @@ struct PlanBringGuestCard: View {
             } else if let claim = item.claim {
                 PlanBringWho(name: claim.name)
             } else {
-                Button { run(item.id) { await viewModel.claimBring(item.id) } } label: {
+                Button { run(item.id, claims: item.label) { await viewModel.claimBring(item.id) } } label: {
                     Text("I'll bring it")
                         .planFont(.smallStrong)
                         .foregroundStyle(Theme.Color.primaryInk)
@@ -157,14 +174,170 @@ struct PlanBringGuestCard: View {
         .padding(.vertical, 6)
     }
 
-    private func run(_ key: String, _ action: @escaping () async -> String?) {
+    /// `claims`: the thing this action claims; none for "Give back".
+    private func run(_ key: String, claims: String? = nil, _ action: @escaping () async -> String?) {
         Task {
             working = key
             line = nil
-            line = await action()
+            let failure = await action()
+            line = failure
+            // The green line follows the latest claim that went through; "Give back" takes it away.
+            if failure == nil {
+                let thing = claims?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                claimed = thing.isEmpty ? nil : String(thing.prefix(PlanBringEditor.labelLimit))
+            }
             working = nil
             newItem = ""
         }
+    }
+}
+
+// MARK: - JOURNEYS 2
+
+extension PlanCardDTO {
+    /// "See what to bring" on the "You're in" banner (board J2a): how many things are still open, while this
+    /// person has claimed none; nil hides the row.
+    var bringOpen: Int? {
+        guard let bring, bring.openCount > 0, !bring.items.contains(where: { $0.claim?.mine == true }) else { return nil }
+        return bring.openCount
+    }
+}
+
+/// A plan's page as a scroll view that "See what to bring" can scroll to its bring card.
+struct PlanBringScroll<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The bring card's id on the page.
+    static var anchor: String {
+        "plan.bring"
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(content: content)
+                .environment(\.planSeeBring) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+                        proxy.scrollTo(Self.anchor, anchor: .center)
+                    }
+                }
+        }
+    }
+}
+
+private struct PlanSeeBringKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Scrolls the plan's page to its bring card; nil where the page can't.
+    var planSeeBring: (() -> Void)? {
+        get { self[PlanSeeBringKey.self] }
+        set { self[PlanSeeBringKey.self] = newValue }
+    }
+}
+
+/// The row under a hairline: a bag, "See what to bring" and "{n} still open" (`plan.inBanner.bring`).
+struct PlanBringPointerRow: View {
+    /// How many things are still open.
+    let open: Int
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.planSeeBring) private var seeBring
+
+    var body: some View {
+        if let seeBring { row(seeBring) }
+    }
+
+    private func row(_ action: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Theme.Color.success.opacity(0.22))
+                .frame(height: 1)
+                .padding(.top, Spacing.s2)
+            Button(action: action) {
+                Group {
+                    if typeSize.isAccessibilitySize {
+                        // The largest text: the count goes under the words.
+                        VStack(alignment: .leading, spacing: 2) {
+                            words
+                            count
+                        }
+                        .padding(.vertical, Spacing.s2)
+                    } else {
+                        HStack(spacing: Spacing.s2) {
+                            words
+                            Spacer(minLength: Spacing.s2)
+                            count
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Shows the bring list")
+            .accessibilityIdentifier("plan.inBanner.bring")
+        }
+    }
+
+    private var words: some View {
+        HStack(spacing: Spacing.s2) {
+            Icon(.shoppingBag, size: 18, color: Theme.Color.primaryInk)
+                .accessibilityHidden(true)
+            Text("See what to bring").planFont(.bodyStrong).foregroundStyle(Theme.Color.primaryInk)
+        }
+    }
+
+    private var count: some View {
+        Text("\(open) still open").planFont(.small).foregroundStyle(Theme.Color.appTextSecondary)
+    }
+}
+
+/// The green line at the top of the bring card after a claim (board J2b, `plan.bring.claimed`).
+struct PlanBringClaimedLine: View {
+    let thing: String
+    /// The host's first name.
+    let host: String
+    /// The host claimed on their own plan.
+    var isHost = false
+
+    private var claim: String {
+        "You're bringing \(Self.lowered(thing))."
+    }
+
+    private var who: String {
+        isHost ? "Your guests can see it." : "\(host) and the other guests can see it."
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
+            Icon(.check, size: 15, strokeWidth: 2.6, color: Theme.Color.success)
+                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                .accessibilityHidden(true)
+            (Text(claim).fontWeight(.semibold).foregroundStyle(Theme.Color.success)
+                + Text(" \(who)").foregroundStyle(Theme.Color.appTextStrong))
+                .planFont(.small)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.s3)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).fill(Theme.Color.successBg))
+        .overlay(RoundedRectangle(cornerRadius: Radii.lg, style: .continuous).strokeBorder(Theme.Color.success.opacity(0.3), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("plan.bring.claimed")
+        // A screen reader reads it when it appears, and again for a newer claim.
+        .task(id: thing) { AccessibilityNotification.Announcement("\(claim) \(who)").post() }
+    }
+
+    /// The item's label with its first letter lowercased when its second letter is lowercase ("Bread" is "bread", "IPA" stays).
+    static func lowered(_ label: String) -> String {
+        let letters = Array(label)
+        guard letters.count >= 2, letters[1].isLowercase else { return label }
+        return letters[0].lowercased() + String(letters.dropFirst())
     }
 }
 
