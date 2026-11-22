@@ -186,9 +186,10 @@ struct HolidayCardCollectionPage: View {
         let selected = design.id == viewModel.designId
         let place = (all.firstIndex(of: design) ?? 0) + 1
         return Button {
+            viewModel.rackZoomSource = "page/\(design.id)"
             viewModel.largeDesign = design
         } label: {
-            HolidayCardTile(design: design, selected: selected)
+            HolidayCardTile(design: design, selected: selected, zoomID: "page/\(design.id)")
                 .padding(Spacing.s1)
                 .contentShape(Rectangle())
         }
