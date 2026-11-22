@@ -1073,6 +1073,7 @@ Approved by you on November 21 (the design is [docs/product/card-shelves-2026-11
 - [ ] **Yours: store builds** of the iPhone and Android apps. The builds in the stores today keep the names row and one collection at a time, with the new cards and the new order in it, and open 90–95 on the everyday snowy table instead of Santa's; the shelves and Santa's table for 90–95 need the new builds.
 - [ ] **Yours: upload the 16 share films** to each server's storage once it runs these releases (staging first, then production), from this Mac: `scripts/deploy/upload-card-videos.sh ec2-user@<host> <backend container> ~/pantopus-plans/card-shelves-notes/card-videos`. Until then those cards share as pictures only.
 - [ ] Not checked: real Safari on an iPhone or a Mac (only WebKit through a test browser), a screen reader speaking, a signed-in send on staging (we have no staging account), physical phones, and anything on production.
+- [ ] Not checked yet: the apps as they are in the stores today (2.1.4) have not been run against the new list. Their code was read and should ignore the new fields; the iPhone and Android sessions' run of those store builds against it is still owed.
 
 ## Mail and card design (added November 11)
 
