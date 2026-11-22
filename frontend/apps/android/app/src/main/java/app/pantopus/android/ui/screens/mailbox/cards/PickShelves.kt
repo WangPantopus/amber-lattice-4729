@@ -108,6 +108,17 @@ internal class CardShelf(
     val pick: HolidayCardDesign?,
 )
 
+/**
+ * The collections that have a card in "One from each collection", in the server's order for that row (`opening`, SPEC
+ * E2); a collection it doesn't name follows, in the collections' order. Without `opening`, the collections' order.
+ */
+internal fun HolidayCardsResponse.openingOf(shelves: List<CardShelf>): List<CardShelf> {
+    val picked = shelves.filter { it.pick != null }
+    val byId = picked.associateBy { it.collection.id }
+    val named = opening.mapNotNull { byId[it] }.distinct()
+    return named + picked.filterNot { it in named }
+}
+
 /** The server's collections with the pictures it knows, in order; a collection with none is left out. */
 internal fun HolidayCardsResponse.shelvesOf(): List<CardShelf> {
     val byId = designs.associateBy { it.id }
@@ -133,8 +144,13 @@ internal class ShelfSizes(
 ) {
     /** A picture in today's grid: two across inside the desk's margins, each inside its tile's own edge. */
     val grid: Dp = (width - Spacing.s4 * 3) / 2 - Spacing.s1 * 2
-    val opening: Dp = max(min(width * 0.76f, 340.dp), grid)
     val shelf: Dp = max((width * 0.56f).coerceIn(190.dp, 240.dp), grid)
+
+    /**
+     * In a wide window, where both grow to today's tile, an opening card stays clearly the larger: at least 1.3 times a
+     * shelf card, at most 60% of the window. On a phone that changes nothing (76% against 56%).
+     */
+    val opening: Dp = max(max(min(width * 0.76f, 340.dp), grid), min(shelf * 1.3f, width * 0.6f))
 
     /**
      * A collection's page: two across, as today. A third column comes only when every tile stays as wide as a shelf
@@ -175,12 +191,13 @@ internal fun PickShelves(
     LaunchedEffect(open) {
         if (open == null) shelves.forEach { places.removeState("collection.${it.collection.id}") }
     }
+    val picks = remember(cards, shelves) { cards.openingOf(shelves) }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val sizes = remember(maxWidth) { ShelfSizes(maxWidth) }
         val page = shelves.firstOrNull { it.collection.id == open }
         if (page == null) {
             places.SaveableStateProvider("shelves") {
-                ShelvesPage(shelves, sizes, chosen, to, stamps, onStamps, onOpen = { onOpen(it) }, onLarge = onLarge)
+                ShelvesPage(shelves, picks, sizes, chosen, to, stamps, onStamps, onOpen = { onOpen(it) }, onLarge = onLarge)
             }
         } else {
             places.SaveableStateProvider("collection.${page.collection.id}") {
@@ -194,6 +211,8 @@ internal fun PickShelves(
 @Composable
 private fun ShelvesPage(
     shelves: List<CardShelf>,
+    /** The opening row, in its own order. */
+    picks: List<CardShelf>,
     sizes: ShelfSizes,
     chosen: String?,
     to: CardRecipient?,
@@ -202,7 +221,6 @@ private fun ShelvesPage(
     onOpen: (String) -> Unit,
     onLarge: (String) -> Unit,
 ) {
-    val picks = shelves.filter { it.pick != null }
     // The list: the "To" line, the opening row (when there are picks), then a shelf per collection.
     val firstShelf = if (picks.isEmpty()) 1 else 2
     val chosenShelf = shelves.indexOfFirst { shelf -> shelf.designs.any { it.id == chosen } }
@@ -443,10 +461,13 @@ private fun ShelfRow(
                         .testTag("sendCardAll.${collection.id}"),
             )
         }
-        val shown = shelf.designs.take(SHELF_CARDS)
-        // Coming back with a card chosen on this shelf: the row opens at it (or at "See all" when it's further on).
-        val at = shelf.designs.indexOfFirst { it.id == chosen }.let { if (it < 0) 0 else minOf(it, SHELF_CARDS) }
-        val row = rememberLazyListState(initialFirstVisibleItemIndex = at)
+        // The first ten; a chosen card further on shows after the tenth, before "See all", ticked, with its true place
+        // (the design session's addition to B6), and leaves again when another card is chosen.
+        val chosenAt = shelf.designs.indexOfFirst { it.id == chosen }
+        val further = shelf.designs.getOrNull(chosenAt)?.takeIf { chosenAt >= SHELF_CARDS }
+        val shown = shelf.designs.take(SHELF_CARDS) + listOfNotNull(further)
+        // Coming back with a card chosen on this shelf: the row opens at it.
+        val row = rememberLazyListState(initialFirstVisibleItemIndex = if (chosenAt < 0) 0 else minOf(chosenAt, SHELF_CARDS))
         StableRow(
             state = row,
             contentPadding = PaddingValues(start = Spacing.s3, end = Spacing.s3, top = Spacing.s1, bottom = Spacing.s4),
@@ -458,7 +479,7 @@ private fun ShelfRow(
                     design = design,
                     picture = sizes.shelf,
                     selected = design.id == chosen,
-                    label = "${design.caption}, ${index + 1} of $total",
+                    label = "${design.caption}, ${if (index < SHELF_CARDS) index + 1 else chosenAt + 1} of $total",
                     onTap = { onLarge(design.id) },
                     tag = "sendCardDesign.${design.id}",
                     modifier = Modifier.width(sizes.shelf + Spacing.s2),
