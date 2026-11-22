@@ -2219,6 +2219,8 @@ router.get('/cards', verifyToken, async (req, res) => {
       designs: holidayCards.DESIGNS.map(holidayCards.pickACardDesign),
       // Each with its short name, public name, opening card and (Christmas with Jesus Christ) parts: older apps ignore them.
       collections: holidayCards.COLLECTIONS,
+      // The order "One from each collection" draws them in (SPEC E2); the shelves keep the collections' order.
+      opening: holidayCards.OPENING,
       // The shelves (launch key card_shelves). Absent: today's "Pick a card".
       ...(cardShelvesOn() ? { shelves: true } : {}),
       // By email, `email` is the two choices older apps word; `email_all` the four (an email at your next 7 a.m. or on
@@ -2320,6 +2322,7 @@ router.get('/cards/designs', (req, res) => {
   return res.json({
     year: holidayCards.SEASON.year,
     collections: holidayCards.COLLECTIONS,
+    opening: holidayCards.OPENING,
     designs: holidayCards.DESIGNS.map(({ id, number, slug, caption, paper, collection, table, mood, verse }) =>
       ({ id, number, slug, caption, paper, collection, table, mood, ...(verse ? { verse } : {}) })),
     // The shelves, a page per collection (launch key card_shelves). Absent: today's pages.
