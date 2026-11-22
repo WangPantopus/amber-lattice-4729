@@ -214,7 +214,7 @@ final class CardTableModel {
         self.content = content
         self.startsOnTable = startsOnTable && !content.sealed
         // Santa's envelope lands with a little more bounce (plan Part 7).
-        if CardTableMood(number: content.number) == .santa {
+        if CardTableMood(mood: content.mood, number: content.number) == .santa {
             springs.drop = CardTableSpring(1, k: 58, c: 9.6)
         }
         ticker.onTick = { [weak self] in self?.frame(at: $0) }
@@ -222,7 +222,7 @@ final class CardTableModel {
 
     /// The card's mood (plan Part 7), from its collection.
     var mood: CardTableMood {
-        content.isLetter ? .letter : CardTableMood(number: content.number)
+        content.isLetter ? .letter : CardTableMood(mood: content.mood, number: content.number)
     }
 
     /// The moods' snow, breathing candle and glint run: not with Reduce Motion or Low Power Mode.

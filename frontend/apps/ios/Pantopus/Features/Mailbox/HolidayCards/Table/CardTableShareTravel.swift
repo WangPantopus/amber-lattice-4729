@@ -38,7 +38,7 @@ extension CardTableShareScene {
     private func travelEnvelope(width: CGFloat, x: CGFloat, y: CGFloat, rotation: Double) -> some View {
         CardTableEnvelopeFront(
             paper: art.envelopeFront,
-            stamp: art.stamp(number: content.number),
+            stamp: art.stamp(number: content.number, mood: content.mood),
             postmark: art.postmark,
             fromName: "",
             toName: "",

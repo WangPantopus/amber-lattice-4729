@@ -64,7 +64,8 @@ extension HolidayCardFlowViewModel {
                 sealedInDays: "",
                 sealedDayCount: 0,
                 verse: design.verse,
-                signature: cards.signature == nil ? nil : signature
+                signature: cards.signature == nil ? nil : signature,
+                mood: card?.mood ?? design.mood
             )
             // A card that travels: the look's one postmark, the sender's town, struck at the seal's thump (Part 2).
             if let stops = card?.travel?.postmarks, !stops.isEmpty {
@@ -89,7 +90,8 @@ extension HolidayCardFlowViewModel {
             sealedInDays: "",
             sealedDayCount: 0,
             verse: design.verse,
-            signature: cards.signature == nil ? nil : signature
+            signature: cards.signature == nil ? nil : signature,
+            mood: design.mood
         )
     }
 }

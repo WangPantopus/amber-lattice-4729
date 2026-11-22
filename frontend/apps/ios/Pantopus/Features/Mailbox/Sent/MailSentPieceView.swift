@@ -385,6 +385,7 @@ private extension MailSentPieceView {
                 voice: piece.card.voice,
                 from: .sent(cardId: piece.id),
                 number: piece.card.number,
+                moodName: piece.card.mood,
                 day: piece.envelope.postmarkedOn ?? piece.sentAt,
                 fromName: from,
                 forName: piece.toName

@@ -593,7 +593,7 @@ struct HolidayCardWriteStep: View {
                     takesLive: onePerson && cards.takesLivePhoto,
                     liveMaxBytes: cards.livePhotoMaxBytes,
                     forName: viewModel.greetingFor,
-                    gift: CardTableMood(number: design.number) == .reverence,
+                    gift: CardTableMood(mood: design.mood, number: design.number) == .reverence,
                     needsStamp: cards.mediaStamp == .buy
                 ) { viewModel.openStampsForMedia() }
             }

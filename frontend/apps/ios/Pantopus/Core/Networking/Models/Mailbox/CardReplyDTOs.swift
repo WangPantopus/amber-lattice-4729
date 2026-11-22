@@ -26,9 +26,11 @@ public struct CardReplyCard: Decodable, Sendable, Hashable {
     /// In the writer's Sent: whether it can still be taken back, and until when.
     public let canTakeBack: Bool?
     public let takeBackUntil: String?
+    /// The table the card opens on, named by the server (card shelves A4); nil from older servers.
+    public let mood: String?
 
     private enum CodingKeys: String, CodingKey {
-        case design, number, caption, paper, height, slug, table, year, signature
+        case design, number, caption, paper, height, slug, table, year, signature, mood
         case cardId = "card_id"
         case canTakeBack = "can_take_back"
         case takeBackUntil = "take_back_until"
@@ -48,6 +50,7 @@ public struct CardReplyCard: Decodable, Sendable, Hashable {
         signature = try? c.decodeIfPresent(CardSignature.self, forKey: .signature)
         canTakeBack = try? c.decodeIfPresent(Bool.self, forKey: .canTakeBack)
         takeBackUntil = try? c.decodeIfPresent(String.self, forKey: .takeBackUntil)
+        mood = try? c.decodeIfPresent(String.self, forKey: .mood)
     }
 }
 

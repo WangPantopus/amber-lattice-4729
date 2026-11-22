@@ -83,9 +83,9 @@ final class CardTableArt: Sendable {
 
     /// The card's stamp, from its number (`["fir","peak","river"][(n-1)%3]`, so a card always has the same one); the
     /// star on Christmas with Jesus Christ cards (plan Part 7).
-    func stamp(number: Int?) -> UIImage {
+    func stamp(number: Int?, mood: String? = nil) -> UIImage {
         if isLetter { return stampPeak }
-        if CardTableMood(number: number) == .reverence { return stampStar }
+        if CardTableMood(mood: mood, number: number) == .reverence { return stampStar }
         return switch ((number ?? 1) - 1 + 3) % 3 {
         case 0: stampFir
         case 1: stampPeak
