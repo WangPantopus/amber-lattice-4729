@@ -88,6 +88,21 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
+// Keys that move the page.
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+
+/** Wholly inside the window with nothing fixed over it: not under the header, not under the phone's bottom bar. */
+function inClearView(el: HTMLElement): boolean {
+  const at = el.getBoundingClientRect();
+  if (at.height === 0 || at.top < 0 || at.bottom > window.innerHeight) return false;
+  if (typeof document.elementFromPoint !== 'function') return true;
+  const x = at.left + at.width / 2;
+  return [at.top + 2, at.bottom - 2].every((y) => {
+    const hit = document.elementFromPoint(x, y);
+    return !!hit && el.contains(hit);
+  });
+}
+
 // Same wording as the apps' holiday line.
 function holidayMoveLine(e: PlaceCalendarEvent): string | null {
   if (!e.moved_from || !e.holiday || !e.shift_days || e.shift_days <= 0) return null;
@@ -281,14 +296,59 @@ function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday, ask = 
   // The lit entry (the Today tab), or the card with its box (Place), comes into view; the light goes out again.
   useEffect(() => {
     if (!showLit) return;
-    // Place: the card's top, so the box and the dates under it clear the phone's bottom bar.
-    const target = onToday ? litRef.current ?? cardRef.current : cardRef.current;
-    target?.scrollIntoView?.({ block: onToday ? 'center' : 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    // Where the entry sits on the page when the scroll is asked for. Today's picture, question and "Needs you"
+    // can arrive above it afterwards, and a scroll already on its way keeps its old target.
+    const placeOnPage = () => {
+      const el = litRef.current;
+      return `${document.documentElement.scrollHeight}|${el ? Math.round(el.getBoundingClientRect().top + window.scrollY) : ''}`;
+    };
+    let askedAt = '';
+    const bring = () => {
+      askedAt = placeOnPage();
+      // Place: the card's top, so the box and the dates under it clear the phone's bottom bar.
+      const target = onToday ? litRef.current ?? cardRef.current : cardRef.current;
+      target?.scrollIntoView?.({ block: onToday ? 'center' : 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    };
+    bring();
+    // A person who scrolls by hand keeps the page where they put it: nothing is asked for again, and on Today a
+    // scroll of ours still on its way stops there (a browser can let it run on through the wheel).
+    let byHand = false;
+    const tookOver = () => {
+      if (byHand) return;
+      byHand = true;
+      if (onToday) window.scrollTo?.({ top: window.scrollY, behavior: 'instant' });
+    };
+    const pressedKey = (e: KeyboardEvent) => { if (SCROLL_KEYS.has(e.key)) tookOver(); };
+    // A press on the page's own scrollbar reports the page itself.
+    const pressedPage = (e: MouseEvent) => { if (e.target === document.documentElement) tookOver(); };
+    window.addEventListener('wheel', tookOver, { passive: true });
+    window.addEventListener('touchstart', tookOver, { passive: true });
+    window.addEventListener('keydown', pressedKey);
+    window.addEventListener('mousedown', pressedPage);
+    // Today only: the scroll is asked for again, to where the entry is now, while it is not yet in clear view.
+    // The same place twice means the page can go no further.
+    const aimAgain = () => {
+      if (!onToday || byHand) return false;
+      if (litRef.current && inClearView(litRef.current)) return false;
+      if (placeOnPage() === askedAt) return false;
+      bring();
+      return true;
+    };
+    // Content arriving above makes something around the card taller: turn the scroll on its way, in one movement.
+    const grew = !onToday || typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { aimAgain(); });
+    for (let el = cardRef.current?.parentElement ?? null; grew && el; el = el.parentElement) grew.observe(el);
     // About three seconds of being seen: a card over the page (a first-visit tip) or the scroll on the way
     // to the entry doesn't use the time up.
     let seen = 0;
+    let lastY = window.scrollY;
     const timer = window.setInterval(() => {
       if (document.querySelector('[aria-modal="true"]')) return;
+      const moving = window.scrollY !== lastY;
+      lastY = window.scrollY;
+      if (onToday && !byHand) {
+        // On its way, or stopped short of where the entry is now: the time counts once it is there.
+        if (moving || aimAgain()) return;
+      }
       const at = litRef.current?.getBoundingClientRect();
       if (at && (at.bottom < 0 || at.top > window.innerHeight)) return;
       seen += LIT_TICK_MS;
@@ -297,7 +357,14 @@ function HouseholdCalendar({ homeId, data, onToday = false, onSeeInToday, ask = 
       setLit(null);
       setAnnounce('');
     }, LIT_TICK_MS);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      grew?.disconnect();
+      window.removeEventListener('wheel', tookOver);
+      window.removeEventListener('touchstart', tookOver);
+      window.removeEventListener('keydown', pressedKey);
+      window.removeEventListener('mousedown', pressedPage);
+    };
   }, [showLit, onToday]);
 
   const save = async (reset = false) => {
