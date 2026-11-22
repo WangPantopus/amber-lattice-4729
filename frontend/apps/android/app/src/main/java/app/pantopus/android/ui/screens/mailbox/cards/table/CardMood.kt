@@ -34,9 +34,10 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * The mood a card's picture sets on the table (plan Part 7). The apps map collection to mood themselves, by the
- * picture's number: Christmas with Jesus Christ (59–89) is reverence, Christmas with Santa (50–58) is Santa, and every
- * other collection, and any picture not known yet, is nostalgia.
+ * The mood a card's picture sets on the table (plan Part 7). The server names it on every design and card it sends
+ * (`mood`, card shelves SPEC A4), from the picture's collection. Without it (an older server, or an answer kept from
+ * before it) the app decides by the picture's number: Christmas with Jesus Christ (59–89) is reverence, Christmas with
+ * Santa (50–58 and 90–95) is Santa, and every other collection, and any picture not known yet, is nostalgia.
  */
 internal enum class CardMood {
     Nostalgia,
@@ -54,14 +55,24 @@ internal enum class CardMood {
         fun of(
             number: Int?,
             design: String,
-        ): CardMood {
-            val picture = number ?: design.substringAfterLast('-').toIntOrNull() ?: return Nostalgia
-            return when (picture) {
+            /** The server's `mood` for the picture, when it sent one. */
+            mood: String? = null,
+        ): CardMood =
+            when (mood) {
+                "reverence" -> Reverence
+                "santa" -> Santa
+                "nostalgia" -> Nostalgia
+                else -> byNumber(number ?: design.substringAfterLast('-').toIntOrNull())
+            }
+
+        /** Without the server's word: by the picture's number. */
+        private fun byNumber(picture: Int?): CardMood =
+            when (picture) {
+                null -> Nostalgia
                 in 59..89 -> Reverence
-                in 50..58 -> Santa
+                in 50..58, in 90..95 -> Santa
                 else -> Nostalgia
             }
-        }
     }
 }
 
@@ -72,7 +83,8 @@ internal fun cardStamp(
     stamp: MailStamp,
     number: Int?,
     design: String,
-): Bitmap? = if (CardMood.of(number, design) == CardMood.Reverence) star else stamps[stamp]
+    mood: String? = null,
+): Bitmap? = if (CardMood.of(number, design, mood) == CardMood.Reverence) star else stamps[stamp]
 
 /**
  * The mood's light over the table, while it may move (not with animations off or in Battery Saver, like the tilt

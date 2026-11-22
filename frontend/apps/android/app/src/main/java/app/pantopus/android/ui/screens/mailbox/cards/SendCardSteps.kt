@@ -998,7 +998,7 @@ private fun MediaUnderTheNote(
             voice = voice,
             forFirst = (to as? CardRecipient.Person)?.firstName ?: "you",
             fromFirst = fromName.trim().substringBefore(' '),
-            gift = CardMood.of(design.number, design.id) == CardMood.Reverence,
+            gift = CardMood.of(design.number, design.id, design.mood) == CardMood.Reverence,
             calls = voices,
             buyStamp = buyStamp,
             beforeRecord = beforeAdd,

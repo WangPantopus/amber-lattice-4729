@@ -798,6 +798,7 @@ private fun sentLetterCard(card: SentCard): MailLetterCard? {
         // The sender's own photo, through Sent's route: never covered for them (memories plan).
         photo = face.photo?.let { CardPrintPhoto.sent(card.id, it) },
         voice = face.voice?.let { CardGreetingVoice.sent(card.id, it) },
+        mood = face.mood,
     )
 }
 

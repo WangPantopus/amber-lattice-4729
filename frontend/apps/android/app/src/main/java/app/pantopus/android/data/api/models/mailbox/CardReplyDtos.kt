@@ -51,6 +51,8 @@ data class CardReplyFace(
     val height: Int? = null,
     val slug: String? = null,
     val table: String? = null,
+    /** The table it opens on: `reverence`, `santa` or `nostalgia` (absent from older servers: decided by number). */
+    val mood: String? = null,
     val year: Int? = null,
     /** The writer's own hand beside FROM (detail reads only). */
     val signature: CardSignature? = null,

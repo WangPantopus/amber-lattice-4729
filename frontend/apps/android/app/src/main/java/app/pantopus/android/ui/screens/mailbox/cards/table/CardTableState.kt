@@ -83,6 +83,8 @@ data class CardOnTable(
      * the towns on the way here. Null for every other card: then nothing on the table changes.
      */
     val travel: CardTravel? = null,
+    /** The table it opens on, from the server (`reverence`, `santa`, `nostalgia`); null: decided by its number. */
+    val mood: String? = null,
 ) {
     /** The first name, the only one a shared picture or the words on the table ever use. */
     val fromFirst: String = from.trim().substringBefore(' ').removeSuffix(",").ifEmpty { "Someone" }
@@ -357,7 +359,7 @@ internal class CardTableState(
     val lightY = TableSpring(40f, 11f)
 
     /** The mood the card's picture sets (plan Part 7). */
-    val mood = if (card.letter) CardMood.Letter else CardMood.of(card.number, card.design)
+    val mood = if (card.letter) CardMood.Letter else CardMood.of(card.number, card.design, card.mood)
 
     /** Santa's envelope lands with a little more bounce (damping 9.6, as web's same spring). */
     val drop = TableSpring(58f, if (mood == CardMood.Santa) 9.6f else 11.5f, start = 0f)
