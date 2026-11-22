@@ -651,7 +651,7 @@ function LargeCard({ design, year, onClose, onChoose }: { design: HolidayCardDes
   return (
     <div role="dialog" aria-modal="true" aria-label={design.caption} data-testid="sendCardLarge" className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={onClose}>
       <div style={{ width: 'min(720px, calc((100vh - 120px) * 0.72), 100%)' }} onClick={(event) => event.stopPropagation()}>
-        <CardFront design={design.id} caption={design.caption} paper={design.paper} year={year} className="rounded-[3px] shadow-2xl" />
+        <CardFront design={design.id} caption={design.caption} paper={design.paper} year={year} size="card" className="rounded-[3px] shadow-2xl" />
         <div className="mt-3 flex gap-2.5">
           <button type="button" data-testid="sendCardLargeClose" onClick={onClose} className={secondary}><X className="h-4 w-4" aria-hidden /> Close</button>
           <button type="button" data-testid="sendCardChooseThis" onClick={() => onChoose(design.id)} className={primary} style={{ backgroundColor: WAX }}>Choose this card</button>
@@ -847,7 +847,7 @@ function TodaysPick({
       {large ? (
         <div role="dialog" aria-modal="true" aria-label={large.caption} data-testid="sendCardLarge" className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setLarge(null)}>
           <div style={{ width: 'min(720px, calc((100vh - 120px) * 0.72), 100%)' }} onClick={(event) => event.stopPropagation()}>
-            <CardFront design={large.id} caption={large.caption} paper={large.paper} year={year} className="rounded-[3px] shadow-2xl" />
+            <CardFront design={large.id} caption={large.caption} paper={large.paper} year={year} size="card" className="rounded-[3px] shadow-2xl" />
             <div className="mt-3 flex gap-2.5">
               <button type="button" data-testid="sendCardLargeClose" onClick={() => setLarge(null)} className={secondary}><X className="h-4 w-4" aria-hidden /> Close</button>
               <button
