@@ -70,6 +70,13 @@ struct PlaceTodayDetailContent: View {
     @State private var pickupSaved: PickupSavedNote?
     /// The pickup entry lit for about three seconds after a save (an event's id).
     @State private var litPickup: String?
+    /// Today's Plans cards' plans: the cards draw them, and the house's lantern stands for the first.
+    @State private var plansToday = PlansTodayModel()
+    /// The house on Today's question: "Yes, remind me" is saving, what went wrong, and the reminder question
+    /// shown when the phone's notifications turned out to be off (true) or the reminder could not be turned on.
+    @State private var houseSaving = false
+    @State private var houseError: String?
+    @State private var reminderHelp: Bool?
 
     var radonAvailable: Bool {
         vm.section(.leadRadon, in: intel)?.leadRadon?.radonZone.map { (1...3).contains($0) } ?? false
@@ -145,7 +152,8 @@ struct PlaceTodayDetailContent: View {
             }
             .placeColumn(.leading, order: 1)
             VStack(alignment: .leading, spacing: 0) {
-                if let needsYou = tab?.needsYou {
+                // With the house on Today the card sits under the picture instead (`houseUnderPicture`).
+                if let needsYou = tab?.needsYou, !houseOn {
                     TodayNeedsYouCard(model: needsYou, hiddenTaskIds: agendaTaskIds, onOpenTask: tab?.onOpenTask)
                 }
                 // Christmas 1 to 45 days away while cards are open (TABCARD): the tab's countdown, above the agenda.
@@ -156,7 +164,7 @@ struct PlaceTodayDetailContent: View {
                 agendaSection(proxy: proxy)
                 // The person's plans today (Directions, On my way, Message guests) right under the agenda.
                 if tab != nil, PlansFlags.shared.plans {
-                    PlansTodayCards(gapAbove: true)
+                    PlansTodayCards(gapAbove: true, model: plansToday)
                 }
             }
             // Level with the sky when it starts the column.
@@ -188,7 +196,7 @@ struct PlaceTodayDetailContent: View {
 
     /// The household tasks "Coming up at home" shows (its week, or its "Next" row after an
     /// empty week), which Needs you leaves out.
-    private var agendaTaskIds: Set<String> {
+    var agendaTaskIds: Set<String> {
         let inputs = agendaInputs(calendarCardData(vm.section(.addressCalendar, in: intel)))
         var rows = TodayAgenda.items(inputs)
         if rows.isEmpty, let next = TodayAgenda.next(inputs) { rows = [next] }
@@ -312,9 +320,12 @@ extension PlaceTodayDetailContent {
                     air: skyAir,
                     home: skyHome,
                     streetLights: SkyStreet.lights(vm.section(.blockDensity, in: intel)?.blockDensity?.bucket.rawValue),
-                    calendar: skyCalendar
-                ) { scrollTo("todayAddressCalendar", proxy: proxy) }
-                    .padding(.top, 12)
+                    calendar: skyCalendar,
+                    onBins: { scrollTo("todayAddressCalendar", proxy: proxy) },
+                    house: skyHouse
+                )
+                .padding(.top, 12)
+                if houseOn { houseUnderPicture(proxy: proxy) }
                 TodayHourlyStrip(weather: data, sun: sunData, alerts: activeAlerts, calendar: skyCalendar)
                     .padding(.top, 8)
                 skyFooter(weather, proxy: proxy)
@@ -446,6 +457,133 @@ extension PlaceTodayDetailContent {
     var ballotCard: BallotSummary? {
         guard let election = vm.section(.civicElection, in: intel), election.status == .ready else { return nil }
         return election.civicElection?.ballotCard
+    }
+}
+
+// MARK: - The house on Today (JOURNEYS section 3)
+
+extension PlaceTodayDetailContent {
+    /// The switch is on, this is the Today tab, and it shows a home or a saved address.
+    var houseOn: Bool {
+        tab != nil && TodayHouseSwitch.shared.isOn && (vm.calendarHomeId != nil || vm.savedPlaceId != nil)
+    }
+
+    /// Unopened mail, the count the Mail tab's badge shows (none where the Mailbox is off).
+    private var unopenedMail: Int {
+        LaunchFeatures.mailbox ? MailBadgeStore.shared.unopened : 0
+    }
+
+    /// The first of Today's Plans cards' plans (only where Plans is on).
+    private var firstPlanToday: PlanCardDTO? {
+        PlansFlags.shared.plans ? (plansToday.hosting + plansToday.going + plansToday.recent).first : nil
+    }
+
+    /// What is true now for the picture, and what each thing opens.
+    var skyHouse: SkyHouseButtons? {
+        guard houseOn else { return nil }
+        let first = tab?.needsYou?.shown(hidingTaskIds: agendaTaskIds).first
+        let plan = firstPlanToday
+        let words = [first?.title, first?.subtitle].compactMap(\.self).filter { !$0.isEmpty }.joined(separator: ", ")
+        var house = SkyHouseButtons()
+        house.things = SkyHouseThings(mailbox: LaunchFeatures.mailbox, flagUp: unopenedMail > 0, note: first != nil, lantern: plan != nil)
+        house.onMail = { rootTabs.selected = .mail }
+        house.noteWords = words.hasSuffix(".") ? String(words.dropLast()) : words
+        house.onNote = { if let first { TodayNeedsYouCard.open(first, onOpenTask: tab?.onOpenTask) } }
+        house.lanternTitle = plan?.title ?? ""
+        house.onLantern = {
+            guard let plan else { return }
+            PlansStoreReads.seed(plan)
+            PlansNavigator.shared.pending = .plan(id: plan.id, intent: .view)
+            rootTabs.selected = .plans
+        }
+        return house
+    }
+
+    /// Tomorrow's kinds on a pickup evening ("Garbage and recycling"), as the bins at the curb say it.
+    private var pickupTomorrow: String? {
+        let now = Date()
+        let moment = SkyMoment.at(now, sunrise: sunData?.sunriseClock, sunset: sunData?.sunsetClock, calendar: skyCalendar)
+        guard let note = SkyNote.bins(now: now, moment: moment, pickups: calendarEvents, calendar: skyCalendar),
+              note.kind == .binsOut else { return nil }
+        let list = ListFormatter.localizedString(byJoining: note.bins.map { $0 == "yard_waste" ? "yard waste" : $0 })
+        return list.prefix(1).uppercased() + list.dropFirst()
+    }
+
+    /// The question's facts: a person with a home, no schedule of the household's own, a general garbage date.
+    private var cityPickup: TodayHousePickup? {
+        guard vm.calendarHomeId != nil, let card = calendarCardData(vm.section(.addressCalendar, in: intel)) else { return nil }
+        return TodayHousePickup(card.data)
+    }
+
+    /// Under the picture, above the hourly strip: the question while it applies, then "Needs you" in words.
+    @ViewBuilder
+    func houseUnderPicture(proxy: ScrollViewProxy) -> some View {
+        if let pickup = cityPickup {
+            TodayHouseQuestion(
+                pickup: pickup,
+                isSaving: houseSaving,
+                error: houseError,
+                onYes: { await acceptCityPickup(pickup, proxy: proxy) },
+                onChange: { openPickupEditor(proxy: proxy) }
+            )
+            .padding(.top, 12)
+        }
+        if let needsYou = tab?.needsYou {
+            TodayNeedsYouCard(
+                model: needsYou,
+                hiddenTaskIds: agendaTaskIds,
+                onOpenTask: tab?.onOpenTask,
+                house: TodayNeedsYouHouse(
+                    unopenedMail: unopenedMail,
+                    onMail: { rootTabs.selected = .mail },
+                    pickupKinds: pickupTomorrow,
+                    onPickup: { scrollTo("todayAddressCalendar", proxy: proxy) },
+                    hasHome: vm.calendarHomeId != nil
+                )
+            )
+            .sheet(isPresented: Binding(get: { reminderHelp != nil }, set: { if !$0 { reminderHelp = nil } })) {
+                if let homeId = vm.calendarHomeId {
+                    PickupReminderPrimer(
+                        homeId: homeId,
+                        api: .shared,
+                        sessionScope: HomeClaimSessionScope(api: .shared),
+                        startsOff: reminderHelp == true,
+                        onClose: { reminderHelp = nil },
+                        onSessionChanged: { reminderHelp = nil }
+                    )
+                }
+            }
+        }
+    }
+
+    /// "Yes, remind me": the general schedule becomes the household's own (the request "Save schedule" sends),
+    /// then what the reminder question's "Remind me" does, the phone's own question included; journey 1's
+    /// green box then shows on the calendar with the next pickup lit.
+    @MainActor
+    func acceptCityPickup(_ pickup: TodayHousePickup, proxy: ScrollViewProxy) async {
+        guard let homeId = vm.calendarHomeId, !houseSaving else { return }
+        houseSaving = true
+        houseError = nil
+        defer { houseSaving = false }
+        let version = calendarCardData(vm.section(.addressCalendar, in: intel))?.data.pickupVersion
+        do {
+            let request = SetPickupDayRequest(expectedVersion: version, collections: pickup.collections)
+            let saved: AddressCalendarResponse = try await APIClient.shared.request(
+                AddressCalendarEndpoints.setPickupDay(homeId: homeId, request: request)
+            )
+            // The editor's own save would ask the reminder question once: this was that answer.
+            UserDefaults.standard.set(true, forKey: "pickupPrimer.shown.\(homeId)")
+            let scope = HomeClaimSessionScope(api: .shared)
+            let reminder = try? await PickupReminders.turnOn(homeId: homeId, api: .shared) { try scope.requireCurrent() }
+            await vm.refresh()
+            showsCalendar = true
+            let note = PickupSavedNote(collections: saved.calendar.pickupSchedule?.collections ?? pickup.collections)
+            pickupWasSaved(note, calendar: saved.calendar, proxy: proxy)
+            // The schedule is saved either way; the reminder question says what is in the reminder's way.
+            if reminder != .on { reminderHelp = reminder == .notificationsOff }
+        } catch {
+            houseError = "Could not save your pickup schedule. Try again, or choose “Change day”."
+        }
     }
 }
 
@@ -1899,11 +2037,59 @@ private func aiReaderMessage(_ error: any Error, fallback: String) -> String {
     }
 }
 
+/// Turning the pickup reminder on: the evening briefing with this phone's time zone, then the phone's own
+/// question about notifications. The reminder question's "Remind me" and the house on Today's "Yes, remind
+/// me" both do exactly this.
+enum PickupReminders {
+    enum Outcome {
+        case on
+        /// The household has no schedule of its own yet.
+        case needsSchedule
+        case noTimeZone
+        /// The server did not turn the evening briefing on.
+        case refused
+        /// Notifications are off for Pantopus on this phone.
+        case notificationsOff
+    }
+
+    /// `check` runs between the steps and throws to stop (a changed session, a screen that went away).
+    @MainActor
+    static func turnOn(homeId: String, api: APIClient, check: @escaping @MainActor @Sendable () throws -> Void) async throws -> Outcome {
+        try check()
+        let calendarResponse: AddressCalendarResponse = try await api.request(AddressCalendarEndpoints.calendar(homeId: homeId))
+        try check()
+        guard !calendarResponse.calendar.needsPickupDay else { return .needsSchedule }
+        let timezone = TimeZone.autoupdatingCurrent.identifier
+        guard TimeZone.knownTimeZoneIdentifiers.contains(timezone) else { return .noTimeZone }
+        let response: NotificationPreferencesResponseDTO = try await api.request(
+            NotificationPreferencesEndpoints.update([
+                "evening_briefing_enabled": .bool(true), "daily_briefing_timezone": .string(timezone)
+            ]) { try check() }
+        )
+        try check()
+        guard response.preferences.eveningBriefingEnabled else { return .refused }
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        try check()
+        let granted: Bool = if settings.authorizationStatus == .notDetermined {
+            try await center.requestAuthorization(options: [.alert, .badge, .sound])
+        } else {
+            [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
+        }
+        try check()
+        guard granted else { return .notificationsOff }
+        UIApplication.shared.registerForRemoteNotifications()
+        return .on
+    }
+}
+
 /// Screen-local primer; the save's account scope also fences preference and permission replies.
 private struct PickupReminderPrimer: View {
     let homeId: String
     let api: APIClient
     let sessionScope: HomeClaimSessionScope
+    /// Opens saying notifications are off (the house on Today's "Yes, remind me" found them off).
+    var startsOff = false
     let onClose: () -> Void
     let onSessionChanged: () -> Void
     @State private var primerBusy = false
@@ -1954,6 +2140,7 @@ private struct PickupReminderPrimer: View {
         .interactiveDismissDisabled(primerBusy)
         .onAppear { lifecycleVersion += 1
             primerBusy = false
+            if startsOff { notificationsOff = true }
         }
         .onDisappear { lifecycleVersion += 1
             primerBusy = false
@@ -1978,42 +2165,13 @@ private struct PickupReminderPrimer: View {
                UIApplication.shared.isProtectedDataAvailable { primerBusy = false }
         }
         do {
-            try requirePrimerCurrent(version)
-            let calendarResponse: AddressCalendarResponse = try await api.request(AddressCalendarEndpoints.calendar(homeId: homeId))
-            try requirePrimerCurrent(version)
-            guard !calendarResponse.calendar.needsPickupDay else {
-                primerError = "Confirm your pickup schedule before turning on reminders."
-                return
-            }
-            let timezone = TimeZone.autoupdatingCurrent.identifier
-            guard TimeZone.knownTimeZoneIdentifiers.contains(timezone) else {
-                primerError = "Couldn't read your time zone. Try again."
-                return
-            }
-            let response: NotificationPreferencesResponseDTO = try await api.request(
-                NotificationPreferencesEndpoints.update([
-                    "evening_briefing_enabled": .bool(true), "daily_briefing_timezone": .string(timezone)
-                ]) { try requirePrimerCurrent(version) }
-            )
-            try requirePrimerCurrent(version)
-            guard response.preferences.eveningBriefingEnabled else {
-                primerError = "Couldn't enable pickup reminders. Try again."
-                return
-            }
-            let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-            try requirePrimerCurrent(version)
-            let granted: Bool = if settings.authorizationStatus == .notDetermined {
-                try await center.requestAuthorization(options: [.alert, .badge, .sound])
-            } else {
-                [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus)
-            }
-            try requirePrimerCurrent(version)
-            if granted {
-                UIApplication.shared.registerForRemoteNotifications()
-                onClose()
-            } else {
-                notificationsOff = true
+            let outcome = try await PickupReminders.turnOn(homeId: homeId, api: api) { try requirePrimerCurrent(version) }
+            switch outcome {
+            case .on: onClose()
+            case .needsSchedule: primerError = "Confirm your pickup schedule before turning on reminders."
+            case .noTimeZone: primerError = "Couldn't read your time zone. Try again."
+            case .refused: primerError = "Couldn't enable pickup reminders. Try again."
+            case .notificationsOff: notificationsOff = true
             }
         } catch {
             guard lifecycleVersion == version, !AppLockManager.shared.isLocked,

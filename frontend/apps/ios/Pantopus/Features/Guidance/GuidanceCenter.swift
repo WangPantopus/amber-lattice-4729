@@ -18,25 +18,6 @@ import Logging
 import SwiftUI
 import UIKit
 
-/// What is on screen now.
-enum GuidancePresentation: Equatable {
-    /// A centre card; `replay` when the person asked for it again from the tips list (not counted).
-    case centre(GuidanceCentreCard, replay: Bool)
-    case pointer(GuidancePointerCard)
-
-    var id: GuidanceCardID {
-        switch self {
-        case let .centre(card, _): card.id
-        case let .pointer(card): card.id
-        }
-    }
-
-    var isReplay: Bool {
-        if case let .centre(_, replay) = self { return replay }
-        return false
-    }
-}
-
 @Observable
 @MainActor
 final class GuidanceCenter {
@@ -110,6 +91,7 @@ final class GuidanceCenter {
         dismissPresentation()
         account = newAccount
         isBusinessAccount = false
+        TodayHouseSwitch.shared.restore(account: newAccount)
         steps.reset()
         guard let newAccount else {
             record = GuidanceRecord()
@@ -131,6 +113,7 @@ final class GuidanceCenter {
                 let response: ProfileResponse = try await APIClient.shared.request(UsersEndpoints.profile())
                 guard account == self.account else { return }
                 isBusinessAccount = response.user.accountType == AccountType.business.backendValue
+                TodayHouseSwitch.shared.set(response.todayHouse, account: account)
                 record.createdAt = response.user.createdAt
                 if let guidance = response.guidance {
                     record.merge(guidance)
@@ -370,7 +353,9 @@ final class GuidanceCenter {
 
     /// A tab's own card: the first time its tab opens.
     private func tabCard(on entry: GuidanceScreenEntry) -> GuidancePresentation? {
-        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)].compactMap(\.self)
+        // Today's own card is not shown while the house is on Today (JOURNEYS section 3).
+        let houseOn = TodayHouseSwitch.shared.isOn
+        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)].compactMap(\.self).filter { $0 != .tabToday || !houseOn }
         if entry.screen == .place, entry.variants.savedAddress { tabCards.append(.placeSaved) }
         for id in tabCards where !record.hasSeen(id) {
             if let card = card(id, on: entry, ignoringRules: false) { return card }

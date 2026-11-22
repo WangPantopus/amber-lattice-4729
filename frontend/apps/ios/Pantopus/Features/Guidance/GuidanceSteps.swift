@@ -270,3 +270,22 @@ struct GuidanceScreenEntry {
     var ready: Bool
     var variants: GuidanceVariants
 }
+
+/// What is on screen now.
+enum GuidancePresentation: Equatable {
+    /// A centre card; `replay` when the person asked for it again from the tips list (not counted).
+    case centre(GuidanceCentreCard, replay: Bool)
+    case pointer(GuidancePointerCard)
+
+    var id: GuidanceCardID {
+        switch self {
+        case let .centre(card, _): card.id
+        case let .pointer(card): card.id
+        }
+    }
+
+    var isReplay: Bool {
+        if case let .centre(_, replay) = self { return replay }
+        return false
+    }
+}
