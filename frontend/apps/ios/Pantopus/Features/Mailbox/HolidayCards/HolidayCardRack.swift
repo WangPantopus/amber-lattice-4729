@@ -23,6 +23,8 @@ struct HolidayCardRack: View {
     /// The cloth's colour, changed with a fade when another card shows.
     @State private var clothTable: String?
     @State private var art: CardTableArt?
+    /// The collection's tallest words under the card, measured at the column's width.
+    @State private var wordsNeed: CGFloat?
     @ScaledMetric(relativeTo: .footnote) private var nameSize: CGFloat = 12.5
     /// Write on this card's height: the wax button's type doesn't scale, so neither does this.
     private let buttonRoom: CGFloat = 50
@@ -46,10 +48,12 @@ struct HolidayCardRack: View {
         designs.firstIndex { $0.id == shownId } ?? 0
     }
 
-    /// Verse cards need room for the verse under the card; the rest for two lines in the pen. The same for every
-    /// card in the collection, so the card stays put while they're swiped.
+    /// The room kept under the card for its words: what the collection's tallest words need at this width (card
+    /// shelves E3: the card as large as the screen allows), the same for every card in the collection, so the card
+    /// stays put while they're swiped. Before they're measured: room for a verse, or two lines in the pen.
     private var wordsRoom: CGFloat {
-        designs.contains { $0.verse?.isEmpty == false } ? 200 : 96
+        if let wordsNeed { return wordsNeed + 4 }
+        return designs.contains { $0.verse?.isEmpty == false } ? 200 : 96
     }
 
     /// Room above (6) and below (30) the card for its shadow.
@@ -66,6 +70,7 @@ struct HolidayCardRack: View {
             ZStack(alignment: .topLeading) {
                 CardTableClothBackdrop(art: art, table: clothTable)
                     .frame(width: screen.width, height: screen.height)
+                wordsMeasure(width: min(520, screen.width - insets.leading - insets.trailing - 32))
                 switch fold {
                 case let .sideways(hingeX, _):
                     sideways(screen: screen, insets: insets, hingeX: hingeX)
@@ -92,7 +97,22 @@ struct HolidayCardRack: View {
 
     // MARK: Layouts
 
-    /// A phone, the closed Duo and the open Duo upright and flat: the name, the card, its words, the button.
+    /// The collection's words, every card's at once and unseen, for the room the tallest needs.
+    private func wordsMeasure(width: CGFloat) -> some View {
+        ZStack {
+            ForEach(designs) { HolidayCardRackWords(design: $0) }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .frame(width: max(1, width))
+        .fixedSize(horizontal: false, vertical: true)
+        .hidden()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wordsNeed = $0 }
+    }
+
+    /// A phone, the closed Duo and the open Duo upright and flat: the name, the card, its words, the button. The card's
+    /// page runs the screen's whole width, so the card can (card shelves E3).
     private func column(screen: CGSize, insets: EdgeInsets, cap: CGFloat) -> some View {
         let width = screen.width - insets.leading - insets.trailing
         let top = insets.top + 10 + 40 + 6
@@ -101,16 +121,18 @@ struct HolidayCardRack: View {
         let card = cardWidth(room: CGSize(width: width, height: screen.height - top - bottom - wordsRoom - shadowRoom), cap: cap)
         return VStack(spacing: 0) {
             topRow
+                .padding(.horizontal, 16)
                 .padding(.top, insets.top + 10)
             pager(cardWidth: card)
                 .padding(.top, 6)
             words
+                .padding(.horizontal, 16)
                 .frame(maxHeight: .infinity)
             writeButton
+                .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, max(insets.bottom, 12) + 12)
         }
-        .padding(.horizontal, 16)
         .frame(width: width, height: screen.height)
         .offset(x: insets.leading)
     }
@@ -123,12 +145,13 @@ struct HolidayCardRack: View {
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 topRow
+                    .padding(.horizontal, 16)
                     .padding(.top, insets.top + 10)
                 Spacer(minLength: 10)
+                // The card's page runs the whole left page, so the card can (card shelves E3).
                 pager(cardWidth: card)
                 Spacer(minLength: max(insets.bottom, 12))
             }
-            .padding(.horizontal, 16)
             .frame(width: left, height: screen.height)
             VStack(spacing: 20) {
                 Spacer(minLength: insets.top + 10)
@@ -286,13 +309,15 @@ private struct HolidayCardRackCard: View {
     let width: CGFloat
 
     @State private var picture: UIImage?
+    @Environment(\.displayScale) private var displayScale
 
     init(design: HolidayCardDesign, paperGrain: UIImage?, year: Int, width: CGFloat) {
         self.design = design
         self.paperGrain = paperGrain
         self.year = year
         self.width = width
-        _picture = State(initialValue: HolidayCardPicture.image(design.id) ?? HolidayCardPicture.image(design.id, thumb: true))
+        let card = HolidayCardPicture.trimmedURL(design.id).flatMap { PantopusImagePipeline.shared.cachedImage(for: $0) }
+        _picture = State(initialValue: card ?? HolidayCardPicture.image(design.id) ?? HolidayCardPicture.image(design.id, thumb: true))
     }
 
     var body: some View {
@@ -308,6 +333,12 @@ private struct HolidayCardRackCard: View {
         .compositingGroup()
         .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 8)
         .task(id: design.id) {
+            // Drawn wider than the 960 copy carries: the card's own picture (1214 wide), as the table has it (card
+            // shelves E3); not in Low Data Mode.
+            if width * displayScale > 960, !NetworkMonitor.shared.isLowData {
+                if let card = await CardTablePicture.load(design.id) { picture = card }
+                return
+            }
             guard HolidayCardPicture.image(design.id) == nil else { return }
             if let large = await HolidayCardPicture.load(design.id) { picture = large }
         }
