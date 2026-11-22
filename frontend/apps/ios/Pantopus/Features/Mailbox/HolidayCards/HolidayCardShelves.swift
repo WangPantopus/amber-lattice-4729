@@ -160,6 +160,15 @@ struct HolidayCardShelves: View {
         // collection's page alike.
         .fullScreenCover(item: $viewModel.largeDesign) { design in
             HolidayCardRack(viewModel: viewModel, cards: cards, start: design)
+                .modifier(HolidayCardRackZoom(source: reduceMotion ? nil : viewModel.rackZoomSource))
+        }
+        // Opened another way next time ("See it larger"): today's opening, unless a card is tapped again.
+        .onChange(of: viewModel.largeDesign) { _, open in
+            guard open == nil else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                if viewModel.largeDesign == nil { viewModel.rackZoomSource = nil }
+            }
         }
     }
 
@@ -317,7 +326,9 @@ struct HolidayCardShelves: View {
     ) -> some View {
         let selected = design.id == viewModel.designId
         let place = (all.firstIndex(of: design) ?? 0) + 1
+        let zoomID = "\(sharp ? "picks" : collection.id)/\(design.id)"
         return Button {
+            viewModel.rackZoomSource = zoomID
             viewModel.largeDesign = design
         } label: {
             HolidayCardTile(
@@ -326,7 +337,8 @@ struct HolidayCardShelves: View {
                 sharp: sharp,
                 strongCaption: sharp,
                 reservesTwoLines: !sharp,
-                loads: loads
+                loads: loads,
+                zoomID: zoomID
             )
             .frame(width: width)
             .contentShape(Rectangle())
@@ -337,6 +349,23 @@ struct HolidayCardShelves: View {
         .accessibilityHint("Shows it large.")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier(sharp ? "sendCardPick.\(design.id)" : "sendCardDesign.\(design.id)")
+    }
+}
+
+/// The card rack grows out of the card tapped on the card shelves and shrinks back into it (iOS 18's zoom; card shelves
+/// B8); opened any other way, or with Reduce Motion, it opens as it always has. It still closes only by ✕ or "Write on
+/// this card", which choose the card seen last: the zoom's drag down to close would leave without choosing.
+struct HolidayCardRackZoom: ViewModifier {
+    let source: String?
+
+    func body(content: Content) -> some View {
+        if let source {
+            content
+                .itemZoomDestination(.card, id: source)
+                .interactiveDismissDisabled()
+        } else {
+            content
+        }
     }
 }
 

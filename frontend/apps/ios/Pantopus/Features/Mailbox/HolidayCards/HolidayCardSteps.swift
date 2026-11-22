@@ -453,11 +453,13 @@ struct HolidayCardTile: View {
     var reservesTwoLines = false
     /// A shelf not near yet: its paper, of the picture's shape, until it comes near.
     var loads = true
+    /// The card shelves: the card rack grows out of this picture (iOS 18 and later; `ItemZoomTransition`).
+    var zoomID: String?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: 6) {
-            picture
+            zoomSource(picture)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 .overlay {
                     if selected {
@@ -479,6 +481,15 @@ struct HolidayCardTile: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(2, reservesSpace: reservesTwoLines)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private func zoomSource(_ picture: some View) -> some View {
+        if let zoomID {
+            picture.itemZoomSource(.card, id: zoomID)
+        } else {
+            picture
         }
     }
 

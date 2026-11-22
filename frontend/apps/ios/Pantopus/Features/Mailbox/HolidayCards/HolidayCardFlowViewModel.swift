@@ -147,6 +147,8 @@ final class HolidayCardFlowViewModel {
     @ObservationIgnored var shelvesStart = true
     /// The collection whose page lies over the card shelves (card shelves B4); nil on the shelves.
     var shelfPage: String?
+    /// The card on the card shelves the card rack grows out of (card shelves B8); nil opens it as before.
+    @ObservationIgnored var rackZoomSource: String?
     var message = "" {
         didSet {
             sendError = nil

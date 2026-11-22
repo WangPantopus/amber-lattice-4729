@@ -46,6 +46,8 @@ struct ItemZoomID: Hashable {
         case post
         case plan
         case mailPiece
+        /// A Christmas card on the card shelves, opening at the card rack: its row and design id.
+        case card
     }
 
     let kind: Kind
