@@ -8,7 +8,7 @@
 // first way is the app, and getting it here carries the card through the install.
 // ============================================================
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import * as api from '@pantopus/api';
 import { authPageHref } from '@/lib/auth-utils';
@@ -16,6 +16,7 @@ import StoreLink from '@/components/public-share/StoreLink';
 import { cardPicture, isVerseReference, TABLE_ART, tableEdge, tableTint } from './cardArt';
 import { cardHand } from './cardFont';
 import { PaperFront } from './CardPaper';
+import { Row, useNearPicture } from './CardShelves';
 import styles from './PublicCards.module.css';
 
 const art = (name: string) => `${TABLE_ART}${name}`;
@@ -24,7 +25,11 @@ const SLATE = '#3b4c6e';
 const POSTMARK_DAY = '2026-12-25';
 
 export type PublicDesign = { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null };
-export type PublicCollection = { id: string; name: string; designs: string[] };
+export type PublicCollection = {
+  id: string; name: string; designs: string[];
+  /** The shelves' facts (card shelves SPEC A3): the short name, the public name in a link, the line, the opening card, the parts. */
+  short?: string; slug?: string; line?: string; pick?: string; parts?: { name: string; designs: string[] }[];
+};
 
 /**
  * A phone's store button that carries the sending flow through the install (`getStoreDownloadCta`): Google Play
@@ -183,6 +188,200 @@ export function PublicCardsPage({ designs, collections, inviteCode, store = null
             </ul>
           </section>
         ))}
+        <Foot className={styles.allFoot} />
+      </div>
+    </TablePage>
+  );
+}
+
+type PublicShelf = PublicCollection & { slug: string; cards: PublicDesign[] };
+
+function shelvesFrom(designs: PublicDesign[], collections: PublicCollection[]): PublicShelf[] {
+  const byId = new Map(designs.map((design) => [design.id, design]));
+  return collections
+    .map((c) => ({ ...c, slug: c.slug as string, cards: c.designs.flatMap((id) => byId.get(id) ?? []) }))
+    .filter((shelf) => shelf.cards.length);
+}
+
+/** A card on the shelves: its picture as it comes near (thumbnail, then sharp on screen), its caption, and its page. */
+function PublicTile({ design, inviteCode, eager = false }: { design: PublicDesign; inviteCode: string | null; eager?: boolean }) {
+  const picture = useNearPicture(design.id, eager);
+  return (
+    <Link href={withRef(`/cards/${design.slug}`, inviteCode)} className={styles.tile} data-testid={`publicCard.${design.slug}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img ref={picture.ref} src={picture.src} alt="" fetchPriority={eager ? 'high' : undefined} decoding="async" />
+      <span>{design.caption}</span>
+    </Link>
+  );
+}
+
+const shelfAnchor = (slug: string) => `shelf-${slug}`;
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** A tap on a collection's name (or the line under its large card) goes to its shelf, below the row of names. */
+function goToShelf(event: MouseEvent<HTMLAnchorElement>, slug: string) {
+  const shelf = document.getElementById(shelfAnchor(slug));
+  if (!shelf) return;
+  event.preventDefault();
+  shelf.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+  window.history.replaceState(window.history.state, '', `#${shelfAnchor(slug)}`);
+}
+
+/**
+ * pantopus.com/cards as shelves (card shelves SPEC Part D, server key card_shelves): the head, a row of the collections'
+ * short names that stays at the top of the window (the shelf in view is the marked one), "One from each collection",
+ * then a shelf per collection with its first 12 cards and "See all <N>", which opens the collection's own page.
+ */
+export function PublicShelvesPage({ designs, collections, inviteCode, store = null, freeCards = null, goal = null }: {
+  designs: PublicDesign[];
+  collections: PublicCollection[];
+  inviteCode: string | null;
+  store?: PublicCardsStore | null;
+  freeCards?: number | null;
+  goal?: ReactNode;
+}) {
+  const shelves = shelvesFrom(designs, collections);
+  const picks = shelves.flatMap((shelf) => {
+    const card = shelf.pick ? shelf.cards.find((c) => c.id === shelf.pick) : undefined;
+    return card ? [{ shelf, card }] : [];
+  });
+  const indexRef = useRef<HTMLElement>(null);
+  const [inView, setInView] = useState<string | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const line = (indexRef.current?.getBoundingClientRect().bottom ?? 0) + 24;
+      let now: string | null = null;
+      for (const shelf of shelves) {
+        const top = document.getElementById(shelfAnchor(shelf.slug))?.getBoundingClientRect().top;
+        if (top !== undefined && top <= line) now = shelf.id;
+      }
+      setInView(now);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
+    // The shelves don't change while the page is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // The marked name stays in sight in its row.
+  useEffect(() => {
+    const row = indexRef.current;
+    const name = row?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!row || !name) return;
+    const box = row.getBoundingClientRect();
+    const at = name.getBoundingClientRect();
+    if (at.left < box.left + 16) row.scrollLeft -= box.left + 16 - at.left;
+    else if (at.right > box.right - 16) row.scrollLeft += at.right - (box.right - 16);
+  }, [inView]);
+  return (
+    <TablePage>
+      <div className={`${styles.all} ${styles.shelves}`} data-testid="publicShelves">
+        <header className={styles.shelvesHead}>
+          <div>
+            <h1>Christmas cards</h1>
+            <p>Pick one and send it to someone. It arrives with their morning mail, and they open it like real mail.</p>
+          </div>
+          <HowSendingWorks freeCards={freeCards} />
+          {store ? (
+            <div className={styles.allApp}>
+              <GetTheApp store={store} label="Send a card with the Pantopus app" testId="publicCardsGetApp" />
+            </div>
+          ) : null}
+          {goal}
+        </header>
+        <nav ref={indexRef} className={styles.index} aria-label="Collections" data-testid="publicShelvesIndex">
+          {shelves.map((shelf) => (
+            <a
+              key={shelf.id}
+              href={`#${shelfAnchor(shelf.slug)}`}
+              aria-current={inView === shelf.id ? 'true' : undefined}
+              onClick={(event) => goToShelf(event, shelf.slug)}
+              data-testid={`publicShelvesIndex.${shelf.slug}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cardPicture(shelf.pick || shelf.cards[0].id, 'thumb')} alt="" loading="lazy" />
+              {shelf.short || shelf.name}
+            </a>
+          ))}
+        </nav>
+        {picks.length ? (
+          <section aria-labelledby="public-picks">
+            <p id="public-picks" className={styles.picksTitle}>One from each collection</p>
+            <Row name="One from each collection" cardWidth="var(--open-w)" testId="publicPicks" rowClass={styles.row} dark>
+              {picks.map(({ shelf, card }, i) => (
+                <div key={shelf.id} className={styles.pick}>
+                  <PublicTile design={card} inviteCode={inviteCode} eager={i < 2} />
+                  <a href={`#${shelfAnchor(shelf.slug)}`} onClick={(event) => goToShelf(event, shelf.slug)} className={styles.pickLine} data-testid={`publicPickLine.${shelf.slug}`}>
+                    {shelf.name} · {shelf.cards.length} cards
+                  </a>
+                </div>
+              ))}
+            </Row>
+          </section>
+        ) : null}
+        {shelves.map((shelf) => (
+          <section key={shelf.id} id={shelfAnchor(shelf.slug)} className={styles.shelfRow} aria-labelledby={`${shelfAnchor(shelf.slug)}-name`} data-testid={`publicShelf.${shelf.slug}`}>
+            <div className={styles.shelfHead}>
+              <h2 id={`${shelfAnchor(shelf.slug)}-name`}>{shelf.name}</h2>
+              <p>{shelf.line}</p>
+              <Link href={withRef(`/cards/collection/${shelf.slug}`, inviteCode)} aria-label={`See all ${shelf.cards.length}, ${shelf.name}`} data-testid={`publicSeeAll.${shelf.slug}`}>
+                See all {shelf.cards.length}
+              </Link>
+            </div>
+            <Row name={shelf.name} cardWidth="var(--shelf-w)" testId={`publicShelfRow.${shelf.slug}`} rowClass={styles.row} dark>
+              {shelf.cards.slice(0, 12).map((card) => (
+                <div key={card.id} className={styles.shelfCard}>
+                  <PublicTile design={card} inviteCode={inviteCode} />
+                </div>
+              ))}
+            </Row>
+          </section>
+        ))}
+        <Foot className={styles.allFoot} />
+      </div>
+    </TablePage>
+  );
+}
+
+/**
+ * A collection's own page, /cards/collection/<slug> (card shelves SPEC Part D): its name, its line, its parts where it
+ * has them, and all its cards in today's grid; "All the cards" goes back to /cards.
+ */
+export function PublicCollectionPage({ collection, designs, inviteCode, store = null }: {
+  collection: PublicCollection;
+  designs: PublicDesign[];
+  inviteCode: string | null;
+  store?: PublicCardsStore | null;
+}) {
+  const [shelf] = shelvesFrom(designs, [collection]);
+  const cards = shelf?.cards ?? [];
+  const byId = new Map(cards.map((card) => [card.id, card]));
+  const parts = (collection.parts ?? [])
+    .map((part) => ({ name: part.name, cards: part.designs.flatMap((id) => byId.get(id) ?? []) }))
+    .filter((part) => part.cards.length);
+  const grid = (list: PublicDesign[], first = false) => (
+    <ul className={styles.grid}>
+      {list.map((card, i) => <li key={card.id}><PublicTile design={card} inviteCode={inviteCode} eager={first && i < 2} /></li>)}
+    </ul>
+  );
+  return (
+    <TablePage>
+      <div className={`${styles.all} ${styles.collection}`} data-testid={`publicCollection.${collection.slug}`}>
+        <Link href={withRef('/cards', inviteCode)} className={styles.back} data-testid="publicCollectionBack">All the cards</Link>
+        <h1>{collection.name}</h1>
+        {collection.line ? <p>{collection.line}</p> : null}
+        {store ? (
+          <div className={styles.allApp}>
+            <GetTheApp store={store} label="Send a card with the Pantopus app" testId="publicCardsGetApp" />
+          </div>
+        ) : null}
+        {parts.length ? parts.map((part, i) => (
+          <section key={part.name} className={styles.part} aria-labelledby={`part-${i}`}>
+            <h2 id={`part-${i}`}>{part.name} <span>· {part.cards.length} cards</span></h2>
+            {grid(part.cards, i === 0)}
+          </section>
+        )) : <div className={styles.part}>{grid(cards, true)}</div>}
         <Foot className={styles.allFoot} />
       </div>
     </TablePage>

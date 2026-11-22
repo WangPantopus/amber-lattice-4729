@@ -63,6 +63,12 @@ export type PublicCardDesigns = {
   shelves?: boolean;
 };
 
+/** The shelves are on (server key card_shelves, card shelves SPEC Part D) and the collections carry their facts. */
+export function publicShelvesOn(data: Pick<PublicCardDesigns, 'shelves' | 'collections'>): boolean {
+  const collections = data.collections ?? [];
+  return data.shelves === true && collections.length > 0 && collections.every((c) => typeof c.slug === 'string' && Boolean(c.slug));
+}
+
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */
 export const fetchPublicCardDesigns = cache(async (): Promise<PublicFetchResult<PublicCardDesigns>> => (
   fetchPublicJson<PublicCardDesigns>('/api/mailbox/cards/designs')
