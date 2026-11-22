@@ -89,6 +89,8 @@ export function TodayPickupQuestion({ event, saving, error, onYes, onChange }: {
   onChange: () => void;
 }) {
   const day = utcDay(event.moved_from ?? event.date);
+  // Whose schedule the date comes from, by the date's own scope (a county's public map, a city's, a state's).
+  const whose = event.scope === 'county' ? 'county’s' : event.scope === 'state' ? 'state’s' : 'city’s';
   return (
     <section data-testid="today.house.question" aria-labelledby="today-house-question" className="rounded-2xl border border-primary-300 bg-primary-50 p-4 dark:border-primary-700 dark:bg-primary-900/20">
       <h2 id="today-house-question" className="text-[17px] font-bold leading-6 text-app-text">
@@ -96,8 +98,8 @@ export function TodayPickupQuestion({ event, saving, error, onYes, onChange }: {
       </h2>
       <p className="mt-1 text-[13px] leading-[18px] text-app-text-secondary">
         {event.confidence === 'unverified'
-          ? 'From your city’s schedule, not confirmed. Change it if yours differs.'
-          : 'From your city’s schedule. Change it if yours differs.'}
+          ? `From your ${whose} schedule, not confirmed. Change it if yours differs.`
+          : `From your ${whose} schedule. Change it if yours differs.`}
       </p>
       {error ? <p role="alert" className="mt-2 text-[13px] text-red-600 dark:text-red-400">{error}</p> : null}
       <div className="mt-3 grid grid-cols-2 gap-2.5">
