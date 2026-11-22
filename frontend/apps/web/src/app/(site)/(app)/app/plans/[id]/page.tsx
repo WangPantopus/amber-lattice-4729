@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,10 @@ import {
   usePlansArea,
 } from '@/components/plans/PlansWorkspace';
 
+import { ages, labelFor } from '@/components/plans/PlanKindFields';
+import PlanDatePoll, { type ParticipationProps } from '@/components/plans/PlanDatePoll';
+import PlanInvitations, { InviteFriend } from '@/components/plans/PlanInvitations';
+
 const reasons: Record<string, string> = {
   too_far: 'You can ask to join when you’re closer to this plan.',
   needs_location: 'Add a saved place or use your location to ask to join.',
@@ -26,7 +30,6 @@ const reasons: Record<string, string> = {
   too_many_requests: 'You’ve reached the limit for join requests.',
   blocked: 'You can’t ask to join this plan.',
 };
-const ages = { under_2: 'Under 2', '2_3': '2–3', '4_5': '4–5', '6_8': '6–8', '9_12': '9–12' };
 
 export default function PlanPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,6 +56,7 @@ export default function PlanPage() {
   const status = plan?.viewer.request_status;
   const isIn = isHost || role === 'guest';
   const reason = plan?.viewer.cannot_ask_reason;
+  const invited = !!plan?.my_invite && ['pending', 'declined', 'maybe'].includes(plan.my_invite.status);
   const waitlist = reason === 'full_use_waitlist';
   const back = (
     <Link className="inline-flex items-center gap-2 text-sm font-medium text-primary-700" href={plansPath}>
@@ -85,7 +89,9 @@ export default function PlanPage() {
 
   const cancel = () => {
     if (role === 'guest' && !window.confirm('Leave this plan and its chat?')) return;
-    action.mutate(() => plans.withdraw(id));
+    action.mutate(() =>
+      role === 'guest' && plan.my_invite ? plans.answerInvitation(id, 'decline') : plans.withdraw(id),
+    );
   };
   return (
     <article className="space-y-5">
@@ -108,6 +114,33 @@ export default function PlanPage() {
           {plan.audience === 'invited' ? ' · Private plan' : ''}
         </p>
       </header>
+      {plan.repeat?.text && <p className="text-sm">{plan.repeat.text}</p>}
+      {plan.details && (
+        <p className="text-sm text-app-secondary">
+          {[
+            plan.details.food_kind,
+            plan.details.game_kind,
+            plan.details.outdoor_kind,
+            plan.details.walk_kind,
+            plan.details.sport,
+            plan.details.level,
+            plan.details.pace,
+            plan.details.study_style,
+          ]
+            .filter((v): v is string => !!v)
+            .map(labelFor)
+            .concat(
+              [
+                plan.details.game?.label,
+                plan.details.subject,
+                plan.details.kids_age_bands?.map((b) => ages[b as keyof typeof ages]).join(', '),
+                plan.details.dogs_welcome ? 'Dogs welcome' : null,
+                plan.details.extra_gear ? 'Extra gear available' : null,
+              ].filter((v): v is string => !!v),
+            )
+            .join(' · ')}
+        </p>
+      )}
       {plan.about && <p className="whitespace-pre-wrap break-words">{plan.about}</p>}
       {!active && (
         <p className="rounded-xl bg-surface-muted p-3 font-medium">
@@ -120,7 +153,7 @@ export default function PlanPage() {
           {action.error instanceof Error ? action.error.message : 'That change couldn’t be saved.'}
         </p>
       )}
-      {isIn && plan.place && (
+      {(isIn || (plan.kind !== 'playdate' && plan.audience === 'invited' && plan.place_kind === 'public' && invited)) && plan.place && (
         <section className="space-y-2 rounded-2xl bg-surface-muted p-4">
           <h3 className="flex items-center gap-2 font-semibold">
             <MapPin size={18} />
@@ -162,6 +195,19 @@ export default function PlanPage() {
                 {person.is_host ? ' · Host' : ''}
                 {person.party_size > 1 ? ' · Party of ' + person.party_size : ''}
                 {person.kids_count ? ' · Kids: ' + person.kids_count : ''}
+                {isHost && person.reconfirm_needed && ' · Reconfirmation requested'}
+                {isHost && active && person.request_id && (
+                  <button
+                    className="ml-3 text-sm text-primary-700"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('Remove ' + person.display_name + ' from this plan and its chat?'))
+                        action.mutate(() => plans.decide(id, person.request_id!, 'remove'));
+                    }}
+                  >
+                    Remove guest
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -184,7 +230,26 @@ export default function PlanPage() {
           )}
         </section>
       )}
-      {isHost && active && <JoinRequests plan={plan} busy={busy} run={action.mutate} />}
+      {isHost && plan.headcount && (
+        <p className="text-sm font-medium">
+          {plan.headcount.adults} adults · {plan.headcount.kids} kids
+          {plan.answers
+            ? ' · ' + plan.answers.maybe + ' maybe · ' + plan.answers.no_answer + ' unanswered'
+            : ''}
+        </p>
+      )}
+      {active && plan.dates && <PlanDatePoll plan={plan} busy={busy} run={action.mutate} />}
+      {isHost &&
+      plan.invites &&
+      (plan.invites.can_invite ||
+        plan.invites.invited ||
+        plan.invites.said_yes ||
+        plan.invites.cant_make_it) ? (
+        <PlanInvitations key={id} plan={plan} />
+      ) : null}
+      {role === 'guest' && active && <InviteFriend key={id} plan={plan} />}
+      {isHost && active && <HostTools plan={plan} busy={busy} run={action.mutate} />}
+      {isHost && active && !plan.dates && <JoinRequests plan={plan} busy={busy} run={action.mutate} />}
       {role === 'guest' && active && (
         <div className="space-y-2">
           <p className="font-semibold">You’re going</p>
@@ -197,8 +262,20 @@ export default function PlanPage() {
               I’m still coming
             </button>
           )}
+          {plan.my_invite && typeof plan.kids_welcome === 'boolean' && (
+            <button
+              className={secondaryClass}
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm('Change your answer to Maybe and release your spots?'))
+                  action.mutate(() => plans.answerInvitation(id, 'maybe'));
+              }}
+            >
+              Maybe
+            </button>
+          )}
           <button className={secondaryClass} disabled={busy} onClick={cancel}>
-            Leave plan
+            {plan.my_invite ? 'Can’t make it' : 'Leave plan'}
           </button>
         </div>
       )}
@@ -216,10 +293,46 @@ export default function PlanPage() {
           )}
         </div>
       )}
-      {role === 'none' && active && (plan.viewer.can_ask || waitlist) && (
-        <AskForm key={id} plan={plan} busy={busy} run={action.mutate} />
+      {role === 'none' && invited && active && !plan.dates && (
+        <p className="font-semibold">
+          {plan.my_invite?.status === 'maybe'
+            ? 'You answered Maybe'
+            : plan.my_invite?.status === 'declined'
+              ? 'You answered Can’t make it'
+              : plan.host.display_name + ' invited you'}
+        </p>
       )}
-      {role === 'none' && reason && !waitlist && active && (
+      {role === 'none' &&
+        !plan.dates &&
+        active &&
+        status !== 'pending' &&
+        status !== 'waitlisted' &&
+        (plan.viewer.can_ask || waitlist || (invited && plan.my_invite?.status === 'declined')) && (
+          <AskForm key={id} plan={plan} busy={busy} run={action.mutate} />
+        )}
+      {role === 'none' && invited && active && !plan.dates && (
+        <div className="flex flex-wrap gap-2">
+          {typeof plan.kids_welcome === 'boolean' && plan.my_invite?.status !== 'maybe' && (
+            <button
+              className={secondaryClass}
+              disabled={busy}
+              onClick={() => action.mutate(() => plans.answerInvitation(id, 'maybe'))}
+            >
+              Maybe
+            </button>
+          )}
+          {plan.my_invite?.status !== 'declined' && (
+            <button
+              className={secondaryClass}
+              disabled={busy}
+              onClick={() => action.mutate(() => plans.answerInvitation(id, 'decline'))}
+            >
+              Can’t make it
+            </button>
+          )}
+        </div>
+      )}
+      {role === 'none' && reason && !waitlist && active && !plan.dates && !invited && (
         <div className="space-y-2">
           <p className="text-sm text-app-muted">
             {reasons[reason] || 'You can’t ask to join this plan right now.'}
@@ -235,10 +348,59 @@ export default function PlanPage() {
   );
 }
 
-interface ParticipationProps {
-  plan: plans.Detail;
-  busy: boolean;
-  run: (perform: () => Promise<unknown>) => void;
+function HostTools({ plan, busy, run }: ParticipationProps) {
+  const [cancelling, setCancelling] = useState(false);
+  return (
+    <section className="space-y-3 border-t border-app pt-4">
+      <div className="flex flex-wrap gap-2">
+        <Link className={secondaryClass} href={detailPath(plan.id) + '/edit'}>
+          Edit plan
+        </Link>
+        <button
+          className={secondaryClass}
+          aria-expanded={cancelling}
+          onClick={() => setCancelling(!cancelling)}
+        >
+          Cancel plan
+        </button>
+      </div>
+      {cancelling && (
+        <form
+          className="space-y-2 rounded-xl bg-surface-muted p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const data = new FormData(e.currentTarget);
+            const repeat = data.get('repeat') as 'keep' | 'stop' | null;
+            if (
+              window.confirm(
+                repeat === 'stop'
+                  ? 'Cancel this plan and stop future dates?'
+                  : 'Cancel this plan and tell the guests?',
+              )
+            )
+              run(() => plans.cancel(plan.id, String(data.get('note') || ''), repeat || undefined));
+          }}
+        >
+          {plan.repeat && (
+            <label className="block text-sm">
+              Dates to cancel
+              <select className={fieldClass} name="repeat">
+                <option value="keep">Only this date</option>
+                <option value="stop">This date and all future dates</option>
+              </select>
+            </label>
+          )}
+          <label className="block text-sm">
+            Note for guests (optional)
+            <textarea className={fieldClass} name="note" maxLength={280} />
+          </label>
+          <button disabled={busy} className={buttonClass}>
+            Confirm cancellation
+          </button>
+        </form>
+      )}
+    </section>
+  );
 }
 
 function JoinRequests({ plan, busy, run }: ParticipationProps) {
@@ -330,9 +492,13 @@ function AskForm({ plan, busy, run }: ParticipationProps) {
   const waitlist = plan.viewer.cannot_ask_reason === 'full_use_waitlist';
   const joinLabel = waitlist
     ? 'Join waitlist'
-    : plan.how_people_get_in === 'automatic'
-      ? 'Join plan'
-      : 'Ask to join';
+    : plan.my_invite
+      ? plan.my_invite.needs_host_ok
+        ? 'Ask to join'
+        : 'I’m in'
+      : plan.how_people_get_in === 'automatic'
+        ? 'Join plan'
+        : 'Ask to join';
   return (
     <form
       key={id}

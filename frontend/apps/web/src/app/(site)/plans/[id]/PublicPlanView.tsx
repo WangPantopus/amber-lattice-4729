@@ -30,6 +30,7 @@ import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
+import OpenPlanOnWeb from '@/components/plans/OpenPlanOnWeb';
 import PayToJoin from './PayToJoin';
 import ClaimSpot, { SpotUnread, type SpotView } from './ClaimSpot';
 
@@ -782,6 +783,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
         <div className="mx-auto w-full max-w-md pb-10">
           <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={appQuery} universal={universal} />
           <div className="px-4 pt-[18px]">
+            <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />
             <GuestAnswer
               planId={id}
               plan={plan}
@@ -827,6 +829,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
                 </p>
               </div>
             </div>
+            {mine && <OpenPlanOnWeb id={id} />}
             <OpenInAppButton
               appUrl={buildPlanAppUrl(id)}
               linkHref={linkPage ? null : buildPlanShareUrl(id)}
@@ -876,6 +879,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
                 </p>
               </div>
             </div>
+            <OpenPlanOnWeb id={id} token={token && invite ? token : null} />
             <OpenInAppButton
               appUrl={appUrl}
               linkHref={linkHref}
@@ -1046,6 +1050,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           )}
 
+          {!business && <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />}
           <OpenInAppButton
             appUrl={appUrl}
             linkHref={linkHref}
