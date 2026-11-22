@@ -159,14 +159,14 @@ export default function StandardMap(props: StandardMapProps) {
       const view = readView(instance);
       if (view) latest.current.onView(view);
     };
-    instance.on('moveend', () => {
+    // A resize can also end a move. Report the final bounds once, including after a sidebar transition.
+    const reportWhenSettled = () => {
       if (!settled) return;
       window.clearTimeout(reportTimer);
       reportTimer = window.setTimeout(report, 250);
-    });
-    instance.on('resize', () => {
-      if (settled) report();
-    });
+    };
+    instance.on('moveend', reportWhenSettled);
+    instance.on('resize', reportWhenSettled);
 
     // A person's pan, for the header's quick return. Drag events come from pointer pans only
     // (not the wheel, the keyboard or the map's own moves); two fingers are a pinch, not a scroll.

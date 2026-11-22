@@ -172,13 +172,7 @@ export default function PlansMap({
   const { host } = usePlansArea();
   const glyphPrefix = useId();
   const [view, setView] = useState<{ bounds: plans.Bounds; zoom: number } | null>(null);
-  // The shell animates its width. Read pins for the settled map, once per resize.
-  const boundsTimer = useRef<number | undefined>(undefined);
-  const onBounds = useCallback((bounds: plans.Bounds, zoom: number) => {
-    window.clearTimeout(boundsTimer.current);
-    boundsTimer.current = window.setTimeout(() => setView({ bounds, zoom }), 150);
-  }, []);
-  useEffect(() => () => window.clearTimeout(boundsTimer.current), []);
+  const onBounds = useCallback((bounds: plans.Bounds, zoom: number) => setView({ bounds, zoom }), []);
   const box = view?.bounds;
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const pins = useQuery({
