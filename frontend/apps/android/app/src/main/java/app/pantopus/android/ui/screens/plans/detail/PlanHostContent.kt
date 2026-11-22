@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.pantopus.android.data.api.models.plans.PlanBringDto
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.models.plans.PlanHostInvitesDto
 import app.pantopus.android.data.api.models.plans.PlanInviteListDto
@@ -54,6 +55,7 @@ import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.components.PantopusTextField
 import app.pantopus.android.ui.components.sheetKeyboardRules
 import app.pantopus.android.ui.screens.plans.LocalPlanOpenProfile
+import app.pantopus.android.ui.screens.plans.bring.PlanBringClaimed
 import app.pantopus.android.ui.screens.plans.bring.PlanBringHostCard
 import app.pantopus.android.ui.screens.plans.components.PlanAvatar
 import app.pantopus.android.ui.screens.plans.components.PlanAvatarStack
@@ -84,6 +86,21 @@ import app.pantopus.android.ui.theme.PantopusIconImage
 import app.pantopus.android.ui.theme.PantopusTextStyle
 import app.pantopus.android.ui.theme.Spacing
 
+/**
+ * The host's bring list. [claimed] is the thing the host's last save of the list made theirs: the green line shows over
+ * the list only while that thing is still the host's on the list the page shows.
+ */
+@Composable
+private fun HostBringList(
+    bring: PlanBringDto,
+    hostFirst: String,
+    claimed: String?,
+    onOpen: () -> Unit,
+) {
+    val mine = claimed?.takeIf { label -> bring.items.any { it.claim?.mine == true && it.label.trim() == label } }
+    PlanBringHostCard(bring, onOpen = onOpen, claimed = mine?.let { PlanBringClaimed(it, hostFirst, byHost = true) })
+}
+
 /** H9: your plan, as host. */
 @Composable
 internal fun ColumnScope.PlanHostBody(
@@ -104,6 +121,8 @@ internal fun ColumnScope.PlanHostBody(
     onOpenGuests: () -> Unit = {},
     /** Opens the bring list (A9). */
     onOpenBring: () -> Unit = {},
+    /** The thing the host's last save of the bring list made theirs ("Bread"), for the line over the list; null: none. */
+    bringClaimed: String? = null,
     /** Business track B1: staff mark a guest's free thing used. */
     onMarkUsed: (PlanPersonDto) -> Unit = {},
     /** Business track B5: the guest list with money (C3), on a plan that takes the bill here. */
@@ -143,7 +162,7 @@ internal fun ColumnScope.PlanHostBody(
         GoingSection(plan, viewerId, busy, closed, asked = count > 0 || waitingCount > 0, onRemove = onRemove, onMarkUsed = onMarkUsed)
     }
     // Plans for the holidays (A6 item 3): the bring list, while the plan has one and is still on.
-    plan.bring?.takeIf { !closed }?.let { PlanBringHostCard(it, onOpen = onOpenBring) }
+    plan.bring?.takeIf { !closed }?.let { HostBringList(it, plan.hostFirst, bringClaimed, onOpenBring) }
     // The holidays' chip in (extras section 3): the same card with the count; who paid is on Who's coming.
     PlanChipInIfAny(plan)
     // The holidays' gift exchange: the count and "Draw names now"; never a name but the host's own, should they join.

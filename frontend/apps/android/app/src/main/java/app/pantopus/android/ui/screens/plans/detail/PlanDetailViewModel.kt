@@ -370,6 +370,9 @@ class PlanDetailViewModel
         /** "Bring something else": added and claimed by this person. */
         fun addBring(label: String) = bringAction(claimed = { label }) { repository.addBring(planId, label) }
 
+        /** The host saved the bring list with [label] newly theirs ("I'm bringing this"): the line over the host's list. */
+        fun hostBringSaved(label: String) = _ui.update { it.copy(bringClaimed = label.takeIf(String::isNotBlank)) }
+
         /** The plan page left the screen: the line over the bring list doesn't come back with it. */
         fun bringClaimShown() = _ui.update { if (it.bringClaimed == null) it else it.copy(bringClaimed = null) }
 
