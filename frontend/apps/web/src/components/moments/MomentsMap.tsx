@@ -12,7 +12,7 @@ import {
 } from '@/components/map/constants';
 import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import { clusterMarkers } from '@/components/map/clustering';
-import { LocateFixed, Minus, Plane, Plus } from 'lucide-react';
+import { LocateFixed, Maximize2, Minimize2, Minus, Plane, Plus } from 'lucide-react';
 import type { Box, Point, Ring, MapResult } from '@pantopus/api/endpoints/moments';
 import { heightColor } from './momentState';
 import { MomentFace, PinFace } from './MomentFace';
@@ -36,9 +36,11 @@ interface Props {
   float: boolean;
   sun?: MapResult['sun'];
   onBounds(box: Box): void;
-  onOpen(ring: Ring): void;
+  onOpen(ring: Ring, opener: HTMLButtonElement): void;
   onCluster(rings: Ring[], point: Point, zoom: number): void;
   onLocate(): void;
+  fullWindow: boolean;
+  onToggleFullWindow(): void;
 }
 const hasPoint = (r: Ring): r is Ring & Point => Number.isFinite(r.latitude) && Number.isFinite(r.longitude);
 
@@ -218,10 +220,13 @@ export default function MomentsMap(props: Props) {
     () => clusterMarkers(props.rings.filter(hasPoint), Math.floor(frame.zoom), 21, 44),
     [props.rings, frame.zoom],
   );
-  const select = useCallback((rings: Ring[], center: [number, number], zoom: number) => {
-    if (rings.length === 1) latest.current.onOpen(rings[0]);
-    else latest.current.onCluster(rings, { latitude: center[0], longitude: center[1] }, Math.min(19, zoom));
-  }, []);
+  const select = useCallback(
+    (rings: Ring[], center: [number, number], zoom: number, opener: HTMLButtonElement) => {
+      if (rings.length === 1) latest.current.onOpen(rings[0], opener);
+      else latest.current.onCluster(rings, { latitude: center[0], longitude: center[1] }, Math.min(19, zoom));
+    },
+    [],
+  );
   function pin(rings: Ring[], x: number, y: number, center: [number, number], zoom: number) {
     const first = rings[0],
       group = rings.length > 1;
@@ -262,7 +267,7 @@ export default function MomentsMap(props: Props) {
             '--mo-sun-y': `${Math.cos(((props.sun?.azimuth_deg || 0) * Math.PI) / 180) * sunLength}px`,
           } as CSSProperties
         }
-        onClick={() => select(rings, center, zoom)}
+        onClick={(event) => select(rings, center, zoom, event.currentTarget)}
       >
         {group ? (
           <>
@@ -326,7 +331,15 @@ export default function MomentsMap(props: Props) {
           Map tiles unavailable
         </span>
       )}
-      <div className="mo-map-controls">
+      <div className="mo-map-controls" role="group" aria-label="Map controls">
+        <button
+          className="mo-full-map"
+          title={props.fullWindow ? 'Exit full window' : 'Expand map to full window'}
+          aria-label={props.fullWindow ? 'Exit full window' : 'Expand map to full window'}
+          onClick={props.onToggleFullWindow}
+        >
+          {props.fullWindow ? <Minimize2 /> : <Maximize2 />}
+        </button>
         <button title="Find my location" aria-label="Find my location" onClick={props.onLocate}>
           <LocateFixed />
         </button>

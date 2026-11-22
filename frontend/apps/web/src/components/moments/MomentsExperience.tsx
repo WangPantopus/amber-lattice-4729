@@ -22,6 +22,7 @@ import {
   Plus,
   Radio,
   Search,
+  SlidersHorizontal,
   Sun,
   X,
 } from 'lucide-react';
@@ -141,7 +142,7 @@ function People({
   title: string;
   rings: Ring[];
   center: Point;
-  onPlay(rings: Ring[]): void;
+  onPlay(rings: Ring[], opener: HTMLButtonElement): void;
 }) {
   const people = peopleInView(rings, center);
   if (!people.length) return null;
@@ -149,7 +150,7 @@ function People({
     <section className="mo-people">
       <div className="mo-list-heading">
         <h3>{title}</h3>
-        <button onClick={() => onPlay(people.flat())}>
+        <button onClick={(event) => onPlay(people.flat(), event.currentTarget)}>
           <Play size={13} fill="currentColor" />
           Play all
         </button>
@@ -159,7 +160,11 @@ function People({
           count = group.reduce((sum, x) => sum + x.moments.length, 0),
           fresh = group.some((x) => x.unseen_count > 0);
         return (
-          <button className="mo-person" key={r.author.id} onClick={() => onPlay(group)}>
+          <button
+            className="mo-person"
+            key={r.author.id}
+            onClick={(event) => onPlay(group, event.currentTarget)}
+          >
             <MomentFace author={r.author} fresh={fresh} segments={count} />
             <span>
               <strong>{r.mine ? 'Your Moments' : r.author.name}</strong>
@@ -204,8 +209,53 @@ function Board({ account }: { account: string }) {
   const [legend, setLegend] = useState(false),
     [now, setNow] = useState(Date.now);
   const [expanded, setExpanded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [fullWindow, setFullWindow] = useState(false);
+  const board = useRef<HTMLDivElement>(null);
+  const filterGroup = useRef<HTMLDivElement>(null);
+  const filterButton = useRef<HTMLButtonElement>(null);
+  const listButton = useRef<HTMLButtonElement>(null);
+  const viewerDock = useRef<HTMLElement>(null);
+  const viewerOpener = useRef<HTMLElement | null>(null);
   const [wide, setWide] = useState(false),
     [queue, setQueue] = useState<string[]>([]);
+  const watching = !!id;
+  useEffect(() => {
+    if (watching && wide) viewerDock.current?.focus({ preventScroll: true });
+    if (!watching && viewerOpener.current) {
+      const opener = viewerOpener.current.getClientRects().length ? viewerOpener.current : listButton.current;
+      opener?.focus({ preventScroll: true });
+      viewerOpener.current = null;
+    }
+  }, [watching, wide]);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !filterGroup.current?.contains(event.target)) setFiltersOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [filtersOpen]);
+  useEffect(() => {
+    if (!filtersOpen && !expanded && !fullWindow) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
+      if (filtersOpen) {
+        setFiltersOpen(false);
+        filterButton.current?.focus();
+      } else if (watching) return;
+      else if (expanded) {
+        setExpanded(false);
+        listButton.current?.focus();
+      } else {
+        setFullWindow(false);
+        board.current?.querySelector<HTMLButtonElement>('.mo-full-map')?.focus();
+      }
+      event.preventDefault();
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [expanded, filtersOpen, fullWindow, watching]);
   const returnPath = useRef<string | null>(null);
   const back = params?.get('returnTo');
   if (back) returnPath.current = /^\/[a-zA-Z0-9_]{3,30}$/.test(back) ? back : safeRedirectPath(back, base);
@@ -224,6 +274,19 @@ function Board({ account }: { account: string }) {
   const map = useQuery({
     queryKey: ['moments', 'map', account, box],
     queryFn: ({ signal }) => readViewport(box, signal),
+    // Keep known pins inside the new view while it loads. Points may be in a wrapped world copy.
+    placeholderData: (previous, previousQuery) => {
+      if (!previous || previousQuery?.queryKey[2] !== account) return undefined;
+      return {
+        ...previous,
+        rings: previous.rings.filter((r) => {
+          if (r.latitude == null || r.longitude == null || r.latitude < box.south || r.latitude > box.north)
+            return false;
+          const longitude = r.longitude + 360 * Math.ceil((box.west - r.longitude) / 360);
+          return longitude <= box.east;
+        }),
+      };
+    },
     staleTime: 8000,
     gcTime: 60_000,
     refetchInterval: 30_000,
@@ -314,6 +377,7 @@ function Board({ account }: { account: string }) {
       Math.abs(center.latitude - target.latitude) > 0.01 ||
       Math.abs(center.longitude - target.longitude) > 0.02 ||
       !map.isSuccess ||
+      map.isPlaceholderData ||
       id ||
       focus
     )
@@ -327,7 +391,7 @@ function Board({ account }: { account: string }) {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [box, center.latitude, center.longitude, focus, id, map.isSuccess, move, target]);
+  }, [box, center.latitude, center.longitude, focus, id, map.isSuccess, map.isPlaceholderData, move, target]);
   const onWatchedPlace = useCallback((point: Point | null) => {
     watchedAt.current = point;
   }, []);
@@ -339,6 +403,7 @@ function Board({ account }: { account: string }) {
     watchedAt.current = null;
     if (
       p &&
+      !viewerOpener.current &&
       !focus &&
       !returnPath.current &&
       (p.latitude < box.south || p.latitude > box.north || p.longitude < box.west || p.longitude > box.east)
@@ -354,8 +419,10 @@ function Board({ account }: { account: string }) {
     [],
   );
   const open = useCallback(
-    (ids: string[], start?: string) => {
+    (ids: string[], opener: HTMLButtonElement, start?: string) => {
       if (!ids.length) return;
+      viewerOpener.current = opener;
+      setFiltersOpen(false);
       setQueue([...new Set(ids)]);
       ownedHistory.current = !id || ownedHistory.current;
       window.history[id ? 'replaceState' : 'pushState'](
@@ -366,10 +433,11 @@ function Board({ account }: { account: string }) {
     },
     [id],
   );
-  const play = (rings: Ring[]) => {
+  const play = (rings: Ring[], opener: HTMLButtonElement) => {
     const entries = rings.flatMap((r) => r.moments);
     open(
       entries.map((m) => m.id),
+      opener,
       entries.find((m) => !m.seen)?.id,
     );
   };
@@ -434,6 +502,11 @@ function Board({ account }: { account: string }) {
   const empty = !focused.length && !unplaced.length,
     filtered = !!time || live;
   const scheduled = data?.scheduled || [];
+  const listCount =
+    [...focused, ...(focus ? [] : unplaced)].reduce((n, ring) => n + ring.moments.length, 0) +
+    pending.length +
+    scheduled.length;
+  const listTitle = map.isError ? 'Moments couldn’t load' : focus?.title || 'In this view';
   const viewer = id && (
     <Viewer
       key={id}
@@ -453,20 +526,134 @@ function Board({ account }: { account: string }) {
     />
   );
   return (
-    <div className="mo-board">
+    <div ref={board} className="mo-board" data-full-window={fullWindow || undefined}>
       {!id && !editor && data && <GuidanceScreen name="moments" />}
-      <header className="mo-toolbar">
-        <button className="mo-area" onClick={() => setAreaOpen(true)} title={displayArea} aria-haspopup="dialog">
-          <MapPin size={16} />
-          <span>{displayArea}</span>
-          <ChevronDown size={14} />
-        </button>
-        <button className="mo-primary" onClick={() => setEditor(true)}>
-          <Plus size={19} /> Create Moment
-        </button>
-      </header>
-      <div className={'mo-workspace' + (expanded ? ' mo-expanded' : '')}>
+      <div className="mo-workspace" data-viewer={(wide && watching) || undefined}>
         <section aria-label="Explore Moments" className="mo-map-wrap">
+          <header className="mo-toolbar" aria-label="Explore controls">
+            <div className="mo-location-group" ref={filterGroup}>
+              <button
+                className="mo-area"
+                onClick={() => {
+                  setFiltersOpen(false);
+                  setAreaOpen(true);
+                }}
+                title={displayArea}
+                aria-haspopup="dialog"
+              >
+                <span className="mo-location-icon">
+                  <MapPin size={17} />
+                </span>
+                <span className="mo-area-name">{displayArea}</span>
+                <ChevronDown size={14} />
+              </button>
+              <button
+                className="mo-filter-trigger"
+                ref={filterButton}
+                aria-label="Map filters"
+                aria-controls={filtersOpen ? 'mo-map-filters' : undefined}
+                aria-expanded={filtersOpen}
+                data-active={filtered || (!!data?.heights_on && !elevation) || undefined}
+                title="Map filters"
+                onClick={() => {
+                  setFiltersOpen((v) => !v);
+                  if (!watching) setExpanded(false);
+                }}
+              >
+                <SlidersHorizontal size={17} />
+                <span>Filters</span>
+              </button>
+              {filtersOpen && (
+                <section className="mo-filter-panel" id="mo-map-filters" aria-label="Map filters">
+                  <label className="mo-filter-row mo-time">
+                    <Clock3 size={17} />
+                    <span>Time</span>
+                    <select
+                      aria-label="Filter Moments by time"
+                      value={time}
+                      onChange={(e) => setTime(Number(e.target.value))}
+                    >
+                      {times.map(([n, label]) => (
+                        <option key={n} value={n}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="mo-filter-row" aria-pressed={live} onClick={() => setLive((v) => !v)}>
+                    <Radio size={17} />
+                    <span>Live now</span>
+                    <i className="mo-switch" aria-hidden="true" />
+                  </button>
+                  {data?.heights_on && (
+                    <>
+                      <button
+                        className="mo-filter-row"
+                        aria-pressed={elevation}
+                        onClick={() => {
+                          setElevation((v) => !v);
+                          setLegend(false);
+                        }}
+                      >
+                        <Mountain size={17} />
+                        <span>Elevation</span>
+                        <i className="mo-switch" aria-hidden="true" />
+                      </button>
+                      {elevation && (
+                        <>
+                          <button
+                            className="mo-legend-button"
+                            aria-expanded={legend}
+                            onClick={() => setLegend((v) => !v)}
+                          >
+                            <span className="mo-dots" /> Elevation colors <ChevronDown size={14} />
+                          </button>
+                          {legend && (
+                            <div className="mo-legend">
+                              <strong>Elevation in feet</strong>
+                              <div className="mo-key-bands">
+                                {['0 ft', '500', '2,000', '6,000', 'Flying'].map((t, i) => (
+                                  <span
+                                    key={t}
+                                    style={{
+                                      borderColor: ['#16a34a', '#84b91c', '#d99213', '#c94872', '#287fbe'][i],
+                                    }}
+                                  >
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                              {data.sun && (
+                                <small>
+                                  <Sun size={13} />
+                                  {data.sun.elevation_deg > 0
+                                    ? new Date(now).toLocaleTimeString([], {
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                      })
+                                    : 'After sunset'}
+                                </small>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
+            </div>
+            <button
+              className="mo-primary mo-create"
+              onClick={() => setEditor(true)}
+              aria-label="Create Moment"
+            >
+              <Plus size={19} />
+              <span>
+                Create<span className="mo-create-suffix"> Moment</span>
+              </span>
+            </button>
+          </header>
           <MomentsMap
             target={target}
             rings={pins}
@@ -479,10 +666,20 @@ function Board({ account }: { account: string }) {
               byHand.current = true;
             }}
             onBounds={bounds}
-            onOpen={(r) => play([r])}
+            onOpen={(r, opener) => play([r], opener)}
+            fullWindow={fullWindow}
+            onToggleFullWindow={() => setFullWindow((v) => !v)}
             onLocate={() => void locate()}
             onCluster={(rings, p, zoom) => {
               byHand.current = true;
+              if (watching) {
+                watchedAt.current = null;
+                returnPath.current = null;
+                viewerOpener.current = listButton.current;
+                close();
+              }
+              setExpanded(true);
+              setFiltersOpen(false);
               setFocus((old) => ({
                 rings: rings.map((r) => r.id),
                 title: rings[0].place_label || 'This spot',
@@ -491,80 +688,9 @@ function Board({ account }: { account: string }) {
               move(p, zoom);
             }}
           />
-          <div className="mo-filters">
-            <div className="mo-chip mo-time">
-              <Clock3 size={15} />
-              <select
-                aria-label="Filter Moments by time"
-                value={time}
-                onChange={(e) => setTime(Number(e.target.value))}
-              >
-                {times.map(([n, label]) => (
-                  <option key={n} value={n}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} />
-            </div>
-            <button className="mo-chip" aria-pressed={live} onClick={() => setLive((v) => !v)}>
-              <Radio size={15} />
-              Live now
-            </button>
-            {data?.heights_on && (
-              <button
-                className="mo-chip"
-                aria-pressed={elevation}
-                onClick={() => {
-                  setElevation((v) => !v);
-                  setLegend(false);
-                }}
-              >
-                <Mountain size={16} />
-                Elevation
-              </button>
-            )}
-            {data?.heights_on && elevation && (
-              <button
-                className="mo-chip mo-legend-button"
-                aria-label="Elevation colors"
-                aria-expanded={legend}
-                onClick={() => setLegend((v) => !v)}
-              >
-                <span className="mo-dots" />
-                <ChevronDown size={12} />
-              </button>
-            )}
-          </div>
-          {elevation && legend && data?.heights_on && (
-            <div className="mo-legend">
-              <button aria-label="Close elevation key" onClick={() => setLegend(false)}>
-                <X size={14} />
-              </button>
-              <strong>Elevation in feet</strong>
-              <div className="mo-key-bands">
-                {['0 ft', '500', '2,000', '6,000', 'Flying'].map((t, i) => (
-                  <span
-                    key={t}
-                    style={{ borderColor: ['#16a34a', '#84b91c', '#d99213', '#c94872', '#287fbe'][i] }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-              {data.sun && (
-                <small>
-                  <Sun size={13} />
-                  {data.sun.elevation_deg > 0
-                    ? new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                    : 'After sunset'}
-                </small>
-              )}
-            </div>
-          )}
           {focus && (
             <button
-              className="mo-back mo-chip"
+              className="mo-back"
               onClick={() => {
                 move(focus.previous, focus.previous.zoom);
                 setFocus(null);
@@ -575,124 +701,146 @@ function Board({ account }: { account: string }) {
             </button>
           )}
         </section>
-        <aside className="mo-rail" aria-label="Moments in view">
-          {wide && viewer ? (
-            viewer
-          ) : (
-            <>
-              <div className="mo-rail-title">
-                <span className="mo-rail-symbol">
-                  <Layers3 size={19} />
-                </span>
-                <h2>{focus ? focus.title : 'In this view'}</h2>
-                <button
-                  className="mo-tray-toggle"
-                  aria-expanded={expanded}
-                  aria-label={expanded ? 'Collapse Moments list' : 'Expand Moments list'}
-                  onClick={() => setExpanded((v) => !v)}
-                >
-                  <ChevronDown size={18} />
+        <aside
+          className="mo-rail"
+          aria-label="Moments in view"
+          data-expanded={expanded || undefined}
+          hidden={wide && watching}
+        >
+          <button
+            ref={listButton}
+            className="mo-rail-toggle"
+            aria-expanded={expanded}
+            aria-controls="mo-in-view"
+            onClick={() => {
+              setExpanded((v) => !v);
+              setFiltersOpen(false);
+            }}
+          >
+            <span className="mo-rail-symbol">
+              <Layers3 size={17} />
+            </span>
+            <span className="mo-rail-label">{listTitle}</span>
+            {data && (
+              <span className="mo-list-count" aria-label={listCount + ' Moments'}>
+                {listCount}
+              </span>
+            )}
+            {map.isPending && <CircleDashed size={15} className="mo-spin" aria-label="Loading" />}
+            <ChevronDown size={16} className="mo-rail-chevron" />
+          </button>
+          <div className="mo-rail-content" id="mo-in-view" hidden={!expanded}>
+            {map.isPending ? (
+              <div className="mo-empty" role="status">
+                <CircleDashed className="mo-spin" />
+                <p>Finding Moments…</p>
+              </div>
+            ) : map.isError ? (
+              <div className="mo-empty">
+                <Compass />
+                <h3>Moments couldn’t load</h3>
+                <button className="mo-link" onClick={() => void map.refetch()}>
+                  Try again
                 </button>
               </div>
-              {map.isPending ? (
-                <div className="mo-empty" role="status">
-                  <CircleDashed className="mo-spin" />
-                  <p>Finding Moments…</p>
-                </div>
-              ) : map.isError ? (
-                <div className="mo-empty">
-                  <Compass />
-                  <h3>Moments couldn’t load</h3>
-                  <button className="mo-link" onClick={() => void map.refetch()}>
-                    Try again
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <People
-                    title={focus ? 'At this spot' : 'On the map'}
-                    rings={focused}
-                    center={center}
-                    onPlay={play}
-                  />
-                  {!focus && <People title="Not on the map" rings={unplaced} center={center} onPlay={play} />}
-                  {(focus ? !focused.length : empty) && (
-                    <div className="mo-empty">
-                      <span className="mo-empty-icon">
-                        <CircleDashed />
-                      </span>
-                      <h3>
-                        {filtered
-                          ? 'No matching Moments'
-                          : box.east - box.west > 5
-                            ? 'Explore an area'
-                            : 'No Moments here yet'}
-                      </h3>
-                      <p>
-                        {filtered
-                          ? 'Try a different time or turn off Live now.'
-                          : box.east - box.west > 5
-                            ? 'Zoom in or choose a place to see what people are sharing.'
-                            : 'Share a glimpse of this place, or move the map to explore.'}
-                      </p>
+            ) : (
+              <>
+                <People
+                  title={focus ? 'At this spot' : 'On the map'}
+                  rings={focused}
+                  center={center}
+                  onPlay={play}
+                />
+                {!focus && <People title="Not on the map" rings={unplaced} center={center} onPlay={play} />}
+                {(focus ? !focused.length : empty) && (
+                  <div className="mo-empty">
+                    <span className="mo-empty-icon">
+                      <CircleDashed />
+                    </span>
+                    <h3>
+                      {filtered
+                        ? 'No matching Moments'
+                        : box.east - box.west > 5
+                          ? 'Explore an area'
+                          : 'No Moments here yet'}
+                    </h3>
+                    <p>
+                      {filtered
+                        ? 'Try a different time or turn off Live now.'
+                        : box.east - box.west > 5
+                          ? 'Zoom in or choose a place to see what people are sharing.'
+                          : 'Share a glimpse of this place, or move the map to explore.'}
+                    </p>
+                    <button
+                      className="mo-link"
+                      onClick={() => {
+                        if (filtered) {
+                          setTime(0);
+                          setLive(false);
+                        } else if (box.east - box.west > 5) setAreaOpen(true);
+                        else setEditor(true);
+                      }}
+                    >
+                      {filtered
+                        ? 'Clear filters'
+                        : box.east - box.west > 5
+                          ? 'Choose an area'
+                          : 'Create a Moment'}
+                      <ArrowUpRight size={15} />
+                    </button>
+                  </div>
+                )}
+                {pending.length > 0 && (
+                  <section className="mo-people">
+                    <h3>Your pending Moments</h3>
+                    {pending.map((m) => (
                       <button
-                        className="mo-link"
-                        onClick={() => {
-                          if (filtered) {
-                            setTime(0);
-                            setLive(false);
-                          } else if (box.east - box.west > 5) setAreaOpen(true);
-                          else setEditor(true);
-                        }}
+                        key={m.id}
+                        className="mo-person"
+                        onClick={(event) => open([m.id], event.currentTarget)}
                       >
-                        {filtered
-                          ? 'Clear filters'
-                          : box.east - box.west > 5
-                            ? 'Choose an area'
-                            : 'Create a Moment'}
-                        <ArrowUpRight size={15} />
+                        <Clock3 />
+                        <span>
+                          <strong>{m.caption || m.kind + ' Moment'}</strong>
+                          <small>
+                            {m.state === 'held'
+                              ? 'On hold'
+                              : m.state === 'checking'
+                                ? 'Checking media'
+                                : 'Awaiting upload'}
+                          </small>
+                        </span>
                       </button>
-                    </div>
-                  )}
-                  {pending.length > 0 && (
-                    <section className="mo-people">
-                      <h3>Your pending Moments</h3>
-                      {pending.map((m) => (
-                        <button key={m.id} className="mo-person" onClick={() => open([m.id])}>
-                          <Clock3 />
-                          <span>
-                            <strong>{m.caption || m.kind + ' Moment'}</strong>
-                            <small>
-                              {m.state === 'held'
-                                ? 'On hold'
-                                : m.state === 'checking'
-                                  ? 'Checking media'
-                                  : 'Awaiting upload'}
-                            </small>
-                          </span>
-                        </button>
-                      ))}
-                    </section>
-                  )}
-                  {scheduled.length > 0 && (
-                    <section className="mo-people">
-                      <h3>Sharing later</h3>
-                      {scheduled.map((m) => (
-                        <button key={m.id} className="mo-person" onClick={() => open([m.id])}>
-                          <Clock3 />
-                          <span>
-                            <strong>{m.text || m.caption || 'Your Moment'}</strong>
-                            <small>{m.share_at && new Date(m.share_at).toLocaleString()}</small>
-                          </span>
-                        </button>
-                      ))}
-                    </section>
-                  )}
-                </>
-              )}
-            </>
-          )}
+                    ))}
+                  </section>
+                )}
+                {scheduled.length > 0 && (
+                  <section className="mo-people">
+                    <h3>Sharing later</h3>
+                    {scheduled.map((m) => (
+                      <button
+                        key={m.id}
+                        className="mo-person"
+                        onClick={(event) => open([m.id], event.currentTarget)}
+                      >
+                        <Clock3 />
+                        <span>
+                          <strong>{m.text || m.caption || 'Your Moment'}</strong>
+                          <small>{m.share_at && new Date(m.share_at).toLocaleString()}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </section>
+                )}
+              </>
+            )}
+          </div>
         </aside>
+        {wide && viewer && (
+          <aside className="mo-viewer-dock" ref={viewerDock} tabIndex={-1} aria-label="Selected Moment">
+            {viewer}
+          </aside>
+        )}
       </div>
       {!wide && viewer}
       {note && (

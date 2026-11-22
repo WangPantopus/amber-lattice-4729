@@ -184,6 +184,7 @@ export default function MomentViewer(props: Props) {
     const key = (e: KeyboardEvent) => {
       if (
         e.defaultPrevented ||
+        (wide && document.querySelector('dialog[open]')) ||
         e.altKey ||
         e.ctrlKey ||
         e.metaKey ||
@@ -195,7 +196,8 @@ export default function MomentViewer(props: Props) {
         if (sheet) setSheet(null);
         else onClose();
       }
-      if (sheet || busy) return;
+      if (sheet || busy || (wide && e.target instanceof Element && !e.target.closest('.mo-viewer-dock')))
+        return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         step(e.key === 'ArrowLeft' ? -1 : 1);
@@ -207,7 +209,7 @@ export default function MomentViewer(props: Props) {
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [sheet, busy, onClose, step]);
+  }, [sheet, busy, onClose, step, wide]);
 
   const act = async (fn: () => Promise<void>) => {
     if (busy) return;
