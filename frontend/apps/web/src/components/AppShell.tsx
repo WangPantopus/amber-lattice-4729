@@ -293,9 +293,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // thread scrolls, so the page can't slide its header under the top bar.
   const isMomentsPage = pathname === '/app/moments' || pathname.startsWith('/app/moments/');
   const fillsWindow = isMomentsPage || (isMobile && isConversation(pathname));
-  const mobileTabPadding = !showMobileTabs ? '' : isMomentsPage
-    ? ' pb-[calc(var(--fab-lift)+env(safe-area-inset-bottom))]'
-    : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
+  // Moments places the tab bar in the page flow so the map can use the remaining height.
+  const mobileTabPadding =
+    !showMobileTabs || isMomentsPage ? '' : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
 
   const currentTab = searchParams.get('tab') || 'overview';
 
@@ -485,7 +485,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   return (
     // `--fab-lift` raises every fixed bottom-anchored control (FABs, the
     // chat launcher) clear of the mobile tab bar; 0 wherever the bar is absent.
-    <div className={`${fillsWindow ? 'min-h-dvh' : 'min-h-screen'} bg-app text-app`} style={{ '--fab-lift': showMobileTabs ? '64px' : '0px' } as CSSProperties}>
+    <div
+      data-moments-shell={isMomentsPage ? '' : undefined}
+      className={`${fillsWindow ? 'min-h-dvh' : 'min-h-screen'} bg-app text-app`}
+      style={{ '--fab-lift': showMobileTabs ? '64px' : '0px' } as CSSProperties}
+    >
       {/* ═══════════════════════════════════════════════════════
        *  HEADER
        * ═══════════════════════════════════════════════════════ */}
