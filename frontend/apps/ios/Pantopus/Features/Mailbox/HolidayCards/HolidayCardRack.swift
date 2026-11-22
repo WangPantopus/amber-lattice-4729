@@ -358,7 +358,12 @@ private struct HolidayCardRackCard: View {
                 if let card = await CardTablePicture.load(design.id) { picture = card }
                 return
             }
-            guard HolidayCardPicture.image(design.id) == nil else { return }
+            // Already at hand (the rack loads the cards either side ahead): draw it. Before, this returned without
+            // drawing it, and a card swiped to quickly stayed blank paper.
+            if let large = HolidayCardPicture.image(design.id) {
+                picture = large
+                return
+            }
             if let large = await HolidayCardPicture.load(design.id) { picture = large }
         }
     }
