@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
 const supabaseAdmin = require('../config/supabaseAdmin');
+const directDb = require('../config/directDb');
 const homeRecordService = require('../services/homeRecordService');
 const homeListService = require('../services/homeListService');
 const { unreadMailQuery } = require('../services/homeDashboardService');
@@ -836,13 +837,41 @@ function withHhmmTimes(prefs) {
   return out;
 }
 
+// The person's preferences row, through the Data API or, when DIRECT_DB_READS (config/directDb.js) says so, on a
+// direct connection as the Home access check does: "on" reads direct and falls back to the Data API on any failure,
+// "shadow" answers from the Data API and compares. to_json gives the row's columns in the order `select('*')` does.
+const PREFERENCES_ROW_SQL = 'select to_json(p) as row from "UserNotificationPreferences" p where p.user_id = $1';
+function apiPreferencesRow(userId) {
+  return supabaseAdmin.from('UserNotificationPreferences').select('*').eq('user_id', userId).maybeSingle();
+}
+async function directPreferencesRow(userId) {
+  const rows = await directDb.read('hub_preferences', PREFERENCES_ROW_SQL, [userId]);
+  return { data: rows[0]?.row || null, error: null };
+}
+async function preferencesRow(userId) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await directPreferencesRow(userId);
+    } catch (error) {
+      directDb.fellBack('hub_preferences', error);
+      return apiPreferencesRow(userId);
+    }
+  }
+  if (mode !== 'shadow') return apiPreferencesRow(userId);
+  const started = performance.now();
+  const direct = directPreferencesRow(userId)
+    .then((read) => ({ read, ms: performance.now() - started }), (error) => ({ error }));
+  const answer = await apiPreferencesRow(userId);
+  const apiMs = performance.now() - started;
+  direct.then(({ read, ms, error }) => directDb.compared('hub_preferences', error ? { error }
+    : { differs: answer.error || JSON.stringify(read.data) === JSON.stringify(answer.data) ? [] : ['row'], directMs: ms, apiMs }));
+  return answer;
+}
+
 router.get('/preferences', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('UserNotificationPreferences')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
+    const { data, error } = await preferencesRow(req.user.id);
 
     if (error) {
       logger.error('Hub preferences read error', { error: error.message, userId: req.user.id });
