@@ -455,15 +455,12 @@ function Board({ account }: { account: string }) {
   return (
     <div className="mo-board">
       {!id && !editor && data && <GuidanceScreen name="moments" />}
-      <header className="mo-heading">
-        <div>
-          <h1>Moments</h1>
-          <button className="mo-area" onClick={() => setAreaOpen(true)}>
-            <MapPin size={15} />
-            {displayArea}
-            <ChevronDown size={14} />
-          </button>
-        </div>
+      <header className="mo-toolbar">
+        <button className="mo-area" onClick={() => setAreaOpen(true)} title={displayArea} aria-haspopup="dialog">
+          <MapPin size={16} />
+          <span>{displayArea}</span>
+          <ChevronDown size={14} />
+        </button>
         <button className="mo-primary" onClick={() => setEditor(true)}>
           <Plus size={19} /> Create Moment
         </button>

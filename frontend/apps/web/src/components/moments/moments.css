@@ -29,12 +29,16 @@
   cursor: default;
 }
 .mo-board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
   max-width: 1680px;
-  margin: auto;
-  padding: clamp(16px, 2.2vw, 36px);
-  padding-top: clamp(14px, 1.7vw, 28px);
+  margin-inline: auto;
+  padding: 6px clamp(10px, 1.6vw, 26px) 8px;
 }
-.mo-heading,
+.mo-toolbar,
 .mo-title-row,
 .mo-compose-title,
 .mo-list-heading,
@@ -46,14 +50,12 @@
   justify-content: space-between;
   gap: 12px;
 }
-.mo-heading {
-  margin-bottom: 18px;
+.mo-toolbar {
+  flex-shrink: 0;
+  margin-bottom: 6px;
 }
-.mo-heading h1 {
-  font-size: clamp(1.75rem, 3vw, 2.6rem);
-  font-weight: 750;
-  letter-spacing: -0.055em;
-  line-height: 1.1;
+.mo-toolbar .mo-primary {
+  flex-shrink: 0;
 }
 .mo-area,
 .mo-link,
@@ -65,9 +67,20 @@
   font-weight: 650;
 }
 .mo-area {
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 4px;
+  font-size: 0.88rem;
+  color: var(--mo-ink);
+}
+.mo-area svg {
+  flex-shrink: 0;
   color: var(--mo-muted);
-  font-size: 0.85rem;
-  margin-top: 5px;
+}
+.mo-area span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mo-primary {
   display: inline-flex;
@@ -95,7 +108,8 @@
   border: 1px solid var(--mo-line);
   border-radius: 22px;
   background: var(--mo-paper);
-  height: clamp(500px, calc(100dvh - 170px), 1050px);
+  flex: 1;
+  min-height: 0;
   box-shadow: 0 8px 32px #091f2c0b;
 }
 .mo-map-wrap,
@@ -1261,12 +1275,10 @@
 @media (max-width: 999px) {
   .mo-workspace {
     grid-template-columns: 1fr;
-    height: auto;
-    overflow: visible;
+    grid-template-rows: minmax(0, 1fr) minmax(135px, 30%);
     border-radius: 18px;
   }
   .mo-map-wrap {
-    height: clamp(290px, 45dvh, 595px);
     overflow: hidden;
     border-radius: 17px 17px 0 0;
   }
@@ -1289,17 +1301,11 @@
   }
 }
 @media (max-width: 600px) {
-  .mo-board {
-    padding: 12px 10px;
+  .mo-toolbar {
+    margin: 0 2px 3px;
   }
-  .mo-heading {
-    margin: 0 4px 12px;
-  }
-  .mo-heading h1 {
-    font-size: 1.7rem;
-  }
-  .mo-heading .mo-primary {
-    min-height: 39px;
+  .mo-toolbar .mo-primary {
+    min-height: 44px;
     font-size: 0.8rem;
     padding: 8px 13px;
   }
@@ -1367,10 +1373,9 @@
 }
 @media (max-width: 600px) {
   .mo-board {
-    padding: 8px 8px 0;
+    padding: 2px 8px 0;
   }
   .mo-workspace {
-    height: max(420px, calc(100dvh - 195px - env(safe-area-inset-bottom)));
     position: relative;
     display: block;
     overflow: hidden;

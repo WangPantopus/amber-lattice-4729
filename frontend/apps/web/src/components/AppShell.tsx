@@ -291,7 +291,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const showMobileTabs = isMobile && !isBusinessContext && !hidesMobileTabs(pathname);
   // A conversation on a phone is exactly the window the browser shows: only its
   // thread scrolls, so the page can't slide its header under the top bar.
-  const fillsWindow = isMobile && isConversation(pathname);
+  const isMomentsPage = pathname === '/app/moments' || pathname.startsWith('/app/moments/');
+  const fillsWindow = isMomentsPage || (isMobile && isConversation(pathname));
+  const mobileTabPadding = !showMobileTabs ? '' : isMomentsPage
+    ? ' pb-[calc(var(--fab-lift)+env(safe-area-inset-bottom))]'
+    : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
 
   const currentTab = searchParams.get('tab') || 'overview';
 
@@ -710,7 +714,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           above it (its top edge 144 px up), pb-40 lets the last row scroll clear.
           z-0 makes this a stacking context, so nothing inside rises above the header, tab bar or floating
           buttons. A dialog that stays in here sets data-covers-shell, which suspends that while it's open. */}
-      <main key="content" className={`pt-14 ${fillsWindow ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-screen'}${offsetSlides ? ' transition-[margin-left] duration-200 ease-in-out' : ''} relative z-0 has-[[data-covers-shell]]:z-auto${showMobileTabs ? (routeHasFab(pathname) ? ' pb-40' : ' pb-20') : ''}`} style={contentStyle}>
+      <main key="content" className={`pt-14 ${fillsWindow ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-screen'}${offsetSlides ? ' transition-[margin-left] duration-200 ease-in-out' : ''} relative z-0 has-[[data-covers-shell]]:z-auto${mobileTabPadding}`} style={contentStyle}>
         {offlineNotice}
         {children}
       </main>
@@ -726,7 +730,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
-      {!pathname.startsWith('/app/moments') && <FloatingChatWidget />}
+      {!isMomentsPage && <FloatingChatWidget />}
       {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
       <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
       {/* Asked once of an account with no name (sign-up didn't ask before October 2026). */}
