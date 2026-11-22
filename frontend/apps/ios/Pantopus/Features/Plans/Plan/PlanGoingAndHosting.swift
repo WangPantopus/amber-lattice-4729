@@ -257,11 +257,12 @@ struct PlanHostingSection: View {
             }
             requests
             invite
-            // Board 4: on a plan that takes answers, the counts and the people line; "Who's coming" has every row.
-            if let answers = card.answerCounts {
-                PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
-            } else {
-                PlanHostGoingWithMoney(card: card) { going } // B5: the guest list's totals while guests pay here
+            PlanHostGoingWithMoney(card: card) {
+                if let answers = card.answerCounts {
+                    PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
+                } else {
+                    going
+                }
             }
             PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
             // Side by side; one under another when the words don't fit beside each other (the largest text).
