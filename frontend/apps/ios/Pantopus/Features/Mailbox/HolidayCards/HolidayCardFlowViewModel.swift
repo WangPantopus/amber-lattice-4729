@@ -121,11 +121,29 @@ enum HolidayCardSearch: Equatable {
 // swiftlint:disable:next type_body_length
 final class HolidayCardFlowViewModel {
     private(set) var state: HolidayCardFlowState = .loading
-    private(set) var step: HolidayCardStep = .to
+    private(set) var step: HolidayCardStep = .to {
+        // Each time Pick a card opens from another step, its card shelves start afresh (at the chosen card).
+        didSet {
+            guard step != oldValue else { return }
+            if step == .pick {
+                shelfRowPlaces = [:]
+                shelvesStart = true
+            }
+        }
+    }
+
     private(set) var recipient: HolidayCardRecipient?
     var designId: String?
     /// The card rack over Pick a card (plan Part 5): the picture it opened at, nil when it's closed.
     var largeDesign: HolidayCardDesign?
+    /// Where each of the card shelves' rows was scrolled to (its first card in view), while Pick a card shows.
+    @ObservationIgnored var shelfRowPlaces: [String: String] = [:]
+    /// The shelf the card shelves' page scrolls to (the line under a large card, or the chosen card's as the shelves
+    /// open); nil once there.
+    var shelfJump: HolidayCardShelfJump?
+    /// Pick a card has just opened: the card shelves go to the chosen card's shelf as they first show (card shelves B6),
+    /// not again after the card rack or a collection's page.
+    @ObservationIgnored var shelvesStart = true
     var message = "" {
         didSet {
             sendError = nil
@@ -385,6 +403,9 @@ final class HolidayCardFlowViewModel {
             state = .loaded(response)
             savedSignature = response.signature?.saved
             HolidayCardWords.postageOn = response.postageEnabled
+            // The card shelves' first screen (two large cards, the first shelf's first two) while step 1 is up, so
+            // Pick a card opens with its pictures there.
+            if response.showsShelves { HolidayCardPicture.loadAhead(response.shelvesFirstScreen, thumb: true) }
         } catch {
             state = .error(message: Self.loadFailure(error))
         }
