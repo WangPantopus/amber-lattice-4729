@@ -153,35 +153,45 @@ export default function PlanPage() {
           {action.error instanceof Error ? action.error.message : 'That change couldn’t be saved.'}
         </p>
       )}
-      {(isIn || (plan.kind !== 'playdate' && plan.audience === 'invited' && plan.place_kind === 'public' && invited)) && plan.place && (
-        <section className="space-y-2 rounded-2xl bg-surface-muted p-4">
-          <h3 className="flex items-center gap-2 font-semibold">
-            <MapPin size={18} />
-            Meeting details
-          </h3>
-          <p className="font-medium">{plan.place.name}</p>
-          {plan.place.address && <p className="text-sm">{plan.place.address}</p>}
-          {plan.place.latitude != null && plan.place.longitude != null && (
-            <a
-              className="inline-block text-sm font-semibold text-primary-700"
-              href={
-                'https://www.google.com/maps/dir/?api=1&destination=' +
-                encodeURIComponent(plan.place.latitude + ',' + plan.place.longitude)
-              }
-              target="_blank"
-              rel="noreferrer"
-            >
-              Get directions
-            </a>
-          )}
-          {plan.place.link && /^https?:\/\//i.test(plan.place.link) && (
-            <a className="text-primary-700 underline" href={plan.place.link} target="_blank" rel="noreferrer">
-              Join online{plan.place.link_host ? ' at ' + plan.place.link_host : ''}
-            </a>
-          )}
-          {plan.place.note && <p className="whitespace-pre-wrap break-words text-sm">{plan.place.note}</p>}
-        </section>
-      )}
+      {(isIn ||
+        (plan.kind !== 'playdate' &&
+          plan.audience === 'invited' &&
+          plan.place_kind === 'public' &&
+          invited)) &&
+        plan.place && (
+          <section className="space-y-2 rounded-2xl bg-surface-muted p-4">
+            <h3 className="flex items-center gap-2 font-semibold">
+              <MapPin size={18} />
+              Meeting details
+            </h3>
+            <p className="font-medium">{plan.place.name}</p>
+            {plan.place.address && <p className="text-sm">{plan.place.address}</p>}
+            {plan.place.latitude != null && plan.place.longitude != null && (
+              <a
+                className="inline-block text-sm font-semibold text-primary-700"
+                href={
+                  'https://www.google.com/maps/dir/?api=1&destination=' +
+                  encodeURIComponent(plan.place.latitude + ',' + plan.place.longitude)
+                }
+                target="_blank"
+                rel="noreferrer"
+              >
+                Get directions
+              </a>
+            )}
+            {plan.place.link && /^https?:\/\//i.test(plan.place.link) && (
+              <a
+                className="text-primary-700 underline"
+                href={plan.place.link}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Join online{plan.place.link_host ? ' at ' + plan.place.link_host : ''}
+              </a>
+            )}
+            {plan.place.note && <p className="whitespace-pre-wrap break-words text-sm">{plan.place.note}</p>}
+          </section>
+        )}
       {isIn && (
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 font-semibold">

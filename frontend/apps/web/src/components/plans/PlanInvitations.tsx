@@ -344,6 +344,7 @@ function Invitations({ plan }: { plan: plans.Detail }) {
       <ul className="space-y-2">
         {data.invites.map((row) => {
           const party = row.guest || row.party;
+          const removeGuest = !!row.guest && row.state === 'in';
           return (
             <li key={row.id} className="space-y-1 rounded-xl border border-app p-3">
               <p className="font-medium">
@@ -378,11 +379,17 @@ function Invitations({ plan }: { plan: plans.Detail }) {
                   className={secondaryClass}
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm('Take back this invitation?'))
+                    if (
+                      window.confirm(
+                        removeGuest
+                          ? 'Remove this guest from the plan and revoke their meeting details?'
+                          : 'Take back this invitation?',
+                      )
+                    )
                       action.mutate(() => plans.revokeInvite(id, row.id));
                   }}
                 >
-                  Take back invitation
+                  {removeGuest ? 'Remove guest' : 'Take back invitation'}
                 </button>
               )}
             </li>

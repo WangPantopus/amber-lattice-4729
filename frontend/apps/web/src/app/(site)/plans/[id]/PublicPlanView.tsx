@@ -72,10 +72,8 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
   const access = (await cookies()).get('pantopus_access')?.value;
   if (!access) return null;
   try {
-    // `biz=1`: this page can draw a business's plan, so the server may answer for one (it answers 404 for one
-    // without it); `more=1`, the same for an online plan and the newer kinds. For other plans the answer is the
-    // same either way.
-    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1&more=1`, {
+    // Match the installed apps' viewer capabilities, including private plans that are still picking a date.
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1&more=1&guests=1&extras=1`, {
       cache: 'no-store',
       // This lookup only personalizes copy. A slow session/API must not hold
       // the public preview open indefinitely, including while reading its body.
