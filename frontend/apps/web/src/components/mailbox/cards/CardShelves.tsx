@@ -263,19 +263,23 @@ export function Row({ name, cardWidth, testId, children, rowClass = styles.row, 
     if (!row || !item) return;
     const box = row.getBoundingClientRect();
     const at = item.getBoundingClientRect();
-    if (at.left < box.left + 8 || at.right > box.right - 8) row.scrollTo({ left: Math.max(0, item.offsetLeft - 16), behavior: 'auto' });
+    const start = parseFloat(getComputedStyle(row).paddingLeft) || 0;
+    if (at.left < box.left + start - 8 || at.right > box.right - 8) row.scrollTo({ left: Math.max(0, item.offsetLeft - start), behavior: 'auto' });
   };
   const arrow = dark
     ? 'absolute z-[2] h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[rgba(246,236,217,0.3)] bg-[rgba(22,18,16,0.72)] text-[#f6ecd9] shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition hover:bg-[rgba(40,32,28,0.85)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d8b76f]'
     : 'absolute z-[2] h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[#d6cbb6] bg-[#fffdf8]/95 text-[#374151] shadow-[0_4px_12px_rgba(60,40,10,0.22)] transition hover:bg-[#f5efe3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d]';
   const top = { top: `calc(${cardWidth} * 16 / 15 / 2 + 8px)` };
+  // The flow's rows run to the edges of the page (styles.bleed), so their arrows sit just inside them; the public pages
+  // lay their rows out themselves.
+  const [left, right] = dark ? ['-left-2', '-right-2'] : ['left-2', 'right-2'];
   return (
-    <div className="relative">
-      <button type="button" hidden={ends.start} aria-label={`Earlier cards in ${name}`} onClick={() => move(-1)} className={`${styles.arrow} ${arrow} -left-2`} style={top}>
+    <div className={dark ? 'relative' : `relative ${styles.bleed}`}>
+      <button type="button" hidden={ends.start} aria-label={`Earlier cards in ${name}`} onClick={() => move(-1)} className={`${styles.arrow} ${arrow} ${left}`} style={top}>
         <ChevronLeft className="h-5 w-5" aria-hidden />
       </button>
       <div ref={ref} className={rowClass} data-testid={testId} onFocus={onFocus}>{children}</div>
-      <button type="button" hidden={ends.end} aria-label={`More cards in ${name}`} onClick={() => move(1)} className={`${styles.arrow} ${arrow} -right-2`} style={top}>
+      <button type="button" hidden={ends.end} aria-label={`More cards in ${name}`} onClick={() => move(1)} className={`${styles.arrow} ${arrow} ${right}`} style={top}>
         <ChevronRight className="h-5 w-5" aria-hidden />
       </button>
     </div>
@@ -323,6 +327,27 @@ export function CardShelves({ shelves, chosen, restoreTop, onOpen, onAll }: {
     return () => cancelAnimationFrame(frame);
     // Only as the shelves open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // How far the rows reach past the column on each side: to the edges of what scrolls the page (on a phone the screen,
+  // 16 px; on a wider screen the flow's whole panel), measured again when anything resizes.
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const scroller = scrollerOf(el);
+      const page = scroller === document.scrollingElement || scroller === document.documentElement;
+      const box = el.getBoundingClientRect();
+      const from = page ? 0 : scroller.getBoundingClientRect().left + scroller.clientLeft;
+      const to = page ? document.documentElement.clientWidth : from + scroller.clientWidth;
+      el.style.setProperty('--bleed-l', `${Math.max(0, Math.round(box.left - from))}px`);
+      el.style.setProperty('--bleed-r', `${Math.max(0, Math.round(to - box.right))}px`);
+    };
+    measure();
+    const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    watch?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { watch?.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
   const jump = (shelf: Shelf) => {
