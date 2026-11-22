@@ -127,13 +127,20 @@ final class PlansMapViewModel {
             } else if let fix = await location.requestCurrent(timeoutSeconds: 4 - passiveLocationTimeoutSeconds) {
                 await use(fix, source: .gps)
             } else {
-                phase = .needsLocation
+                await waitForLocation()
             }
         } else if prefersHome, let homeCenter {
             await use(homeCenter, source: .home)
         } else {
-            phase = .needsLocation
+            await waitForLocation()
         }
+    }
+
+    /// No location yet (F5). The person's own plans need none: they are read anyway, so "Yours" shows above
+    /// "See plans near you" (JOURNEYS section 2, change 4).
+    private func waitForLocation() async {
+        phase = .needsLocation
+        await loadMine(force: false)
     }
 
     /// F5 "Use my location": asks for permission when it hasn't been asked.

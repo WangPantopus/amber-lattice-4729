@@ -81,6 +81,8 @@ public struct PlansTabRoot: View {
         .onChange(of: plansPath) { _, path in
             // Back to the list beside the map: no plan is selected there.
             if listBesideMap, path.isEmpty, map.selectedId != nil { map.clearSelection() }
+            // Back from the plan a new account opened on: the app's usual first screen (JOURNEYS 2, change 3).
+            if PlanFirstOpen.shared.leftPlan(path: path) { rootTabs.selected = .place }
         }
         .sheet(isPresented: $showsAreaPicker) {
             PlansAreaPicker(viewModel: map) { showsAreaPicker = false }
@@ -105,7 +107,11 @@ public struct PlansTabRoot: View {
                 askTopic = nil
             }
         }
-        .onChange(of: rootTabs.selected) { _, _ in consumePlansHandOff() }
+        .onChange(of: rootTabs.selected) { _, selected in
+            // Another tab (a link's, Messages): the plan a new account opened on stays here as any plan would.
+            if selected != .plans { PlanFirstOpen.shared.forget() }
+            consumePlansHandOff()
+        }
         .task { consumePlansHandOff() }
         .onAppear { consumePlansHandOff() }
     }

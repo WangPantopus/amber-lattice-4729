@@ -19,6 +19,8 @@ import SwiftUI
 /// Board 4's card, for the host.
 struct PlanBringHostCard: View {
     let bring: PlanBringDTO
+    /// The plan, for the host's own claim made in the bring list's editor (the green line).
+    var planId: String?
     let onOpen: () -> Void
 
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -31,6 +33,9 @@ struct PlanBringHostCard: View {
         PlanCardBox(padding: 14) {
             VStack(alignment: .leading, spacing: 0) {
                 PlanBringHeader(trailing: "\(bring.takenCount) of \(bring.items.count) taken")
+                if let planId, let thing = PlanBringHostClaim.shared.things[planId] {
+                    PlanBringClaimedLine(thing: thing, host: "", isHost: true).padding(.bottom, Spacing.s2)
+                }
                 ForEach(bring.items) { item in
                     Divider().overlay(Theme.Color.appBorder)
                     rowLayout {

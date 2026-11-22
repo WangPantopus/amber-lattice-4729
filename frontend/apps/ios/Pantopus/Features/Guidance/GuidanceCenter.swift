@@ -33,6 +33,9 @@ final class GuidanceCenter {
     @ObservationIgnored private var isBusinessAccount = false
     /// A card other than a tab's own showed during this app open.
     @ObservationIgnored private var otherCardThisOpen = false
+    /// What the card on screen changed when it showed, put back if it steps aside for a link.
+    @ObservationIgnored private var beforeShown = BeforeShown()
+    private struct BeforeShown { var other = false, centreDay: String?, introVersion: String? }
     /// The screen last counted as a visit (a new app open counts again).
     @ObservationIgnored private var lastVisited: GuidanceScreen?
     @ObservationIgnored private var screens: [(token: UUID, entry: GuidanceScreenEntry)] = []
@@ -209,9 +212,16 @@ final class GuidanceCenter {
         if let run { steps.setAction(token, id: id, run: run) } else { steps.removeAction(token) }
     }
 
-    /// A link or notification is opening: no card for a moment, whatever screen it lands on.
+    /// A link or notification is opening: no card for a moment, whatever screen it lands on. A card already on
+    /// screen would cover what opens under it (an invitation's plan), so it steps aside, not counted as seen, and
+    /// shows again on its own screen. A replay stays.
     func noteLinkOpening() {
         linkQuietUntil = Date().addingTimeInterval(2)
+        guard let shown = presentation, !shown.isReplay else { return }
+        dismissPresentation()
+        (otherCardThisOpen, record.lastCentreDay) = (beforeShown.other, beforeShown.centreDay)
+        record.lastIntroVersion = beforeShown.introVersion
+        scheduleEvaluation()
     }
 
     /// Something the person just asked to see is showing for a moment (the pickup entry lit after
@@ -396,6 +406,7 @@ final class GuidanceCenter {
 
 extension GuidanceCenter {
     private func present(_ next: GuidancePresentation) {
+        beforeShown = BeforeShown(other: otherCardThisOpen, centreDay: record.lastCentreDay, introVersion: record.lastIntroVersion)
         presentation = next
         if !next.id.isTabCard { otherCardThisOpen = true }
         if case let .centre(card, _) = next {
