@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -216,6 +217,8 @@ private fun PlanReady(
     }
     val context = LocalContext.current
     val reduceMotion = rememberReduceMotion()
+    // "You're bringing bread. …" over the bring list goes away when the person leaves this page.
+    DisposableEffect(viewModel) { onDispose { viewModel.bringClaimShown() } }
     // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
     val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${plan.id}")
     val spot by spotVm.ui.collectAsStateWithLifecycle()
@@ -331,6 +334,7 @@ private fun PlanReady(
                         PlanBringActions(
                             busy = ui.bringBusy,
                             notice = ui.bringNotice,
+                            claimed = ui.bringClaimed,
                             onClaim = viewModel::claimBring,
                             onGiveBack = viewModel::giveBackBring,
                             onAdd = viewModel::addBring,

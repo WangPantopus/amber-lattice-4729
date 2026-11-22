@@ -258,7 +258,11 @@ class PlansMapViewModel
                 resolveLocation()
                 return
             }
-            val location = _state.value.location ?: return
+            val location =
+                _state.value.location ?: run {
+                    if (_state.value.locationStatus == PlansLocationStatus.Missing) loadMine()
+                    return
+                }
             if (location.source == PlanLocation.Source.GPS) {
                 // A GPS fix counts as a location for five minutes: renew it on every return.
                 viewModelScope.launch {
@@ -297,6 +301,18 @@ class PlansMapViewModel
             }
         }
 
+        /**
+         * The person's own plans need no location: with none yet they are read anyway, so "Yours" shows over "See plans
+         * near you" and a new person finds the dinner they answered.
+         */
+        private fun loadMine() {
+            repository.mineCopy()?.let { kept -> _state.update { it.copy(mine = kept) } }
+            viewModelScope.launch {
+                val mine = repository.mine().data ?: return@launch
+                if (_state.value.locationStatus == PlansLocationStatus.Missing) _state.update { it.copy(mine = mine) }
+            }
+        }
+
         private fun resolveLocation(asked: Boolean = false) {
             viewModelScope.launch {
                 val resolved = locations.resolve(waitForFix = asked)
@@ -312,6 +328,7 @@ class PlansMapViewModel
                             locationOff = it.locationOff || asked,
                         )
                     }
+                    loadMine()
                 }
             }
         }
