@@ -43,23 +43,35 @@ struct HolidayCardCollectionRow: View {
 
     /// A name as a pill: the flow's paper button, or wax red for the one shown.
     private func chip(_ collection: HolidayCardCollection, isShown: Bool, action: @escaping () -> Void) -> some View {
+        HolidayCardPill(title: collection.name, isOn: isShown, action: action)
+            .accessibilityIdentifier("sendCardCollection.\(collection.id)")
+    }
+}
+
+/// A name as a pill on one line: the flow's paper button, or wax red for the one on. The collections' row, and a
+/// collection's parts on the card shelves.
+struct HolidayCardPill: View {
+    let title: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
         Button(action: action) {
-            Text(collection.name)
+            Text(title)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(isShown ? MailPaper.waxText : MailPaper.cardTextSoft)
+                .foregroundStyle(isOn ? MailPaper.waxText : MailPaper.cardTextSoft)
                 .lineLimit(1)
                 .fixedSize()
                 .padding(.horizontal, Spacing.s4)
                 .frame(height: 36)
-                .background(isShown ? MailPaper.wax : MailPaper.cardField, in: Capsule())
-                .overlay(Capsule().strokeBorder(isShown ? MailPaper.wax : MailPaper.cardFieldEdge, lineWidth: 1))
+                .background(isOn ? MailPaper.wax : MailPaper.cardField, in: Capsule())
+                .overlay(Capsule().strokeBorder(isOn ? MailPaper.wax : MailPaper.cardFieldEdge, lineWidth: 1))
                 // Drawn 36 points tall, touched across 44.
                 .padding(.vertical, Spacing.s1)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(collection.name)
-        .accessibilityAddTraits(isShown ? [.isButton, .isSelected] : .isButton)
-        .accessibilityIdentifier("sendCardCollection.\(collection.id)")
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 }

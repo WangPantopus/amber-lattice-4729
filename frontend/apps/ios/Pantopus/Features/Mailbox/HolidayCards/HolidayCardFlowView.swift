@@ -109,6 +109,7 @@ struct HolidayCardFlowView: View {
                 // they open, once they're laid out).
                 .onChange(of: viewModel.shelfJump) { _, jump in go(to: jump, scroller: scroller) }
             }
+            .modifier(ShelfPageCover(viewModel: viewModel, page: shelfPage, reduceMotion: reduceMotion))
             .safeAreaInset(edge: .bottom, spacing: Spacing.s0) {
                 footer
                     .modifier(ShelfBarMotion(isOn: shelves && !reduceMotion, isUp: viewModel.design != nil))
@@ -177,6 +178,8 @@ struct HolidayCardFlowView: View {
         if viewModel.step == .sent, viewModel.sent?.byLink == true { return ("Your card is ready.", nil) }
         if viewModel.step != .sent, viewModel.today != nil { return ("Today’s card", nil) }
         if !cards.open, viewModel.step != .sent { return ("Christmas cards", nil) }
+        // A collection's page on the card shelves: Back returns to them.
+        if shelves, viewModel.shelfPage != nil { return ("All collections", viewModel.step) }
         return (viewModel.step.title, viewModel.step == .sent ? nil : viewModel.step)
     }
 
@@ -361,7 +364,19 @@ private extension HolidayCardFlowView {
         return cards.showsShelves
     }
 
+    /// The collection whose page lies over the card shelves, with the list it's in.
+    var shelfPage: (HolidayCardCollection, HolidayCardsResponse)? {
+        guard shelves, let id = viewModel.shelfPage, let cards = viewModel.cards,
+              let collection = cards.pickableCollections.first(where: { $0.id == id }) else { return nil }
+        return (collection, cards)
+    }
+
     func back() {
+        // A collection's page slides back off the card shelves.
+        if shelfPage != nil, !reduceMotion {
+            withAnimation(.easeInOut(duration: 0.3)) { _ = viewModel.back() }
+            return
+        }
         let today = viewModel.step != .sent && viewModel.today != nil
         if today || !viewModel.back() { onClose() }
     }
@@ -388,6 +403,27 @@ private extension HolidayCardFlowView {
             .foregroundStyle(HolidayCardDesk.muted(desk))
             .lineLimit(1)
             .accessibilityIdentifier("sendCardTo")
+    }
+}
+
+/// A collection's page over the card shelves, which keep their place under it (VoiceOver reads only the page). Nothing
+/// with the shelves off.
+private struct ShelfPageCover: ViewModifier {
+    let viewModel: HolidayCardFlowViewModel
+    let page: (HolidayCardCollection, HolidayCardsResponse)?
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        // The same shelves under the page and after it, so they stay where they were scrolled.
+        content
+            .accessibilityHidden(page != nil)
+            .overlay {
+                if let (collection, cards) = page {
+                    HolidayCardCollectionPage(viewModel: viewModel, cards: cards, collection: collection)
+                        .id(collection.id)
+                        .transition(reduceMotion ? .identity : .move(edge: .trailing))
+                }
+            }
     }
 }
 

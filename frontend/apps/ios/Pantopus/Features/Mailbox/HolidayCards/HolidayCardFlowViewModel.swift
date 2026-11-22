@@ -125,6 +125,7 @@ final class HolidayCardFlowViewModel {
         // Each time Pick a card opens from another step, its card shelves start afresh (at the chosen card).
         didSet {
             guard step != oldValue else { return }
+            shelfPage = nil
             if step == .pick {
                 shelfRowPlaces = [:]
                 shelvesStart = true
@@ -144,6 +145,8 @@ final class HolidayCardFlowViewModel {
     /// Pick a card has just opened: the card shelves go to the chosen card's shelf as they first show (card shelves B6),
     /// not again after the card rack or a collection's page.
     @ObservationIgnored var shelvesStart = true
+    /// The collection whose page lies over the card shelves (card shelves B4); nil on the shelves.
+    var shelfPage: String?
     var message = "" {
         didSet {
             sendError = nil
@@ -415,6 +418,11 @@ final class HolidayCardFlowViewModel {
 
     /// Back a step; false on the first step and on a sent card, which leave.
     func back() -> Bool {
+        // A collection's page goes back to the card shelves, where they were.
+        if step == .pick, shelfPage != nil {
+            shelfPage = nil
+            return true
+        }
         guard step != .to, step != .sent, let previous = HolidayCardStep(rawValue: step.rawValue - 1) else { return false }
         step = previous
         sendError = nil

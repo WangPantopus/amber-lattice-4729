@@ -224,32 +224,83 @@ struct HolidayCardShelves: View {
                 .accessibilityHidden(true)
                 // Where the page scrolls to for this shelf (on a view inside it: the scroll reader finds those).
                 .id(Self.shelfId(collection.id))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(collection.name)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(HolidayCardDesk.text(scheme))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                if !collection.line.isEmpty {
-                    Text(collection.line)
-                        .font(.system(size: 13))
-                        .foregroundStyle(HolidayCardDesk.muted(scheme))
-                        .lineLimit(2)
+            HStack(alignment: .bottom, spacing: Spacing.s2) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(collection.name)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(HolidayCardDesk.text(scheme))
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    if !collection.line.isEmpty {
+                        Text(collection.line)
+                            .font(.system(size: 13))
+                            .foregroundStyle(HolidayCardDesk.muted(scheme))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button { open(collection) } label: {
+                    Text("All \(all.count) ›")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(HolidayCardDesk.wax(scheme))
+                        .fixedSize()
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, -Spacing.s3)
+                .accessibilityLabel("All \(all.count) cards in \(collection.name)")
+                .accessibilityIdentifier("sendCardShelfAll.\(collection.id)")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 14)
             .padding(.bottom, 10)
             HolidayCardShelfRow(viewModel: viewModel, rowId: collection.id, bleed: bleed, spacing: Spacing.s3, ids: shown.map(\.id)) {
                 ForEach(shown) { design in
                     cardButton(design, in: collection, all: all, width: sizes.shelf, loads: near.contains(collection.id))
                 }
+                // More than a row's worth: an eleventh tile of the same size opens the collection's page.
+                if all.count > shown.count {
+                    seeAll(collection, count: all.count, width: sizes.shelf)
+                }
             }
             .padding(.bottom, Spacing.s4)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(Self.shelfId(collection.id))
+    }
+
+    /// "See all 31": a card-sized tile at a row's end.
+    private func seeAll(_ collection: HolidayCardCollection, count: Int, width: CGFloat) -> some View {
+        Button { open(collection) } label: {
+            Text("See all \(count)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(MailPaper.wax)
+                .multilineTextAlignment(.center)
+                .padding(Spacing.s3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MailPaper.cardField, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(MailPaper.cardFieldEdge, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+                .frame(width: width)
+                .aspectRatio(15 / 16, contentMode: .fit)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .id("sendCardSeeAll.\(collection.id)")
+        .accessibilityLabel("See all \(count) cards in \(collection.name)")
+        .accessibilityIdentifier("sendCardSeeAll.\(collection.id)")
+    }
+
+    /// A collection's page, over the shelves (card shelves B4).
+    private func open(_ collection: HolidayCardCollection) {
+        if reduceMotion {
+            viewModel.shelfPage = collection.id
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { viewModel.shelfPage = collection.id }
+        }
     }
 
     // MARK: A card
