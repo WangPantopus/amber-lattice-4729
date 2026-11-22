@@ -66,6 +66,10 @@ struct PlaceTodayDetailContent: View {
     @State private var conditionsOpen = false
     @State private var agenda = TodayAgendaModel()
     @State private var governments: BallotGovernmentsSheet?
+    /// The pickup schedule just saved here, in a sentence: the calendar's green box, until the person leaves.
+    @State private var pickupSaved: PickupSavedNote?
+    /// The pickup entry lit for about three seconds after a save (an event's id).
+    @State private var litPickup: String?
 
     var radonAvailable: Bool {
         vm.section(.leadRadon, in: intel)?.leadRadon?.radonZone.map { (1...3).contains($0) } ?? false
@@ -99,9 +103,15 @@ struct PlaceTodayDetailContent: View {
                 .task(id: vm.calendarHomeId) { await loadRadonState() }
                 .task(id: radonRequestKey) { openRequestedRadon(proxy: proxy) }
                 .task(id: agendaKey) { await agenda.load(homeId: taskHomeId, plans: tab != nil) }
+                .task(id: rootTabs.pickupEditorHomeId) { openRequestedPickupEditor(proxy: proxy) }
+                .task(id: rootTabs.todayPickupLitHomeId) { showRequestedPickup(proxy: proxy) }
                 .onDisappear { radonState?.suspend() }
                 .onChange(of: showsCalendar) { _, shows in if !shows { startsPicking = false } }
-                .onChange(of: rootTabs.selected) { (_: RootTab, tab: RootTab) in resumeRadon(tab == .today) }
+                .onChange(of: rootTabs.selected) { (_: RootTab, tab: RootTab) in
+                    resumeRadon(tab == .today)
+                    // Another tab: the person left the screen the box was on.
+                    pickupSaved = nil
+                }
                 .onChange(of: scenePhase) { (_: ScenePhase, phase: ScenePhase) in
                     // Permission alerts and Control Center must not close an unfinished form.
                     if phase == .inactive { return }
@@ -215,10 +225,10 @@ struct PlaceTodayDetailContent: View {
     }
 
     /// Scrolls once the layout has caught up (a section may have just opened).
-    func scrollTo(_ id: String, proxy: ScrollViewProxy) {
+    func scrollTo(_ id: String, proxy: ScrollViewProxy, anchor: UnitPoint = .top) {
         Task { @MainActor in
             await Task.yield()
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: .top) }
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { proxy.scrollTo(id, anchor: anchor) }
         }
     }
 
@@ -501,13 +511,19 @@ extension PlaceTodayDetailContent {
                         homeId: vm.calendarHomeId,
                         data: card.data,
                         openTrigger: pickupOpenTrigger,
-                        startsPicking: startsPicking
-                    ) { await vm.refresh() }
+                        startsPicking: startsPicking,
+                        saved: pickupSaved,
+                        litEvent: litPickup,
+                        onSeeToday: seeItInToday,
+                        onSaved: { note, calendar in pickupWasSaved(note, calendar: calendar, proxy: proxy) },
+                        onChanged: { await vm.refresh() }
+                    )
                     PlaceSourceNote(name: card.source, asOf: "next two weeks")
                 } else if card != nil || !items.isEmpty {
                     TodayAgendaList(
                         items: items,
                         next: TodayAgenda.next(inputs),
+                        lit: litPickup.map(PickupSavedNote.rowAnchor),
                         onAction: { handle($0, proxy: proxy) },
                         onShowCalendar: { showsCalendar = true }
                     )
@@ -554,6 +570,79 @@ extension PlaceTodayDetailContent {
         showsCalendar = true
         pickupOpenTrigger += 1
         scrollTo("todayAddressCalendar", proxy: proxy)
+    }
+}
+
+// MARK: - A pickup schedule just saved (JOURNEYS 1)
+
+extension PlaceTodayDetailContent {
+    /// The tip card "Your home is set up" asked for this Home's pickup editor: Place's Today page opens on it, once.
+    func openRequestedPickupEditor(proxy: ScrollViewProxy) {
+        guard tab == nil, let requested = rootTabs.pickupEditorHomeId, requested == vm.calendarHomeId else { return }
+        rootTabs.pickupEditorHomeId = nil
+        openPickupEditor(proxy: proxy)
+    }
+
+    /// "Save schedule" set a schedule: the box shows above the dates and the next pickup's entry is lit.
+    /// A cleared schedule takes the box away.
+    func pickupWasSaved(_ note: PickupSavedNote?, calendar: PlaceAddressCalendarData, proxy: ScrollViewProxy) {
+        pickupSaved = note
+        guard note != nil else {
+            litPickup = nil
+            return
+        }
+        light(PickupSavedNote.nextPickup(in: calendar.upcoming)?.id)
+        scrollTo(AddressCalendarCard.savedAnchor, proxy: proxy, anchor: UnitPoint(x: 0.5, y: 0.2))
+    }
+
+    /// "See it in Today", off the Today tab, and only while Today shows this Home.
+    var seeItInToday: (() -> Void)? {
+        guard tab == nil, let homeId = vm.calendarHomeId else { return nil }
+        if let todayHome = HomesStoreReads.peekMyHomes()?.value.defaultHomeId, todayHome != homeId { return nil }
+        return {
+            // Today's own tip card waits until the entry has been seen (a first visit would cover it).
+            GuidanceCenter.shared.holdCards(for: 8)
+            rootTabs.todayPickupLitHomeId = homeId
+            rootTabs.selected = .today
+        }
+    }
+
+    /// The Today tab, asked by "See it in Today": "Coming up at home" with the next pickup's entry lit, once.
+    func showRequestedPickup(proxy: ScrollViewProxy) {
+        guard tab != nil, let requested = rootTabs.todayPickupLitHomeId else { return }
+        rootTabs.todayPickupLitHomeId = nil
+        guard requested == vm.calendarHomeId else { return GuidanceCenter.shared.holdCards(for: 0) }
+        // Clearing the request ends the task that called this, so the rest runs on its own.
+        Task { @MainActor in
+            // The schedule was saved on another page: this one reads it before showing it.
+            await vm.refresh()
+            guard case let .loaded(fresh) = vm.state,
+                  let card = calendarCardData(vm.section(.addressCalendar, in: fresh)),
+                  let next = PickupSavedNote.nextPickup(in: card.data.upcoming) else {
+                GuidanceCenter.shared.holdCards(for: 0)
+                scrollTo("todayAddressCalendar", proxy: proxy)
+                return
+            }
+            // The week's list has it, or its "Next" row does after an empty week; a later one is on the calendar.
+            let row = PickupSavedNote.rowAnchor(next.id)
+            let inputs = agendaInputs(card)
+            let rows = TodayAgenda.items(inputs)
+            showsCalendar = !(rows.contains { $0.id == row } || (rows.isEmpty && TodayAgenda.next(inputs)?.id == row))
+            // The scroll, then the three seconds it is lit.
+            GuidanceCenter.shared.holdCards(for: 4)
+            light(next.id)
+            scrollTo(row, proxy: proxy, anchor: .center)
+        }
+    }
+
+    /// Lit now, and plain again after about three seconds.
+    private func light(_ event: String?) {
+        litPickup = event
+        guard let event else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if litPickup == event { litPickup = nil }
+        }
     }
 }
 
@@ -972,6 +1061,15 @@ struct AddressCalendarCard: View {
     /// Opens with the pickup editor showing (Today's "Set pickup days"); it
     /// never opens by itself any more.
     var startsPicking = false
+    /// The schedule just saved, in a sentence (JOURNEYS 1): the green box above the dates.
+    var saved: PickupSavedNote?
+    /// The entry lit after a save (an event's id).
+    var litEvent: String?
+    /// "See it in Today" on the box; nil on the Today tab itself.
+    var onSeeToday: (() -> Void)?
+    /// A save went through: the schedule in a sentence (nil after "Clear household schedule")
+    /// and the calendar the server answered with.
+    var onSaved: ((PickupSavedNote?, PlaceAddressCalendarData) -> Void)?
     let onChanged: () async -> Void
 
     @State private var picking = false
@@ -983,6 +1081,10 @@ struct AddressCalendarCard: View {
     @State private var nextDate = ""
     @State private var confirmed: PlaceAddressCalendarData?
     @State private var showPickupPrimer = false
+    /// The collections whose start date the editor filled in from the chosen weekday.
+    @State private var filledStart: Set<String> = []
+    /// Saved while the reminder question is up: the box shows once it closes.
+    @State private var savedAfterPrimer: (note: PickupSavedNote, calendar: PlaceAddressCalendarData)?
     @State private var sessionScope = HomeClaimSessionScope(api: .shared)
     @State private var lifecycleVersion = 0
     /// The schedule this editor started from. A save sends it back, so a
@@ -1024,10 +1126,18 @@ struct AddressCalendarCard: View {
         data: PlaceAddressCalendarData,
         openTrigger: Int = 0,
         startsPicking: Bool = false,
+        saved: PickupSavedNote? = nil,
+        litEvent: String? = nil,
+        onSeeToday: (() -> Void)? = nil,
+        onSaved: ((PickupSavedNote?, PlaceAddressCalendarData) -> Void)? = nil,
         onChanged: @escaping () async -> Void
     ) {
         self.openTrigger = openTrigger
         self.startsPicking = startsPicking
+        self.saved = saved
+        self.litEvent = litEvent
+        self.onSeeToday = onSeeToday
+        self.onSaved = onSaved
         self.homeId = homeId
         self.data = data
         self.onChanged = onChanged
@@ -1035,7 +1145,7 @@ struct AddressCalendarCard: View {
         _weekday = State(initialValue: data.pickupSchedule?.weekday ?? "")
         _frequency = State(initialValue: data.pickupSchedule?.recyclingFrequency ?? "not_set")
         _nextDate = State(initialValue: data.pickupSchedule?.recyclingNextDate ?? "")
-        _collections = State(initialValue: data.pickupSchedule?.collections ?? [])
+        _collections = State(initialValue: Self.editorCollections(data))
         _openedVersion = State(initialValue: data.pickupVersion)
     }
 
@@ -1049,13 +1159,7 @@ struct AddressCalendarCard: View {
                 Spacer(minLength: 0)
                 if homeId != nil {
                     Button {
-                        weekday = calendar.pickupSchedule?.weekday ?? ""
-                        frequency = calendar.pickupSchedule?.recyclingFrequency ?? "not_set"
-                        nextDate = calendar.pickupSchedule?.recyclingNextDate ?? ""
-                        collections = calendar.pickupSchedule?.collections ?? []
-                        openedVersion = calendar.pickupVersion
-                        errorText = nil
-                        flyerMessage = nil
+                        loadEditor()
                         picking.toggle()
                     } label: {
                         // A 44-pt target around the short label.
@@ -1072,6 +1176,11 @@ struct AddressCalendarCard: View {
 
             if picking, homeId != nil {
                 picker
+            }
+
+            if !picking, let saved {
+                PickupSavedBox(note: saved, onSeeToday: onSeeToday)
+                    .id(Self.savedAnchor)
             }
 
             if !picking, !calendar.upcoming.isEmpty {
@@ -1096,7 +1205,7 @@ struct AddressCalendarCard: View {
                 }
                 VStack(spacing: 0) {
                     ForEach(shownEvents) { event in
-                        eventRow(event)
+                        entry(event)
                         if event.id != shownEvents.last?.id {
                             Divider().overlay(Theme.Color.appBorder)
                         }
@@ -1137,6 +1246,8 @@ struct AddressCalendarCard: View {
         .background(Theme.Color.appSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.Color.appBorder, lineWidth: 1))
+        // A container, so the box, the pickup entries and the editor's buttons keep their own identifiers.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("addressCalendarCard")
         .onChange(of: data) { _, _ in confirmed = nil }
         .sheet(isPresented: $showPickupPrimer, onDismiss: refreshAfterPrimer) {
@@ -1169,6 +1280,77 @@ struct AddressCalendarCard: View {
         }
     }
 
+    @MainActor
+    private func choose(reset: Bool = false) async {
+        guard let homeId, saving == nil else { return }
+        let version = lifecycleVersion
+        saving = "saving"
+        defer {
+            if lifecycleVersion == version, !AppLockManager.shared.isLocked,
+               UIApplication.shared.isProtectedDataAvailable { saving = nil }
+        }
+        errorText = nil
+        let offerPrimer = !reset && (calendar.needsPickupDay || calendar.pickupSchedule == nil)
+        do {
+            try requirePickupCurrent(version)
+            let guardCurrent: @MainActor @Sendable () throws -> Void = { try requirePickupCurrent(version) }
+            let endpoint = reset ? AddressCalendarEndpoints.clearPickupDay(
+                homeId: homeId, expectedVersion: openedVersion, dispatchGuard: guardCurrent
+            )
+                : AddressCalendarEndpoints.setPickupDay(homeId: homeId, request: SetPickupDayRequest(
+                    expectedVersion: openedVersion, collections: collections
+                ), dispatchGuard: guardCurrent)
+            let response: AddressCalendarResponse = try await api.request(endpoint)
+            try requirePickupCurrent(version)
+            confirmed = response.calendar
+            openedVersion = response.calendar.pickupVersion
+            picking = false
+            // A save that set a schedule says so (JOURNEYS 1); clearing it doesn't.
+            let note = reset ? nil : PickupSavedNote(collections: response.calendar.pickupSchedule?.collections ?? collections)
+            let key = "pickupPrimer.shown.\(homeId)"
+            if offerPrimer, !response.calendar.needsPickupDay, !UserDefaults.standard.bool(forKey: key) {
+                UserDefaults.standard.set(true, forKey: key)
+                savedAfterPrimer = note.map { ($0, response.calendar) }
+                showPickupPrimer = true
+            } else {
+                onSaved?(note, response.calendar)
+                await onChanged()
+            }
+            // Refresh after the primer closes. The unavailable-calendar path
+            // clears its fallback during refresh, which removes this card and
+            // would dismiss the primer before the person can answer it.
+        } catch let APIError.clientError(status: 409, message: body) {
+            guard (try? requirePickupCurrent(version)) != nil else { return }
+            // Changed meanwhile: nothing was saved. Show the current schedule
+            // in the editor so the person can review it and try again.
+            if let current = Self.currentCalendar(inConflict: body) {
+                confirmed = current
+                weekday = current.pickupSchedule?.weekday ?? ""
+                frequency = current.pickupSchedule?.recyclingFrequency ?? "not_set"
+                nextDate = current.pickupSchedule?.recyclingNextDate ?? ""
+                collections = Self.editorCollections(current)
+                openedVersion = current.pickupVersion
+            }
+            errorText = "The pickup schedule changed since you opened it. Review the current schedule and try again."
+        } catch let APIError.forbidden(message) {
+            guard (try? requirePickupCurrent(version)) != nil else { return }
+            errorText = message ?? "You don't have permission to change this household's pickup schedule."
+        } catch {
+            guard (try? requirePickupCurrent(version)) != nil else { return }
+            errorText = "Could not save your pickup schedule. Check the next collection date and try again."
+        }
+    }
+
+    @MainActor
+    private func requirePickupCurrent(_ version: Int) throws {
+        try sessionScope.requireCurrent()
+        try Task.checkCancellation()
+        guard lifecycleVersion == version, !AppLockManager.shared.isLocked,
+              UIApplication.shared.isProtectedDataAvailable else { throw CancellationError() }
+    }
+}
+
+extension AddressCalendarCard {
     private var picker: some View {
         VStack(alignment: .leading, spacing: 8) {
             flyerControl
@@ -1213,77 +1395,52 @@ struct AddressCalendarCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    @MainActor
-    private func choose(reset: Bool = false) async {
-        guard let homeId, saving == nil else { return }
-        let version = lifecycleVersion
-        saving = "saving"
-        defer {
-            if lifecycleVersion == version, !AppLockManager.shared.isLocked,
-               UIApplication.shared.isProtectedDataAvailable { saving = nil }
-        }
+    /// What the editor opens with: the household's collections, or for a home with no
+    /// schedule Garbage, weekly, so the first choice is the day (JOURNEYS 1).
+    private static func editorCollections(_ calendar: PlaceAddressCalendarData) -> [PickupCollection] {
+        guard let schedule = calendar.pickupSchedule else { return [PickupCollection(kind: "garbage")] }
+        return schedule.collections ?? []
+    }
+
+    /// The editor's fields as the calendar has them now.
+    private func loadEditor() {
+        weekday = calendar.pickupSchedule?.weekday ?? ""
+        frequency = calendar.pickupSchedule?.recyclingFrequency ?? "not_set"
+        nextDate = calendar.pickupSchedule?.recyclingNextDate ?? ""
+        collections = Self.editorCollections(calendar)
+        filledStart = []
+        openedVersion = calendar.pickupVersion
         errorText = nil
-        let offerPrimer = !reset && (calendar.needsPickupDay || calendar.pickupSchedule == nil)
-        do {
-            try requirePickupCurrent(version)
-            let guardCurrent: @MainActor @Sendable () throws -> Void = { try requirePickupCurrent(version) }
-            let endpoint = reset ? AddressCalendarEndpoints.clearPickupDay(
-                homeId: homeId, expectedVersion: openedVersion, dispatchGuard: guardCurrent
-            )
-                : AddressCalendarEndpoints.setPickupDay(homeId: homeId, request: SetPickupDayRequest(
-                    expectedVersion: openedVersion, collections: collections
-                ), dispatchGuard: guardCurrent)
-            let response: AddressCalendarResponse = try await api.request(endpoint)
-            try requirePickupCurrent(version)
-            confirmed = response.calendar
-            openedVersion = response.calendar.pickupVersion
-            picking = false
-            let key = "pickupPrimer.shown.\(homeId)"
-            if offerPrimer, !response.calendar.needsPickupDay, !UserDefaults.standard.bool(forKey: key) {
-                UserDefaults.standard.set(true, forKey: key)
-                showPickupPrimer = true
-            } else {
-                await onChanged()
-            }
-            // Refresh after the primer closes. The unavailable-calendar path
-            // clears its fallback during refresh, which removes this card and
-            // would dismiss the primer before the person can answer it.
-        } catch let APIError.clientError(status: 409, message: body) {
-            guard (try? requirePickupCurrent(version)) != nil else { return }
-            // Changed meanwhile: nothing was saved. Show the current schedule
-            // in the editor so the person can review it and try again.
-            if let current = Self.currentCalendar(inConflict: body) {
-                confirmed = current
-                weekday = current.pickupSchedule?.weekday ?? ""
-                frequency = current.pickupSchedule?.recyclingFrequency ?? "not_set"
-                nextDate = current.pickupSchedule?.recyclingNextDate ?? ""
-                collections = current.pickupSchedule?.collections ?? []
-                openedVersion = current.pickupVersion
-            }
-            errorText = "The pickup schedule changed since you opened it. Review the current schedule and try again."
-        } catch let APIError.forbidden(message) {
-            guard (try? requirePickupCurrent(version)) != nil else { return }
-            errorText = message ?? "You don't have permission to change this household's pickup schedule."
-        } catch {
-            guard (try? requirePickupCurrent(version)) != nil else { return }
-            errorText = "Could not save your pickup schedule. Check the next collection date and try again."
-        }
+        flyerMessage = nil
     }
 
-    @MainActor
-    private func requirePickupCurrent(_ version: Int) throws {
-        try sessionScope.requireCurrent()
-        try Task.checkCancellation()
-        guard lifecycleVersion == version, !AppLockManager.shared.isLocked,
-              UIApplication.shared.isProtectedDataAvailable else { throw CancellationError() }
-    }
-}
-
-extension AddressCalendarCard {
     /// Every upcoming date, or the picked day's.
     private var shownEvents: [PlaceCalendarEvent] {
         guard let selectedDay else { return calendar.upcoming }
         return calendar.upcoming.filter { $0.date.hasPrefix(selectedDay) }
+    }
+
+    /// Where the page scrolls to after a save: the box, with the lit entry under it.
+    static let savedAnchor = "pickup.saved.anchor"
+
+    /// A date's row. One of the household's collections opens the pickup editor for a
+    /// person who may change the schedule (JOURNEYS 1); every other row is as it was.
+    @ViewBuilder
+    private func entry(_ event: PlaceCalendarEvent) -> some View {
+        if homeId != nil, PickupSavedNote.isCollection(event.kind) {
+            Button(action: openEditor) {
+                eventRow(event).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(saving != nil)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Opens the pickup schedule")
+            .accessibilityIdentifier("pickup.entry.\(event.date.prefix(10))")
+            .pickupLit(event.id == litEvent)
+            .id(PickupSavedNote.rowAnchor(event.id))
+        } else {
+            eventRow(event)
+        }
     }
 
     private func eventRow(_ event: PlaceCalendarEvent) -> some View {
@@ -1345,6 +1502,8 @@ extension AddressCalendarCard {
         let pattern = collectionPattern(row)
         return VStack(alignment: .leading, spacing: 8) {
             Picker("\(label) repeats", selection: Binding(get: { pattern }, set: { value in
+                // A date the editor filled in is the person's to choose once the pattern is no longer every week.
+                if value != "weekly-1", filledStart.remove(row.kind) != nil { collections[index].anchorDate = "" }
                 if value.hasPrefix("weekly-") {
                     collections[index].frequency = "weekly"
                     collections[index].interval = Int(value.dropFirst(7)) ?? 1
@@ -1376,6 +1535,7 @@ extension AddressCalendarCard {
                             } else {
                                 collections[index].weekdays.append(day.id)
                             }
+                            followWeekdays(index)
                         } label: {
                             Text(String(day.label.prefix(3)))
                                 .font(.system(size: 11, weight: .semibold))
@@ -1392,6 +1552,13 @@ extension AddressCalendarCard {
             if row.frequency == "weekly" && row.interval > 1 {
                 Text("The start date anchors the collection week. Weeks begin Monday.")
                     .font(.system(size: 12)).foregroundStyle(Theme.Color.appTextSecondary)
+                if let off = startOffDays(row) {
+                    Text(off)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Theme.Color.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("addressCalendarStartOffDays")
+                }
             }
             if row.frequency == "monthly" {
                 Text("The start date sets the pattern. Dates absent from a month are skipped; a fifth weekday means the last weekday.")
@@ -1411,6 +1578,7 @@ extension AddressCalendarCard {
                 title: row.frequency == "once" ? "Collection date" : "First collection date",
                 date: Binding(get: { anchor }, set: { date in
                     let day = Self.pickupDay(date)
+                    filledStart.remove(row.kind)
                     collections[index].anchorDate = day
                     // The end date can't precede the start.
                     if let until = collections[index].untilDate, until < day { collections[index].untilDate = day }
@@ -1462,6 +1630,35 @@ extension AddressCalendarCard {
         return gregorian
     }
 
+    /// Every week: the start date follows the chosen days (the next date on one of them, today
+    /// counts), on a saved schedule too, so "it changed to Thursday" is one choice and "Save
+    /// schedule". The server takes only a start date on a chosen day. Any other pattern's date
+    /// says which week it is: it stays, and `startOffDays` says when it no longer fits (JOURNEYS 1).
+    private func followWeekdays(_ index: Int) {
+        let row = collections[index]
+        guard row.frequency == "weekly", row.interval == 1 else { return }
+        guard !row.weekdays.isEmpty else {
+            filledStart.remove(row.kind)
+            return
+        }
+        let day = suggestedDay(row)
+        collections[index].anchorDate = day
+        filledStart.insert(row.kind)
+        if let until = row.untilDate, until < day { collections[index].untilDate = day }
+    }
+
+    /// Every other week (or every 3 or 4): the start date is the person's to give. Says so when
+    /// it is not on a chosen day: "This date is a Tuesday. Choose a first collection date that is a Thursday."
+    private func startOffDays(_ row: PickupCollection) -> String? {
+        guard row.frequency == "weekly", row.interval > 1, !row.weekdays.isEmpty,
+              let date = Self.pickerDate(row.anchorDate) else { return nil }
+        let on = Self.weekdays[(Self.pickerCalendar.component(.weekday, from: date) + 5) % 7]
+        guard !row.weekdays.contains(on.id) else { return nil }
+        let days = Self.weekdays.filter { row.weekdays.contains($0.id) }.map(\.label)
+        let list = days.count > 1 ? "\(days.dropLast().joined(separator: ", ")) or \(days[days.count - 1])" : days[0]
+        return "This date is a \(on.label). Choose a first collection date that is a \(list)."
+    }
+
     /// Where choosing a date starts: the home's today, or for a weekly
     /// collection the first of its days from today.
     private func suggestedDay(_ row: PickupCollection) -> String {
@@ -1492,11 +1689,23 @@ extension AddressCalendarCard {
     }
 
     private func refreshAfterPrimer() {
+        // The box waited for the reminder question to close.
+        if let waiting = savedAfterPrimer {
+            savedAfterPrimer = nil
+            onSaved?(waiting.note, waiting.calendar)
+        }
         Task { @MainActor in
             guard (try? sessionScope.requireCurrent()) != nil, !AppLockManager.shared.isLocked,
                   UIApplication.shared.isProtectedDataAvailable else { return }
             await onChanged()
         }
+    }
+
+    /// The pickup editor, from a tap on a pickup entry.
+    private func openEditor() {
+        guard homeId != nil, saving == nil, !picking else { return }
+        loadEditor()
+        picking = true
     }
 
     private func pickupDateLabel(_ day: String) -> String {
@@ -1712,6 +1921,9 @@ private struct PickupReminderPrimer: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Theme.Color.primaryInk)
             }
+            Text("Your schedule is saved.")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.Color.success)
             Text("Get a reminder the night before?")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.Color.appText)

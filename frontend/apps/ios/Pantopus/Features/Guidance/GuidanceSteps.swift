@@ -263,3 +263,10 @@ private struct GuidanceListCount: Decodable {
         count = try container.nestedUnkeyedContainer(forKey: key).count ?? 0
     }
 }
+
+/// A tab's first screen, as it last said.
+struct GuidanceScreenEntry {
+    let screen: GuidanceScreen
+    var ready: Bool
+    var variants: GuidanceVariants
+}

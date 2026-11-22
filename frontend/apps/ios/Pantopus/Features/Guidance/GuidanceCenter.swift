@@ -231,6 +231,13 @@ final class GuidanceCenter {
         linkQuietUntil = Date().addingTimeInterval(2)
     }
 
+    /// Something the person just asked to see is showing for a moment (the pickup entry lit after
+    /// "See it in Today"): no card covers it for this long. Zero ends the wait.
+    func holdCards(for seconds: TimeInterval) {
+        linkQuietUntil = Date().addingTimeInterval(seconds)
+        if seconds <= 0 { scheduleEvaluation() }
+    }
+
     // MARK: - Screens
 
     func screenAppeared(_ token: UUID, screen: GuidanceScreen, ready: Bool, variants: GuidanceVariants) {
@@ -489,11 +496,4 @@ extension GuidanceCenter {
             scheduleEvaluation()
         }
     }
-}
-
-/// A tab's first screen, as it last said.
-struct GuidanceScreenEntry {
-    let screen: GuidanceScreen
-    var ready: Bool
-    var variants: GuidanceVariants
 }
