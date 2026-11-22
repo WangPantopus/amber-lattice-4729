@@ -271,5 +271,3 @@ See [screens/](screens/) `web-1-top` and `web-2-scrolled`. It stays on the dark 
 - Turn the new layout on in production.
 - Ship new iPhone and Android builds (the shelves and Santa's table for 90 to 95 need them).
 - Upload the 16 new cards' share films, if the builders make them as the last batch did.
-- One question for a lawyer before the Christmas in the City cards are sold: the golden statue and the wire angels in
-  two of the pictures are artworks by named artists.
