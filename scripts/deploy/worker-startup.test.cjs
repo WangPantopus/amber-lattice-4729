@@ -17,6 +17,7 @@ async function boot({ nodeEnv = 'production', enabled = 'true', result = {}, ini
     './jobs': { startJobs: options => events.push(['cron', options.skipPgBossBackedJobs]) },
     './services/vendorCalls': { install() {} },
     './services/propertyRecords/counts': { start() {}, flush: async () => {} },
+    './config/directDb': { warmUp: async () => 0 },
   };
   vm.runInNewContext(source, {
     require: name => { assert.ok(Object.hasOwn(modules, name), name); return modules[name]; },

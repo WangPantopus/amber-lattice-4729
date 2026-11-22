@@ -685,6 +685,9 @@ server.listen(PORT, HOST, async () => {
     secretKey: process.env.AWS_SECRET_ACCESS_KEY ? '✓ Set' : '✗ Missing',
   });
 
+  // Direct database reads (config/directDb.js): their connections open now, not on the first request after a deploy.
+  if (process.env.NODE_ENV !== 'test') require('./config/directDb').warmUp();
+
   // Begin polling the address rollout flags so enforcement posture can be
   // changed at runtime through the admin feature-flag route instead of
   // requiring an environment change and a redeploy.

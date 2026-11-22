@@ -34,6 +34,8 @@ async function main() {
   // Every call to a paid data vendor is counted, for the daily report.
   require('./services/vendorCalls').install();
   require('./services/propertyRecords/counts').start('worker');
+  // Direct database reads (config/directDb.js): their connections open now, not on the first job that needs one.
+  require('./config/directDb').warmUp();
 
   // Start pg-boss queue workers (Tier 2 jobs)
   let pgBossBackedJobsStarted = false;
