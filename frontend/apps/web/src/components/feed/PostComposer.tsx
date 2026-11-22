@@ -500,8 +500,8 @@ export default function PostComposer({
     : canUseGlobalAudience && selectedAudience === 'connections'
     ? 'Share something with your connections…'
     : canUseGlobalAudience && activePostAs === 'home' && selectedAudience === 'neighborhood'
-    ? 'Share something with your home neighborhood…'
-    : activeIntent?.placeholder || 'Share something with your neighborhood…';
+    ? 'Share something with people near your home…'
+    : activeIntent?.placeholder || 'Share something with people near you…';
 
   const resetPostAssist = postAssist.reset;
   const resetComposer = useCallback(() => {
@@ -1314,7 +1314,7 @@ export default function PostComposer({
                 <p id="composer-ai-confirm-message" className="text-app-secondary">
                   {createAudience === 'connections'
                     ? 'Pantopus AI wrote parts of this post. Check that it’s right before your connections see it.'
-                    : 'Pantopus AI wrote parts of this post. Check that it’s right before neighbors see it.'}
+                    : 'Pantopus AI wrote parts of this post. Check that it’s right before others see it.'}
                 </p>
                 <div className="flex justify-end gap-2">
                   <button

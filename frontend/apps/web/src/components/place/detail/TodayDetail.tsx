@@ -10,6 +10,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '@pantopus/api';
 import type { LucideIcon } from 'lucide-react';
@@ -48,6 +49,7 @@ import {
 import { SectionCard, DetailHeader, DetailSectionLabel, SourceNote, ComingSoonRow } from '@/components/archetypes/place';
 import { findPlaceSection, detailAddress } from './sections';
 import AddressCalendarCard from './AddressCalendarCard';
+import { TODAY_COMING_UP_ID, requestPickupLight } from './pickupSaved';
 import SkyCard from '@/components/sky/SkyCard';
 import SunCard from '@/components/sky/SunCard';
 import type { TodaySkyInput } from '@/components/sky/todaySky';
@@ -346,12 +348,20 @@ function GoodDayRow({ data }: { data: PlaceGoodDayData }) {
 /**
  * [embedded]: inside the Today tab (a claim in review's address), which has its own title: the address line
  * replaces the page header.
+ * [todayShowsThisHome]: the Today tab lists this home's dates under "Coming up at home" (it is the person's
+ * primary home), so a saved pickup schedule offers "See it in Today".
  */
 export default function TodayDetail({
   intelligence,
   homeId = null,
   embedded = false,
-}: { intelligence: PlaceIntelligence; homeId?: string | null; embedded?: boolean }) {
+  todayShowsThisHome = false,
+}: { intelligence: PlaceIntelligence; homeId?: string | null; embedded?: boolean; todayShowsThisHome?: boolean }) {
+  const router = useRouter();
+  const seeInToday = () => {
+    requestPickupLight();
+    router.push(`/app/today#${TODAY_COMING_UP_ID}`);
+  };
   const calendar = findPlaceSection(intelligence, 'address_calendar');
   const calendarReady = calendar && (calendar.status === 'ready' || calendar.status === 'stale' || calendar.status === 'partial') && calendar.data;
   // A municipality without defaults still has an editable household calendar.
@@ -458,7 +468,7 @@ export default function TodayDetail({
         {/* The address calendar (Wedge Phase 2, D6): what recurs at THIS address. */}
         <DetailSectionLabel>At this address</DetailSectionLabel>
         {calendarData ? (
-          <AddressCalendarCard homeId={homeId} data={calendarData} />
+          <AddressCalendarCard homeId={homeId} data={calendarData} onSeeInToday={homeId && todayShowsThisHome ? seeInToday : undefined} />
         ) : (
           <SectionCard icon={Trash2} title="Pickup days, tax dates, hearings" state={calendar ? statusToState(calendar.status) : 'unavailable'} caption={calendar?.unavailable_reason ?? 'No calendar for this address yet.'} onRetry={() => window.location.reload()} />
         )}

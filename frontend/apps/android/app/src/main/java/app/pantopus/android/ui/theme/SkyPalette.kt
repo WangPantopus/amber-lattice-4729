@@ -164,6 +164,11 @@ object SkyPalette {
     val binRecycling = Color(0xFF2563EB)
     val binYard = Color(0xFF15803D)
 
+    // The house on Today: the mailbox's flag, the note on the door and the lantern on the far hill.
+    val mailFlag = Color(0xFFEF4444)
+    val doorNote = Color(0xFFFDFBF5)
+    val lantern = Color(0xFFF5A524)
+
     /** Snow-covered hills and house, day and night. */
     val snowHillBackDay = Color(0xFFDCE5EF)
     val snowHillFrontDay = Color(0xFFF3F6FA)

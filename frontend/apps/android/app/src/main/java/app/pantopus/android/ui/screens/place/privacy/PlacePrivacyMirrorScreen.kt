@@ -55,7 +55,7 @@ fun PlacePrivacyMirrorScreen(
         onPauseOrDispose { viewModel.suspendContent() }
     }
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg).testTag("place.privacyMirror.screen")) {
-        PlaceDetailHeader(title = "What neighbors see", address = "", onBack = onBack)
+        PlaceDetailHeader(title = "What others see", address = "", onBack = onBack)
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -133,7 +133,7 @@ private fun NeighborCard(mirror: HomeMirrorDto) {
             if (mirror.discoverable) {
                 "Street only, no house number. That is the whole card."
             } else {
-                "Your home is not discoverable right now, so neighbors see nothing unless you share it. " +
+                "Your home is not discoverable right now, so others see nothing unless you share it. " +
                     "This is what they would see if you did."
             },
             fontSize = 12.5.sp,
@@ -149,7 +149,7 @@ private fun HiddenList(mirror: HomeMirrorDto) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             PantopusIconImage(PantopusIcon.EyeOff, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appTextSecondary)
             Text(
-                "NEVER SHOWN TO NEIGHBORS",
+                "NEVER SHOWN TO OTHERS",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp,

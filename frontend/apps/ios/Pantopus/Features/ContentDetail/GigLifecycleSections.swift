@@ -81,7 +81,7 @@ struct GigOwnerBidsPanel: View {
             Text("No bids yet")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(Theme.Color.appText)
-            Text("Neighbors usually bid within the first few hours.")
+            Text("People usually bid within the first few hours.")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)

@@ -16,8 +16,8 @@ export type GuidanceIconName =
 
 export type GuidanceLine = readonly [GuidanceIconName, string];
 
-/** What a reminder's button opens besides closing it (spec §5, cards 24-27). */
-export type GuidanceAction = 'add_address' | 'setup_home' | 'verify' | 'invite';
+/** What a card's button opens besides closing it (spec §5, cards 24-27; card 16 while the home has no pickup schedule). */
+export type GuidanceAction = 'add_address' | 'setup_home' | 'verify' | 'invite' | 'pickup_day';
 
 /** A centre card as it shows: a title, up to three rows, one button. */
 export interface CentreCardContent {
@@ -38,7 +38,7 @@ export interface PointerContent {
 }
 
 /** The tab cards (1–7): each shows the first time its tab opens, limited only by "one on screen". */
-export const TAB_CARD_IDS = ['welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse'] as const;
+export const TAB_CARD_IDS = ['welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments'] as const;
 export type TabCardId = (typeof TAB_CARD_IDS)[number];
 
 export interface WelcomeFacts {
@@ -92,6 +92,14 @@ export function mailCard({ letters }: { letters: boolean }): CentreCardContent {
   return { id: 'tab_mail', title: 'Mail', button: 'Got it', lines };
 }
 
+export function momentsCard(): CentreCardContent {
+  return { id: 'tab_moments', title: 'Moments', button: 'Got it', lines: [
+    ['clock', 'A Moment is a photo, a short video or a few words about what is happening at a place right now.'],
+    ['map-pin', 'Each one sits on the map where it was posted, and goes away by itself when its time is up.'],
+    ['send', 'Choose Create Moment to share one.'],
+  ] };
+}
+
 /** 5. Pulse, first open. */
 export function pulseCard(): CentreCardContent {
   return {
@@ -108,12 +116,16 @@ export function pulseCard(): CentreCardContent {
 
 // ── Right after doing something for the first time (16–23; 19 and 20 are phones only) ──
 
-/** 16. Place, right after “Set up this home” finishes. */
-export function homeSetUpCard(): CentreCardContent {
+/**
+ * 16. Place, right after “Set up this home” finishes. While the home has no pickup schedule, the button reads
+ * “Set pickup day” and opens the pickup editor for that home, besides closing the card (JOURNEYS, 2026-11-21).
+ */
+export function homeSetUpCard({ needsPickupDay = false }: { needsPickupDay?: boolean } = {}): CentreCardContent {
   return {
     id: 'done_home_setup',
     title: 'Your home is set up',
-    button: 'Got it',
+    button: needsPickupDay ? 'Set pickup day' : 'Got it',
+    ...(needsPickupDay ? { action: 'pickup_day' as const } : {}),
     lines: [
       ['circle-check', '“Tasks” is a shared to-do list for your home.'],
       ['users', '“Members” is where you invite the people you live with.'],

@@ -613,6 +613,15 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
             rebuildFromSample()
             return
         }
+        // A pull's reads run in a task of their own. SwiftUI on iOS 18 (and an app built with its SDK) cancels the
+        // pull's task whenever this screen draws again during it, as it does once the badges answer: the list, Sent
+        // and the cards were never asked for, and the cards row went with the failed read.
+        await Task { await readAgain() }.value
+    }
+
+    /// Everything a pull reads again: the badges and today's round, the routing queue, the list on screen (or Sent),
+    /// and the Christmas cards.
+    private func readAgain() async {
         await fetchDrawerBadges()
         await fetchPendingRouting()
         if showsSent {
@@ -851,20 +860,19 @@ public final class MailboxRootViewModel: ListOfRowsDataSource {
     }
 
     /// Christmas cards (`holiday_cards` + `mailbox`): whether sending is open
-    /// and today's card, for the row at the top of Me. Off, closed, or not
-    /// answering: no row.
+    /// and today's card, for the row at the top of Me. Off or closed: no row.
+    /// Not answering: no row at first, and a row already shown stays.
     private func fetchChristmasCards() async {
         guard LaunchFeatures.holidayCards, LaunchFeatures.mailbox, onOpenChristmasCards != nil else {
             christmasCards = nil
             return
         }
         let response: HolidayCardsResponse? = try? await api.request(HolidayCardEndpoints.cards())
-        christmasCards = response?.open == true ? response : nil
-        if let response {
-            HolidayCardWords.postageOn = response.postageEnabled
-            // The other ways into a card (the tab's envelope, Today, profiles, the side menu) follow this answer.
-            if case let .signedIn(user) = AuthManager.shared.state { HolidayCardDoors.shared.note(response, account: user.id) }
-        }
+        guard let response else { return }
+        christmasCards = response.open ? response : nil
+        HolidayCardWords.postageOn = response.postageEnabled
+        // The other ways into a card (the tab's envelope, Today, profiles, the side menu) follow this answer.
+        if case let .signedIn(user) = AuthManager.shared.state { HolidayCardDoors.shared.note(response, account: user.id) }
     }
 
     /// The row's tap: the card flow, or today's card.

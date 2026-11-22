@@ -120,7 +120,7 @@ function build(profile, { trend = null, lookup = null, neighborhood = null } = {
       { id: 'neighborhood_value', label: 'Typical home value in this ZIP', value: money(neighborhood.median) },
       { id: 'neighborhood_range', label: 'Middle half of homes here', value: `${money(neighborhood.low)} – ${money(neighborhood.high)}` },
     );
-    notes.push(`What owners here told the Census Bureau their homes are worth (${neighborhood.source}). These are the neighborhood's figures, not this home's.`);
+    notes.push(`What owners here told the Census Bureau their homes are worth (${neighborhood.source}). These are the area's figures, not this home's.`);
   }
   // Only beside the county's own value: the comparison is of that figure.
   if (headline && profile.similar_homes) {

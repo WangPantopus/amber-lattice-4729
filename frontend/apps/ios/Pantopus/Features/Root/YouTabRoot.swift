@@ -517,7 +517,10 @@ public struct YouTabRoot: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("You'll need to sign in again to use your account. Signing out removes what Pantopus saved on this phone.")
+                    Text(
+                        "You'll need to sign in again to use your account. "
+                            + "Signing out removes what Pantopus saved on this \(DeviceWords.plainName)."
+                    )
                 }
                 .sheet(isPresented: $showsEditProfile) {
                     EditProfileView {
@@ -2373,7 +2376,7 @@ public struct YouTabRoot: View {
                         case .inviteBusiness:
                             let draft = MailDraft(
                                 subject: "Join Pantopus",
-                                body: "I'd love to see your business on Pantopus — neighbors near me are "
+                                body: "I'd love to see your business on Pantopus — people near me are "
                                     + "looking for trusted local pros. \(PersonalInviteLink.shared.url.absoluteString)"
                             )
                             if MailDraft.canSendMail {
@@ -2765,7 +2768,7 @@ public struct YouTabRoot: View {
                 onHelp: { path.append(.helpCenter) },
                 onCashOut: { path.append(.paymentsSettings) },
                 onBrowseTasks: { path.append(.gigsFeed) },
-                onReferNeighbor: { path.append(.placeholder(label: "Refer a neighbor")) },
+                onReferNeighbor: { path.append(.placeholder(label: "Refer someone")) },
                 onOfferService: { path.append(.professionalProfile) },
                 onManagePayout: { path.append(.paymentsSettings) },
                 onAddBank: { path.append(.paymentsSettings) },

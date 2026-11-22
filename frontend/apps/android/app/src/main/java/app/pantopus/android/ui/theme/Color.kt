@@ -309,6 +309,9 @@ object PantopusColors {
     /** Lettering on wax red — `#FFF7ED`. */
     val cardWaxText = Color(0xFFFFF7ED)
 
+    /** The edge of a chip that says something in wax red (Pick a card's stamps, card shelves) — `#D9B9B0`. */
+    val cardWaxEdge = Color(0xFFD9B9B0)
+
     /** The desk's words: strong `#111827`, body `#374151`, quiet `#4E5563`, a problem `#A81A1A`. */
     val cardTextStrong = Color(0xFF111827)
     val cardTextBody = Color(0xFF374151)
@@ -401,6 +404,9 @@ object PantopusColors {
 
     /** The day printed on the envelope's postmark: `rgb(19 13 15 / 80%)`. */
     val tablePostmarkDay = Color(0xCC130D0F)
+
+    /** A travelling card's postmarks: every third, starting with the second, in blue-black `rgb(14 22 52 / 84%)`. */
+    val tablePostmarkBlue = Color(0xD60E1634)
 
     /** A Mailbox row's postmark: the table's cream at 60%, so it reads on the envelope's dark red. */
     val tablePostmarkCream = Color(0x99F6ECD9)
@@ -810,6 +816,13 @@ object PantopusColors {
     /** The Pantopus curator's mark on a ring — `#0284C7` on white. */
     val momentBrand = Color(0xFF0284C7)
 
+    /**
+     * The Live mark (boards L1–L3): its green on the dark stage, the viewer's "Live from here" pill — `#34D399`; and on
+     * white, a live ring's dot and the "Live now" chip's glyph while off — `#047857`.
+     */
+    val momentLiveOnStage = Color(0xFF34D399)
+    val momentLive = Color(0xFF047857)
+
     /** P4's at-home notice: amber tint, its border, the house glyph and the line. */
     val momentHomeNoticeBg = Color(0xFFFFFBEB)
     val momentHomeNoticeBorder = Color(0xFFFDE68A)
@@ -818,4 +831,28 @@ object PantopusColors {
 
     /** The Post sheet's switch track while off — `#E9E9EB`. */
     val momentSwitchTrack = Color(0xFFE9E9EB)
+
+    /** Text and Draw on a Moment's photo (boards T2 and T3): the six inks, the same on iPhone. */
+    val momentInkWhite = Color(0xFFFFFFFF)
+    val momentInkBlack = Color(0xFF111827)
+    val momentInkYellow = Color(0xFFFACC15)
+    val momentInkRed = Color(0xFFDC2626)
+    val momentInkSky = Color(0xFF38BDF8)
+    val momentInkGreen = Color(0xFF22C55E)
+
+    /** The marks editor's fade under its inks (its top one is the viewer's [momentTopFade]). */
+    val momentMarksBottomFade = Color(0xB8000000)
+
+    /** The dashed line where the viewer's top bar ends, so nothing important goes under it. */
+    val momentMarksGuide = Color(0x80FFFFFF)
+    val momentMarksGuideShade = Color(0x66000000)
+
+    /** Text's "Label" plate (black at 66%, board T2; white at 88% under black ink), and plain letters' soft shadow. */
+    val momentMarksLabelBox = Color(0xA8000000)
+    val momentMarksLabelPlate = Color(0xE0FFFFFF)
+
+    /** Plain letters' thin edge: black 45%, or white 70% under black ink. */
+    val momentMarksEdgeDark = Color(0x73000000)
+    val momentMarksEdgeLight = Color(0xB3FFFFFF)
+    val momentMarksShadow = Color(0x99000000)
 }

@@ -646,7 +646,7 @@ public final class MyPostsViewModel: ListOfRowsDataSource {
                 icon: .messageSquarePlus,
                 headline: "You haven\u{2019}t posted yet",
                 subcopy: "Ask a question, recommend a spot, or share a local heads-up. "
-                    + "Your neighbors will see it on the Pulse.",
+                    + "People near you will see it on the Pulse.",
                 ctaTitle: "Write a post"
             ) { [weak self] in
                 Task { @MainActor in self?.onCompose() }

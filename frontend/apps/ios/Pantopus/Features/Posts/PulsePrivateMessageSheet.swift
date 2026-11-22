@@ -52,7 +52,7 @@ extension PulsePostDetailViewModel {
             return PulsePrivateMessageDestination(
                 id: post.id,
                 authorId: authorId,
-                authorName: post.author?.displayName ?? "A neighbor",
+                authorName: post.author?.displayName ?? "Someone nearby",
                 currentUserId: currentUserId
             )
         } catch {

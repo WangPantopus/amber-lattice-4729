@@ -26,7 +26,7 @@ public enum ProfileAudience: String, CaseIterable, Sendable, Hashable, Identifia
     var title: String {
         switch self {
         case .anyone: "Anyone with the link"
-        case .neighbors: "Neighbors"
+        case .neighbors: "People on Pantopus"
         case .connections: "Your connections"
         }
     }
@@ -34,7 +34,7 @@ public enum ProfileAudience: String, CaseIterable, Sendable, Hashable, Identifia
     var detail: String {
         switch self {
         case .anyone: "People who aren't signed in, like someone you text your link to."
-        case .neighbors: "People on Pantopus you aren't connected to."
+        case .neighbors: "Signed-in people you aren't connected to."
         case .connections: "They also see posts you shared only with connections."
         }
     }
@@ -42,7 +42,7 @@ public enum ProfileAudience: String, CaseIterable, Sendable, Hashable, Identifia
     var bannerTitle: String {
         switch self {
         case .anyone: "Previewing as anyone with the link"
-        case .neighbors: "Previewing as a neighbor"
+        case .neighbors: "Previewing as people on Pantopus"
         case .connections: "Previewing as a connection"
         }
     }
@@ -140,7 +140,6 @@ struct ProfilePreviewMenu: View {
             .padding(.bottom, Spacing.s5)
         }
         .background(Theme.Color.appSurface)
-        .presentationDragIndicator(.visible)
         .accessibilityIdentifier("profilePreviewMenu")
     }
 
@@ -228,7 +227,7 @@ struct ProfileSignInRequiredCard: View {
                 .background(Theme.Color.appSurfaceSunken)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
-            Text("Posts are for neighbors")
+            Text("Posts are for people on Pantopus")
                 .scaledFont(17, weight: .semibold)
                 .foregroundStyle(Theme.Color.appText)
                 .padding(.top, Spacing.s3)

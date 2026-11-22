@@ -103,12 +103,24 @@ fun SendCardScreen(
     var listTakeBack by remember { mutableStateOf<SentHolidayCard?>(null) }
     val season = cards
     val page = SendCardPage.of(season, form)
+    // Pick a card as shelves (the server's switch `card_shelves`, card shelves SPEC Part B), and the collection whose
+    // page is open over them ("All collections"); the page closes with the step.
+    val shelves = page == SendCardPage.Steps && form.step == SendCardStep.Pick && season?.drawsShelves == true
+    var openCollection by rememberSaveable { mutableStateOf<String?>(null) }
+    val collectionOpen = shelves && openCollection != null
     // Back walks the steps only while they show: on today's card (or done for the year) it closes at once, even when
-    // "Send Hazel a card" opened the steps at Pick a card underneath.
-    val back = { if (page != SendCardPage.Steps || !viewModel.back()) onClose() }
+    // "Send Hazel a card" opened the steps at Pick a card underneath. On a collection's page it goes back to the shelves.
+    val back = {
+        if (collectionOpen) {
+            openCollection = null
+        } else if (page != SendCardPage.Steps || !viewModel.back()) {
+            onClose()
+        }
+    }
     BackHandler(onBack = back)
     val scroll = rememberScrollState()
     LaunchedEffect(form.step) { scroll.scrollTo(0) }
+    LaunchedEffect(form.step) { if (form.step != SendCardStep.Pick) openCollection = null }
     // Digital stamps (postage on): the balance after each step, card and take-back, and on coming back (Google Play
     // purchases are finished then). The stamp books open from the header's count, "Get stamps to send", or a card the
     // server refused for a stamp.
@@ -156,59 +168,75 @@ fun SendCardScreen(
     // Above the keyboard: the steps and what's pinned under them (step 1's button on with a list).
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.cardDesk).imePadding().testTag("sendCard")) {
         StepHeader(
-            title = page.title(form),
+            title = if (collectionOpen) "All collections" else page.title(form),
             step = form.step.takeIf { page == SendCardPage.Steps },
             onBack = back,
         )
-        StampChip(
-            stamps?.balance,
-            onOpen = getStamps,
-            modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
-        )
+        // On the shelves the stamps left sit on the "To" line instead.
+        if (!shelves) {
+            StampChip(
+                stamps?.balance,
+                onOpen = getStamps,
+                modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s1),
+            )
+        }
         Box(modifier = Modifier.weight(1f)) {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scroll)
-                        .padding(bottom = if ((pinsOver || sealTo != null) && LaunchFeatures.cardTable) 0.dp else Spacing.s6),
-            ) {
-                when (page) {
-                    SendCardPage.Reading -> {
-                        val failed = load as? SendCardLoad.Failed
-                        if (failed != null) LoadProblem(failed.message, onRetry = viewModel::reload) else LoadingDesk()
+            if (shelves && season != null) {
+                PickShelves(
+                    cards = season,
+                    chosen = form.design,
+                    to = form.to,
+                    stamps = stamps?.balance,
+                    onStamps = getStamps,
+                    open = openCollection,
+                    onOpen = { openCollection = it },
+                    onLarge = { largeDesign = it },
+                )
+            } else {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scroll)
+                            .padding(bottom = if ((pinsOver || sealTo != null) && LaunchFeatures.cardTable) 0.dp else Spacing.s6),
+                ) {
+                    when (page) {
+                        SendCardPage.Reading -> {
+                            val failed = load as? SendCardLoad.Failed
+                            if (failed != null) LoadProblem(failed.message, onRetry = viewModel::reload) else LoadingDesk()
+                        }
+                        SendCardPage.Today ->
+                            season?.todaysCard?.let { today ->
+                                SentCardSection(
+                                    today,
+                                    season,
+                                    "Today’s card",
+                                    form,
+                                    onTakeBack = { confirmTakeBack = true },
+                                    onClose = onClose,
+                                    fromName = fromName,
+                                )
+                            }
+                        SendCardPage.Closed -> DoneForTheYear(onClose)
+                        SendCardPage.Steps, SendCardPage.Sent ->
+                            season?.let {
+                                Steps(
+                                    cards = it,
+                                    form = form,
+                                    fromName = fromName,
+                                    viewModel = viewModel,
+                                    onClose = onClose,
+                                    onTakeBack = { confirmTakeBack = true },
+                                    onSeeInSent = onSeeInSent,
+                                    stamps = stamps?.balance,
+                                    onStampsForMedia = getStampsForMedia,
+                                    onTakeBackFromList = { listTakeBack = it },
+                                    onLarge = { largeDesign = it },
+                                    endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver || sealTo != null } ?: 0.dp,
+                                    onSendAgain = sendAgain.takeIf { season.canSendAnother(stamps?.balance) },
+                                )
+                            }
                     }
-                    SendCardPage.Today ->
-                        season?.todaysCard?.let { today ->
-                            SentCardSection(
-                                today,
-                                season,
-                                "Today’s card",
-                                form,
-                                onTakeBack = { confirmTakeBack = true },
-                                onClose = onClose,
-                                fromName = fromName,
-                            )
-                        }
-                    SendCardPage.Closed -> DoneForTheYear(onClose)
-                    SendCardPage.Steps, SendCardPage.Sent ->
-                        season?.let {
-                            Steps(
-                                cards = it,
-                                form = form,
-                                fromName = fromName,
-                                viewModel = viewModel,
-                                onClose = onClose,
-                                onTakeBack = { confirmTakeBack = true },
-                                onSeeInSent = onSeeInSent,
-                                stamps = stamps?.balance,
-                                onStampsForMedia = getStampsForMedia,
-                                onTakeBackFromList = { listTakeBack = it },
-                                onLarge = { largeDesign = it },
-                                endRoom = with(density) { pinnedHeight.toDp() }.takeIf { pinsOver || sealTo != null } ?: 0.dp,
-                                onSendAgain = sendAgain.takeIf { season.canSendAnother(stamps?.balance) },
-                            )
-                        }
                 }
             }
             val pinned = Modifier.align(Alignment.BottomCenter).onSizeChanged { pinnedHeight = it.height }
@@ -256,6 +284,16 @@ fun SendCardScreen(
         val listGrowing = onSteps && viewModel.maxRecipients > 1 && form.listed.isNotEmpty()
         if (form.step == SendCardStep.To && listGrowing) {
             ListContinueBar(form, onContinue = viewModel::continueWithList)
+        } else if (shelves && season != null) {
+            // The shelves' bar shows only once a card is chosen; the rack is the same.
+            ShelvesBar(season, form.design, onLarge = { largeDesign = it }, onNext = viewModel::next)
+            PickRack(
+                season,
+                large = largeDesign,
+                onLarge = { largeDesign = it },
+                onChoose = viewModel::chooseDesign,
+                onNext = viewModel::next,
+            )
         } else if (onSteps && form.step == SendCardStep.Pick && season != null) {
             PickBar(
                 cards = season,
@@ -352,6 +390,22 @@ fun SendCardScreen(
                 viewModel.takeBack()
             },
             onKeep = { confirmTakeBack = false },
+        )
+    }
+    // "Where does it start?" (travelling card plan Part 2): asked once, for a travelling card from someone with no town.
+    val askTown by viewModel.town.askTown.collectAsStateWithLifecycle()
+    if (askTown != null) {
+        CardTownSheet(
+            onKept = {
+                // What was asked for goes on with the town kept.
+                when (viewModel.town.kept()) {
+                    TownThen.Look -> viewModel.look()
+                    TownThen.Send -> viewModel.send()
+                    TownThen.SendList -> viewModel.sendList()
+                    TownThen.Nothing, null -> Unit
+                }
+            },
+            onDismiss = viewModel.town::dismissed,
         )
     }
 }
@@ -522,6 +576,9 @@ private fun Steps(
                         onArrival = viewModel::chooseArrival,
                         stamps = stamps,
                         endRoom = endRoom,
+                        // "Let it travel" (travelling card plan Part 2): only where the server offers it.
+                        travel = (!form.travelOff).takeIf { cards.travel?.on == true },
+                        onTravel = viewModel.town::set,
                     )
                 }
             }

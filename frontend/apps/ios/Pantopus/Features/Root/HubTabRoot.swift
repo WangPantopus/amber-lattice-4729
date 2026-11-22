@@ -3360,7 +3360,7 @@ public struct HubTabRoot: View {
                         case .inviteBusiness:
                             let draft = MailDraft(
                                 subject: "Join Pantopus",
-                                body: "I'd love to see your business on Pantopus — neighbors near me are "
+                                body: "I'd love to see your business on Pantopus — people near me are "
                                     + "looking for trusted local pros. \(PersonalInviteLink.shared.url.absoluteString)"
                             )
                             if MailDraft.canSendMail {
@@ -3942,7 +3942,7 @@ public struct HubTabRoot: View {
                 onHelp: { Task { @MainActor in push(.helpCenter) } },
                 onCashOut: { Task { @MainActor in push(.paymentsSettings) } },
                 onBrowseTasks: { Task { @MainActor in push(.gigsFeed) } },
-                onReferNeighbor: { Task { @MainActor in push(.placeholder(label: "Refer a neighbor")) } },
+                onReferNeighbor: { Task { @MainActor in push(.placeholder(label: "Refer someone")) } },
                 onOfferService: { Task { @MainActor in push(.professionalProfile) } },
                 onManagePayout: { Task { @MainActor in push(.paymentsSettings) } },
                 onAddBank: { Task { @MainActor in push(.paymentsSettings) } },

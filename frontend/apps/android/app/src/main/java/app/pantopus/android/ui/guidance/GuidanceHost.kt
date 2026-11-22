@@ -89,6 +89,9 @@ enum class GuidanceAction {
 
     /** 27: the Members invite for the Home on Place. */
     Invite,
+
+    /** 16, while the home has no pickup schedule: the pickup editor for the Home on Place. */
+    SetPickupDay,
 }
 
 /** A card on screen; [replay] is one opened again from the Tips list, which doesn't count as seen. */
@@ -191,8 +194,9 @@ class GuidanceViewModel
             homeId: String,
             verified: Boolean,
             canVerify: Boolean,
+            needsPickupDay: Boolean? = null,
         ) {
-            val facts = GuidanceHomeFacts(homeId, verified = verified, canVerify = canVerify)
+            val facts = GuidanceHomeFacts(homeId, verified = verified, canVerify = canVerify, needsPickupDay = needsPickupDay)
             if (placeHome != facts) placeHome = facts
         }
 
@@ -247,7 +251,7 @@ class GuidanceViewModel
         private fun homeFacts(homeId: String?): GuidanceHomeFacts? {
             val shown = placeHome?.takeIf { it.homeId == homeId } ?: return null
             val record = homeRecord?.takeIf { it.homeId == homeId } ?: return null
-            return record.copy(verified = shown.verified, canVerify = shown.canVerify)
+            return record.copy(verified = shown.verified, canVerify = shown.canVerify, needsPickupDay = shown.needsPickupDay)
         }
 
         fun leaveSpot(token: Int) {
@@ -301,11 +305,21 @@ class GuidanceViewModel
             shownOnVisit = spotOwner
         }
 
-        /** The card's button: it closes the card, and a reminder's also opens its next step. */
+        /** The card's button: it closes the card, and a reminder's (or card 16's “Set pickup day”) also opens its next step. */
         fun primary() {
             val current = showing ?: return
             close()
-            if (!current.replay) action = REMINDER_ACTIONS[current.card.id]
+            if (current.replay) return
+            val setsPickupDay = (current.card as? GuidanceCentre)?.button == GuidanceCatalog.SET_PICKUP_DAY
+            action = if (setsPickupDay) GuidanceAction.SetPickupDay else REMINDER_ACTIONS[current.card.id]
+        }
+
+        /**
+         * A link or a notification is opening another screen (an invitation's plan) under the card on screen: the card
+         * steps aside without counting as seen, and shows again on its own screen. A replay stays.
+         */
+        fun stepAside() {
+            if (showing?.replay == false) showing = null
         }
 
         /** The Tips list: [card] again, which doesn't change its count. */
@@ -337,6 +351,7 @@ class GuidanceViewModel
                 writesLetters = LaunchFeatures.mailExtras,
                 moments = moments.on.value,
                 plans = plans.flags.value.plans,
+                todayHouse = state?.todayHouse == true,
             )
         }
 
@@ -406,6 +421,7 @@ private fun rememberGuidanceCalm(viewModel: GuidanceViewModel): Boolean {
     LaunchedEffect(pendingLink) {
         if (pendingLink != null) {
             linkSettling = true
+            viewModel.stepAside()
         } else if (linkSettling) {
             delay(LINK_SETTLE_MS)
             linkSettling = false

@@ -1,11 +1,10 @@
 'use client';
 
-// The Pulse map in 3D (founder request 2026-10-22, spec §4): Mapbox GL JS with the Mapbox Standard
+// The shared Pulse and Plans map in 3D (founder request 2026-10-22, spec §4): Mapbox GL JS with the Mapbox Standard
 // style (3D buildings, trees and terrain, day light, no point-of-interest labels), opened tilted
-// after a short fly-in, with rotate and tilt gestures on. Its pins and clusters are the flat map's
-// (./pulseMapPins.ts) on GL markers, and its popup is the same card.
+// after a short fly-in, with rotate and tilt gestures on. Each screen supplies its pins and actions.
 //
-// FeedMap loads this module lazily, so mapbox-gl and its CSS are fetched only for the Pulse map,
+// The map screens load this module lazily, so mapbox-gl and its CSS are fetched only when needed,
 // and falls back to its Leaflet map when this reports the 3D map unavailable: no WebGL 2, or a
 // style that errors or hasn't loaded within 8 s.
 
@@ -15,12 +14,11 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { MapMarker } from '@pantopus/api';
 import { MapSkeleton } from '@/components/map/MapSkeleton';
-import type { PulseCamera, PulseMarker, PulseView } from './pulseMapView';
+import { MAPBOX_STANDARD, MAP_STYLE_TIMEOUT_MS } from './constants';
+import type { PulseCamera, PulseMarker, PulseView } from './mapView';
 
-const STYLE_URL = 'mapbox://styles/mapbox/standard';
 /** The tilt it opens with and keeps across the map's own moves (people can flatten it). */
 const OPEN_PITCH = 50;
-const STYLE_TIMEOUT_MS = 8000;
 /** The opening fly-in: from higher and flatter to the tilted view. */
 const FLY_IN_MS = 1200;
 const FLY_IN_ZOOM_OUT = 1.5;
@@ -33,7 +31,7 @@ const fromGlZoom = (zoom: number) => zoom + 1;
 
 const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
 
-interface PulseGlMapProps {
+export interface StandardMapProps {
   token: string;
   /** Where it opens: [lat, lng], and the zoom (Leaflet scale). */
   center: [number, number];
@@ -41,17 +39,18 @@ interface PulseGlMapProps {
   markers: PulseMarker[];
   onMarkerClick: (id: string) => void;
   /** The post whose card is open, if any. */
-  popupPin: MapMarker | null;
-  renderPopup: (pin: MapMarker) => ReactNode;
-  onPopupClosed: (pinId: string) => void;
+  popupPin?: MapMarker | null;
+  renderPopup?: (pin: MapMarker) => ReactNode;
+  onPopupClosed?: (pinId: string) => void;
   /** An opened card is panned to sit at least this far below the map's top (the header). */
-  popupTopPadding: number;
+  popupTopPadding?: number;
+  onMapClick?: (latitude: number, longitude: number) => void;
   onView: (view: PulseView) => void;
   /** A person's one-finger (or mouse) pan: the content moved by (dx, dy) screen px. */
   onUserPanStart?: () => void;
   onUserPan?: (dx: number, dy: number) => void;
   cameraRef: RefObject<PulseCamera | null>;
-  /** The 3D map can't be shown here: FeedMap switches to the flat map. */
+  /** The caller switches to the high-resolution flat map if 3D is unavailable. */
   onUnavailable: (reason: string) => void;
   reducedMotion: boolean;
 }
@@ -92,7 +91,7 @@ function panIntoView(map: mapboxgl.Map, card: HTMLElement, topPadding: number) {
   if (dx !== 0 || dy !== 0) map.panBy([dx, dy], { duration: 300 });
 }
 
-export default function PulseGlMap(props: PulseGlMapProps) {
+export default function StandardMap(props: StandardMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const latest = useRef(props);
@@ -122,8 +121,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       instance = new mapboxgl.Map({
         container,
         accessToken: token,
-        style: STYLE_URL,
-        config: { basemap: { lightPreset: 'day', showPointOfInterestLabels: false } },
+        ...MAPBOX_STANDARD,
         center: [center[1], center[0]],
         // Reduce Motion opens on the tilted view; otherwise the fly-in starts higher and flatter.
         zoom: toGlZoom(zoom) - (reducedMotion ? 0 : FLY_IN_ZOOM_OUT),
@@ -143,7 +141,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
     let settled = false;
     const timeout = window.setTimeout(() => {
       if (!styleLoaded) giveUp('timeout');
-    }, STYLE_TIMEOUT_MS);
+    }, MAP_STYLE_TIMEOUT_MS);
     // Before the style is in, an error is the style's (token, network): show the flat map instead.
     instance.on('error', () => {
       if (!styleLoaded) giveUp('style');
@@ -192,11 +190,16 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       panAnchor = null;
     });
 
+    instance.on('click', e => latest.current.onMapClick?.(e.lngLat.lat, e.lngLat.lng));
+    const sizeObserver = new ResizeObserver(() => instance.resize());
+    sizeObserver.observe(container);
+
     instance.once('style.load', () => {
       styleLoaded = true;
       window.clearTimeout(timeout);
       if (gaveUp) return;
       cameraRef.current = {
+        getCenter: () => instance.getCenter(),
         flyTo: (lat, lng, targetZoom, durationSec, onEnd) => {
           instance.flyTo({ center: [lng, lat], zoom: toGlZoom(targetZoom), duration: durationSec * 1000 });
           if (!onEnd) return;
@@ -253,6 +256,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       window.clearTimeout(timeout);
       window.clearTimeout(reportTimer);
       if (cameraRef.current) cameraRef.current = null;
+      sizeObserver.disconnect();
       markerEntries.clear();
       setMap(null);
       instance.remove();
@@ -269,7 +273,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       let entry = entries.current.get(m.id);
       if (!entry) {
         const el = document.createElement('div');
-        el.className = 'pulse-gl-marker';
+        el.className = 'pulse-gl-marker cursor-pointer focus-visible:outline-2 focus-visible:outline-primary-600';
         // Set before the Marker exists, which would otherwise name it "Map marker" (an img).
         el.setAttribute('role', 'button');
         el.setAttribute('aria-label', m.label);
@@ -344,7 +348,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       .addTo(map);
     let removing = false;
     popup.on('close', () => {
-      if (!removing) latest.current.onPopupClosed(pin.id);
+      if (!removing) latest.current.onPopupClosed?.(pin.id);
     });
     setPopupNode(node);
     return () => {
@@ -357,7 +361,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
   // Once the card has rendered into the popup, bring it clear of the header.
   useEffect(() => {
     if (!map || !popupNode) return undefined;
-    const frame = requestAnimationFrame(() => panIntoView(map, popupNode, latest.current.popupTopPadding));
+    const frame = requestAnimationFrame(() => panIntoView(map, popupNode, latest.current.popupTopPadding ?? 0));
     return () => cancelAnimationFrame(frame);
   }, [map, popupNode]);
 
@@ -370,7 +374,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
           <MapSkeleton />
         </div>
       )}
-      {popupNode && props.popupPin && createPortal(props.renderPopup(props.popupPin), popupNode)}
+      {popupNode && props.popupPin && createPortal(props.renderPopup?.(props.popupPin), popupNode)}
     </div>
   );
 }

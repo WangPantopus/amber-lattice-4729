@@ -10,6 +10,7 @@
 
 // swiftlint:disable file_length
 
+import GameController
 import PhotosUI
 import QuickLook
 import SwiftUI
@@ -773,8 +774,7 @@ public struct ChatConversationView: View {
                 },
                 onSendCard: sendCardAction
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .visible)
         }
         // A one-to-one chat with a person: may a Christmas card go to them (TABCARD)?
         .task(id: "\(cardRecipientId ?? "")|\(HolidayCardDoors.shared.isOpen)") {
@@ -1614,7 +1614,7 @@ extension ChatConversationView {
     private var aiPrivacyRow: some View {
         HStack(spacing: 5) {
             Icon(.shieldCheck, size: 11, strokeWidth: 2.5, color: Theme.Color.success)
-            Text("Private to your account · never shared with neighbors")
+            Text("Private to your account · never shown to other people")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)
@@ -2821,7 +2821,7 @@ private struct ChatConversationHeader: View {
         case let .person(_, _, locality, verified, online):
             // "Verified neighbor" only when the person's verified badge
             // says so; otherwise the locality alone, or no subtitle.
-            let status: String? = online ? "Active now" : (verified ? "Verified neighbor" : nil)
+            let status: String? = online ? "Active now" : (verified ? "Verified home" : nil)
             let parts = [status, locality].compactMap { $0 }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
         case let .group(_, memberCount):
@@ -4811,9 +4811,12 @@ private struct ChatComposer<AttachActions: View>: View {
                     .foregroundStyle(Theme.Color.appText)
                     .lineLimit(1...4)
                     .submitLabel(.send)
-                    .onSubmit { [weak returnKey] in returnKey?.send() }
+                    .onSubmit { [weak returnKey] in returnKey?.submit() }
                     .onChange(of: canSend, initial: true) { _, isEnabled in
                         returnKey.send = isEnabled ? onSend : {}
+                    }
+                    .onAppear { [composerFocused] in
+                        returnKey.keepTyping = { composerFocused.wrappedValue = true }
                     }
                     // A multi-line field exposes no name of its own; VoiceOver
                     // read just "text field".
@@ -4928,6 +4931,18 @@ private struct ChatComposer<AttachActions: View>: View {
 @MainActor
 private final class ChatComposerReturnKey {
     var send: @MainActor () -> Void = {}
+    /// Puts the cursor back in the message box.
+    var keepTyping: @MainActor () -> Void = {}
+
+    /// Return sends. The field then lets the cursor go; on an iPad, or with a hardware keyboard attached, the box takes
+    /// it back right after so the next message types at once, as in Messages. An iPhone's on-screen keyboard closes
+    /// after Send, as it always has.
+    func submit() {
+        send()
+        guard UIDevice.current.userInterfaceIdiom == .pad || GCKeyboard.coalesced != nil else { return }
+        // After the field has let the cursor go (and focus reads false), or setting it again changes nothing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.keepTyping() }
+    }
 }
 
 private struct ChatComposerContextBanner: View {

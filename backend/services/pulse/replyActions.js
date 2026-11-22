@@ -38,8 +38,8 @@ async function act(postId, replyId, viewerId, action, helpful) {
     const type = action === 'thanks' ? 'pulse_thanks' : 'pulse_helpful';
     if (data.to_user_id !== viewerId) await notices.notify({
       userId: data.to_user_id, type,
-      title: action === 'thanks' ? 'A neighbor thanked you' : 'Your reply helped',
-      body: action === 'thanks' ? 'A neighbor sent you a private thanks for your reply.' : 'The person who asked marked your reply Helpful.',
+      title: action === 'thanks' ? 'Someone thanked you' : 'Your reply helped',
+      body: action === 'thanks' ? 'Someone sent you a private thanks for your reply.' : 'The person who asked marked your reply Helpful.',
       postId, actorId: viewerId,
       metadata: { comment_id: replyId, ...(data.helpful_at ? { helpful_at: data.helpful_at } : {}) },
       key: `${type}:${data.thanks_id || `${replyId}:${data.helpful_at}`}`,

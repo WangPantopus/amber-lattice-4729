@@ -199,6 +199,8 @@ object SkyStreet {
 internal class HomeLight(
     private val scene: SkyScene,
     val moment: SkyMoment,
+    /** The ground is drawn larger (the house on Today): the home's glow is drawn whole, not cut to its box. */
+    val wholeGlow: Boolean = false,
 ) {
     val lit = moment.phase == SkyPalette.Phase.DUSK || moment.phase == SkyPalette.Phase.NIGHT
 
@@ -217,15 +219,30 @@ private fun DrawScope.porchGlow(
     width: Float,
 ) {
     if (!light.lit) return
-    drawRect(
+    homeGlow(light, origin, width)
+}
+
+/**
+ * The warm light around a lit home, [halfWidth] to each side of its door. The scene cuts it to a box; where the ground
+ * is drawn larger that box's lower edge shows as a line on the grass, so there the light is drawn whole.
+ */
+internal fun DrawScope.homeGlow(
+    light: HomeLight,
+    origin: Offset,
+    halfWidth: Float,
+) {
+    val middle = Offset(origin.x, origin.y - 12)
+    val glow =
         Brush.radialGradient(
             listOf(SkyPalette.windowGlow.copy(alpha = 0.28f), SkyPalette.windowGlow.copy(alpha = 0f)),
-            center = Offset(origin.x, origin.y - 12),
+            center = middle,
             radius = 40f,
-        ),
-        topLeft = Offset(origin.x - width, origin.y - 60),
-        size = Size(width * 2, 70f),
-    )
+        )
+    if (light.wholeGlow) {
+        drawCircle(glow, 40f, middle)
+    } else {
+        drawRect(glow, topLeft = Offset(origin.x - halfWidth, origin.y - 60), size = Size(halfWidth * 2, 70f))
+    }
 }
 
 /** One house of the row: walls and a gable. */

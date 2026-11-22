@@ -30,7 +30,8 @@ import JustInstalledHint from '@/components/public-share/JustInstalledHint';
 import StoreLink from '@/components/public-share/StoreLink';
 import { Icon, KindGlyph, OnlineGlyph, kindColors } from '@/components/plans/planKind';
 import GuestAnswer from './GuestAnswer';
-import PayToJoin from './PayToJoin';
+import OpenPlanOnWeb from '@/components/plans/OpenPlanOnWeb';
+import PayToJoin, { type BookingPlan } from './PayToJoin';
 import ClaimSpot, { SpotUnread, type SpotView } from './ClaimSpot';
 
 // A Nearby Plans share link (design board W1). Signed out, area only: the exact
@@ -55,6 +56,7 @@ type Kind = PublicPlan['kind'];
  * business plan what they paid (B3).
  */
 type PlanViewer = {
+  booking: BookingPlan;
   role: 'host' | 'guest' | 'none';
   requestStatus: string | null;
   requestsWaiting: number;
@@ -71,10 +73,8 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
   const access = (await cookies()).get('pantopus_access')?.value;
   if (!access) return null;
   try {
-    // `biz=1`: this page can draw a business's plan, so the server may answer for one (it answers 404 for one
-    // without it); `more=1`, the same for an online plan and the newer kinds. For other plans the answer is the
-    // same either way.
-    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1&more=1`, {
+    // Match the installed apps' viewer capabilities, including private plans that are still picking a date.
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/api/plans/${encodeURIComponent(id)}?biz=1&more=1&guests=1&extras=1`, {
       cache: 'no-store',
       // This lookup only personalizes copy. A slow session/API must not hold
       // the public preview open indefinitely, including while reading its body.
@@ -87,6 +87,13 @@ async function fetchPlanViewer(id: string): Promise<PlanViewer | null> {
     if (role !== 'host' && role !== 'guest' && role !== 'none') return null;
     return {
       role,
+      booking: {
+        kind: plan.kind,
+        kids_welcome: plan.kids_welcome,
+        is_full: plan.is_full,
+        viewer: { request_status: plan.viewer.request_status },
+        my_request: plan.my_request ? { party_size: plan.my_request.party_size, kids_count: plan.my_request.kids_count } : null,
+      },
       requestStatus: typeof plan.viewer.request_status === 'string' ? plan.viewer.request_status : null,
       requestsWaiting: Number(plan.requests_count) || 0,
       paid: plan.paid && typeof plan.paid.text === 'string' ? plan.paid : null,
@@ -782,6 +789,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
         <div className="mx-auto w-full max-w-md pb-10">
           <TopBar id={id} fallbackUrl={fallbackUrl} copyPath={copyPath} query={appQuery} universal={universal} />
           <div className="px-4 pt-[18px]">
+            <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />
             <GuestAnswer
               planId={id}
               plan={plan}
@@ -827,6 +835,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
                 </p>
               </div>
             </div>
+            {mine && <OpenPlanOnWeb id={id} />}
             <OpenInAppButton
               appUrl={buildPlanAppUrl(id)}
               linkHref={linkPage ? null : buildPlanShareUrl(id)}
@@ -876,6 +885,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
                 </p>
               </div>
             </div>
+            <OpenPlanOnWeb id={id} token={token && invite ? token : null} />
             <OpenInAppButton
               appUrl={appUrl}
               linkHref={linkHref}
@@ -1003,6 +1013,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
           {paysHere && plan.price?.text ? (
             <PayToJoin
               planId={id}
+              plan={viewer?.booking}
               signedIn={Boolean(viewer)}
               joinNow={joinNow}
               priceText={plan.price.text}
@@ -1046,6 +1057,7 @@ export default async function PublicPlanView({ params, searchParams, at = 'plans
             </div>
           )}
 
+          <OpenPlanOnWeb id={id} token={token && invite ? token : null} open={openQuery ? open : null} />
           <OpenInAppButton
             appUrl={appUrl}
             linkHref={linkHref}

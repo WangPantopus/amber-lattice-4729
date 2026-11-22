@@ -499,7 +499,7 @@ private struct SimilarOffersRail: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
                     .accessibilityAddTraits(.isHeader)
-                Text("From other verified neighbors and businesses")
+                Text("From other verified homes and businesses")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.Color.appTextSecondary)
             }

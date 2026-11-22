@@ -103,7 +103,7 @@ export default function NeighborMessageReceived({ messageId }: { messageId: stri
   if (!mounted || !authed || messageQuery.isPending) {
     return (
       <Shell>
-        <DetailHeader title="Message" address="Inbox · verified neighbors" backHref="/app/place" />
+        <DetailHeader title="Message" address="Inbox · verified homes" backHref="/app/place" />
         <ReceivedSkeleton />
       </Shell>
     );

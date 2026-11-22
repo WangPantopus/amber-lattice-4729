@@ -66,7 +66,7 @@ struct BriefingNoticeView: View {
                             Text("Times follow your briefing location’s time zone. We only notify you when there’s something useful.")
                             Text(
                                 "Change the times or turn either briefing off in Settings → Notifications. " +
-                                    "Your phone also needs to allow Pantopus notifications."
+                                    "Your \(DeviceWords.plainName) also needs to allow Pantopus notifications."
                             )
                             .foregroundStyle(Theme.Color.appTextSecondary)
                             if let error { Text(error).foregroundStyle(Theme.Color.error) }
@@ -88,7 +88,7 @@ struct BriefingNoticeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .foregroundStyle(Theme.Color.appText)
-                    .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+                    .presentationDetentsFittingContentOnIPad(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
                     .interactiveDismissDisabled(saving || needsPermission)
                     .accessibilityIdentifier("briefingDefaultsNotice")
                     .task { _ = await recordNotice() }
@@ -123,15 +123,18 @@ struct BriefingNoticeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .foregroundStyle(Theme.Color.appText)
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDetentsFittingContentOnIPad(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         // One tap answers it; closing it without one would only bring it back.
         .interactiveDismissDisabled()
         .accessibilityIdentifier("suggestionsNotice")
     }
 
+    /// The times in the phone's own clock style ("On at 7:30 AM"), as Settings → Notifications shows them.
     private func summary(_ prefs: NotificationPreferencesDTO) -> String {
-        let morning = prefs.dailyBriefingEnabled ? "On at \(prefs.dailyBriefingTimeLocal)" : "Off"
-        let evening = prefs.eveningBriefingEnabled ? "On at \(prefs.eveningBriefingTimeLocal)" : "Off"
+        let morningTime = NotificationSettingsViewModel.clockLabel(prefs.dailyBriefingTimeLocal)
+        let eveningTime = NotificationSettingsViewModel.clockLabel(prefs.eveningBriefingTimeLocal)
+        let morning = prefs.dailyBriefingEnabled ? "On at \(morningTime)" : "Off"
+        let evening = prefs.eveningBriefingEnabled ? "On at \(eveningTime)" : "Off"
         return "Morning: \(morning)\nEvening: \(evening)"
     }
 

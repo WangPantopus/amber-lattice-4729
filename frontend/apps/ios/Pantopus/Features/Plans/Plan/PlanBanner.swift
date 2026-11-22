@@ -16,8 +16,20 @@ struct PlanBanner: View {
     let icon: PantopusIcon
     let title: String
     let message: String?
+    /// "See what to bring" under a hairline, on "You're in" (JOURNEYS 2).
+    var bring: Int?
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            words
+            if let bring { PlanBringPointerRow(open: bring) }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, Spacing.s3)
+        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(background))
+    }
+
+    private var words: some View {
         HStack(spacing: Spacing.s3) {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(tone == .success ? Theme.Color.successSolid : Theme.Color.appSurface)
@@ -39,9 +51,6 @@ struct PlanBanner: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Spacing.s3)
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous).fill(background))
         .accessibilityElement(children: .combine)
     }
 

@@ -376,7 +376,7 @@ public struct GigCreator: Decodable, Sendable, Hashable {
         if let displayName, !displayName.isEmpty { return displayName }
         if let name, !name.isEmpty { return name }
         // A made-up username (user_…) is never shown as the name or the handle.
-        return MadeUpUsername.chosen(handle) ?? MadeUpUsername.chosen(username) ?? "Neighbor"
+        return MadeUpUsername.chosen(handle) ?? MadeUpUsername.chosen(username) ?? "Someone nearby"
     }
 
     public var resolvedHandle: String? {

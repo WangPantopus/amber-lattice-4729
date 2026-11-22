@@ -19,7 +19,7 @@ struct NeighborMessageReceivedView: View {
         VStack(spacing: 0) {
             PlaceDetailHeader(
                 title: "Message",
-                address: "Inbox · verified neighbors",
+                address: "Inbox · verified homes",
                 onBack: onBack
             )
             content
@@ -73,7 +73,7 @@ struct NeighborMessageReceivedView: View {
 
                 HStack(alignment: .top, spacing: 8) {
                     Icon(.shield, size: 14, strokeWidth: 2, color: Theme.Color.appTextMuted)
-                    Text("You're in control. This neighbor doesn't know who you are, and you can stop messages from them at any time.")
+                    Text("You're in control. This sender doesn't know who you are, and you can stop messages from them at any time.")
                         .font(.system(size: 12.5))
                         .lineSpacing(2)
                         .foregroundStyle(Theme.Color.appTextMuted)
@@ -121,7 +121,7 @@ private struct ReceivedCard: View {
                 }
                 .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("From a verified neighbor nearby")
+                    Text("From a verified home nearby")
                         .font(.system(size: 16, weight: .bold))
                         .kerning(-0.19)
                         .foregroundStyle(Theme.Color.appText)
@@ -255,7 +255,7 @@ private struct RepliesOffNote: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Icon(.ban, size: 14, strokeWidth: 2, color: Theme.Color.appTextMuted)
-            Text("Replies are off for this neighbor.")
+            Text("Replies are off for this sender.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.Color.appTextMuted)
         }
@@ -299,9 +299,9 @@ private struct ManageCard: View {
             Row(
                 icon: .ban,
                 tone: .neutral,
-                title: "Block this neighbor",
+                title: "Block this sender",
                 sub: "Stop messages from this sender. They won't be notified.",
-                doneTitle: "Neighbor blocked",
+                doneTitle: "Sender blocked",
                 done: flags.blocked,
                 action: onBlock
             ),

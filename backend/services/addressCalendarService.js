@@ -13,8 +13,10 @@
 //
 // Honesty rules the card relies on:
 //   • `confidence` rides through untouched — an 'unverified' seed says so;
-//   • `needs_pickup_day` is true while garbage/recycling still come from a
-//     city default rather than the household's own pickup day.
+//   • a general garbage/recycling day shows only from a named source: an
+//     official row, or a county's public collection map at the home's point
+//     (utils/pickupDayAreas.js); a hand-set city-wide guess never does;
+//   • `needs_pickup_day` is true until the household sets its own pickup day.
 // ============================================================
 
 const crypto = require('crypto');
@@ -23,6 +25,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const logger = require('../utils/logger');
 const { GeoCache } = require('../utils/geoCache');
 const { resolveHomeTimezone } = require('../utils/timezone');
+const { pickupDayAt } = require('../utils/pickupDayAreas');
 
 const WINDOW_DAYS = 14;
 const SCOPE_RANK = { home: 0, city: 1, county: 2, state: 3 };
@@ -118,6 +121,39 @@ const COUNTY_WAIT_MS = 3000;
 // calendar waits only for the household's own rules.
 const COUNTY_RULES_MEMO_MS = 10 * 60 * 1000;
 const countyRulesMemo = new GeoCache(500);
+const WEEKDAY_WORDS = { MO: 'Monday', TU: 'Tuesday', WE: 'Wednesday', TH: 'Thursday', FR: 'Friday', SA: 'Saturday', SU: 'Sunday' };
+
+// The garbage day a county's public collection map gives this home's point (utils/pickupDayAreas.js, keyed by county
+// FIPS), as a general weekly rule for the address: unconfirmed, naming the county's map, never the household's own.
+// The household confirms or changes it in the pickup editor; recycling stays theirs to set (maps don't say the week).
+async function publicMapPickupRule(home, state, fips) {
+  if (home.map_center_lat == null || home.map_center_lng == null) return null;
+  const found = await pickupDayAt(fips, Number(home.map_center_lat), Number(home.map_center_lng));
+  if (!found) return null;
+  const day = WEEKDAY_WORDS[found.weekday];
+  const where = found.how === 'inside' ? 'this address' : 'the addresses beside this one';
+  const key = `pickup-map:${fips}:${found.weekday}`;
+  const hex = crypto.createHash('md5').update(key).digest('hex');
+  return {
+    // Stable per county and day, shaped like a rule id (the apps key calendar rows by it).
+    id: `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`,
+    scope_type: 'county',
+    scope_key: `${state}:${fips}`,
+    kind: 'garbage',
+    title: 'Garbage day',
+    detail: `${found.source.map_words} shows ${day} pickup for ${where}. Confirm your day and Pantopus reminds you the night before.`,
+    rrule: `FREQ=WEEKLY;BYDAY=${found.weekday}`,
+    dtstart: '2026-01-01',
+    until: null,
+    all_day: true,
+    lead_days: 1,
+    source: found.source.source,
+    source_url: found.source.source_url,
+    confidence: 'unverified',
+    params: {},
+    public_map: true,
+  };
+}
 
 async function loadCountyRules(home) {
   const state = String((home && home.state) || '').trim().toUpperCase();
@@ -134,17 +170,24 @@ async function loadCountyRules(home) {
     ]);
     if (!fips) return [];
     const scopeKey = `${state}:${fips}`;
-    const remembered = countyRulesMemo.get(scopeKey);
-    if (remembered) return remembered;
-    const { data, error } = await supabaseAdmin
-      .from('AddressCalendarRule')
-      .select(RULE_COLUMNS)
-      .eq('scope_type', 'county')
-      .eq('scope_key', scopeKey);
-    if (error) throw new Error(error.message);
-    const rows = data || [];
-    if (process.env.NODE_ENV !== 'test') countyRulesMemo.set(scopeKey, rows, COUNTY_RULES_MEMO_MS);
-    return rows;
+    // The map's day depends on the point, so it is never part of the county's remembered rows.
+    const mapRule = publicMapPickupRule(home, state, fips).catch((err) => {
+      logger.warn('addressCalendar: public pickup map unavailable', { homeId: home.id, error: err.message });
+      return null;
+    });
+    let rows = countyRulesMemo.get(scopeKey);
+    if (!rows) {
+      const { data, error } = await supabaseAdmin
+        .from('AddressCalendarRule')
+        .select(RULE_COLUMNS)
+        .eq('scope_type', 'county')
+        .eq('scope_key', scopeKey);
+      if (error) throw new Error(error.message);
+      rows = data || [];
+      if (process.env.NODE_ENV !== 'test') countyRulesMemo.set(scopeKey, rows, COUNTY_RULES_MEMO_MS);
+    }
+    const fromMap = await mapRule;
+    return fromMap ? [...rows, fromMap] : rows;
   } catch (err) {
     logger.warn('addressCalendar: county rules unavailable', { homeId: home.id, error: err.message });
     return [];
@@ -274,8 +317,12 @@ async function composeForHome(home, { now = new Date(), windowDays = WINDOW_DAYS
   const hasHouseholdPickup = loaded.some((r) => r.scope_type === 'home' && PICKUP_KINDS.has(r.kind));
   // Once the household sets its schedule, unknown pickup kinds must not
   // silently fall back to a guessed city week (including briefing signals).
-  const rules = applyPrecedence(loaded.filter((r) =>
-    !hasHouseholdPickup || !PICKUP_KINDS.has(r.kind) || r.scope_type === 'home'));
+  // Before that, a general pickup day is shown only when a named source gives
+  // it: an official row, or a county's public collection map for this point.
+  // A hand-set city-wide day (Camas's Tuesday) is never a home's day: no city
+  // collects every street on one day, so the household is asked instead.
+  const rules = applyPrecedence(loaded.filter((r) => !PICKUP_KINDS.has(r.kind) || r.scope_type === 'home'
+    || (!hasHouseholdPickup && (r.confidence === 'official' || r.public_map === true))));
   const holidays = rules.filter((r) => r.kind === 'pickup_holiday');
 
   const upcoming = [];
@@ -340,6 +387,13 @@ async function composeForHome(home, { now = new Date(), windowDays = WINDOW_DAYS
     // dates are set instead of showing nothing (or an invented date).
     tax_note: rules.some((r) => r.kind === 'property_tax') ? null : taxDateGuidance(home.state),
   };
+}
+
+/** Whose general (not the household's) date an event is, in words for the assistant and the glance, naming its source. */
+function generalPickupWords(entry) {
+  if (entry.scope === 'county') return entry.source ? `the county's collection schedule (${entry.source})` : "the county's collection schedule";
+  if (entry.scope === 'state') return "the state's schedule";
+  return entry.confidence === 'official' ? "the city's published schedule" : "the city's schedule";
 }
 
 // Compose the caller's calendar for a home id. Used by the briefing
@@ -547,6 +601,7 @@ module.exports = {
   setPickupDay,
   setPickupSchedule,
   clearPickupDay,
+  generalPickupWords,
   // Exported for unit tests.
   applyPrecedence,
   expandRule,

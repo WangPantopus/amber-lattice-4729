@@ -62,6 +62,11 @@ data class MomentRingDto(
     val flying: Boolean = false,
     /** The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail. */
     val floating: Boolean = false,
+    /**
+     * Until when the ring is live (API v4.1): the latest `live_until` among its Moments taken here, when its newest
+     * Moment is an exact pin away from home; null otherwise and from an older server. The "Live now" chip and the dot.
+     */
+    @Json(name = "live_until") val liveUntil: String? = null,
 )
 
 /**
@@ -145,6 +150,28 @@ data class MomentDto(
     val earlier: Boolean = false,
     /** The Sky, for its author only: when it shares (or shared). */
     @Json(name = "share_at") val shareAt: String? = null,
+    /**
+     * The Live mark (API v4.1): the app's own camera took it at this spot. Never set with [takenAt], at home, on an area
+     * or with no location; false from an older server.
+     */
+    @Json(name = "taken_here") val takenHere: Boolean = false,
+    /** Until when it reads "Live from here", then "Taken here"; null for one shared later, which never reads Live. */
+    @Json(name = "live_until") val liveUntil: String? = null,
+    /** The weather when it was posted ("31°F · Snow"); only on a Moment taken here whose author showed it. */
+    val weather: MomentWeatherDto? = null,
+)
+
+/**
+ * A Moment's weather stamp (API v4.1, `momentWeather.weatherAt`): whole degrees Fahrenheit, one of nine kinds for the
+ * icon (`clear`, `partly_cloudy`, `cloudy`, `fog`, `rain`, `snow`, `sleet`, `thunderstorm`, `wind`) and the words to
+ * show ("Snow", "Wind 38 mph").
+ */
+@JsonClass(generateAdapter = true)
+data class MomentWeatherDto(
+    /** Whole degrees as the server sends them; a Double so "31.0" or a stray fraction never fails the Moment. */
+    @Json(name = "temp_f") val tempF: Double? = null,
+    val kind: String? = null,
+    val label: String? = null,
 )
 
 /**
@@ -229,6 +256,8 @@ data class MomentEnvelope(
 data class MomentPointBody(
     val latitude: Double? = null,
     val longitude: Double? = null,
+    /** API v4.1: ask for the weather a Moment taken here would keep; only at the author's own fix, never a library item's. */
+    val weather: Boolean? = null,
 )
 
 /** What the camera's chip and the Post sheet say about a spot before posting. */
@@ -262,6 +291,11 @@ data class MomentPlacePreviewDto(
     @Json(name = "can_pin") val canPin: Boolean = false,
     /** The Sky: the "Share later" times on offer now ("In 1 hour", "In 3 hours", "Tonight at 8" before 7 pm). */
     @Json(name = "share_later") val shareLater: List<MomentShareLaterDto>? = null,
+    /**
+     * API v4.1, only when asked with `weather: true`: the stamp a Moment taken here would keep now, or null (at home, no
+     * fresh reading within 2 seconds): then "Show the weather" isn't offered.
+     */
+    val weather: MomentWeatherDto? = null,
 )
 
 /** The Sky: the area a point floats over (Moments API v4.0). */
@@ -332,6 +366,10 @@ data class CreateMomentBody(
     val pin: String? = null,
     /** The Sky (v4.0): hold the Moment until then, `1h`, `3h` or `tonight`; left out to post now. */
     @Json(name = "share_later") val shareLater: String? = null,
+    /** API v4.1: the app's own camera took this photo or video just now; the server keeps the Live mark only where it may. */
+    @Json(name = "taken_here") val takenHere: Boolean? = null,
+    /** API v4.1: "Show the weather" was on; the server reads the weather itself (a phone's reading is never sent). */
+    @Json(name = "show_weather") val showWeather: Boolean? = null,
 )
 
 /**

@@ -21,7 +21,11 @@ export interface GuidanceScreenFacts {
   savedPlaceId?: string;
   savedAt?: string | null;
   /** The home Place shows (not a claim still in review). */
-  home?: { id: string; tier: string; verified: boolean; setUpAt: string | null; privateSetup: boolean };
+  home?: {
+    id: string; tier: string; verified: boolean; setUpAt: string | null; privateSetup: boolean;
+    /** The home has no pickup schedule of its own yet (the calendar's `needs_pickup_day`). */
+    needsPickupDay?: boolean;
+  };
   /** A saved address's view knows whether a home is set up too. */
   hasHome?: boolean;
   /** Mail: this person has sent a letter or a card. */
@@ -78,6 +82,7 @@ export function currentScreen(): GuidanceScreenReport | null {
 export function screenForPath(pathname: string): GuidanceScreenName | null {
   if (pathname === '/app/place') return 'place';
   if (pathname === '/app/today' || pathname === '/app/hub/today') return 'today';
+  if (pathname === '/app/moments') return 'moments';
   if (pathname === '/app/feed') return 'pulse';
   if (/^\/app\/mailbox\/(?:personal|home|business|earn|counter|vault)$/.test(pathname)) return 'mail';
   if (pathname === '/app/chat') return 'messages';

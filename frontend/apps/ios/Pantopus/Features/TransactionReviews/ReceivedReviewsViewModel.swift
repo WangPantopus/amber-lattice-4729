@@ -160,7 +160,7 @@ public final class ReceivedReviewsViewModel {
             return first
         }
         if let username = MadeUpUsername.chosen(reviewer?.username) { return username }
-        return "Neighbor"
+        return "Someone nearby"
     }
 
     static func initials(from name: String) -> String {

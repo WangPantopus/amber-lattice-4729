@@ -30,6 +30,8 @@ import app.pantopus.android.data.api.models.hub.NotificationPreferencesPatch
 import app.pantopus.android.data.api.net.NetworkResult
 import app.pantopus.android.data.auth.AuthenticatedDispatchGuard
 import app.pantopus.android.data.hub.NotificationPreferencesRepository
+import app.pantopus.android.ui.components.ClockTime
+import app.pantopus.android.ui.components.phoneUses24HourClock
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimSessionScope
 import app.pantopus.android.ui.screens.homes.claim_review.HomeClaimSessionScopeFactory
@@ -72,8 +74,9 @@ fun BriefingNotice(
         viewModel.markShown()
         viewModel.record()
     }
-    val morning = if (prefs.dailyBriefingEnabled) "On at ${prefs.dailyBriefingTimeLocal}" else "Off"
-    val evening = if (prefs.eveningBriefingEnabled) "On at ${prefs.eveningBriefingTimeLocal}" else "Off"
+    val is24Hour = phoneUses24HourClock()
+    val morning = if (prefs.dailyBriefingEnabled) "On at ${ClockTime.label(prefs.dailyBriefingTimeLocal, is24Hour)}" else "Off"
+    val evening = if (prefs.eveningBriefingEnabled) "On at ${ClockTime.label(prefs.eveningBriefingTimeLocal, is24Hour)}" else "Off"
     AlertDialog(
         onDismissRequest = { viewModel.finish() },
         title = { Text("Your daily briefings") },

@@ -27,7 +27,7 @@ class NeighborMessageReceivedSnapshotTest {
     val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_6.copy(softButtons = false))
 
     private val sender =
-        NeighborMessageSender(label = "A verified neighbor nearby", blockLabel = "On your block", verified = true)
+        NeighborMessageSender(label = "A verified home nearby", blockLabel = "On your block", verified = true)
 
     private val replies =
         listOf(

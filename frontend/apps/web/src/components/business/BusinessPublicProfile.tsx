@@ -2,6 +2,9 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { detailPath, planTime } from '@/components/plans/PlansWorkspace';
 
 /**
  * BusinessPublicProfile — full public-facing business profile page.
@@ -57,6 +60,13 @@ export default function BusinessPublicProfile({ username, currentUser, initialSl
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
 
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const businessPlans = useFeatureFlag('plans_business', { enabled: !!currentUser?.id });
+  const upcoming = useQuery({
+    queryKey: ['plans', 'business', business?.id],
+    queryFn: () => api.plans.forBusiness(business!.id),
+    enabled: activeTab === 'overview' && !!business?.id && !!currentUser?.id && businessPlans,
+    retry: false,
+  });
 
   // Keep each business's reviews separate. A return visit shows the last read
   // immediately while checking for replies saved by the owner in another view.
@@ -430,6 +440,12 @@ export default function BusinessPublicProfile({ username, currentUser, initialSl
             )}
 
             {/* Quick info cards below blocks */}
+            {businessPlans && !upcoming.isError && !!upcoming.data?.items.length && <section className="mt-4 rounded-xl border border-app-border bg-app-surface p-4">
+              <h2 className="font-semibold">Upcoming plans</h2>
+              {upcoming.data.items.map((plan) => <Link key={plan.id} href={detailPath(plan.id)} className="block border-t border-app-border py-3">
+                <span className="block font-medium">{plan.title}</span><span className="text-sm text-app-text-secondary">{planTime(plan)} · {plan.price?.text || 'Free'}</span>
+              </Link>)}
+            </section>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               {/* Endorsement Summary Card */}
               <div className="sm:col-span-2">
@@ -731,7 +747,7 @@ function ReviewsTab({ business, reviews }: { business: BusinessUser; reviews: Bu
       ) : (
         <div className="text-center py-8 text-app-text-muted text-sm">
           {/* Reviews come from completed jobs, not from this page (the same words as the iOS and Android pages). */}
-          No reviews yet. Be the first to hire {business?.name || 'this business'}. Your review helps the next neighbor decide.
+          No reviews yet. Be the first to hire {business?.name || 'this business'}. Your review helps the next person decide.
         </div>
       )}
     </div>

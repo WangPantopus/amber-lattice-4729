@@ -18,25 +18,6 @@ import Logging
 import SwiftUI
 import UIKit
 
-/// What is on screen now.
-enum GuidancePresentation: Equatable {
-    /// A centre card; `replay` when the person asked for it again from the tips list (not counted).
-    case centre(GuidanceCentreCard, replay: Bool)
-    case pointer(GuidancePointerCard)
-
-    var id: GuidanceCardID {
-        switch self {
-        case let .centre(card, _): card.id
-        case let .pointer(card): card.id
-        }
-    }
-
-    var isReplay: Bool {
-        if case let .centre(_, replay) = self { return replay }
-        return false
-    }
-}
-
 @Observable
 @MainActor
 final class GuidanceCenter {
@@ -52,6 +33,9 @@ final class GuidanceCenter {
     @ObservationIgnored private var isBusinessAccount = false
     /// A card other than a tab's own showed during this app open.
     @ObservationIgnored private var otherCardThisOpen = false
+    /// What the card on screen changed when it showed, put back if it steps aside for a link.
+    @ObservationIgnored private var beforeShown = BeforeShown()
+    private struct BeforeShown { var other = false, centreDay: String?, introVersion: String? }
     /// The screen last counted as a visit (a new app open counts again).
     @ObservationIgnored private var lastVisited: GuidanceScreen?
     @ObservationIgnored private var screens: [(token: UUID, entry: GuidanceScreenEntry)] = []
@@ -110,6 +94,7 @@ final class GuidanceCenter {
         dismissPresentation()
         account = newAccount
         isBusinessAccount = false
+        TodayHouseSwitch.shared.restore(account: newAccount)
         steps.reset()
         guard let newAccount else {
             record = GuidanceRecord()
@@ -131,6 +116,7 @@ final class GuidanceCenter {
                 let response: ProfileResponse = try await APIClient.shared.request(UsersEndpoints.profile())
                 guard account == self.account else { return }
                 isBusinessAccount = response.user.accountType == AccountType.business.backendValue
+                TodayHouseSwitch.shared.set(response.todayHouse, account: account)
                 record.createdAt = response.user.createdAt
                 if let guidance = response.guidance {
                     record.merge(guidance)
@@ -226,9 +212,23 @@ final class GuidanceCenter {
         if let run { steps.setAction(token, id: id, run: run) } else { steps.removeAction(token) }
     }
 
-    /// A link or notification is opening: no card for a moment, whatever screen it lands on.
+    /// A link or notification is opening: no card for a moment, whatever screen it lands on. A card already on
+    /// screen would cover what opens under it (an invitation's plan), so it steps aside, not counted as seen, and
+    /// shows again on its own screen. A replay stays.
     func noteLinkOpening() {
         linkQuietUntil = Date().addingTimeInterval(2)
+        guard let shown = presentation, !shown.isReplay else { return }
+        dismissPresentation()
+        (otherCardThisOpen, record.lastCentreDay) = (beforeShown.other, beforeShown.centreDay)
+        record.lastIntroVersion = beforeShown.introVersion
+        scheduleEvaluation()
+    }
+
+    /// Something the person just asked to see is showing for a moment (the pickup entry lit after
+    /// "See it in Today"): no card covers it for this long. Zero ends the wait.
+    func holdCards(for seconds: TimeInterval) {
+        linkQuietUntil = Date().addingTimeInterval(seconds)
+        if seconds <= 0 { scheduleEvaluation() }
     }
 
     // MARK: - Screens
@@ -363,7 +363,9 @@ final class GuidanceCenter {
 
     /// A tab's own card: the first time its tab opens.
     private func tabCard(on entry: GuidanceScreenEntry) -> GuidancePresentation? {
-        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)].compactMap(\.self)
+        // Today's own card is not shown while the house is on Today (JOURNEYS section 3).
+        let houseOn = TodayHouseSwitch.shared.isOn
+        var tabCards = [GuidanceCatalog.tabCard(for: entry.screen)].compactMap(\.self).filter { $0 != .tabToday || !houseOn }
         if entry.screen == .place, entry.variants.savedAddress { tabCards.append(.placeSaved) }
         for id in tabCards where !record.hasSeen(id) {
             if let card = card(id, on: entry, ignoringRules: false) { return card }
@@ -404,6 +406,7 @@ final class GuidanceCenter {
 
 extension GuidanceCenter {
     private func present(_ next: GuidancePresentation) {
+        beforeShown = BeforeShown(other: otherCardThisOpen, centreDay: record.lastCentreDay, introVersion: record.lastIntroVersion)
         presentation = next
         if !next.id.isTabCard { otherCardThisOpen = true }
         if case let .centre(card, _) = next {
@@ -489,11 +492,4 @@ extension GuidanceCenter {
             scheduleEvaluation()
         }
     }
-}
-
-/// A tab's first screen, as it last said.
-struct GuidanceScreenEntry {
-    let screen: GuidanceScreen
-    var ready: Bool
-    var variants: GuidanceVariants
 }

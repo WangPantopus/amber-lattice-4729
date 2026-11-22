@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.pantopus.android.data.api.models.plans.AskToJoinBody
+import app.pantopus.android.data.api.models.plans.PlanBringDto
 import app.pantopus.android.data.api.models.plans.PlanBringResponse
 import app.pantopus.android.data.api.models.plans.PlanChecksDto
 import app.pantopus.android.data.api.models.plans.PlanDto
@@ -120,6 +121,8 @@ data class PlanDetailUi(
     val bringBusy: Boolean = false,
     /** The line under the bring list ("Sam got to that one first."). */
     val bringNotice: String? = null,
+    /** The thing this person last said they'd bring on this visit ("Bread"), for the line over the list; null: none. */
+    val bringClaimed: String? = null,
     /** Business track B5: the guest's check on a plan that takes the bill here ("Pay at …", or "Paid … · Receipt"). */
     val myCheck: PlanMyCheckResponse? = null,
     /** Business track B5: the staff's totals for the guest list (C3's entry on the host page). */
@@ -356,15 +359,28 @@ class PlanDetailViewModel
         }
 
         /** "I'll bring it" (Plans for the holidays, A8); someone first: the row shows them and the line says so. */
-        fun claimBring(itemId: String) = bringAction { repository.claimBring(planId, itemId) }
+        fun claimBring(itemId: String) =
+            bringAction(claimed = { list -> list?.items?.firstOrNull { it.id == itemId && it.claim?.mine == true }?.label }) {
+                repository.claimBring(planId, itemId)
+            }
 
-        /** "Give back". */
-        fun giveBackBring(itemId: String) = bringAction { repository.giveBackBring(planId, itemId) }
+        /** "Give back": the line over the list goes too. */
+        fun giveBackBring(itemId: String) = bringAction(claimed = { null }) { repository.giveBackBring(planId, itemId) }
 
         /** "Bring something else": added and claimed by this person. */
-        fun addBring(label: String) = bringAction { repository.addBring(planId, label) }
+        fun addBring(label: String) = bringAction(claimed = { label }) { repository.addBring(planId, label) }
 
-        private fun bringAction(call: suspend () -> NetworkResult<PlanBringResponse>) {
+        /** The host saved the bring list with [label] newly theirs ("I'm bringing this"): the line over the host's list. */
+        fun hostBringSaved(label: String) = _ui.update { it.copy(bringClaimed = label.takeIf(String::isNotBlank)) }
+
+        /** The plan page left the screen: the line over the bring list doesn't come back with it. */
+        fun bringClaimShown() = _ui.update { if (it.bringClaimed == null) it else it.copy(bringClaimed = null) }
+
+        /** [claimed] names what the person is now bringing, from the list a successful call returns. */
+        private fun bringAction(
+            claimed: (PlanBringDto?) -> String?,
+            call: suspend () -> NetworkResult<PlanBringResponse>,
+        ) {
             if (_ui.value.bringBusy) return
             _ui.update { it.copy(bringBusy = true, bringNotice = null) }
             viewModelScope.launch {
@@ -376,6 +392,7 @@ class PlanDetailViewModel
                             val plan = ready?.plan?.copy(bring = result.data.bring)
                             current.copy(
                                 bringBusy = false,
+                                bringClaimed = claimed(result.data.bring)?.takeIf(String::isNotBlank),
                                 state = if (plan != null && ready != null) ready.copy(plan = plan) else current.state,
                             )
                         }

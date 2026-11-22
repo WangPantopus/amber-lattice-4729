@@ -160,6 +160,7 @@ fun MomentsMapScreen(
     val scheduled by viewModel.scheduled.collectAsStateWithLifecycle()
     val liveSpot by viewModel.liveSpot.collectAsStateWithLifecycle()
     val timeFilter by viewModel.timeFilter.collectAsStateWithLifecycle()
+    val liveOnly by viewModel.liveOnly.collectAsStateWithLifecycle()
     val toast = remember { ToastController() }
     LaunchedEffect(Unit) { viewModel.messages.collect { toast.info(it) } }
     // A note from outside the map ("This Moment has ended." after a push) is taken only by the map on screen: a map
@@ -323,6 +324,8 @@ fun MomentsMapScreen(
             state = state,
             timeFilter = timeFilter,
             onTimeFilter = viewModel::chooseTimeFilter,
+            liveOnly = liveOnly,
+            onLiveOnly = viewModel::toggleLiveOnly,
             heights = heights,
             onOpenMenu = actions.onOpenMenu,
             onBackFromSpot = {
@@ -384,7 +387,8 @@ fun MomentsMapScreen(
                 Spacer(Modifier.height(14.dp))
                 MomentsEmptyCard(
                     place = state.emptyPlace ?: state.areaLabel,
-                    filteredLine = timeFilter.emptyLine,
+                    // "Live now" says nothing is live; otherwise the time filter says what it covers.
+                    filteredLine = if (liveOnly) LIVE_NOW_EMPTY_LINE else timeFilter.emptyLine,
                     locationMissing = state.locationMissing,
                     onAdd = actions.onAdd,
                     onUseLocation = ::askLocation,
@@ -675,6 +679,8 @@ private fun MomentsTopChrome(
     state: MomentsMapUiState,
     timeFilter: MomentsTimeFilter,
     onTimeFilter: (MomentsTimeFilter) -> Unit,
+    liveOnly: Boolean,
+    onLiveOnly: () -> Unit,
     heights: MomentsHeightsActions,
     onOpenMenu: (() -> Unit)?,
     onBackFromSpot: () -> Unit,
@@ -685,15 +691,15 @@ private fun MomentsTopChrome(
 ) {
     Column(modifier = modifier) {
         MomentsTopRow(state, onOpenMenu, onBackFromSpot, onUseLocation, onUseHome, Modifier.onSizeChanged { onRowHeight(it.height) })
-        // Under the row: the time filter's chip, and while heights are on for you the "Elevation" chip and its key
+        // Under the row: the time filter's and "Live now" chips, and while heights are on for you the "Elevation" chip and its key
         // (`MomentsHeights.kt`).
         MomentsHeightsBar(
             state = state,
             timeFilter = timeFilter,
             onTimeFilter = onTimeFilter,
-            onToggle = heights.onToggle,
-            onKey = heights.onKey,
-            onCloseKey = heights.onCloseKey,
+            liveOnly = liveOnly,
+            onLiveOnly = onLiveOnly,
+            heights = heights,
             modifier = Modifier.padding(top = Spacing.s2, start = Spacing.s4, end = Spacing.s4),
         )
     }

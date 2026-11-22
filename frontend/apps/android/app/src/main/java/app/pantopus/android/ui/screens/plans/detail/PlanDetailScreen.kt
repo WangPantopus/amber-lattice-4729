@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +99,9 @@ fun PlanDetailScreen(
     onOpenGuests: (String) -> Unit = {},
     /** The bring list for the host (Plans for the holidays, A9). */
     onOpenBring: (String) -> Unit = {},
+    /** The thing the host's bring list editor just saved as theirs ("Bread"); [onHostBringShown] once the page has it. */
+    hostBringSaved: String? = null,
+    onHostBringShown: () -> Unit = {},
     /** Business track B5: the guest's check (C1, C2). */
     onOpenCheck: (String) -> Unit = {},
     /** Business track B5: the business's guest list with money (C3). */
@@ -119,6 +123,13 @@ fun PlanDetailScreen(
         ui.notice?.let {
             toast.info(it)
             viewModel.noticeShown()
+        }
+    }
+    // Back from the bring list's editor with a thing newly the host's: the green line over the host's list.
+    LaunchedEffect(hostBringSaved) {
+        hostBringSaved?.let {
+            viewModel.hostBringSaved(it)
+            onHostBringShown()
         }
     }
     // A skipped date's next one (Plans step 2) opens in its place.
@@ -216,6 +227,8 @@ private fun PlanReady(
     }
     val context = LocalContext.current
     val reduceMotion = rememberReduceMotion()
+    // "You're bringing bread. …" over the bring list goes away when the person leaves this page.
+    DisposableEffect(viewModel) { onDispose { viewModel.bringClaimShown() } }
     // The holidays' one person pays for the group: a page opened from a spot link reads its offer first (PlanSpotOffer.kt).
     val spotVm: PlanSpotViewModel = hiltViewModel(key = "planSpot-${plan.id}")
     val spot by spotVm.ui.collectAsStateWithLifecycle()
@@ -300,6 +313,7 @@ private fun PlanReady(
                     guests = ui.guests,
                     onOpenGuests = onOpenGuests,
                     onOpenBring = onOpenBring,
+                    bringClaimed = ui.bringClaimed,
                     checks = PlanChecksEntry(ui.checks, onOpenChecks),
                     onExtrasChanged = viewModel::load,
                     // The holidays' board 29: Host again, then the invite sheet on this plan's people.
@@ -331,6 +345,7 @@ private fun PlanReady(
                         PlanBringActions(
                             busy = ui.bringBusy,
                             notice = ui.bringNotice,
+                            claimed = ui.bringClaimed,
                             onClaim = viewModel::claimBring,
                             onGiveBack = viewModel::giveBackBring,
                             onAdd = viewModel::addBring,

@@ -42,6 +42,7 @@ const appearance: Appearance = {
 
 interface StripeProviderProps {
   children: ReactNode;
+  publishableKey?: string | null;
   /** Optional clientSecret for PaymentIntent or SetupIntent. */
   clientSecret?: string;
   /** Optional: override default appearance. */
@@ -59,7 +60,10 @@ export default function StripeProvider({
   children,
   clientSecret,
   customAppearance,
+  publishableKey,
 }: StripeProviderProps) {
+  const provider = useMemo(() => publishableKey && publishableKey !== STRIPE_PK
+    ? loadStripe(publishableKey) : stripePromise, [publishableKey]);
   const options = useMemo(() => {
     const opts: Record<string, any> = {
       appearance: customAppearance || appearance,
@@ -70,7 +74,7 @@ export default function StripeProvider({
     return opts;
   }, [clientSecret, customAppearance]);
 
-  if (!stripePromise) {
+  if (!provider) {
     // No Stripe key configured — show setup message instead of crashing
     return (
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
@@ -83,7 +87,7 @@ export default function StripeProvider({
   }
 
   return (
-    <Elements stripe={stripePromise} options={options}>
+    <Elements stripe={provider} options={options}>
       {children}
     </Elements>
   );

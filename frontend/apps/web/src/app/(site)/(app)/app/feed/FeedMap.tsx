@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import dynamic from 'next/dynamic';
 import { Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import * as api from '@pantopus/api';
@@ -15,34 +14,16 @@ import type { LucideIcon } from 'lucide-react';
 import { getPostTypeConfig, POST_TYPE_ICONS_LUCIDE, postReactionCount, type PostTypeConfig } from '@pantopus/ui-utils';
 import { postReactionIcon } from '@/components/feed/PostCard';
 import type { FeedSurface, MapMarker, PostType } from '@pantopus/api';
-import { BaseMap, MapSkeleton, useCluster, useAnimatedPins, useMapBounds, pinAnimClass, clusterAnimClass, ZoomGateOverlay, NearestActivityPrompt, RETINA_TILE_URL } from '@/components/map';
+import { BaseMap, useCluster, useAnimatedPins, useMapBounds, pinAnimClass, clusterAnimClass, ZoomGateOverlay, NearestActivityPrompt, RETINA_TILE_URL } from '@/components/map';
 import type { Bounds } from '@/components/map';
 import type { ClusterPoint } from '@/components/map/useCluster';
 import type { NearestActivityCenter } from '@/components/map';
 import { useReducedMotion } from '@/components/scheduling/polish/a11y';
 import { chosenUsername } from '@pantopus/utils';
+import { StandardGlMap, initialMapRenderer, MAP_PUBLIC_TOKEN } from '@/components/map/mapRenderer';
 import { MAP_FILTERS } from './pulseMapFilters';
 import { PIN_SIZE, clusterLabel, clusterSize, liveMarkerIds, pinLabel, pulseClusterHtml, pulsePinHtml } from './pulseMapPins';
-import { viewMovedSignificantly, type PulseCamera, type PulseMarker, type PulseView } from './pulseMapView';
-
-// The 3D map (mapbox-gl and its CSS) loads only here, when it's used. If its code can't be
-// fetched, the flat map takes over.
-function GlMapUnavailable({ onUnavailable }: { onUnavailable: (reason: string) => void }) {
-  useEffect(() => onUnavailable('chunk'), [onUnavailable]);
-  return <MapSkeleton />;
-}
-const PulseGlMap = dynamic(
-  () => import('./PulseGlMap').catch(() => ({ default: GlMapUnavailable })),
-  { ssr: false, loading: () => <MapSkeleton /> },
-);
-
-/** Mapbox's public token: the 3D map needs it (the flat map's tiles do too). */
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
-
-/** WebGL 2, which the 3D map needs (mapboxgl.supported() checks the GPU once it has loaded). */
-function webGl2Present(): boolean {
-  return typeof window !== 'undefined' && typeof window.WebGL2RenderingContext !== 'undefined';
-}
+import { viewMovedSignificantly, type PulseCamera, type PulseMarker, type PulseView } from '@/components/map/mapView';
 
 // Chip text on the map's own surfaces follows the theme: the palette's `textColor`
 // in light mode and `darkTextColor` in dark mode (inline colors can't reach `dark:`).
@@ -71,7 +52,7 @@ function MapPostPopupCard({
 }) {
   const config = getPostTypeConfig(pin.post_type || 'general');
   const TypeIcon = getTypeReactIcon(pin.post_type || 'general');
-  const author = pin.creator?.displayName || pin.creator?.name || chosenUsername(pin.creator?.username) || 'Neighbor';
+  const author = pin.creator?.displayName || pin.creator?.name || chosenUsername(pin.creator?.username) || 'Someone nearby';
   const snippet = (pin.content || pin.title || 'No content yet').trim();
 
   return (
@@ -212,6 +193,7 @@ function leafletView(map: L.Map, bounds?: Bounds, zoom?: number): PulseView {
 function leafletCamera(map: L.Map | null): PulseCamera | null {
   if (!map) return null;
   return {
+    getCenter: () => map.getCenter(),
     flyTo: (lat, lng, zoom, durationSec, onEnd) => {
       map.flyTo([lat, lng], zoom, { duration: durationSec });
       // Listen after flyTo: stopping a pan still in progress fires moveend at once.
@@ -287,7 +269,7 @@ export default function FeedMap({
   const reducedMotion = useReducedMotion();
 
   // The 3D map (Mapbox GL, Standard style) where it can run; the flat Leaflet map otherwise.
-  const [renderer, setRenderer] = useState<'3d' | 'flat'>(() => (MAPBOX_TOKEN && webGl2Present() ? '3d' : 'flat'));
+  const [renderer, setRenderer] = useState(initialMapRenderer);
   const rendererRef = useRef(renderer);
   rendererRef.current = renderer;
   const glCamera = useRef<PulseCamera | null>(null);
@@ -472,7 +454,7 @@ export default function FeedMap({
     ? pins.filter((p) => p.latitude >= bounds.south && p.latitude <= bounds.north
       && p.longitude >= bounds.west && p.longitude <= bounds.east).length
     : pins.length;
-  const authorName = (p: MapMarker) => p.creator?.displayName || p.creator?.name || chosenUsername(p.creator?.username) || 'Neighbor';
+  const authorName = (p: MapMarker) => p.creator?.displayName || p.creator?.name || chosenUsername(p.creator?.username) || 'Someone nearby';
   const postType = (p: MapMarker) => p.post_type || 'general';
 
   // A card listing posts, each opening its post: a tapped cluster's, or Connections' posts with no place.
@@ -625,8 +607,8 @@ export default function FeedMap({
   return (
     <div className="relative w-full h-full">
       {renderer === '3d' ? (
-        <PulseGlMap
-          token={MAPBOX_TOKEN}
+        <StandardGlMap
+          token={MAP_PUBLIC_TOKEN}
           center={center}
           zoom={13}
           markers={glMarkers}

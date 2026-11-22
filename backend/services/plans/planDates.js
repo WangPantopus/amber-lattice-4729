@@ -78,7 +78,8 @@ function checkedTimes(raw) {
     const startsAt = typeof t?.starts_at === 'string' ? t.starts_at : null;
     const endsAt = typeof t?.ends_at === 'string' ? t.ends_at : null;
     if (!startsAt || !endsAt) fail(422, 'validation', 'Choose when each time starts and ends.', { field: 'date_options' });
-    actions()._validateTimes(startsAt, endsAt, { isPrivate: true });
+    // A find-a-date plan is private: its times may start as far ahead as any private plan (60 days), as the apps offer.
+    actions()._validateTimes(startsAt, endsAt, { isPrivate: true, maxDaysAhead: rules.PRIVATE_LIMITS.maxDaysAhead });
     const value = { starts_at: new Date(startsAt).toISOString(), ends_at: new Date(endsAt).toISOString() };
     if (seen.has(value.starts_at)) fail(422, 'validation', 'Each time needs a different start.', { field: 'date_options' });
     seen.add(value.starts_at);

@@ -27,7 +27,7 @@ struct ProfileTrustFacts: Equatable {
 
     /// The trust line as one spoken sentence.
     var spoken: String {
-        [isVerifiedNeighbor ? "Verified neighbor" : nil, city, joined].compactMap { $0 }.joined(separator: ", ")
+        [isVerifiedNeighbor ? "Verified home" : nil, city, joined].compactMap { $0 }.joined(separator: ", ")
     }
 }
 
@@ -245,7 +245,7 @@ private struct ProfileTrustLine: View {
                 if facts.isVerifiedNeighbor {
                     HStack(alignment: .firstTextBaseline, spacing: Spacing.s2) {
                         shield
-                        Text("Verified neighbor")
+                        Text("Verified home")
                             .scaledFont(15, weight: .semibold)
                             .foregroundStyle(Theme.Color.home)
                     }
@@ -277,7 +277,7 @@ private struct ProfileTrustLine: View {
     private var line: Text {
         let rest = [facts.city, facts.joined].compactMap { $0 }.joined(separator: " · ")
         guard facts.isVerifiedNeighbor else { return Text(verbatim: rest) }
-        let verified = Text("Verified neighbor").fontWeight(.semibold).foregroundStyle(Theme.Color.home)
+        let verified = Text("Verified home").fontWeight(.semibold).foregroundStyle(Theme.Color.home)
         return rest.isEmpty ? verified : verified + Text(verbatim: " · \(rest)")
     }
 }

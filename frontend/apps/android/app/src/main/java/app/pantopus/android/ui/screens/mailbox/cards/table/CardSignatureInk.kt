@@ -53,15 +53,18 @@ internal object CardSignatureInk {
 
     fun path(signature: CardSignature): Path = path(signature.strokes.map { stroke -> stroke.map(Int::toFloat) })
 
-    /** The ink: round caps and joins, multiplied on the paper where the phone can. */
-    fun paint(): Paint =
+    /**
+     * The ink: round caps and joins, multiplied on the paper where the phone can ([multiply]; a Moment's marks are
+     * drawn plainly over the photo).
+     */
+    fun paint(multiply: Boolean = true): Paint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
             strokeWidth = STROKE
             color = PantopusColors.tablePen.toArgb()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) blendMode = BlendMode.MULTIPLY
+            if (multiply && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) blendMode = BlendMode.MULTIPLY
         }
 
     /** [path] (box units) on a card [u] wide per hundredth, its box's left edge at [left] and its line on [baseline]. */

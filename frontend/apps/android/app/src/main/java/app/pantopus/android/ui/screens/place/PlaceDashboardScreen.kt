@@ -129,7 +129,7 @@ fun PlaceDashboardScreen(
     modifier: Modifier = Modifier,
     /** "Verified homes nearby": the density window, the meter and the invite (founder decision 2026-11-07). */
     onOpenVerifiedHomes: () -> Unit = {},
-    /** "Invite your neighbors": the share sheet with the person's own invite link. */
+    /** "Invite homes near you": the share sheet with the person's own invite link. */
     onInviteNeighbors: () -> Unit = {},
     onOpenMailDay: () -> Unit = {},
     onOpenPrivacyMirror: () -> Unit = {},
@@ -401,8 +401,10 @@ internal fun PlaceDashboardContent(
     val showsVerify = !isVerified && (intel.verifyAvailable ?: (intel.tier == PlaceTier.T3))
     // The guidance cards read the same (16, 17, 23, 26 and 27).
     val guidance = LocalGuidance.current
-    LaunchedEffect(homeId, isVerified, showsVerify, claim) {
-        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null)
+    // Card 16's button is “Set pickup day” while the household has no pickup schedule.
+    val needsPickupDay = intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay
+    LaunchedEffect(homeId, isVerified, showsVerify, claim, needsPickupDay) {
+        guidance?.reportHome(homeId, verified = isVerified, canVerify = showsVerify && claim == null, needsPickupDay = needsPickupDay)
     }
     val ballot = BallotPlacement.ballot(intel)
     var ballotGovernments by remember { mutableStateOf<BallotGovernments?>(null) }
@@ -504,8 +506,7 @@ internal fun PlaceDashboardContent(
                         onOpenMailDay = onOpenMailDay,
                         modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp),
                         // Ticks "Set your pickup day" itself once the calendar runs on the household's own day.
-                        needsPickupDay =
-                            intel.groups.flatMap { it.sections }.firstNotNullOfOrNull { it.addressCalendar }?.needsPickupDay,
+                        needsPickupDay = needsPickupDay,
                     )
                 }
             }
@@ -583,7 +584,7 @@ internal fun PlaceDashboardContent(
 /** The header, the home card, "Worth a look" and the first-week card precede the glance in the list. */
 private const val GLANCE_PRECEDING_ITEMS = 4
 
-/** "Private by default. See what neighbors see of this address." (Wedge v2 §2). */
+/** "Private by default. See what others see of this address." (Wedge v2 §2). */
 @Composable
 private fun PrivacyMirrorRow(
     onOpen: () -> Unit,
@@ -604,7 +605,7 @@ private fun PrivacyMirrorRow(
     ) {
         PantopusIconImage(PantopusIcon.ShieldCheck, null, size = 15.dp, strokeWidth = 2.25f, tint = PantopusColors.appTextSecondary)
         Text(
-            "Private by default. See what neighbors see of this address.",
+            "Private by default. See what others see of this address.",
             fontSize = 13.sp,
             color = PantopusColors.appTextSecondary,
             modifier = Modifier.weight(1f),
@@ -631,7 +632,7 @@ private fun PlaceNeighborsEntry(
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "Verified neighbors",
+            "Verified homes near you",
             fontSize = 18.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.SemiBold,
@@ -644,7 +645,7 @@ private fun PlaceNeighborsEntry(
                 if (messages) {
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.MessageSquarePlus,
-                        title = "Message a neighbor",
+                        title = "Message a home near you",
                         subtitle = "Send a private heads-up to a home on your block.",
                         onTap = { onComposeMessage(address) },
                     )
@@ -652,7 +653,7 @@ private fun PlaceNeighborsEntry(
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.Inbox,
                         title = "Your inbox",
-                        subtitle = "Heads-ups from verified neighbors nearby.",
+                        subtitle = "Heads-ups from verified homes nearby.",
                         onTap = onOpenInbox,
                     )
                 }
@@ -668,7 +669,7 @@ private fun PlaceNeighborsEntry(
                     PlaceHairline()
                     PlaceMessagesActionRow(
                         icon = PantopusIcon.Share,
-                        title = "Invite your neighbors",
+                        title = "Invite homes near you",
                         subtitle = "Share a link that shows them their own address first.",
                         onTap = onInviteNeighbors,
                         modifier = Modifier.testTag("place.inviteNeighbors"),
@@ -920,7 +921,7 @@ fun PlaceVerifyBanner(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
     icon: PantopusIcon = PantopusIcon.ShieldCheck,
-    message: String = "Verify your address to message neighbors and get your badge.",
+    message: String = "Verify your address to message homes near you and get your badge.",
     action: String = "Verify address",
 ) {
     Row(

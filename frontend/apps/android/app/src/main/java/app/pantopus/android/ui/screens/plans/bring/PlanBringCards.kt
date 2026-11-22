@@ -25,11 +25,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.pantopus.android.data.api.models.plans.PlanBringDto
 import app.pantopus.android.data.api.models.plans.PlanBringItemDto
@@ -52,8 +57,11 @@ import app.pantopus.android.ui.theme.Spacing
 fun PlanBringHostCard(
     bring: PlanBringDto,
     onOpen: () -> Unit,
+    /** The green line at the top after the host's list was saved with a thing newly theirs. */
+    claimed: PlanBringClaimed? = null,
 ) {
     BringCard(title = "Bring list", count = "${bring.taken} of ${bring.items.size} taken", tag = "planBringHostCard") {
+        claimed?.let { ClaimedLine(it) }
         bring.items.forEachIndexed { index, item ->
             if (index > 0) PlanDivider()
             BringRow(item) { ClaimEnd(item) }
@@ -66,7 +74,8 @@ fun PlanBringHostCard(
 /**
  * The bring list on a guest's page (board 20, A8 item 2): "{n} still open", a name on the right or "I'll bring it",
  * this person's own item "You're bringing it" with "Give back", then "Bring something else" (a one-line field and
- * "Add") when guests may add. [notice] is the line under the list ("Sam got to that one first.").
+ * "Add") when guests may add. [notice] is the line under the list ("Sam got to that one first."). [claimed] is the
+ * green line at the top after "I'll bring it" or "Bring something else" went through: what, and who can see it.
  */
 @Suppress("LongParameterList")
 @Composable
@@ -77,9 +86,12 @@ fun PlanBringGuestCard(
     onClaim: (PlanBringItemDto) -> Unit,
     onGiveBack: (PlanBringItemDto) -> Unit,
     onAdd: (String) -> Unit,
+    claimed: PlanBringClaimed? = null,
+    modifier: Modifier = Modifier,
 ) {
     var adding by remember { mutableStateOf<String?>(null) }
-    BringCard(title = "Bring list", count = "${bring.openCount} still open", tag = "planBringGuestCard") {
+    BringCard(title = "Bring list", count = "${bring.openCount} still open", tag = "planBringGuestCard", modifier = modifier) {
+        claimed?.let { ClaimedLine(it) }
         bring.items.forEachIndexed { index, item ->
             if (index > 0) PlanDivider()
             val claim = item.claim
@@ -145,14 +157,75 @@ private fun BringCard(
     title: String,
     count: String,
     tag: String,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().planCard().padding(horizontal = 14.dp, vertical = 10.dp).testTag(tag)) {
+    Column(modifier = modifier.fillMaxWidth().planCard().padding(horizontal = 14.dp, vertical = 10.dp).testTag(tag)) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.s1), verticalAlignment = Alignment.CenterVertically) {
             Text(text = title, style = semibold, color = PantopusColors.appText, modifier = Modifier.weight(1f))
             Text(text = count, style = PantopusTextStyle.small, color = PantopusColors.appTextSecondary)
         }
         content()
+    }
+}
+
+/**
+ * What a person just said they'd bring ([label], as the list shows it) and whose plan it is ([hostFirst]); [byHost]
+ * when it is the host saying so on their own plan.
+ */
+data class PlanBringClaimed(
+    val label: String,
+    val hostFirst: String,
+    val byHost: Boolean = false,
+) {
+    /** "You're bringing bread." The first letter is lowercased when the second one is ("Bread" → "bread", "IPA" stays). */
+    val bringing: String
+        get() {
+            val thing = label.trim()
+            val lower = thing.length > 1 && thing[1].isLowerCase()
+            return "You're bringing ${if (lower) thing.replaceFirstChar { it.lowercase() } else thing}."
+        }
+
+    /** "Jo and the other guests can see it."; on the host's own plan "Your guests can see it." */
+    val seenBy: String get() = if (byHost) "Your guests can see it." else "$hostFirst and the other guests can see it."
+}
+
+/** The green line at the top of the bring list: "You're bringing bread. Jo and the other guests can see it." */
+@Composable
+private fun ClaimedLine(claimed: PlanBringClaimed) {
+    val shape = RoundedCornerShape(Radii.lg)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = Spacing.s1)
+                .clip(shape)
+                .background(PantopusColors.successBg)
+                .border(1.dp, PantopusColors.successLight, shape)
+                .padding(horizontal = Spacing.s3, vertical = 10.dp)
+                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+                .testTag("plan.bring.claimed"),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+    ) {
+        PantopusIconImage(
+            icon = PantopusIcon.Check,
+            contentDescription = null,
+            size = 18.dp,
+            tint = PantopusColors.success,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Text(
+            text =
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(claimed.bringing) }
+                    append(" ")
+                    append(claimed.seenBy)
+                },
+            style = PantopusTextStyle.small,
+            color = PantopusColors.success,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

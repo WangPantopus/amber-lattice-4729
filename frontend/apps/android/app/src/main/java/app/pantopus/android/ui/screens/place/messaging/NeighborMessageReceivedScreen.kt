@@ -63,7 +63,7 @@ fun NeighborMessageReceivedScreen(
     LaunchedEffect(Unit) { viewModel.load() }
 
     Column(modifier = Modifier.fillMaxSize().background(PantopusColors.appBg)) {
-        PlaceDetailHeader(title = "Message", address = "Inbox · verified neighbors", onBack = onBack)
+        PlaceDetailHeader(title = "Message", address = "Inbox · verified homes", onBack = onBack)
         when (val current = state) {
             NeighborReceivedUiState.Loading -> ReceivedSkeleton()
             NeighborReceivedUiState.NotFound ->
@@ -171,7 +171,7 @@ internal fun NeighborReceivedContent(
                 tint = PantopusColors.appTextMuted,
             )
             Text(
-                text = "You're in control. This neighbor doesn't know who you are, and you can stop messages from them at any time.",
+                text = "You're in control. This sender doesn't know who you are, and you can stop messages from them at any time.",
                 fontSize = 12.5.sp,
                 lineHeight = 18.sp,
                 color = PantopusColors.appTextMuted,
@@ -205,7 +205,7 @@ private fun ReceivedCard(message: ReceivedNeighborMessage) {
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "From a verified neighbor nearby",
+                    text = "From a verified home nearby",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.19).sp,
@@ -373,7 +373,7 @@ private fun RepliesOffNote() {
             strokeWidth = 2f,
             tint = PantopusColors.appTextMuted,
         )
-        Text(text = "Replies are off for this neighbor.", fontSize = 12.5.sp, color = PantopusColors.appTextMuted)
+        Text(text = "Replies are off for this sender.", fontSize = 12.5.sp, color = PantopusColors.appTextMuted)
     }
 }
 
@@ -410,9 +410,9 @@ private fun ManageCard(
             ManageRowConfig(
                 icon = PantopusIcon.Ban,
                 danger = false,
-                title = "Block this neighbor",
+                title = "Block this sender",
                 sub = "Stop messages from this verified home. They won't be notified.",
-                doneTitle = "Neighbor blocked",
+                doneTitle = "Sender blocked",
                 done = flags.blocked,
                 onClick = onBlock,
             ),

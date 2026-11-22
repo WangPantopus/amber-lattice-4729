@@ -115,9 +115,15 @@ final class PlansTodayModel {
 struct PlansTodayCards: View {
     /// The space goes above the cards (Today puts them under its agenda) instead of below.
     var gapAbove = false
-    @State private var model = PlansTodayModel()
+    @State private var model: PlansTodayModel
     @State private var flags = PlansFlags.shared
     @Environment(RootTabModel.self) private var rootTabs
+
+    /// `model`: Today's own, when the house's lantern reads the same plans; else the cards keep theirs.
+    init(gapAbove: Bool = false, model: PlansTodayModel? = nil) {
+        self.gapAbove = gapAbove
+        _model = State(initialValue: model ?? PlansTodayModel())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.s3) {

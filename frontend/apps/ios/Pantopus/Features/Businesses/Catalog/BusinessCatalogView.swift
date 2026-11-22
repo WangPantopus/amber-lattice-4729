@@ -128,7 +128,7 @@ public struct BusinessCatalogView: View {
             EmptyState(
                 icon: .tag,
                 headline: "No catalog items yet",
-                subcopy: "Add the services or products you sell so neighbors can see what you offer and what it costs.",
+                subcopy: "Add the services or products you sell so people can see what you offer and what it costs.",
                 cta: EmptyState.CTA(title: "Add item") {
                     await MainActor.run { editorTarget = .create }
                 },

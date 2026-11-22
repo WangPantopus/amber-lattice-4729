@@ -601,7 +601,7 @@ class MyPostsViewModel
                         headline = "You haven’t posted yet",
                         subcopy =
                             "Ask a question, recommend a spot, or share a local heads-up. " +
-                                "Your neighbors will see it on the Pulse.",
+                                "People near you will see it on the Pulse.",
                         ctaTitle = "Write a post",
                         onCta = { composeHandler() },
                     )

@@ -54,7 +54,7 @@ struct ChatConversationPlaceholder: View {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
             }
-            Text(listIsEmpty ? "When you message a neighbor, the chat opens here." : "Choose a chat on the left to read it here.")
+            Text(listIsEmpty ? "When you message someone, the chat opens here." : "Choose a chat on the left to read it here.")
                 .font(.system(size: 13.5))
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .multilineTextAlignment(.center)

@@ -22,7 +22,7 @@ struct PreviewBar: View {
         HStack(spacing: Spacing.s2) {
             Icon(.eye, size: 15, color: Theme.Color.appTextInverse)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Previewing as a neighbor")
+                Text("Previewing as the public")
                     .font(.system(size: 12, weight: .bold))
                     .tracking(-0.1)
                     .foregroundStyle(Theme.Color.appTextInverse)
@@ -50,7 +50,7 @@ struct PreviewBar: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.Color.appText)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Previewing as a neighbor. This is exactly what the public sees.")
+        .accessibilityLabel("Previewing as the public. This is exactly what others see.")
         .accessibilityIdentifier("businessOwner.previewBar")
     }
 }

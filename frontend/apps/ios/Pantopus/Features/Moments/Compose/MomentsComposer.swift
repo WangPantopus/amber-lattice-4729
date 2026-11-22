@@ -29,7 +29,11 @@ struct MomentsComposer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if model.draft != nil {
+            if model.marking.isOpen, let media = model.markedMedia {
+                // Text and Draw (`MomentsMarksEditor`): in this stack, not a cover, so a fold keeps it.
+                MomentsMarksEditor(model: model, media: media)
+                    .environment(\.colorScheme, .dark)
+            } else if model.draft != nil {
                 // Posted: the next of several picked together takes the sheet; after the last, the composer closes.
                 MomentsPostStage(model: model) {
                     Task { if await !model.moveOn() { onClose() } }
@@ -79,6 +83,18 @@ struct MomentsComposer: View {
                 .accessibilityIdentifier("moments.compose.keep")
         } message: {
             Text("What you wrote won't be saved.")
+        }
+        // Retake on a photo with marks, or a placed one (`+Marks`): on the model, so a fold keeps the question.
+        .alert(
+            "Discard this Moment?",
+            isPresented: Binding(get: { model.marking.asksRetake }, set: { model.marking.asksRetake = $0 })
+        ) {
+            Button("Discard", role: .destructive) { model.retake() }
+                .accessibilityIdentifier("moments.post.retake.discard")
+            Button("Keep editing", role: .cancel) {}
+                .accessibilityIdentifier("moments.post.retake.keep")
+        } message: {
+            Text(model.marking.marks.isEmpty ? "How you resized it won't be saved." : "What you drew or wrote on it won't be saved.")
         }
         // A fold or a turn switches layouts at once.
         .readsMomentsDuoScreen(Binding(get: { duo }, set: { screen in
@@ -363,6 +379,8 @@ struct MomentsComposeGate: View {
             }
         }
         .padding(.horizontal, Spacing.s8)
+        // On a wide screen the card keeps to the reading width instead of running the screen's width.
+        .readableWidth()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("moments.gate.location")
     }

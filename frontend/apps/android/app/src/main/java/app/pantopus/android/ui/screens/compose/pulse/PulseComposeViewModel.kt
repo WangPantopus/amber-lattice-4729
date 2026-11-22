@@ -155,7 +155,7 @@ enum class PulseComposeIdentity(val key: String, val label: String) {
 
 /** Visibility scope option. */
 enum class PulseComposeVisibility(val key: String, val label: String) {
-    Neighbors("neighborhood", "Neighbors"),
+    Neighbors("neighborhood", "Nearby"),
     Connections("connections", "Connections"),
     PublicFeed("public", "Public"),
 }
@@ -176,7 +176,7 @@ enum class PulseLostFoundContactPref(val key: String, val label: String) {
 }
 
 enum class PulseAnnounceAudience(val key: String, val label: String) {
-    Neighbors("neighbors", "Neighbors"),
+    Neighbors("neighbors", "Nearby"),
     Followers("followers", "Followers"),
     PublicFeed("public", "Public"),
     ;
@@ -1514,7 +1514,7 @@ class PulseComposeViewModel
                 if (effectiveAudience() == "connections") {
                     "Pantopus AI wrote parts of this post. Check that it's right before your connections see it."
                 } else {
-                    "Pantopus AI wrote parts of this post. Check that it's right before neighbors see it."
+                    "Pantopus AI wrote parts of this post. Check that it's right before others see it."
                 }
             return true
         }

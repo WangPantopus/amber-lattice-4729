@@ -233,7 +233,7 @@ export default function PlaceSectionDetail({ section }: { section: string }) {
             <EmptyState
               icon={MapPinned}
               title="You haven't added a place yet"
-              description="Claim your address to see flood risk, today's air, your home's value, and your verified neighbors."
+              description="Claim your address to see flood risk, today's air, your home's value, and the verified homes near you."
               actionLabel="Add your place"
               headingLevel={2}
               onAction={() => router.push('/app/homes')}
@@ -297,7 +297,7 @@ export default function PlaceSectionDetail({ section }: { section: string }) {
 
   return (
     <DetailShell section={section} hidden={hidden}>
-      {meta.group === 'today' && <TodayDetail intelligence={intelligence} homeId={homeId} />}
+      {meta.group === 'today' && <TodayDetail intelligence={intelligence} homeId={homeId} todayShowsThisHome={!!homeId && homeId === homeQuery.data?.home?.id} />}
       {meta.group === 'your_home' && <YourHomeDetail intelligence={intelligence} homeId={homeId} />}
       {meta.group === 'risk_readiness' && <RiskDetail intelligence={intelligence} homeId={homeId} />}
       {meta.group === 'your_block' && <BlockDetail intelligence={intelligence} homeId={homeId} />}

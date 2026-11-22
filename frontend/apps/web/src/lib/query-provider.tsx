@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { QueryCache, QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
+import { clearMomentUploads } from '@/components/moments/momentOutbox';
 import { purgeExpiredPlacePreviews } from '@/components/place/pendingPlace';
 import { subscribeConnectivity } from '@/lib/connectivity';
 import { clearCachedMapTiles } from '@/utils/tilePrefetch';
@@ -44,6 +45,7 @@ const ACCOUNT_STORAGE_PREFIXES = ['place:rent:', 'place:equity:', 'pantopus:refu
 const BOOKING_TOKEN_PREFIX = 'pantopus.calendarly.manageToken.';
 
 function clearAccountDeviceData(sessionEnded: boolean) {
+  clearMomentUploads();
   const prefixes = sessionEnded ? [...ACCOUNT_STORAGE_PREFIXES, BOOKING_TOKEN_PREFIX] : ACCOUNT_STORAGE_PREFIXES;
   try {
     Object.keys(window.localStorage)
@@ -147,7 +149,7 @@ export default function QueryProvider({ children }: { children: React.ReactNode 
         if (!previous) return previous;
         const clearPreview = (row: ConversationsReply['conversations'][number]) =>
           (row._type === 'room' ? affected.has(row.id) : row.room_ids.some((room) => affected.has(room)))
-            ? { ...row, last_message_preview: null } : row;
+            ? { ...row, last_message_preview: null, last_message_moment: null } : row;
         return { ...previous, conversations: previous.conversations.map(clearPreview),
           ...(previous.keptTail ? { keptTail: { ...previous.keptTail, rows: previous.keptTail.rows.map(clearPreview) } } : {}) };
       });

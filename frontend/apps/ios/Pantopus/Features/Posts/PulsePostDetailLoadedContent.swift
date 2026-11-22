@@ -254,7 +254,7 @@ private struct RemovedPostNotice: View {
                 Text("Removed by a moderator")
                     .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(Theme.Color.warning)
-                Text("Only you can see this post. Neighbors can't see it or reply.")
+                Text("Only you can see this post. Others can't see it or reply.")
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.Color.appText)
                     .fixedSize(horizontal: false, vertical: true)

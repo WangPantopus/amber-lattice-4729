@@ -34,35 +34,83 @@ const designIdOf = (number) => `christmas-2026-${String(number).padStart(2, '0')
 
 // The collections "Pick a card" shows, in this order, each with its pictures (by number) in grid order (founder,
 // 2026-10-31; Christmas with Santa 2026-11-07; the nativity pictures 2026-11-08, renamed Christmas with Jesus Christ
-// and moved to the front the same day). A picture can move to another collection; its number stays. The collection's
-// id stays first-christmas: nothing but this list reads it.
+// and moved to the front the same day; 22 more of the founder's pictures of Jesus's life after them, 2026-11-21). On
+// 2026-11-21 the founder also approved 16 more pictures (90-105), a ninth collection, Christmas in the City, and this
+// order: Christmas with Jesus Christ first, then from cards anyone can send to anyone, to family, to one particular
+// person (card shelves SPEC A2). A picture can move to another collection; its number stays. The collection's id stays
+// first-christmas: nothing but this list reads it.
+// Each also has what the card shelves draw (docs/product/card-shelves-2026-11-21, SPEC A3; the layout itself is launch
+// key card_shelves, but these are sent whatever it says and older apps ignore them): `short`, its name in the website's
+// row; `slug`, its public name in a link (/cards/collection/<slug>); `pick`, the number of the card that stands for it in
+// "One from each collection" (one of its own cards; since the founder's choices of November 22 it may be one of the
+// first three, SPEC E1); and, for Christmas with Jesus Christ, its `parts` in story order, each a name and a range of
+// numbers.
 const COLLECTIONS = [
-  ['first-christmas', 'Christmas with Jesus Christ', 'For the faithful, and anyone who loves the Christmas story.',
-    [59, 60, 61, 62, 63, 64, 65, 66, 67]],
-  ['as-a-kid', 'Christmas as a Kid', 'For families with kids, and anyone who misses being one.',
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]],
-  ['with-friends', 'Christmas with Friends', 'For the friends who feel like family.', [18, 19, 20, 21, 22, 26, 31]],
-  ['love-stories', 'Christmas Love Stories', 'For the one you love, near or far.', [23, 24, 25, 27, 28, 29, 30]],
-  ['in-your-twenties', 'Christmas in Your Twenties', 'For first apartments, old roommates and long trips home.',
-    [32, 33, 34, 35, 36, 37]],
-  ['memories', 'Christmas Memories', 'For anyone who misses the little things.', [38, 39, 40, 41, 42, 43]],
-  ['grandmas-house', 'Christmas at Grandma’s House', 'For grandparents, and the grandkids who still come home.',
-    [44, 45, 46, 47, 48, 49]],
-  ['with-santa', 'Christmas with Santa', 'For anyone who still believes, and anyone who used to.',
-    [50, 51, 52, 53, 54, 55, 56, 57, 58]],
-].map(([id, name, line, numbers]) => ({ id, name, line, designs: numbers.map(designIdOf) }));
+  { id: 'first-christmas', name: 'Christmas with Jesus Christ', short: 'Jesus Christ', slug: 'jesus-christ',
+    line: 'For the faithful, and anyone who loves the Christmas story.',
+    numbers: [59, 60, 61, 62, 63, 64, 65, 66, 67,
+      68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
+    pick: 61,
+    parts: [['The first Christmas', 59, 68], ['His life and teaching', 69, 80], ['The cross and the empty tomb', 81, 89]] },
+  { id: 'with-santa', name: 'Christmas with Santa', short: 'Santa', slug: 'santa',
+    line: 'For anyone who still believes, and anyone who used to.',
+    numbers: [50, 51, 52, 53, 54, 55, 56, 57, 58, 90, 91, 92, 93, 94, 95], pick: 95 },
+  { id: 'in-the-city', name: 'Christmas in the City', short: 'The City', slug: 'the-city',
+    line: 'For anyone who dreams of the city at Christmas.', numbers: [96, 97, 98, 99, 100], pick: 99 },
+  { id: 'as-a-kid', name: 'Christmas as a Kid', short: 'As a Kid', slug: 'as-a-kid',
+    line: 'For families with kids, and anyone who misses being one.',
+    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 105], pick: 1 },
+  { id: 'grandmas-house', name: 'Christmas at Grandma’s House', short: 'Grandma’s House', slug: 'grandmas-house',
+    line: 'For grandparents, and the grandkids who still come home.', numbers: [44, 45, 46, 47, 48, 49], pick: 47 },
+  { id: 'memories', name: 'Christmas Memories', short: 'Memories', slug: 'memories',
+    line: 'For anyone who misses the little things.', numbers: [38, 39, 40, 41, 42, 43, 101, 102, 103, 104], pick: 101 },
+  { id: 'with-friends', name: 'Christmas with Friends', short: 'Friends', slug: 'friends',
+    line: 'For the friends who feel like family.', numbers: [18, 19, 20, 21, 22, 26, 31], pick: 22 },
+  { id: 'love-stories', name: 'Christmas Love Stories', short: 'Love Stories', slug: 'love-stories',
+    line: 'For the one you love, near or far.', numbers: [23, 24, 25, 27, 28, 29, 30], pick: 27 },
+  { id: 'in-your-twenties', name: 'Christmas in Your Twenties', short: 'Your Twenties', slug: 'your-twenties',
+    line: 'For first apartments, old roommates and long trips home.', numbers: [32, 33, 34, 35, 36, 37], pick: 37 },
+].map(({ id, name, short, slug, line, numbers, pick, parts }) => {
+  if (!numbers.includes(pick)) throw new Error(`Collection ${id}: its pick ${pick} must be one of its own cards`);
+  return {
+    id, name, short, slug, line, designs: numbers.map(designIdOf), pick: designIdOf(pick),
+    ...(parts ? { parts: parts.map(([partName, from, to]) => ({
+      name: partName, designs: numbers.filter((n) => n >= from && n <= to).map(designIdOf),
+    })) } : {}),
+  };
+});
+// The order "One from each collection" draws the collections' picks in (founder, November 22, SPEC E2): only that row;
+// the shelves and every names row keep the collections' order above. Sent as `opening` in both card lists, so it can
+// change again without an app build.
+const OPENING = ['first-christmas', 'memories', 'in-the-city', 'with-santa', 'as-a-kid', 'grandmas-house', 'with-friends',
+  'love-stories', 'in-your-twenties'];
+if (OPENING.length !== COLLECTIONS.length || !COLLECTIONS.every((c) => OPENING.includes(c.id))) {
+  throw new Error('OPENING must name every collection once');
+}
 const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((design) => [design, c.id])));
+const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'santa' }; // every other: nostalgia
 
 // The pictures by number, with the caption printed under each, the colour of its paper, its height in px at 960 px wide
 // (an app keeps a picture's shape while it loads it), its name on the public card pages (/cards/<slug>) and the colour of
 // the cloth it lies on (launch key card_table). 1–17 are the founder's own (2026-10-30); 18–49 came in five groups on
 // 2026-10-31; 50–58 are the founder's Santa pictures (2026-11-07), which have no border, so their paper is one cream.
 // 59–67 are the founder's nativity pictures (2026-11-08), each with its whole King James verse printed under the
-// painting, so the caption is the verse's reference (its book and numbers joined by a no-break space).
-// A number is never reused: every app picks the card's stamp from it.
-// The whole King James verse printed under each nativity picture (59–67), by its public page, as the apps show it
-// below the card in readable type ("Read the verse", design plan 6.2, 2026-11-09). The text is the NATIVITY kit's
-// nativity.json (KJV, public domain in the US; Project Gutenberg #10), word for word as printed on the picture.
+// painting, so the caption is the verse's reference (its book and numbers joined by a no-break space). 68–89 are 22 more
+// of the founder's pictures, from Jesus's birth to the Great Commission (2026-11-21), made the same way; a passage of
+// two or three verses has an en dash in its reference ("Matthew 4:10–11 (KJV)"). 90–105 are 16 more of the founder's
+// paintings (2026-11-21), borderless like 50–58: six more of Santa, five of Christmas in the City (no shop, hotel, rink or
+// city is named anywhere: not in a caption, a slug or a file name), four Memories and one As a Kid.
+// A number is never reused: every app picks the card's stamp from it. Each picture's `mood` is the table it opens on
+// (SPEC A4, 2026-11-21): candlelit for Christmas with Jesus Christ, Santa's for Christmas with Santa, snowy for every
+// other; it comes from the collection, so a picture that moves takes its table with it. Apps that don't read it decide
+// by number.
+// The whole King James verse printed under each Christmas with Jesus Christ picture (59–89), by its public page, as the
+// apps show it below the card in readable type ("Read the verse", design plan 6.2, 2026-11-09). The text is Project
+// Gutenberg's KJV, ebook 10 (public domain in the US), word for word as printed on the picture, with two changes: a
+// passage whose last verse runs on into the next ends with a full stop (Matthew 2:14, Matthew 5:44), and John 20:18
+// reads "the Lord" as the founder gave it (Gutenberg prints "LORD" there). In a passage each verse starts with its own
+// number, tied to its first word by a no-break space (the picture prints it small). Plain digits, not superscript ones:
+// the iPhone's serif (New York) has only ¹ ² ³ of them, so the others would print in another font.
 const VERSES = new Map([
   ['isaiah-9-6', 'For unto us a child is born, unto us a son is given: and the government shall be upon his shoulder: and his name shall be called Wonderful, Counsellor, The mighty God, The everlasting Father, The Prince of Peace.'],
   ['luke-2-7', 'And she brought forth her firstborn son, and wrapped him in swaddling clothes, and laid him in a manger; because there was no room for them in the inn.'],
@@ -73,6 +121,28 @@ const VERSES = new Map([
   ['matthew-2-11', 'And when they were come into the house, they saw the young child with Mary his mother, and fell down, and worshipped him: and when they had opened their treasures, they presented unto him gifts; gold, and frankincense and myrrh.'],
   ['matthew-2-14', 'When he arose, he took the young child and his mother by night, and departed into Egypt.'],
   ['john-8-12', 'Then spake Jesus again unto them, saying, I am the light of the world: he that followeth me shall not walk in darkness, but shall have the light of life.'],
+  ['luke-2-11', 'For unto you is born this day in the city of David a Saviour, which is Christ the Lord.'],
+  ['matthew-3-17', 'And lo a voice from heaven, saying, This is my beloved Son, in whom I am well pleased.'],
+  ['matthew-4-10-11', '10\u00a0Then saith Jesus unto him, Get thee hence, Satan: for it is written, Thou shalt worship the Lord thy God, and him only shalt thou serve. 11\u00a0Then the devil leaveth him, and, behold, angels came and ministered unto him.'],
+  ['john-3-16-nicodemus', 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.'],
+  ['john-4-14', 'But whosoever drinketh of the water that I shall give him shall never thirst; but the water that I shall give him shall be in him a well of water springing up into everlasting life.'],
+  ['matthew-5-44', 'But I say unto you, Love your enemies, bless them that curse you, do good to them that hate you, and pray for them which despitefully use you, and persecute you.'],
+  ['mark-1-41', 'And Jesus, moved with compassion, put forth his hand, and touched him, and saith unto him, I will; be thou clean.'],
+  ['mark-2-10-12', '10\u00a0But that ye may know that the Son of man hath power on earth to forgive sins, (he saith to the sick of the palsy,) 11\u00a0I say unto thee, Arise, and take up thy bed, and go thy way into thine house. 12\u00a0And immediately he arose, took up the bed, and went forth before them all; insomuch that they were all amazed, and glorified God, saying, We never saw it on this fashion.'],
+  ['john-6-11', 'And Jesus took the loaves; and when he had given thanks, he distributed to the disciples, and the disciples to them that were set down; and likewise of the fishes as much as they would.'],
+  ['matthew-14-30-31', '30\u00a0But when he saw the wind boisterous, he was afraid; and beginning to sink, he cried, saying, Lord, save me. 31\u00a0And immediately Jesus stretched forth his hand, and caught him, and said unto him, O thou of little faith, wherefore didst thou doubt?'],
+  ['luke-15-20', 'And he arose, and came to his father. But when he was yet a great way off, his father saw him, and had compassion, and ran, and fell on his neck, and kissed him.'],
+  ['mark-10-14-16', '14\u00a0But when Jesus saw it, he was much displeased, and said unto them, Suffer the little children to come unto me, and forbid them not: for of such is the kingdom of God. 15\u00a0Verily I say unto you, Whosoever shall not receive the kingdom of God as a little child, he shall not enter therein. 16\u00a0And he took them up in his arms, put his hands upon them, and blessed them.'],
+  ['john-11-25-26', '25\u00a0Jesus said unto her, I am the resurrection, and the life: he that believeth in me, though he were dead, yet shall he live: 26\u00a0And whosoever liveth and believeth in me shall never die. Believest thou this?'],
+  ['john-13-14-15', '14\u00a0If I then, your Lord and Master, have washed your feet; ye also ought to wash one another’s feet. 15\u00a0For I have given you an example, that ye should do as I have done to you.'],
+  ['luke-22-19-20', '19\u00a0And he took bread, and gave thanks, and brake it, and gave unto them, saying, This is my body which is given for you: this do in remembrance of me. 20\u00a0Likewise also the cup after supper, saying, This cup is the new testament in my blood, which is shed for you.'],
+  ['luke-22-42', 'Saying, Father, if thou be willing, remove this cup from me: nevertheless not my will, but thine, be done.'],
+  ['1-peter-2-24', 'Who his own self bare our sins in his own body on the tree, that we, being dead to sins, should live unto righteousness: by whose stripes ye were healed.'],
+  ['john-19-30', 'When Jesus therefore had received the vinegar, he said, It is finished: and he bowed his head, and gave up the ghost.'],
+  ['matthew-28-6', 'He is not here: for he is risen, as he said. Come, see the place where the Lord lay.'],
+  ['john-20-18', 'Mary Magdalene came and told the disciples that she had seen the Lord, and that he had spoken these things unto her.'],
+  ['john-21-17', 'He saith unto him the third time, Simon, son of Jonas, lovest thou me? Peter was grieved because he said unto him the third time, Lovest thou me? And he said unto him, Lord, thou knowest all things; thou knowest that I love thee. Jesus saith unto him, Feed my sheep.'],
+  ['matthew-28-18-20', '18\u00a0And Jesus came and spake unto them, saying, All power is given unto me in heaven and in earth. 19\u00a0Go ye therefore, and teach all nations, baptizing them in the name of the Father, and of the Son, and of the Holy Ghost: 20\u00a0Teaching them to observe all things whatsoever I have commanded you: and, lo, I am with you alway, even unto the end of the world. Amen.'],
 ]);
 const DESIGNS = [
   ['Home for Christmas.', '#f7eee0', 1054, 'home-for-christmas', '#2c4071'],
@@ -142,15 +212,66 @@ const DESIGNS = [
   ['Matthew\u00a02:11 (KJV)', '#f7f0e2', 1022, 'matthew-2-11', '#704b51'],
   ['Matthew\u00a02:14 (KJV)', '#f7f0e2', 1022, 'matthew-2-14', '#2c4071'],
   ['John\u00a08:12 (KJV)', '#f7f0e2', 1022, 'john-8-12', '#6e4b30'],
+  ['Luke\u00a02:11 (KJV)', '#f7f0e2', 1022, 'luke-2-11', '#6e4b30'],
+  ['Matthew\u00a03:17 (KJV)', '#f7f0e2', 1022, 'matthew-3-17', '#704b51'],
+  ['Matthew\u00a04:10–11 (KJV)', '#f7f0e2', 1022, 'matthew-4-10-11', '#6e4b30'],
+  ['John\u00a03:16 (KJV)', '#f7f0e2', 1022, 'john-3-16-nicodemus', '#2c4071'],
+  ['John\u00a04:14 (KJV)', '#f7f0e2', 1022, 'john-4-14', '#6e4b30'],
+  ['Matthew\u00a05:44 (KJV)', '#f7f0e2', 1022, 'matthew-5-44', '#704b51'],
+  ['Mark\u00a01:41 (KJV)', '#f7f0e2', 1022, 'mark-1-41', '#6e4b30'],
+  ['Mark\u00a02:10–12 (KJV)', '#f7f0e2', 1022, 'mark-2-10-12', '#6e4b30'],
+  ['John\u00a06:11 (KJV)', '#f7f0e2', 1022, 'john-6-11', '#704b51'],
+  ['Matthew\u00a014:30–31 (KJV)', '#f7f0e2', 1022, 'matthew-14-30-31', '#2c4071'],
+  ['Luke\u00a015:20 (KJV)', '#f7f0e2', 1022, 'luke-15-20', '#6e4b30'],
+  ['Mark\u00a010:14–16 (KJV)', '#f7f0e2', 1022, 'mark-10-14-16', '#6e4b30'],
+  ['John\u00a011:25–26 (KJV)', '#f7f0e2', 1022, 'john-11-25-26', '#6e4b30'],
+  ['John\u00a013:14–15 (KJV)', '#f7f0e2', 1022, 'john-13-14-15', '#6e4b30'],
+  ['Luke\u00a022:19–20 (KJV)', '#f7f0e2', 1022, 'luke-22-19-20', '#6e4b30'],
+  ['Luke\u00a022:42 (KJV)', '#f7f0e2', 1022, 'luke-22-42', '#2c4071'],
+  ['1\u00a0Peter\u00a02:24 (KJV)', '#f7f0e2', 1022, '1-peter-2-24', '#2c4071'],
+  ['John\u00a019:30 (KJV)', '#f7f0e2', 1022, 'john-19-30', '#2c4071'],
+  ['Matthew\u00a028:6 (KJV)', '#f7f0e2', 1022, 'matthew-28-6', '#6e4b30'],
+  ['John\u00a020:18 (KJV)', '#f7f0e2', 1022, 'john-20-18', '#704b51'],
+  ['John\u00a021:17 (KJV)', '#f7f0e2', 1022, 'john-21-17', '#6e4b30'],
+  ['Matthew\u00a028:18–20 (KJV)', '#f7f0e2', 1022, 'matthew-28-18-20', '#704b51'],
+  ['Bundle up. It’s a long night.', '#f7f0e2', 1022, 'bundle-up-its-a-long-night', '#6e4b30'],
+  ['Save some for the reindeer.', '#f7f0e2', 1022, 'save-some-for-the-reindeer', '#6e4b30'],
+  ['One more lap, then it’s yours.', '#f7f0e2', 1022, 'one-more-lap-then-its-yours', '#6e4b30'],
+  ['For everyone working tonight.', '#f7f0e2', 1022, 'for-everyone-working-tonight', '#704b51'],
+  ['He won’t tell if you don’t.', '#f7f0e2', 1022, 'he-wont-tell-if-you-dont', '#6e4b30'],
+  ['And away he goes.', '#f7f0e2', 1022, 'and-away-he-goes', '#2c4071'],
+  ['Christmas Eve in the city.', '#f7f0e2', 1022, 'christmas-eve-in-the-city', '#704b51'],
+  ['The whole city’s lit up.', '#f7f0e2', 1022, 'the-whole-citys-lit-up', '#2c4071'],
+  ['Remember the windows downtown?', '#f7f0e2', 1022, 'remember-the-windows-downtown', '#6e4b30'],
+  ['Meet me under the tree.', '#f7f0e2', 1022, 'meet-me-under-the-tree', '#2c4071'],
+  ['Skate with me till the lights come on.', '#f7f0e2', 1022, 'skate-with-me-till-the-lights-come-on', '#3b4c6e'],
+  ['The whole street’s lit up for you.', '#f7f0e2', 1022, 'the-whole-streets-lit-up-for-you', '#2c4071'],
+  ['The porch light’s on.', '#f7f0e2', 1022, 'the-porch-lights-on', '#704b51'],
+  ['Follow our footprints home.', '#f7f0e2', 1022, 'follow-our-footprints-home', '#3b4c6e'],
+  ['I had help with the wrapping.', '#f7f0e2', 1022, 'i-had-help-with-the-wrapping', '#6e4b30'],
+  ['Come to the window. It’s starting.', '#f7f0e2', 1022, 'come-to-the-window-its-starting', '#3b4c6e'],
 ].map(([caption, paper, height, slug, table], index) => {
   const id = designIdOf(index + 1);
   return {
     id, number: index + 1, caption, paper, collection: COLLECTION_OF_DESIGN.get(id) || null, height, slug, table,
+    mood: MOOD_OF_COLLECTION[COLLECTION_OF_DESIGN.get(id)] || 'nostalgia',
     // Only the verse pictures carry it; apps read it when present (older apps ignore it).
     ...(VERSES.has(slug) ? { verse: VERSES.get(slug) } : {}),
   };
 });
 const DESIGN_BY_ID = new Map(DESIGNS.map((design) => [design.id, design]));
+
+// "Pick a card" prints a verse card's whole verse under the card, and the Android app makes every card of a collection
+// small enough to leave room for the longest verse in it. So the list "Pick a card" reads (GET /api/mailbox/cards)
+// carries that text only for a verse no longer than Matthew 2:11, the longest of 59–67: no card shows smaller there than
+// before 68–89 came (design review, 2026-11-21). A longer passage shows its reference under the card and is read on the
+// picture. An opened card's "Read the verse" (cardView) and the public card pages still carry every verse whole.
+const PICK_A_CARD_VERSE_MAX = VERSES.get('matthew-2-11').length;
+function pickACardDesign(design) {
+  if (!design.verse || design.verse.length <= PICK_A_CARD_VERSE_MAX) return design;
+  const { verse, ...rest } = design;
+  return rest;
+}
 
 // When a card comes: with the next morning's mail, the next morning sealed until Christmas, or on Christmas morning.
 // A card to someone not on Pantopus comes when they open the email (`now`), sealed until Christmas or not.
@@ -268,11 +389,11 @@ function isByLink(mail) {
 }
 
 /** What a send asked for, as one digest: the same request ID with other content asks for another card. */
-function requestDigest({ design, message, arrival, toUserId, toEmail, signature = null, media = null }) {
-  // A signed card's strokes count too, and a card's own photo and voice (their ids and the photo's description); a card
-  // without them has the digest it always had.
+function requestDigest({ design, message, arrival, toUserId, toEmail, signature = null, media = null, travel = false }) {
+  // A signed card's strokes count too, and a card's own photo and voice (their ids and the photo's description), and
+  // whether it travels (card_travel); a card without them has the digest it always had.
   const parts = [design, message, arrival, toUserId || null, toEmail || null, ...(signature ? [signature] : []),
-    ...(media ? [{ media }] : [])];
+    ...(media ? [{ media }] : []), ...(travel ? [{ travel: true }] : [])];
   return crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
 
@@ -419,6 +540,8 @@ function cardView(mail, now = new Date()) {
     // The card's public page (/cards/<slug>) and the colour of the cloth it lies on (launch key card_table).
     slug: design?.slug || null,
     table: design?.table || null,
+    // The table it opens on: reverence, santa or nostalgia (apps without it decide by number).
+    mood: design?.mood || null,
     holiday: card.holiday || SEASON.holiday,
     year: card.year || SEASON.year,
     arrival: card.arrival || null,
@@ -430,6 +553,8 @@ function cardView(mail, now = new Date()) {
     // card_signature GET /api/mailbox/:id sets. Like the note, not before a seal lifts; null: set the typed name.
     signature: (!sealed && (mail.card_signature || signatureOf(mail.object_payload))) || null,
     ...mediaView(mail, sealed),
+    // A card that travels (card_travel), as its reader may see it: the route reads it (services/cardTravel readerView).
+    ...(mail.card_travel ? { travel: mail.card_travel } : {}),
   };
 }
 
@@ -452,6 +577,7 @@ function replyView(mail) {
     height: design?.height ?? null,
     slug: design?.slug || null,
     table: design?.table || null,
+    mood: design?.mood || null,
     year: reply.year || SEASON.year,
     signature: mail.card_signature || signatureOf(mail.object_payload) || null,
     photo: null,
@@ -518,6 +644,8 @@ function sentSummary(mail, now = new Date()) {
     can_take_back: canTakeBack,
     status,
     sent_at: mail.created_at || null,
+    // A card that travels (card_travel): its journey, for "See its journey".
+    ...(card.travel?.journey ? { travel: { journey: card.travel.journey } } : {}),
   };
 }
 
@@ -580,7 +708,7 @@ function instant(at) {
  * nobody has claimed). `toHousehold`: a letter to a Home itself, whose `toName` ("their household") is said whole, never
  * as a first name. Never the recipient's ids, address or time zone, nor anything they did with it.
  */
-function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = new Date() }) {
+function sentPiece(mail, { toName, toHousehold = false, senderName, zone, travel = null, now = new Date() }) {
   const notDelivered = notDeliveredOf(mail);
   if (notDelivered) {
     // Couldn't be delivered: its picture and the name it went to, nothing of when or why.
@@ -591,7 +719,8 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
       opens_on: null, sealed: false, can_take_back: false, take_back_until: null,
       envelope: { from: senderName, postmarked_on: null },
       card: { design: view.design || null, number: view.number ?? null, caption: view.caption || null, paper: view.paper || null,
-        year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null, verse: null },
+        year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null,
+        mood: view.mood || null, verse: null },
     };
   }
   const isHolidayCard = isCard(mail);
@@ -627,6 +756,7 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
     envelope: { from: senderName, postmarked_on: status === 'waiting' ? null : dayIn(mail.created_at, zone) },
     card: { design: view.design || null, number: view.number ?? null, caption: view.caption || null, paper: view.paper || null,
       year: view.year || null, height: view.height ?? null, slug: view.slug || null, table: view.table || null,
+      mood: view.mood || null,
       // The whole verse on a Christmas with Jesus Christ picture ("Read the verse"), not while it's sealed (cardView).
       verse: view.verse || null },
     // A reply they wrote (card_replies): the card it answers, and its own take-back, which goes through
@@ -634,6 +764,9 @@ function sentPiece(mail, { toName, toHousehold = false, senderName, zone, now = 
     // replies).
     ...(isReply(mail) ? { card_reply: { ...replyOnSent(mail), can_take_back: status === 'waiting',
       take_back_until: status === 'waiting' ? instant(pickupAt(mail)) : null } } : {}),
+    // A card that travels (card_travel; services/cardTravel sentViews): its journey, and from this card on its towns,
+    // miles and newest town ("5 towns · 2,692 miles. Now in Tampa, FL.").
+    ...(travel ? { travel } : {}),
   };
 }
 
@@ -699,8 +832,9 @@ async function sentLine(userId, now = new Date()) {
 }
 
 module.exports = {
-  REPLY_TAG, REPLY_SUBJECT, isReply, replyRowId, replyDigest, replyView,
-  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, PERSON_ARRIVALS, EMAIL_ARRIVALS, EMAIL_ARRIVALS_ALL,
+  REPLY_TAG, REPLY_SUBJECT, isReply, replyRowId, replyDigest, replyView, uuidOf,
+  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, OPENING, DESIGNS, pickACardDesign, PERSON_ARRIVALS, EMAIL_ARRIVALS,
+  EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
   designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
   daysBetween, arrivalsFor,

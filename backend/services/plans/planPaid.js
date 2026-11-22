@@ -224,13 +224,19 @@ function quoteFor(plan, { party_size: partySize, kids_count: kidsCount }, { unit
   const total = each * spots;
   return {
     spots,
-    spots_text: `${spots} ${spots === 1 ? 'spot' : 'spots'}`,
     each_cents: each,
-    each_text: spots === 1 ? priceText(each) : `${priceText(each)} each`,
+    ...spotLines(spots, each),
     total_cents: total,
     total_text: moneyText(total),
     group: dealsOn ? groupQuote(plan, spots, going) : null,
     refund_text: refundText(plan),
+  };
+}
+
+function spotLines(spots, each) {
+  return {
+    spots_text: `${spots} ${spots === 1 ? 'spot' : 'spots'}`,
+    each_text: spots === 1 ? priceText(each) : `${priceText(each)} each`,
   };
 }
 
@@ -317,8 +323,21 @@ async function paymentFor(plan, request, payerId) {
       .eq('id', request.id);
     if (error) throw new Error(`Failed to save the payment: ${error.message}`);
   }
-  const { data: payment } = await supabaseAdmin.from('Payment').select('stripe_customer_id').eq('id', paymentId).maybeSingle();
-  const ephemeral = await svc.createEphemeralKey(payment.stripe_customer_id);
+  return { ...await paymentSheet(paymentId, amount, clientSecret), ...spotLines(seats, request.unit_price_cents) };
+}
+
+async function paymentSheet(paymentId, amount, clientSecret) {
+  const { data: payment, error } = await supabaseAdmin.from('Payment').select('stripe_customer_id').eq('id', paymentId).single();
+  if (error) throw error;
+  // Saved cards are optional on a one-off payment. Both apps can collect a card for the same intent.
+  let ephemeral;
+  if (payment.stripe_customer_id) {
+    try {
+      ephemeral = await stripeService().createEphemeralKey(payment.stripe_customer_id);
+    } catch (err) {
+      if (err.type !== 'StripePermissionError') throw err;
+    }
+  }
   return {
     payment_id: paymentId, amount_cents: amount, amount_text: moneyText(amount), client_secret: clientSecret,
     customer_id: payment.stripe_customer_id, ephemeral_key: ephemeral?.secret || null,
@@ -824,6 +843,6 @@ async function releaseExpiredHolds({ now = new Date(), io = null } = {}) {
 module.exports = {
   FLAG, HOLD_MS, WAITLIST_HOLD_MS, enabledFor, switchByHost, priceText, moneyText, paidAmountText, refundText, refundUntilOf, mayCharge, assertMayCharge,
   checkedPrice, priceForNewPlan, priceChange, priceView, paidView, leaveBackCents, quoteFor, groupQuote, unitPriceNow, shortGroupPrice,
-  groupRefund, groupRefunds, retryOwedRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor,
+  groupRefund, groupRefunds, retryOwedRefunds, repriceAfterPartialRefund, repricedShare, basisOf, payingFields, paymentFor, paymentSheet,
   finalize, confirmMine, onPaymentAuthorized, refund, onLeave, onBusinessEnds, releaseExpiredHolds, uuidFrom, CAPTURED, captureNow,
 };

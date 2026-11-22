@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -125,6 +127,7 @@ import app.pantopus.android.ui.screens.businesses.pages.BUSINESS_PAGES_BUSINESS_
 import app.pantopus.android.ui.screens.businesses.pages.BusinessPagesScreen
 import app.pantopus.android.ui.screens.businesses.payments.BusinessPaymentsScreen
 import app.pantopus.android.ui.screens.businesses.team.BusinessTeamScreen
+import app.pantopus.android.ui.screens.ceremonial_mail.CeremonialMailViewModel
 import app.pantopus.android.ui.screens.ceremonial_mail.CeremonialMailWizardScreen
 import app.pantopus.android.ui.screens.ceremonial_mail_open.CeremonialMailOpenScreen
 import app.pantopus.android.ui.screens.compose.gig.GigChecklistLink
@@ -388,6 +391,7 @@ import app.pantopus.android.ui.screens.place.HubVerificationTarget
 import app.pantopus.android.ui.screens.place.PLACE_DASHBOARD_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.PlaceDashboardScreen
 import app.pantopus.android.ui.screens.place.PlaceDashboardSkeleton
+import app.pantopus.android.ui.screens.place.PlaceDetailGroup
 import app.pantopus.android.ui.screens.place.PlaceHomeShortcut
 import app.pantopus.android.ui.screens.place.PlaceRootBar
 import app.pantopus.android.ui.screens.place.PlaceRootViewed
@@ -395,6 +399,7 @@ import app.pantopus.android.ui.screens.place.SavedPlaceRootScreen
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_HOME_ID_KEY
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_SAVED_ID_KEY
 import app.pantopus.android.ui.screens.place.detail.PLACE_DETAIL_SLUG_KEY
+import app.pantopus.android.ui.screens.place.detail.PickupJourney
 import app.pantopus.android.ui.screens.place.detail.PlaceDetailScreen
 import app.pantopus.android.ui.screens.place.detail.SkySharePantopus
 import app.pantopus.android.ui.screens.place.detail.skyShareFile
@@ -420,6 +425,7 @@ import app.pantopus.android.ui.screens.place.verify.PLACE_VERIFY_METHOD_KEY
 import app.pantopus.android.ui.screens.place.verify.PhoneCheckScreen
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyMethod
 import app.pantopus.android.ui.screens.place.verify.PlaceVerifyStatusScreen
+import app.pantopus.android.ui.screens.plans.FirstPlanViewModel
 import app.pantopus.android.ui.screens.plans.PlansExternalRoutes
 import app.pantopus.android.ui.screens.plans.PlansGateViewModel
 import app.pantopus.android.ui.screens.plans.PlansRoutes
@@ -1268,6 +1274,19 @@ private object ChildRoutes {
 
     /** Ceremonial Mail Compose wizard (T3.7). */
     const val CEREMONIAL_MAIL = "mailbox/compose-letter"
+
+    /** The wizard's registered route: [CEREMONIAL_MAIL], or with a person chosen (a letter's Reply, [ceremonialMailTo]). */
+    const val CEREMONIAL_MAIL_ROUTE =
+        "$CEREMONIAL_MAIL?${CeremonialMailViewModel.LETTER_TO_USER_KEY}={${CeremonialMailViewModel.LETTER_TO_USER_KEY}}" +
+            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}={${CeremonialMailViewModel.LETTER_TO_NAME_KEY}}"
+
+    /** The letter form with [userId] chosen on its first step (a letter's Reply, to the one who wrote it). */
+    fun ceremonialMailTo(
+        userId: String,
+        name: String,
+    ): String =
+        "$CEREMONIAL_MAIL?${CeremonialMailViewModel.LETTER_TO_USER_KEY}=${Uri.encode(userId)}" +
+            "&${CeremonialMailViewModel.LETTER_TO_NAME_KEY}=${Uri.encode(name)}"
 
     /** Ceremonial Mail Open reader (T3.8). `:id` is the Mail UUID. */
     const val CEREMONIAL_MAIL_OPEN_ID_KEY = "mailId"
@@ -2262,6 +2281,13 @@ private fun EmailFallbackDialog(
 
 private fun NavHostController.isOnBackStack(route: String): Boolean = runCatching { getBackStackEntry(route) }.isSuccess
 
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
 private fun NavHostController.navigateToRootTab(
     route: PantopusRoute,
     restoreState: Boolean = true,
@@ -2524,6 +2550,14 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         radonHomeId = homeId
         navController.navigateToRootTab(PantopusRoute.Today)
     }
+    // The pickup-day journey. Tip card 16's "Set pickup day" opens this Home's "Today at this address" with the pickup
+    // editor open, once; its saved box's "See it in Today" opens the Today tab with the next pickup's entry lit, once.
+    var pickupEditorHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    var todayPickupHomeId by rememberSaveable { mutableStateOf<String?>(null) }
+    val openPickupEditor: (String) -> Unit = { homeId ->
+        pickupEditorHomeId = homeId
+        navController.navigate(ChildRoutes.placeDetail(homeId, PlaceDetailGroup.TODAY.slug))
+    }
     // Child screens keep the tab they were opened from lit (they used to fall
     // back to Place, which also swallowed taps on Place from those screens).
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -2557,7 +2591,28 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val momentsGate: MomentsGateViewModel = hiltViewModel()
     val momentsOn by momentsGate.on.collectAsStateWithLifecycle()
     val momentsSettled by momentsGate.settled.collectAsStateWithLifecycle()
-    val barTabs = remember(plansFlags.plans, momentsOn) { PantopusRoute.barTabs(plansFlags.plans, momentsOn) }
+    // A person with a Home gets Today as the first tab and opens on it; until then Place is first (founder decision
+    // 2026-11-21). Read once, when the tabs are made, from what the phone kept, so the bar never moves while the app
+    // is in use: a home set up now shows Today first the next time the app opens. As on iPhone.
+    val tabOrder: RootTabOrderViewModel = hiltViewModel()
+    val todayFirst = rememberSaveable { tabOrder.todayFirst() }
+    val barTabs = remember(plansFlags.plans, momentsOn) { PantopusRoute.barTabs(plansFlags.plans, momentsOn, todayFirst) }
+    // Opening on Today: Place stays the start of the stack (its host holds the session's home, and links, the homes
+    // sheet and Add Home reach it there), and Today opens over it as a tap on its tab does. Until the person first
+    // goes to Place it draws nothing and reads nothing ([todayOpening]). A link that is already opening goes first.
+    var todayOpening by rememberSaveable { mutableStateOf(todayFirst) }
+    var todayReached by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!todayOpening || todayReached) return@LaunchedEffect
+        if (DeepLinkRouter.pending.value != null) {
+            todayOpening = false
+            return@LaunchedEffect
+        }
+        // Once the stack has its start (Place): the tabs' NavHost is laid out after this effect is first scheduled.
+        navController.currentBackStackEntryFlow.first()
+        navController.navigateToRootTab(PantopusRoute.Today, restoreState = false)
+        todayReached = true
+    }
     // Christmas cards (TABCARD): while they're open (the Mailbox's "Send a Christmas card" row shows), Mail wears the
     // red envelope from November 1 to Christmas Day, and the side menu, Today, profiles and chats offer a card.
     val christmasCards: ChristmasCardDoorsViewModel = hiltViewModel()
@@ -2610,7 +2665,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     // screen but Mail's opens it, carrying the unread count, and its Back returns to the tab it was opened from, which
     // stays lit on the bar meanwhile. That's the last bar tab shown, however Messages opened (the chat button, a chat
     // push or link, a "Message" button), as on iPhone.
-    var messagesReturnPath by rememberSaveable { mutableStateOf(PantopusRoute.Place.path) }
+    var messagesReturnPath by rememberSaveable {
+        mutableStateOf(if (todayFirst) PantopusRoute.Today.path else PantopusRoute.Place.path)
+    }
     LaunchedEffect(currentRoute, barTabs) { if (currentRoute in barTabs) messagesReturnPath = currentRoute.path }
     val messagesReturnTab = PantopusRoute.fromPath(messagesReturnPath)?.takeIf { it in barTabs } ?: PantopusRoute.Place
     val onMessages = currentRoute == PantopusRoute.messagesTab && currentRoute !in barTabs
@@ -2665,11 +2722,25 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
     val namePrompt: NamePromptViewModel = hiltViewModel()
     val namePromptDeciding by namePrompt.deciding.collectAsStateWithLifecycle()
     val namePromptForm by namePrompt.form.collectAsStateWithLifecycle()
+    // A new account opens on the plan that brought the person, once: the notices and tip cards wait for the answer,
+    // and then for the person to leave the plan (a plan on top already holds them back).
+    val firstPlan: FirstPlanViewModel = hiltViewModel()
+    val firstPlanDeciding by firstPlan.deciding.collectAsStateWithLifecycle()
+    val firstPlanId by firstPlan.planId.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { firstPlan.evaluate() }
+    LaunchedEffect(firstPlanId) {
+        val id = firstPlanId ?: return@LaunchedEffect
+        // Over the first tab, so Back lands on the app's usual first screen. A link that is opening wins.
+        if (DeepLinkRouter.pending.value == null) navController.navigate(PlansRoutes.plan(id)) { launchSingleTop = true }
+        firstPlan.opened()
+    }
     val noticesMayShow =
         topRoute in NOTICE_ROUTES &&
             !(topRoute == PantopusRoute.Place.path && placeArrivalOpen) &&
             !namePromptDeciding &&
-            namePromptForm == null
+            namePromptForm == null &&
+            !firstPlanDeciding &&
+            firstPlanId == null
     val briefingNotice: BriefingNoticeViewModel = hiltViewModel()
     BriefingNotice(
         onManage = { navController.navigate(ChildRoutes.SETTINGS_NOTIFICATIONS) },
@@ -2686,7 +2757,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
         briefingNoticeShowing != null ||
             (topRoute in NOTICE_ROUTES && !briefingNoticeChecked) ||
             namePromptDeciding ||
-            namePromptForm != null
+            namePromptForm != null ||
+            firstPlanDeciding ||
+            firstPlanId != null
     val drawerBusy = navDrawerState.isOpen || navDrawerState.isAnimationRunning
     SideEffect { guidance?.reportRoot(drawerOpen = drawerBusy, noticesBusy = guidanceNoticesBusy) }
 
@@ -3321,7 +3394,19 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 startDestination = PantopusRoute.Place.path,
                 modifier = Modifier.padding(padding).nestedScroll(tabBarScrollConnection),
             ) {
-                composable(PantopusRoute.Place.path) {
+                composable(
+                    PantopusRoute.Place.path,
+                    // Today opening over Place at launch: no fade from a screen that was never shown.
+                    exitTransition = { if (todayOpening) ExitTransition.None else null },
+                ) {
+                    if (todayOpening) {
+                        // The app opened on Today and the person hasn't come to Place yet.
+                        if (!todayReached || navController.currentDestination?.route != PantopusRoute.Place.path) {
+                            Box(Modifier.fillMaxSize())
+                            return@composable
+                        }
+                        SideEffect { todayOpening = false }
+                    }
                     PlaceTabRoot(
                         navController = navController,
                         scrollToTop = placeReselects,
@@ -3329,13 +3414,26 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onBallotOpened = { ballotHomeId = null },
                         onOpenMenu = openMenu,
                         onOpenTodayRadon = openTodayRadon,
+                        onSetPickupDay = openPickupEditor,
                         verifyHomeId = verifyHomeId,
                         onVerifyOpened = { verifyHomeId = null },
                     )
                 }
                 // ── The bar (founder decision 2026-11-13: Mail is third): Place · Today · Mail · Pulse · Moments · Plans
                 // (Place · Today · Mail · Nearby · Moments · Plans with the Pulse redesign off) ──
-                composable(PantopusRoute.Today.path) {
+                composable(
+                    PantopusRoute.Today.path,
+                    enterTransition = {
+                        if (todayOpening && initialState.destination.route == PantopusRoute.Place.path) EnterTransition.None else null
+                    },
+                ) {
+                    // Today is the first tab for a person with a Home: Back on it leaves the app, as Back on Place does
+                    // for everyone else, instead of stepping to Place underneath.
+                    val activity = androidx.compose.ui.platform.LocalContext.current.findActivity()
+                    androidx.activity.compose.BackHandler(enabled = todayFirst && topRoute == PantopusRoute.Today.path) {
+                        activity?.moveTaskToBack(true)
+                    }
+
                     // Today's plan cards open in the Plans tab, as on iOS: the tab comes back on its map with [routes] on
                     // top, so Back lands on the map. Other Plans pages left open there give way; a plan being composed
                     // stays under them, so its draft isn't lost.
@@ -3361,6 +3459,10 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         scrollToTop = todayReselects,
                         radonHomeId = radonHomeId,
                         onRadonShown = { radonHomeId = null },
+                        pickupHomeId = todayPickupHomeId,
+                        onPickupShown = { todayPickupHomeId = null },
+                        // The house on Today's flag and "You have mail" row: the Mail tab, as tapping it does.
+                        onOpenMail = { navController.navigateToRootTab(PantopusRoute.Mail) },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         onOpenMenu = openMenu,
                         skyShare = skyShare,
@@ -3811,6 +3913,15 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onOpenVerificationStatus = { navController.navigate(ChildRoutes.waitingRoom(homeId)) },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         skyShare = skyShare,
+                        pickup =
+                            PickupJourney(
+                                editorRequested = pickupEditorHomeId == homeId,
+                                onEditorOpened = { pickupEditorHomeId = null },
+                                onSeeInToday = {
+                                    todayPickupHomeId = homeId
+                                    navController.navigateToRootTab(PantopusRoute.Today)
+                                },
+                            ),
                     )
                 }
                 composable(
@@ -3908,7 +4019,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onClaim = { navController.navigate(ChildRoutes.ADD_HOME) },
                         onOpenMarketplace = { navController.navigate(PantopusRoute.Marketplace.path) },
                         onOpenTasks = { navController.navigate(PantopusRoute.Tasks.path) },
-                        onInvite = { inviteShare.share(appContext, NEIGHBORHOOD_INVITE_MESSAGE, "Invite your neighbors") },
+                        onInvite = { inviteShare.share(appContext, NEIGHBORHOOD_INVITE_MESSAGE, "Invite homes near you") },
                     )
                 }
                 composable(
@@ -6606,7 +6717,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                                         appContext.composeEmail(
                                             subject = "Join Pantopus",
                                             body =
-                                                "I'd love to see your business on Pantopus — neighbors near " +
+                                                "I'd love to see your business on Pantopus — people near " +
                                                     "me are looking for trusted local pros. $link",
                                         )
                                     }
@@ -6884,7 +6995,23 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onDismiss = { navController.popBackStack() },
                     )
                 }
-                mailComposable(navController, ChildRoutes.CEREMONIAL_MAIL) {
+                mailComposable(
+                    navController,
+                    ChildRoutes.CEREMONIAL_MAIL_ROUTE,
+                    arguments =
+                        listOf(
+                            navArgument(CeremonialMailViewModel.LETTER_TO_USER_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                            navArgument(CeremonialMailViewModel.LETTER_TO_NAME_KEY) {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            },
+                        ),
+                ) {
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
                     // Launch cut #8 (Mail extras): hidden for the first launch.
                     if (!LaunchFeatures.mailExtras) return@mailComposable LaunchCutPlaceholder("Letters", navController)
@@ -6911,8 +7038,9 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                     if (!LaunchFeatures.mailExtras) return@mailComposable LaunchCutPlaceholder("Letters", navController)
                     CeremonialMailOpenScreen(
                         onBack = { navController.popBackStack() },
-                        onWriteBack = {
-                            navController.navigate(ChildRoutes.CEREMONIAL_MAIL)
+                        // Reply: the letter form with the letter's sender chosen.
+                        onWriteBack = { to ->
+                            navController.navigate(ChildRoutes.ceremonialMailTo(to.userId, to.name))
                         },
                     )
                 }
@@ -7662,7 +7790,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                 ) {
                     if (!LaunchFeatures.mailbox) return@mailComposable LaunchCutPlaceholder("Mailbox", navController)
                     // Launch cut #4 (Open Gigs): hidden for the first launch.
-                    if (!LaunchFeatures.openGigs) return@mailComposable LaunchCutPlaceholder("Ask a neighbor", navController)
+                    if (!LaunchFeatures.openGigs) return@mailComposable LaunchCutPlaceholder("Ask for help nearby", navController)
                     // A17.8 → "Ask a Neighbor" — posts the package-help gig via
                     // `POST api/mailbox/v2/p2/package/:mailId/gig` and deep-links
                     // into the created gig, matching RN `mailbox/gig.tsx`.
@@ -7679,7 +7807,7 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onHelp = { navController.navigate(ChildRoutes.SETTINGS_HELP) },
                         onCashOut = { navController.navigate(ChildRoutes.SETTINGS_PAYMENTS) },
                         onBrowseTasks = { navController.navigate(ChildRoutes.GIGS_FEED) },
-                        onReferNeighbor = { navController.navigate(ChildRoutes.placeholder("Refer a neighbor")) },
+                        onReferNeighbor = { navController.navigate(ChildRoutes.placeholder("Refer someone")) },
                         onOfferService = { navController.navigate(ChildRoutes.PROFESSIONAL_PROFILE) },
                         onManagePayout = { navController.navigate(ChildRoutes.SETTINGS_PAYMENTS) },
                         onAddBank = { navController.navigate(ChildRoutes.SETTINGS_PAYMENTS) },
@@ -8201,6 +8329,8 @@ private fun PlaceTabRoot(
     onBallotOpened: () -> Unit,
     onOpenMenu: () -> Unit,
     onOpenTodayRadon: (homeId: String) -> Unit = {},
+    /** Tip card 16's "Set pickup day": the pickup editor for this Home. */
+    onSetPickupDay: (homeId: String) -> Unit = {},
     verifyHomeId: String? = null,
     onVerifyOpened: () -> Unit = {},
     host: HomeTabHostViewModel = hiltViewModel(),
@@ -8219,7 +8349,7 @@ private fun PlaceTabRoot(
         host.refreshUnread()
     }
     val openNotifications = { navController.navigate(ChildRoutes.NOTIFICATIONS) }
-    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController)
+    val addressFocus = rememberPlaceGuidance(root, arrivalOpen, navController, onSetPickupDay)
     if (arrivalOpen) {
         PlaceArrivalStep(
             host = host,
@@ -8328,14 +8458,16 @@ private fun PlaceTabRoot(
 
 /**
  * Guidance cards on Place's root: what it shows (cards 1, 2, 8, 11, 12 and 16–27), not ready while it loads, fails or
- * the arrival step covers it; and a reminder's button (24, 25 and 27), its next step on what Place shows (26 is Your
- * Place's own). Returns the address box's focus, for 24.
+ * the arrival step covers it; and a reminder's button (24, 25 and 27) or card 16's "Set pickup day", its next step on
+ * what Place shows (26 is Your Place's own). Returns the address box's focus, for 24.
  */
 @Composable
+@Suppress("CyclomaticComplexMethod")
 private fun rememberPlaceGuidance(
     root: HomeLanding,
     arrivalOpen: Boolean,
     navController: NavHostController,
+    onSetPickupDay: (homeId: String) -> Unit,
 ): FocusRequester {
     val shows =
         when (root) {
@@ -8365,7 +8497,11 @@ private fun rememberPlaceGuidance(
             is HomeLanding.SavedPlace ->
                 if (host.takeAction(GuidanceAction.SetUpHome)) navController.navigate(ChildRoutes.addHomeAt(root.place.label))
             is HomeLanding.Home ->
-                if (host.takeAction(GuidanceAction.Invite)) navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+                if (host.takeAction(GuidanceAction.Invite)) {
+                    navController.navigate(ChildRoutes.homeMembers(root.homeId, MembersTab.INVITE))
+                } else if (host.takeAction(GuidanceAction.SetPickupDay)) {
+                    onSetPickupDay(root.homeId)
+                }
             else -> Unit
         }
     }
@@ -8406,7 +8542,7 @@ private fun PlaceDashboardDestination(
         onComposeMessage = { address -> navController.navigate(ChildRoutes.neighborCompose(homeId, address)) },
         onOpenInbox = { navController.navigate(ChildRoutes.NEIGHBOR_INBOX) },
         onOpenVerifiedHomes = { navController.navigate(ChildRoutes.VERIFIED_HOMES_NEARBY) },
-        onInviteNeighbors = { inviteShare.share(context, NEIGHBORHOOD_INVITE_MESSAGE, "Invite your neighbors") },
+        onInviteNeighbors = { inviteShare.share(context, NEIGHBORHOOD_INVITE_MESSAGE, "Invite homes near you") },
         // The just-moved card's mail step: a mailbox page, so it opens on the Mail tab.
         onOpenMailDay = { navController.openTabRoot(PantopusRoute.Mail, ChildRoutes.mailDay()) },
         onOpenPrivacyMirror = { navController.navigate(ChildRoutes.placePrivacyMirror(homeId)) },

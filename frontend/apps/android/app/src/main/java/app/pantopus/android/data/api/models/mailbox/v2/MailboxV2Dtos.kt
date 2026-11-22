@@ -113,6 +113,8 @@ data class MailCard(
     val slug: String? = null,
     /** The picture's table colour, a colour like `#3b4c6e` (launch key `card_table`). */
     val table: String? = null,
+    /** The table it opens on: `reverence`, `santa` or `nostalgia` (absent from older servers: decided by number). */
+    val mood: String? = null,
     /** The whole verse printed on a Christmas with Jesus Christ picture, once it isn't sealed ("Read the verse"). */
     val verse: String? = null,
     /** Signed beside FROM (plan 8.2): null while it's sealed and for a card with the name typed. */
@@ -121,6 +123,58 @@ data class MailCard(
     val photo: CardPhoto? = null,
     /** The card's voice greeting: the same reads, null while it's sealed and for a card without. */
     val voice: CardVoice? = null,
+    /** A travelling card (the server's switch `card_travel`); absent on every other card and while the switch is off. */
+    val travel: MailCardTravel? = null,
+)
+
+/**
+ * `travel` on a card (travelling card plan Part 1; services/cardTravel `readerView`). For the person it went to: the
+ * journey, the postmarks of the towns on the way to them (oldest first), the miles and towns so far, its places, the
+ * cards they passed it on with, and whether they can pass it on now (or why not, in plain words).
+ */
+@JsonClass(generateAdapter = true)
+data class MailCardTravel(
+    /** The journey's id; null on Look it over, where the card hasn't started its journey yet. */
+    val journey: String? = null,
+    val hop: Int = 1,
+    val postmarks: List<MailCardPostmark> = emptyList(),
+    val miles: Int = 0,
+    val towns: Int = 0,
+    val places: Int = 2,
+    @Json(name = "places_left") val placesLeft: Int = 0,
+    @Json(name = "next_place") val nextPlace: Int? = null,
+    val passed: List<MailCardPassedOn> = emptyList(),
+    @Json(name = "can_pass_on") val canPassOn: Boolean = false,
+    @Json(name = "pass_on_refusal") val passOnRefusal: MailCardTravelRefusal? = null,
+)
+
+/** One postmark on a travelling card's envelope: the town it left ("Boise", "ID"; "Abroad" with no state) and that day. */
+@JsonClass(generateAdapter = true)
+data class MailCardPostmark(
+    val town: String,
+    val state: String? = null,
+    val on: String? = null,
+)
+
+/** A card its reader passed the travelling card on with: its place (1 or 2), who it's to, and whether it can come back. */
+@JsonClass(generateAdapter = true)
+data class MailCardPassedOn(
+    val place: Int,
+    val id: String,
+    @Json(name = "first_name") val firstName: String? = null,
+    @Json(name = "to_name") val toName: String? = null,
+    @Json(name = "by_email") val byEmail: Boolean = false,
+    @Json(name = "by_link") val byLink: Boolean = false,
+    val status: String? = null,
+    @Json(name = "can_take_back") val canTakeBack: Boolean = false,
+    @Json(name = "take_back_until") val takeBackUntil: String? = null,
+)
+
+/** Why a travelling card can't be passed on now: a code and the words to show. */
+@JsonClass(generateAdapter = true)
+data class MailCardTravelRefusal(
+    val code: String? = null,
+    val error: String? = null,
 )
 
 /**
@@ -291,6 +345,10 @@ data class MailboxV2Item(
      * avatar-tap → public profile navigation in P17.
      */
     @Json(name = "sender_user_id") val senderUserId: String? = null,
+    /** The business a letter was sent as (`Mail.sender_entity_id`); null for a person's own letter and older ones. */
+    @Json(name = "sender_entity_id") val senderEntityId: String? = null,
+    /** The business name a letter carries (older business letters name the business only here). */
+    @Json(name = "sender_business_name") val senderBusinessName: String? = null,
     val `package`: JsonValue?,
     val packageInfo: JsonValue? = null,
     @Json(name = "timeline") val packageTimeline: JsonArrayValue = emptyList(),

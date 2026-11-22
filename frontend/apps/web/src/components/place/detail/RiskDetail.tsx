@@ -288,7 +288,7 @@ const PLAN_GROUPS: PlanGroup[] = [
     icon: MapPin,
     items: [
       { id: 'near', title: 'A spot near home', sub: 'Somewhere just outside, easy to reach' },
-      { id: 'far', title: 'A spot outside the neighborhood', sub: 'In case you can’t get back home' },
+      { id: 'far', title: 'A spot outside the area', sub: 'In case you can’t get back home' },
     ],
   },
 ];

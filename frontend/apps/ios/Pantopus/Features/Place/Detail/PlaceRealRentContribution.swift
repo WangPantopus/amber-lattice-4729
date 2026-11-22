@@ -52,7 +52,7 @@ struct RealRentContribution: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Color.appText)
                 Text(
-                    "Your figure is pooled with your neighbors' and only ever leaves as quartiles — nobody, including us, shows a single home's rent. Only verified residents can add one, which is the whole reason this benchmark is worth reading."
+                    "Your figure is pooled with others' on your block and only ever leaves as quartiles — nobody, including us, shows a single home's rent. Only verified residents can add one, which is the whole reason this benchmark is worth reading."
                 )
                 .font(.system(size: 12.5))
                 .lineSpacing(2)
@@ -119,7 +119,7 @@ struct RealRentContribution: View {
                 Text(savedLine(report))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Theme.Color.appText)
-                Text("Counted toward your block's benchmark. Only you see this figure; your neighbors only ever see the block's quartiles.")
+                Text("Counted toward your block's benchmark. Only you see this figure; others only ever see the block's quartiles.")
                     .font(.system(size: 12.5))
                     .lineSpacing(2)
                     .foregroundStyle(Theme.Color.appTextMuted)

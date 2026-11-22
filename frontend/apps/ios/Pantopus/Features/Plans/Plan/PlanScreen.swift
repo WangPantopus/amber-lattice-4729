@@ -78,7 +78,7 @@ struct PlanScreen: View {
             }
             if intent == .chat { openChat() }
         }
-        .refreshesOnStoreChange(affects: { PlansStoreReads.affects($0) }, perform: { await viewModel.load() })
+        .keepsPlanCurrent(viewModel)
         .onDisappear { viewModel.suspend() }
         .onChange(of: scenePhase) { _, phase in sceneChanged(phase) }
         .sheet(isPresented: $showsAsk) { askSheet }
@@ -161,7 +161,7 @@ struct PlanScreen: View {
     }
 
     private func planScroll(_ card: PlanCardDTO) -> some View {
-        ScrollView {
+        PlanBringScroll { // a ScrollView that "See what to bring" can scroll to the bring card
             VStack(spacing: 0) {
                 ZStack(alignment: .bottomLeading) {
                     PlanHeaderMap(
@@ -453,5 +453,38 @@ extension PlanScreen {
     private func answersHere(_ card: PlanCardDTO) -> Bool {
         card.answersWithNumbers
             && (viewModel.mode == .going || viewModel.openInvite.map { !$0.needsHostOk || $0.cameByOpenLink } == true)
+    }
+}
+
+// MARK: - Waiting on the host
+
+private extension View {
+    /// A change signal (a plan push, or the socket's notice of one) reads the plan again at once. While the viewer
+    /// waits on the host, a light re-read every 30 seconds also brings in the answer when neither reaches the phone.
+    func keepsPlanCurrent(_ viewModel: PlanScreenViewModel) -> some View {
+        refreshesOnStoreChange(affects: { PlansStoreReads.affects($0) }, perform: { await viewModel.load() })
+            .task(id: viewModel.isWaitingForAnswer) { await viewModel.rereadWhileWaiting() }
+    }
+}
+
+extension PlanScreenViewModel {
+    /// How often an open page re-reads the plan while the viewer waits on the host.
+    static let answerRecheck: Duration = .seconds(30)
+
+    /// Asked, or on the waitlist: the host's answer (or a spot) is still to come.
+    var isWaitingForAnswer: Bool {
+        mode == .requested || mode == .waitlisted
+    }
+
+    /// While the page is open and waiting, the plan is read again every 30 seconds, so a yes, a no or a request
+    /// withdrawn elsewhere shows without leaving the page. A push or the socket's notice reads at once
+    /// (`refreshesOnStoreChange`); this covers a phone neither reaches. It stops once the answer is in, the page
+    /// is left, or the app goes to the background (`suspend` clears the plan; coming back reads it again).
+    func rereadWhileWaiting() async {
+        while isWaitingForAnswer {
+            do { try await Task.sleep(for: Self.answerRecheck) } catch { return }
+            guard isWaitingForAnswer else { return }
+            await load(quietly: true)
+        }
     }
 }

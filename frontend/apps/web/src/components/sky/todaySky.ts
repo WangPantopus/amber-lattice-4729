@@ -32,10 +32,25 @@ export interface TodaySkyInput {
   air?: { index: number; pollutant: string | null } | null;
   /** The address calendar's upcoming dates: the bins stand at the curb for a household's own pickup. */
   pickups?: ReadonlyArray<{ kind: string; scope: string; date: string }>;
+  /**
+   * The house on Today (JOURNEYS, 2026-11-21): the ground is drawn larger and these true things stand on it.
+   * Left out, the picture is as it was.
+   */
+  objects?: SkyObjects | null;
   /** The home's outline, from the Your Home section. */
   house?: PlaceHouseShape | null;
   homeType?: string | null;
   density?: PlaceDensityBucket | null;
+}
+
+/** What the larger house shows: only that something is there, never who. */
+export interface SkyObjects {
+  /** A mailbox left of the house (where the Mailbox is on). */
+  mailbox: boolean;
+  /** Its red flag: mail came and is not opened yet. */
+  flagUp: boolean;
+  /** A white note on the door: something needs the person. */
+  note: boolean;
 }
 
 export type SkyColors = readonly [top: string, mid: string, bottom: string];
@@ -322,6 +337,8 @@ export interface TodayScene {
   home: SkyHome;
   /** The share of the far hill's lights on after dusk, from the block's density bucket. */
   lights: number;
+  /** The house on Today: the larger ground and what stands on it; null draws the picture as it was. */
+  objects: SkyObjects | null;
 }
 
 const SUN_LOW = '#FFC27A';
@@ -395,5 +412,16 @@ export function todaySkyScene(input: TodaySkyInput, now: number): TodayScene {
     bins: (input.air?.index ?? 0) >= 151 ? [] : binsOut(input, clock),
     home: skyHome(input.house, input.homeType),
     lights: lights(input.density),
+    objects: input.objects ?? null,
   };
+}
+
+/**
+ * A pickup evening: from 4 pm the day before one of the household's own pickups. Answers the kinds collected
+ * tomorrow (garbage, recycling, yard waste), or none. The bins in the picture follow the same rule.
+ */
+export function pickupTomorrow(pickups: TodaySkyInput['pickups'], timeZone: string | null | undefined, now: number): string[] {
+  const clock = clockIn(now, timeZone);
+  if (clock.minutes < 16 * 60) return [];
+  return binsOut({ condition: 'clear', tempF: null, pickups, timeZone }, clock);
 }

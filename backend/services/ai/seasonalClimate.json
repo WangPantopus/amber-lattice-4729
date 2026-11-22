@@ -452,7 +452,7 @@
       "Turn on your heating system before you need it regularly, so there is time to address maintenance or repair needs."
     ],
     "holiday_season": [
-      "Package theft peaks in December. Consider coordinating with neighbors for delivery watching.",
+      "Package theft peaks in December. Consider asking someone nearby to watch for deliveries.",
       "Before holiday travel, arrange for mail and packages to be collected and leave a way for a trusted contact to reach you.",
       "Inspect seasonal decorations for damaged cords and follow the manufacturer's indoor or outdoor use and electrical load instructions."
     ]
@@ -479,7 +479,7 @@
     "heat_season": {
       "label": "Extreme Heat Season",
       "tips": [
-        "Extreme heat is the deadliest weather in the United States. Check on older neighbors, keep AC filters fresh, and know the nearest cooling center."
+        "Extreme heat is the deadliest weather in the United States. Check on older people near you, keep AC filters fresh, and know the nearest cooling center."
       ]
     },
     "wildfire_season": {

@@ -469,7 +469,7 @@ private func askerDisplayName(_ user: GigQuestionUser?) -> String {
     if let name = user.name, !name.isEmpty { return name }
     let parts = [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }
     if !parts.isEmpty { return parts.joined(separator: " ") }
-    return user.username ?? "Neighbor"
+    return user.username ?? "Someone nearby"
 }
 
 private func answererDisplayName(_ question: GigQuestionDTO) -> String {

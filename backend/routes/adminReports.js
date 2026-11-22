@@ -229,7 +229,7 @@ router.post('/:kind/:reportId/resolve', async (req, res) => {
   try {
     const { kind, reportId } = req.params;
     if (kind === 'message') {
-      return res.status(409).json({ error: 'Neighbor message reports cannot be closed here yet' });
+      return res.status(409).json({ error: 'Reports on messages between homes cannot be closed here yet' });
     }
     const spec = KINDS[kind];
     if (!spec) return res.status(404).json({ error: 'Unknown report kind' });
@@ -327,7 +327,7 @@ router.post('/post/:reportId/remove', async (req, res) => {
         userId: post.user_id,
         type: 'content_removed',
         title: post.is_story ? 'Your Moment was removed' : 'Your post was removed',
-        body: 'A Pantopus moderator removed it after a report. Neighbors can no longer see it.',
+        body: 'A Pantopus moderator removed it after a report. Others can no longer see it.',
         icon: '🛡️',
         link: post.is_story ? null : `/posts/${post.id}`,
         metadata: { post_id: post.id },

@@ -182,7 +182,7 @@ struct ProfessionalEnableFormView: View {
                 row: ProVisibilityRow(
                     id: "publicProfile",
                     label: "Public profile",
-                    sub: "Neighbors can find you on the map and in search.",
+                    sub: "People can find you on the map and in search.",
                     isOn: draft.isPublic
                 )
             ) { viewModel.setDraftPublic($0) }

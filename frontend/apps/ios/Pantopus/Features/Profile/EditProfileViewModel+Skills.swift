@@ -143,7 +143,7 @@ extension EditProfileViewModel {
         if !city.isEmpty { lines.append("City: \(city)") }
         if !skills.isEmpty { lines.append("Skills: \(skills.joined(separator: ", "))") }
         guard !lines.isEmpty else { return "" }
-        let instruction = "Write a short first-person profile bio (2-3 sentences) for this neighbor."
+        let instruction = "Write a short first-person profile bio (2-3 sentences) for this person."
         return String(([instruction] + lines).joined(separator: "\n").prefix(Self.maxBioPromptLength))
     }
 }

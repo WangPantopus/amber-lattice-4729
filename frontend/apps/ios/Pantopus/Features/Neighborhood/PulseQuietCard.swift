@@ -46,12 +46,12 @@ struct PulseQuietCard: View {
 
     private var setUpHomeCard: some View {
         card {
-            Text("Add a home for neighborhood context")
+            Text("Add a home to see what's near it")
                 .pulseFont(.headline)
                 .foregroundStyle(Theme.Color.appText)
                 .accessibilityAddTraits(.isHeader)
             // Launch cut #1 (Beacon): the copy drops Beacons for the first launch.
-            Text("Adding a home gives you neighborhood context and household tools. "
+            Text("Adding a home shows you what's near it and gives you household tools. "
                 + (LaunchFeatures.beacon
                     ? "You can browse Pulse and follow Beacons before setting it up."
                     : "You can browse Pulse before setting it up."))
@@ -70,7 +70,7 @@ struct PulseQuietCard: View {
 
     private func meterCard(_ meter: NeighborhoodMeterDTO) -> some View {
         card {
-            Text("Verified neighbors \(areaSuffix(meter))".uppercased())
+            Text("Verified homes \(areaSuffix(meter))".uppercased())
                 .pulseFont(.overline)
                 .foregroundStyle(Theme.Color.appTextSecondary)
                 .accessibilityAddTraits(.isHeader)
@@ -86,7 +86,7 @@ struct PulseQuietCard: View {
                 item: PersonalInviteLink.shared.url,
                 message: Text(NeighborhoodView.inviteMessage)
             ) {
-                buttonLabel("Invite your neighbors", icon: .share2)
+                buttonLabel("Invite homes near you", icon: .share2)
             }
             .accessibilityIdentifier("pulseQuietInvite")
             if let cells = viewModel.cells {

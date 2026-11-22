@@ -66,6 +66,7 @@ import app.pantopus.android.ui.theme.PantopusIcon
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList")
 fun PlaceDetailScreen(
     onBack: () -> Unit,
     onOpenBallot: () -> Unit = onBack,
@@ -76,6 +77,8 @@ fun PlaceDetailScreen(
     onAsk: ((AIScreenContext) -> Unit)? = null,
     // Today's Share: "Or share in Pantopus" (Post to Pulse, Send in a chat); null leaves them out.
     skyShare: SkySharePantopus? = null,
+    // Today at this address: the pickup editor opened for tip card 16, and the saved box's "See it in Today".
+    pickup: PickupJourney = PickupJourney(),
     viewModel: PlaceDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -135,6 +138,7 @@ fun PlaceDetailScreen(
                         onAsk = onAsk?.let { ask -> askAboutSection(viewModel, ask) },
                         top = top,
                         skyShare = skyShare,
+                        pickup = pickup,
                     )
             }
         }
@@ -175,6 +179,7 @@ private fun LoadedDetail(
     /** The header drawn over the top of the page: its first card starts below it. */
     top: Dp,
     skyShare: SkySharePantopus?,
+    pickup: PickupJourney,
 ) {
     if (viewModel.savedPlaceId != null &&
         (!viewModel.group.supportsSavedPlace || current.intelligence.groups.none { it.groupId in viewModel.group.groups })
@@ -229,6 +234,7 @@ private fun LoadedDetail(
                             TodayAlertsCheck.CURRENT
                         },
                     skyShare = skyShare,
+                    pickup = pickup,
                 )
             }
             Spacer(modifier = Modifier.height(40.dp))
@@ -237,6 +243,7 @@ private fun LoadedDetail(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun GroupContent(
     group: PlaceDetailGroup,
     intel: PlaceIntelligence,
@@ -245,6 +252,7 @@ private fun GroupContent(
     onAsk: (() -> Unit)?,
     alertsCheck: TodayAlertsCheck,
     skyShare: SkySharePantopus?,
+    pickup: PickupJourney,
 ) {
     when (group) {
         // This page opens over the Place dashboard, where the ballot card is.
@@ -254,7 +262,12 @@ private fun GroupContent(
                 viewModel.takeIf { it.savedPlaceId == null && !intel.claimView },
                 onOpenBallot = onOpenBallot,
                 alertsCheck = alertsCheck,
-                tab = TodayTabParts(skyShare = skyShare),
+                // "See it in Today" is left out when the Today tab shows another Home.
+                tab =
+                    TodayTabParts(
+                        skyShare = skyShare,
+                        pickup = pickup.copy(onSeeInToday = pickup.onSeeInToday?.takeIf { viewModel.isTodaysHome }),
+                    ),
             )
         PlaceDetailGroup.YOUR_HOME -> PlaceHomeDetailContent(intel, onCorrectYear = onAsk)
         PlaceDetailGroup.RISK -> PlaceRiskDetailContent(intel, viewModel)

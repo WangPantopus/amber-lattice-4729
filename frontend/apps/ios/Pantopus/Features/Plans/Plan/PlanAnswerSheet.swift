@@ -224,11 +224,27 @@ struct PlanAnswerBanner: View {
 
     let kind: Kind
     let line: String
+    /// "See what to bring" under a hairline (JOURNEYS 2): things are still open and this person has claimed none.
+    var bring: Int?
     let onChange: () -> Void
 
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            answer
+            if kind == .isIn, let bring { PlanBringPointerRow(open: bring) }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, Spacing.s2)
+        .padding(.vertical, Spacing.s2)
+        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous)
+            .fill(kind == .isIn ? Theme.Color.successBg : Theme.Color.appSurfaceSunken))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(kind == .isIn ? "planInBanner" : "planMaybeBanner")
+    }
+
+    private var answer: some View {
         Group {
             if typeSize.isAccessibilitySize {
                 // The largest text: "Change" goes under the words instead of breaking beside them.
@@ -245,13 +261,6 @@ struct PlanAnswerBanner: View {
                 }
             }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, Spacing.s2)
-        .padding(.vertical, Spacing.s2)
-        .background(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous)
-            .fill(kind == .isIn ? Theme.Color.successBg : Theme.Color.appSurfaceSunken))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(kind == .isIn ? "planInBanner" : "planMaybeBanner")
     }
 
     private var glyph: some View {

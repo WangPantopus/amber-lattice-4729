@@ -68,7 +68,7 @@ public enum ViewAsSampleData {
             verified: true
         ),
         badges: [
-            ViewAsBadge(id: "neighbor", icon: .badgeCheck, label: "Verified neighbor", isOn: true),
+            ViewAsBadge(id: "neighbor", icon: .badgeCheck, label: "Verified home", isOn: true),
             ViewAsBadge(id: "id", icon: .lock, label: "ID verified", isOn: false),
             ViewAsBadge(id: "phone", icon: .lock, label: "Phone verified", isOn: false)
         ],
@@ -119,7 +119,7 @@ public enum ViewAsSampleData {
         ],
         note: ViewAsContextNote(
             icon: .eyeOff,
-            text: "Followers see your public creator card — your neighbor identity stays separate.",
+            text: "Followers see your public creator card — your Local Profile stays separate.",
             tone: .restricted
         ),
         footerText: "Followers of your public profile see only what you broadcast."
@@ -131,7 +131,7 @@ public enum ViewAsSampleData {
         viewer: .neighbor,
         banner: ViewAsBanner(
             icon: .mapPin,
-            viewerLabel: "a neighbor",
+            viewerLabel: "someone nearby",
             subtitle: "This is what they see",
             tone: .info
         ),
@@ -152,15 +152,15 @@ public enum ViewAsSampleData {
             field("location", .mapPin, "Location", .visible("Maple Heights · 4 blocks away")),
             field("memberSince", .calendar, "Member since", .visible("March 2023 · 2 yrs")),
             field("rating", .star, "Rating", .visible(rating)),
-            field("mutuals", .users, "Mutual connections", .visible("3 neighbors in common")),
+            field("mutuals", .users, "Mutual connections", .visible("3 connections in common")),
             field("contact", .phone, "Contact", .hidden)
         ],
         note: ViewAsContextNote(
             icon: .mapPin,
-            text: "Verified neighbors nearby see your local profile and approximate location.",
+            text: "Verified homes nearby see your local profile and approximate location.",
             tone: .info
         ),
-        footerText: "Verified neighbors see your local profile within your area."
+        footerText: "Verified homes see your local profile within your area."
     )
 
     // MARK: - Gig participant (someone on a shared job)
@@ -266,7 +266,7 @@ public enum ViewAsSampleData {
             field("location", .mapPin, "Location", .visible("Maple Heights · 2 blocks away")),
             field("memberSince", .calendar, "Member since", .visible("March 2023 · 2 yrs")),
             field("rating", .star, "Rating", .visible(rating)),
-            field("mutuals", .users, "Mutual connections", .visible("6 neighbors in common")),
+            field("mutuals", .users, "Mutual connections", .visible("6 connections in common")),
             field("contact", .phone, "Contact", .visible("Available on request"))
         ],
         note: ViewAsContextNote(

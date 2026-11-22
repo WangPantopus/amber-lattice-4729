@@ -52,20 +52,24 @@ function pictureNumber(number: number | null | undefined, design?: string | null
 }
 
 /**
- * Each collection's mood on the table (design plan Part 7), by the picture's number, the same in every app:
- * Christmas with Jesus Christ (59-67) is reverence, Christmas with Santa (50-58) is Santa, every other is nostalgia.
+ * Each collection's mood on the table (design plan Part 7), the same in every app. The server names it on every card
+ * it sends (`mood`, card shelves SPEC A4, November 21); without it (an answer cached before it), by the picture's number:
+ * Christmas with Jesus Christ (59-89) is reverence, Christmas with Santa (50-58 and 90-95) is Santa, every other is
+ * nostalgia. The iPhone and Android apps know 59-89 from their builds after November 21; earlier builds know 59-67.
  */
 export type CardMood = 'nostalgia' | 'reverence' | 'santa';
-export function cardMood(number: number | null | undefined, design?: string | null): CardMood {
+const MOODS: readonly string[] = ['nostalgia', 'reverence', 'santa'];
+export function cardMood(number: number | null | undefined, design?: string | null, mood?: string | null): CardMood {
+  if (mood && MOODS.includes(mood)) return mood as CardMood;
   const picture = pictureNumber(number, design);
-  if (picture >= 59 && picture <= 67) return 'reverence';
-  if (picture >= 50 && picture <= 58) return 'santa';
+  if (picture >= 59 && picture <= 89) return 'reverence';
+  if ((picture >= 50 && picture <= 58) || (picture >= 90 && picture <= 95)) return 'santa';
   return 'nostalgia';
 }
 
 /** The small stamp a card carries, by its picture's number: the same in every app. Reverence cards carry the star. */
-export function cardStampFile(number: number | null | undefined, design: string): string {
-  if (cardMood(number, design) === 'reverence') return `${TABLE_ART}stamp-star.webp`;
+export function cardStampFile(number: number | null | undefined, design: string, mood?: string | null): string {
+  if (cardMood(number, design, mood) === 'reverence') return `${TABLE_ART}stamp-star.webp`;
   const stamps = ['fir', 'peak', 'river'];
   return `${TABLE_ART}stamp-${stamps[(pictureNumber(number, design) - 1) % 3]}.webp`;
 }

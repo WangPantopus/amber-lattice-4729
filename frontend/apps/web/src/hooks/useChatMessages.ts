@@ -140,6 +140,10 @@ function conversationCacheKey(roomId?: string, otherUserId?: string, topicId?: s
   return null;
 }
 
+export function personConversationDraftKey(accountId: string, otherUserId: string) {
+  return accountId + ':' + JSON.stringify(conversationCacheKey(undefined, otherUserId, null, undefined, accountId));
+}
+
 const messageTime = (m: ChatMessage) => (m?.created_at ? timeKey(m.created_at).ms : 0);
 const isUnsent = (m: ChatMessage) => Boolean((m as Record<string, any>)._failed || (m as Record<string, any>)._optimistic);
 
@@ -915,7 +919,7 @@ export function useChatMessages(opts: UseChatMessagesOptions): UseChatMessagesRe
     queryClient.setQueryData<ConversationSnapshot>(cacheKey, snapshot);
     if (!currentUserId) return;
     const timer = setTimeout(() => {
-      const recent = accepted.slice(-100);
+      const recent = accepted.slice(-100).map(message => message.moment ? { ...message, moment: { ...message.moment, thumb_url: null, excerpt: null, background: null } } : message);
       const trimmed = accepted.length > recent.length;
       const saved = { ...snapshot, messages: recent, hasMore: hasMore || trimmed,
         nextCursor: trimmed ? `${recent[0].created_at}|${recent[0].id}` : snapshot.nextCursor };

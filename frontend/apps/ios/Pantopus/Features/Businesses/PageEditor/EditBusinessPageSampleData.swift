@@ -50,7 +50,7 @@ public enum EditBusinessPageSampleData {
                 .init(id: "sat", dayLabel: "Sat", state: .open(openLabel: "8:00 AM", closeLabel: "9:00 PM")),
                 .init(id: "sun", dayLabel: "Sun", state: .open(openLabel: "8:00 AM", closeLabel: "2:00 PM"))
             ],
-            footerHint: "Holiday hours can be added per date — neighbors see a banner."
+            footerHint: "Holiday hours can be added per date — people see a banner."
         ),
         services: .chips(chips: [
             .init(id: "1", label: "Dine-in", iconKey: "utensils"),
@@ -131,7 +131,7 @@ public enum EditBusinessPageSampleData {
         price: .init(original: "", current: "", placeholder: "$ — $$$$"),
         description: .prompt(.init(
             iconKey: "fileText",
-            title: "Tell neighbors what you do",
+            title: "Tell people what you do",
             subtitle: "A short paragraph helps your page rank in local search.",
             ctaLabel: "Write"
         )),

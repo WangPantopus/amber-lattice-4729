@@ -105,9 +105,9 @@ public struct LeaveReviewSheetView: View {
 
     private var headerCopy: String {
         if let name = target.revieweeName, !name.isEmpty {
-            return "How did \(name) do on \(target.gigTitle)? Your review helps the neighborhood."
+            return "How did \(name) do on \(target.gigTitle)? Your review helps people near you."
         }
-        return "How did this go on \(target.gigTitle)? Your review helps the neighborhood."
+        return "How did this go on \(target.gigTitle)? Your review helps people near you."
     }
 
     private var ratingPicker: some View {
@@ -161,7 +161,7 @@ public struct LeaveReviewSheetView: View {
             Text("Comment (optional)")
                 .pantopusTextStyle(.caption)
                 .foregroundStyle(Theme.Color.appTextSecondary)
-            TextField("Anything the neighborhood should know?", text: $comment, axis: .vertical)
+            TextField("Anything others should know?", text: $comment, axis: .vertical)
                 .lineLimit(3...6)
                 .font(Theme.Font.body)
                 .foregroundStyle(Theme.Color.appText)

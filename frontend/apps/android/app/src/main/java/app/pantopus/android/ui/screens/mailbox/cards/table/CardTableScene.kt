@@ -516,12 +516,20 @@ private fun EnvelopeFront(
                     val pen = faceArt?.pen ?: return@drawBehind
                     val moment = state.sending
                     val reveal = AddressReveal.of(moment)
+                    // A travelling card's newest postmark is struck as the envelope lands (travelling card Part 3), or
+                    // as a pass-on is sealed, where today's postmark would land.
+                    val strike =
+                        when {
+                            card.travel == null -> 1f
+                            moment != null -> reveal.postmark
+                            else -> state.strike
+                        }
                     drawIntoCanvas { canvas ->
                         // A list: the envelopes under the top one, their edges showing.
                         if ((moment?.calls?.several ?: 1) > 1) {
                             drawEnvelopeStack(canvas.nativeCanvas, art, size.width, size.height, paint)
                         }
-                        drawAddressSide(canvas.nativeCanvas, art, pen, card, day, size.width, size.height, paint, reveal)
+                        drawAddressSide(canvas.nativeCanvas, art, pen, card, day, size.width, size.height, paint, reveal, strike)
                     }
                 },
     )
@@ -537,6 +545,7 @@ private fun drawAddressSide(
     height: Float,
     paints: EnvelopePaints,
     reveal: AddressReveal = AddressReveal.All,
+    strike: Float = 1f,
 ) {
     canvas.drawBitmap(art.front, null, RectF(0f, 0f, width, height), paints.bitmap)
     drawPostage(canvas, art, card, day, width, height, paints, reveal)
@@ -605,11 +614,14 @@ private fun drawAddressSide(
         val label = if (card.letter) "A LETTER FOR YOU" else "CHRISTMAS CARD"
         canvas.drawText(label, width * 0.068f - size * 0.1f, baseline, paints.text)
     }
+    // The postmarks of the towns on its way here, over the names as stamped ink is; the first cancels the stamp.
+    if (card.travels) CardTravelPostmarks.draw(canvas, card.travel?.postmarks.orEmpty(), width, height, paints, strike)
 }
 
 /**
  * The stamp, and the postmark over it with the day it was mailed. While the sender's envelope is addressed ([reveal]),
- * each drops onto the paper: from a little larger, and faint, to where it lies.
+ * each drops onto the paper: from a little larger, and faint, to where it lies. A travelling card has the postmarks of
+ * the towns on its way here instead, drawn last by [drawAddressSide].
  */
 private fun drawPostage(
     canvas: Canvas,
@@ -621,19 +633,23 @@ private fun drawPostage(
     paints: EnvelopePaints,
     reveal: AddressReveal,
 ) {
-    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design)?.takeIf { reveal.stamp > 0f }?.let { stamp ->
+    // A passed-on card's envelope already carries its stamp, cancelled by its first postmark (travelling card Part 4).
+    val stampOn = if (card.travels) 1f else reveal.stamp
+    cardStamp(art.stamps, art.star, card.stamp, card.number, card.design, card.mood)?.takeIf { stampOn > 0f }?.let { stamp ->
         val left = width * 0.755f
         val top = height * 0.0345f
         val stampWidth = width * 0.2017f
         val stampHeight = stampWidth * stamp.height / stamp.width
         val saved = canvas.save()
-        val grow = 1f + 0.45f * (1f - reveal.stamp)
+        val grow = 1f + 0.45f * (1f - stampOn)
         canvas.scale(grow, grow, left + stampWidth / 2f, top + stampHeight / 2f)
-        paints.bitmap.alpha = (255 * reveal.stamp.coerceIn(0f, 1f)).toInt()
+        paints.bitmap.alpha = (255 * stampOn.coerceIn(0f, 1f)).toInt()
         canvas.drawBitmap(stamp, null, RectF(left, top, left + stampWidth, top + stampHeight), paints.bitmap)
         paints.bitmap.alpha = 255
         canvas.restoreToCount(saved)
     }
+    // A travelling card's postmarks are struck over the names, last (travelling card plan Part 3).
+    if (card.travels) return
     // A letter Pantopus puts straight in the box has no postmark (and the postmark says Christmas).
     if (reveal.postmark > 0f && !card.letter) {
         val saved = canvas.save()

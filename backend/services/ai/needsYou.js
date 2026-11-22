@@ -48,7 +48,7 @@ async function namesOf(ids) {
   const wanted = [...new Set(ids.filter(isUuid).map(String))];
   if (!wanted.length) return new Map();
   const shown = await localDisplayNames(wanted).catch(() => new Map());
-  return new Map(wanted.map((id) => [id, firstNameOf({ display_name: shown.get(id) }) || 'A neighbor']));
+  return new Map(wanted.map((id) => [id, firstNameOf({ display_name: shown.get(id) }) || 'Someone nearby']));
 }
 
 // ─── Sources ───────────────────────────────────────────────────────────────

@@ -115,7 +115,7 @@ public enum SupportTrainDetailSampleData {
             hostedBy: HostedByFooter(
                 organizerInitials: "DK",
                 organizerDisplayName: "Diane K.",
-                neighborHint: "neighbor at 422 Elm"
+                neighborHint: "lives at 422 Elm"
             ),
             dock: .signUp(label: "Sign up for a slot"),
             celebrationBanner: nil
@@ -199,7 +199,7 @@ public enum SupportTrainDetailSampleData {
             hostedBy: HostedByFooter(
                 organizerInitials: "DK",
                 organizerDisplayName: "Diane K.",
-                neighborHint: "neighbor at 422 Elm"
+                neighborHint: "lives at 422 Elm"
             ),
             dock: .sendCardAndBackup,
             celebrationBanner: SupportTrainDetailContent.CelebrationBanner(

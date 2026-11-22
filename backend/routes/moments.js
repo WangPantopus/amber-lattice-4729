@@ -24,6 +24,7 @@ const { adultStatus, confirmAdult } = require('../services/adultAttestation');
 const momentUpload = require('../services/moments/momentUpload');
 const momentNotify = require('../services/moments/momentNotify');
 const momentSchedule = require('../services/moments/momentSchedule');
+const momentWeather = require('../services/moments/momentWeather');
 const { normalizePostReaction } = require('../utils/postReaction');
 const { REPORT_REASONS, filePostReport } = require('../services/postReportService');
 const { haversineMeters } = require('../utils/trustState');
@@ -105,18 +106,30 @@ router.post('/adult-confirm', actionLimiter, async (req, res) => {
  * be pinned (`can_pin`) and
  * the "Share later" times on offer now (`share_later`); `pick_within_m` (how far a place picked by name may be) is
  * a mile where the spot is most built up, up to two miles in open country (momentPlace.pickWithinM).
+ * With `weather: true` (API v4.1: an app that offers "Show the weather") it adds `weather`, the stamp a Moment taken
+ * here would keep ({ temp_f, kind, label }, momentWeather.weatherAt), or null: always null at home and with no point,
+ * where nothing is looked up. A request without it looks nothing up, so apps from before add no weather reads.
  */
 router.post('/place-preview', actionLimiter, async (req, res) => {
   try {
     const at = parseBody(Joi.object({
       latitude: Joi.number().min(-90).max(90), longitude: Joi.number().min(-180).max(180),
+      weather: Joi.boolean().default(false),
     }).and('latitude', 'longitude'), req.body);
     const placed = at.latitude != null;
     const sky = await store.skyOn(req.user);
-    const [labels, atHome, heights, adult, connections, pickWithin] = await Promise.all([
+    // A failed home read answers at home, as POST / will treat it: the sheet then offers what the post will do (only the
+    // area with the Sky on, no height, no pin at a place).
+    const homeCheck = placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude, { onFailure: true }) : false;
+    // Asked for after the home check, and only away from home, so a point at home is never sent to the weather source
+    // from here.
+    const weatherRead = at.weather && placed
+      ? homeCheck.then((home) => (home ? null : momentWeather.weatherAt(at.latitude, at.longitude)))
+      : null;
+    const [labels, home, heights, adult, connections, pickWithin, weather] = await Promise.all([
       placed ? momentPlace.labelsAt(at.latitude, at.longitude, { pinnableOnly: sky })
         : { place_label: null, area_label: null, places: [] },
-      placed ? momentPlace.isAtHome(req.user.id, at.latitude, at.longitude) : false,
+      homeCheck,
       placed ? store.heightsOn(req.user) : false,
       adultStatus(req.user.id),
       // Never in the way of the place's words: a failed read leaves `has_connections` out.
@@ -125,7 +138,9 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
         return null;
       }),
       sky && placed ? momentPlace.pickWithinM(at.latitude, at.longitude) : momentPlace.PICK_PLACE_M,
+      weatherRead,
     ]);
+    const atHome = Boolean(home);
     // pick_within_m: how far from the pin the place picker's venues may be (POST / takes a venue_id within it).
     res.json({
       ...labels,
@@ -136,6 +151,7 @@ router.post('/place-preview', actionLimiter, async (req, res) => {
       adult_confirmed: Boolean(adult.attestedAt) && !adult.ineligible,
       pick_within_m: pickWithin,
       ...(connections ? { has_connections: connections.length > 0 } : {}),
+      ...(at.weather ? { weather: atHome ? null : weather } : {}),
       ...(sky ? await skyPreview(req.user.id, at, atHome) : {}),
     });
   } catch (error) {
@@ -188,7 +204,9 @@ async function skyPreview(userId, at, atHome) {
  */
 async function skyPlacement(userId, body) {
   const { latitude, longitude } = body.location;
-  const atHome = await momentPlace.isAtHome(userId, latitude, longitude);
+  // A home read that fails counts as at home: the Moment floats and keeps no height, so a failure never shows where its
+  // author lives (the post still succeeds).
+  const atHome = await momentPlace.isAtHome(userId, latitude, longitude, { onFailure: true });
   if (atHome || body.show_area) return { atHome, venue: null, area: await momentPlace.closeArea(latitude, longitude) };
   const venueKey = typeof body.place_key === 'string' && body.place_key.startsWith('v_') ? body.place_key : null;
   if (body.pin !== 'place' && !body.venue_id && !venueKey) return { atHome, venue: null, area: null };
@@ -206,7 +224,8 @@ async function skyPlacement(userId, body) {
     venue = await momentPlace.namingPlace(latitude, longitude);
     if (!venue) throw store.fail(422, 'NO_PLACE_HERE', 'There is no public place to pin this Moment at here.');
   }
-  if (venue && await momentPlace.isAtHome(userId, venue.latitude, venue.longitude)) venue = null;
+  // A place whose home check fails takes no pin either.
+  if (venue && await momentPlace.isAtHome(userId, venue.latitude, venue.longitude, { onFailure: true })) venue = null;
   if (venue && haversineMeters(latitude, longitude, venue.latitude, venue.longitude) > within) {
     venue = { ...venue, latitude, longitude };
   }
@@ -279,6 +298,12 @@ const createSchema = Joi.object({
     index: Joi.number().integer().min(1).max(store.MAX_PARTS).required(),
     count: Joi.number().integer().min(2).max(store.MAX_PARTS).required(),
   }).allow(null),
+  // The Live mark (API v4.1, optional): the app's own camera made this photo or video just now. Kept only for a `gps`
+  // location at its exact pin away from home (store.markKept); anywhere else it is dropped, never an error.
+  taken_here: Joi.boolean().default(false),
+  // "Show the weather" (API v4.1, optional): with the mark kept, the server reads the weather at the pin and keeps it
+  // on the Moment. No reading, no stamp; the post goes ahead either way.
+  show_weather: Joi.boolean().default(false),
 });
 
 // The row id a retry key stands for, so the same tap never makes two Moments.
@@ -331,20 +356,31 @@ router.post('/', createLimiter, async (req, res) => {
     const { latitude, longitude } = location;
     let found;
     let atHome;
+    // Whether the author is away from home where they stand (the Live mark is kept only then; a failed read is home).
+    let markHomeClear = false;
     if (unplaced) {
       [found, atHome] = [{ place_label: null, area_label: null, places: [] }, false];
     } else if (sky && (venue || area)) {
       // A pin at a place says the place's name; a Moment over its area the area's town, read at the area's point.
       const town = area ? await momentPlace.townAt(area.latitude, area.longitude) : null;
       [found, atHome] = [{ place_label: venue ? venue.label : town, area_label: town, places: [] }, placed.atHome];
+      markHomeClear = !placed.atHome;
     } else if (sky) {
       // Where it was taken: the names that fit the spot, as before the Sky (only places that can take a pin).
       [found, atHome] = [await momentPlace.labelsAt(latitude, longitude, { pinnableOnly: true }), false];
+      markHomeClear = !placed.atHome;
     } else {
-      [found, atHome] = await Promise.all([
+      // A failed home read counts as at home here too: the town's name, no height. A picked place moves the pin, so for
+      // the Live mark "at home" is also asked at the point the phone sent.
+      const [labelsHere, home, spot] = await Promise.all([
         momentPlace.labelsAt(latitude, longitude),
-        momentPlace.isAtHome(req.user.id, latitude, longitude),
+        momentPlace.isAtHome(req.user.id, latitude, longitude, { onFailure: true }),
+        venue && body.taken_here
+          ? momentPlace.isAtHome(req.user.id, body.location.latitude, body.location.longitude, { onFailure: true })
+          : false,
       ]);
+      [found, atHome] = [labelsHere, home];
+      markHomeClear = !home && !spot;
     }
     // The name the author picked for this point, worked out again here; an area or at-home Moment says the town.
     const labels = venue
@@ -356,6 +392,17 @@ router.post('/', createLimiter, async (req, res) => {
     // 10 ft, a floating Moment's to 100 ft.
     const reading = store.shownAltitude(body.altitude, { atHome, showArea, unplaced, floating: Boolean(area) });
     const altitude = reading && (await store.heightsOn(req.user)) ? reading : null;
+    const takenAt = store.takenAtShown(body.location.source === 'capture' ? body.location.taken_at : body.taken_at);
+    // The Live mark (API v4.1): kept only for a camera photo or video at its exact pin away from home, the places a
+    // height is kept (a failed home read counts as home, so it drops the mark); newMomentRow decides again on what it
+    // stores. Its weather is read here, within its budget, never taken from
+    // the phone.
+    // Any top-level `taken_at` means an album item (the apps send it for nothing else): no mark, however recent.
+    const marked = body.taken_here && markHomeClear && store.markKept({
+      kind: body.kind, source: body.location.source, atHome, showArea, unplaced, floating: Boolean(area),
+      takenAt: takenAt || body.taken_at || null,
+    });
+    const weather = marked && body.show_weather ? await momentWeather.weatherAt(latitude, longitude) : null;
     const { row, created } = await store.insertMoment(store.newMomentRow({
       userId: req.user.id,
       accountType: req.user.accountType,
@@ -370,15 +417,18 @@ router.post('/', createLimiter, async (req, res) => {
       location,
       labels,
       labelKind: unplaced ? 'none' : sky && venue ? 'place' : momentPlace.labelKind(labels, shown),
-      takenAt: store.takenAtShown(body.location.source === 'capture' ? body.location.taken_at : body.taken_at),
+      takenAt,
       venueId: venue && body.venue_id ? body.venue_id : null,
       altitude,
       series: body.series || null,
       area,
       shareAt,
+      takenHere: marked,
+      weather,
     }), id);
     logger.info('moments.created', { momentId: row.id, kind: body.kind, hours: body.hours, audience: body.audience,
-      ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}) });
+      ...(sky ? { floating: Boolean(area) } : {}), ...(shareAt ? { share_at: shareAt } : {}),
+      ...(marked ? { taken_here: true, weather: Boolean(weather) } : {}) });
     res.status(201).json({ moment: await oneMoment(row, req.user.id) });
     // A text card is live now: its author's connections hear of it (a photo or video when its check finishes; one shared
     // later at its time, from jobs/momentsShareLater.js). After the answer, and on its own: it never slows or fails the

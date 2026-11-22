@@ -32,7 +32,7 @@ extension MomentsPostStage {
                         .clipped()
                         .shadow(color: .black.opacity(0.55), radius: 30)
                         .offset(x: ((duo.size.width - tall.width) / 2).rounded())
-                    retakeButton
+                    pillRow
                         .offset(x: Spacing.s4, y: Spacing.s4)
                 }
             }

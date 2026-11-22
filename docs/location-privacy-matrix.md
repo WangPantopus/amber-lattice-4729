@@ -143,7 +143,9 @@ any exact pin, and an edit can't raise a post to `exact_place`.
 turns it on; accepted 2026-11-14).** With the flag on for the author, a personal
 place post keeps an exact pin only at a **tagged venue where its own photo or
 video was taken** (looked up again by its picker id), and not when that venue
-is within ~60 m of a home the author lives at. Schools and preschools take a pin
+is within ~60 m of a home the author lives at, nor when the author's homes can't
+be read (a failed lookup counts as at home, founder 2026-11-20; the post still
+goes up, floating, and `moments.at_home_failed` is logged). Schools and preschools take a pin
 like any venue: the founder reversed call C9 on 2026-11-17 ("schools and
 preschools should be allowed as a pin").
 Everything else floats over its area ([Areas of at least 100 homes](#areas-of-at-least-100-homes)):
@@ -316,6 +318,19 @@ area), the server decides, whatever an app's sheet says:
   author. No speed is kept, only whether the Moment was posted from the air (`flying`). Viewers get the height only
   while the flag is on for them (`GET /api/moments/…`, and each ring of `GET /api/moments/map`). The map answer's
   `heights_on` says only whether the flag is on for the caller.
+- **The Live mark, never at home:** a photo or video the app's camera made reads "Live from here" for 15 minutes,
+  then "Taken here" (`taken_here`, `live_until`; [API v4.1](product/moments/api-v4.1.md), 2026-11-20). The server keeps
+  it only for a fresh GPS fix shown at its exact pin away from home: never at home (asked where the author stands, and
+  dropped when their homes can't be read), shown as an area, floating or with no location, nor for an album item,
+  and every read checks again. A map ring carries `live_until` only when the Moment its point shows is such a pin. A
+  Moment shared later reads "Taken here", never "Live". Its weather stamp is read by the server at the pin (a phone's
+  value is never stored) and kept only with the mark; the preview looks the weather up only away from home.
+- **A home lookup that fails counts as at home** (founder, 2026-11-20): when the author's homes can't be read, posting
+  a Moment treats them as at home for everything that shows where they are. With the Sky on it floats over its area;
+  either way it says its town and keeps no height or Live mark, a place picked beside a home takes no pin, and the
+  preview answers `at_home: true`, so the Post sheet shows what the post will do. The post still succeeds and the
+  failure is logged (`moments.at_home_failed`). Someone with no home is never at home. Before, a failed read counted
+  as "not at home" and a Moment made at home kept its exact pin, the place's name and its height.
 - **Files carry no location:** photo EXIF and video location tags are removed on upload (`photoMetadata.js`,
   `videoMetadata.js`); files sit in private storage behind 15-minute signed links and are deleted 7 days after the
   Moment ends (sooner when its author deletes it) unless a report holds them. Deleting the account deletes all of
@@ -327,6 +342,23 @@ area), the server decides, whatever an app's sheet says:
   (`PATCH`, `DELETE`, archive and restore under `/api/posts/:id`, and `POST /api/upload/post-media/:postId`) refuse
   an `is_story` row, so a Moment's point, place label and text stay what the Moments routes stored, and it ends
   only through `DELETE /api/moments/:id` (which also deletes its private files, or keeps them for a review).
+
+### Travelling Christmas cards
+
+A Christmas card that travels (launch key `card_travel`; `docs/product/travelling-card-2026-11-21`, decided by the
+founder 2026-11-21) collects one stop per town it reaches. A stop is a town and a state, never a person's point.
+
+| Field | Where it comes from | Who sees it |
+|-------|---------------------|-------------|
+| Town and state ("Boise, ID") | the person's home's town, else the town they keep in their profile (`User.city`, `state`) | the public journey page (`GET /api/mailbox/cards/journeys/:journey`, web `/cards/journey/<id>`), the envelope's postmarks, the share pictures, the notices |
+| `lat` / `lon` | **the town's own centre** from the bundled Census lists (`backend/data/travelTowns.json`), the same for everyone in that town | the public journey page (to draw the map) |
+| A home's or person's own point | — | **NEVER** stored on the card or sent to any app |
+| Names, addresses, notes, ids of people or mail | — | **NEVER** on the journey page, the share pictures or the link preview |
+
+- Someone outside the United States is the stop "Abroad", with no point.
+- The journey's id is random and long; it is in the page's address and nowhere else public.
+- `GET /cards/towns` with no text suggests the nearest town to the person's resolved location; the location itself
+  is never returned or kept.
 
 ### Saved / Viewing Places
 

@@ -15,10 +15,10 @@ import SwiftUI
 /// The four lines of the promise, verbatim from the web `PrivacyPromise`.
 /// Every line is a statement about what the product does today.
 public let privacyPromiseLines: [String] = [
-    "Neighbors see a first name and a street at most. Never a house number or unit.",
+    "Others see a first name and a street at most. Never a house number or unit.",
     "We never sell your address or use it for ads.",
     "Verifying never asks for your GPS. It works by mail, a landlord, or a document you choose.",
-    "Verification documents are seen by one reviewer, never by neighbors, and deleted once your claim is decided."
+    "Verification documents are seen by one reviewer, never by others, and deleted once your claim is decided."
 ]
 
 @Observable
@@ -80,7 +80,7 @@ struct PlacePrivacyMirrorView: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("What neighbors see")
+                    Text("What others see")
                         .font(.system(size: 24, weight: .bold))
                         .kerning(-0.4)
                         .foregroundStyle(Theme.Color.appText)
@@ -190,7 +190,7 @@ struct PlacePrivacyMirrorView: View {
             .placeCard()
             Text(mirror.discoverable
                 ? "Street only, no house number. That is the whole card."
-                : "Your home is not discoverable right now, so neighbors see nothing unless you share it. "
+                : "Your home is not discoverable right now, so others see nothing unless you share it. "
                 + "This is what they would see if you did.")
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.Color.appTextMuted)
@@ -201,7 +201,7 @@ struct PlacePrivacyMirrorView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Icon(.eyeOff, size: 15, strokeWidth: 2.25, color: Theme.Color.appTextSecondary)
-                Text("NEVER SHOWN TO NEIGHBORS")
+                Text("NEVER SHOWN TO OTHERS")
                     .font(.system(size: 11, weight: .bold))
                     .kerning(0.8)
                     .foregroundStyle(Theme.Color.appTextSecondary)

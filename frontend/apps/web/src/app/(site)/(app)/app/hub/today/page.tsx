@@ -1,5 +1,6 @@
 'use client';
 
+import TodayPlans from '@/components/plans/PlanFollowUp';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +35,14 @@ import BallotTodaySection, { useBallotToday } from '@/components/ballot/BallotTo
 import { claimInReviewNote, claimsInReview, myClaimsQuery } from '@/lib/myHomes';
 import { VerifyBanner } from '@/components/archetypes/place';
 import TodayDetail from '@/components/place/detail/TodayDetail';
+import AddressCalendarCard, { type PickupCardAsk } from '@/components/place/detail/AddressCalendarCard';
+import { TodayNeedsYouCard, TodayPickupQuestion, generalGarbageDate, generalSchedule, pickupKindsLine, webPathForNeed, type NeedsYouRow } from '@/components/hub/TodayHouse';
+import { useTodayHouse } from '@/lib/todayHouse';
+import { useBadges } from '@/contexts/BadgeContext';
+import { launchFeatures } from '@/lib/featureFlags';
+import { pickupTomorrow } from '@/components/sky/todaySky';
+import type { SkyHousePresses } from '@/components/sky/TodaySkyCanvas';
+import { TODAY_COMING_UP_ID } from '@/components/place/detail/pickupSaved';
 import SkyCard from '@/components/sky/SkyCard';
 import type { TodaySkyInput } from '@/components/sky/todaySky';
 import { claimWaitingLabel } from '@/components/homes/ClaimApprovalChecklist';
@@ -244,6 +253,83 @@ export default function HubTodayPage() {
   const homeType = location?.source === 'primary_home' && primaryHome?.role_base !== 'guest' && primaryHome?.role_base !== 'service_provider'
     ? primaryHome?.home_type
     : null;
+  // Coming up at home (JOURNEYS, 2026-11-21): your home's dates for the next two weeks, in the card Place's Today
+  // page shows, read through the household's own endpoint (a refusal leaves the section out). A saved pickup
+  // schedule's "See it in Today" lands here.
+  const calendarHomeId = briefing && !areaView ? primaryHome?.id ?? null : null;
+  const homeCalendar = useQuery({
+    queryKey: ['household-calendar', calendarHomeId],
+    queryFn: () => api.getAddressCalendar(calendarHomeId as string),
+    enabled: hasToken && !!calendarHomeId,
+    staleTime: 0,
+    retry: false,
+  });
+  // The house on Today (JOURNEYS, 2026-11-21; the profile's `today_house`), for a Today about a home or a saved
+  // address: the picture grows and shows a mailbox (its flag up while mail waits unopened), a note on the door
+  // while something needs the person, and the bins on a pickup evening; each is a button, and the "Needs you" card
+  // under the picture says the same in words. With the switch off none of this is read or drawn.
+  const houseOn = useTodayHouse() && !!today && today.display_mode !== 'hidden';
+  const { unreadMail } = useBadges();
+  const mailWaiting = houseOn && launchFeatures.mailbox ? unreadMail : 0;
+  const needs = useQuery({
+    queryKey: ['today', 'needs-you'],
+    queryFn: () => api.ai.getNeedsYou(),
+    enabled: hasToken && houseOn,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const upcoming = houseOn ? homeCalendar.data?.calendar?.upcoming : undefined;
+  // The card's own asks: the editor ("Change day"), the schedule's place in the list (the bins, the pickup row),
+  // and the green box after the question's "Yes, Tuesday".
+  const [pickupAsk, setPickupAsk] = useState<PickupCardAsk | null>(null);
+  const askN = useRef(0);
+  const showPickups = () => setPickupAsk({ n: ++askN.current, kind: 'show' });
+  const needsRows = useMemo<NeedsYouRow[]>(() => (houseOn ? needs.data?.items ?? [] : []).map((item) => {
+    const to = webPathForNeed(item.link);
+    return { key: item.id, testId: `needsYou.row.${item.type}`, type: item.type, title: item.title, subtitle: item.subtitle, onOpen: to ? () => router.push(to) : undefined };
+  // The router is the same for the page's life.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [houseOn, needs.data]);
+  // Tomorrow's pickup, from 4 pm: the household's own days only, as the bins are.
+  const pickupKinds = hydrated && upcoming ? pickupTomorrow(upcoming, location?.timezone, Date.now()) : [];
+  const houseRows: NeedsYouRow[] = houseOn ? [
+    ...(mailWaiting > 0 ? [{ key: 'mail', testId: 'today.house.mailRow', type: 'mail', title: 'You have mail', subtitle: `${mailWaiting} unopened`, onOpen: () => router.push('/app/mailbox/personal') }] : []),
+    ...needsRows,
+    ...(pickupKinds.length > 0 ? [{ key: 'pickup', testId: 'today.house.pickupRow', type: 'pickup', title: 'Pickup is tomorrow', subtitle: pickupKindsLine(pickupKinds), onOpen: showPickups }] : []),
+  ] : [];
+  const firstNeed = needsRows.find((row) => row.onOpen) ?? null;
+  const presses: SkyHousePresses | null = houseOn ? {
+    mail: { label: 'You have mail. Opens Mail.', onPress: () => router.push('/app/mailbox/personal') },
+    note: firstNeed?.onOpen ? { label: `${firstNeed.title}${/[.?!]$/.test(firstNeed.title) ? '' : '.'} Opens it.`, onPress: firstNeed.onOpen } : null,
+    bins: { label: 'Pickup is tomorrow. Shows your pickup schedule.', onPress: showPickups },
+  } : null;
+  // One question, already answered: while the home still runs on its city's general schedule and that shows a garbage date.
+  const calendarNow = homeCalendar.data?.calendar;
+  const question = houseOn && calendarHomeId && calendarNow?.needs_pickup_day ? generalGarbageDate(calendarNow.upcoming ?? []) : null;
+  const [savingQuestion, setSavingQuestion] = useState(false);
+  const [questionError, setQuestionError] = useState<string | null>(null);
+  const answerQuestion = async () => {
+    if (!calendarHomeId || !calendarNow || savingQuestion) return;
+    setSavingQuestion(true);
+    setQuestionError(null);
+    try {
+      // The same request the editor's "Save schedule" sends. The web sets no reminder (that is a phone's), so its
+      // question asks only "Is that your day?".
+      const saved = await api.setPickupDay(calendarHomeId, {
+        collections: generalSchedule(calendarNow.upcoming ?? []),
+        ...(calendarNow.pickup_version ? { expected_version: calendarNow.pickup_version } : {}),
+      });
+      queryClient.setQueryData(['household-calendar', calendarHomeId], { calendar: saved.calendar });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.placeIntelligence(calendarHomeId) });
+      setPickupAsk({ n: ++askN.current, kind: 'saved', collections: saved.calendar.pickup_schedule?.collections ?? [] });
+    } catch (err) {
+      setQuestionError(err instanceof Error ? err.message : 'Could not save your pickup schedule. Try again.');
+      void homeCalendar.refetch();
+    } finally {
+      setSavingQuestion(false);
+    }
+  };
+
   const sky = useMemo<TodaySkyInput | null>(() => (weather ? {
     condition: weather.condition_code,
     tempF: weather.current_temp_f,
@@ -251,7 +337,11 @@ export default function HubTodayPage() {
     sunset: weather.sunset_utc,
     timeZone: location?.timezone,
     homeType,
-  } : null), [weather, location?.timezone, homeType]);
+    ...(houseOn ? {
+      pickups: upcoming,
+      objects: { mailbox: launchFeatures.mailbox, flagUp: mailWaiting > 0, note: needsRows.length > 0 },
+    } : {}),
+  } : null), [weather, location?.timezone, homeType, houseOn, upcoming, mailWaiting, needsRows.length]);
   // The claimed address's public Today (the server's view for an open claim) under the claim's status;
   // the Place page reads the same copy. A refusal (an older server, a closed Home) keeps the claim's note.
   const claimTodayQuery = useQuery({
@@ -282,9 +372,12 @@ export default function HubTodayPage() {
     setRefreshing(true);
     try {
       await Promise.all([query.refetch(), claim ? claimTodayQuery.refetch() : null, areaView ? areaQuery.refetch() : null,
-        aroundData ? around.refetch() : null]);
+        aroundData ? around.refetch() : null, calendarHomeId ? homeCalendar.refetch() : null]);
     } finally { setRefreshing(false); }
   };
+
+  // With the house's mail row up, the mail signal would say the same thing twice.
+  const signals = (briefing?.signals ?? []).filter((signal) => !(mailWaiting > 0 && signal.kind === 'mail'));
 
   return (
     <div className="min-h-screen bg-app pb-16">
@@ -321,6 +414,7 @@ export default function HubTodayPage() {
 
         {/* At home: Today as it was. It stays mounted under Around you, so coming back is instant. */}
         <div className={showAround ? 'hidden' : undefined} data-testid="todayAtHome">
+        {!loading && !showAround && <TodayPlans />}
         {/* Loading skeleton */}
         {loading && (
           <div className="rounded-2xl border border-app bg-surface dark:bg-surface-dark p-6 animate-pulse space-y-5">
@@ -436,6 +530,7 @@ export default function HubTodayPage() {
                   label={briefing.weather.condition_label}
                   chips={briefing.weather.high_f != null && briefing.weather.low_f != null ? [`H ${briefing.weather.high_f}° · L ${briefing.weather.low_f}°`] : []}
                   className="mt-3 mb-4"
+                  presses={presses}
                 />
               )}
 
@@ -497,6 +592,13 @@ export default function HubTodayPage() {
               )}
             </div>
 
+            {/* The house on Today: the question that is already answered, then what needs you, in words */}
+            {question ? (
+              <TodayPickupQuestion event={question} saving={savingQuestion} error={questionError}
+                onYes={() => { void answerQuestion(); }} onChange={() => setPickupAsk({ n: ++askN.current, kind: 'edit' })} />
+            ) : null}
+            {houseOn && (needs.isFetched || needs.data) ? <TodayNeedsYouCard rows={houseRows} quiet={!!calendarHomeId} /> : null}
+
             {/* Your area's city (TABCARD 4a): the sun, how long until it rises or sets */}
             {areaSun ? <SunCard data={areaSun} countdown /> : null}
 
@@ -540,6 +642,14 @@ export default function HubTodayPage() {
                 the rest of the day. Shown once hydrated: it goes by this browser's date. */}
             {hydrated ? <ChristmasCountdown /> : null}
 
+            {/* Coming up at home: the household's next two weeks, with the pickup schedule one tap away */}
+            {calendarHomeId && homeCalendar.data?.calendar ? (
+              <section id={TODAY_COMING_UP_ID} aria-labelledby="today-coming-up" className="scroll-mt-24">
+                <h2 id="today-coming-up" className="mb-2 px-1 text-base font-bold text-app-text">Coming up at home</h2>
+                <AddressCalendarCard homeId={calendarHomeId} data={homeCalendar.data.calendar} onToday ask={pickupAsk} />
+              </section>
+            ) : null}
+
             {/* Seasonal tip — only when the ranked signals did not already
                 surface it as a card (they usually do; showing both read as
                 the same sentence twice). */}
@@ -553,13 +663,13 @@ export default function HubTodayPage() {
             )}
 
             {/* Signals */}
-            {briefing.signals.length > 0 && (
+            {signals.length > 0 && (
               <div className="rounded-2xl border border-app bg-surface dark:bg-surface-dark p-5">
                 <h2 className="text-xs font-bold text-app-text-muted uppercase tracking-wider mb-3">
                   Signals
                 </h2>
                 <div className="space-y-2">
-                  {briefing.signals.map((signal, i) => {
+                  {signals.map((signal, i) => {
                     const bg = URGENCY_BG[signal.urgency] || URGENCY_BG.low;
                     const text = URGENCY_TEXT[signal.urgency] || URGENCY_TEXT.low;
                     const body = (

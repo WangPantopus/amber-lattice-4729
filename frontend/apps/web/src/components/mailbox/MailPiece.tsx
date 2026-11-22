@@ -51,7 +51,7 @@ export function pieceTrust(item: Pick<MailItemV2, 'sender_trust' | 'from_pantopu
     case 'pantopus_user':
       return item.sender_business_name?.trim()
         ? { label: 'Business on Pantopus', color: '#4e5563', mark: null }
-        : { label: 'Pantopus neighbor', color: '#4e5563', mark: null };
+        : { label: 'Pantopus member', color: '#4e5563', mark: null };
     default: return { label: 'Unverified sender', color: '#a81a1a', mark: null };
   }
 }
@@ -347,7 +347,7 @@ export default function MailPiece({ item, recipientName, recipientLine, opened, 
           {town ? <div className="truncate">{town}</div> : null}
         </div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={cardStampFile(item.card.number, item.card.design)} alt="" className="absolute right-3 top-2.5 h-[54px] w-auto" />
+        <img src={cardStampFile(item.card.number, item.card.design, item.card.mood)} alt="" className="absolute right-3 top-2.5 h-[54px] w-auto" />
         {postDate ? (
           // In cream ink at 60% so it reads on the dark red (design plan 1.6); the table keeps its black ink.
           <div className="absolute right-[30px] top-2 aspect-[622/365] w-[108px] opacity-60">

@@ -454,6 +454,7 @@ enum MomentsSpeech {
     static func label(for ring: MomentRingDTO, height: MomentShownHeight? = nil) -> String {
         let count = ring.moments.count == 1 ? "1 Moment" : "\(ring.moments.count) Moments"
         var parts = [ring.mine ? "Your Moments" : ring.author.name, count, ring.isNew ? "new" : "watched"]
+        if ring.isLive(at: Date()) { parts.append("live") }
         if !ring.placeLabel.isEmpty { parts.append("at \(ring.placeLabel)") }
         if let height { parts.append(height.spoken) }
         if ring.author.verified { parts.append("verified resident") }

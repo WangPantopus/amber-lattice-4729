@@ -115,6 +115,8 @@ data class ProfileResponse(
     @Json(name = "invite_progress") val inviteProgress: JsonValue?,
     /** The guidance cards' switch and record (`ui/guidance`); absent from older servers. */
     val guidance: GuidanceDto? = null,
+    /** The house on Today's switch (`TODAY_HOUSE`); absent from older servers, which means off. */
+    @Json(name = "today_house") val todayHouse: Boolean? = null,
 )
 
 /**

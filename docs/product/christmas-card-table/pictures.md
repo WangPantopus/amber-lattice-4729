@@ -135,3 +135,51 @@ Table colours: the rule above gives umber to eight of the nine, because the pain
 Screen readers read the caption, so they say the reference, not the verse.
 
 The scripts are in the launch kit, `streams/NATIVITY/tools`. `compose.cjs` typesets the pictures (from `art/render/verse.html`), `make_art.py` writes the card, older and thumbnail files, and `render.cjs link <number>` writes the link previews. `nativity.json` has the order, verses, captions, cloths and trims.
+
+## Pictures 68–89: Christmas with Jesus Christ, from the manger to Galilee (November 21, 2026)
+
+The founder asked for more of their pictures in the collection, "each with its verse", and set two rules: "please make sure to preserve their quality do not reduce image quality" and "for every single verse you put on, please make sure to have the Book name, chapter and verse number on, and the whole verse content, do not cut any content off". They come after 59–67, in the order of the story: Luke 2:11, Matthew 3:17, Matthew 4:10–11, John 3:16 (with Nicodemus), John 4:14, Matthew 5:44, Mark 1:41, Mark 2:10–12, John 6:11, Matthew 14:30–31, Luke 15:20, Mark 10:14–16, John 11:25–26, John 13:14–15, Luke 22:19–20, Luke 22:42, 1 Peter 2:24, John 19:30, Matthew 28:6, John 20:18, John 21:17 and Matthew 28:18–20. The founder's folder held 26 pictures for 20 stories: one picture per story, except the cross and the resurrection, which keep two. Four files were left out.
+
+The originals are 1214 × 1295 like 59–67 (three are 1215 wide and lose their last column). Each is made the way 59–67 were, and the typesetting was rebuilt because the NATIVITY scripts are gone: it was matched to 59–67 by measuring their files and re-rendering card 59's band in Chrome, which broke into the same three lines within 4 pixels of the same widths. EB Garamond 400 at 34 pixels, line height 1.3, 90-pixel side margins, balanced lines, ink `#30281e` on the card's paper (`#f7f0e2`), with Chrome's default text smoothing on macOS.
+
+- **The verses** are Project Gutenberg's KJV, ebook 10 (taken on November 21 from Gutenberg's own mirror, aleph.pglaf.org, while gutenberg.org was down), word for word, with two changes. Matthew 5:44 ends with a full stop, as Matthew 2:14 does. John 20:18 reads "the Lord", as the founder gave it: Gutenberg prints "LORD" there, a difference of capitals between printings, and capitals would read as a mistake in "Read the verse" (design review). In a passage of two or three verses, each verse's number is printed small before it on the picture. In the server's text, which the apps print in "Read the verse", the numbers are plain digits tied to their first word ("10 Then saith …"): the iPhone's serif (New York) has only ¹ ² ³ of the superscript digits, so the others would print in another font.
+- **The band grows with the verse.** 200 pixels for up to three lines (16 cards, as on 59–67); 244 for four lines at 34 pixels (77, 82, 88); 259, a fifth of the picture, for five lines at 31 pixels (75, 79, 89), the largest size whose five lines fit. 71's two-line verse has a 156-pixel band, so the oil lamp in the painting stays in.
+- **The painting is cropped, never resampled.** The band's height comes off the painting's height; how much from the top is chosen picture by picture (`painting_top` in `designs-table.json`, with `band`) to keep heads, hands, the dove, the moon, the tops of the crosses and the people at their feet. Several lose feet at the bottom, as 66 does. Two hands are out of frame because no trim keeps them with the heads above: the paralysed man's right hand on his mat (75) and Peter's free hand on the water (77).
+
+| File | How |
+|---|---|
+| `card/<id>.jpg` | The typeset picture as it is, JPEG quality 92 with no chroma subsampling (the founder's "do not reduce image quality"). About 624 KB on average, against 386 KB for 59–67 at quality 88 |
+| `<id>.jpg`, `<id>-thumb.jpg` (older apps) | 960 and 360 wide: the picture inside a 16-pixel border of the paper, quality 88 and 85, as for 59–67 |
+| `share/<id>-link.jpg` | Rendered from CTBSRV's `share49.html`, the layout of all the earlier link previews: card 59's preview made again with it is pixel-identical to the one on the website |
+
+Each `crop` in `designs-table.json` is the whole typeset picture.
+
+Table colours: the rule above, on the painting (which gives 59–67's recorded colours, 66 dusk), gives umber to 18 and dusk to the storm at sea (77), Gethsemane (83) and the two crosses (84, 85). By eye: dusk for the night with Nicodemus (71), and wine for five bright daylight scenes (the baptism 69, the teaching by the lake 73, the loaves and fishes 76, the garden on Easter morning 87 and the Great Commission 89).
+
+**"Pick a card".** It prints a verse card's whole verse under the card, and the Android app makes every card of a collection small enough to leave room for the longest verse in it. So the list "Pick a card" reads carries that verse only for a verse no longer than Matthew 2:11, the longest of 59–67 (`pickACardDesign` in `holidayCards.js`). The six longer passages (75, 77, 79, 82, 88 and 89) show their reference there and are read on the picture. An opened card's "Read the verse", Sent, and the public card pages still carry every verse whole.
+
+**The table's mood** comes from the picture's number in each app. The website, and the iPhone and Android apps from #4585 and #4586 on, treat 59–89 as Christmas with Jesus Christ (candlelight, the star stamp); the app builds already in the stores know only 59–67, so they open 68–89 on the everyday table until the next builds. Android also sets a passage's reference in the serif from #4586 on (before, its pattern knew only a single verse, so a passage's reference was written in the pen).
+
+Card 71 is John 3:16, which card 61 already carries, so its public page is `/cards/john-3-16-nicodemus`.
+
+The scripts are in the launch kit, `streams/JESUSCARDS/tools` (and the work folder `/Volumes/Studio-Extended/jesus-cards-work/tools`): `band.cjs` sets a verse band in Chrome, `jobs.py` builds the bands from the checked text, `compose.py` joins painting and band and checks the painting's pixels are copied unchanged, `make_art.py` writes the card, older and thumbnail files, `render-links.cjs` writes the link previews, `designs_table.py` writes the rows here, and `check_server_verses.cjs` checks the server's text against the checked verses word for word.
+
+## Pictures 90–105: more Santa, Christmas in the City, Memories and As a Kid (November 21, 2026)
+
+The founder's own paintings, approved with the card shelves design ([card shelves](../card-shelves-2026-11-21/README.md), A1): six more for Christmas with Santa (90–95), five for a new collection, Christmas in the City (96–100), four for Christmas Memories (101–104) and one for Christmas as a Kid (105). They are borderless paintings like 50–58, 1214 × 1295, already 15:16, so nothing is trimmed: each `crop` in `designs-table.json` is the whole picture. A seventeenth picture (a second painting of the toy-train scene) stays out, and no number is reused.
+
+The founder renamed the new collection so that it doesn't say which city it is: no shop, hotel, rink or city name goes into a caption, a slug, a file name, alt text, a link preview, a document here or a commit message. The pictures carry no lettering of their own.
+
+From each picture, the way 50–58 were made, with the founder's rule from the last batch ("do not reduce image quality"):
+
+| File | How |
+|---|---|
+| `card/<id>.jpg` | The picture as it is, never resampled, JPEG quality 92 with no chroma subsampling (452–917 KB) |
+| `<id>.jpg`, `<id>-thumb.jpg` (older apps) | 960 and 360 wide: the picture inside a 16-pixel border of the card's paper (`#f7f0e2`, as for 50–58), quality 88 and 85, so the card is 960 × 1022 |
+| `share/<id>-link.jpg` | Rendered from the layout of every earlier link preview (card 59 rendered again with it matches the one on the website to within JPEG noise) |
+
+Table colours: the rule above gives umber to the warm rooms and Santa's red (90, 91, 92, 94, 97, 98, 99 and 104), wine to the diner (93), the doorway in the snow (96) and the brick house (102), dusk to the sleigh's night sky (95) and slate to the snowy park (100), the street of lit houses (101), the walk to church (103) and the window (105). Three evening scenes are picked by eye, as 54 was: dusk for the angels on the walk to the great tree (97), the skaters under the tree (99) and the street of lit houses (101).
+
+**The table's mood** comes from the card's collection, named by the server on every card (`mood`, card shelves SPEC A4): 90–95 open on Santa's table. Apps that don't read it decide by number, and the website, iPhone and Android builds from November 21 on put 90–95 in Santa's range; app builds already in the stores open 90–95 on the everyday snowy table until the next builds.
+
+The scripts are in the launch kit, `streams/CARDSHELF/tools`: `make_art.py` writes the card, older and thumbnail files, `render-links.cjs` writes the link previews, `sheet-shots.cjs` shoots each card in the web card rack and `sheet.py` makes the sheet the design session reviewed. The captions, slugs and cloths are in `/Volumes/Studio-Extended/cardshelf-work/tools/cards-final.json`.

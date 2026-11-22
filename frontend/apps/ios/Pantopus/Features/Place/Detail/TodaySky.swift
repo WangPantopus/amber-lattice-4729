@@ -34,8 +34,13 @@ struct TodaySkyHero: View {
     var calendar: Calendar = .autoupdatingCurrent
     /// Tapping the bins shows the pickup schedule.
     var onBins: (() -> Void)?
+    /// The house on Today (`TodaySkyHouseSpots.swift`): on a phone-width column the card is taller, the
+    /// ground is drawn larger, and what is true now joins the picture as buttons. Nil is the card as it was.
+    var house: SkyHouseButtons?
 
     static let height: CGFloat = 188
+    /// With the house on Today, on a phone-width column.
+    static let houseHeight: CGFloat = 320
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -51,6 +56,26 @@ struct TodaySkyHero: View {
     /// The card's height at rest, kept while sliding: an hour with fewer chips
     /// never shrinks the card under the finger.
     @State private var restHeight: CGFloat = 0
+    @State private var cardWidth: CGFloat = 0
+    /// When each of the house's things became true: it fades in over 300 ms.
+    @State private var thingsSince: [SkyHouseThings.Thing: Date] = [:]
+    /// Two columns (iPad, the open Duo): the card keeps its proportions, so the house's things are left out.
+    @Environment(\.placeColumnsSplit) private var twoColumns
+
+    /// The house's things, where the taller card shows them.
+    private var shownHouse: SkyHouseButtons? {
+        twoColumns ? nil : house
+    }
+
+    private var baseHeight: CGFloat {
+        shownHouse == nil ? Self.height : Self.houseHeight
+    }
+
+    /// Where the larger ground stands in the card, once the card has a width.
+    private var spots: SkyHouseSpots? {
+        guard shownHouse != nil, cardWidth > 0 else { return nil }
+        return SkyHouseSpots(size: CGSize(width: cardWidth, height: max(baseHeight, restHeight)), home: home)
+    }
 
     private var animating: Bool {
         !reduceMotion && scenePhase == .active && onScreen && appeared
@@ -93,25 +118,31 @@ struct TodaySkyHero: View {
                         rain: SkyScrub.rain(data.hourly, at: when)
                     ),
                     shower: SkyNote.meteors(now: when, moment: moment, calendar: calendar) != nil,
-                    rises: picked == nil
+                    rises: picked == nil,
+                    // While an hour is picked the new things hide, as the bins do.
+                    things: picked == nil ? shownHouse?.things : shownHouse?.things.atAnotherHour
                 )
                 .id(key)
                 .transition(.opacity)
                 TodaySkyReading(
                     reading: SkyReadingModel(now: data, note: nowNote, picked: picked, at: minute.date, calendar: calendar),
                     hours: hours.count,
-                    scrub: $scrub
+                    scrub: $scrub,
+                    // The chips stay left of the larger home's roof.
+                    chipsWidth: spots.map { max(CGFloat($0.left) - 26, 96) }
                 )
                 if picked == nil, let note, !note.bins.isEmpty, let onBins { binsButton(note, action: onBins) }
+                if picked == nil, let house = shownHouse, let spots { SkyHouseTargets(house: house, spots: spots) }
                 if let scrub, picked != nil { SkyScrubTrack(index: scrub, count: hours.count) }
                 SkyScrubHint(hours: hours.count, scrubbing: scrub != nil)
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: picked == nil ? 0.6 : 0.18), value: key)
             // At least 188 pt; taller only if the chips wrap onto a second row,
             // so the reading is never clipped. The ground stays at the bottom either way.
-            .frame(maxWidth: .infinity, minHeight: scrub == nil ? Self.height : max(Self.height, restHeight))
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                if scrub == nil { restHeight = height }
+            .frame(maxWidth: .infinity, minHeight: scrub == nil ? baseHeight : max(baseHeight, restHeight))
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                if scrub == nil { restHeight = size.height }
+                cardWidth = size.width
             }
             // Behind the crossfade between two hours, so the page never shows through.
             .background(sky.mid.color)
@@ -129,6 +160,11 @@ struct TodaySkyHero: View {
             shownAt = .now
         }
         .onChange(of: data) { shownAt = .now }
+        .onChange(of: house?.things) { old, new in
+            for thing in SkyHouseThings.Thing.allCases where new?.has(thing) == true && old?.has(thing) != true {
+                thingsSince[thing] = .now
+            }
+        }
         .onDisappear { appeared = false }
         .modifier(ScrollVisibility(onScreen: $onScreen))
         .onGeometryChange(for: CGFloat.self) { max(0, -$0.frame(in: .scrollView).minY).rounded() } action: { hidden = $0 }
@@ -154,7 +190,7 @@ struct TodaySkyHero: View {
         let sky: SkyPalette.Weather
     }
 
-    private func scene(_ shown: SkyScene, shower: Bool, rises: Bool) -> some View {
+    private func scene(_ shown: SkyScene, shower: Bool, rises: Bool, things: SkyHouseThings?) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !animating)) { frame in
             // Eased over 0.9 s; in place at once without motion or while sliding.
             let progress = animating && rises ? min(max(frame.date.timeIntervalSince(shownAt) / 0.9, 0), 1) : 1
@@ -172,7 +208,8 @@ struct TodaySkyHero: View {
                 streetLights: streetLights,
                 windMph: shown.weather.windMph,
                 windFrom: shown.weather.windDirection,
-                still: !animating
+                still: !animating,
+                things: fading(things, at: frame.date)
             )
             Canvas { context, size in
                 painter.paint(
@@ -188,6 +225,15 @@ struct TodaySkyHero: View {
         .accessibilityHidden(true)
     }
 
+    /// Each of the house's things fades in over 300 ms; in place at once without motion.
+    private func fading(_ things: SkyHouseThings?, at date: Date) -> SkyHouseThings? {
+        guard var things, animating else { return things }
+        for (thing, since) in thingsSince {
+            things.shown[thing] = min(max(date.timeIntervalSince(since) / 0.3, 0), 1)
+        }
+        return things
+    }
+
     /// The bins drawn at the curb, as a 44 pt button that shows the pickup schedule.
     private func binsButton(_ note: SkyNote, action: @escaping () -> Void) -> some View {
         GeometryReader { proxy in
@@ -195,7 +241,7 @@ struct TodaySkyHero: View {
                 Color.clear.frame(width: 52, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .position(TodaySkyGround.binsCenter(in: proxy.size, count: note.bins.count, home: home))
+            .position(spots?.bins(count: note.bins.count) ?? TodaySkyGround.binsCenter(in: proxy.size, count: note.bins.count, home: home))
             .accessibilityLabel(note.spoken)
             .accessibilityHint("Shows your pickup schedule.")
             .accessibilityIdentifier("todaySkyBins")
@@ -257,6 +303,8 @@ struct TodaySkyReading: View {
     let reading: SkyReadingModel
     let hours: Int
     @Binding var scrub: Int?
+    /// The house on Today: the widest the chips' rows may be (the larger home stands to their right).
+    var chipsWidth: CGFloat?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -290,6 +338,7 @@ struct TodaySkyReading: View {
             if !reading.chips.isEmpty {
                 // Onto a second row rather than truncated: the wind chip, a narrow phone.
                 FilterSheetFlowLayout(spacing: 6) { chipViews }
+                    .frame(maxWidth: chipsWidth, alignment: .leading)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(reading.spokenChips)
             }

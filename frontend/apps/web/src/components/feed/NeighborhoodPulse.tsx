@@ -29,7 +29,7 @@ export default function NeighborhoodPulse({ posts }: { posts: Post[] | null }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <h2 className="text-xs font-bold text-app-muted uppercase tracking-wider">Neighborhood Pulse</h2>
+          <h2 className="text-xs font-bold text-app-muted uppercase tracking-wider">Near you</h2>
         </div>
         <span className="text-[10px] text-app-muted">Last 24 hours</span>
       </div>

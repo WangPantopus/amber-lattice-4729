@@ -122,6 +122,8 @@ enum GuidanceBlockers {
         if center.briefingNoticeBusy { return "the daily briefings sheet" }
         if center.sideMenuOpen { return "the side menu" }
         if DeepLinkRouter.shared.pending != nil || center.waitsForLink || center.waitingCardCheck { return "a link that is opening" }
+        // A new account's plan may still open, or is open (JOURNEYS section 2, change 3).
+        if PlanFirstOpen.shared.deciding || PlanFirstOpen.shared.planId != nil { return "the plan a new account opens on" }
         if AppLockWindowPresenter.isSomethingPresented { return "a sheet or cover" }
         if center.waitsForKeyboard || TextEditingState.shared.isEditing { return "typing" }
         if let window = GuidanceWindowPresenter.appWindow, isScrolling(window) { return "scrolling" }

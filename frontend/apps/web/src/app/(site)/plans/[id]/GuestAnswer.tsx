@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { plans } from '@pantopus/api';
 import { useRouter } from 'next/navigation';
 import type { PublicPlan, PublicPlanBring, PublicPlanChipIn, PublicPlanDates, PublicPlanGift, PublicPlanGuestState } from '@/lib/publicShare';
 import { Icon, KindGlyph, kindColors } from '@/components/plans/planKind';
@@ -228,7 +229,7 @@ function icsTime(iso: string): string {
 }
 
 /** An .ics file with the title, the time, the place and the page's own link (never the guest's link). */
-function downloadCalendar(planId: string, plan: PublicPlan, location: string, pageUrl: string) {
+export function downloadCalendar(planId: string, plan: Pick<PublicPlan, 'title' | 'starts_at' | 'ends_at'>, location: string, pageUrl: string) {
   if (!plan.starts_at) return;
   const end = plan.ends_at || new Date(new Date(plan.starts_at).getTime() + 2 * 3600 * 1000).toISOString();
   const lines = [
@@ -256,21 +257,38 @@ function downloadCalendar(planId: string, plan: PublicPlan, location: string, pa
 
 // ── The bring list (H2) ──────────────────────────────────────
 
+/** The thing as the sentence after a claim names it: "Bread" → "bread"; "IPA" stays (its second letter is a capital). */
+function claimedThing(label: string): string {
+  const text = label.trim();
+  const second = text.charAt(1);
+  return second && second === second.toLowerCase() && second !== second.toUpperCase() ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
 /**
  * W3's bring list: who is bringing what, "I'll bring it", "You're bringing it" with "Give back", and "Bring something
  * else" when the host lets guests add. Each change answers the whole list; someone who got there first is named.
+ * After a claim goes through, a green line at the top says what was claimed and who can see it (JOURNEYS, 2026-11-21);
+ * it shows the latest claim and goes away on "Give back" or on leaving the page.
  */
-function BringList({ planId, initial }: { planId: string; initial: PublicPlanBring }) {
+export function BringList({ planId, initial, hostFirst, onChanged, isHost }: { planId: string; initial: PublicPlanBring; hostFirst: string; onChanged?: () => void; isHost?: boolean }) {
   const [bring, setBring] = useState<PublicPlanBring>(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [line, setLine] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState('');
+  const [claimed, setClaimed] = useState<string | null>(null);
 
+  useEffect(() => { if (onChanged) setBring(initial); }, [initial, onChanged]);
   async function call(path: string, method: 'POST' | 'DELETE', body?: Record<string, unknown>, key = path) {
     setBusy(key);
     setLine(null);
     try {
+      if (onChanged) {
+        const updated = await plans.bringAction(planId, path, method, body);
+        setBring(updated.bring);
+        onChanged();
+        return true;
+      }
       const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/bring${path}`, {
         method,
         credentials: 'same-origin',
@@ -283,8 +301,9 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
       if (res.status === 409 && data.error === 'taken') setLine(data.message);
       else setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
       return false;
-    } catch {
-      setLine('Something went wrong. Please try again.');
+    } catch (error) {
+      onChanged?.();
+      setLine(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
       return false;
     } finally {
       setBusy(null);
@@ -297,7 +316,16 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
     if (await call('/items', 'POST', { label: text }, 'add')) {
       setLabel('');
       setAdding(false);
+      setClaimed(text);
     }
+  }
+
+  async function claim(item: PublicPlanBring['items'][number]) {
+    if (await call(`/${item.id}/claim`, 'POST')) setClaimed(item.label);
+  }
+
+  async function giveBack(item: PublicPlanBring['items'][number]) {
+    if (await call(`/${item.id}/claim`, 'DELETE')) setClaimed(null);
   }
 
   return (
@@ -305,6 +333,15 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
       <div className="flex items-baseline justify-between gap-3 pb-1">
         <h2 id="bring-title" className="text-base font-semibold leading-[22px]">What will you bring?</h2>
         <span className="text-sm text-app-text-secondary">{`${bring.open_count} still open`}</span>
+      </div>
+      {/* Always here, so a screen reader reads the sentence when it appears. */}
+      <div role="status">
+        {claimed ? (
+          <p data-testid="plan.bring.claimed" className="mb-1 mt-1 flex items-start gap-2.5 rounded-xl border border-app-success-light bg-app-success-bg px-3 py-2.5 text-sm leading-5 text-app-success">
+            <span className="mt-px flex-none" aria-hidden="true">{Glyph.check('h-[18px] w-[18px]')}</span>
+            <span><strong className="font-semibold">{`You’re bringing ${claimedThing(claimed)}.`}</strong>{isHost ? ' Your guests can see it.' : ` ${hostFirst} and the other guests can see it.`}</span>
+          </p>
+        ) : null}
       </div>
       <ul className="divide-y divide-app-border">
         {bring.items.map((item) => (
@@ -321,7 +358,7 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
               <button
                 type="button"
                 disabled={busy !== null}
-                onClick={() => call(`/${item.id}/claim`, 'DELETE')}
+                onClick={() => giveBack(item)}
                 className="min-h-[44px] flex-none px-2 text-sm font-semibold text-app-link disabled:opacity-50"
               >
                 Give back
@@ -337,7 +374,7 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
               <button
                 type="button"
                 disabled={busy !== null}
-                onClick={() => call(`/${item.id}/claim`, 'POST')}
+                onClick={() => claim(item)}
                 aria-label={`I’ll bring ${item.label}`}
                 className="flex min-h-[44px] flex-none items-center gap-2 rounded-xl border border-app-link px-4 text-sm font-semibold text-app-link disabled:opacity-50"
               >
@@ -386,16 +423,22 @@ function BringList({ planId, initial }: { planId: string; initial: PublicPlanBri
  * W3's chip in (08-extras section 3, board 27): the amount, what it's for and how many paid; "Pay {Host} on {Venmo}"
  * opens the host's own link outside Pantopus; "I've paid" becomes "You chipped in" with "Undo". No money moves here.
  */
-function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanChipIn }) {
+export function ChipInCard({ planId, initial, onChanged }: { planId: string; initial: PublicPlanChipIn; onChanged?: () => void }) {
   const [chip, setChip] = useState<PublicPlanChipIn>(initial);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<string | null>(null);
   const paid = Boolean(chip.mine?.paid);
 
+  useEffect(() => { if (onChanged) setChip(initial); }, [initial, onChanged]);
   async function mark(nextPaid: boolean) {
     setBusy(true);
     setLine(null);
     try {
+      if (onChanged) {
+        setChip((await plans.chipPaid(planId, nextPaid)).chip_in);
+        onChanged();
+        return;
+      }
       const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/chip-in/paid`, {
         method: nextPaid ? 'POST' : 'DELETE',
         credentials: 'same-origin',
@@ -405,8 +448,8 @@ function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanCh
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.chip_in) setChip(data.chip_in as PublicPlanChipIn);
       else setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
-    } catch {
-      setLine('Something went wrong. Please try again.');
+    } catch (error) {
+      setLine(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -424,7 +467,7 @@ function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanCh
         </div>
         <span className="flex-none pt-0.5 text-sm text-app-text-secondary [font-variant-numeric:tabular-nums]">{chip.paid_text}</span>
       </div>
-      {paid ? (
+      {(!onChanged || chip.mine) && (paid ? (
         <div className="flex min-h-[44px] items-center justify-between gap-3 rounded-xl bg-app-success-bg px-3">
           <span className="flex items-center gap-2 text-[15px] font-semibold text-app-success">{Glyph.check('h-4 w-4')}You chipped in</span>
           <button type="button" disabled={busy} onClick={() => mark(false)} className="min-h-[44px] px-2 text-sm font-semibold text-app-link disabled:opacity-50">
@@ -450,7 +493,7 @@ function ChipInCard({ planId, initial }: { planId: string; initial: PublicPlanCh
             {chip.pay_text}
           </a>
         </div>
-      )}
+      ))}
       <p className="text-[13px] leading-[18px] text-app-text-secondary">{chip.straight_text}</p>
       {line ? <p className="text-sm leading-5 text-app-error" role="status">{line}</p> : null}
     </section>
@@ -517,7 +560,7 @@ function PhotosCard({ planId, intro, storeHref }: { planId: string; intro: { cou
  * joined, "Your wish, if you like" and "Join"; joined, "You're in the exchange" with "Change" and "Leave". After the draw:
  * "You're giving to" and their name and wish, which only this guest's own page carries.
  */
-function GiftCard({ planId, initial }: { planId: string; initial: PublicPlanGift }) {
+export function GiftCard({ planId, initial, onChanged, isHost }: { planId: string; initial: PublicPlanGift; onChanged?: () => void; isHost?: boolean }) {
   const [gift, setGift] = useState<PublicPlanGift>(initial);
   const [wish, setWish] = useState(initial.mine.wish || '');
   const [editing, setEditing] = useState(false);
@@ -526,10 +569,19 @@ function GiftCard({ planId, initial }: { planId: string; initial: PublicPlanGift
   const drawn = gift.state === 'drawn';
   const giving = gift.mine.giving_to;
 
-  async function call(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: Record<string, unknown> = {}) {
+  useEffect(() => { if (onChanged) setGift(initial); }, [initial, onChanged]);
+  async function call(method: 'POST' | 'PATCH' | 'DELETE', path: '/join' | '/mine' | '/draw', body: Record<string, unknown> = {}) {
     setBusy(true);
     setLine(null);
     try {
+      if (onChanged) {
+        const updated = await plans.giftAction(planId, path, method, body);
+        setGift(updated.gift);
+        setWish(updated.gift.mine.wish || '');
+        setEditing(false);
+        onChanged();
+        return;
+      }
       const res = await fetch(`/api/public/plans/${encodeURIComponent(planId)}/gift${path}`, {
         method,
         credentials: 'same-origin',
@@ -542,8 +594,8 @@ function GiftCard({ planId, initial }: { planId: string; initial: PublicPlanGift
         setWish(data.gift.mine.wish || '');
         setEditing(false);
       } else setLine(typeof data.message === 'string' ? data.message : 'Something went wrong. Please try again.');
-    } catch {
-      setLine('Something went wrong. Please try again.');
+    } catch (error) {
+      setLine(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -613,6 +665,9 @@ function GiftCard({ planId, initial }: { planId: string; initial: PublicPlanGift
             ) : gift.can_join || editing ? wishField : null}
           </>
         )}
+        {isHost && <button type="button" className="min-h-11 text-sm font-semibold text-app-link" disabled={busy} onClick={() => {
+          if (!drawn || window.confirm('Draw names again? Everyone in the exchange gets a new name.')) void call('POST', '/draw');
+        }}>{drawn ? 'Draw again' : 'Draw names now'}</button>}
         {line ? <p className="text-sm leading-5 text-app-error" role="status">{line}</p> : null}
       </section>
       {drawn && gift.mine.in ? (
@@ -1048,7 +1103,7 @@ function GuestAnswerPage(props: GuestAnswerProps) {
             <p className="whitespace-pre-line text-base leading-6 text-app-text">{forGuest.guest_note}</p>
           </section>
         ) : null}
-        {forGuest.bring ? <BringList key={forGuest.bring.rev} planId={planId} initial={forGuest.bring} /> : null}
+        {forGuest.bring ? <BringList key={forGuest.bring.rev} planId={planId} initial={forGuest.bring} hostFirst={hostFirst} /> : null}
         <section className="flex flex-col gap-2 rounded-2xl bg-app-surface-sunken px-4 py-4">
           <p className="text-base font-semibold leading-[22px]">The group chat is in the app</p>
           <p className="text-sm leading-5 text-app-text-secondary">{`So are day-of updates, the photos afterwards and ${hostFirst}'s next plan.`}</p>

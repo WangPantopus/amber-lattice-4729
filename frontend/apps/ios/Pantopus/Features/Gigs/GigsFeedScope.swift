@@ -54,7 +54,7 @@ public enum GigsFeedScope: String, CaseIterable, Sendable, Hashable, Identifiabl
     /// Empty-state body, scope-aware.
     public var emptyBody: String {
         switch self {
-        case .all: "Be the first to post a task for your neighbors."
+        case .all: "Be the first to post a task near you."
         case .tasks: "Be the first to post one."
         case .supportTrains: "Support Trains published near you will show up here."
         }

@@ -149,6 +149,8 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
     public let flying: Bool
     /// The Sky: its newest Moment shows only its area (made at home), so its pin floats over its spot with no tail.
     public let floating: Bool
+    /// Live until then (v4.1, `MomentLiveDTOs.swift`): the dot and "Live now". The map clears it once it passes.
+    public var liveUntil: Date?
 
     private enum CodingKeys: String, CodingKey {
         case id, author, latitude, longitude, moments, mine, preview, flying, floating
@@ -175,6 +177,7 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
         floating = (try? c.decodeIfPresent(Bool.self, forKey: .floating)) ?? false
+        liveUntil = Self.liveUntil(from: decoder)
     }
 
     /// One Moment as a ring of its own: opened from a chat quote, with no map behind it.
@@ -199,6 +202,7 @@ public struct MomentRingDTO: Codable, Sendable, Hashable, Identifiable {
         altitudeFt = moment.altitudeFt
         flying = moment.flying
         floating = moment.sky.floating
+        liveUntil = moment.live.liveUntil
     }
 }
 
@@ -240,6 +244,8 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
     public let flying: Bool
     /// Floating over an area, shared later, when it shares (v4.0, `MomentSkyDTOs.swift`).
     public let sky: MomentSkyStateDTO
+    /// Taken here, live until when, and the weather (v4.1, `MomentLiveDTOs.swift`).
+    public let live: MomentLiveStateDTO
 
     private enum CodingKeys: String, CodingKey {
         case id, author, kind, state, caption, text, background, width, height, latitude, longitude, audience, hours, seen, flying
@@ -289,6 +295,7 @@ public struct MomentDTO: Decodable, Sendable, Hashable, Identifiable {
         altitudeFt = c.momentFeet(forKey: .altitudeFt)
         flying = (try? c.decodeIfPresent(Bool.self, forKey: .flying)) ?? false
         sky = MomentSkyStateDTO(from: decoder)
+        live = MomentLiveStateDTO(from: decoder)
     }
 
     public var media: URL? {

@@ -138,6 +138,13 @@ data class CeremonialSenderCard(
     val avatarUrl: String?,
 )
 
+/** The person who wrote a letter in their own name, as Reply hands them to the letter form (their user id, their name). */
+@Immutable
+data class CeremonialReplyTo(
+    val userId: String,
+    val name: String,
+)
+
 @Immutable
 data class CeremonialOutcomeCta(
     val id: String,
@@ -161,6 +168,8 @@ data class CeremonialMailLetter(
     val voicePostscriptUri: String?,
     val receivedAt: String?,
     val outcomeCtas: List<CeremonialOutcomeCta>,
+    /** Who Reply writes to; null when there's no one to write back to (a business, Pantopus, someone blocked). */
+    val replyTo: CeremonialReplyTo? = null,
 ) {
     companion object {
         fun defaultOutcomeCtas(): List<CeremonialOutcomeCta> =

@@ -493,7 +493,7 @@ public final class ListingOffersViewModel: ListOfRowsDataSource {
             icon: .handCoins,
             headline: "No offers on this listing yet",
             subcopy: "Most listings draw their first offer within 24 hours. "
-                + "Share it with a few neighborhoods to speed things up.",
+                + "Share it more widely to speed things up.",
             ctaTitle: "Share listing"
         ) { [weak self] in
             Task { @MainActor in self?.onShareListing() }

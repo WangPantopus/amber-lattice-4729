@@ -221,7 +221,8 @@ extension MailPieceModel {
             height: piece.card.height,
             slug: piece.card.slug,
             table: piece.card.table,
-            verse: nil
+            verse: nil,
+            mood: piece.card.mood
         )
         return MailPieceModel(
             id: piece.id,

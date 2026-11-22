@@ -904,7 +904,7 @@ router.post('/precheck', verifyToken, async (req, res) => {
     if (calloutPatterns.some(p => p.test(content || '')) && surface === 'place') {
       flags.push({
         type: 'callout_risk',
-        message: 'Avoid naming or identifying specific neighbors. Pantopus is not a call-out platform.',
+        message: 'Avoid naming or identifying specific people. Pantopus is not a call-out platform.',
         suggestedAction: 'remove_names',
       });
     }
@@ -915,7 +915,7 @@ router.post('/precheck', verifyToken, async (req, res) => {
     if (surface === 'place' && politicsWords.some(w => lowerContent.includes(w))) {
       suggestions.push({
         type: 'politics_in_nearby',
-        message: 'Political content in the Nearby feed is shown only to neighbors who opt in. Consider posting to Connections/Following instead for broader reach.',
+        message: 'Political content in the Nearby feed is shown only to people who opt in. Consider posting to Connections/Following instead for broader reach.',
         suggestedAction: 'move_to_connections',
       });
     }
@@ -1202,7 +1202,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       };
 
       if (postAs === 'home' && requestedAudience === 'neighborhood' && !['owner', 'admin'].includes(roleBase)) {
-          return res.status(403).json({ error: 'Only Home Owners and Admins can publish neighborhood posts as this Home.' });
+          return res.status(403).json({ error: 'Only Home Owners and Admins can publish nearby posts as this Home.' });
       }
     }
 
@@ -1386,7 +1386,7 @@ router.post('/', verifyToken, validate(createPostSchema), async (req, res) => {
       // Home Place type enforcement
       if (postAs === 'home' && !HOME_PLACE_TYPES.includes(postType)) {
         return res.status(400).json({
-          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Neighborhood Wins, and Visitor Guides.`,
+          error: `Home posts to the Place feed are limited to: Ask Local, Recommendations, Events, Lost & Found, Alerts, Deals, Local Updates, Local Wins, and Visitor Guides.`,
         });
       }
 
@@ -2018,11 +2018,11 @@ router.get('/feed', verifyToken, async (req, res) => {
             {
               id: transitionId,
               type: 'transition',
-              title: 'Your Neighborhood Is Coming Alive!',
-              body: `${realPostCount} neighbors have posted recently. Real conversations are happening \u2014 join in!`,
+              title: 'Pulse Is Coming Alive Near You!',
+              body: `${realPostCount} people near you have posted recently. Real conversations are happening \u2014 join in!`,
               source: 'Community',
               post_type: 'neighborhood_win',
-              cta: 'Say hello to your neighbors',
+              cta: 'Say hello to people near you',
             },
             now.toISOString(),
             {
@@ -3448,10 +3448,14 @@ router.post('/:id/unarchive', verifyToken, async (req, res) => {
     if (['expired', 'resolved'].includes(existing.archive_reason)) {
       // A post that ended by time, or an Ask its author closed, comes back for one more of its type's
       // windows from now, open again unless it ended its own way (contract §5); otherwise the next
-      // job run would end it.
-      const days = await pulseLifecycle.windowDays(existing.post_type);
+      // job run would end it. A kind that stays comes back with no end time and stays.
       restored.is_archived = false;
-      restored.expires_at = new Date(Date.now() + days * pulseLifecycle.DAY_MS).toISOString();
+      if (pulseLifecycle.staysUp(existing.post_type)) {
+        restored.expires_at = null;
+      } else {
+        const days = await pulseLifecycle.windowDays(existing.post_type);
+        restored.expires_at = new Date(Date.now() + days * pulseLifecycle.DAY_MS).toISOString();
+      }
       if (pulseLifecycle.TIMED_OUT_RESOLUTIONS.includes(existing.resolution)) {
         Object.assign(restored, { state: 'open', resolution: null });
       }

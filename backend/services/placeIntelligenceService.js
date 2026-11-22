@@ -122,7 +122,7 @@ const HOME_RECORD_SECTIONS = new Set(['your_home', 'home_systems']);
 const VERIFY_BY_MAIL_REASONS = {
   your_home: "Verify your address by mail to see your home's details.",
   home_systems: "Verify your address by mail to keep your home's maintenance record.",
-  bill_benchmark: "Verify your address by mail to compare your bills with your neighbors'.",
+  bill_benchmark: "Verify your address by mail to compare your bills with homes near you.",
   exemption_check: 'Verify your address by mail to check for property-tax exemptions.',
   real_rent: 'Verify your address by mail to see what your block actually pays.',
 };
@@ -1300,7 +1300,7 @@ async function composeBillBenchmark(home, access, userId) {
     const dir = comparison === 'higher' ? 'above' : comparison === 'lower' ? 'below' : 'in line with';
     summary = comparison === 'typical' ? `Your ${label} bills are in line with the comparison average` : `Your ${label} bills average ${Math.abs(comparisonPct)}% ${dir} the comparison average`;
   } else {
-    summary = `Neighborhood ${label} bills average about $${Math.round(bandMid).toLocaleString('en-US')}/mo`;
+    summary = `Nearby ${label} bills average about $${Math.round(bandMid).toLocaleString('en-US')}/mo`;
   }
 
   return [serializePlaceSection('bill_benchmark', {
@@ -1882,6 +1882,8 @@ module.exports = {
   withBudget,
   withinBudget,
   failedSections,
+  // The nine weather kinds, shared with a Moment's weather stamp (moments/momentWeather.js).
+  mapConditionCode,
   // Exported for unit testing.
   resolveTier,
   bandAccess,

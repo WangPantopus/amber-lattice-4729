@@ -281,7 +281,7 @@ final class NavigationDrawerViewModel {
             NavigationDrawerSection(id: "discover", overline: "Discover", items: [
                 item(.rss, "Beacon Updates", .beaconUpdates),
                 item(.search, "Search", .search),
-                item(.compass, "Discover Neighbors", .discoverNeighbors)
+                item(.compass, "Discover people", .discoverNeighbors)
             ]),
             NavigationDrawerSection(id: "your-stuff", overline: "Your Stuff", items: [
                 item(.radio, "My Beacon", .myBeacon),

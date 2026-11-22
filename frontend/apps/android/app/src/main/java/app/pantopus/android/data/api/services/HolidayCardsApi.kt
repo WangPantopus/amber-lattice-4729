@@ -3,10 +3,16 @@ package app.pantopus.android.data.api.services
 import app.pantopus.android.data.api.models.mailbox.CardEmailedAgainResponse
 import app.pantopus.android.data.api.models.mailbox.CardExchange
 import app.pantopus.android.data.api.models.mailbox.CardMediaUploaded
+import app.pantopus.android.data.api.models.mailbox.CardPassOnBody
+import app.pantopus.android.data.api.models.mailbox.CardPassOnPreview
+import app.pantopus.android.data.api.models.mailbox.CardPassOnTakenBack
 import app.pantopus.android.data.api.models.mailbox.CardReplyBody
 import app.pantopus.android.data.api.models.mailbox.CardReplyResponse
 import app.pantopus.android.data.api.models.mailbox.CardReplyTakenBack
 import app.pantopus.android.data.api.models.mailbox.CardSignatureBody
+import app.pantopus.android.data.api.models.mailbox.CardTownBody
+import app.pantopus.android.data.api.models.mailbox.CardTownKept
+import app.pantopus.android.data.api.models.mailbox.CardTownsResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardArrivalsFor
 import app.pantopus.android.data.api.models.mailbox.HolidayCardLinkResponse
 import app.pantopus.android.data.api.models.mailbox.HolidayCardListPreview
@@ -106,6 +112,46 @@ interface HolidayCardsApi {
     suspend fun noteHelp(
         @Body body: HolidayCardNoteHelpBody,
     ): HolidayCardNoteIdeas
+
+    /**
+     * `GET /api/mailbox/cards/towns?q=` — route `backend/routes/mailbox.js` (travelling card plan Part 1, launch key
+     * `card_travel`; 404 while it's off): up to 8 towns for a few letters or a ZIP code; with no [q], the town nearest
+     * where the person is, to offer as "Use Vancouver, WA".
+     */
+    @GET("api/mailbox/cards/towns")
+    suspend fun cardTowns(
+        @Query("q") q: String?,
+    ): CardTownsResponse
+
+    /** `PUT /api/mailbox/cards/town` — the same route file: keeps the chosen town in the person's profile town fields (D4). */
+    @PUT("api/mailbox/cards/town")
+    suspend fun keepCardTown(
+        @Body body: CardTownBody,
+    ): CardTownKept
+
+    /**
+     * `POST /api/mailbox/cards/:id/pass-on/preview` — route `backend/routes/mailbox.js` (travelling card plan Part 4,
+     * launch key `card_travel`): every check a pass-on runs, storing and sending nothing; refusals carry the server's
+     * code and sentence.
+     */
+    @POST("api/mailbox/cards/{id}/pass-on/preview")
+    suspend fun passOnPreview(
+        @Path("id") id: String,
+        @Body body: CardPassOnBody,
+    ): CardPassOnPreview
+
+    /** `POST /api/mailbox/cards/:id/pass-on` — the same route file: "Send it on" (201; 200 for the same request again). */
+    @POST("api/mailbox/cards/{id}/pass-on")
+    suspend fun passOn(
+        @Path("id") id: String,
+        @Body body: CardPassOnBody,
+    ): SendHolidayCardResponse
+
+    /** `POST /api/mailbox/cards/:id/pass-on/take-back` — `:id` the card passed on: its place is free again. */
+    @POST("api/mailbox/cards/{id}/pass-on/take-back")
+    suspend fun takeBackPassOn(
+        @Path("id") id: String,
+    ): CardPassOnTakenBack
 
     /** `POST /api/mailbox/cards` — route `backend/routes/mailbox.js:1837`: send today's card (201). */
     @POST("api/mailbox/cards")

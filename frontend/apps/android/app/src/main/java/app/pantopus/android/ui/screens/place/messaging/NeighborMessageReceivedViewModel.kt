@@ -120,7 +120,7 @@ class NeighborMessageReceivedViewModel
         fun block() {
             if (_flags.value.blocked) return
             manage(
-                "Blocking this neighbor wasn't confirmed. Please try again.",
+                "Blocking this sender wasn't confirmed. Please try again.",
                 { repo.blockNeighborMessageSender(messageId) },
                 { it.copy(blocked = true) },
             )

@@ -150,7 +150,7 @@ public final class ConnectionsViewModel: ListOfRowsDataSource {
             ListOfRowsTab(id: ConnectionsTab.all, label: "All", count: filteredAccepted.count),
             ListOfRowsTab(
                 id: ConnectionsTab.neighbors,
-                label: "Neighbors",
+                label: "Near you",
                 count: filteredNeighbors.count
             ),
             ListOfRowsTab(id: ConnectionsTab.pending, label: "Pending", count: filteredPending.count),
@@ -186,7 +186,7 @@ public final class ConnectionsViewModel: ListOfRowsDataSource {
         // closure shape lets us call back into the VM directly without
         // an extra Task hop.
         SearchBarConfig(
-            placeholder: "Search by name or neighborhood",
+            placeholder: "Search by name or area",
             text: searchText
         ) { [weak self] value in
             MainActor.assumeIsolated { self?.updateSearch(value) }
@@ -596,7 +596,7 @@ public final class ConnectionsViewModel: ListOfRowsDataSource {
         ListOfRowsState.EmptyContent(
             icon: .search,
             headline: "No matches",
-            subcopy: "No one here matches \u{201C}\(query)\u{201D}. Try another name or neighborhood."
+            subcopy: "No one here matches \u{201C}\(query)\u{201D}. Try another name or area."
         )
     }
 
@@ -632,17 +632,17 @@ public final class ConnectionsViewModel: ListOfRowsDataSource {
         case ConnectionsTab.neighbors:
             ListOfRowsState.EmptyContent(
                 icon: .mapPin,
-                headline: "No neighbors yet",
+                headline: "No one near you yet",
                 subcopy:
                 "Connections who share their locality show up here. " +
-                    "Invite a neighbor or accept a nearby request to get started."
+                    "Invite someone near you or accept a nearby request to get started."
             )
         default:
             ListOfRowsState.EmptyContent(
                 icon: .userPlus,
                 headline: "No connections yet",
                 subcopy:
-                "Meet verified neighbors. Browse the Pulse, reply to a post, " +
+                "Meet people with a verified home. Browse Pulse, reply to a post, " +
                     "or invite someone you know on the block.",
                 ctaTitle: "Find people"
             ) { [weak self] in

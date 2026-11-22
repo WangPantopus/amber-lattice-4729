@@ -14,7 +14,7 @@ public extension MailItemSampleData {
             name: "Priya Ramanathan",
             initials: "PR",
             blurb: "Maple St · moved in last month",
-            relationLabel: "Friend · neighbor",
+            relationLabel: "Friend · lives nearby",
             isVerified: true
         ),
         event: PartyEventInfo(

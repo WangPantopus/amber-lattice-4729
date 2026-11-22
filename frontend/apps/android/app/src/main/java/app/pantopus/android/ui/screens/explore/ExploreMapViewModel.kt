@@ -500,7 +500,7 @@ class ExploreMapViewModel
                                     state = ExploreEntityState.Confirmed,
                                     latitude = lat,
                                     longitude = lon,
-                                    title = marker.title ?: marker.content ?: "Neighborhood post",
+                                    title = marker.title ?: marker.content ?: "Local post",
                                     metaLead = postMetaLead(marker),
                                     distanceLabel = distanceLabel(miles),
                                     distanceMiles = miles,
@@ -605,9 +605,13 @@ class ExploreMapViewModel
              */
             private fun postMetaLead(marker: PostsMapMarkerDto): String {
                 val kind =
-                    (marker.postType ?: "post")
-                        .replace('_', ' ')
-                        .replaceFirstChar { it.uppercase() }
+                    if (marker.postType == "neighborhood_win") {
+                        "Local win"
+                    } else {
+                        (marker.postType ?: "post")
+                            .replace('_', ' ')
+                            .replaceFirstChar { it.uppercase() }
+                    }
                 val createdAt = marker.createdAt ?: return kind
                 val instant =
                     runCatching { java.time.Instant.parse(createdAt) }.getOrNull() ?: return kind

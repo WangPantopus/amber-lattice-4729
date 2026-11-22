@@ -40,15 +40,15 @@ function milestones() {
 function milestoneCopy(milestone, unlock) {
   if (milestone === unlock) {
     return {
-      title: 'Your neighborhood is open',
-      body: `${milestone} households have verified their address nearby. See your neighborhood on the map.`,
+      title: 'The map near you is open',
+      body: `${milestone} households have verified their address nearby. See them on the map.`,
       icon: '🔓',
       link: '/app/nearby',
     };
   }
   return {
-    title: '🎉 Neighborhood milestone!',
-    body: `Your neighborhood just hit ${milestone} verified members!`,
+    title: '🎉 Milestone near you!',
+    body: `${milestone} homes near you are now verified!`,
     icon: '🎉',
     link: '/app/nearby',
   };

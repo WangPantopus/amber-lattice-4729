@@ -104,6 +104,7 @@ open class HomesRepository
         private val tasksApi: HomeTasksApi,
         private val filesApi: FilesApi,
         private val store: ScreenStore,
+        private val tabOrder: RootTabOrder,
     ) {
         /**
          * `GET /api/homes/my-homes`, read now through the screens' store (Instant Screens: My Homes from one source).
@@ -118,7 +119,10 @@ open class HomesRepository
          */
         open suspend fun myHomesStored(force: Boolean = false): Stored<MyHomesResponse> =
             // The viewer's own list of homes: saved on the phone so a cold start lands at once (contract §6).
-            store.read(StoreKeys.myHomes, force, persist = true) { etag -> conditionalApiCall { api.myHomesConditional(etag) } }
+            store
+                .read(StoreKeys.myHomes, force, persist = true) { etag -> conditionalApiCall { api.myHomesConditional(etag) } }
+                // Today or Place first on the bar, the next time the app opens ([RootTabOrder]).
+                .also { stored -> stored.data?.let(tabOrder::note) }
 
         /** The stored My Homes as it is now, without a request (null before the first read or after a wipe). */
         open fun myHomesCopy(): MyHomesResponse? = store.peek(StoreKeys.myHomes).data

@@ -102,7 +102,7 @@ const BENEFITS: { icon: LucideIcon; label: string; sub: string }[] = [
   launchFeatures.mailbox
     ? { icon: Mailbox, label: 'Your mailbox and your rank', sub: 'The digital mailbox opens, and you take a permanent Block Founder number' }
     : { icon: Award, label: 'Your rank on the block', sub: 'You take a permanent Block Founder number' },
-  { icon: MessageCircle, label: 'What only verified neighbors see', sub: 'Real rents on your block, neighbor messages, the Fridge Card, rate watch' },
+  { icon: MessageCircle, label: 'What only verified residents see', sub: 'Real rents on your block, messages between homes, the Fridge Card, rate watch' },
 ];
 
 function Overline({ children }: { children: React.ReactNode }) {

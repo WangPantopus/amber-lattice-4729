@@ -1995,7 +1995,7 @@ private fun presenceFor(
                 val status =
                     when {
                         counterparty.online -> "Active now"
-                        counterparty.verified -> "Verified neighbor"
+                        counterparty.verified -> "Verified home"
                         else -> null
                     }
                 listOfNotNull(status, counterparty.locality)
@@ -2709,7 +2709,7 @@ private fun AiWelcomeFrame(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.size(10.dp))
-        TrustPill(text = "Private to your account · never shared with neighbors")
+        TrustPill(text = "Private to your account · never shown to other people")
         Spacer(modifier = Modifier.size(18.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),

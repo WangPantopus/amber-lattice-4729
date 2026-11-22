@@ -9,7 +9,14 @@
 // ── Tokens ───────────────────────────────────────────────────
 
 /** Public Mapbox token for tile and style requests (client-safe). */
-const MAP_PUBLIC_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+export const MAP_PUBLIC_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
+
+/** The interactive basemap shared by Pulse, Moments, and Plans. */
+export const MAPBOX_STANDARD = {
+  style: 'mapbox://styles/mapbox/standard',
+  config: { basemap: { lightPreset: 'day', showPointOfInterestLabels: false } },
+} as const;
+export const MAP_STYLE_TIMEOUT_MS = 8000;
 
 // ── Tile configuration ──────────────────────────────────────
 

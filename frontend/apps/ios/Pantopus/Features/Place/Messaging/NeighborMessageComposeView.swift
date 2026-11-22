@@ -150,7 +150,7 @@ private struct PrivacyNote: View {
         HStack(alignment: .top, spacing: 10) {
             Icon(.eyeOff, size: 18, strokeWidth: 2, color: Theme.Color.info)
             (Text("Your identity stays private. ").bold()
-                + Text("It's delivered as \u{201C}from a verified neighbor nearby\u{201D} — never your name or address."))
+                + Text("It's delivered as \u{201C}from a verified home nearby\u{201D} — never your name or address."))
                 .font(.system(size: 13.5))
                 .lineSpacing(2)
                 .foregroundStyle(Theme.Color.appTextStrong)
@@ -263,7 +263,7 @@ private struct DeliveryPreview: View {
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("A verified neighbor nearby")
+                    Text("A verified home nearby")
                         .font(.system(size: 15, weight: .semibold))
                         .kerning(-0.15)
                         .foregroundStyle(Theme.Color.appText)
@@ -333,7 +333,7 @@ private struct SafetyCard: View {
     private let rows: [Row] = [
         Row(
             icon: .hand,
-            title: "Keep it neighborly",
+            title: "Keep it kind",
             sub: "For genuine heads-ups — not complaints, sales, or anything targeted."
         ),
         Row(
@@ -344,7 +344,7 @@ private struct SafetyCard: View {
         Row(
             icon: .ban,
             title: "Always blockable",
-            sub: "Anyone can block messages from verified neighbors at any time."
+            sub: "Anyone can block messages from verified homes at any time."
         )
     ]
 
@@ -436,7 +436,7 @@ private struct SentConfirmation: View {
                     .foregroundStyle(Theme.Color.appText)
                     .padding(.top, 12)
                 Text(
-                    "If a verified household lives there, they’ll get it as “from a verified neighbor nearby” — "
+                    "If a verified household lives there, they’ll get it as “from a verified home nearby” — "
                         + "never your name or address."
                 )
                 .font(.system(size: 13.5))

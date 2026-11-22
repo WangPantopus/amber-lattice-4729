@@ -64,12 +64,14 @@ import app.pantopus.android.ui.components.ChannelGlyph
 import app.pantopus.android.ui.components.ChannelHeader
 import app.pantopus.android.ui.components.ChannelState
 import app.pantopus.android.ui.components.ChannelTriad
+import app.pantopus.android.ui.components.ClockTime
 import app.pantopus.android.ui.components.FuzzStop
 import app.pantopus.android.ui.components.LocationFuzzSlider
 import app.pantopus.android.ui.components.PauseBanner
 import app.pantopus.android.ui.components.RefreshFailedLine
 import app.pantopus.android.ui.components.RefreshNotice
 import app.pantopus.android.ui.components.StealthBanner
+import app.pantopus.android.ui.components.phoneUses24HourClock
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
 import app.pantopus.android.ui.theme.PantopusColors
@@ -546,9 +548,10 @@ private fun RowItem(
                     rowId = row.id,
                     options = control.options,
                     selected = control.selected,
+                    clockTimes = control.clockTimes,
                     onSelect = { value ->
                         if (value != control.selected) {
-                            optimistic[row.id] = RowControl.Chips(control.options, value)
+                            optimistic[row.id] = control.copy(selected = value)
                             callbacks.onSelectChip(row.id, value)
                         }
                     },
@@ -782,8 +785,10 @@ private fun ChipStrip(
     rowId: String,
     options: List<String>,
     selected: String,
+    clockTimes: Boolean,
     onSelect: (String) -> Unit,
 ) {
+    val is24Hour = phoneUses24HourClock()
     Row(
         modifier =
             Modifier
@@ -797,6 +802,7 @@ private fun ChipStrip(
     ) {
         options.forEach { option ->
             val isActive = option == selected
+            val label = if (clockTimes) ClockTime.label(option, is24Hour) else option
             Box(
                 modifier =
                     Modifier
@@ -812,12 +818,12 @@ private fun ChipStrip(
                         // TalkBack hears which time is chosen ("selected"), not just a button.
                         .selectable(selected = isActive, role = Role.RadioButton) { onSelect(option) }
                         .padding(horizontal = Spacing.s3, vertical = 6.dp)
-                        .semantics { this.contentDescription = option }
+                        .semantics { this.contentDescription = label }
                         .testTag("groupedListChipOption_${rowId}_$option"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = option,
+                    text = label,
                     fontSize = 13.sp,
                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                     color = if (isActive) PantopusColors.primary700 else PantopusColors.appTextSecondary,

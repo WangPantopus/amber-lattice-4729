@@ -200,8 +200,8 @@ private extension PaymentsView {
                         title: "No payment methods yet",
                         // Launch cut #3 (Marketplace): no listings to pay for.
                         body: LaunchFeatures.marketplace
-                            ? "Add a card or bank account to hire neighbors and pay for marketplace listings."
-                            : "Add a card or bank account to hire neighbors."
+                            ? "Add a card or bank account to hire people near you and pay for marketplace listings."
+                            : "Add a card or bank account to hire people near you."
                     )
                     divider
                 } else {

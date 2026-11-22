@@ -21,7 +21,7 @@ function previewAudience(req, ownerId) {
   if (as === undefined) return { audience: null };
   if (typeof as !== 'string' || !PREVIEW_AUDIENCES.includes(as)) {
     return { refusal: { status: 400, body: {
-      error: 'Preview your profile as anyone, neighbors or connections.', code: 'PREVIEW_AUDIENCE_INVALID',
+      error: 'Preview your profile as anyone with the link, people on Pantopus or connections.', code: 'PREVIEW_AUDIENCE_INVALID',
     } } };
   }
   if (!req.user?.id || String(req.user.id) !== String(ownerId)) {

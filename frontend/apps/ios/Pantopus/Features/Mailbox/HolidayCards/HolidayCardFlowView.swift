@@ -24,6 +24,7 @@ struct HolidayCardFlowView: View {
     private let onDone: (() -> Void)?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let top = "sendCardTop"
 
     /// Cards cost digital stamps for this person.
@@ -98,14 +99,20 @@ struct HolidayCardFlowView: View {
                 .scrollDismissesKeyboard(.interactively)
                 // Each step starts at its top (Look it over is long).
                 .onChange(of: viewModel.step) { scroller.scrollTo(Self.top, anchor: .top) }
-                // Back from the card rack on another card than the one tapped: the grid shows it, ticked.
+                // Back from the card rack on another card than the one tapped: the grid shows it, ticked. The card
+                // shelves stay where the rack was opened from.
                 .onChange(of: viewModel.largeDesign) { old, new in
-                    guard new == nil, viewModel.step == .pick, let id = viewModel.designId, id != old?.id else { return }
+                    guard new == nil, viewModel.step == .pick, !shelves, let id = viewModel.designId, id != old?.id else { return }
                     withAnimation(.easeInOut(duration: 0.3)) { scroller.scrollTo(id, anchor: .center) }
                 }
+                // The card shelves: a collection's shelf at the top (the line under a large card; the chosen card's as
+                // they open, once they're laid out).
+                .onChange(of: viewModel.shelfJump) { _, jump in go(to: jump, scroller: scroller) }
             }
+            .modifier(ShelfPageCover(viewModel: viewModel, page: shelfPage, reduceMotion: reduceMotion))
             .safeAreaInset(edge: .bottom, spacing: Spacing.s0) {
                 footer
+                    .modifier(ShelfBarMotion(isOn: shelves && !reduceMotion, isUp: viewModel.design != nil))
             }
         }
         // At the table its words are light ink on the cloth; the cream fields, rows and cards keep their dark ink.
@@ -148,6 +155,15 @@ struct HolidayCardFlowView: View {
             Task { await viewModel.rereadCards() }
         }
         .offlineBanner(isOffline: !NetworkMonitor.shared.isOnline)
+        // A card that travels, and no town yet: "Where does it start?" (travelling card plan Part 2, D4).
+        .sheet(isPresented: Binding(
+            get: { viewModel.asksTown && !viewModel.sealsAtTable },
+            set: { if !$0, viewModel.asksTown { viewModel.townCancelled() } }
+        )) {
+            CardTravelTownSheet(onChosen: viewModel.townChosen, onCancel: viewModel.townCancelled)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         // Seal it by hand: the table over the flow, from Look it over until Done.
         .modifier(CardTableSendCover(viewModel: viewModel, onDone: done))
         .accessibilityElement(children: .contain)
@@ -162,6 +178,8 @@ struct HolidayCardFlowView: View {
         if viewModel.step == .sent, viewModel.sent?.byLink == true { return ("Your card is ready.", nil) }
         if viewModel.step != .sent, viewModel.today != nil { return ("Today’s card", nil) }
         if !cards.open, viewModel.step != .sent { return ("Christmas cards", nil) }
+        // A collection's page on the card shelves: Back returns to them.
+        if shelves, viewModel.shelfPage != nil { return ("All collections", viewModel.step) }
         return (viewModel.step.title, viewModel.step == .sent ? nil : viewModel.step)
     }
 
@@ -190,16 +208,11 @@ struct HolidayCardFlowView: View {
             }
             .padding(.horizontal, Spacing.s1)
             .padding(.top, Spacing.s2)
-            if postageOn {
+            if postageOn, !shelves {
                 StampChip(store: viewModel.stamps) { viewModel.showsStampBooks = true }
                     .padding(.horizontal, Spacing.s4)
             }
         }
-    }
-
-    private func back() {
-        let today = viewModel.step != .sent && viewModel.today != nil
-        if today || !viewModel.back() { onClose() }
     }
 
     /// Who the card is for while Look it over shows (its footer pins under it).
@@ -223,7 +236,13 @@ struct HolidayCardFlowView: View {
         } else if viewModel.step == .to, viewModel.cards?.open == true, viewModel.maxRecipients > 1, !viewModel.listed.isEmpty {
             HolidayCardListContinueBar(viewModel: viewModel)
         } else if viewModel.step == .pick, let cards = viewModel.cards, cards.open, viewModel.today == nil {
-            HolidayCardPickBar(viewModel: viewModel, cards: cards)
+            if !cards.showsShelves {
+                HolidayCardPickBar(viewModel: viewModel, cards: cards)
+            } else if viewModel.design != nil {
+                // The card shelves: no bar until a card is chosen; then it comes up from the bottom.
+                HolidayCardPickBar(viewModel: viewModel, cards: cards, presentsRack: false)
+                    .transition(reduceMotion ? .identity : .move(edge: .bottom))
+            }
         }
     }
 
@@ -291,11 +310,16 @@ struct HolidayCardFlowView: View {
                         .accessibilityIdentifier("sendCardTookBack")
                 }
                 if viewModel.step != .to, let recipient = viewModel.recipient {
-                    Text("To \(recipient.name)")
-                        .font(.system(size: 14))
-                        .foregroundStyle(HolidayCardDesk.muted(desk))
-                        .lineLimit(1)
-                        .accessibilityIdentifier("sendCardTo")
+                    if shelves, postageOn {
+                        // The card shelves: the stamps left as a chip at the line's end, where the box was.
+                        HStack(spacing: Spacing.s2) {
+                            toLine(recipient)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            StampLineChip(store: viewModel.stamps) { viewModel.showsStampBooks = true }
+                        }
+                    } else {
+                        toLine(recipient)
+                    }
                 }
                 step(cards)
             }
@@ -326,6 +350,94 @@ struct HolidayCardFlowView: View {
             }
         case .sent:
             EmptyView()
+        }
+    }
+}
+
+// MARK: - The card shelves
+
+private extension HolidayCardFlowView {
+    /// Pick a card shows the card shelves (server switch `card_shelves`): the stamp count is a chip on the "To" line,
+    /// and the bar comes up only once a card is chosen.
+    var shelves: Bool {
+        guard viewModel.step == .pick, viewModel.today == nil, let cards = viewModel.cards, cards.open else { return false }
+        return cards.showsShelves
+    }
+
+    /// The collection whose page lies over the card shelves, with the list it's in.
+    var shelfPage: (HolidayCardCollection, HolidayCardsResponse)? {
+        guard shelves, let id = viewModel.shelfPage, let cards = viewModel.cards,
+              let collection = cards.pickableCollections.first(where: { $0.id == id }) else { return nil }
+        return (collection, cards)
+    }
+
+    func back() {
+        // A collection's page slides back off the card shelves.
+        if shelfPage != nil, !reduceMotion {
+            withAnimation(.easeInOut(duration: 0.3)) { _ = viewModel.back() }
+            return
+        }
+        let today = viewModel.step != .sent && viewModel.today != nil
+        if today || !viewModel.back() { onClose() }
+    }
+
+    /// A collection's shelf at the top of the page: sliding there from the line under a large card; simply there as
+    /// the shelves open, once they're laid out.
+    func go(to jump: HolidayCardShelfJump?, scroller: ScrollViewProxy) {
+        guard let jump else { return }
+        viewModel.shelfJump = nil
+        let target = HolidayCardShelves.shelfId(jump.collection)
+        if jump.animated, !reduceMotion {
+            withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(target, anchor: .top) }
+        } else {
+            Task { @MainActor in
+                await Task.yield()
+                scroller.scrollTo(target, anchor: .top)
+            }
+        }
+    }
+
+    func toLine(_ recipient: HolidayCardRecipient) -> some View {
+        Text("To \(recipient.name)")
+            .font(.system(size: 14))
+            .foregroundStyle(HolidayCardDesk.muted(desk))
+            .lineLimit(1)
+            .accessibilityIdentifier("sendCardTo")
+    }
+}
+
+/// A collection's page over the card shelves, which keep their place under it (VoiceOver reads only the page). Nothing
+/// with the shelves off.
+private struct ShelfPageCover: ViewModifier {
+    let viewModel: HolidayCardFlowViewModel
+    let page: (HolidayCardCollection, HolidayCardsResponse)?
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        // The same shelves under the page and after it, so they stay where they were scrolled.
+        content
+            .accessibilityHidden(page != nil)
+            .overlay {
+                if let (collection, cards) = page {
+                    HolidayCardCollectionPage(viewModel: viewModel, cards: cards, collection: collection)
+                        .id(collection.id)
+                        .transition(reduceMotion ? .identity : .move(edge: .trailing))
+                }
+            }
+    }
+}
+
+/// The card shelves' bar slides up as a card is chosen and down as it goes; nothing moves with Reduce Motion or with
+/// the shelves off.
+private struct ShelfBarMotion: ViewModifier {
+    let isOn: Bool
+    let isUp: Bool
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content.animation(.easeOut(duration: 0.25), value: isUp)
+        } else {
+            content
         }
     }
 }

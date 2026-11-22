@@ -41,6 +41,8 @@ data class PlanBringUi(
     val notice: String? = null,
     /** Saved: the screen closes. */
     val done: Boolean = false,
+    /** The thing that save newly made the host's ("I'm bringing this" switched on), the last one when several; else null. */
+    val savedMine: String? = null,
 )
 
 /**
@@ -59,6 +61,9 @@ class PlanBringViewModel
         private val _ui = MutableStateFlow(PlanBringUi())
         val ui: StateFlow<PlanBringUi> = _ui.asStateFlow()
 
+        /** The things that were already the host's when the list was read: a save says only what is newly theirs. */
+        private var mineBefore: Set<String> = emptySet()
+
         init {
             load()
         }
@@ -66,10 +71,11 @@ class PlanBringViewModel
         fun load(notice: String? = null) {
             viewModelScope.launch {
                 when (val result = repository.plan(planId)) {
-                    is NetworkResult.Success ->
-                        _ui.update {
-                            it.copy(loading = false, failed = null, draft = BringDraft.from(result.data.bring), notice = notice)
-                        }
+                    is NetworkResult.Success -> {
+                        val draft = BringDraft.from(result.data.bring)
+                        mineBefore = draft.items.filter { it.mine }.mapNotNull { it.id }.toSet()
+                        _ui.update { it.copy(loading = false, failed = null, draft = draft, notice = notice) }
+                    }
                     is NetworkResult.Failure ->
                         _ui.update { it.copy(loading = false, failed = result.error.planMessage.takeIf { _ -> it.draft == null }) }
                 }
@@ -88,7 +94,9 @@ class PlanBringViewModel
                 when (val result = repository.putBring(planId, draft.toInput())) {
                     is NetworkResult.Success -> {
                         repository.changed(planId)
-                        _ui.update { it.copy(saving = false, done = true) }
+                        val newlyMine = draft.items.lastOrNull { it.mine && it.claimName == null && it.id !in mineBefore }
+                        val savedMine = newlyMine?.label?.trim()?.takeIf(String::isNotEmpty)
+                        _ui.update { it.copy(saving = false, done = true, savedMine = savedMine) }
                     }
                     is NetworkResult.Failure ->
                         if (result.error.planCode == BRING_CHANGED) {
@@ -114,11 +122,18 @@ class PlanBringViewModel
 @Composable
 fun PlanBringScreen(
     onDone: () -> Unit,
+    /** The save went through with a thing newly the host's ("Bread"): the plan's page says who can see it. */
+    onSavedMine: (String) -> Unit = {},
     viewModel: PlanBringViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val toast = remember { ToastController() }
-    LaunchedEffect(ui.done) { if (ui.done) onDone() }
+    LaunchedEffect(ui.done) {
+        if (ui.done) {
+            ui.savedMine?.let(onSavedMine)
+            onDone()
+        }
+    }
     LaunchedEffect(ui.notice) {
         ui.notice?.let {
             toast.info(it)

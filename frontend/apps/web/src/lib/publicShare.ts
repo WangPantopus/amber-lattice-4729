@@ -1,5 +1,7 @@
+import type { plans } from '@pantopus/api';
 import { cache } from 'react';
 import type { Metadata } from 'next';
+import type { CardJourneyGoal } from '@pantopus/api';
 import { ANDROID_PLAY_STORE_URL, API_BASE_URL, APP_NAME, APP_WEB_URL, IOS_APP_STORE_APP_ID, IOS_APP_STORE_URL, chosenUsername } from '@pantopus/utils';
 
 const API_BASE = API_BASE_URL.replace(/\/+$/, '');
@@ -15,7 +17,7 @@ export function normalizePublicProfileIdentifier(value: string): string {
   return String(value || '').trim().replace(/^@+/, '');
 }
 
-async function fetchPublicJson<T>(
+export async function fetchPublicJson<T>(
   path: string,
   options: { noStore?: boolean } = {},
 ): Promise<PublicFetchResult<T>> {
@@ -51,15 +53,35 @@ async function fetchPublicJson<T>(
 
 export type PublicCardDesigns = {
   year: number;
-  collections?: { id: string; name: string; designs: string[] }[];
-  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string; verse?: string | null }[];  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
+  /** In shelf order; `short`, `slug`, `line`, `pick` and `parts` as on HolidayCardCollection. */
+  collections?: { id: string; name: string; short?: string; slug?: string; line?: string; designs: string[]; pick?: string;
+    parts?: { name: string; designs: string[] }[] }[];
+  designs: { id: string; number: number; slug: string; caption: string; paper: string; collection?: string | null; table: string;
+    mood?: 'reverence' | 'santa' | 'nostalgia' | null; verse?: string | null }[];
+  /** With digital stamps on: the free cards an account starts with. Absent: sending is free, one card a day. */
   free_cards?: number;
+  /** The shelves and a page per collection (server key card_shelves). Absent: today's pages. */
+  shelves?: boolean;
+  /** The order "One from each collection" draws the collections in (SPEC E2); absent: the collections' order. */
+  opening?: string[];
 };
+
+/** The shelves are on (server key card_shelves, card shelves SPEC Part D) and the collections carry their facts. */
+export function publicShelvesOn(data: Pick<PublicCardDesigns, 'shelves' | 'collections'>): boolean {
+  const collections = data.collections ?? [];
+  return data.shelves === true && collections.length > 0 && collections.every((c) => typeof c.slug === 'string' && Boolean(c.slug));
+}
 
 /** Every Christmas card, for the public card pages (on with Christmas cards; 404 while they're off). */
 export const fetchPublicCardDesigns = cache(async (): Promise<PublicFetchResult<PublicCardDesigns>> => (
   fetchPublicJson<PublicCardDesigns>('/api/mailbox/cards/designs')
 ));
+
+/** All cards this Christmas (D3), for /cards (404 while the travelling card is off). */
+export const fetchCardJourneyGoal = cache(async (): Promise<PublicFetchResult<CardJourneyGoal>> => {
+  const result = await fetchPublicJson<{ goal: CardJourneyGoal }>('/api/mailbox/cards/journeys');
+  return { data: result.data?.goal ?? null, status: result.status };
+});
 
 /** The invite code a shared card's link carries in `ref`, if it looks like one. It's only ever passed on to sign-up. */
 export function shareRefFrom(value: string | string[] | undefined): string | null {
@@ -259,23 +281,7 @@ export type PublicPlanForGuest = {
   gift?: PublicPlanGift | null;
 };
 
-export type PublicPlanGift = {
-  budget_cents: number;
-  budget_text: string;
-  draw_at: string;
-  draw_text: string;
-  state: 'open' | 'drawn';
-  joined: number;
-  joined_text: string;
-  can_join: boolean;
-  mine: {
-    in: boolean;
-    wish: string | null;
-    giving_to: { name: string; wish: string | null } | null;
-    wish_text?: string | null;
-    secret_text?: string;
-  };
-};
+export type PublicPlanGift = plans.Gift;
 
 export type PublicPlanDates = {
   state: 'picking';
@@ -290,26 +296,9 @@ export type PublicPlanDates = {
   mine?: { answered: boolean };
 };
 
-export type PublicPlanChipIn = {
-  text: string;
-  amount_cents: number;
-  note: string;
-  service: string;
-  link: string;
-  paid_count: number;
-  of: number;
-  paid_text: string;
-  pay_text: string;
-  straight_text: string;
-  mine: { paid: boolean } | null;
-};
+export type PublicPlanChipIn = plans.ChipIn;
 
-export type PublicPlanBring = {
-  rev: number;
-  guests_can_add: boolean;
-  open_count: number;
-  items: { id: string; label: string; note: string | null; claim: { name: string; mine: boolean } | null }[];
-};
+export type PublicPlanBring = plans.Bring;
 
 export type PublicPlanBusiness = {
   name: string;

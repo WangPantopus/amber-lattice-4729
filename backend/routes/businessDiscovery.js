@@ -804,7 +804,7 @@ router.get('/:businessId/neighbor-count', verifyToken, async (req, res) => {
 
     if (trustErr) {
       logger.error('Error calling get_neighbor_trust_count', { error: trustErr.message });
-      return res.status(500).json({ error: 'Failed to compute neighbor trust count' });
+      return res.status(500).json({ error: 'Failed to compute trust count' });
     }
 
     const row = Array.isArray(trustResult) ? trustResult[0] : trustResult;
@@ -862,7 +862,7 @@ router.get('/:businessId/neighbor-count', verifyToken, async (req, res) => {
     });
   } catch (err) {
     logger.error('neighbor-count error', { error: err.message, stack: err.stack });
-    res.status(500).json({ error: 'Failed to compute neighbor count' });
+    res.status(500).json({ error: 'Failed to compute nearby count' });
   }
 });
 
@@ -949,9 +949,9 @@ router.get('/:businessId/combined-trust', verifyToken, async (req, res) => {
     if (transactionCount > 0 && endorsementCount > 0) {
       displayLabel = `${transactionCount} hired · ${endorsementCount} endorsed`;
     } else if (transactionCount > 0) {
-      displayLabel = `Hired by ${transactionCount} verified neighbor${transactionCount !== 1 ? 's' : ''}`;
+      displayLabel = `Hired by ${transactionCount} verified home${transactionCount !== 1 ? 's' : ''}`;
     } else if (endorsementCount > 0) {
-      displayLabel = `Endorsed by ${endorsementCount} verified neighbor${endorsementCount !== 1 ? 's' : ''}`;
+      displayLabel = `Endorsed by ${endorsementCount} verified home${endorsementCount !== 1 ? 's' : ''}`;
     } else if (newBizStatus.is_new_business) {
       displayLabel = 'New on Pantopus';
     }

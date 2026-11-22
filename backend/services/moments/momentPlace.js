@@ -237,15 +237,31 @@ async function townAt(latitude, longitude) {
   return (await settle(townAndStreet(latitude, longitude), 'reverse'))?.town || FALLBACK_LABEL;
 }
 
-/** Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds; fails closed to false). */
-async function isAtHome(userId, latitude, longitude) {
-  const { householdHomeIds } = require('../../utils/homeMailAccess');
-  const homeIds = await householdHomeIds(userId);
+/**
+ * Whether the point is within AT_HOME_M of a home the person lives at (householdHomeIds). When their homes can't be
+ * read it answers `onFailure`: false unless asked otherwise, as it always has. The Moments routes ask with
+ * `onFailure: true`: a failed read counts as at home, so it never shows where its author lives (the Moment floats over
+ * its area with the Sky on, says its town, keeps no height and no Live mark). Someone with no home is never at home.
+ */
+async function isAtHome(userId, latitude, longitude, { onFailure = false } = {}) {
+  const { householdHomeIds, householdHomeIdsOrThrow } = require('../../utils/homeMailAccess');
+  let homeIds;
+  if (onFailure === false) {
+    homeIds = await householdHomeIds(userId);
+  } else {
+    try {
+      homeIds = await householdHomeIdsOrThrow(userId);
+    } catch (error) {
+      // An error, as householdHomeIds logs it: a household read that fails matters more here, not less.
+      logger.error('moments.at_home_failed', { read: 'household', error: error.message });
+      return onFailure;
+    }
+  }
   if (!homeIds.length) return false;
   const { data, error } = await supabaseAdmin.from('Home').select('id, location').in('id', homeIds);
   if (error) {
     logger.warn('moments.at_home_failed', { error: error.message });
-    return false;
+    return onFailure;
   }
   return (data || []).some((home) => {
     const point = parsePostGISPoint(home.location);

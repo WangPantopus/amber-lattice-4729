@@ -76,7 +76,7 @@ data class AIScreenContext(
             AIScreenContext(
                 surface = "nearby",
                 label = "Nearby",
-                starters = listOf("What did I miss this week?", "Help me post something", "Who do neighbors recommend…"),
+                starters = listOf("What did I miss this week?", "Help me post something", "Who do people near me recommend…"),
             )
 
         /** The Plans tab, map or list. */

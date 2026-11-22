@@ -40,6 +40,17 @@ function guidanceCardsEnabled(env = process.env) {
   return env.APP_ENV === 'staging';
 }
 
+// The house on Today (founder approval 2026-11-21, JOURNEYS): Today's picture of the person's own house gains a
+// mailbox, a note on the door and a lantern, each a button, and the "Needs you" card says the same things in words.
+// The apps draw none of it unless the profile's `today_house` is true (routes/users.js). TODAY_HOUSE is '1' (on) or
+// '0' (off); unset, it is on for hosted staging and off everywhere else.
+function todayHouseEnabled(env = process.env) {
+  const value = String(env.TODAY_HOUSE || '').trim();
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return env.APP_ENV === 'staging';
+}
+
 // A Christmas card by email's one reminder, three days after its email (founder, November 16; services/cardEmail).
 // CARD_EMAIL_REMINDERS is '0' (off) or '1' (on); unset, it is on where the server runs as staging or production
 // (NODE_ENV=production) and off on a laptop or in tests, so a local run never emails a reminder to a real address.
@@ -73,6 +84,8 @@ const LAUNCH_FEATURE_KEYS = [
   'card_note_help', // 15. "Help me write it" on a Christmas card: three AI-written notes to pick from and edit (2026-11-11); needs `mailbox` and `holiday_cards` on too
   'card_share_video', // 16. Sharing a Christmas card as a video of it arriving (2026-11-14): one film per picture, never a note or a name; needs `mailbox`, `holiday_cards` and `card_table` on too
   'card_replies', // 17. "Write back to {first name}": one reply to a Christmas card, note only (founder's D4, 2026-11-17); server only, needs `mailbox` and `holiday_card_memories` on too
+  'card_travel', // 18. The travelling card: pass a card on, free, to up to two people; postmarks and a public journey page (founder, 2026-11-21); server only, needs `mailbox`, `holiday_cards` and `card_table` on too
+  'card_shelves', // 19. "Pick a card" and pantopus.com/cards as shelves: one card from each collection, a shelf per collection, a page per collection (founder, 2026-11-21); server only, needs `mailbox` and `holiday_cards` on too
 ];
 
 function isLaunchFeatureEnabled(key) {
@@ -170,6 +183,8 @@ const LAUNCH_NOTIFICATION_TYPE_FEATURES = {
   holiday_card_claimed: ['mailbox', 'holiday_cards'],
   holiday_card_expired: ['mailbox', 'holiday_cards'],
   holiday_card_email_failed: ['mailbox', 'holiday_cards'],
+  // 18. The travelling card: a card someone held reached another town (services/cardTravel).
+  holiday_card_travelled: ['mailbox', 'holiday_cards', 'card_table', 'card_travel'],
   // 11. The Pulse redesign: follow alerts, Helpful and thanks notices, offer requests and the
   // Ask reminder. The October 13 Pulse's reply and mention notices are not here.
   pulse_follow_reply: ['pulse_redesign'],
@@ -237,6 +252,7 @@ function requirePersonaBroadcastEnabled(_req, res, next) {
 module.exports = {
   aroundYouEnabled,
   guidanceCardsEnabled,
+  todayHouseEnabled,
   cardEmailRemindersEnabled,
   LAUNCH_FEATURE_KEYS,
   isLaunchFeatureEnabled,

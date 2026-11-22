@@ -18,6 +18,8 @@ struct MomentsPostStage: View {
     let model: MomentsComposerModel
     let onPosted: () -> Void
     @State var player: AVPlayer?
+    /// How tall the pills are (one row or two): the closed Duo's sheet starts below them.
+    @State var pillsHeight: CGFloat = 40
     @Environment(\.momentsDuoScreen) var duo
 
     var body: some View {
@@ -37,10 +39,9 @@ struct MomentsPostStage: View {
 
     private var phoneStage: some View {
         ZStack(alignment: .top) {
-            retakeButton
-                .padding(.leading, Spacing.s3)
+            phonePills
+                .padding(.horizontal, Spacing.s3)
                 .padding(.top, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
             VStack(spacing: 0) {
                 Spacer(minLength: 120)
                 // The sheet is as tall as what's in it, up to the room there is (less with the keyboard up).
@@ -69,13 +70,16 @@ struct MomentsPostStage: View {
     var backdrop: some View {
         switch model.draft {
         case let .photo(image):
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .overlay(Color.black.opacity(0.3))
-                .accessibilityLabel("The photo you're posting")
+            MomentsMarkedPhoto(
+                image: image,
+                marks: model.marking.marks,
+                placement: model.marking.placement,
+                backdrop: model.marking.backdrop
+            )
+            .overlay(Color.black.opacity(0.3))
+            .accessibilityLabel("The photo you're posting")
         case let .video(url):
-            videoSurface(url: url)
+            markedVideo(url: url)
                 .overlay(Color.black.opacity(0.3))
                 .accessibilityLabel("The video you're posting")
         case .text:
@@ -109,24 +113,6 @@ struct MomentsPostStage: View {
                 player?.seek(to: .zero)
                 player?.play()
             }
-    }
-
-    var retakeButton: some View {
-        let isText = model.draft == .text
-        return Button { model.retake() } label: {
-            HStack(spacing: Spacing.s1) {
-                Icon(.chevronLeft, size: 20, strokeWidth: 2.2, color: .white)
-                Text(isText ? "Edit" : "Retake").font(.system(size: 15, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.leading, Spacing.s2)
-            .padding(.trailing, 14)
-            .frame(height: 40)
-            .background(Capsule().fill(Color.black.opacity(isText ? 0.25 : 0.42)))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("moments.post.retake")
     }
 }
 
@@ -217,6 +203,8 @@ struct MomentsPostSheet: View {
                 .padding(.top, model.noLocationOn && mapHeight > 0 ? (asCard ? 16 : 11) : 10)
             if let taken = model.takenLine {
                 takenRow(taken).padding(.top, 2)
+            } else if model.showsLive {
+                liveRow.padding(.top, 2)
             }
             if model.pin == nil, model.locating == .unavailable, !model.noLocationOn {
                 Text("Turn on location for Pantopus in Settings to post a Moment.")
@@ -242,6 +230,9 @@ struct MomentsPostSheet: View {
                 heightRow(feet: feet)
             } else if model.greysHeight {
                 greyHeightRow
+            }
+            if model.offersWeather, let weather = model.live.weather {
+                weatherRow(weather)
             }
             if model.sky != nil, !model.shareLaterChoices.isEmpty {
                 shareLaterRow

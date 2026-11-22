@@ -25,6 +25,7 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -34,6 +35,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -212,7 +215,7 @@ internal fun ToStep(
  * those on it), a tap puts them on it or takes them off, a check shows who's on it, and nobody more joins once it's [full].
  */
 @Composable
-private fun People(
+internal fun People(
     people: List<MailRecipientDto>,
     onChoose: (CardRecipient) -> Unit,
     listed: Set<String>? = null,
@@ -368,7 +371,7 @@ private fun EmailForm(
 
 /** A text box on the desk: card stock, a thin edge, wax red while it's being typed in. It asks for the keyboard at once. */
 @Composable
-private fun DeskField(
+internal fun DeskField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -379,11 +382,13 @@ private fun DeskField(
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
     onDone: () -> Unit = {},
+    /** Takes the focus (and the keyboard) as it shows; off where the field isn't what the screen is for (Pass it on). */
+    autoFocus: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { if (autoFocus) runCatching { focus.requestFocus() } }
     val shape = RoundedCornerShape(Radii.lg)
     BasicTextField(
         value = value,
@@ -441,7 +446,7 @@ private fun DeskField(
 }
 
 @Composable
-private fun Hint(
+internal fun Hint(
     text: String,
     problem: Boolean = false,
 ) {
@@ -514,7 +519,17 @@ internal fun PickBar(
     onChoose: (String) -> Unit,
     onNext: () -> Unit,
 ) {
-    val picked = cards.designOf(chosen)
+    PickBarBody(cards.designOf(chosen), onLarge = onLarge, onNext = onNext)
+    PickRack(cards, large = large, onLarge = onLarge, onChoose = onChoose, onNext = onNext)
+}
+
+/** The bar itself: [picked] small with its caption and "See it larger" (or how to choose one), and "Write on this card". */
+@Composable
+internal fun PickBarBody(
+    picked: HolidayCardDesign?,
+    onLarge: (String?) -> Unit,
+    onNext: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth().background(PantopusColors.cardDesk).testTag("sendCardPickBar")) {
         HorizontalDivider(color = PantopusColors.cardNoteEdge)
         Row(
@@ -564,6 +579,17 @@ internal fun PickBar(
                     .testTag("sendCardWriteOn"),
         )
     }
+}
+
+/** The card rack over Pick a card while a picture is open large ([large]), among the other cards of its collection. */
+@Composable
+internal fun PickRack(
+    cards: HolidayCardsResponse,
+    large: String?,
+    onLarge: (String?) -> Unit,
+    onChoose: (String) -> Unit,
+    onNext: () -> Unit,
+) {
     cards.designOf(large)?.let { design ->
         val collection = cards.collections.firstOrNull { design.id in it.designs }
         CardRack(
@@ -607,21 +633,27 @@ private fun CollectionRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         collections.forEach { collection ->
-            CollectionChip(collection, selected = collection.id == shown, onSelect = { onShow(collection.id) })
+            CardPill(
+                collection.name,
+                selected = collection.id == shown,
+                onSelect = { onShow(collection.id) },
+                tag = "sendCardCollection.${collection.id}",
+            )
         }
     }
 }
 
 /**
- * A collection's name on a pill: card stock, or wax red while it's shown, and then scrolled into view. It's drawn 36 dp
- * tall and takes touches across 48.
+ * A collection's name (or a part's, on a collection's page) on a pill: card stock, or wax red while it's shown, and then
+ * scrolled into view. It's drawn 36 dp tall and takes touches across 48.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CollectionChip(
-    collection: HolidayCardCollection,
+internal fun CardPill(
+    name: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    tag: String,
 ) {
     val inView = remember { BringIntoViewRequester() }
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -642,11 +674,11 @@ private fun CollectionChip(
                 .then(if (selected) Modifier else Modifier.border(1.dp, PantopusColors.cardFieldEdge, CircleShape))
                 .selectable(selected = selected, role = Role.Tab, onClick = onSelect)
                 .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
-                .testTag("sendCardCollection.${collection.id}"),
+                .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            collection.name,
+            name,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             fontWeight = FontWeight.SemiBold,
@@ -719,7 +751,6 @@ private fun DesignTile(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(3.dp)
     Column(
         modifier =
             modifier
@@ -730,38 +761,7 @@ private fun DesignTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
-                    .shadow(if (selected) 6.dp else 4.dp, shape)
-                    .clip(shape)
-                    .background(HolidayCardArt.paper(design.paper))
-                    // A zero-width border would still draw a hairline: the ring only when it's chosen.
-                    .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
-        ) {
-            AsyncImage(
-                model = HolidayCardArt.picture(design.id, thumb = true),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
-            )
-            if (selected) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(PantopusColors.cardWax),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
-                }
-            }
-        }
+        PickPicture(design, selected)
         // Two across, a caption has two full lines; at the largest text it wraps on rather than being cut.
         Text(
             design.caption,
@@ -772,6 +772,62 @@ private fun DesignTile(
             textAlign = TextAlign.Center,
             modifier = Modifier.heightIn(min = 36.dp),
         )
+    }
+}
+
+/**
+ * A picture as Pick a card draws it, at its own shape on its paper, in a shadow: chosen, a wax-red ring and a check.
+ * [thumb]: the small copy only, as the grid uses. Otherwise (the shelves' larger cards) the small copy first and the
+ * large one over it once it's loaded, except while Data Saver holds the app back.
+ */
+@Composable
+internal fun PickPicture(
+    design: HolidayCardDesign,
+    selected: Boolean,
+    thumb: Boolean = true,
+) {
+    val context = LocalContext.current
+    val large = !thumb && !HolidayCardArt.dataSaverOn(context)
+    val shape = RoundedCornerShape(3.dp)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(HolidayCardArt.pictureAspect(design.id, design.height))
+                .shadow(if (selected) 6.dp else 4.dp, shape)
+                .clip(shape)
+                .background(HolidayCardArt.paper(design.paper))
+                // A zero-width border would still draw a hairline: the ring only when it's chosen.
+                .then(if (selected) Modifier.border(3.dp, PantopusColors.cardWax, shape) else Modifier),
+    ) {
+        AsyncImage(
+            model = HolidayCardArt.picture(design.id, thumb = true),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+        )
+        if (large) {
+            AsyncImage(
+                model = HolidayCardArt.picture(design.id, thumb = false),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize().padding(if (selected) 3.dp else 0.dp),
+            )
+        }
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(PantopusColors.cardWax),
+                contentAlignment = Alignment.Center,
+            ) {
+                PantopusIconImage(icon = PantopusIcon.Check, contentDescription = null, size = 14.dp, tint = PantopusColors.cardWaxText)
+            }
+        }
     }
 }
 
@@ -993,7 +1049,7 @@ private fun MediaUnderTheNote(
             voice = voice,
             forFirst = (to as? CardRecipient.Person)?.firstName ?: "you",
             fromFirst = fromName.trim().substringBefore(' '),
-            gift = CardMood.of(design.number, design.id) == CardMood.Reverence,
+            gift = CardMood.of(design.number, design.id, design.mood) == CardMood.Reverence,
             calls = voices,
             buyStamp = buyStamp,
             beforeRecord = beforeAdd,
@@ -1021,6 +1077,9 @@ internal fun SealStep(
     stamps: StampBalance? = null,
     /** Room at the end of the page for the pinned buttons. */
     endRoom: Dp = 0.dp,
+    /** "Let it travel" (travelling card plan Part 2): on or off; null where the server doesn't offer it. */
+    travel: Boolean? = null,
+    onTravel: (Boolean) -> Unit = {},
 ) {
     val zone = HolidayCardTimes.zone(cards.timeZone)
     val options = arrivalOptions(cards.arrivals, to, form.theirs)
@@ -1063,6 +1122,8 @@ internal fun SealStep(
                     ) { onArrival(arrival) }
                 }
             }
+            // On the same paper, under the arrival choices (travelling card plan Part 2).
+            travel?.let { on -> TravelChoice(to, on, onTravel, modifier = Modifier.padding(top = 10.dp)) }
         }
         // Before it's sent there's no knowing their clock; the sent card says the time on this one. Both lines show here,
         // so a sender who skips Look it over has read them (plan Part 5).
@@ -1244,6 +1305,63 @@ private fun ArrivalChoice(
         }
     }
 }
+
+/**
+ * "Let it travel" (travelling card plan Part 2, decision D5): one row under the arrival choices, on to begin with. Off,
+ * the card is an ordinary card and nothing about it is public.
+ */
+@Composable
+private fun TravelChoice(
+    to: CardRecipient,
+    on: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(Radii.lg)
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PantopusColors.cardField)
+                .border(1.dp, PantopusColors.cardListEdge, shape)
+                .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+                .padding(14.dp)
+                .testTag("sendCardTravel"),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Let it travel",
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PantopusColors.cardTextStrong,
+            )
+            Text(travelSentence(to), fontSize = 13.sp, lineHeight = 18.sp, color = PantopusColors.cardTextQuiet)
+        }
+        Switch(
+            checked = on,
+            onCheckedChange = null,
+            colors =
+                SwitchDefaults.colors(
+                    checkedTrackColor = PantopusColors.cardWax,
+                    checkedThumbColor = PantopusColors.cardField,
+                    uncheckedTrackColor = PantopusColors.cardFieldEdge,
+                    uncheckedThumbColor = PantopusColors.cardField,
+                    uncheckedBorderColor = PantopusColors.cardFieldEdge,
+                ),
+        )
+    }
+}
+
+/** "Maya can pass this card on. Its towns show on a map, never names." */
+private fun travelSentence(to: CardRecipient): String =
+    when (to) {
+        is CardRecipient.Person -> "${to.firstName} can pass this card on. Its towns show on a map, never names."
+        else -> "They can pass this card on. Its towns show on a map, never names."
+    }
 
 /**
  * A choice's title and its sentence. Their mail comes at 7 a.m. where they live: never turned into this clock's time.

@@ -765,7 +765,7 @@ async function buildPlacePreview(place) {
     status: 'ready',
     bucket,                       // enum only — NEVER a count
     label: placePreviewService.previewDensityLabel(bucket, foundingOpen),
-    source: 'Pantopus verified neighbors',
+    source: 'Verified homes on Pantopus',
   };
 
   const ready = floodSection.status === 'ready' && areaSection.status === 'ready';

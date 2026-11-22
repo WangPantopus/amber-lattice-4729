@@ -136,8 +136,8 @@ private val VERIFY_BENEFITS =
         },
         VerifyBenefit(
             PantopusIcon.MessageCircle,
-            "What only verified neighbors see",
-            "Real rents on your block, neighbor messages, the Fridge Card, rate watch",
+            "What only verified residents see",
+            "Real rents on your block, messages between homes, the Fridge Card, rate watch",
         ),
     )
 
@@ -529,7 +529,7 @@ private fun Success(
         color = PantopusColors.appText,
     )
     Text(
-        "You're now an address-proven neighbor at $address.",
+        "You're now an address-proven resident at $address.",
         fontSize = 14.sp,
         textAlign = TextAlign.Center,
         color = PantopusColors.appTextSecondary,

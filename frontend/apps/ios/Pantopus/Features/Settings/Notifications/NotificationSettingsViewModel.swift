@@ -30,7 +30,8 @@
 //  toasts and re-fetches, which rolls the row back to server truth.
 //
 //  Times go over the wire as `HH:mm` strings: Joi rejects anything else
-//  (`hub.js:699-709`), so never format them for display locale.
+//  (`hub.js:699-709`), so never send them in the display locale. On screen
+//  they read in the phone's own clock style (`clockLabel`).
 //
 
 // Live refresh while open (Instant Screens) pushed this past 500 lines.
@@ -247,6 +248,11 @@ public final class NotificationSettingsViewModel: GroupedListDataSource {
         }
     }
 
+    /// Every chip row here is a time: "7:30 AM", or "07:30" with 24-hour time on. The option saves as it is.
+    public func chipLabel(_: String, value: String) -> String {
+        Self.clockLabel(value)
+    }
+
     public func selectRadio(_ rowId: String) async {
         guard preferencesScopeIsCurrent, preferences != nil,
               let option = Self.locationOptions.first(where: { $0.rowId == rowId })
@@ -461,7 +467,7 @@ public final class NotificationSettingsViewModel: GroupedListDataSource {
         GroupedListGroup(
             id: GroupID.push,
             overline: "Account",
-            helper: isOn ? nil : "Push is off, so nothing below will reach your phone.",
+            helper: isOn ? nil : "Push is off, so nothing below will reach your \(DeviceWords.plainName).",
             rows: [
                 GroupedListRow(
                     id: RowID.pushNotifications,
@@ -650,7 +656,7 @@ public final class NotificationSettingsViewModel: GroupedListDataSource {
         guard PlansFlags.shared.plans else { return nil }
         return prefs.quietHoursEnabled
             ? "Plans notifications wait until your quiet hours end."
-            : "Plans notifications at night wait until 8 AM unless you set quiet hours."
+            : "Plans notifications at night wait until \(Self.clockLabel("08:00")) unless you set quiet hours."
     }
 
     private func locationGroup(_ prefs: NotificationPreferencesDTO) -> GroupedListGroup {
@@ -730,6 +736,15 @@ public final class NotificationSettingsViewModel: GroupedListDataSource {
     /// (`notification-preferences.tsx:208`).
     public static let defaultQuietStart = "22:00"
     public static let defaultQuietEnd = "07:00"
+
+    /// A wire time (`HH:mm`, a wall-clock time in the briefing zone) as the person reads times: "7:30 AM", or
+    /// "07:30" with 24-hour time on. Anything else shows as it came.
+    public static func clockLabel(_ wire: String) -> String {
+        let parts = wire.split(separator: ":").map { Int($0) }
+        guard parts.count >= 2, let hour = parts[0], let minute = parts[1], (0..<24).contains(hour), (0..<60).contains(minute)
+        else { return wire }
+        return SkyMoment.clockText(Double(hour * 60 + minute))
+    }
 
     /// RN `LOCATION_MODES` (`notification-preferences.tsx:24-28`). The
     /// backend also accepts `custom`, which needs lat/lng and has no RN

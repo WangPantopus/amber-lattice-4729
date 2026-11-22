@@ -173,7 +173,7 @@ extension PulsePostDetailViewModel {
     func beginReply(to reply: PulseReplyDTO) {
         guard !reply.removed else { return }
         let name = reply.author?.displayName ?? ""
-        replyTarget = ReplyTarget(commentId: reply.id, authorName: name.isEmpty ? "a neighbor" : name)
+        replyTarget = ReplyTarget(commentId: reply.id, authorName: name.isEmpty ? "someone nearby" : name)
     }
 
     @discardableResult

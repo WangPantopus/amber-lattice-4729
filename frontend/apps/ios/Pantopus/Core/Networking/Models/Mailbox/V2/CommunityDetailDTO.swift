@@ -308,7 +308,7 @@ public struct CommunityDetailDTO: Sendable, Hashable {
     private static func decodeGroup(from dict: [String: JSONValue]) -> CommunityGroupInfo {
         let groupDict = dict["group"]?.dictValue ?? dict["community"]?.dictValue ?? [:]
         return CommunityGroupInfo(
-            name: groupDict["name"]?.stringValue ?? "Neighborhood group",
+            name: groupDict["name"]?.stringValue ?? "Local group",
             tagline: groupDict["tagline"]?.stringValue,
             founded: groupDict["founded"]?.stringValue,
             role: groupDict["role"]?.stringValue ?? groupDict["membership_role"]?.stringValue,

@@ -220,7 +220,7 @@ private struct VerifiedNeighborChip: View {
     var body: some View {
         HStack(spacing: Spacing.s1) {
             Icon(.shieldCheck, size: 12, color: Theme.Color.home)
-            Text("VERIFIED NEIGHBOR")
+            Text("VERIFIED HOME")
                 .font(.system(size: 10, weight: .bold))
                 .tracking(0.5)
                 .foregroundStyle(Theme.Color.home)
@@ -230,7 +230,7 @@ private struct VerifiedNeighborChip: View {
         .background(Theme.Color.homeBg)
         .clipShape(RoundedRectangle(cornerRadius: Radii.pill, style: .continuous))
         .accessibilityElement()
-        .accessibilityLabel("Verified neighbor")
+        .accessibilityLabel("Verified home")
         .accessibilityIdentifier("publicProfileVerifiedNeighborChip")
     }
 }

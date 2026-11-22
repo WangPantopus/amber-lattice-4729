@@ -28,7 +28,7 @@ public struct GigSearchView: View {
 
     public var body: some View {
         SearchListShell(
-            placeholder: "Search gigs, skills, neighborhoods…",
+            placeholder: "Search gigs, skills, areas…",
             query: Binding(
                 get: { viewModel.query },
                 set: { newValue in

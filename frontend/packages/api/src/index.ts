@@ -70,7 +70,9 @@ export * as notifications from './endpoints/notifications';
 export * as homeIam from './endpoints/homeIam';
 export * as upload from './endpoints/upload';       // NEW
 export * as reviews from './endpoints/reviews';     // NEW
+export * as moments from './endpoints/moments';
 export * as posts from './endpoints/posts';                 // Scoped feeds & posts
+export * as plans from './endpoints/plans';
 export * as businesses from './endpoints/businesses';       // Business profiles
 export * as businessIam from './endpoints/businessIam';     // Business IAM
 export * as wallet from './endpoints/wallet';               // Wallet/balance
@@ -131,7 +133,7 @@ export { getHomes, attachToHome, detachFromHome } from './endpoints/homes';
 export { getChatRooms, getBusinessChatRooms, sendMessage, markMessagesAsRead, markMessagesAsReadForIdentity, getConversationMessages, markConversationAsRead } from './endpoints/chat';
 export { uploadProfilePicture, uploadPortfolio, getPortfolio } from './endpoints/files';
 export { getMailbox, markMailAsRead, createAdCampaign } from './endpoints/mailbox';
-export type { DeletedMail, CardSignature, CardMediaRef, CardPhoto, CardVoice, CardExchange, CardExchangePage, CardReplySummary, CardReplyBody, HolidayCards, HolidayCardDesign, HolidayCardCollection, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardNoteIdea, HolidayCardPreview, HolidayCardList, HolidayCardListLine, HolidayCardListPreview, HolidayCardListResult, SentHolidayCard, SentPiece, SentPieceDetail, SentTrailStep, WaitingHolidayCard } from './endpoints/mailbox';
+export type { DeletedMail, CardSignature, CardMediaRef, CardPhoto, CardVoice, CardExchange, CardExchangePage, CardReplySummary, CardReplyBody, HolidayCards, HolidayCardDesign, HolidayCardCollection, HolidayCardArrival, HolidayCardArrivalsFor, HolidayCardNoteIdea, HolidayCardPreview, HolidayCardList, HolidayCardListLine, HolidayCardListPreview, HolidayCardListResult, SentHolidayCard, SentPiece, SentPieceDetail, SentTrailStep, WaitingHolidayCard, CardTravel, CardTravelPostmark, CardTown, PassOnBody, PassOnPreview, CardJourney, CardJourneyStop, CardJourneyGoal } from './endpoints/mailbox';
 export { getBalance, createPaymentIntent, requestPayout } from './endpoints/payments';
 export {
   uploadGigMedia,

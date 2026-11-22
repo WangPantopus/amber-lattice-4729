@@ -14,7 +14,7 @@ const supabaseAdmin = require('../config/supabaseAdmin');
 const { checkHomePermission } = require('../utils/homePermissions');
 const { serializeHomeForViewer, serializeOwnerForViewer, HIDDEN_FROM_OUTSIDERS } = require('../serializers/homeProfileSerializer');
 
-const VIEWER_LABEL = 'A neighbor who is not in your household';
+const VIEWER_LABEL = 'Someone who is not in your household';
 
 // The same private-setup test My Homes uses (homeListService): the record
 // context says private, the user created the Home, and it isn't frozen,

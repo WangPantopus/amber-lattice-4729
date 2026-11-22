@@ -305,11 +305,22 @@ object MailSentWords {
             day = HolidayCardTimes.parse(card.sentAt)?.atZone(zone)?.toLocalDate(),
         )
 
-    /** Sent today by the sender's clock: taking it back frees today's card. */
+    /**
+     * Sent today by the sender's clock: taking it back frees today's card. Never a card passed on (travelling card plan
+     * Part 4), which is free and never the day's card.
+     */
     fun sentToday(
         card: SentCard,
         zone: ZoneId,
-    ): Boolean = HolidayCardTimes.parse(card.sentAt)?.atZone(zone)?.toLocalDate() == Instant.now().atZone(zone).toLocalDate()
+    ): Boolean =
+        card.travel?.passedOn != true &&
+            HolidayCardTimes.parse(card.sentAt)?.atZone(zone)?.toLocalDate() == Instant.now().atZone(zone).toLocalDate()
+
+    /** Taking it back gives its stamp back: with stamp books on, and never for a card passed on, which took none. */
+    fun stampComesBack(
+        card: SentCard,
+        postageEnabled: Boolean,
+    ): Boolean = postageEnabled && card.travel?.passedOn != true
 
     /** "To Maya O. · Christmas card"; by email "To d***@example.com · by email". */
     fun title(card: SentCard): String {

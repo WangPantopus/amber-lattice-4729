@@ -86,7 +86,7 @@ enum MomentsLibraryLoader {
         options.isNetworkAccessAllowed = true
         options.version = .current
         options.deliveryMode = .highQualityFormat
-        let target = FileManager.default.temporaryDirectory.appendingPathComponent("moment-library-\(UUID().uuidString).mov")
+        let target = MomentsDraftFiles.newFile(MomentsDraftFiles.libraryPrefix)
         let session: AVAssetExportSession? = await withCheckedContinuation { continuation in
             PHImageManager.default().requestExportSession(forVideo: asset, options: options, exportPreset: preset) { session, _ in
                 continuation.resume(returning: session)
@@ -96,7 +96,12 @@ enum MomentsLibraryLoader {
         session.outputURL = target
         session.outputFileType = .mov
         await session.export()
-        return session.status == .completed ? target : nil
+        guard session.status == .completed else {
+            // A copy that didn't finish isn't anyone's.
+            try? FileManager.default.removeItem(at: target)
+            return nil
+        }
+        return target
     }
 }
 

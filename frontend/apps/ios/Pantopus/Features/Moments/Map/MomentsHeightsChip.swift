@@ -12,8 +12,8 @@
 //  All of it shows only while the map's answer says heights are on for you
 //  (`heights_on`, contract v3.9). The chip's choice is kept on the phone, per
 //  account, and starts on. The time filter's chip (`MomentsTimeFilter.swift`)
-//  follows them, or goes under them when the row is full; heights off, it
-//  is there alone.
+//  and "Live now" (`MomentsLiveChip.swift`) follow them, or go under them
+//  when the row is full; heights off, they are there alone.
 //
 
 import SwiftUI
@@ -26,15 +26,16 @@ struct MomentsHeightsBar: View {
         if viewModel.phase == .ready {
             VStack(alignment: .leading, spacing: Spacing.s2) {
                 // The heights chips keep their place. How far back the map shows Moments from (`MomentsTimeFilter.swift`)
-                // follows them on the same line, or goes under them when the line is full.
+                // and "Live now" (`MomentsLiveChip.swift`) follow them on the same line, or go under them when the line
+                // is full.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: Spacing.s2) {
                         heightsChips
-                        MomentsTimeChip(viewModel: viewModel)
+                        filterChips
                     }
                     VStack(alignment: .leading, spacing: Spacing.s2) {
                         HStack(spacing: Spacing.s2) { heightsChips }
-                        MomentsTimeChip(viewModel: viewModel)
+                        HStack(spacing: Spacing.s2) { filterChips }
                     }
                 }
                 if viewModel.heightsOn, viewModel.showsHeightTags, viewModel.heightsKeyOpen {
@@ -57,6 +58,13 @@ struct MomentsHeightsBar: View {
             if viewModel.showsHeightTags { keyButton.transition(.opacity) }
             if let time = viewModel.sunChipTime { MomentsSunChip(time: time).transition(.opacity) }
         }
+    }
+
+    /// The time filter's chip, then "Live now".
+    @ViewBuilder
+    private var filterChips: some View {
+        MomentsTimeChip(viewModel: viewModel)
+        MomentsLiveChip(viewModel: viewModel)
     }
 
     private var chip: some View {
@@ -178,11 +186,11 @@ extension MomentsMapViewModel {
         heightsOn && !heightTagsOff
     }
 
-    /// "Your Moment is live" sits under the chips (the time filter's is always there once the map is ready): two lines of
-    /// them while the elevation tags show, since the time filter's chip then goes under the others on a phone.
+    /// "Your Moment is live" sits under the chips (the time filter's and "Live now" are always there once the map is
+    /// ready): two lines of them while heights are on for you, since those two then go under "Elevation" on a phone.
     var heightsNoteDrop: CGFloat {
         guard phase == .ready else { return 0 }
-        return showsHeightTags ? 2 * MomentsHeightsBar.drop : MomentsHeightsBar.drop
+        return heightsOn ? 2 * MomentsHeightsBar.drop : MomentsHeightsBar.drop
     }
 
     /// The map's answer said whether heights are on for you: with them, the chip's last choice on this phone.

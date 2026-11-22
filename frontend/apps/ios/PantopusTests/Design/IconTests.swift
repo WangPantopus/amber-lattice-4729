@@ -130,7 +130,9 @@ final class IconTests: XCTestCase {
         // Plans for the holidays: the Birthday and New Year's Eve occasions.
         "cake", "sparkle",
         // Guidance cards: Today's "Around you".
-        "newspaper"
+        "newspaper",
+        // Settings → Devices & sessions: an iPad's row.
+        "tablet"
     ]
 
     func testInventoryMatches() {

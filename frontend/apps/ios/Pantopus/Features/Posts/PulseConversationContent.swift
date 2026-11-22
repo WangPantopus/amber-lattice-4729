@@ -43,11 +43,11 @@ public struct PulseConversationContent: Sendable, Equatable {
 
     public func replyingToName(_ reply: PulseReplyDTO) -> String? {
         guard reply.parentCommentId != nil || reply.replyTo != nil else { return nil }
-        if replies.first(where: { $0.id == reply.parentCommentId })?.removed == true { return "a neighbor" }
+        if replies.first(where: { $0.id == reply.parentCommentId })?.removed == true { return "someone nearby" }
         if let name = reply.replyTo?.displayName, !name.isEmpty { return name }
         if let parent = replies.first(where: { $0.id == reply.parentCommentId }), !parent.removed,
            let name = parent.author?.displayName, !name.isEmpty { return name }
-        return "a neighbor"
+        return "someone nearby"
     }
 
     private func rootId(for reply: PulseReplyDTO, byId: [String: PulseReplyDTO]) -> String {

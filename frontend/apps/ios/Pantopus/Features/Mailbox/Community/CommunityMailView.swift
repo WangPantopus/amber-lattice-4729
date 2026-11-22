@@ -85,9 +85,9 @@ public struct CommunityMailView: View {
 
     private var subtitle: String {
         guard case let .loaded(_, total) = viewModel.state else {
-            return "Your neighborhood feed"
+            return "Your local mail"
         }
-        return "\(total) item\(total == 1 ? "" : "s") in your neighborhood"
+        return "\(total) item\(total == 1 ? "" : "s") near you"
     }
 
     // MARK: - Filter chips
@@ -145,7 +145,7 @@ public struct CommunityMailView: View {
                     icon: .megaphone,
                     headline: "No community items",
                     subcopy: """
-                    Civic notices, neighborhood events, and shared mail from your \
+                    Civic notices, local events, and shared mail from your \
                     block will appear here.
                     """,
                     cta: EmptyState.CTA(title: "Refresh") {

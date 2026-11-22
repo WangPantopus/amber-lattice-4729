@@ -351,6 +351,7 @@ export async function getMutedEntities(): Promise<{
     username: string | null;
     avatar_url: string | null;
     muted_at: string;
+    surface?: 'moments' | null;
   }>;
   topic_mutes?: Array<{ topic: string; area_id: string | null; muted_at: string }>;
 }> {
@@ -539,7 +540,11 @@ export async function checkPostSharePermission(postId: string): Promise<{ canSha
 
 // ============ v1.1 FEED PREFERENCES ============
 
+export interface SportsPreferences {
+  watch?: 'on' | 'off' | null; teams?: string[]; hidden?: string[]; leagues?: string[];
+}
 export interface FeedPreferences {
+  sports?: SportsPreferences;
   user_id: string;
   hide_deals_place: boolean;
   hide_alerts_place: boolean;
@@ -552,6 +557,7 @@ export async function getFeedPreferences(): Promise<{ preferences: FeedPreferenc
 }
 
 export async function updateFeedPreferences(data: {
+  sports?: SportsPreferences; expected_sports?: SportsPreferences;
   hideDealsPlace?: boolean;
   hideAlertsPlace?: boolean;
   showPoliticsConnections?: boolean;

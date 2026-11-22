@@ -16,7 +16,7 @@ import * as api from '@pantopus/api';
 import type { GuidanceSeenEntry, GuidanceState } from '@pantopus/types';
 import { setProfileGuidance } from './profileGuidance';
 
-export type GuidanceScreenName = 'place' | 'today' | 'mail' | 'pulse' | 'messages';
+export type GuidanceScreenName = 'place' | 'today' | 'mail' | 'pulse' | 'moments' | 'messages';
 
 interface LocalRecord {
   seen: Record<string, GuidanceSeenEntry>;

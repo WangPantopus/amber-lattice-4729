@@ -1,26 +1,24 @@
 'use client';
 
-// MobileTabBar — the app's tabs as a bottom bar on phone-width web:
-// Place · Today · Mail · Pulse while the Mailbox is on, Place · Today · Pulse
-// without it. Founder decision 2026-11-13: Mail is third (your home, your day,
-// your mailbox, then what's happening around you), as on iPhone and Android;
-// from November 1 to December 25, while Christmas cards are open, its icon is
-// a red envelope (cardDoors useChristmasMail). Messages left the
-// bar (founder decision 2026-11-08, as on iPhone and Android): the chat button
-// at the top right of the top bar opens it, with the unread count. Native gets
-// these tabs on day one; on mobile web they used to hide behind the hamburger,
-// which made the app read as a single long page. Desktop keeps the sidebar
-// (AppShell), in its own order. No Plans tab: Plans on the web comes later (founder, 2026-10-27).
+// Phone-width web follows the native order: Place, Today, Mail, Pulse, Moments, Plans.
+// Mail, Moments, and Plans appear while their respective switches are on. Desktop keeps its sidebar.
+// A person with a home gets Today before Place (founder decision 2026-11-21; lib/tabOrder.ts).
 
-import { useEffect } from 'react';
+import { useMomentBadge } from './moments/useMomentBadge';
+import { useMomentsAccess } from './moments/useMomentsAccess';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { usePathname, useRouter } from 'next/navigation';
 import { NavIcons } from '@/lib/icons';
 import { launchFeatures } from '@/lib/featureFlags';
 import { afterInboxRows } from '@/lib/shellReads';
 import { useChristmasMail } from '@/components/mailbox/cards/cardDoors';
+import { myHomesQuery } from '@/lib/myHomes';
+import { keptTabOrder, noteTabOrder, todayIsFirst } from '@/lib/tabOrder';
 
 type Tab = {
-  key: 'place' | 'today' | 'nearby' | 'mail';
+  key: 'place' | 'today' | 'nearby' | 'mail' | 'moments' | 'plans';
   label: string;
   href: string;
   icon: typeof NavIcons.place;
@@ -43,6 +41,19 @@ export const MOBILE_TABS: Tab[] = [
   { key: 'nearby', label: 'Pulse', href: '/app/feed', icon: NavIcons.pulse, matches: (p) => starts(p, '/app/feed', '/app/beacons', '/app/gigs', '/app/marketplace') },
 ];
 
+const momentTab: Tab = { key: 'moments', label: 'Moments', href: '/app/moments', icon: NavIcons.moments, matches: p => starts(p, '/app/moments') };
+const planTab: Tab = { key: 'plans', label: 'Plans', href: '/app/plans', icon: NavIcons.plans, matches: p => starts(p, '/app/plans') };
+const allTabs = [...MOBILE_TABS, momentTab, planTab];
+
+const placeTab = allTabs.find(tab => tab.key === 'place')!;
+const todayTab = allTabs.find(tab => tab.key === 'today')!;
+
+// `todayFirst`: Today and Place swap for a person with a home; the rest keep their order.
+export function availableMobileTabs(moments: boolean, plans: boolean, todayFirst = false): Tab[] {
+  const tabs = allTabs.filter(tab => (tab.key !== 'moments' || moments) && (tab.key !== 'plans' || plans));
+  return todayFirst ? tabs.map(tab => (tab === placeTab ? todayTab : tab === todayTab ? placeTab : tab)) : tabs;
+}
+
 // With the Mailbox on, Mail's badge is the drawings' red count (Mail tab
 // design, 2026-10-27).
 const BADGE_CLASS = launchFeatures.mailbox
@@ -50,7 +61,7 @@ const BADGE_CLASS = launchFeatures.mailbox
   : 'absolute right-[calc(50%-18px)] top-1 min-w-[16px] rounded-full bg-primary-600 px-1 text-center text-[10px] font-bold leading-4 text-white';
 
 export function activeMobileTab(pathname: string): Tab['key'] | null {
-  return MOBILE_TABS.find((t) => t.matches(pathname))?.key ?? null;
+  return allTabs.find((t) => t.matches(pathname))?.key ?? null;
 }
 
 // A conversation has the whole window on a phone (founder, 2026-11-06), a
@@ -67,10 +78,23 @@ export function hidesMobileTabs(pathname: string): boolean {
   return isConversation(pathname) || (launchFeatures.cardTable && pathname === '/app/mailbox/cards');
 }
 
-export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }) {
+export default function MobileTabBar({ unreadMail = 0, accountId }: { unreadMail?: number; accountId?: string | null }) {
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const active = activeMobileTab(pathname);
+  const enabled = useMomentsAccess().data?.enabled;
+  const newMoments = useMomentBadge(!!enabled);
+  const plansEnabled = useFeatureFlag('plans');
+  // Read once, when the bar mounts: the order doesn't move while the app is in use.
+  const [keptOrder] = useState(keptTabOrder);
+  const todayFirst = todayIsFirst(keptOrder, accountId);
+  const tabs = useMemo(() => availableMobileTabs(!!enabled, plansEnabled, todayFirst), [enabled, plansEnabled, todayFirst]);
+  // The home list as the pages read it (the bar asks for nothing itself): its answer is kept for the next load.
+  // An older server sends no primary_home; nothing is kept then.
+  const primaryHome = useQuery({ ...myHomesQuery(), enabled: false }).data?.primary_home;
+  useEffect(() => {
+    if (accountId && primaryHome !== undefined) noteTabOrder(accountId, primaryHome !== null);
+  }, [accountId, primaryHome]);
   const christmasMail = useChristmasMail();
 
   // The sidebar prefetches each tab on hover; phones have no hover, so
@@ -78,8 +102,8 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
   // coldest navigation. A cold Messages inbox paints its rows first (lib/shellReads.ts), and AppShell
   // prefetches Messages for the top bar's chat button.
   useEffect(() => afterInboxRows(() => {
-    MOBILE_TABS.forEach((tab) => router.prefetch(tab.href));
-  }), [router]);
+    tabs.forEach((tab) => router.prefetch(tab.href));
+  }), [router, tabs]);
 
   return (
     <nav
@@ -87,8 +111,8 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
       data-testid="mobile-tab-bar"
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-app bg-surface pb-[env(safe-area-inset-bottom)]"
     >
-      <ul className="grid" style={{ gridTemplateColumns: `repeat(${MOBILE_TABS.length}, minmax(0, 1fr))` }}>
-        {MOBILE_TABS.map((tab) => {
+      <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((tab) => {
           // The red envelope keeps its own colours, selected or not; the label keeps the tab's.
           const Icon = tab.key === 'mail' && christmasMail ? NavIcons.christmasMail : tab.icon;
           const isActive = active === tab.key;
@@ -109,6 +133,7 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
               >
                 <Icon className="h-6 w-6" strokeWidth={isActive ? 2.25 : 1.75} aria-hidden />
                 <span className="max-w-full truncate px-0.5">{tab.label}</span>
+                {tab.key === 'moments' && newMoments && <span aria-label="New Moments" className="absolute left-1/2 top-1 ml-2 h-2 w-2 rounded-full bg-teal-500 ring-2 ring-white"/>}
                 {count > 0 ? (
                   <span aria-hidden className={BADGE_CLASS}>
                     {count > 99 ? '99+' : count}

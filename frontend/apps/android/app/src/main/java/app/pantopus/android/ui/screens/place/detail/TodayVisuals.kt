@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -363,6 +364,9 @@ private fun StripCell(
     // Seven cells share the card's width, so their labels are sized in dp and can't overflow at large font sizes;
     // TalkBack reads each day in words, and the rows below say the same dates in scalable text.
     val unscaled = 1f / LocalDensity.current.fontScale
+    // Their line height is held the same way: left to grow with the font size, it pushed each number down and out of
+    // its 26 dp box at the largest sizes.
+    val line = LocalTextStyle.current.lineHeight.let { if (it.isSp) (it.value * unscaled).sp else it }
     val spoken =
         day.date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.US)) + ": " +
             (day.kinds.takeIf { it.isNotEmpty() }?.joinToString(", ") { kindLabel(it) } ?: "no dates")
@@ -384,6 +388,7 @@ private fun StripCell(
         Text(
             initial,
             fontSize = (10 * unscaled).sp,
+            lineHeight = line,
             fontWeight = FontWeight.SemiBold,
             color = if (day.isToday) PantopusColors.primary600 else PantopusColors.appTextMuted,
         )
@@ -407,6 +412,7 @@ private fun StripCell(
             Text(
                 "${day.date.dayOfMonth}",
                 fontSize = (12.5f * unscaled).sp,
+                lineHeight = line,
                 fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.SemiBold,
                 color = if (day.isToday) PantopusColors.appSurface else PantopusColors.appText,
             )

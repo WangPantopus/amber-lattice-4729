@@ -49,8 +49,8 @@ async function request(postId, viewerId, input = {}) {
     await notices.notify({
       userId: data.giver_id, type: 'offer_request', postId: post.id, actorId: viewerId,
       title: first ? 'Your offer was claimed' : 'Someone asked for your offer',
-      body: first ? 'A neighbor was first to ask. Message them to arrange pickup.'
-        : 'A neighbor would like it. Choose who gets it.',
+      body: first ? 'Someone was first to ask. Message them to arrange pickup.'
+        : 'Someone would like it. Choose who gets it.',
       metadata: { claim_id: data.claim_id }, key: `offer_request:${data.claim_id}`,
     });
   }
@@ -97,7 +97,7 @@ async function choose(postId, claimId, viewerId) {
   if (data.created) {
     await notices.notify({
       userId: data.claimer_id, type: 'offer_chosen', postId: post.id, actorId: viewerId,
-      title: "It's yours", body: 'The neighbor chose you for their offer. Message them to arrange pickup.',
+      title: "It's yours", body: 'You were chosen for the offer. Message them to arrange pickup.',
       metadata: { claim_id: data.claim_id }, key: `offer_chosen:${data.claim_id}`,
     });
     for (const other of data.gone || []) {

@@ -171,11 +171,13 @@ struct PlaceColumnsLayout: Layout {
     private static func place(_ column: some Collection<LayoutSubview>, at origin: CGPoint, width: CGFloat, trims: Bool) {
         let tops = frames(column, width: width, trims: trims).tops
         for (subview, top) in zip(column, tops) {
-            let height = subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+            // The same open height the column was measured with, so each section takes the height it asked for. A
+            // fixed height made a section's stack share it out again, squeezing an opened "Coming up at home" row's
+            // title lines over its details.
             subview.place(
                 at: CGPoint(x: origin.x, y: origin.y + top),
                 anchor: .topLeading,
-                proposal: ProposedViewSize(width: width, height: height)
+                proposal: ProposedViewSize(width: width, height: nil)
             )
         }
     }

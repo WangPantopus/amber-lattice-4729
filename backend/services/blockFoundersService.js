@@ -320,7 +320,7 @@ function cleanAddressInput(recipient) {
   const state = /^[A-Za-z]{2}$/.test(stateRaw) ? stateRaw.toUpperCase() : '';
   const zip = String((recipient && recipient.zip) || '').trim().slice(0, 10);
   if (!line1 || !city || !/^[A-Z]{2}$/.test(state) || !/^\d{5}(-\d{4})?$/.test(zip)) {
-    throw new BlockFoundersError('Enter the neighbor\'s street address, city, state, and ZIP.', 'BAD_ADDRESS');
+    throw new BlockFoundersError('Enter the home\'s street address, city, state, and ZIP.', 'BAD_ADDRESS');
   }
   // Shape, not just presence: a house number, then something that reads
   // as a street name (with an optional unit after it).
@@ -339,7 +339,7 @@ function inviteFrontHtml() {
   return `<html><body style="width:6.25in;height:4.25in;margin:0;display:flex;align-items:center;justify-content:center;background:#0284c7;color:#fff;font-family:Helvetica,Arial,sans-serif;">
     <div style="text-align:center;padding:0.4in;">
       <div style="font-size:34px;font-weight:bold;">Your block is forming</div>
-      <div style="font-size:16px;margin-top:12px;">Verified neighbors on your street are already comparing bills, flood costs, and more.</div>
+      <div style="font-size:16px;margin-top:12px;">Verified homes on your street are already comparing bills, flood costs, and more.</div>
     </div></body></html>`;
 }
 
@@ -350,15 +350,15 @@ function inviteBackHtml({ street, verifiedCount, optOutCode }) {
   // sentence that is true either way.
   const countLine = Number.isFinite(verifiedCount) && verifiedCount >= 2
     ? `${escapeHtml(verifiedCount)} homes near you are already verified.`
-    : 'Your neighbors are starting to verify their homes.';
+    : 'Homes near you are starting to verify.';
   // Every interpolated value is escaped. `street` derives from
   // sender-controlled text (see streetOnly) and `optOutCode` is the
   // recipient's kill switch — markup reaching either would let a sender
   // author the card or hide the opt-out line.
   return `<html><body style="width:6.25in;height:4.25in;margin:0;font-family:Helvetica,Arial,sans-serif;color:#111827;">
     <div style="padding:0.45in 0.5in;">
-      <div style="font-size:15px;line-height:1.5;">A verified neighbor on <b>${escapeHtml(street)}</b> invited this address to Pantopus. ${countLine}</div>
-      <div style="font-size:15px;line-height:1.5;margin-top:10px;">See what your address already knows — flood risk, air quality, what neighbors pay for utilities — free, no account needed:</div>
+      <div style="font-size:15px;line-height:1.5;">A verified home on <b>${escapeHtml(street)}</b> invited this address to Pantopus. ${countLine}</div>
+      <div style="font-size:15px;line-height:1.5;margin-top:10px;">See what your address already knows — flood risk, air quality, what homes near you pay for utilities — free, no account needed:</div>
       <div style="font-size:22px;font-weight:bold;margin-top:10px;">pantopus.com/start</div>
       <div style="font-size:10px;color:#6b7280;margin-top:26px;line-height:1.5;">This invitation was mailed through Pantopus; the sender chose the address but never wrote this text, and your address was not shared with anyone. To never receive another: pantopus.com/no-mail/${escapeHtml(optOutCode)}</div>
     </div></body></html>`;

@@ -6,10 +6,10 @@
 //  Closed (C8): the phone's sheet in the column beside the side strip, over
 //  the picture, with a smaller map so it all fits. Open sideways, flat or
 //  like a book (O9, B2): the picture whole on the left half, in the Moment's
-//  tall shape, with Retake; the options as a card on the right, ending above
-//  the keyboard while a caption is typed. Upright (U3), and on a table until
-//  its own layout: the picture whole over a blurred copy of itself, and the
-//  phone's sheet, 431 wide, in the middle.
+//  tall shape, with Retake (and Text and Draw on a photo); the options as a
+//  card on the right, ending above the keyboard while a caption is typed.
+//  Upright (U3), and on a table until its own layout: the picture whole over
+//  a blurred copy of itself, and the phone's sheet, 431 wide, in the middle.
 //
 
 import SwiftUI
@@ -26,11 +26,15 @@ extension MomentsPostStage {
                     .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24, style: .continuous))
             }
             .ignoresSafeArea()
-            retakeButton
+            // Inside the column, so a row too wide for it wraps (`pillRow`).
+            pillRow
+                .frame(width: max(duo.column.width - 2 * Spacing.s3, 0), alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pillsHeight = $0 }
                 .padding(.leading, Spacing.s3)
                 .padding(.top, Spacing.s3)
             VStack(spacing: 0) {
-                Spacer(minLength: 96)
+                // Below the pills, a second row of them too.
+                Spacer(minLength: max(96, Spacing.s3 + pillsHeight + Spacing.s2))
                 sheet(mapHeight: 110)
                     .layoutPriority(1)
             }
@@ -54,7 +58,7 @@ extension MomentsPostStage {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .overlay(alignment: .topLeading) {
-                        retakeButton.padding(Spacing.s3)
+                        pillRow.padding(Spacing.s3)
                     }
                     .offset(x: left, y: card.minY)
             }
@@ -89,7 +93,7 @@ extension MomentsPostStage {
             .ignoresSafeArea()
             // Level with the clock corner's top, on the left where nothing covers the screen (board U3).
             GeometryReader { _ in
-                retakeButton
+                pillRow
                     .padding(.leading, 20)
                     .padding(.top, 28)
             }
@@ -113,16 +117,19 @@ extension MomentsPostStage {
         case let .photo(image):
             Color(white: 0.067)
                 .overlay {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
+                    MomentsMarkedPhoto(
+                        image: image,
+                        marks: model.marking.marks,
+                        placement: model.marking.placement,
+                        backdrop: model.marking.backdrop
+                    )
                 }
                 .clipped()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("The photo you're posting")
         case let .video(url):
             Color.black
-                .overlay { videoSurface(url: url) }
+                .overlay { markedVideo(url: url) }
                 .clipped()
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("The video you're posting")
@@ -140,11 +147,15 @@ extension MomentsPostStage {
         case let .photo(image):
             Color.black
                 .overlay {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .scaleEffect(1.18)
-                        .blur(radius: 38)
+                    // A placed picture's own canvas, background and all.
+                    MomentsMarkedPhoto(
+                        image: image,
+                        marks: MomentMarks(),
+                        placement: model.marking.placement,
+                        backdrop: model.marking.backdrop
+                    )
+                    .scaleEffect(1.18)
+                    .blur(radius: 38)
                 }
                 .overlay { Color.black.opacity(0.5) }
                 .clipped()

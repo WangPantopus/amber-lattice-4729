@@ -528,8 +528,8 @@ extension PlacePresentation {
     private static let allVerifyLockedItems: [PlaceVerifyLockedItem] = [
         .init(
             icon: .messageCircle,
-            title: "Neighbor messaging",
-            reason: "Verify your address to message neighbors."
+            title: "Messages between homes",
+            reason: "Verify your address to message homes near you."
         ),
         .init(
             icon: .badgeCheck,

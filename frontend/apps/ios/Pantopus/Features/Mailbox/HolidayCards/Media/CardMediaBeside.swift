@@ -15,8 +15,9 @@ struct CardMediaBeside: View {
     let voice: CardVoice?
     /// Whose route their bytes come from: the uploader's own (Look it over) or Sent's.
     let from: CardMediaFrom
-    /// The card's picture number, for its mood.
+    /// The card's picture number, and the server's name for its table (card shelves A4), for its mood.
     let number: Int?
+    var moodName: String?
     /// The card's own day (its postmark, or when it was sent), printed in orange on a nostalgia card.
     var day: String?
     var fromName = ""
@@ -26,7 +27,7 @@ struct CardMediaBeside: View {
     @State private var opened: CardPhotoOpened?
 
     var body: some View {
-        let mood = CardTableMood(number: number)
+        let mood = CardTableMood(mood: moodName, number: number)
         HStack(alignment: .top, spacing: Spacing.s3) {
             if let photo {
                 CardPrintView(

@@ -176,7 +176,7 @@ public enum MailTranslationProjection {
         case "verified_gov": "Verified government"
         case "verified_utility": "Verified utility"
         case "verified_business": "Verified business"
-        case "pantopus_user": "Verified neighbor"
+        case "pantopus_user": "Verified home"
         default: "Unverified sender"
         }
     }

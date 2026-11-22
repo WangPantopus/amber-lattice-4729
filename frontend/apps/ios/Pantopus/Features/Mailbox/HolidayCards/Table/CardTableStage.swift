@@ -219,7 +219,7 @@ struct CardTableStage: View {
         let setup = model.sendingSetup
         return CardTableEnvelopeFront(
             paper: art.envelopeFront,
-            stamp: art.stamp(number: content.number),
+            stamp: art.stamp(number: content.number, mood: content.mood),
             postmark: art.postmark,
             fromName: content.fromName,
             toName: content.toName,
@@ -227,7 +227,10 @@ struct CardTableStage: View {
             year: content.year,
             sealed: setup?.sealedForChristmas ?? content.sealed,
             reveal: model.addressing,
-            isLetter: content.isLetter
+            isLetter: content.isLetter,
+            travelMarks: model.travelMarks,
+            // Being sealed, the newest postmark waits for the table's own thump (as the web does).
+            strike: setup == nil ? model.strikeShown : CardTableAddress.progress(model.addressing, CardTableAddress.postmark)
         )
         .equatable()
         // To several people: a stack of envelopes under the top one.

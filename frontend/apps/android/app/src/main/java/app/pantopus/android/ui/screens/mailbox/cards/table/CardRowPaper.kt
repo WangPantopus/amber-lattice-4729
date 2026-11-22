@@ -153,7 +153,7 @@ internal fun CardRowSeal(
     CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1f)) {
         Row(
             modifier = modifier.padding(start = 10.dp, bottom = 8.dp).clearAndSetSemantics {},
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Canvas(Modifier.size(width = 44.dp, height = 44.dp)) {
@@ -175,6 +175,10 @@ internal fun CardRowSeal(
                 letterSpacing = 0.12.em,
                 color = PantopusColors.tableGoldInk,
                 maxLines = 1,
+                // Level with the foot of the wax, under the address: centred on the seal, the words ran into the
+                // address's second line (the street under a name) at large text sizes, which grow the address and not
+                // these printed words. As on the iPhone.
+                modifier = Modifier.padding(bottom = 4.dp),
             )
         }
     }

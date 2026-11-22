@@ -1,0 +1,137 @@
+/* "Pick a card" as shelves (card shelves SPEC Part C, server key card_shelves). Sizes: at phone width an opening card
+   is 76% of the screen (at most 340 px) and a shelf card 56% (190 to 240 px); from 768 px wide, 320 and 220 px. Both are
+   larger than a tile of today's grid on the same screen. */
+
+.shelves {
+  --open-w: min(76vw, 340px);
+  --shelf-w: clamp(190px, 56vw, 240px);
+  /* The fixed app bar above the page at phone width; the flow scrolls its own panel from 768 px. */
+  --stuck: 56px;
+}
+
+@media (min-width: 768px) {
+  .shelves {
+    --open-w: 320px;
+    --shelf-w: 220px;
+    --stuck: 0px;
+  }
+}
+
+/* A row that scrolls sideways and settles on a card's leading edge; the next card always peeks in. */
+/* A row runs to the edges of what the page scrolls in (the screen at phone width; the flow's whole panel on a wider
+   screen), its first card in line with the column: --bleed-l and --bleed-r are the gaps on each side (16 px on a
+   phone), measured by the shelves. */
+.bleed {
+  margin-left: calc(-1 * var(--bleed-l, 16px));
+  margin-right: calc(-1 * var(--bleed-r, 16px));
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--bleed-l, 16px) var(--bleed-r, 16px);
+  padding: 4px var(--bleed-r, 16px) 8px var(--bleed-l, 16px);
+  scrollbar-width: none;
+}
+
+.row::-webkit-scrollbar {
+  display: none;
+}
+
+.row > * {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.open {
+  width: var(--open-w);
+}
+
+.shelfCard {
+  width: var(--shelf-w);
+}
+
+/* A card's picture keeps the card's shape while it loads. */
+.picture {
+  display: block;
+  width: 100%;
+  aspect-ratio: 15 / 16;
+  object-fit: cover;
+  background: #e9e1d2;
+}
+
+/* "See all 31": a tile of a shelf card's size. */
+.more {
+  width: var(--shelf-w);
+  aspect-ratio: 15 / 16;
+}
+
+/* Where there is a mouse, an arrow at each end of a row moves it by most of its width. */
+.arrow {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .arrow {
+    display: flex;
+  }
+}
+
+.arrow[hidden] {
+  display: none;
+}
+
+/* The bar comes up from the bottom once a card is chosen (no slide with Reduce Motion). */
+.bar {
+  animation: barUp 0.22s ease-out;
+}
+
+@keyframes barUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+
+  .row {
+    scroll-behavior: auto;
+  }
+}
+
+/* A shelf, a part or a jump lands below the app bar (and below the parts' pills on a collection's page). */
+.landing {
+  scroll-margin-top: calc(var(--stuck) + 8px);
+}
+
+.partLanding {
+  scroll-margin-top: calc(var(--stuck) + 64px);
+}
+
+/* The parts' pills stay under the title while a collection's page scrolls. */
+.parts {
+  position: sticky;
+  top: var(--stuck);
+  z-index: 5;
+}
+
+/* A collection's grid: today's two across; a wider screen adds a column only while every tile stays at least as wide as
+   a shelf card. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--shelf-w), calc(50% - 7px)), 1fr));
+  gap: 20px 14px;
+}

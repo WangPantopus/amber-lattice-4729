@@ -9,8 +9,9 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { APP_WEB_URL } from '@pantopus/utils';
-import { PublicCardsPage, PublicCardsTrouble } from '@/components/mailbox/cards/PublicCards';
-import { cardsStoreLink, fetchPublicCardDesigns, getStoreDownloadCta, shareRefFrom, storePlatform } from '@/lib/publicShare';
+import { PublicCardsPage, PublicCardsTrouble, PublicShelvesPage } from '@/components/mailbox/cards/PublicCards';
+import CardsGoal from '@/components/mailbox/cards/CardsGoal';
+import { cardsStoreLink, fetchCardJourneyGoal, fetchPublicCardDesigns, getStoreDownloadCta, publicShelvesOn, shareRefFrom, storePlatform } from '@/lib/publicShare';
 import type { PublicCardsStore } from '@/components/mailbox/cards/PublicCards';
 
 // Rendered on every request. A build or a first visit that met the server with
@@ -35,12 +36,21 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#171e2d' };
 
 export default async function AllCardsPage({ searchParams }: { searchParams: Promise<{ ref?: string | string[] }> }) {
-  const { data, status } = await fetchPublicCardDesigns();
+  const [{ data, status }, goal] = await Promise.all([fetchPublicCardDesigns(), fetchCardJourneyGoal()]);
   if (status === 404) notFound();
   if (!data) return <PublicCardsTrouble />;
   const inviteCode = shareRefFrom((await searchParams).ref);
   const store = await phoneStore('/app/mailbox/cards', inviteCode);
-  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null} />;
+  // The shared goal (travelling card Part 8): only while the travelling card is on (404 otherwise), the server answers,
+  // and at least one card is travelling (an empty map and "0 of 50 states" say nothing on the day it's switched on).
+  const goalShown = goal.data && goal.data.travelling > 0 ? <CardsGoal goal={goal.data} /> : null;
+  // The shelves (server key card_shelves, card shelves SPEC Part D); without them, today's page.
+  if (publicShelvesOn(data)) {
+    return <PublicShelvesPage designs={data.designs} collections={data.collections ?? []} opening={data.opening ?? null} inviteCode={inviteCode} store={store}
+      freeCards={data.free_cards ?? null} goal={goalShown} />;
+  }
+  return <PublicCardsPage designs={data.designs} collections={data.collections ?? []} inviteCode={inviteCode} store={store} freeCards={data.free_cards ?? null}
+    goal={goalShown} />;
 }
 
 /**

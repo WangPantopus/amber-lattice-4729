@@ -175,11 +175,14 @@ public struct ProfileResponse: Decodable, Sendable, Hashable {
     /// Read beside the profile or inside `user`, and never allowed to fail
     /// the profile's own decode.
     public let guidance: GuidanceStateDTO?
+    /// The house on Today is switched on (JOURNEYS); false from a server without the key.
+    public let todayHouse: Bool
 
     private enum CodingKeys: String, CodingKey {
         case user
         case inviteProgress = "invite_progress"
         case guidance
+        case todayHouse = "today_house"
     }
 
     private enum UserGuidanceKey: String, CodingKey {
@@ -193,6 +196,7 @@ public struct ProfileResponse: Decodable, Sendable, Hashable {
         let nested = try? container.nestedContainer(keyedBy: UserGuidanceKey.self, forKey: .user)
         guidance = (try? container.decodeIfPresent(GuidanceStateDTO.self, forKey: .guidance))
             ?? (try? nested?.decodeIfPresent(GuidanceStateDTO.self, forKey: .guidance))
+        todayHouse = (try? container.decodeIfPresent(Bool.self, forKey: .todayHouse)) ?? false
     }
 }
 

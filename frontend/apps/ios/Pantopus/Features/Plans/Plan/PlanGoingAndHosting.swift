@@ -31,11 +31,11 @@ struct PlanGoingSection: View {
     var body: some View {
         Group {
             if card.answersWithNumbers {
-                PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), onChange: onAnswer)
+                PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), bring: card.bringOpen, onChange: onAnswer)
             } else if let unlocked = card.dealUnlockedBanner {
                 PlanDealUnlockedBanner(text: unlocked)
             } else {
-                PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine)
+                PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine, bring: card.bringOpen)
             }
         }
         .offset(y: bannerShift)
@@ -78,7 +78,7 @@ struct PlanGoingSection: View {
             .accessibilityElement(children: .combine)
         }
         // Board 20: the bring list for someone who is in.
-        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring) }
+        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring).id(PlanBringScroll<EmptyView>.anchor) }
         HStack(spacing: Spacing.s2) {
             if !card.isOnline { // nowhere to go for an online plan
                 Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
@@ -257,11 +257,11 @@ struct PlanHostingSection: View {
             }
             requests
             invite
-            // Board 4: on a plan that takes answers, the counts and the people line; "Who's coming" has every row.
+            if card.payHere != nil { PlanChecksEntryCard(card: card) }
             if let answers = card.answerCounts {
                 PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
             } else {
-                PlanHostGoingWithMoney(card: card) { going } // B5: the guest list's totals while guests pay here
+                going
             }
             PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
             // Side by side; one under another when the words don't fit beside each other (the largest text).

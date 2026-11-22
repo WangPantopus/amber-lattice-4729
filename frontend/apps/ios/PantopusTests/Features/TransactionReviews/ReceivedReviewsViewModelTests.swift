@@ -91,7 +91,7 @@ final class ReceivedReviewsViewModelTests: XCTestCase {
         XCTAssertEqual(summary.rows[0].contextLabel, "Sale")
         XCTAssertEqual(summary.rows[1].reviewerName, "marcus")
         XCTAssertEqual(summary.rows[1].roleLabel, "From seller")
-        XCTAssertEqual(summary.rows[2].reviewerName, "Neighbor")
+        XCTAssertEqual(summary.rows[2].reviewerName, "Someone nearby")
         XCTAssertNil(summary.rows[2].roleLabel)
     }
 

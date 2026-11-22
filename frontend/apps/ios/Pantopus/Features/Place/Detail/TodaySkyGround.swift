@@ -38,7 +38,7 @@ struct TodaySkyGround {
         moment.phase == .night
     }
 
-    private var tones: Tones {
+    var tones: Tones {
         let base = scene.sky.bottom
         if weather == .snow {
             return night
@@ -56,7 +56,7 @@ struct TodaySkyGround {
         let tones = tones
         paintHills(context, tones)
         if streetLights > 0, moment.phase == .dusk || night { paintStreetLights(context) }
-        let house = CGPoint(x: scene.width * 0.7, y: scene.horizon + 7)
+        let house = CGPoint(x: scene.door ?? scene.width * 0.7, y: scene.horizon + 7)
         paintHome(context, tones, at: house)
         if !bins.isEmpty { paintBins(context, tones, at: house) }
         if cold, !still, home.chimney { paintSmoke(context, at: house) }
@@ -80,10 +80,12 @@ struct TodaySkyGround {
         if lit {
             let width = Double(bins.count) * 9 + 12
             let glow = Gradient(colors: [SkyPalette.windowGlow.color(opacity: 0.22), SkyPalette.windowGlow.color(opacity: 0)])
-            context.fill(
-                Path(CGRect(x: right - width, y: base - 22, width: width + 6, height: 26)),
-                with: .radialGradient(glow, center: CGPoint(x: right - width / 2 + 3, y: base - 5), startRadius: 0, endRadius: 18)
-            )
+            let center = CGPoint(x: right - width / 2 + 3, y: base - 5)
+            // Drawn larger (the house on Today) the box's edges would show: the glow fills its own circle there.
+            let pool = scene.door == nil
+                ? Path(CGRect(x: right - width, y: base - 22, width: width + 6, height: 26))
+                : TodaySkyPainter.circle(center.x, center.y, 18)
+            context.fill(pool, with: .radialGradient(glow, center: center, startRadius: 0, endRadius: 18))
         }
         for (index, kind) in bins.reversed().enumerated() {
             let colour: SkyRGB = switch kind {
@@ -153,6 +155,9 @@ struct TodaySkyGround {
     /// The round tree blossoms in spring, turns in autumn and is bare in winter.
     private func paintTrees(_ context: GraphicsContext, _ tones: Tones, at origin: CGPoint) {
         let lean = wind.lean(at: scene.time, still: still)
+        // The house on Today draws the ground larger: a tree that would cross the card's edge gives way.
+        let larger = scene.door != nil
+        guard !larger || Double(origin.x) + 11 + home.rightReach + 12 <= scene.width + 2 else { return }
         var round = context
         // Beside the home, however wide it is.
         round.translateBy(x: origin.x + 11 + home.rightReach, y: origin.y + 2)
@@ -170,7 +175,7 @@ struct TodaySkyGround {
         // way rather than crossing the edge. (Without one, as in the widgets,
         // it stands where it always has.)
         let pineX = Double(origin.x) + 35 + home.rightReach
-        guard home.garage == .none || pineX + 9 <= scene.width - 2 else { return }
+        guard (home.garage == .none && !larger) || pineX + 9 <= scene.width - 2 else { return }
         var pine = context
         pine.translateBy(x: pineX, y: origin.y + 3)
         pine.rotate(by: .radians(lean * 0.7))

@@ -100,7 +100,7 @@ final class NeighborMessageReceivedViewModel {
 
     func block() async {
         guard !flags.blocked else { return }
-        await update(NeighborMessagesEndpoints.block(id: messageId), failure: "Couldn't block this neighbor. Try again.") {
+        await update(NeighborMessagesEndpoints.block(id: messageId), failure: "Couldn't block this sender. Try again.") {
             flags.blocked = true
             editingReply = false
             ScreenStore.store(for: api).markStale(topics: [ScreenTopic.profileMe, ScreenTopic.chats, ScreenTopic.posts])

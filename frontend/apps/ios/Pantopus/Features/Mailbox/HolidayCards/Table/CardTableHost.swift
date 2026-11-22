@@ -36,34 +36,8 @@ extension CardTableContent {
         photo = card.card.sealed ? nil : card.card.photo
         voice = card.card.sealed ? nil : card.card.voice
         mediaFrom = .piece(mailId: letter.piece.id)
-    }
-}
-
-extension CardTableContent {
-    /// A card in Sent, as the other person gets it.
-    init(sent piece: MailSentPiece, from: String, mailedOn: String?) {
-        design = piece.card.design
-        number = piece.card.number
-        caption = piece.card.caption ?? ""
-        paper = piece.card.paper
-        table = piece.card.table
-        slug = piece.card.slug
-        year = piece.card.year
-        self.mailedOn = mailedOn
-        note = MailPieceModel.firstText(piece.note) ?? ""
-        fromName = from
-        toName = piece.byLink && piece.status != .claimed ? "Their name" : piece.toName
-        sealed = false
-        sealedUntil = nil
-        sealedInDays = ""
-        sealedDayCount = 0
-        signature = piece.card.signature
-        // Your own photo: never covered here.
-        photo = piece.card.photo.map {
-            CardPhoto(fileId: $0.fileId, width: $0.width, height: $0.height, alt: $0.alt, live: $0.live)
-        }
-        voice = piece.card.voice
-        mediaFrom = .sent(cardId: piece.id)
+        travel = CardTravelEnvelope(card.card.travel, year: card.card.year)
+        mood = card.card.mood
     }
 }
 
@@ -230,6 +204,9 @@ private struct MailCardTablePage: View {
     @State private var reportsSender = false
     @State private var confirmsBlock = false
     @State private var blockInFlight = false
+    /// This reader has blocked the card's sender (just now, or before it opened): no Write back and no Block, as on the
+    /// web.
+    @State private var senderBlocked = false
     /// Write back (experience plan Part 3): the sheet to write on, and the joined card once written.
     @State private var writingBack = false
     @State private var joined: CardReplyPair?
@@ -320,6 +297,7 @@ private struct MailCardTablePage: View {
             .task(id: sendBackPerson?.id) { await checkSendBack() }
             .onAppear(perform: offerNextCard)
             .task(id: model.content.sealed) { await readExchange() }
+            .task(id: senderPersonId) { await readBlocked() }
             .fullScreenCover(isPresented: $writingBack) {
                 CardTableReplySheet(cardId: viewModel.mailId, content: model.content) { sent in
                     writingBack = false
@@ -329,6 +307,7 @@ private struct MailCardTablePage: View {
             .fullScreenCover(item: $joined) { pair in
                 CardTableJoinedPage(pair: pair, closeLabel: "Back to the card") { joined = nil }
             }
+            .modifier(CardTableTravelReader(viewModel: viewModel, model: model))
     }
 
     /// The card and its reply (experience plan Part 3): "Write back to {first name}" when the server says this reader
@@ -341,7 +320,7 @@ private struct MailCardTablePage: View {
         let exchange: HolidayCardExchange? = try? await APIClient.shared.request(HolidayCardEndpoints.exchange(cardId: viewModel.mailId))
         guard let exchange, !Task.isCancelled else { return }
         let first = model.content.firstName
-        if exchange.canReply {
+        if exchange.canReply, !senderBlocked {
             model.writeBack = CardTableMenuItem(
                 title: CardReplyWords.writeBack(first),
                 identifier: "cardTableWriteBack",
@@ -440,6 +419,8 @@ private struct MailCardTablePage: View {
             let identifier = writeBack.identifier == "cardTableWroteBack" ? "cardTableMenuWroteBack" : "cardTableMenuWriteBack"
             items.append(CardTableMenuItem(title: writeBack.title, identifier: identifier, action: writeBack.action))
         }
+        // A travelling card: "See its journey" (travelling card plan Part 4), as the quiet row may not show it.
+        items += model.travelButtons.menu
         items.append(CardTableMenuItem(title: "Who sent it and its trail", identifier: "cardTableMenuWho") {
             viewModel.showsSenderSheet = true
         })
@@ -473,14 +454,25 @@ private struct MailCardTablePage: View {
             items.append(CardTableMenuItem(title: memories ? "Report this card" : "Report", identifier: "cardTableMenuReport") {
                 reportsSender = true
             })
-            items.append(CardTableMenuItem(
-                title: memories ? "Block \(model.content.firstName)" : "Block",
-                identifier: "cardTableMenuBlock"
-            ) {
-                confirmsBlock = true
-            })
+            if !senderBlocked {
+                items.append(CardTableMenuItem(
+                    title: memories ? "Block \(model.content.firstName)" : "Block",
+                    identifier: "cardTableMenuBlock"
+                ) {
+                    confirmsBlock = true
+                })
+            }
         }
         return items
+    }
+
+    /// Whether this reader already blocked the card's sender, so a card opened again offers no Block (the exchange read
+    /// already leaves out Write back then). A failed read leaves Block offered: blocking again changes nothing.
+    private func readBlocked() async {
+        guard let senderPersonId, !senderBlocked else { return }
+        let blocks = try? await APIClient.shared.request(BlocksEndpoints.blocked, as: UserBlocksResponse.self)
+        guard let blocks, !Task.isCancelled, blocks.blocked.contains(where: { $0.userId == senderPersonId }) else { return }
+        senderBlocked = true
     }
 
     private func block() async {
@@ -489,7 +481,11 @@ private struct MailCardTablePage: View {
         defer { blockInFlight = false }
         do {
             _ = try await APIClient.shared.request(BlocksEndpoints.block(userId: senderPersonId))
+            // Nothing can go to them now: no Send a card, no Write back (the server refuses a reply after a block), and
+            // no second Block. The web does the same.
+            senderBlocked = true
             model.sendBack = nil
+            model.writeBack = nil
             model.showToast("\(model.content.firstName) is blocked.")
         } catch {
             model.showToast("Couldn't block \(model.content.firstName). Check your connection and try again.")

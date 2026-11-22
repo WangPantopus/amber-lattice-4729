@@ -114,7 +114,7 @@ async function getGlobalPins(scopeAccess) {
 // project the resulting `creator` row through serializeUserAsLocalIdentity
 // (see attachIdentityAuthors below) so the firewall is enforced at the API
 // boundary regardless of what the underlying SQL row contains.
-const FEED_POST_SELECT = `
+const FEED_POST_COLUMNS = `
   id, user_id, author_user_id, identity_context_type, identity_context_id,
   title, content, media_urls, media_types, media_thumbnails, media_live_urls, post_type, post_format,
   visibility, visibility_scope, location_precision, tags, read_scope, area_id, allow_external_share, moderation_state,
@@ -132,16 +132,27 @@ const FEED_POST_SELECT = `
   purpose, utility_score, show_on_profile, profile_visibility_scope,
   is_visitor_post, state, solved_at, not_helpful_count,
   topic, sports_scope, post_metadata, origin,
-  expires_at, resolution, claim_mode, quoted_post_id,
+  expires_at, resolution, claim_mode, quoted_post_id
+`;
+const FEED_POST_SELECT = `${FEED_POST_COLUMNS},
   creator:user_id (${SAFE_CREATOR_SELECT}),
   business_author:business_author_id (${SAFE_CREATOR_SELECT}),
   home:home_id (id, address, city)
 `;
 
+// The Pulse list (Place) and the map read their posts without the to-one embeds, and the page's creators and homes are
+// read by id in the enrichment round that follows (loadPostEmbeds), so no round is added. PostgREST runs these reads
+// as prepared statements, and once Postgres plans one generically (without the request's values) it guesses about one
+// row in the box and ran the embeds for every live post there before keeping the page: ~40 ms with 5,000 posts up in
+// one area, where posts that stay (since 2026-11-18) add up. business_author isn't read again: a normalized post never
+// carried it (normalizeFeedPostRow), so its author fallback was already "Business".
+
 // The embed holds the reposts by the viewer and their connections (withConnectionReposts filters it), which the list
 // names in its "reposted" line (repostedByLines). normalizeFeedPostRow copies named fields, so these rows never reach
 // a client. Connections reads with it, and so does the Place list.
 const CONNECTION_POST_SELECT = `${FEED_POST_SELECT}, radius_miles, connection_reposts:PostShare(user_id, created_at)`;
+// Place keeps connection_reposts in its query: it lifts each post to its repost time, which orders and cuts the page.
+const PLACE_POST_SELECT = `${FEED_POST_COLUMNS}, radius_miles, connection_reposts:PostShare(user_id, created_at)`;
 
 // ---------------------------------------------------------------------------
 // Media URL helpers
@@ -180,6 +191,8 @@ function normalizeFeedPostRow(row, likedPostIds = new Set(), savedPostIds = new 
     // What the row's place tag names, for the privacy read (postPrecisionForOthers); a symbol, so no answer carries it
     // and the tag's id never leaves.
     [TAG_KIND]: taggedPlaceKind(row.geocode_place_id, row.geocode_accuracy),
+    // Read without its creator and home (FEED_POST_COLUMNS): the enrichment round reads them (loadPostEmbeds).
+    ...(row[EMBEDS_TO_LOAD] ? { [EMBEDS_TO_LOAD]: true } : {}),
     id: row.id,
     user_id: row.user_id,
     author_user_id: row.author_user_id || row.user_id,
@@ -296,6 +309,13 @@ function placeLabelForOthers(post) {
 }
 
 const TAG_KIND = Symbol('placeTagKind');
+// Marks a Post row (and its normalized post) read with FEED_POST_COLUMNS or PLACE_POST_SELECT, whose creator and home
+// the enrichment round reads (loadPostEmbeds). A symbol, so no answer carries it.
+const EMBEDS_TO_LOAD = Symbol('embedsToLoad');
+function withEmbedsToLoad(rows) {
+  for (const row of rows) row[EMBEDS_TO_LOAD] = true;
+  return rows;
+}
 
 // The Sky (phase A): whether `sky_places` is on for everyone, kept for a minute. Posts already made follow the venue-only
 // rule (postPrecisionForOthers) only then, since that read doesn't depend on who is reading. Reads that can wait for it
@@ -650,15 +670,16 @@ async function loadReactionSummaries(posts) {
 
 // NOTE: This function applies location privacy via applyPostLocationPrivacy.
 // Callers should NOT also call applyPostLocationPrivacy.
-async function enrichWithUserStatus(posts, userId) {
+async function enrichWithUserStatus(posts, userId, embedsRead = null) {
   if (!posts.length) return posts;
   await refreshSkyEverywhere();
   // The matched businesses' state, the reaction counts and the viewer's likes, saves and reposts don't depend on each
-  // other.
+  // other. The creators and homes of posts read without them (loadPostEmbeds) arrive before the privacy pass below.
   const [[{ data: likes }, { data: saves }, { data: reposts }, { data: pinned }], reactionSummaries] = await Promise.all([
     loadUserStatusRows(posts, userId),
     loadReactionSummaries(posts),
     dropUnpublishedMatches(posts),
+    embedsRead,
   ]);
   // The viewer's own reaction on each post they reacted to (a mark from before emoji reactions shows as 👍).
   const viewerReactions = new Map((likes || []).map(r => [r.post_id, shownReaction(r.reaction)]));
@@ -851,11 +872,37 @@ async function enrichFeedPosts(posts, userId) {
 }
 
 async function enrichPostsForViewer(posts, userId) {
+  const embedsRead = loadPostEmbeds(posts);
   const [withStatus, authorRows] = await Promise.all([
-    enrichWithUserStatus(posts, userId),
+    enrichWithUserStatus(posts, userId, embedsRead),
     loadIdentityAuthorRows(posts),
+    embedsRead,
   ]);
   return attachIdentityAuthors(withStatus, userId, authorRows);
+}
+
+// The creator and home of each post read without them (FEED_POST_COLUMNS), by id, as the embeds would have given them:
+// the creator through the same serializer wall, the home as (id, address, city). A failed read fails the request, as a
+// failed Post read does: a Home post's place label depends on its home's city.
+async function loadPostEmbeds(posts) {
+  const pending = posts.filter((post) => post[EMBEDS_TO_LOAD]);
+  if (!pending.length) return;
+  const userIds = [...new Set(pending.map((post) => post.user_id).filter(Boolean))];
+  const homeIds = [...new Set(pending.map((post) => post.home_id).filter(Boolean))];
+  const [users, homes] = await Promise.all([
+    userIds.length ? supabaseAdmin.from('User').select(SAFE_CREATOR_SELECT).in('id', userIds) : { data: [] },
+    homeIds.length ? supabaseAdmin.from('Home').select('id, address, city').in('id', homeIds) : { data: [] },
+  ]);
+  if (users.error) throw new Error(`Failed to load post authors: ${users.error.message}`);
+  if (homes.error) throw new Error(`Failed to load post homes: ${homes.error.message}`);
+  const userById = new Map((users.data || []).map((row) => [row.id, row]));
+  const homeById = new Map((homes.data || []).map((row) => [row.id, row]));
+  for (const post of pending) {
+    const creator = userById.get(post.user_id);
+    post.creator = creator ? serializeUserAsLocalIdentity(creator) : null;
+    post.home = (post.home_id && homeById.get(post.home_id)) || null;
+    delete post[EMBEDS_TO_LOAD];
+  }
 }
 
 // "Repost with your words": each post written about another post (quoted_post_id) gets `quoted_post`, the card drawn
@@ -1533,7 +1580,8 @@ async function getListFeed({
   // The posts every round reads: shown (with includeEnded, ended but not removed), in this viewer's scope, and of the
   // asked type, topic and tags.
   const surfacePosts = () => {
-    const rows = supabaseAdmin.from('Post').select(ordersByReached ? CONNECTION_POST_SELECT : FEED_POST_SELECT);
+    const rows = supabaseAdmin.from('Post').select(surface === 'place' ? PLACE_POST_SELECT
+      : ordersByReached ? CONNECTION_POST_SELECT : FEED_POST_SELECT);
     let query = scopeAccess.query(includeEnded
       ? rows.eq('moderation_state', 'live').or('archive_reason.is.null,archive_reason.neq.moderation').not('is_story', 'is', true)
       : onlyShownPosts(rows.is('archived_at', null)));
@@ -1593,6 +1641,7 @@ async function getListFeed({
         if (surface === 'place') batch = Math.min(batch * 2, MAX_ROUND_ROWS);
       }
       rawRows = ordered.map(({ row }) => row);
+      if (surface === 'place') withEmbedsToLoad(rawRows);
       for (const { row, reached } of ordered) reachedAtById.set(row.id, reached.at);
     } else {
       // 5. Personas: its pinned posts first, then newest first.
@@ -2151,7 +2200,7 @@ async function loadMapPosts({
   const queryBox = widenForDisplayedPoints(box);
   let query = withoutOthersUnplacedPosts(scopeAccess.query(onlyShownPosts(supabaseAdmin
     .from('Post')
-    .select(graph ? CONNECTION_POST_SELECT : FEED_POST_SELECT)
+    .select(graph ? CONNECTION_POST_SELECT : FEED_POST_COLUMNS)
     .is('archived_at', null)))
     .or(
       `and(effective_latitude.gte.${queryBox.south},effective_latitude.lte.${queryBox.north},effective_longitude.gte.${queryBox.west},effective_longitude.lte.${queryBox.east}),` +
@@ -2171,7 +2220,8 @@ async function loadMapPosts({
   }
 
   // 3–5. Readable, not muted, hidden or blocked, politics as the viewer chose
-  const posts = await shownMapRows(data || [], { userId, surface: normalizedSurface, filtersRead });
+  const rows = graph ? (data || []) : withEmbedsToLoad(data || []);
+  const posts = await shownMapRows(rows, { userId, surface: normalizedSurface, filtersRead });
 
   // 6. Keep the posts displayed inside the box (a post without a displayed point has no pin)
   const shown = posts

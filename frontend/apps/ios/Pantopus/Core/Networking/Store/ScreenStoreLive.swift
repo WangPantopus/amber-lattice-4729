@@ -9,7 +9,10 @@
 //  offline), marks every Household, Messages and Notifications copy
 //  (signals may have been missed meanwhile). A connection request or
 //  acceptance, from the socket or a push, also marks Connections: the server
-//  sends no topic for relationships. A screen on screen then re-reads
+//  sends no topic for relationships. A Plans notice (a host's answer, a new
+//  ask) marks Plans and its plan, as the push does in `AppDelegate`, so an
+//  open plan page shows the answer when no push comes (quiet hours, push
+//  off). A screen on screen then re-reads
 //  what went stale (`refreshesOnStoreChange`); the others catch up when they
 //  next appear. Older servers send no `sync:changed`; nothing depends on it.
 //
@@ -22,16 +25,27 @@ struct SyncChangedEvent: Decodable {
     let topics: [String]
 }
 
-/// `notification:new`: any payload counts; only the notice's `type` is read.
+/// `notification:new`: any payload counts; only the notice's `type` and, for a
+/// Plans notice, the plan it is about (`metadata.plan_id`) are read.
 struct NotificationSignal: Decodable {
     let type: String?
+    let planId: String?
 
     init(from decoder: any Decoder) throws {
-        type = try? decoder.container(keyedBy: CodingKeys.self).decode(String.self, forKey: .type)
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        type = try? container?.decode(String.self, forKey: .type)
+        // Socket payloads decode with `convertFromSnakeCase`: `plan_id` reads as `planId`.
+        let metadata = try? container?.nestedContainer(keyedBy: MetadataKeys.self, forKey: .metadata)
+        planId = try? metadata?.decode(String.self, forKey: .planId)
     }
 
     private enum CodingKeys: String, CodingKey {
         case type
+        case metadata
+    }
+
+    private enum MetadataKeys: String, CodingKey {
+        case planId
     }
 }
 
@@ -70,9 +84,7 @@ enum ScreenStoreLive {
         })
         tasks.append(Task {
             for await notice in socket.events(named: "notification:new", as: NotificationSignal.self) {
-                var topics: Set<String> = [ScreenTopic.notifications]
-                if isConnectionNotice(notice.type) { topics.insert(ScreenTopic.connections) }
-                changed(topics: topics, in: store)
+                changed(topics: noticeTopics(notice), in: store)
                 // New mail: the Mail tab's badge reads its count again.
                 if MailBadgeStore.isMailNotice(notice.type) { MailBadgeStore.shared.refresh() }
             }
@@ -116,6 +128,25 @@ enum ScreenStoreLive {
     /// `backend/services/notificationService.js`).
     nonisolated static func isConnectionNotice(_ type: String?) -> Bool {
         type == "connection_request" || type == "connection_accepted"
+    }
+
+    /// A Nearby Plans notice (`plan_accepted`, `plan_declined`, `plan_request`, …;
+    /// `backend/services/plans/planNotifications.js`), the same test the push uses.
+    nonisolated static func isPlanNotice(_ type: String?) -> Bool {
+        type?.hasPrefix("plan_") == true
+    }
+
+    /// What a `notification:new` marks: the notification list; Connections for a
+    /// connection notice; Plans and its plan for a Plans notice (a host's answer or
+    /// a new ask), so the plan's open page, the map and Today read again.
+    private static func noticeTopics(_ notice: NotificationSignal) -> Set<String> {
+        var topics: Set<String> = [ScreenTopic.notifications]
+        if isConnectionNotice(notice.type) { topics.insert(ScreenTopic.connections) }
+        if isPlanNotice(notice.type) {
+            topics.insert(ScreenTopic.plans)
+            if let planId = notice.planId { topics.insert(ScreenTopic.plan(planId)) }
+        }
+        return topics
     }
 
     private static func connectionNoticed() {

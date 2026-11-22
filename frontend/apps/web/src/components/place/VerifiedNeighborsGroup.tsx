@@ -16,7 +16,7 @@ const TILE = 'inline-flex items-center justify-center shrink-0 w-11 h-11 rounded
 export default function VerifiedNeighborsGroup() {
   const { share, copied } = useNeighborInvite();
   return (
-    <Group label="Verified neighbors" stack>
+    <Group label="Verified homes near you" stack>
       <Link href="/app/nearby" className={ROW} data-testid="place-verified-homes-nearby">
         <span className={TILE}>
           <MapIcon size={22} strokeWidth={2} />
@@ -33,7 +33,7 @@ export default function VerifiedNeighborsGroup() {
         <span className={TILE}>{copied ? <Check size={22} strokeWidth={2} /> : <Share2 size={22} strokeWidth={2} />}</span>
         <span className="flex-1 min-w-0">
           <span className="block text-[15.5px] font-semibold text-app-text -tracking-[0.01em]">
-            {copied ? 'Link copied' : 'Invite your neighbors'}
+            {copied ? 'Link copied' : 'Invite homes near you'}
           </span>
           <span className="block text-[12.5px] text-app-text-muted mt-0.5">
             Share a link that shows them their own address first.

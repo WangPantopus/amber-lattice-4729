@@ -56,7 +56,7 @@ const PREVIEW_SECTION_ORDER = [
 // actually has open slots (services/place/foundingWindow) — a promise the
 // rank system rations, not a slogan.
 const PREVIEW_DENSITY_LABELS = {
-  none: 'Founding Neighbor slots are open here',
+  none: 'Block Founder slots are open here',
   forming: 'Your block is starting to form',
   few: 'A few verified homes nearby',
   growing: 'Growing activity near this area',

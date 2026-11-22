@@ -185,7 +185,7 @@ extension PublicProfileView {
             rows.append(ProfileAccountRow(
                 id: "invite",
                 icon: .userPlus,
-                title: "Invite neighbors",
+                title: "Invite people",
                 value: owner.inviteJoinedLabel,
                 action: .invite
             ))
@@ -312,6 +312,7 @@ extension PublicProfileView {
     func previewCover(_ audience: ProfileAudience) -> some View {
         if case let .loaded(payload) = viewModel.state {
             PublicProfileView(userId: payload.profile.id, onBack: { shownPreview = nil }, previewAudience: audience)
+                .readableColumn()
         }
     }
 

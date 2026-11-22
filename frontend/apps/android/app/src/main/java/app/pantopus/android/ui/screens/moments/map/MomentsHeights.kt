@@ -150,7 +150,8 @@ internal fun MomentHeightTag(
 
 /**
  * While heights are on for you, the "Elevation" chip, the key's colors beside it, and the key under them; after them the
- * time filter's chip (`MomentsTimeFilter.kt`), once the map knows where it is, going under them when the line is full.
+ * time filter's chip (`MomentsTimeFilter.kt`) and "Live now" (`MomentsLiveChip.kt`), once the map knows where it is,
+ * going under them when the line is full.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -158,9 +159,9 @@ internal fun MomentsHeightsBar(
     state: MomentsMapUiState,
     timeFilter: MomentsTimeFilter,
     onTimeFilter: (MomentsTimeFilter) -> Unit,
-    onToggle: () -> Unit,
-    onKey: () -> Unit,
-    onCloseKey: () -> Unit,
+    liveOnly: Boolean,
+    onLiveOnly: () -> Unit,
+    heights: MomentsHeightsActions,
     modifier: Modifier = Modifier,
 ) {
     if (state.center == null) return
@@ -172,9 +173,9 @@ internal fun MomentsHeightsBar(
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             if (state.heightsOn) {
-                HeightsChip(on = on, onToggle = onToggle)
+                HeightsChip(on = on, onToggle = heights.onToggle)
                 AnimatedVisibility(visible = on, enter = fadeIn(), exit = fadeOut()) {
-                    HeightKeyButton(open = state.heightKeyOpen, onClick = onKey)
+                    HeightKeyButton(open = state.heightKeyOpen, onClick = heights.onKey)
                 }
                 // Part D: while pins float, the time their shadows are drawn for (`MomentsFloat.kt`).
                 AnimatedVisibility(visible = state.floatingSun != null, enter = fadeIn(), exit = fadeOut()) {
@@ -182,9 +183,10 @@ internal fun MomentsHeightsBar(
                 }
             }
             MomentsTimeChip(filter = timeFilter, onChoose = onTimeFilter)
+            MomentsLiveChip(on = liveOnly, onToggle = onLiveOnly)
         }
         AnimatedVisibility(visible = state.heightsOn && on && state.heightKeyOpen, enter = fadeIn(), exit = fadeOut()) {
-            HeightKey(onClose = onCloseKey)
+            HeightKey(onClose = heights.onCloseKey)
         }
     }
 }

@@ -881,7 +881,8 @@ function extrasKeysIn(plan, requests, guestRows) {
  * one friend when the host allowed it.
  */
 function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
-  if (role === 'none' && myInvite && !myInvite.needs_host_ok && plan.place_kind === 'public') {
+  const active = card.state === 'upcoming' || card.state === 'live';
+  if (active && role === 'none' && myInvite && !myInvite.needs_host_ok && plan.place_kind === 'public') {
     const exact = exactPoint(plan);
     card.place = {
       name: plan.place_name || plan.area_label,
@@ -907,6 +908,7 @@ function addPrivateFields(card, plan, viewer, ctx, { role, myInvite }) {
 function addBusinessFields(card, plan, viewer, ctx) {
   const exact = exactPoint(plan);
   card.business = planBusiness.publicBusiness(plan, { plansHosted: ctx.hostedCount.get(String(plan.host_user_id)) || 0 });
+  if (card.viewer.role === 'host') card.business.can_manage = viewer.businessManage?.has(String(plan.business_user_id)) === true;
   const label = planBusiness.labelView(plan);
   card.label = label ? label.key : null;
   card.label_text = label ? label.text : null;
@@ -1021,7 +1023,9 @@ function buildDetail(plan, viewer, ctx) {
   const viewerIsHost = card.viewer.role === 'host';
   const requests = ctx.requestsByPlan.get(plan.post_id) || [];
 
-  if (rules.isOnline(plan)) {
+  // An ended plan's host may reuse their own meeting place in Host again.
+  const shareMeeting = card.state !== 'cancelled' && (card.state !== 'ended' || viewerIsHost);
+  if (shareMeeting && rules.isOnline(plan)) {
     // No point, no address and no distance: the link, and the name of the site it opens ("meet.google.com").
     const parsed = require('./planPlace').parseOnlineLink(plan.online_link, rules.ONLINE_LINK_MAX);
     card.place = {
@@ -1033,7 +1037,7 @@ function buildDetail(plan, viewer, ctx) {
       link: plan.online_link || null,
       link_host: parsed ? parsed.host : null,
     };
-  } else {
+  } else if (shareMeeting) {
     card.place = {
       name: plan.place_kind === 'home' ? `${firstName(host)}'s place` : (plan.place_name || plan.area_label),
       address: plan.place_address || null,

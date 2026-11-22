@@ -18,7 +18,7 @@ enum HomesStoreReads {
     /// expiring access waits for the server each time.
     static func myHomes(store: ScreenStore = .shared, force: Bool = false) async throws -> ScreenSnapshot<MyHomesResponse> {
         let gate: @Sendable (MyHomesResponse) -> Bool = { $0.homes.allSatisfy(\.showsInListBeforeRecheck) }
-        return try await store.load(
+        let snapshot = try await store.load(
             HomesEndpoints.myHomes(),
             as: MyHomesResponse.self,
             kind: .homes,
@@ -26,6 +26,9 @@ enum HomesStoreReads {
             force: force,
             showsBeforeRecheck: gate
         )
+        // Today or Place first on the bar, the next time the app opens (`RootTabOrder`).
+        if store === ScreenStore.shared { RootTabOrder.note(snapshot.value) }
+        return snapshot
     }
 
     static func peekMyHomes() -> ScreenSnapshot<MyHomesResponse>? {

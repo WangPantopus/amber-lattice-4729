@@ -48,7 +48,7 @@ struct EditProfileSkillsBlock: View {
                 .padding(.top, Spacing.s5)
             }
             if skills.isEmpty {
-                Text("No skills yet. Neighbors browse these when they're looking for help.")
+                Text("No skills yet. People browse these when they're looking for help.")
                     .pantopusTextStyle(.caption)
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -65,14 +65,19 @@ extension MomentsComposerModel {
         "pantopus.moments.lastShowHeight.\(account)"
     }
 
-    /// The sheet opens with the last "How long", "Who sees it" and "Show elevation" (kept on the phone, per account).
-    /// "Show the area instead" always starts off.
+    static func showWeatherKey(_ account: String) -> String {
+        "pantopus.moments.lastShowWeather.\(account)"
+    }
+
+    /// The sheet opens with the last "How long", "Who sees it", "Show elevation" and "Show the weather" (kept on the
+    /// phone, per account; the weather starts on). "Show the area instead" always starts off.
     func restoreChoices() {
         guard let account = Self.account else { return }
         let savedHours = defaults.integer(forKey: Self.hoursKey(account))
         if [1, 6, 24, 48].contains(savedHours) { hours = savedHours }
         if let saved = defaults.string(forKey: Self.audienceKey(account)).flatMap(MomentAudience.init(rawValue:)) { audience = saved }
         showHeight = defaults.bool(forKey: Self.showHeightKey(account))
+        live.showWeather = defaults.object(forKey: Self.showWeatherKey(account)) as? Bool ?? true
     }
 
     func saveChoices() {
@@ -81,5 +86,6 @@ extension MomentsComposerModel {
         defaults.set(audience.rawValue, forKey: Self.audienceKey(account))
         // Only a sheet that offered the switch says what the person wants: one that hid it keeps the last answer.
         if offersHeight { defaults.set(showHeight, forKey: Self.showHeightKey(account)) }
+        if offersWeather { defaults.set(live.showWeather, forKey: Self.showWeatherKey(account)) }
     }
 }

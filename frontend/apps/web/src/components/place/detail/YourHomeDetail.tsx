@@ -204,7 +204,7 @@ function MortgageEquity({ homeId, homeValue }: { homeId: string | null; homeValu
         </span>
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-semibold text-app-text">Add your mortgage to see your equity</div>
-          <div className="text-[12.5px] text-app-text-muted mt-0.5">Private to you — never shown to neighbors</div>
+          <div className="text-[12.5px] text-app-text-muted mt-0.5">Private to you — never shown to others</div>
         </div>
         <ChevronRight size={18} strokeWidth={2.25} className="shrink-0 text-app-text-muted" />
       </button>
@@ -226,7 +226,7 @@ function MortgageEquity({ homeId, homeValue }: { homeId: string | null; homeValu
         <div className="mt-4">
           <SkyButton onClick={() => setEditing(false)}>Calculate my equity</SkyButton>
         </div>
-        <PrivacyNote>Saved on this device only and never shared with neighbors or shown on your public place.</PrivacyNote>
+        <PrivacyNote>Saved on this device only and never shared with others or shown on your public place.</PrivacyNote>
       </div>
     );
   }

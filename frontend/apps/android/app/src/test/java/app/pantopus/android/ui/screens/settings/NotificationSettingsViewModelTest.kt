@@ -183,7 +183,7 @@ class NotificationSettingsViewModelTest {
         val vm = makeVm()
         vm.load()
         assertEquals(
-            RowControl.Chips(NotificationSettingsViewModel.MORNING_TIME_OPTIONS, "08:30"),
+            RowControl.Chips(NotificationSettingsViewModel.MORNING_TIME_OPTIONS, "08:30", clockTimes = true),
             vm.groups().row(RowId.MORNING_TIME)?.control,
         )
         assertNull("Evening chips hide while the evening briefing is off", vm.groups().row(RowId.EVENING_TIME))
@@ -200,11 +200,11 @@ class NotificationSettingsViewModelTest {
         vm.refresh()
         assertEquals(RowControl.Toggle(true), vm.groups().row(RowId.QUIET_HOURS)?.control)
         assertEquals(
-            RowControl.Chips(NotificationSettingsViewModel.QUIET_START_OPTIONS, "23:00"),
+            RowControl.Chips(NotificationSettingsViewModel.QUIET_START_OPTIONS, "23:00", clockTimes = true),
             vm.groups().row(RowId.QUIET_HOURS_START)?.control,
         )
         assertEquals(
-            RowControl.Chips(NotificationSettingsViewModel.QUIET_END_OPTIONS, "06:00"),
+            RowControl.Chips(NotificationSettingsViewModel.QUIET_END_OPTIONS, "06:00", clockTimes = true),
             vm.groups().row(RowId.QUIET_HOURS_END)?.control,
         )
     }

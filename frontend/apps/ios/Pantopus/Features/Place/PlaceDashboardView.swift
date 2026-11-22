@@ -87,8 +87,20 @@ struct PlaceDashboardView: View {
             verified: verified,
             verifiable: !verified && (intel.verifyAvailable ?? (intel.tier == .t3)),
             setUpAt: mine?.occupancy?.startAt ?? mine?.home.createdAt,
-            invited: invited
+            invited: invited,
+            needsPickupDay: Self.needsPickupDay(intel)
         )
+    }
+
+    /// The address calendar still has no pickup schedule of the household's own.
+    private static func needsPickupDay(_ intel: PlaceIntelligence) -> Bool {
+        intel.groups.flatMap(\.sections).compactMap(\.addressCalendar).first?.needsPickupDay == true
+    }
+
+    /// "Set pickup day" on the tip card "Your home is set up": Today at this address, on its pickup editor.
+    private func openPickupEditor() {
+        rootTabs?.pickupEditorHomeId = viewModel.homeId
+        viewModel.onOpenDetail(.today)
     }
 
     private var verifyAddress: String {
@@ -158,6 +170,8 @@ struct PlaceDashboardView: View {
         .guidanceScreen(.place, ready: isLoaded, variants: guidanceVariants, active: isRoot)
         // The guidance reminder "Verify your address": its button opens the verify step, as "Verify address" does.
         .guidanceAction(.nextVerify, active: isRoot) { showVerify = true }
+        // "Your home is set up": while the home has no pickup schedule its button opens the pickup editor.
+        .guidanceAction(.doneHomeSetup, active: isRoot && guidanceVariants.home?.needsPickupDay == true) { openPickupEditor() }
         .task(id: isActive) {
             guard isActive else { viewModel.discardTemporaryCopy()
                 return
@@ -199,8 +213,7 @@ struct PlaceDashboardView: View {
                     onClose: { showSwitcher = false }
                 )
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.hidden)
+            .presentationDetentsFittingContentOnIPad([.medium, .large], dragIndicator: .hidden)
         }
         .sheet(isPresented: $showsChanges) {
             if case let .loaded(intel) = viewModel.state {
@@ -926,19 +939,19 @@ struct PlaceDashboardView: View {
         if claim == nil {
             PlaceRowDivider()
             Button(action: viewModel.onOpenPrivacyMirror) {
-                PlaceActionRowLabel(icon: .eye, title: "What neighbors see", subtitle: "Preview this address as a neighbor sees it.")
+                PlaceActionRowLabel(icon: .eye, title: "What others see", subtitle: "Preview this address as others see it.")
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("place.glance.privacyMirror")
         }
     }
 
-    /// Wedge v2 §2 — "Private by default. See what neighbors see of this address."
+    /// Wedge v2 §2 — "Private by default. See what others see of this address."
     private var privacyMirrorRow: some View {
         Button(action: viewModel.onOpenPrivacyMirror) {
             HStack(spacing: 8) {
                 Icon(.shieldCheck, size: 15, strokeWidth: 2.25, color: Theme.Color.home)
-                Text("Private by default. See what neighbors see of this address.")
+                Text("Private by default. See what others see of this address.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.Color.appTextSecondary)
                     .multilineTextAlignment(.leading)
@@ -961,13 +974,13 @@ struct PlaceDashboardView: View {
     private func neighborsEntry(address: String, messages: Bool, homesNearby: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             // "Private messages" names the section only while messages are all it holds.
-            PlaceSectionHeading(title: "Verified neighbors", detail: messages && !homesNearby ? "Private messages" : nil)
+            PlaceSectionHeading(title: "Verified homes near you", detail: messages && !homesNearby ? "Private messages" : nil)
             PlaceGroupSurface {
                 if messages {
                     Button { viewModel.onComposeMessage(address) } label: {
                         PlaceActionRowLabel(
                             icon: .messageSquarePlus,
-                            title: "Message a neighbor",
+                            title: "Message a home near you",
                             subtitle: "Send a private heads-up to a home on your block."
                         )
                     }
@@ -975,7 +988,7 @@ struct PlaceDashboardView: View {
                     .accessibilityIdentifier("place.messageNeighbor")
                     PlaceRowDivider()
                     Button { viewModel.onOpenInbox() } label: {
-                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified neighbors nearby.")
+                        PlaceActionRowLabel(icon: .inbox, title: "Your inbox", subtitle: "Heads-ups from verified homes nearby.")
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("place.inbox")
@@ -996,7 +1009,7 @@ struct PlaceDashboardView: View {
                     ShareLink(item: PersonalInviteLink.shared.url, message: Text(NeighborhoodView.inviteMessage)) {
                         PlaceActionRowLabel(
                             icon: .share2,
-                            title: "Invite your neighbors",
+                            title: "Invite homes near you",
                             subtitle: "Share a link that shows them their own address first."
                         )
                     }
@@ -1021,7 +1034,7 @@ struct BallotGovernmentsSheet: Identifiable {
 
 struct PlaceVerifyBanner: View {
     var icon: PantopusIcon = .shieldCheck
-    var message = "Verify your address to message neighbors and get your badge."
+    var message = "Verify your address to message homes near you and get your badge."
     var action = "Verify address"
     var identifier = "place.verifyBanner"
     var onTap: () -> Void

@@ -38,6 +38,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import app.pantopus.android.data.auth.AuthError
 import app.pantopus.android.ui.screens.status.StatusActionButton
 import app.pantopus.android.ui.screens.status.StatusWaitingContent
@@ -108,6 +109,11 @@ fun VerifyEmailScreen(
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    // Link opened on another device while this screen stays open: check now
+    // and then, only while the screen is in view (see watchForConfirmation).
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.watchForConfirmation() }
     }
     // The cooldown is wall-clock based, so the disabled button's
     // "Resend in m:ss" label needs a heartbeat to redraw.

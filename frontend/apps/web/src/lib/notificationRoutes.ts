@@ -99,11 +99,10 @@ export function resolveWebNotificationPath(link: string | null | undefined, noti
     return `/app/marketplace/${listingMatch[1]}${suffix}`;
   }
 
-  // Plans are hosted in the apps; the web has only a plan's share page, which
-  // opens it in the app. A host's "asked to join" and "requests waiting" notices
-  // link to the apps' requests screen (/plans/:id/requests).
-  const planRequests = path.match(/^\/plans\/([^/?#]+)\/requests(?=$|[?#])/i);
-  if (planRequests && uuid.test(planRequests[1])) return `/plans/${planRequests[1]}`;
+  // Plain plan notices open the member view. Invitation tokens and payment links
+  // keep their existing public handlers. The host's request list is in the plan.
+  const plan = path.match(/^\/plans\/([^/?#]+)(\/requests)?\/?$/i);
+  if (plan && uuid.test(plan[1])) return `/app/plans/${plan[1]}${plan[2] ? '#requests' : ''}`;
 
   // Older Home notices linked to pages the web never had: /homes/:id/ownership
   // (the Owners page) and /homes/:id/occupants (the Members page).
