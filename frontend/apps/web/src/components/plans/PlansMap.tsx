@@ -213,9 +213,9 @@ export default function PlansMap({
           {Object.keys(plans.kindNames).map((kind) => (
             <g key={kind} id={glyphPrefix + '-' + kind} style={kindColors(kind)}>
               <circle cx="14" cy="14" r="14" fill="var(--plan-cs)" />
-              <g transform="translate(5 5)" color="var(--plan-c)">
-                <KindGlyph kind={kind} className="h-[18px] w-[18px]" />
-              </g>
+              <svg x="5" y="5" width="18" height="18" color="var(--plan-c)">
+                <KindGlyph kind={kind} className="h-full w-full" />
+              </svg>
             </g>
           ))}
         </defs>
