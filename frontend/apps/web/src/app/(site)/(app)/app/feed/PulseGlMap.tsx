@@ -15,12 +15,11 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { MapMarker } from '@pantopus/api';
 import { MapSkeleton } from '@/components/map/MapSkeleton';
+import { MAPBOX_STANDARD, MAP_STYLE_TIMEOUT_MS } from '@/components/map/constants';
 import type { PulseCamera, PulseMarker, PulseView } from './pulseMapView';
 
-const STYLE_URL = 'mapbox://styles/mapbox/standard';
 /** The tilt it opens with and keeps across the map's own moves (people can flatten it). */
 const OPEN_PITCH = 50;
-const STYLE_TIMEOUT_MS = 8000;
 /** The opening fly-in: from higher and flatter to the tilted view. */
 const FLY_IN_MS = 1200;
 const FLY_IN_ZOOM_OUT = 1.5;
@@ -122,8 +121,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
       instance = new mapboxgl.Map({
         container,
         accessToken: token,
-        style: STYLE_URL,
-        config: { basemap: { lightPreset: 'day', showPointOfInterestLabels: false } },
+        ...MAPBOX_STANDARD,
         center: [center[1], center[0]],
         // Reduce Motion opens on the tilted view; otherwise the fly-in starts higher and flatter.
         zoom: toGlZoom(zoom) - (reducedMotion ? 0 : FLY_IN_ZOOM_OUT),
@@ -143,7 +141,7 @@ export default function PulseGlMap(props: PulseGlMapProps) {
     let settled = false;
     const timeout = window.setTimeout(() => {
       if (!styleLoaded) giveUp('timeout');
-    }, STYLE_TIMEOUT_MS);
+    }, MAP_STYLE_TIMEOUT_MS);
     // Before the style is in, an error is the style's (token, network): show the flat map instead.
     instance.on('error', () => {
       if (!styleLoaded) giveUp('style');

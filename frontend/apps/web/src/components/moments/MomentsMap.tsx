@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import L from 'leaflet';
 import '@/components/map/leaflet-setup';
+import {
+  MAP_PUBLIC_TOKEN,
+  MAPBOX_STANDARD,
+  MAP_STYLE_TIMEOUT_MS,
+  RETINA_TILE_URL,
+  TILE_ATTRIBUTION,
+} from '@/components/map/constants';
+import { createCachedTileLayer } from '@/components/map/CachedTileLayer';
 import { clusterMarkers } from '@/components/map/clustering';
 import { LocateFixed, Minus, Plane, Plus } from 'lucide-react';
 import type { Box, Point, Ring, MapResult } from '@pantopus/api/endpoints/moments';
@@ -32,7 +40,6 @@ interface Props {
   onCluster(rings: Ring[], point: Point, zoom: number): void;
   onLocate(): void;
 }
-const publicToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const hasPoint = (r: Ring): r is Ring & Point => Number.isFinite(r.latitude) && Number.isFinite(r.longitude);
 
 export default function MomentsMap(props: Props) {
@@ -41,8 +48,8 @@ export default function MomentsMap(props: Props) {
   const latest = useRef(props);
   latest.current = props;
   const [frame, setFrame] = useState({ zoom: props.target.zoom, serial: 0 });
-  const [flat, setFlat] = useState(!publicToken);
-  const [tileError, setTileError] = useState(false);
+  const [flat, setFlat] = useState(!MAP_PUBLIC_TOKEN);
+  const [tileError, setTileError] = useState(!MAP_PUBLIC_TOKEN);
 
   useEffect(() => {
     const el = container.current;
@@ -82,15 +89,13 @@ export default function MomentsMap(props: Props) {
         ],
         maxBoundsViscosity: 1,
       }).setView([p.latitude, p.longitude], p.zoom);
-      const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
-      });
       map.on('dragstart', () => latest.current.onGesture());
-      tiles
-        .on('tileerror', () => setTileError(true))
-        .on('tileload', () => setTileError(false))
-        .addTo(map);
+      if (MAP_PUBLIC_TOKEN) {
+        createCachedTileLayer(RETINA_TILE_URL, TILE_ATTRIBUTION)
+          .on('tileerror', () => setTileError(true))
+          .on('tileload', () => setTileError(false))
+          .addTo(map);
+      }
       camera.current = {
         project: (point) =>
           map.latLngToContainerPoint([
@@ -131,8 +136,8 @@ export default function MomentsMap(props: Props) {
           }
           const map = new gl.Map({
             container: el,
-            accessToken: publicToken,
-            style: 'mapbox://styles/mapbox/streets-v12',
+            accessToken: MAP_PUBLIC_TOKEN,
+            ...MAPBOX_STANDARD,
             center: [p.longitude, p.latitude],
             zoom: p.zoom - 1,
             projection: 'globe',
@@ -142,10 +147,16 @@ export default function MomentsMap(props: Props) {
             performanceMetricsCollection: false,
             attributionControl: true,
           });
-          const fallback = setTimeout(() => {
-            if (active && !map.isStyleLoaded()) setFlat(true);
-          }, 12000);
-          map.once('style.load', () => clearTimeout(fallback));
+          let styleLoaded = false;
+          const useFlatMap = () => {
+            if (active && !styleLoaded) setFlat(true);
+          };
+          const fallback = setTimeout(useFlatMap, MAP_STYLE_TIMEOUT_MS);
+          map.on('error', useFlatMap);
+          map.once('style.load', () => {
+            styleLoaded = true;
+            clearTimeout(fallback);
+          });
           camera.current = {
             project: (point) => {
               const coordinates = new gl.LngLat(point.longitude, point.latitude);
