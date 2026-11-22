@@ -73,6 +73,15 @@ async function homeAreaContext(userId) {
     checked(db.rpc('pulse_user_home_area_context', { p_user_id: userId }))
       .then(value => ({ value }), error => ({ error })),
   ]);
+  return areaContextFromRows(occupancies, preferences, userAreas);
+}
+
+/**
+ * homeAreaContext's answer from the rows it reads: the person's active occupancies (HOME_SELECT, oldest first), their
+ * preferences row, and pulse_user_home_area_context's rows as { value } or { error }. Shared with the unread count's
+ * direct read (routes/notifications.js), which reads the same rows on a direct connection.
+ */
+async function areaContextFromRows(occupancies, preferences, userAreas) {
   const fast = await fastVerifiedRows(occupancies);
   const homes = (occupancies || []).filter(eligibleHomeOccupancy)
     .map(row => ({ id: row.home_id, verified: verifiedHomeOccupancy(row, fast),
@@ -127,5 +136,5 @@ async function labelFor(author, areaId, context) {
   return 'visitor';
 }
 
-module.exports = { AREA_SELECT, HOME_SELECT, areaDto, openAreas, searchTowns, homeAreaContext,
+module.exports = { AREA_SELECT, HOME_SELECT, areaDto, openAreas, searchTowns, homeAreaContext, areaContextFromRows,
   myAreas, labelFor, eligibleHomeOccupancy, verifiedHomeOccupancy, fastVerifiedRows };

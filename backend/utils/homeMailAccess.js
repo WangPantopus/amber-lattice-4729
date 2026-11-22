@@ -16,6 +16,7 @@
  */
 
 const supabaseAdmin = require('../config/supabaseAdmin');
+const directDb = require('../config/directDb');
 const logger = require('./logger');
 const { localDisplayNames } = require('./identityProfiles');
 const { currentOccupancy, resolveHomeRole, NON_RESIDENT_ROLES, UNPROVEN_SOURCES } = require('./homeAccessPolicy');
@@ -171,7 +172,12 @@ async function mailReaderOccupancies(column, id) {
     .eq('verification_status', 'verified')
     .in('verification_source', MAIL_PROVEN_SOURCES);
   if (error) throw new Error(error.message);
-  return (data || []).filter((row) => availableMailHome(row.home) && currentResident(row));
+  return mailReaders(data);
+}
+
+// Of mailReaderOccupancies' rows, the ones that may read household mail now.
+function mailReaders(rows) {
+  return (rows || []).filter((row) => availableMailHome(row.home) && currentResident(row));
 }
 
 // A proven occupancy cannot override a Home freeze, dispute, archive or merge.
@@ -208,10 +214,15 @@ async function mailHomesOrThrow(userId, { openHomeIds = null } = {}) {
   if (error) throw new Error(error.message);
   const opened = await openRead;
   if (opened.error) throw opened.error;
-  const open = new Set(opened.ids);
+  return mailHomesFrom(data, opened.ids);
+}
+
+// mailHomesOrThrow's list from its occupancy rows (with their Homes) and the Homes whose mail is open to the person.
+function mailHomesFrom(rows, openHomeIds) {
+  const open = new Set(openHomeIds);
   const seen = new Set();
   const homes = [];
-  for (const r of data || []) {
+  for (const r of rows || []) {
     if (!availableMailHome(r.home) || seen.has(r.home_id)) continue;
     // A stale verification still lives there; it needs proof again, so it is listed as needs_proof.
     if (NON_RESIDENT_ROLES.has(resolveHomeRole(r)) || !currentOccupancy(r)) continue;
@@ -224,6 +235,31 @@ async function mailHomesOrThrow(userId, { openHomeIds = null } = {}) {
     });
   }
   return homes;
+}
+
+// trustedHomeIdsOrThrow's and mailHomesOrThrow's occupancy rows for one person in one query on a direct connection
+// (config/directDb.js), shaped as the Data API sends them, with the same filters; the same rules then decide.
+// $2 the proven sources, $3 the resident states.
+const OCCUPANCY_JSON = OCCUPANCY_SELECT.split(', ').map((column) => `'${column}', o.${column}`).join(', ');
+const MAILBOX_HOMES_SQL = `
+select
+  (select coalesce(json_agg(json_build_object(${OCCUPANCY_JSON}, 'home', (select json_build_object('home_status',
+       h.home_status, 'security_state', h.security_state) from "Home" h where h.id = o.home_id))), '[]')
+   from "HomeOccupancy" o where o.user_id = $1 and o.is_active = true and o.verification_status = 'verified'
+     and o.verification_source = any($2::text[])) as readers,
+  (select coalesce(json_agg(json_build_object(${OCCUPANCY_JSON}, 'home', (select json_build_object('id', h.id,
+       'address', h.address, 'address2', h.address2, 'name', h.name, 'home_status', h.home_status,
+       'security_state', h.security_state) from "Home" h where h.id = o.home_id))), '[]')
+   from "HomeOccupancy" o where o.user_id = $1 and o.is_active = true
+     and o.verification_status = any($3::text[])) as residents`;
+
+/** { homeIds, homes }: trustedHomeIdsOrThrow(userId) and mailHomesOrThrow(userId) from one direct query. Throws. */
+async function mailboxHomesDirect(userId) {
+  const [row] = await directDb.read('mailbox_homes', MAILBOX_HOMES_SQL,
+    [userId, MAIL_PROVEN_SOURCES, MAIL_UNPROVEN_RESIDENT_STATUSES]);
+  if (!row || !Array.isArray(row.readers) || !Array.isArray(row.residents)) throw new Error('No mailbox homes row');
+  const homeIds = [...new Set(mailReaders(row.readers).map((r) => r.home_id).filter(Boolean))];
+  return { homeIds, homes: mailHomesFrom(row.residents, homeIds) };
 }
 
 /**
@@ -613,7 +649,8 @@ async function canSendToMailHome(homeId, userId) {
 }
 
 module.exports = { hasVerifiedSenderHome, canSendToMailHome, MAIL_TRUSTED_VERIFICATION_STATUSES, MAIL_PROVEN_SOURCES, getAccessibleHomeIds, trustedHomeIdsOrThrow,
-  mailReaderIdsOrThrow, householdHomeIds, householdHomeIdsOrThrow, mailHomesOrThrow, homeMailNeedsProof, sendMailUnavailable, onlyDelivered,
+  mailReaderIdsOrThrow, householdHomeIds, householdHomeIdsOrThrow, mailHomesOrThrow, mailboxHomesDirect, homeMailNeedsProof, sendMailUnavailable,
+  onlyDelivered,
   isDeliveredMail,
   MAIL_HOME_NEEDS_PROOF, MAIL_NOT_FOUND, canAccessMail, readableMail, restorableMail,
   isDeletedMail, removedMailInfo, homeMailAudience, sendHomeMailRemovedNotice, MAIL_RESTORE_DAYS, restoreWindowOver,

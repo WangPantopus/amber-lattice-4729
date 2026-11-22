@@ -19,9 +19,13 @@ const logger = require('../utils/logger');
 const { NOTIFICATION_LIST } = require('../utils/columns');
 const pushService = require('../services/pushService');
 const badgeService = require('../services/badgeService');
-const { notificationBlockFilter, blockedUserIds } = require('../services/blockService');
-const { notificationPostFilter } = require('../services/pulse/readAccess');
-const { excludeHiddenLaunchNotifications, isLaunchFeatureEnabled } = require('../utils/featureFlags');
+const directDb = require('../config/directDb');
+const { notificationBlockFilter, blockedUserIds, blockedIdsFromRows } = require('../services/blockService');
+const { notificationPostFilter, postScopeAccess } = require('../services/pulse/readAccess');
+const { areaContextFromRows } = require('../services/pulse/areas');
+const {
+  excludeHiddenLaunchNotifications, isLaunchFeatureEnabled, hiddenLaunchNotificationTypes, isAudienceNotificationStreamEnabled,
+} = require('../utils/featureFlags');
 
 const FIREWALL_VALUES = ['personal', 'audience', 'platform'];
 const CONTEXT_INPUT = ['all', ...FIREWALL_VALUES];
@@ -232,44 +236,144 @@ router.get('/', verifyToken, async (req, res) => {
  *
  *   { count: 12, byContext: { personal: 9, audience: 3, platform: 0 } }
  */
-router.get('/unread-count', verifyToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
+// The badge counts through the Data API: the block list and the Pulse read scope (both filters are built together from
+// one read of the block list), then the four counts in one round.
+async function apiUnreadCounts(userId, req) {
+  // Launch cuts: hidden notification types stay out of the badge counts, and so do notices from
+  // someone across a block. Both filters use one read of the block list and are built together.
+  const blocked = blockedUserIds(userId);
+  const [withoutBlocked, readablePost] = await Promise.all([
+    notificationBlockFilter(userId, blocked),
+    notificationPostFilter(userId, blocked),
+  ]);
+  const baseFilter = (q) => readablePost(withoutBlocked(excludeHiddenLaunchNotifications(withoutAssistantRows(q
+    .from('Notification')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_read', false), req))));
 
-    // Launch cuts: hidden notification types stay out of the badge counts, and so do notices from
-    // someone across a block. Both filters use one read of the block list and are built together.
-    const blocked = blockedUserIds(userId);
-    const [withoutBlocked, readablePost] = await Promise.all([
-      notificationBlockFilter(userId, blocked),
-      notificationPostFilter(userId, blocked),
-    ]);
-    const baseFilter = (q) => readablePost(withoutBlocked(excludeHiddenLaunchNotifications(withoutAssistantRows(q
-      .from('Notification')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('is_read', false), req))));
+  const [totalRes, personalRes, audienceRes, platformRes] = await Promise.all([
+    baseFilter(supabaseAdmin),
+    baseFilter(supabaseAdmin).eq('context', 'personal'),
+    baseFilter(supabaseAdmin).eq('context', 'audience'),
+    baseFilter(supabaseAdmin).eq('context', 'platform'),
+  ]);
 
-    const [totalRes, personalRes, audienceRes, platformRes] = await Promise.all([
-      baseFilter(supabaseAdmin),
-      baseFilter(supabaseAdmin).eq('context', 'personal'),
-      baseFilter(supabaseAdmin).eq('context', 'audience'),
-      baseFilter(supabaseAdmin).eq('context', 'platform'),
-    ]);
+  const firstError = [totalRes, personalRes, audienceRes, platformRes]
+    .map((r) => r && r.error)
+    .find(Boolean);
+  if (firstError) {
+    throw firstError;
+  }
 
-    const firstError = [totalRes, personalRes, audienceRes, platformRes]
-      .map((r) => r && r.error)
-      .find(Boolean);
-    if (firstError) {
-      throw firstError;
-    }
-
-    const total = totalRes.count || 0;
-    const byContext = {
+  return {
+    total: totalRes.count || 0,
+    byContext: {
       personal: personalRes.count || 0,
       audience: audienceRes.count || 0,
       platform: platformRes.count || 0,
-    };
+    },
+    blocked: await blocked,
+  };
+}
 
+// The same counts on a direct connection (config/directDb.js), in two queries. First the rows the filters are built
+// from, as the Data API sends them (json_agg, so text timestamps): this person's UserBlock rows, their active
+// occupancies with Pulse's HOME_SELECT columns (oldest first), their default Home and pulse_user_home_area_context's
+// rows. The block list and the read scope are then decided by the same code as above (blockedIdsFromRows,
+// areaContextFromRows, postScopeAccess).
+const UNREAD_INPUTS_SQL = `
+select
+  (select coalesce(json_agg(json_build_object('blocker_user_id', b.blocker_user_id, 'blocked_user_id', b.blocked_user_id)), '[]')
+   from "UserBlock" b where b.blocker_user_id = $1 or b.blocked_user_id = $1) as blocks,
+  (select coalesce(json_agg(o order by o.created_at, o.home_id), '[]') from (
+     select o.home_id, o.user_id, o.is_active, o.role, o.role_base, o.verification_status, o.verification_source,
+       o.verified_at, o.start_at, o.end_at, o.access_start_at, o.access_end_at, o.created_at, o.fast_check_kind,
+       o.fast_check_at, o.fast_check_expires_at, o.fast_check_recheck_due_at, o.fast_check_confirmed_at,
+       case when h.id is null then null
+         else json_build_object('id', h.id, 'home_status', h.home_status, 'security_state', h.security_state) end as home
+     from "HomeOccupancy" o left join "Home" h on h.id = o.home_id
+     where o.user_id = $1 and o.is_active = true) o) as occupancies,
+  (select json_build_object('default_home_id', p.default_home_id)
+   from "UserNotificationPreferences" p where p.user_id = $1) as preferences,
+  (select coalesce(json_agg(a), '[]') from public.pulse_user_home_area_context($1) a) as areas`;
+
+// Then the four counts in one pass, with every filter apiUnreadCounts applies, written as PostgREST writes them
+// (NOT ... = ANY for not.in, <> for neq, so a missing value is left out the same way). The post-access field is
+// computed once per row. $2 assistant types (empty unless ?exclude=assistant), $3 hidden launch types, $4 whether
+// audience notices are hidden, $5 the block list, $6 and $7 the read scope's verified towns and areas.
+const UNREAD_COUNTS_SQL = `
+select count(*) as total,
+  count(*) filter (where n.context = 'personal') as personal,
+  count(*) filter (where n.context = 'audience') as audience,
+  count(*) filter (where n.context = 'platform') as platform
+from "Notification" n
+cross join lateral (select public.pulse_notification_post_access(n) as a) p
+where n.user_id = $1 and n.is_read = false
+  and not (n.type = any($2::text[]))
+  and not (n.type = any($3::text[]))
+  and (not $4::boolean or n.context <> 'audience')
+  and (cardinality($5::text[]) = 0 or n.metadata->>'user_id' is null or not (n.metadata->>'user_id' = any($5::text[])))
+  and (p.a->>'read_scope' is null or p.a->>'read_scope' = 'public' or p.a->>'user_id' = $1::text
+    or (p.a->>'read_scope' = 'verified_town' and p.a->>'pulse_post_town_id' = any($6::text[]))
+    or (p.a->>'read_scope' = 'verified_area' and p.a->>'area_id' = any($7::text[])))
+  and (p.a->>'moderation_state' is null or p.a->>'moderation_state' = 'live' or p.a->>'user_id' = $1::text)
+  and (p.a->>'reply_moderation_state' is null or p.a->>'reply_moderation_state' = 'live'
+    or p.a->>'reply_user_id' = $1::text)
+  and p.a->>'withdrawn' is null
+  and (cardinality($5::text[]) = 0 or p.a->>'user_id' is null or not (p.a->>'user_id' = any($5::text[])))
+  and (cardinality($5::text[]) = 0 or p.a->>'reply_user_id' is null or not (p.a->>'reply_user_id' = any($5::text[])))`;
+
+async function directUnreadCounts(userId, req) {
+  const [inputs] = await directDb.read('unread_inputs', UNREAD_INPUTS_SQL, [userId]);
+  const blocked = blockedIdsFromRows(userId, inputs.blocks);
+  const context = await areaContextFromRows(inputs.occupancies, inputs.preferences, { value: inputs.areas });
+  const access = await postScopeAccess(userId, context);
+  const assistant = (req.query.exclude ?? req.body?.exclude) === 'assistant' ? ASSISTANT_TYPES : [];
+  const [row] = await directDb.read('unread_counts', UNREAD_COUNTS_SQL, [userId, assistant,
+    hiddenLaunchNotificationTypes(), !isAudienceNotificationStreamEnabled(), [...blocked], [...access.townIds],
+    [...access.areaIds]]);
+  return {
+    total: Number(row.total),
+    byContext: { personal: Number(row.personal), audience: Number(row.audience), platform: Number(row.platform) },
+    blocked,
+  };
+}
+
+// Which parts of two answers differ (shadow mode): the four counts and the block list they were filtered by.
+function unreadCountsDiffer(a, b) {
+  const view = (c) => ({ total: c.total, ...c.byContext, blocked: [...c.blocked].sort() });
+  const [x, y] = [view(a), view(b)];
+  return Object.keys(x).filter((key) => JSON.stringify(x[key]) !== JSON.stringify(y[key]));
+}
+
+// DIRECT_DB_READS (config/directDb.js) picks the path, as for the Home access check (utils/homePermissions.js). "on":
+// the direct reads, falling back to the Data API on any failure. "shadow": the Data API answers and the direct reads
+// are compared with it.
+async function unreadCounts(userId, req) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await directUnreadCounts(userId, req);
+    } catch (error) {
+      directDb.fellBack('unread_count', error);
+      return apiUnreadCounts(userId, req);
+    }
+  }
+  if (mode !== 'shadow') return apiUnreadCounts(userId, req);
+  const started = performance.now();
+  const direct = directUnreadCounts(userId, req)
+    .then((counts) => ({ counts, ms: performance.now() - started }), (error) => ({ error }));
+  const api = await apiUnreadCounts(userId, req);
+  const apiMs = performance.now() - started;
+  direct.then(({ counts, ms, error }) => directDb.compared('unread_count', error
+    ? { error } : { differs: unreadCountsDiffer(api, counts), directMs: ms, apiMs }));
+  return api;
+}
+
+router.get('/unread-count', verifyToken, async (req, res) => {
+  try {
+    const { total, byContext } = await unreadCounts(req.user.id, req);
     res.json({ count: total, total, byContext });
   } catch (err) {
     logger.error('Unread count error', { error: err.message });

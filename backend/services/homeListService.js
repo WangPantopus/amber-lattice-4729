@@ -1,8 +1,9 @@
 const db = require('../config/supabaseAdmin');
+const directDb = require('../config/directDb');
 const logger = require('../utils/logger');
 const { getUserAccess } = require('../utils/homePermissions');
 const { currentOccupancy, resolveHomeRole } = require('../utils/homeAccessPolicy');
-const { deleteEligibility } = require('./homeAuthorityService');
+const { deleteEligibility, eligibilityAnswer } = require('./homeAuthorityService');
 const claimsConfig = require('../config/householdClaims');
 const claimsPolicy = require('./homeClaimRoutingService');
 const parsePoint = require('../utils/parsePostGISPoint');
@@ -40,14 +41,67 @@ async function rows(query) {
   return data;
 }
 
+// DIRECT_DB_READS (config/directDb.js) picks the path for this list's reads, as for the Home access check
+// (utils/homePermissions.js): "on" reads on the direct connection and falls back to the Data API on any failure;
+// "shadow" answers from the Data API and compares the direct read with it (`differs` names the parts that differ).
+async function throughDirect(name, direct, api, differs) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await direct();
+    } catch (error) {
+      directDb.fellBack(name, error);
+      return api();
+    }
+  }
+  if (mode !== 'shadow') return api();
+  const started = performance.now();
+  const pending = direct().then((value) => ({ value, ms: performance.now() - started }), (error) => ({ error }));
+  const answer = await api();
+  const apiMs = performance.now() - started;
+  pending.then(({ value, ms, error }) => directDb.compared(name, error
+    ? { error } : { differs: differs(answer, value), directMs: ms, apiMs }));
+  return answer;
+}
+const partsDiffer = (a, b, parts) => parts.filter(part => JSON.stringify(a[part]) !== JSON.stringify(b[part]));
+
+function homeIds(created, occupancies, owners) {
+  if (created.some(row => !uuid(row.id)) || [...occupancies, ...owners].some(row => !uuid(row.id) || !uuid(row.home_id))) throw failure();
+  return [...new Set([...created.map(row => row.id), ...occupancies.map(row => row.home_id), ...owners.map(row => row.home_id)])].sort();
+}
+
 async function candidates(actorId) {
   const [created, occupancies, owners] = await Promise.all([
     rows(db.from('Home').select('id').or(`owner_id.eq.${actorId},created_by_user_id.eq.${actorId}`).order('id')),
     rows(db.from('HomeOccupancy').select('id, home_id').eq('user_id', actorId).order('id')),
     rows(db.from('HomeOwner').select('id, home_id').eq('subject_id', actorId).eq('subject_type', 'user').order('id')),
   ]);
-  if (created.some(row => !uuid(row.id)) || [...occupancies, ...owners].some(row => !uuid(row.id) || !uuid(row.home_id))) throw failure();
-  return [...new Set([...created.map(row => row.id), ...occupancies.map(row => row.home_id), ...owners.map(row => row.home_id)])].sort();
+  return homeIds(created, occupancies, owners);
+}
+
+// The same rows as candidates() and storedDefault() in one query on a direct connection.
+const CANDIDATES_SQL = `
+select
+  (select coalesce(json_agg(json_build_object('id', h.id) order by h.id), '[]')
+   from "Home" h where h.owner_id = $1 or h.created_by_user_id = $1) as created,
+  (select coalesce(json_agg(json_build_object('id', o.id, 'home_id', o.home_id) order by o.id), '[]')
+   from "HomeOccupancy" o where o.user_id = $1) as occupancies,
+  (select coalesce(json_agg(json_build_object('id', w.id, 'home_id', w.home_id) order by w.id), '[]')
+   from "HomeOwner" w where w.subject_id = $1 and w.subject_type = 'user') as owners,
+  (select json_build_object('default_home_id', p.default_home_id)
+   from "UserNotificationPreferences" p where p.user_id = $1) as preferences`;
+
+// The candidate Homes and, unless `withDefault` is false, the stored default ({ ids, chosen }).
+function candidatesAndDefault(actorId, withDefault) {
+  return throughDirect('home_list_candidates', async () => {
+    const [row] = await directDb.read('home_list_candidates', CANDIDATES_SQL, [actorId]);
+    if (!row || ![row.created, row.occupancies, row.owners].every(listOfRows)) throw new Error('Unexpected candidate rows');
+    const ids = homeIds(row.created, row.occupancies, row.owners);
+    return { ids, chosen: withDefault && uuid(row.preferences?.default_home_id) ? row.preferences.default_home_id : null };
+  }, async () => {
+    const [ids, chosen] = await Promise.all([candidates(actorId), withDefault ? storedDefault(actorId) : null]);
+    return { ids, chosen };
+  }, (a, b) => partsDiffer(a, b, ['ids', 'chosen']));
 }
 
 const STATE_COLUMNS = ['id', 'owner_id', 'created_by_user_id', 'home_status', 'security_state'];
@@ -79,11 +133,52 @@ async function state(homeId, actorId) {
 
 // state(), with the person's claims on the Home (`claims`) and its card row (`card`) from the same read. They are
 // kept apart from the state, which callers compare as a whole.
+// homeRead's row and home_record_context's answer in one query on a direct connection, shaped as the Data API sends
+// them (json_build_object, so text timestamps). $1 the Home, $2 the person.
+const directColumns = (alias, columns) => columns.map(column => `'${column}', ${alias}."${column}"`).join(', ');
+const homeStateSql = ({ claims, card }) => `
+select
+  (select json_build_object(${directColumns('h', card ? [...new Set([...STATE_COLUMNS, ...CARD_COLUMNS.split(', ')])] : STATE_COLUMNS)},
+     'owners', coalesce((select json_agg(json_build_object(${directColumns('o', OWNER_COLUMNS)}) order by o.id)
+       from "HomeOwner" o where o.home_id = h.id and o.subject_id = $2 and o.subject_type = 'user'), '[]')${claims ? `,
+     'claims', coalesce((select json_agg(json_build_object(${directColumns('c', CLAIM_COLUMNS)}) order by c.created_at desc, c.id)
+       from "HomeOwnershipClaim" c where c.home_id = h.id and c.claimant_user_id = $2), '[]')` : ''})
+   from "Home" h where h.id = $1) as home,
+  public.home_record_context($1, $2) as context`;
+const HOME_STATE_SQL = new Map([false, true].flatMap(claims => [false, true]
+  .map(card => [`${claims}/${card}`, homeStateSql({ claims, card })])));
+
+// The parts of two { row, context } reads that readState and card() use, in the order a read of its own gives.
+function homeStateDiffer(a, b) {
+  const view = ({ row, context }) => ({
+    home: object(row) ? Object.fromEntries(Object.keys(row).filter(key => !['owners', 'claims'].includes(key)).sort()
+      .map(key => [key, row[key]])) : row,
+    owners: object(row) && Array.isArray(row.owners) ? row.owners.map(owner => inOrder(owner, OWNER_COLUMNS)) : null,
+    claims: object(row) && Array.isArray(row.claims) ? row.claims.map(claim => inOrder(claim, CLAIM_COLUMNS)) : null,
+    context,
+  });
+  return partsDiffer(view(a), view(b), ['home', 'owners', 'claims', 'context']);
+}
+
+function homeAndContext(homeId, actorId, options) {
+  return throughDirect('home_list_state', async () => {
+    const sql = HOME_STATE_SQL.get(`${Boolean(options.claims)}/${Boolean(options.card)}`);
+    const [result] = await directDb.read('home_list_state', sql, [homeId, actorId]);
+    if (!result) throw new Error('No home state row');
+    return { row: result.home, context: result.context };
+  }, async () => {
+    const [row, context] = await Promise.all([
+      homeRead(homeId, actorId, options),
+      checked(db.rpc('home_record_context', { p_home_id: homeId, p_user_id: actorId })),
+    ]);
+    return { row, context };
+  }, homeStateDiffer);
+}
+
 async function readState(homeId, actorId, options = {}) {
-  const [access, row, context] = await Promise.all([
+  const [access, { row, context }] = await Promise.all([
     getUserAccess(homeId, actorId),
-    homeRead(homeId, actorId, options),
-    checked(db.rpc('home_record_context', { p_home_id: homeId, p_user_id: actorId })),
+    homeAndContext(homeId, actorId, options),
   ]);
   const home = object(row) ? inOrder(row, STATE_COLUMNS) : null;
   if (home && (!listOfRows(row.owners) || (options.claims && !listOfRows(row.claims)))) throw failure();
@@ -210,9 +305,20 @@ async function storedDefault(actorId) {
   }
 }
 
+// home_delete_eligibility for the list's "Delete Home" flag; on a direct connection when DIRECT_DB_READS says so.
+function deletable(homeId, actorId) {
+  return throughDirect('home_delete_eligibility', async () => {
+    const [row] = await directDb.read('home_delete_eligibility', 'select public.home_delete_eligibility($1, $2) as result',
+      [homeId, actorId]);
+    if (!object(row?.result)) throw new Error('No eligibility answer');
+    return row.result;
+  }, () => deleteEligibility(homeId, actorId), (a, b) => (JSON.stringify(a) === JSON.stringify(b) ? [] : ['result']))
+    .then(eligibilityAnswer);
+}
+
 async function read(actorId, { primary = false, legacy = false } = {}) {
   if (!uuid(actorId)) throw failure();
-  const [ids, chosen] = await Promise.all([candidates(actorId), primary || legacy ? null : storedDefault(actorId)]);
+  const { ids, chosen } = await candidatesAndDefault(actorId, !(primary || legacy));
   // Bound fanout: candidate discovery contains IDs only, and every projected
   // card has its own opening authority. Homes load a few at a time (each is a
   // chain of database round trips), and all entries are rechecked at the end.
@@ -229,7 +335,7 @@ async function read(actorId, { primary = false, legacy = false } = {}) {
   const heldRead = heldClaims(actorId, privateSetups.map(entry => entry.homeId));
   await bounded(entries, async (entry) => {
     // Eligibility can change through records/history without a role change.
-    const [eligibility, current] = await Promise.all([deleteEligibility(entry.homeId, actorId),
+    const [eligibility, current] = await Promise.all([deletable(entry.homeId, actorId),
       readState(entry.homeId, actorId, { claims: true })]);
     entry.card.can_delete_home = eligibility.allowed;
     if (JSON.stringify(current.claims) !== JSON.stringify(entry.claims)

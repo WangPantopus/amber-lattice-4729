@@ -1,0 +1,143 @@
+/* The map spans all three rows. Only the controls and open list intercept gestures. */
+.plans-explorer {
+  --plans-edge: clamp(.75rem, 1.5vw, 1.5rem);
+  --plans-left: max(var(--plans-edge), env(safe-area-inset-left));
+  --plans-right: max(var(--plans-edge), env(safe-area-inset-right));
+  --plans-dock-bottom: 2rem;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr);
+  background: rgb(var(--app-surface-muted));
+  color: rgb(var(--app-text));
+}
+.plans-explorer[data-full-window] {
+  --plans-dock-bottom: max(2rem, calc(env(safe-area-inset-bottom) + 1.25rem));
+}
+.plans-canvas {
+  grid-area: 1 / 1 / -1 / -1;
+  min-width: 0;
+  min-height: 0;
+  isolation: isolate;
+}
+.plans-surface {
+  background: rgb(var(--app-surface));
+  border: 1px solid rgb(var(--app-border));
+  box-shadow: 0 2px 5px #102a4314, 0 6px 24px #102a431c;
+}
+.plans-map-header {
+  z-index: 1;
+  grid-area: 1 / 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .5rem;
+  margin: max(var(--plans-edge), env(safe-area-inset-top)) var(--plans-right) 0 var(--plans-left);
+  pointer-events: none;
+}
+.plans-map-header > * { pointer-events: auto; }
+.plans-map-header > :first-child { max-width: min(22rem, 100%); }
+.plans-calendar, .plans-filter-count, input:checked + .plans-time-option {
+  color: var(--color-primary-800);
+  background: var(--color-primary-50);
+}
+input:checked + .plans-time-option { border-color: var(--color-primary-600); }
+.plans-filter-count { border-radius: 50%; min-width: 1.25rem; font-size: .75rem; }
+.plans-host {
+  background: #0369a1;
+  color: white;
+  box-shadow: 0 2px 5px #102a4320, 0 5px 16px #102a4326;
+}
+.plans-host:hover { background: #075985; }
+.plans-icon-button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+}
+.plans-icon-button:hover { background: rgb(var(--app-hover)); }
+.plans-results {
+  z-index: 1;
+  grid-area: 2 / 1;
+  justify-self: start;
+  align-self: start;
+  width: min(22rem, calc(100% - var(--plans-left) - var(--plans-right)));
+  max-height: calc(100% - 1.25rem);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: .625rem var(--plans-right) .625rem var(--plans-left);
+}
+.plans-dock {
+  z-index: 1;
+  grid-area: 3 / 1;
+  justify-self: center;
+  margin: 0 0 var(--plans-dock-bottom);
+}
+.plans-list-toggle { background: rgb(var(--app-text)); color: rgb(var(--app-surface)); }
+.plans-list-toggle:hover { opacity: .9; }
+.plans-explorer :is(a, button):focus-visible {
+  outline: 3px solid var(--color-primary-600);
+  outline-offset: 2px;
+}
+/* Give the built-in controls on both renderers the same position and touch targets. */
+.plans-map :is(.mapboxgl-ctrl-top-right, .leaflet-top.leaflet-right) {
+  top: var(--plans-control-top, .75rem);
+  right: var(--plans-right, .75rem);
+}
+.plans-explorer .plans-map { --plans-control-top: calc(max(var(--plans-edge), env(safe-area-inset-top)) + 3.5rem); }
+.plans-map :is(.mapboxgl-ctrl-top-right .mapboxgl-ctrl-group, .leaflet-right .leaflet-control-zoom) {
+  margin: 0;
+  border: 1px solid rgb(var(--app-border));
+  border-radius: .875rem;
+  overflow: hidden;
+  background: rgb(var(--app-surface));
+  box-shadow: 0 2px 5px #102a4314, 0 6px 18px #102a431a;
+}
+.plans-map :is(.mapboxgl-ctrl-group button, .leaflet-control-zoom a) {
+  width: 2.75rem;
+  height: 2.75rem;
+  line-height: 2.75rem;
+  color: rgb(var(--app-text));
+  background-color: rgb(var(--app-surface));
+  border-color: rgb(var(--app-border));
+}
+.plans-map :is(.mapboxgl-ctrl-group button, .leaflet-control-zoom a):hover { background-color: rgb(var(--app-hover)); }
+.plans-map .mapboxgl-ctrl-group button:focus-visible, .plans-map .leaflet-control-zoom a:focus-visible { outline-offset: -3px; }
+.plans-map-feedback {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: calc(var(--plans-dock-bottom, .5rem) + 3.75rem);
+  transform: translateX(-50%);
+  text-align: center;
+}
+.plans-map-empty { pointer-events: none; }
+.plans-explorer:has(.plans-results:not([hidden])) .plans-map-empty { display: none; }
+.plans-pin {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  border: 2px solid white;
+  background: #075985;
+  color: white;
+  box-shadow: 0 2px 6px #0c344f66;
+  font: 700 14px/1 system-ui, sans-serif;
+}
+.plans-pin-selected { outline: 3px solid #38bdf8; }
+.plans-pin-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+@media (max-width: 639px) {
+  .plans-results { align-self: end; width: calc(100% - var(--plans-left) - var(--plans-right)); }
+}
+@media (max-width: 359px) {
+  .plans-calendar { display: none; }
+}
+@media (prefers-color-scheme: dark) {
+  .plans-map .mapboxgl-ctrl-icon { filter: invert(1); }
+}

@@ -78,33 +78,7 @@ async function getInviteProgress(userId) {
       logger.warn('inviteRewardService: failed to count conversions', { userId, error: convErr.message });
     }
 
-    const converted = totalConverted || 0;
-
-    // Determine unlocked features
-    const unlocked_features = FEATURE_TIERS
-      .filter((t) => converted >= t.threshold)
-      .map((t) => t.key);
-
-    // Determine next unlock
-    const nextTier = FEATURE_TIERS.find((t) => converted < t.threshold) || null;
-    const next_unlock = nextTier
-      ? {
-          feature: nextTier.key,
-          label: nextTier.label,
-          invites_needed: nextTier.threshold,
-          invites_remaining: nextTier.threshold - converted,
-        }
-      : null;
-
-    const result = {
-      total_invited: totalInvited || 0,
-      total_converted: converted,
-      unlocked_features,
-      next_unlock,
-    };
-
-    setCache(userId, result);
-    return result;
+    return inviteProgressFromCounts(userId, totalInvited, totalConverted);
   } catch (err) {
     logger.error('inviteRewardService: getInviteProgress failed', { userId, error: err.message });
     return {
@@ -116,6 +90,40 @@ async function getInviteProgress(userId) {
         : null,
     };
   }
+}
+
+/**
+ * The progress from the two referral counts (all invites, converted ones), kept for five minutes like
+ * getInviteProgress's. Also used with the counts read on a direct connection (routes/users.js GET /profile).
+ */
+function inviteProgressFromCounts(userId, totalInvited, totalConverted) {
+  const converted = totalConverted || 0;
+
+  // Determine unlocked features
+  const unlocked_features = FEATURE_TIERS
+    .filter((t) => converted >= t.threshold)
+    .map((t) => t.key);
+
+  // Determine next unlock
+  const nextTier = FEATURE_TIERS.find((t) => converted < t.threshold) || null;
+  const next_unlock = nextTier
+    ? {
+        feature: nextTier.key,
+        label: nextTier.label,
+        invites_needed: nextTier.threshold,
+        invites_remaining: nextTier.threshold - converted,
+      }
+    : null;
+
+  const result = {
+    total_invited: totalInvited || 0,
+    total_converted: converted,
+    unlocked_features,
+    next_unlock,
+  };
+
+  setCache(userId, result);
+  return result;
 }
 
 /**
@@ -165,6 +173,8 @@ module.exports = {
   FEATURE_KEYS,
   FEATURE_TIERS,
   getInviteProgress,
+  inviteProgressFromCounts,
+  cachedInviteProgress: getCached,
   forgetInviteProgress,
   checkFeatureAccess,
   requireFeature,

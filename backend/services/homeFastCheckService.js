@@ -265,15 +265,38 @@ async function verifyOptions({ homeId, user, platform = null }) {
   if (!access.hasAccess && !occupancy) throw new FastCheckError('HOME_NOT_FOUND');
 
   const proven = access.hasAccess && isVerifiedResident(access);
-  const fast = !proven && access.hasAccess && await fastVerified(occupancy);
-  const level = proven ? 'proven' : fast ? 'fast' : access.hasAccess ? 'added' : 'none';
   const nonResident = NON_RESIDENT_ROLES.has(resolveHomeRole(occupancy));
-  const claim = access.hasAccess && occupancy?.verification_source === 'claim' && occupancy?.verification_status === 'verified'
-    && !nonResident && !(await claimSetAside(homeId, userId).catch(() => true));
+  const claimish = access.hasAccess && occupancy?.verification_source === 'claim' && occupancy?.verification_status === 'verified'
+    && !nonResident;
+  // Every read the answer below may need starts now, together, under the conditions that decide whether it is read at
+  // all. Each is used where it always was, in the same order, and a failed one throws (or counts as it did) only there;
+  // until then its outcome is held, so a read the answer never reaches is ignored.
+  const settle = (read) => read.then((value) => ({ value }), (error) => ({ error }));
+  const used = async (read) => {
+    const { value, error } = await read;
+    if (error) throw error;
+    return value;
+  };
+  const fastRead = !proven && access.hasAccess ? settle(fastVerified(occupancy)) : null;
+  const setAsideRead = claimish ? settle(claimSetAside(homeId, userId)) : null;
+  const elsewhereRead = claimish ? settle(fastCheckedElsewhere(userId, homeId)) : null;
+  const reportedRead = !proven && !nonResident ? settle(reportedHere(homeId, userId)) : null;
+  const kindsOffered = KINDS.filter((id) => flags[FLAGS[id]] && flags[FLAGS.claim]
+    && (id !== 'location' || platform === 'ios' || platform === 'android'));
+  const limitReads = new Map(claimish ? kindsOffered.map((id) => [id, settle(overLimit(userId, id))]) : []);
+  const ceilingRead = claimish && kindsOffered.includes('phone') ? settle(phoneDailyCeilingReached()) : null;
+  const documentRead = !proven && !nonResident ? settle(documentInReview(homeId, userId)) : null;
+  const landlordRead = !proven && !nonResident ? settle(landlordDoor(homeId, userId)) : null;
+  const provenRead = proven ? settle(provenBy(userId, [homeId])) : null;
 
-  const elsewhere = claim ? await fastCheckedElsewhere(userId, homeId) : null;
+  const fast = !proven && access.hasAccess && await used(fastRead);
+  const level = proven ? 'proven' : fast ? 'fast' : access.hasAccess ? 'added' : 'none';
+  // A set-aside check that can't be read counts as set aside, as before.
+  const claim = claimish && !(await setAsideRead.then(({ value, error }) => (error ? true : value)));
+
+  const elsewhere = claim ? await used(elsewhereRead) : null;
   // A card this person asked for here was reported ("This wasn't me"): fast checks and another card wait for Pantopus.
-  const reported = !proven && !nonResident && await reportedHere(homeId, userId);
+  const reported = !proven && !nonResident && await used(reportedRead);
   const options = [];
   for (const id of OPTION_ORDER) {
     let reason = null;
@@ -286,22 +309,22 @@ async function verifyOptions({ homeId, user, platform = null }) {
       else if (id === 'phone' && !phoneProviderReady()) reason = 'UNAVAILABLE';
       // eslint-disable-next-line global-require
       else if (id === 'location' && !require('./fastCheck/locationCheck').ready(platform)) reason = 'UNAVAILABLE';
-      else if (await overLimit(userId, id)) reason = 'LIMIT';
-      else if (id === 'phone' && await phoneDailyCeilingReached()) reason = 'UNAVAILABLE';
+      else if (await used(limitReads.get(id))) reason = 'LIMIT';
+      else if (id === 'phone' && await used(ceilingRead)) reason = 'UNAVAILABLE';
     } else if (id === 'mail') {
       // eslint-disable-next-line global-require
       const mailVendorService = require('./addressValidation/mailVendorService');
       if (proven || nonResident || !mailVendorService.canSendPostcards()) reason = 'UNAVAILABLE';
       else if (reported) reason = 'IN_REVIEW';
     } else if (id === 'landlord') {
-      if (proven || nonResident || !(await landlordDoor(homeId, userId))) reason = 'UNAVAILABLE';
+      if (proven || nonResident || !(await used(landlordRead))) reason = 'UNAVAILABLE';
     }
     if (id === 'document') {
       // Today's document upload stays a way to verify whatever the fast read says; `fast` says whether a photo is
       // read at once (FASTVERIFY) or goes to a person only. A document already in review closes the row only when
       // nothing is read at once (today's "Document under review"); with the fast read a person can take another photo.
       const fast = reason === null;
-      reason = proven || nonResident ? 'UNAVAILABLE' : !fast && await documentInReview(homeId, userId) ? 'IN_REVIEW' : null;
+      reason = proven || nonResident ? 'UNAVAILABLE' : !fast && await used(documentRead) ? 'IN_REVIEW' : null;
       options.push({ id, available: reason === null, reason, fast });
       continue;
     }
@@ -311,7 +334,7 @@ async function verifyOptions({ homeId, user, platform = null }) {
   let verifiedBy = null;
   let verifiedAt = null;
   if (proven) {
-    const how = (await provenBy(userId, [homeId])).get(homeId);
+    const how = (await used(provenRead)).get(homeId);
     verifiedBy = how ? how.by : 'mail';
     verifiedAt = how ? how.at : occupancy?.verified_at || null;
   } else if (fast) {

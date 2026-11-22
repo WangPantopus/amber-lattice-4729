@@ -236,3 +236,34 @@
     animation-composition: add;
   }
 }
+
+/* The tabs take their actual height, including safe-area and text-size changes. */
+[data-map-shell] {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+[data-map-shell] > main {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+[data-map-shell] > nav {
+  position: relative;
+  flex: none;
+}
+/* Full-window mode keeps the same map mounted and removes the shell from keyboard navigation. */
+[data-map-shell]:has([data-full-window]) > :is(header, aside, nav) {
+  display: none;
+}
+[data-map-shell]:has([data-full-window]) > main {
+  margin-left: 0 !important; /* The responsive sidebar sets an inline offset. */
+  padding: 0;
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-map-shell] > main {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

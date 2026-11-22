@@ -2191,15 +2191,18 @@ router.get('/cards', verifyToken, async (req, res) => {
     const now = new Date();
     // The sender's town for "Let it travel" (card_travel), read alongside the rest, never after it.
     const travelTown = cardTravel.travelOn() ? cardTravel.townLabel(senderId).catch(() => null) : null;
+    const postage = mailStamps.enabled(senderId);
+    // The stamps left, for the Mailbox row's line; the cards still load when the balance can't be read.
+    // Their saved signature (founder, November 16), only while signing is on; the cards still load without it.
+    // Neither depends on the time zone or today's card, so both are read alongside them.
+    const stampsRead = postage ? mailStamps.balance(senderId).catch(() => null) : null;
+    const savedRead = cardTableOn() ? savedCardSignature(senderId).catch(() => null) : null;
     const timeZone = (await mailDelivery.personTimeZone(senderId)) || mailDelivery.FALLBACK_TIME_ZONE;
     const [today] = await cardsSentToday(senderId, timeZone, now);
     const arrivals = (byEmail, all = false) => holidayCards.arrivalsFor({ byEmail, all, timeZone, now, nextRound: mailDelivery.nextRound });
-    const postage = mailStamps.enabled(senderId);
-    // The stamps left, for the Mailbox row's line; the cards still load when the balance can't be read.
-    const stamps = postage ? await mailStamps.balance(senderId).catch(() => null) : null;
+    const stamps = await stampsRead;
     const controls = cardMedia.controls();
-    // Their saved signature (founder, November 16), only while signing is on; the cards still load without it.
-    const saved = cardTableOn() ? await savedCardSignature(senderId).catch(() => null) : null;
+    const saved = await savedRead;
     return res.json({
       open: holidayCards.seasonOpen(timeZone, now),
       holiday: holidayCards.SEASON.holiday,
@@ -2537,10 +2540,13 @@ router.get('/cards/arrivals', verifyToken, async (req, res) => {
     return res.status(404).json({ error: 'We couldn’t find that person. Search for them again.', code: 'MAIL_RECIPIENT_NOT_FOUND' });
   }
   try {
+    // The person's clock is read alongside the checks and used only once they pass (it never fails: an unreadable
+    // zone is null).
+    const zoneRead = mailDelivery.personTimeZone(toUserId);
     const refusal = await personRefusal(senderId, toUserId);
     if (refusal) return res.status(refusal.status).json(refusal.body);
     const now = new Date();
-    const timeZone = (await mailDelivery.personTimeZone(toUserId)) || mailDelivery.FALLBACK_TIME_ZONE;
+    const timeZone = (await zoneRead) || mailDelivery.FALLBACK_TIME_ZONE;
     return res.json({
       arrivals: holidayCards.arrivalsFor({ byEmail: false, timeZone, now, nextRound: mailDelivery.nextRound }),
       next_round_on: mailDelivery.localDate(mailDelivery.nextRound(timeZone, now), timeZone),
