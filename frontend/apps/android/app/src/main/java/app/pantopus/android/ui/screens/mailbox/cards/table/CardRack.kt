@@ -157,11 +157,14 @@ private fun RackContent(
         val above = top + 6.dp + topBlock + 10.dp
         val under = 16.dp + actionHeight + 12.dp + bottom
         val room = maxHeight - above - 12.dp - textReserve - under
-        // The table's size: 9 dp from each side on a phone (14 on a wide screen), at most 470 dp across (560 wide), and
-        // never so small that a long verse at the largest text takes the card away (the words scroll then).
+        // The table's size: 9 dp from each side on a phone (14 on a wide screen), as large as the height leaves room for
+        // (card shelves SPEC E3: a picked card is big, with no width cap in a large window), and never so small that a
+        // long verse at the largest text takes the card away (the words scroll then).
         val side = if (maxWidth < 560.dp) 9.dp else 14.dp
-        val widest = minOf(maxWidth - side * 2, if (maxWidth >= 600.dp) 560.dp else 470.dp)
-        val cardWidth = minOf(widest, room / 1.2f).coerceAtLeast(minOf(widest, maxWidth * 0.55f))
+        val widest = maxWidth - side * 2
+        // The least it may be still fits whole between the words above and the button under it.
+        val whole = (maxHeight - above - 12.dp - under) / 1.2f
+        val cardWidth = minOf(widest, room / 1.2f).coerceAtLeast(minOf(widest, maxWidth * 0.55f, whole))
         val cardHeight = cardWidth * 1.2f
         val cardTop = above + ((room - cardHeight) / 2).coerceAtLeast(0.dp) * 0.8f
         val textTop = cardTop + cardHeight + 12.dp
