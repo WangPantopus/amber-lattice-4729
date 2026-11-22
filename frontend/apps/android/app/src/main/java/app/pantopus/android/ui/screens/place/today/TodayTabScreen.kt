@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.pantopus.android.core.LaunchFeatures
 import app.pantopus.android.core.perf.ReportContentShown
 import app.pantopus.android.core.routing.DeepLinkRouter
 import app.pantopus.android.data.ai.AIScreenContext
@@ -57,6 +58,7 @@ import app.pantopus.android.ui.components.StatusChip
 import app.pantopus.android.ui.guidance.GuidanceScreen
 import app.pantopus.android.ui.guidance.GuidanceSpot
 import app.pantopus.android.ui.guidance.GuidanceSpotFacts
+import app.pantopus.android.ui.guidance.LocalGuidance
 import app.pantopus.android.ui.screens.homes.HomeCopyLifecycle
 import app.pantopus.android.ui.screens.homes.waitingLabel
 import app.pantopus.android.ui.screens.mailbox.cards.ChristmasCardDoorsViewModel
@@ -72,12 +74,15 @@ import app.pantopus.android.ui.screens.place.detail.PickupJourney
 import app.pantopus.android.ui.screens.place.detail.PlaceTodayDetailContent
 import app.pantopus.android.ui.screens.place.detail.SkySharePantopus
 import app.pantopus.android.ui.screens.place.detail.TodayAlertsCheck
+import app.pantopus.android.ui.screens.place.detail.TodayHouse
 import app.pantopus.android.ui.screens.place.detail.TodayTabParts
 import app.pantopus.android.ui.screens.place.detail.placeDetailAddress
 import app.pantopus.android.ui.screens.place.detail.rememberMinuteClock
 import app.pantopus.android.ui.screens.plans.today.PlansTodayActions
 import app.pantopus.android.ui.screens.plans.today.PlansTodayCards
+import app.pantopus.android.ui.screens.plans.today.PlansTodayUi
 import app.pantopus.android.ui.screens.plans.today.PlansTodayViewModel
+import app.pantopus.android.ui.screens.root.MailBadgeViewModel
 import app.pantopus.android.ui.screens.root.PullToRefreshUnderHeader
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderLayout
 import app.pantopus.android.ui.screens.root.ScrollAwayHeaderPage
@@ -128,6 +133,8 @@ fun TodayTabScreen(
     pickupHomeId: String? = null,
     /** The entry was lit, or this Today can't show it (another place): the request ends. */
     onPickupShown: () -> Unit = {},
+    /** The house on Today's flag and its "You have mail" row: the Mail tab, as tapping the tab does. */
+    onOpenMail: () -> Unit = {},
     /** A Needs you row's link (AI assistant phase 3), opened with the deep-link router. */
     onOpenLink: (String) -> Unit = DeepLinkRouter::handle,
     /** Share's "Or share in Pantopus": the Pulse composer or a chat with today's sky; null leaves them out. */
@@ -166,6 +173,11 @@ fun TodayTabScreen(
     // One Plans read serves the agenda's plan rows and today's plan cards.
     val plansViewModel: PlansTodayViewModel? = plans?.let { hiltViewModel() }
     val plansUi = plansViewModel?.ui?.collectAsStateWithLifecycle()?.value
+    // The house on Today (JOURNEYS section 3), while the server's switch is on for this account: read with the profile
+    // every app open reads. Mail's count is the Mail tab's badge's.
+    val houseOn = LocalGuidance.current?.repository?.state?.collectAsStateWithLifecycle()?.value?.todayHouse == true
+    val mailBadge: MailBadgeViewModel? = if (houseOn && LaunchFeatures.mailbox) hiltViewModel() else null
+    val unopenedMail = mailBadge?.unopened?.collectAsStateWithLifecycle()?.value ?: 0
     val scroll = rememberScrollState()
     // Around you (2026-11-14): Today's second half for the place shown. Without something to show there is no switch,
     // and Today is the page it was.
@@ -361,6 +373,23 @@ fun TodayTabScreen(
                                         litRequested = homeId != null && pickupHomeId == homeId && pickupRead,
                                         onLitShown = onPickupShown,
                                     ),
+                                // For a person whose Today shows a home or a saved address.
+                                house =
+                                    if (houseOn && (homeId != null || current.savedPlace != null)) {
+                                        TodayHouse(
+                                            mailbox = LaunchFeatures.mailbox,
+                                            unopenedMail = unopenedMail,
+                                            onOpenMail = onOpenMail,
+                                            needsYou = needsYouItems,
+                                            onOpenLink = onOpenLink,
+                                            plan = firstPlanCard(plansUi, plans),
+                                            card = { page ->
+                                                TodayHouseNeedsYouCard(needsYouItems, onOpenLink, unopenedMail, onOpenMail, page)
+                                            },
+                                        )
+                                    } else {
+                                        null
+                                    },
                             )
                         CompositionLocalProvider(LocalPlaceDetailRetry provides viewModel::pull) {
                             PlaceTodayDetailContent(
@@ -381,6 +410,16 @@ fun TodayTabScreen(
             }
         }
     }
+}
+
+/** The first of Today's Plans cards' plans (in the cards' order): its title, and how it opens. The house's lantern. */
+private fun firstPlanCard(
+    ui: PlansTodayUi?,
+    actions: PlansTodayActions?,
+): Pair<String, () -> Unit>? {
+    val open = actions?.onOpenPlan ?: return null
+    val plan = ui?.takeIf { it.on }?.let { (it.hosting + it.going + it.howWasIt + it.hostAgain).firstOrNull() } ?: return null
+    return plan.title to { open(plan.id) }
 }
 
 /**

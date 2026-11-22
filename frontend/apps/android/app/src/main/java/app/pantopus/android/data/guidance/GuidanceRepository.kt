@@ -57,6 +57,12 @@ data class GuidanceState(
     val lastCentreDay: String?,
     /** When the account was made (the server's ISO time; reminder 24 waits two days after it). */
     val createdAt: String? = null,
+    /**
+     * The house on Today is on for this account (the profile's `today_house`, kept with the rest, so a relaunch draws
+     * Today the same way at once). Read here because this is the profile read every app open makes; Today reads it, and
+     * tip card 3 isn't shown while it is on.
+     */
+    val todayHouse: Boolean = false,
 ) {
     fun hasSeen(id: String): Boolean = (seen[id]?.times ?: 0) > 0
 
@@ -141,6 +147,7 @@ class GuidanceRepository
                     guidance,
                     business = result.data.user.accountType == ACCOUNT_BUSINESS,
                     createdAt = result.data.user.createdAt,
+                    todayHouse = result.data.todayHouse == true,
                 )
                 flush()
             }
@@ -194,6 +201,7 @@ class GuidanceRepository
             guidance: GuidanceDto,
             business: Boolean,
             createdAt: String? = null,
+            todayHouse: Boolean? = null,
         ) {
             change(id) { state ->
                 val server = guidance.seen.mapValues { (_, seen) -> GuidanceSeen(seen.times, seen.lastAt) }
@@ -205,6 +213,7 @@ class GuidanceRepository
                     business = business,
                     seen = server + unsent,
                     createdAt = createdAt ?: state.createdAt,
+                    todayHouse = todayHouse ?: state.todayHouse,
                 )
             }
         }
@@ -281,6 +290,7 @@ class GuidanceRepository
                     json.optJSONArray(K_FLAGS)?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() }.orEmpty(),
                 lastCentreDay = json.optString(K_CENTRE_DAY).takeIf { it.isNotEmpty() },
                 createdAt = json.optString(K_CREATED).takeIf { it.isNotEmpty() },
+                todayHouse = json.optBoolean(K_TODAY_HOUSE, false),
             )
         }
 
@@ -304,6 +314,7 @@ class GuidanceRepository
                     .put(K_FLAGS, org.json.JSONArray(state.flags.toList()))
                     .put(K_CENTRE_DAY, state.lastCentreDay.orEmpty())
                     .put(K_CREATED, state.createdAt.orEmpty())
+                    .put(K_TODAY_HOUSE, state.todayHouse)
             prefs.edit().putString(state.userId, json.toString()).apply()
         }
 
@@ -325,6 +336,7 @@ class GuidanceRepository
             const val K_FLAGS = "flags"
             const val K_CENTRE_DAY = "centre_day"
             const val K_CREATED = "created_at"
+            const val K_TODAY_HOUSE = "today_house"
         }
     }
 

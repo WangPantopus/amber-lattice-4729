@@ -3,6 +3,7 @@
 package app.pantopus.android.ui.screens.place.detail
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -61,6 +63,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -102,6 +105,8 @@ fun TodaySkyHero(
     place: SkyPlace = SkyPlace(),
     /** Tapping the bins shows the pickup schedule. */
     onBins: (() -> Unit)? = null,
+    /** The house on Today: the larger picture with its mailbox, note and lantern; null draws the card as it was. */
+    house: SkyHouse? = null,
 ) {
     val reduced = rememberMotionReduced()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
@@ -124,12 +129,15 @@ fun TodaySkyHero(
     var restHeight by remember { mutableFloatStateOf(0f) }
     val pxPerDp = LocalDensity.current.density
     val shape = RoundedCornerShape(20.dp)
+    // The card's width (dp), for where the larger house's roof begins: the chips stay left of it.
+    var cardWidth by remember { mutableFloatStateOf(0f) }
+    val onCard = rememberHouseOnCard(house, place.home, cardWidth, showing = scrub.index == null, reduced = reduced)
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 // Grows with large fonts instead of clipping the reading; the ground stays at the bottom.
-                .heightIn(min = cardMinHeight(scrub.index != null, restHeight))
+                .heightIn(min = cardMinHeight(scrub.index != null, restHeight, house != null))
                 .shadow(elevation = 10.dp, shape = shape, ambientColor = sky.mid, spotColor = sky.mid)
                 .clip(shape)
                 // Behind the crossfade between two hours, so the page never shows through.
@@ -142,6 +150,7 @@ fun TodaySkyHero(
                     // The scroll container clips the bounds, so the difference is what's scrolled away.
                     hidden.floatValue = ((bounds.top - it.positionInWindow().y) / pxPerDp).coerceAtLeast(0f)
                     if (scrub.index == null) restHeight = it.size.height / pxPerDp
+                    cardWidth = it.size.width / pxPerDp
                 }.skyScrubGesture(hours.size, scrub)
                 .testTag("todaySkyHero"),
     ) {
@@ -165,7 +174,7 @@ fun TodaySkyHero(
             label = "skyScene",
         ) { fading ->
             val view = rememberSceneView(current = fading == scene, shown)
-            val painter = view.painter(!animating, place.home, place.streetLights)
+            val painter = view.painter(!animating, place.home, place.streetLights, onCard?.objects(now = fading.hour == null))
             Canvas(modifier = Modifier.fillMaxSize().clearAndSetSemantics { }) {
                 val t = time.doubleValue
                 val perDp = density
@@ -179,20 +188,32 @@ fun TodaySkyHero(
                 }
             }
         }
-        SkyReading(SkyReadingModel.of(data, current.note, picked, now), hours.size, scrub)
-        // The bins only stand at the curb now, not in an hour slid to.
-        val bins = current.note?.takeIf { picked == null && it.bins.isNotEmpty() }
-        if (bins != null && onBins != null) BinsTarget(bins, place.home, onBins)
+        SkyReading(SkyReadingModel.of(data, current.note, picked, now), hours.size, scrub, onCard?.roofLeft)
+        // The bins and the house's things only stand in the picture now, not in an hour slid to.
+        if (picked == null) SkyTargets(current.note, place.home, onBins, house)
         scrub.index?.takeIf { picked != null }?.let { SkyScrubTrack(it, hours.size) }
         SkyScrubHint(hours.size, scrubbing = scrub.index != null)
     }
 }
 
-/** At least 188 dp; while sliding, the card's height at rest, so an hour with fewer chips never shrinks it under the finger. */
+/**
+ * At least 188 dp (320 with the house on Today); while sliding, the card's height at rest, so an hour with fewer chips
+ * never shrinks it under the finger.
+ */
 private fun cardMinHeight(
     scrubbing: Boolean,
     rest: Float,
-) = if (scrubbing) maxOf(188f, rest).dp else 188.dp
+    house: Boolean,
+): Dp {
+    val least = if (house) HOUSE_CARD_HEIGHT else 188f
+    return if (scrubbing) maxOf(least, rest).dp else least.dp
+}
+
+/** The "Now" card's least height with the house on Today. */
+private const val HOUSE_CARD_HEIGHT = 320f
+
+/** Under the reading with the house on Today: room for the hills, the mailbox and the lantern. */
+private val HOUSE_GROUND_ROOM = 140.dp
 
 /** What a scene draws: the one on screen follows the clock and the forecast; one fading out keeps the view it last drew. */
 @Composable
@@ -226,6 +247,7 @@ private data class SkyView(
         still: Boolean,
         home: SkyHome,
         streetLights: Int,
+        house: SkyHouseObjects? = null,
     ) = TodaySkyPainter(
         condition = weather.conditionCode,
         moment = moment,
@@ -242,6 +264,7 @@ private data class SkyView(
                 streetLights = streetLights,
                 windMph = weather.windMph,
                 windFrom = weather.windDirection,
+                house = house,
             ),
     )
 
@@ -269,9 +292,16 @@ private fun BoxScope.BinsTarget(
     note: SkyNote,
     home: SkyHome,
     onBins: () -> Unit,
+    /** The house on Today: the ground, and the bins with it, are drawn larger. */
+    larger: Boolean = false,
 ) {
     BoxWithConstraints(modifier = Modifier.matchParentSize()) {
-        val center = TodaySkyGround.binsCenter(maxWidth.value, maxHeight.value, note.bins.size, home)
+        val center =
+            if (larger) {
+                SkyHouseSpots(maxWidth.value, maxHeight.value, home, note.bins.size).bins
+            } else {
+                TodaySkyGround.binsCenter(maxWidth.value, maxHeight.value, note.bins.size, home)
+            }
         Box(
             modifier =
                 Modifier
@@ -284,6 +314,125 @@ private fun BoxScope.BinsTarget(
                     }.testTag("todaySkyBins"),
         )
     }
+}
+
+/**
+ * The house on Today, for the "Now" card: what is true now and what a tap on each thing opens. The picture shows that
+ * something is there, never who.
+ */
+data class SkyHouse(
+    /** The Mailbox is on: a mailbox stands by the house. */
+    val mailbox: Boolean = false,
+    /** Mail came and waits unopened: the flag is up and a tap opens Mail; null: the flag is down, and it is no button. */
+    val onMail: (() -> Unit)? = null,
+    /** Something needs the person: a note is on the door. Its words are the first row's. */
+    val note: String? = null,
+    /** Opens that first row's own link; null when it has none (the note is drawn, and is no button). */
+    val onNote: (() -> Unit)? = null,
+    /** A plan on Today's cards: a lantern on the far hill. Its words are the plan's title. */
+    val lantern: String? = null,
+    val onLantern: (() -> Unit)? = null,
+)
+
+/** The house on Today's part of the "Now" card: its things' presence, and where the roof begins across the card. */
+private class HouseOnCard(
+    private val things: SkyHouseObjects,
+    /** Where the larger house's roof begins (dp); null until the card is measured. */
+    val roofLeft: Float?,
+) {
+    /**
+     * What stands in a scene: everything that is true [now]; in an hour slid to only the mailbox, its flag down (it is
+     * a fixture, like the house).
+     */
+    fun objects(now: Boolean): SkyHouseObjects = if (now) things else SkyHouseObjects(mailbox = things.mailbox)
+}
+
+/** Null without the house on Today: the card is drawn as it was. */
+@Composable
+private fun rememberHouseOnCard(
+    house: SkyHouse?,
+    home: SkyHome,
+    cardWidth: Float,
+    showing: Boolean,
+    reduced: Boolean,
+): HouseOnCard? {
+    house ?: return null
+    val things = rememberHouseObjects(house, showing, reduced)
+    return HouseOnCard(things, if (cardWidth > 0f) SkyHouseSpots(cardWidth, HOUSE_CARD_HEIGHT, home, 0).left else null)
+}
+
+/** What can be tapped in the picture: the bins on a pickup evening and, with the house on Today, its things. */
+@Composable
+private fun BoxScope.SkyTargets(
+    note: SkyNote?,
+    home: SkyHome,
+    onBins: (() -> Unit)?,
+    house: SkyHouse?,
+) {
+    val bins = note?.takeIf { it.bins.isNotEmpty() }
+    if (bins != null && onBins != null) BinsTarget(bins, home, onBins, larger = house != null)
+    if (house != null) HouseTargets(house, home, bins?.bins?.size ?: 0)
+}
+
+/** Each thing's 0..1 presence: there while it is true and the card shows now, fading over 300 ms (at once without motion). */
+@Composable
+private fun rememberHouseObjects(
+    house: SkyHouse,
+    showing: Boolean,
+    reduced: Boolean,
+): SkyHouseObjects {
+    val spec = tween<Float>(if (reduced) 0 else 300)
+    val mailbox by animateFloatAsState(if (house.mailbox) 1f else 0f, spec, label = "houseMailbox")
+    val flag by animateFloatAsState(if (showing && house.mailbox && house.onMail != null) 1f else 0f, spec, label = "houseFlag")
+    val note by animateFloatAsState(if (showing && house.note != null) 1f else 0f, spec, label = "houseNote")
+    val lantern by animateFloatAsState(if (showing && house.lantern != null) 1f else 0f, spec, label = "houseLantern")
+    return SkyHouseObjects(mailbox, flag, note, lantern)
+}
+
+/** The flag, the note and the lantern as 44 dp targets over the picture, like the bins. */
+@Composable
+private fun BoxScope.HouseTargets(
+    house: SkyHouse,
+    home: SkyHome,
+    bins: Int,
+) {
+    BoxWithConstraints(modifier = Modifier.matchParentSize()) {
+        val spots = SkyHouseSpots(maxWidth.value, maxHeight.value, home, bins)
+        if (house.mailbox && house.onMail != null) {
+            HouseTarget(spots.mailbox, "You have mail. Opens Mail.", "Open Mail", "todaySkyMailbox", house.onMail)
+        }
+        if (house.note != null && house.onNote != null) {
+            HouseTarget(spots.note, "${sentence(house.note)} Opens it.", "Open it", "todaySkyNote", house.onNote)
+        }
+        if (house.lantern != null && house.onLantern != null) {
+            HouseTarget(spots.lantern, "${sentence(house.lantern)} Opens the plan.", "Open the plan", "todaySkyLantern", house.onLantern)
+        }
+    }
+}
+
+/** [words] ending as a sentence, so what follows it is read as the next one. */
+private fun sentence(words: String): String = words.trim().let { if (it.lastOrNull() in setOf('.', '!', '?')) it else "$it." }
+
+/** One invisible 44 dp target centred on [center] (dp from the card's top left). */
+@Composable
+private fun HouseTarget(
+    center: Offset,
+    spoken: String,
+    action: String,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .offset(x = (center.x - 22).dp, y = (center.y - 22).dp)
+                .size(44.dp)
+                .clickable(onClickLabel = action, onClick = onClick)
+                .clearAndSetSemantics {
+                    contentDescription = spoken
+                    role = Role.Button
+                }.testTag(tag),
+    )
 }
 
 /** Seconds of the day, advanced at about 30 frames a second while [animating]. */
@@ -369,6 +518,8 @@ internal fun SkyReading(
     model: SkyReadingModel,
     hours: Int,
     scrub: SkyScrubState,
+    /** The house on Today: where its roof begins across the card (dp). The chips stay left of it, the ground below. */
+    roofLeft: Float? = null,
 ) {
     // The numeral is a picture of the reading: it grows a little with the font size, not without bound.
     val fontScale = LocalDensity.current.fontScale
@@ -377,7 +528,8 @@ internal fun SkyReading(
     // Room below the chips for the slide hint (SkyScrubHint): its 14 sp line grows with the font
     // size, so a fixed 36 dp put it on the last chip at the largest sizes. 36 dp at 100%.
     val hintRoom = 22.dp + with(LocalDensity.current) { 14.sp.toDp() }
-    Column(modifier = Modifier.padding(start = 18.dp, top = 14.dp, end = 110.dp, bottom = hintRoom)) {
+    val below = if (roofLeft != null) HOUSE_GROUND_ROOM else hintRoom
+    Column(modifier = Modifier.padding(start = 18.dp, top = 14.dp, end = 110.dp, bottom = below)) {
         Column(modifier = Modifier.clearAndSetSemantics { hourSemantics(model, hours, scrub) }) {
             // 14 sp bold (large text) in full white: it sits over the cloud deck on grey days.
             Text(
@@ -425,7 +577,10 @@ internal fun SkyReading(
                 )
             }
         }
-        if (model.chips.isNotEmpty()) SkyChips(model.chips, model.spokenChips)
+        if (model.chips.isNotEmpty()) {
+            // 18 dp in from the card's edge, 8 dp short of the roof.
+            SkyChips(model.chips, model.spokenChips, maxWidth = roofLeft?.let { (it - 26).coerceAtLeast(120f).dp })
+        }
     }
 }
 
@@ -469,9 +624,14 @@ private fun Modifier.noteGlass(): Modifier =
 private fun SkyChips(
     chips: List<String>,
     spoken: String,
+    maxWidth: Dp? = null,
 ) {
     FlowRow(
-        modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { contentDescription = spoken },
+        modifier =
+            Modifier
+                .padding(top = 2.dp)
+                .then(if (maxWidth != null) Modifier.widthIn(max = maxWidth) else Modifier)
+                .clearAndSetSemantics { contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

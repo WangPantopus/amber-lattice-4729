@@ -351,6 +351,7 @@ class GuidanceViewModel
                 writesLetters = LaunchFeatures.mailExtras,
                 moments = moments.on.value,
                 plans = plans.flags.value.plans,
+                todayHouse = state?.todayHouse == true,
             )
         }
 

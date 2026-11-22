@@ -6,7 +6,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -45,18 +44,7 @@ internal fun DrawScope.paintHouse(
     }
     drawPath(roofPath(home.roof, x - home.width / 2, x + home.width / 2, top, 20f), house)
     if (snow) drawSnow(snowLine(home.roof, x - home.width / 2, x + home.width / 2, top, 20f))
-    if (light.lit) {
-        drawRect(
-            brush =
-                Brush.radialGradient(
-                    listOf(SkyPalette.windowGlow.copy(alpha = 0.28f), SkyPalette.windowGlow.copy(alpha = 0f)),
-                    center = Offset(x, y - 12),
-                    radius = 40f,
-                ),
-            topLeft = Offset(x - 50, y - 60),
-            size = Size(100f, 70f),
-        )
-    }
+    if (light.lit) homeGlow(light, origin, 50f)
     paintWindows(home, light, origin)
     drawRect(light.door, Offset(x - 3, y - 11), Size(6f, 11f))
     if (home.pool) {

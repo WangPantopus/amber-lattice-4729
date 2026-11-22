@@ -198,7 +198,8 @@ object GuidanceEngine {
                         spot.place == GuidancePlaceShows.SavedPlace -> GuidanceCatalog.placeSaved()
                         else -> null
                     }
-                GuidanceScreen.Today -> GuidanceCatalog.tabToday(showsAroundYou = spot.showsAroundYou)
+                // With the house on Today, the picture and the card under it say what Today is: no tip card 3.
+                GuidanceScreen.Today -> GuidanceCatalog.tabToday(showsAroundYou = spot.showsAroundYou).takeUnless { state.todayHouse }
                 GuidanceScreen.Mail -> GuidanceCatalog.tabMail(writesLetters = input.writesLetters).takeIf { input.mailbox }
                 GuidanceScreen.Pulse -> GuidanceCatalog.tabPulse()
                 GuidanceScreen.Moments -> GuidanceCatalog.tabMoments()
@@ -349,11 +350,12 @@ object GuidanceEngine {
         writesLetters: Boolean,
         moments: Boolean,
         plans: Boolean,
+        todayHouse: Boolean = false,
     ): List<GuidanceCentre> =
         listOfNotNull(
             GuidanceCatalog.welcome(),
             GuidanceCatalog.placeSaved().takeIf { hasSavedAddress },
-            GuidanceCatalog.tabToday(showsAroundYou = false),
+            GuidanceCatalog.tabToday(showsAroundYou = false).takeUnless { todayHouse },
             GuidanceCatalog.tabMail(writesLetters).takeIf { mailbox },
             GuidanceCatalog.tabPulse(),
             GuidanceCatalog.tabMoments().takeIf { moments },
@@ -367,7 +369,7 @@ object GuidanceEngine {
     ): GuidanceCard? =
         when (id) {
             GuidanceIds.WELCOME -> GuidanceCatalog.welcome(joinedByInvitation(input.spot))
-            GuidanceIds.TAB_TODAY -> GuidanceCatalog.tabToday(input.spot.showsAroundYou)
+            GuidanceIds.TAB_TODAY -> GuidanceCatalog.tabToday(input.spot.showsAroundYou).takeUnless { input.state.todayHouse }
             GuidanceIds.TAB_MAIL -> GuidanceCatalog.tabMail(input.writesLetters)
             GuidanceIds.DONE_VERIFIED -> GuidanceCatalog.doneVerified(input.mailbox)
             GuidanceIds.DONE_HOME_SETUP -> GuidanceCatalog.doneHomeSetup(input.home?.needsPickupDay == true)

@@ -80,6 +80,26 @@ internal class PickupJourneyState {
     /** The save whose entry was already lit. */
     var litSave = 0
 
+    /**
+     * The house's question was answered "Yes, remind me": the save in flight turns the reminder on without the reminder
+     * question asking again.
+     */
+    private var answered = false
+
+    /** "Yes, remind me": [collections] are being saved as the household's schedule. */
+    fun answer(collections: List<PickupCollection>) {
+        pending = collections
+        answered = true
+    }
+
+    /** The reminder question reads it once, as it comes up for that save. */
+    fun takeAnswered(): Boolean = answered.also { answered = false }
+
+    /** The save failed: the next save's reminder question asks as usual. */
+    fun forgetAnswer() {
+        answered = false
+    }
+
     /** The entry lit now: [pickupEntryKey], which is also its agenda row's id. */
     var litKey by mutableStateOf<String?>(null)
         private set
