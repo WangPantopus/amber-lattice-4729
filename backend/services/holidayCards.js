@@ -42,14 +42,15 @@ const designIdOf = (number) => `christmas-2026-${String(number).padStart(2, '0')
 // Each also has what the card shelves draw (docs/product/card-shelves-2026-11-21, SPEC A3; the layout itself is launch
 // key card_shelves, but these are sent whatever it says and older apps ignore them): `short`, its name in the website's
 // row; `slug`, its public name in a link (/cards/collection/<slug>); `pick`, the number of the card that stands for it in
-// "One from each collection", never one of the first three of its own shelf (so one picture never shows twice on one
-// phone screen); and, for Christmas with Jesus Christ, its `parts` in story order, each a name and a range of numbers.
+// "One from each collection" (one of its own cards; since the founder's choices of November 22 it may be one of the
+// first three, SPEC E1); and, for Christmas with Jesus Christ, its `parts` in story order, each a name and a range of
+// numbers.
 const COLLECTIONS = [
   { id: 'first-christmas', name: 'Christmas with Jesus Christ', short: 'Jesus Christ', slug: 'jesus-christ',
     line: 'For the faithful, and anyone who loves the Christmas story.',
     numbers: [59, 60, 61, 62, 63, 64, 65, 66, 67,
       68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
-    pick: 65,
+    pick: 61,
     parts: [['The first Christmas', 59, 68], ['His life and teaching', 69, 80], ['The cross and the empty tomb', 81, 89]] },
   { id: 'with-santa', name: 'Christmas with Santa', short: 'Santa', slug: 'santa',
     line: 'For anyone who still believes, and anyone who used to.',
@@ -58,7 +59,7 @@ const COLLECTIONS = [
     line: 'For anyone who dreams of the city at Christmas.', numbers: [96, 97, 98, 99, 100], pick: 99 },
   { id: 'as-a-kid', name: 'Christmas as a Kid', short: 'As a Kid', slug: 'as-a-kid',
     line: 'For families with kids, and anyone who misses being one.',
-    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 105], pick: 105 },
+    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 105], pick: 1 },
   { id: 'grandmas-house', name: 'Christmas at Grandma’s House', short: 'Grandma’s House', slug: 'grandmas-house',
     line: 'For grandparents, and the grandkids who still come home.', numbers: [44, 45, 46, 47, 48, 49], pick: 47 },
   { id: 'memories', name: 'Christmas Memories', short: 'Memories', slug: 'memories',
@@ -70,7 +71,7 @@ const COLLECTIONS = [
   { id: 'in-your-twenties', name: 'Christmas in Your Twenties', short: 'Your Twenties', slug: 'your-twenties',
     line: 'For first apartments, old roommates and long trips home.', numbers: [32, 33, 34, 35, 36, 37], pick: 37 },
 ].map(({ id, name, short, slug, line, numbers, pick, parts }) => {
-  if (numbers.indexOf(pick) < 3) throw new Error(`Collection ${id}: its pick ${pick} must be on its shelf, after the first three`);
+  if (!numbers.includes(pick)) throw new Error(`Collection ${id}: its pick ${pick} must be one of its own cards`);
   return {
     id, name, short, slug, line, designs: numbers.map(designIdOf), pick: designIdOf(pick),
     ...(parts ? { parts: parts.map(([partName, from, to]) => ({
@@ -78,6 +79,14 @@ const COLLECTIONS = [
     })) } : {}),
   };
 });
+// The order "One from each collection" draws the collections' picks in (founder, November 22, SPEC E2): only that row;
+// the shelves and every names row keep the collections' order above. Sent as `opening` in both card lists, so it can
+// change again without an app build.
+const OPENING = ['first-christmas', 'memories', 'in-the-city', 'with-santa', 'as-a-kid', 'grandmas-house', 'with-friends',
+  'love-stories', 'in-your-twenties'];
+if (OPENING.length !== COLLECTIONS.length || !COLLECTIONS.every((c) => OPENING.includes(c.id))) {
+  throw new Error('OPENING must name every collection once');
+}
 const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((design) => [design, c.id])));
 const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'santa' }; // every other: nostalgia
 
@@ -824,7 +833,7 @@ async function sentLine(userId, now = new Date()) {
 
 module.exports = {
   REPLY_TAG, REPLY_SUBJECT, isReply, replyRowId, replyDigest, replyView, uuidOf,
-  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, DESIGNS, pickACardDesign, PERSON_ARRIVALS, EMAIL_ARRIVALS,
+  CARD_TAG, MESSAGE_LIMIT, SUBJECT, SEALED_NOTE, SEASON, COLLECTIONS, OPENING, DESIGNS, pickACardDesign, PERSON_ARRIVALS, EMAIL_ARRIVALS,
   EMAIL_ARRIVALS_ALL,
   SIGNATURE_BOX, SIGNATURE_MAX_BYTES, cleanSignature, signatureOf, mediaOf, mediaView,
   designById, isCard, isByLink, cardLinkToken, cardEmailToken, EMAIL_TRIES, emailTrouble, emailPicture, emailWent, emailSendAt, requestRowId, requestDigest, isSealed, sealedView, christmasMorning, seasonOpen, dayStart,
