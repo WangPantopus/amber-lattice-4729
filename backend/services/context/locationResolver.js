@@ -9,6 +9,7 @@
  */
 
 const supabaseAdmin = require('../../config/supabaseAdmin');
+const directDb = require('../../config/directDb');
 const logger = require('../../utils/logger');
 const ngeohash = require('ngeohash');
 const { timezoneFromCoordinates: inferTimezone, validTimezone, coordinates } = require('../../utils/timezone');
@@ -320,6 +321,76 @@ function locationFailed(userId, err, report) {
  * @returns {Promise<{latitude: number|null, longitude: number|null, label: string, source: string, timezone: string, geohash: string|null, confidence: number, homeId: string|null}>}
  */
 async function resolveLocation(userId, report = null) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      // A direct read that worked failed nothing, so `report` stays as it is.
+      return await chooseLocation(userId, await directLocationReads(userId), report);
+    } catch (error) {
+      directDb.fellBack('location', error);
+      return apiLocation(userId, report);
+    }
+  }
+  if (mode !== 'shadow') return apiLocation(userId, report);
+  const started = performance.now();
+  const direct = directLocationReads(userId).then((reads) => chooseLocation(userId, reads, null))
+    .then((location) => ({ location, ms: performance.now() - started }), (error) => ({ error }));
+  const answer = await apiLocation(userId, report);
+  const apiMs = performance.now() - started;
+  direct.then(({ location, ms, error }) => directDb.compared('location', error ? { error }
+    : { differs: JSON.stringify(location) === JSON.stringify(answer) ? [] : ['location'], directMs: ms, apiMs }));
+  return answer;
+}
+
+// Every row chooseLocation may use, in one query on a direct connection (config/directDb.js), shaped as the Data API
+// sends them (json_build_object / json_agg, so the Home's PostGIS point and the timestamps arrive in the same form):
+// the location preferences and default Home, the viewing location, active occupancies and verified owner Homes
+// (oldest first, each with HOME_LOCATION_SELECT's columns), legacy owned Homes, and the newest saved place.
+const homeJson = (alias) => `json_build_object('id', ${alias}.id, 'name', ${alias}.name, 'address', ${alias}.address,
+  'city', ${alias}.city, 'state', ${alias}.state, 'map_center_lat', ${alias}.map_center_lat,
+  'map_center_lng', ${alias}.map_center_lng, 'location', ${alias}.location)`;
+const LOCATION_SQL = `
+select
+  (select json_build_object('location_mode', p.location_mode, 'custom_latitude', p.custom_latitude,
+     'custom_longitude', p.custom_longitude, 'custom_label', p.custom_label,
+     'daily_briefing_timezone', p.daily_briefing_timezone, 'default_home_id', p.default_home_id)
+   from "UserNotificationPreferences" p where p.user_id = $1) as prefs,
+  (select json_build_object('latitude', v.latitude, 'longitude', v.longitude, 'label', v.label, 'is_pinned', v.is_pinned,
+     'type', v.type, 'updated_at', v.updated_at)
+   from "UserViewingLocation" v where v.user_id = $1) as viewing,
+  (select coalesce(json_agg(json_build_object('home_id', o.home_id,
+     'home', case when h.id is null then null else ${homeJson('h')} end) order by o.created_at), '[]')
+   from "HomeOccupancy" o left join "Home" h on h.id = o.home_id
+   where o.user_id = $1 and o.is_active = true) as occupancies,
+  (select coalesce(json_agg(json_build_object('home_id', w.home_id,
+     'home', case when h.id is null then null else ${homeJson('h')} end) order by w.created_at), '[]')
+   from "HomeOwner" w left join "Home" h on h.id = w.home_id
+   where w.subject_id = $1 and w.owner_status = 'verified') as owners,
+  (select coalesce(json_agg(${homeJson('h')} order by h.created_at), '[]')
+   from "Home" h where h.owner_id = $1) as legacy,
+  (select json_build_object('id', s.id, 'label', s.label, 'latitude', s.latitude, 'longitude', s.longitude, 'state', s.state)
+   from "SavedPlace" s where s.user_id = $1 order by s.created_at desc, s.id desc limit 1) as saved`;
+
+// chooseLocation's reads from that query, each as the Data API reply it stands for.
+async function directLocationReads(userId) {
+  const [row] = await directDb.read('location', LOCATION_SQL, [userId]);
+  if (!row) throw new Error('No location row');
+  const prefs = row.prefs ? { ...row.prefs } : null;
+  if (prefs) delete prefs.default_home_id;
+  const value = (data) => Promise.resolve({ value: data });
+  return {
+    prefs: async () => ({ data: prefs, error: null }),
+    // .single(): no row is "no rows" (PGRST116), which isn't a failure.
+    viewing: value(row.viewing ? { data: row.viewing, error: null }
+      : { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } }),
+    homes: value([{ data: row.occupancies, error: null }, fallbackHomeCandidates(row.owners, row.legacy)]),
+    defaultHome: value({ data: row.prefs ? { default_home_id: row.prefs.default_home_id } : null, error: null }),
+    savedPlace: async () => ({ data: row.saved, error: null }),
+  };
+}
+
+// The Data API path (DIRECT_DB_READS off, a fallback, or the answer in shadow mode).
+async function apiLocation(userId, report) {
   try {
     // The viewing location and the homes don't depend on the preferences, so
     // all three reads start together: one round trip instead of three (Today
