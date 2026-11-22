@@ -1,5 +1,5 @@
 import { moments } from '@pantopus/api';
-import type { Background, Box, Point, Ring, MapResult } from '@pantopus/api/endpoints/moments';
+import type { Background, Box, Location, Point, Ring, MapResult } from '@pantopus/api/endpoints/moments';
 
 export const colors: Record<Background, string> = {
   teal: 'linear-gradient(155deg,#138580,#094a48)',
@@ -136,20 +136,78 @@ export function heightColor(feet: number, flying = false) {
 export function messageOf(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
-export async function deviceFix(): Promise<GeolocationPosition> {
-  if (!navigator.geolocation) throw new Error('Location is unavailable in this browser.');
-  return new Promise((resolve, reject) =>
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      (e) =>
-        reject(
-          new Error(
-            e.code === 1
-              ? 'Location is off. Allow location in your browser, or share with connections without a pin.'
-              : 'Your location could not be found. Try again.',
-          ),
+
+export type DeviceFix = Pick<GeolocationPosition, 'coords' | 'timestamp'>;
+export const PIN_REVIEW_DISTANCE_M = 50;
+
+export function distance(a: Point, b: Point) {
+  const rad = Math.PI / 180,
+    lat = (b.latitude - a.latitude) * rad,
+    lon = (b.longitude - a.longitude) * rad;
+  return (
+    12742000 *
+    Math.asin(
+      Math.min(
+        1,
+        Math.sqrt(
+          Math.sin(lat / 2) ** 2 +
+            Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(lon / 2) ** 2,
         ),
-      { enableHighAccuracy: true, maximumAge: 30_000, timeout: 10_000 },
-    ),
+      ),
+    )
   );
+}
+
+export function recentFix(timestamp: number) {
+  const age = Date.now() - timestamp;
+  // The API allows two minutes of clock skew and a five-minute-old fix. Reserve a minute to send it.
+  return age >= -2 * 60_000 && age <= 4 * 60_000;
+}
+
+export function gpsLocation({ coords, timestamp }: DeviceFix): Extract<Location, { source: 'gps' }> {
+  return {
+    source: 'gps',
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    fix_at: new Date(timestamp).toISOString(),
+  };
+}
+
+export async function deviceFix(maximumAge = 30_000, signal?: AbortSignal): Promise<DeviceFix> {
+  signal?.throwIfAborted();
+  if (!navigator.geolocation) throw new Error('Location is unavailable in this browser.');
+  return new Promise((resolve, reject) => {
+    const geo = navigator.geolocation;
+    const unavailable =
+      'Your browser couldn’t get a current location. Check Location Services and try again.';
+    function cleanup() {
+      geo.clearWatch(watch);
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
+    function fail(reason: unknown) {
+      cleanup();
+      reject(reason);
+    }
+    const abort = () => fail(signal?.reason);
+    const watch = geo.watchPosition(
+      (position) => {
+        const raw = position.timestamp;
+        // Geolocation uses epoch milliseconds. Some providers expose microseconds or seconds.
+        // Accept a conversion only if the measurement itself is recent.
+        const timestamp = [raw, raw / 1000, raw * 1000].find(recentFix);
+        if (timestamp === undefined) return;
+        cleanup();
+        resolve({ coords: position.coords, timestamp: Math.trunc(timestamp) });
+      },
+      (error) =>
+        fail(
+          new Error(error.code === 1 ? 'Allow location access in your browser and try again.' : unavailable),
+        ),
+      { enableHighAccuracy: true, maximumAge, timeout: 10_000 },
+    );
+    // An old reading can arrive first, with no subsequent update while the device is still.
+    const timer = setTimeout(() => fail(new Error(unavailable)), 12_000);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
 }

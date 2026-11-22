@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Disc, Square, SwitchCamera, X } from 'lucide-react';
-import { deviceFix, messageOf } from './momentState';
+import { deviceFix, messageOf, type DeviceFix } from './momentState';
 import { canvasOf, jpeg } from './momentArtwork';
 
 export interface CameraCapture {
   file: File;
   at: number;
-  position: GeolocationPosition | null;
+  position: DeviceFix | null;
 }
 export default function MomentCamera({
   maxSeconds,
