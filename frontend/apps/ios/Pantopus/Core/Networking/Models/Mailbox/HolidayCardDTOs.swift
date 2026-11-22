@@ -84,9 +84,12 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
     /// Pick a card shows the card shelves (server switch `card_shelves`, card shelves A5); false from older servers and
     /// with the switch off: one collection at a time behind a row of names.
     public let shelves: Bool
+    /// The collections' ids in the order "One from each collection" draws them (card shelves E2); nil from older
+    /// servers: the collections' own order.
+    public let opening: [String]?
 
     private enum CodingKeys: String, CodingKey {
-        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media, travel, shelves
+        case open, holiday, year, designs, collections, arrivals, today, stamps, signature, media, travel, shelves, opening
         case noteHelp = "note_help"
         case maxRecipients = "max_recipients"
         case postageEnabled = "postage_enabled"
@@ -134,6 +137,7 @@ public struct HolidayCardsResponse: Decodable, Sendable, Hashable {
         noteHelp = (try? c.decodeIfPresent(Bool.self, forKey: .noteHelp)) ?? false
         travel = try? c.decodeIfPresent(HolidayCardsTravel.self, forKey: .travel)
         shelves = (try? c.decodeIfPresent(Bool.self, forKey: .shelves)) ?? false
+        opening = try? c.decodeIfPresent([String].self, forKey: .opening)
     }
 
     /// "Add a photo" shows (the server takes one now, and this build carries the memories), unless no bought stamp

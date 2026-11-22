@@ -14,7 +14,8 @@ import SwiftUI
 
 /// How large the shelves draw their cards (card shelves B2, B3 and the "Big cards" rule): the opening row's large card
 /// about 76% of the screen's width (no wider than 340), a shelf's card about 56% (190 to 240), and neither smaller
-/// than a tile of today's two-across grid in the same column.
+/// than a tile of today's two-across grid in the same column. Where that makes a shelf card wide (a wide window), a
+/// large card stays at least 1.3 times as wide, up to 60% of the window (the design session's answer of Nov 21).
 struct HolidayCardShelfSizes: Equatable {
     /// A grid tile's picture: half the column less the grid's gap and the tile's padding.
     let grid: CGFloat
@@ -23,8 +24,9 @@ struct HolidayCardShelfSizes: Equatable {
 
     init(screen: CGFloat, column: CGFloat) {
         grid = max(0, (column - Spacing.s3) / 2 - Spacing.s1 * 2)
-        opening = max(grid, min(screen * 0.76, 340))
         shelf = max(grid, min(max(screen * 0.56, 190), 240))
+        let large = max(grid, min(screen * 0.76, 340))
+        opening = max(large, min(shelf * 1.3, screen * 0.6))
     }
 }
 
@@ -59,11 +61,21 @@ extension HolidayCardsResponse {
         return !collections.isEmpty && collections.allSatisfy { $0.slug != nil }
     }
 
+    /// The collections in the order "One from each collection" draws them: those the server's `opening` names, in its
+    /// order (an id that isn't a collection is skipped), then the rest in the collections' order (card shelves E2).
+    var openingCollections: [HolidayCardCollection] {
+        var ordered: [HolidayCardCollection] = []
+        let collections = pickableCollections
+        for id in opening ?? [] {
+            if let named = collections.first(where: { $0.id == id }), !ordered.contains(named) { ordered.append(named) }
+        }
+        return ordered + collections.filter { !ordered.contains($0) }
+    }
+
     /// The pictures on the card shelves' first screen: the first two large cards and the first shelf's first two.
     var shelvesFirstScreen: [String] {
-        let collections = pickableCollections
-        let picks = collections.compactMap(\.pick).prefix(2)
-        let first = collections.first.map { designs(in: $0).prefix(2).map(\.id) } ?? []
+        let picks = openingCollections.compactMap(\.pick).prefix(2)
+        let first = pickableCollections.first.map { designs(in: $0).prefix(2).map(\.id) } ?? []
         return Array(picks) + first
     }
 
@@ -103,7 +115,8 @@ struct HolidayCardShelves: View {
     var body: some View {
         let collections = cards.pickableCollections
         let sizes = HolidayCardShelfSizes(screen: bleed.screen, column: bleed.column)
-        let picks = collections.compactMap { collection in
+        // In the server's opening order; the shelves keep the collections' order.
+        let picks = cards.openingCollections.compactMap { collection in
             collection.pick.flatMap { id in cards.designs(in: collection).first { $0.id == id } }
                 .map { ShelfPick(collection: collection, design: $0) }
         }
