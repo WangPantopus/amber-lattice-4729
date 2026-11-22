@@ -106,10 +106,14 @@ export function PublicCardPage({ design, year, inviteCode, store = null }: { des
             <PaperFront design={design.id} caption={design.caption} paper={design.paper} year={year} mailedOn={POSTMARK_DAY} />
           </div>
         </div>
+        {/* Beside the card on a wide screen, under it on a phone (`display: contents` there). */}
+        <div className={styles.side}>
         <div className={styles.words}>
           <h1 className={`${styles.caption} ${isVerseReference(design.caption) ? styles.verse : cardHand.className}`}>{design.caption}</h1>
-          {/* The whole verse printed on the picture, in readable type (design plan 6.2). */}
-          {design.verse ? <blockquote className={styles.verseText} data-testid="publicCardVerse">{design.verse}</blockquote> : null}
+          {/* The whole verse printed on the picture, in readable type (design plan 6.2): here beside the card on a wide
+              screen; under the first button when the words are under the card, so that button stays on the first
+              screen beside a card as wide as the phone (SPEC E3). */}
+          {design.verse ? <blockquote className={`${styles.verseText} ${styles.verseBeside}`} data-testid="publicCardVerse">{design.verse}</blockquote> : null}
           <p className={styles.line}>A Christmas card you can send on Pantopus</p>
         </div>
         <div className={styles.actions}>
@@ -124,8 +128,10 @@ export function PublicCardPage({ design, year, inviteCode, store = null }: { des
               <p className={styles.small}>It arrives with their morning mail, and they open it like real mail.</p>
             </>
           )}
+          {design.verse ? <blockquote className={`${styles.verseText} ${styles.verseUnder}`} data-testid="publicCardVerseUnder">{design.verse}</blockquote> : null}
           <Link href={withRef('/cards', inviteCode)} className={styles.link} data-testid="publicCardsAll">See all the cards</Link>
           <Foot />
+        </div>
         </div>
       </div>
     </TablePage>
