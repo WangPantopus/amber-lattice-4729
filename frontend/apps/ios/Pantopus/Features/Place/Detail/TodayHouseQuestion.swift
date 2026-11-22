@@ -22,6 +22,8 @@ struct TodayHousePickup: Equatable {
     let eve: String
     /// The general schedule is not confirmed for this address.
     let unverified: Bool
+    /// Whose general schedule the garbage date comes from: "city", "county" or "state" (the date's `scope`).
+    let scope: String
     /// The schedule as the household's own: garbage, and recycling where the general schedule has it.
     let collections: [PickupCollection]
 
@@ -34,7 +36,9 @@ struct TodayHousePickup: Equatable {
               let weekday = Self.weekday(garbage.anchorDate) else { return nil }
         day = Self.names[weekday]
         eve = Self.names[(weekday + 6) % 7]
-        unverified = calendar.upcoming.contains { $0.kind == "garbage" && !$0.isHousehold && $0.confidence == "unverified" }
+        let general = calendar.upcoming.filter { $0.kind == "garbage" && !$0.isHousehold }
+        unverified = general.contains { $0.confidence == "unverified" }
+        scope = general.min { $0.date < $1.date }?.scope ?? "city"
         collections = [garbage] + [Self.pattern("recycling", in: calendar)].compactMap(\.self)
     }
 
@@ -77,14 +81,10 @@ struct TodayHouseQuestion: View {
                 .foregroundStyle(Theme.Color.appText)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
-            Text(
-                pickup.unverified
-                    ? "From your city's schedule, not confirmed. Change it if yours differs."
-                    : "From your city's schedule. Change it if yours differs."
-            )
-            .font(.system(size: 13.5))
-            .foregroundStyle(Theme.Color.appTextSecondary)
-            .fixedSize(horizontal: false, vertical: true)
+            Text("From your \(whose) schedule\(pickup.unverified ? ", not confirmed" : ""). Change it if yours differs.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Theme.Color.appTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             if let error {
                 Text(error)
                     .font(.system(size: 13))
@@ -100,6 +100,16 @@ struct TodayHouseQuestion: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.Color.primary600.opacity(0.55), lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today.house.question")
+    }
+
+    /// "city's", or the county's or the state's when the garbage date comes from that schedule (a Clark County
+    /// home's day from the county's map), so the line never names the wrong source.
+    private var whose: String {
+        switch pickup.scope {
+        case "county": "county's"
+        case "state": "state's"
+        default: "city's"
+        }
     }
 
     /// Side by side; one under the other at the largest text sizes.

@@ -115,9 +115,12 @@ final class PlanBringEditor {
         isSaving = true
         error = nil
         defer { isSaving = false }
+        // The thing the host switches to theirs with this save (the last one when several).
+        let claimed = items.last { $0.mine && !$0.wasMine }?.label
         do {
             let reply: PlanBringResponse = try await api.request(PlansEndpoints.putBring(planId: planId, body))
             if let bring = reply.bring { take(bring) } else { items = [] }
+            PlanBringHostClaim.shared.saved(planId: planId, claimed: claimed, mine: items.filter(\.mine).map(\.label))
             PlansStoreReads.changed(planId: planId)
             return true
         } catch {
@@ -151,5 +154,33 @@ final class PlanBringEditor {
                 wasMine: item.claim?.mine == true
             )
         }
+    }
+}
+
+/// The host's own claim, said in the bring list's editor ("I'm bringing this"; a host has no "I'll bring it" on
+/// their plan): the plan page's bring card shows "You're bringing bread. Your guests can see it." for the thing a
+/// save just switched to theirs (JOURNEYS section 2, change 2). It goes when the host switches that thing off
+/// again, or leaves the plan's screen (`PlansDestination`).
+@Observable
+@MainActor
+final class PlanBringHostClaim {
+    static let shared = PlanBringHostClaim()
+
+    /// The thing to name, by plan.
+    private(set) var things: [String: String] = [:]
+
+    private init() {}
+
+    /// A save of the list went through. `claimed`: a thing newly the host's; `mine`: every thing the host brings now.
+    func saved(planId: String, claimed: String?, mine: [String]) {
+        if let claimed {
+            things[planId] = claimed
+        } else if let shown = things[planId], !mine.contains(shown) {
+            things[planId] = nil
+        }
+    }
+
+    func left(planId: String) {
+        things[planId] = nil
     }
 }

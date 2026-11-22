@@ -183,7 +183,7 @@ struct PlanHostExtraCards: View {
 
     var body: some View {
         if let dates = card.extrasPart.dates { PlanDatesHostCard(card: card, dates: dates) }
-        if let bring = card.bring { PlanBringHostCard(bring: bring, onOpen: onOpenBring) }
+        if let bring = card.bring { PlanBringHostCard(bring: bring, planId: card.id, onOpen: onOpenBring) }
         if let chipIn = card.extrasPart.chipIn { PlanChipInCard(viewModel: viewModel, chipIn: chipIn) }
         if let gift = card.extrasPart.gift { PlanGiftCard(viewModel: viewModel, gift: gift, isHost: true) }
     }

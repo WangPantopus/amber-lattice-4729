@@ -19,6 +19,9 @@ struct PlansDestination: View {
             switch route {
             case let .plan(id, intent):
                 PlanScreen(planId: id, intent: intent, path: $path, onHost: onHost)
+                    // The host's "You're bringing…" line stays while a screen is over the plan and goes once the
+                    // plan's own screen is left.
+                    .onDisappear { if !path.contains(route) { PlanBringHostClaim.shared.left(planId: id) } }
             case let .requests(planId):
                 PlanRequestsScreen(planId: planId, onOpenProfile: { path.append(.profile(userId: $0)) }, onBack: { pop() })
             case let .whosComing(planId):
