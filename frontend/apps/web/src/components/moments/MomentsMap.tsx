@@ -14,7 +14,7 @@ export interface MapTarget extends Point {
   serial: number;
 }
 interface Camera {
-  project(p: Point): { x: number; y: number };
+  project(p: Point): { x: number; y: number } | null;
   move(p: MapTarget): void;
   zoomBy(delta: number): void;
   bounds(): Box;
@@ -147,7 +147,14 @@ export default function MomentsMap(props: Props) {
           }, 12000);
           map.once('style.load', () => clearTimeout(fallback));
           camera.current = {
-            project: (point) => map.project([point.longitude, point.latitude]),
+            project: (point) => {
+              const coordinates = new gl.LngLat(point.longitude, point.latitude);
+              const pixel = map.project(coordinates);
+              // Mapbox projects the far side of the globe onto pixels on the near side, too.
+              // Only place a button where the visible surface maps back to this location.
+              if (map.getZoom() < 5 && map.unproject(pixel).distanceTo(coordinates) > 1000) return null;
+              return pixel;
+            },
             move: (to) => map.jumpTo({ center: [to.longitude, to.latitude], zoom: to.zoom - 1 }),
             zoomBy: (delta) => map.zoomTo(map.getZoom() + delta, { duration: 180 }),
             bounds: () => {
@@ -280,7 +287,7 @@ export default function MomentsMap(props: Props) {
               latitude: cluster.center[0],
               longitude: cluster.center[1],
             });
-            if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+            if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
             const rings = cluster.items;
             if (rings.length > 1 && rings.length <= 6 && rings.every((r) => props.focused.includes(r.id))) {
               return rings.map((r, i) => {
