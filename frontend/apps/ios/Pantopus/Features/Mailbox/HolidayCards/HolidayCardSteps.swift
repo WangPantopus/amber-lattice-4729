@@ -47,6 +47,11 @@ enum HolidayCardDesk {
     static func error(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Theme.Color.error : MailPaper.warningInk
     }
+
+    /// Words in wax red on the desk (the card shelves' "All 15 ›"): lighter in dark mode, like `error`.
+    static func wax(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Theme.Color.error : MailPaper.wax
+    }
 }
 
 // MARK: - Step 1: who it's for
@@ -359,6 +364,17 @@ struct HolidayCardPickStep: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Spacing.s3, alignment: .top), count: 2)
 
     var body: some View {
+        if cards.showsShelves {
+            // The card shelves (server switch `card_shelves`): the opening row, then a shelf per collection.
+            HolidayCardShelves(viewModel: viewModel, cards: cards)
+        } else {
+            collectionGrid
+        }
+    }
+
+    /// One collection at a time behind a row of names, as before the card shelves.
+    @ViewBuilder
+    private var collectionGrid: some View {
         let collections = cards.pickableCollections
         let shown = collections.first { $0.id == collectionId }
             ?? viewModel.designId.flatMap { id in collections.first { $0.designs.contains(id) } }
@@ -412,38 +428,84 @@ struct HolidayCardPickStep: View {
         return Button {
             viewModel.largeDesign = design
         } label: {
-            VStack(spacing: 6) {
-                HolidayCardPictureView(design: design.id, paper: design.paper, height: design.height, thumb: true)
-                    .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                    .overlay {
-                        if selected {
-                            RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 3)
-                        }
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if selected {
-                            Icon(.check, size: 14, strokeWidth: 3, color: MailPaper.waxText)
-                                .frame(width: 24, height: 24)
-                                .background(MailPaper.wax, in: Circle())
-                                .padding(6)
-                        }
-                    }
-                    .shadow(color: MailPaper.cardShadow.opacity(selected ? 0.25 : 0.22), radius: selected ? 7 : 5, x: 0, y: 4)
-                Text(design.caption)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(scheme == .dark ? Theme.Color.appTextSecondary : MailPaper.cardTextSoft)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(Spacing.s1)
-            .contentShape(Rectangle())
+            HolidayCardTile(design: design, selected: selected)
+                .padding(Spacing.s1)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(design.caption)
         .accessibilityHint("Shows it large.")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("sendCardDesign.\(design.id)")
+    }
+}
+
+/// A picture as Pick a card draws it: on its own paper with a soft shadow, the wax-red edge and tick when it's the one
+/// chosen, and its caption under it. The grid's tile, and the card shelves' (`HolidayCardShelves`).
+struct HolidayCardTile: View {
+    let design: HolidayCardDesign
+    let selected: Bool
+    /// The opening row's large cards: the picture itself once it's at hand, over its smaller copy.
+    var sharp = false
+    /// The opening row's caption: darker and heavier than a tile's.
+    var strongCaption = false
+    /// A shelf's row keeps two lines for every caption, so it doesn't grow as its cards come in.
+    var reservesTwoLines = false
+    /// A shelf not near yet: its paper, of the picture's shape, until it comes near.
+    var loads = true
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(spacing: 6) {
+            picture
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .overlay {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(MailPaper.wax, lineWidth: 3)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Icon(.check, size: 14, strokeWidth: 3, color: MailPaper.waxText)
+                            .frame(width: 24, height: 24)
+                            .background(MailPaper.wax, in: Circle())
+                            .padding(6)
+                    }
+                }
+                .shadow(color: MailPaper.cardShadow.opacity(selected ? 0.25 : 0.22), radius: selected ? 7 : 5, x: 0, y: 4)
+            Text(design.caption)
+                .font(.system(size: 13, weight: strongCaption ? .semibold : .medium))
+                .foregroundStyle(captionInk)
+                .multilineTextAlignment(.center)
+                .lineLimit(2, reservesSpace: reservesTwoLines)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var captionInk: Color {
+        if strongCaption { return HolidayCardDesk.text(scheme) }
+        return scheme == .dark ? Theme.Color.appTextSecondary : MailPaper.cardTextSoft
+    }
+
+    @ViewBuilder
+    private var picture: some View {
+        let thumb = HolidayCardPictureView(design: design.id, paper: design.paper, height: design.height, thumb: true)
+        if !loads {
+            MailPaper.cardPaper(design.paper)
+                .aspectRatio(HolidayCardPicture.aspect(height: design.height), contentMode: .fit)
+        } else if sharp, !NetworkMonitor.shared.isLowData {
+            // The smaller copy first (it's what loads fastest), then the picture over it once it's here.
+            thumb.overlay {
+                HolidayCardPictureImage(design: design.id) { image in
+                    if let image {
+                        Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+        } else {
+            thumb
+        }
     }
 }
 
@@ -455,6 +517,9 @@ struct HolidayCardPickStep: View {
 struct HolidayCardPickBar: View {
     @Bindable var viewModel: HolidayCardFlowViewModel
     let cards: HolidayCardsResponse
+    /// The bar presents the card rack; the card shelves present it themselves (the bar shows only once a card is
+    /// chosen there).
+    var presentsRack = true
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -497,19 +562,28 @@ struct HolidayCardPickBar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(MailPaper.cardRowLine).frame(height: 1)
         }
-        // The card rack: the pictures at full size on the table's cloth (plan Part 5).
-        .fullScreenCover(item: $viewModel.largeDesign) { design in
-            HolidayCardRack(viewModel: viewModel, cards: cards, start: design)
+        .modifier(HolidayCardRackCover(viewModel: viewModel, cards: cards, isOn: presentsRack))
+    }
+}
+
+/// The card rack over Pick a card: the pictures at full size on the table's cloth (plan Part 5).
+private struct HolidayCardRackCover: ViewModifier {
+    @Bindable var viewModel: HolidayCardFlowViewModel
+    let cards: HolidayCardsResponse
+    let isOn: Bool
+
+    func body(content: Content) -> some View {
+        if isOn {
+            content.fullScreenCover(item: $viewModel.largeDesign) { design in
+                HolidayCardRack(viewModel: viewModel, cards: cards, start: design)
+            }
+        } else {
+            content
         }
     }
 }
 
 extension HolidayCardsResponse {
-    /// The collections in the row, in the server's order: those with a picture.
-    fileprivate var pickableCollections: [HolidayCardCollection] {
-        collections.filter { !designs(in: $0).isEmpty }
-    }
-
     /// A collection's pictures in its grid order.
     func designs(in collection: HolidayCardCollection) -> [HolidayCardDesign] {
         collection.designs.compactMap { id in designs.first { $0.id == id } }

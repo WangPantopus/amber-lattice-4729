@@ -398,7 +398,7 @@ private struct ChipStripRow: View {
 
 // MARK: - Clear of the closed Duo's strip
 
-private extension View {
+extension View {
     /// For a row that scrolls sideways: it runs into the room after it as before, up to where something covers the
     /// screen across it. Closed, the iPhone Duo's strip beside the screen holds the clock and the Wi-Fi level with the
     /// tabs and chips, which ran on under them; Apple reports what covers the screen as an occlusion region. Open

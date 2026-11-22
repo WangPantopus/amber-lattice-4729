@@ -244,6 +244,50 @@ func stampBalanceLabel(free: Int, paid: Int) -> String {
     "\(free) free \(free == 1 ? "card" : "cards") · \(max(0, paid)) paid \(paid == 1 ? "stamp" : "stamps")"
 }
 
+/// The stamps left as a small chip at the end of the "To" line on the card shelves (card shelves B1), where the box
+/// was: "1 free · 9,986 stamps". A tap opens the stamp books, as "Buy stamps" does; none until the balance is read.
+struct StampLineChip: View {
+    let store: MailStampStore
+    let onOpen: () -> Void
+
+    var body: some View {
+        if let balance = store.balance {
+            Button(action: onOpen) {
+                Text(Self.words(free: balance.freeRemaining, paid: balance.paidRemaining))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(MailPaper.wax)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(MailPaper.cardField, in: Capsule())
+                    .overlay(Capsule().strokeBorder(MailPaper.wax.opacity(0.32), lineWidth: 1))
+                    // Drawn 28 points tall, touched across 44.
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, -8)
+            .accessibilityLabel(stampBalanceLabel(free: balance.freeRemaining, paid: balance.paidRemaining)
+                + (balance.salesOpen == false ? ". View stamp books" : ". Buy stamp books"))
+            .accessibilityIdentifier("stampChip")
+        }
+    }
+
+    /// "1 free · 9,986 stamps" with both kinds, "12 stamps" with stamps only, "3 free cards" with free cards only, and
+    /// "No stamps left" (the design session's words, the same on both phones).
+    static func words(free: Int, paid: Int) -> String {
+        let stamps = max(0, paid)
+        let count = "\(stamps.formatted()) \(stamps == 1 ? "stamp" : "stamps")"
+        switch (free > 0, stamps > 0) {
+        case (true, true): return "\(free.formatted()) free · \(count)"
+        case (false, true): return count
+        case (true, false): return "\(free.formatted()) free \(free == 1 ? "card" : "cards")"
+        case (false, false): return "No stamps left"
+        }
+    }
+}
+
 /// A visible buying action below the step heading, with an explicit free/paid balance.
 struct StampChip: View {
     let store: MailStampStore
