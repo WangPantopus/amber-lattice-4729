@@ -38,7 +38,7 @@ export interface PointerContent {
 }
 
 /** The tab cards (1–7): each shows the first time its tab opens, limited only by "one on screen". */
-export const TAB_CARD_IDS = ['welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse'] as const;
+export const TAB_CARD_IDS = ['welcome', 'place_saved', 'tab_today', 'tab_mail', 'tab_pulse', 'tab_moments'] as const;
 export type TabCardId = (typeof TAB_CARD_IDS)[number];
 
 export interface WelcomeFacts {
@@ -90,6 +90,14 @@ export function mailCard({ letters }: { letters: boolean }): CentreCardContent {
   ];
   if (letters) lines.push(['ellipsis', 'To write a letter, tap ••• and choose “Write a letter”.']);
   return { id: 'tab_mail', title: 'Mail', button: 'Got it', lines };
+}
+
+export function momentsCard(): CentreCardContent {
+  return { id: 'tab_moments', title: 'Moments', button: 'Got it', lines: [
+    ['clock', 'A Moment is a photo, a short video or a few words about what is happening at a place right now.'],
+    ['map-pin', 'Each one sits on the map where it was posted, and goes away by itself when its time is up.'],
+    ['send', 'Choose Create Moment to share one.'],
+  ] };
 }
 
 /** 5. Pulse, first open. */

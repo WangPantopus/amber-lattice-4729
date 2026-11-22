@@ -53,6 +53,8 @@ const createNextConfig = (phase) => ({
   output: 'standalone',
   reactStrictMode: true,
   experimental: {
+    // Moments accepts a 50 MiB video plus its JPEG poster and two moderation frames.
+    middlewareClientMaxBodySize: '56mb',
     // Instant Screens (contract §3): a page visited in this tab reopens from the router's
     // memory instead of asking the server for its route again, so going back is instant and
     // works offline. Signed-in pages are thin client wrappers (their data loads in the

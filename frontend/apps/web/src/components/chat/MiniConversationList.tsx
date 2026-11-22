@@ -5,6 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ConversationTopic } from '@pantopus/types';
 import { getInitials } from '@pantopus/ui-utils';
 import { launchFeatures } from '@/lib/featureFlags';
+import { inboxMomentLabel } from '@/components/moments/MomentLinks';
 import { chosenUsername } from '@pantopus/utils';
 import { conversationKey, useConversationPages } from '@/lib/conversations';
 import { useOnlineStatus } from '@/components/map/OfflineIndicator';
@@ -94,7 +95,7 @@ export default function MiniConversationList({ onSelectConversation }: MiniConve
           ? (conv.room_name || (isHome ? 'Home Chat' : 'Group Chat'))
           : (conv.other_participant_name || chosenUsername(conv.other_participant_username) || 'Chat');
         const avatarUrl = !isRoom ? conv.other_participant_avatar : null;
-        const preview = conv.last_message_preview || '';
+        const preview = conv.last_message_moment ? inboxMomentLabel(conv.last_message_moment) : conv.last_message_preview || '';
         const lastMessageAt = conv.last_message_at || null;
         const unread = conv.total_unread || 0;
         const isUnread = unread > 0;

@@ -9,6 +9,7 @@ import {
   Moon, Navigation, Smartphone, Check, Megaphone, Monitor,
 } from 'lucide-react';
 import type { UserNotificationPreferences } from '@pantopus/types';
+import { useMomentsAccess } from '@/components/moments/useMomentsAccess';
 import { launchFeatures } from '@/lib/featureFlags';
 import { setNotificationPreferences, useNotificationPreferences } from '@/lib/me';
 
@@ -30,6 +31,7 @@ const LOCATION_MODES = [
 
 export default function NotificationPreferencesPage() {
   const router = useRouter();
+  const momentsOn = useMomentsAccess().data?.enabled;
   // The session cookie is readable only in the browser: until mount, the page
   // renders what the cache already has (nothing on a fresh load), like the server.
   const [mounted, setMounted] = useState(false);
@@ -188,6 +190,10 @@ export default function NotificationPreferencesPage() {
             value={prefs.beacon_push_enabled ?? true}
             onChange={(v) => update({ beacon_push_enabled: v })} last />
         </Section>}
+
+        {momentsOn && <Section title="Moments"><ToggleRow icon={<Clock className="w-5 h-5" />}
+          title="Moments from connections" subtitle="Get notified when a connection shares a Moment."
+          value={prefs.moments_enabled ?? true} onChange={v => update({ moments_enabled: v })} last /></Section>}
 
         {/* 3. Quiet Hours */}
         <Section title="Quiet Hours">

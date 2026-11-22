@@ -12,6 +12,8 @@ import { BadgeProvider, useBadges } from '@/contexts/BadgeContext';
 import { SocketProvider } from '@/contexts/SocketContext';
 import { useDesktopNotifications } from '@/hooks/useDesktopNotifications';
 import { NavIcons, HomeIcons, BusinessIcons } from '@/lib/icons';
+import { useMomentBadge } from './moments/useMomentBadge';
+import { useMomentsAccess } from './moments/useMomentsAccess';
 import MobileTabBar, { hidesMobileTabs, isConversation } from '@/components/MobileTabBar';
 import { PantopusMark } from '@/components/brand/PantopusMark';
 import UnifiedFAB, { routeHasFab } from '@/components/UnifiedFAB';
@@ -289,7 +291,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const showMobileTabs = isMobile && !isBusinessContext && !hidesMobileTabs(pathname);
   // A conversation on a phone is exactly the window the browser shows: only its
   // thread scrolls, so the page can't slide its header under the top bar.
-  const fillsWindow = isMobile && isConversation(pathname);
+  const isMomentsPage = pathname === '/app/moments' || pathname.startsWith('/app/moments/');
+  const fillsWindow = isMomentsPage || (isMobile && isConversation(pathname));
+  const mobileTabPadding = !showMobileTabs ? '' : isMomentsPage
+    ? ' pb-[calc(var(--fab-lift)+env(safe-area-inset-bottom))]'
+    : routeHasFab(pathname) ? ' pb-40' : ' pb-20';
 
   const currentTab = searchParams.get('tab') || 'overview';
 
@@ -708,7 +714,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           above it (its top edge 144 px up), pb-40 lets the last row scroll clear.
           z-0 makes this a stacking context, so nothing inside rises above the header, tab bar or floating
           buttons. A dialog that stays in here sets data-covers-shell, which suspends that while it's open. */}
-      <main key="content" className={`pt-14 ${fillsWindow ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-screen'}${offsetSlides ? ' transition-[margin-left] duration-200 ease-in-out' : ''} relative z-0 has-[[data-covers-shell]]:z-auto${showMobileTabs ? (routeHasFab(pathname) ? ' pb-40' : ' pb-20') : ''}`} style={contentStyle}>
+      <main key="content" className={`pt-14 ${fillsWindow ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-screen'}${offsetSlides ? ' transition-[margin-left] duration-200 ease-in-out' : ''} relative z-0 has-[[data-covers-shell]]:z-auto${mobileTabPadding}`} style={contentStyle}>
         {offlineNotice}
         {children}
       </main>
@@ -724,7 +730,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
        * ═══════════════════════════════════════════════════════ */}
       {/* Launch cut #4 (Open Gigs): no "Hire Help" (open-post composer). */}
       <UnifiedFAB showHireHelp={launchFeatures.openGigs} onHireHelp={() => appDispatch({ type: 'SET_COMPOSER_OPEN', value: true })} hideOnPageFABRoutes />
-      <FloatingChatWidget />
+      {!isMomentsPage && <FloatingChatWidget />}
       {/* Guidance cards for new accounts (founder 2026-11-16; they replaced the older promo pop-ups). */}
       <GuidanceHost user={me ?? null} computer={!isMobile} blocked={namePromptOpen || feedComposerOpen || composerOpen || placePreviewOpen || mobileOpen} />
       {/* Asked once of an account with no name (sign-up didn't ask before October 2026). */}
@@ -809,6 +815,8 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
   // Christmas cards (TABCARD): the red envelope on Mail and "Send a Christmas card" under it, while cards are open.
   const christmasMail = useChristmasMail();
   const cardsOpen = useCardsOpenInChrome();
+  const momentsOn = useMomentsAccess().data?.enabled;
+  const newMoments = useMomentBadge(!!momentsOn);
   const onCards = currentPath === '/app/mailbox/cards';
 
   // ── Prefetch on hover/focus of primary nav items ──────────
@@ -883,6 +891,7 @@ export function PersonalSidebarContent({ currentPath, showLabels, chatUnread, ma
       <SidebarItem icon={NavIcons.today} label="Today" active={startsWith('/app/today') || startsWith('/app/hub/today')} onClick={() => go('/app/today')} onPrefetch={prefetchToday} showLabel={showLabels} testId="sidebar-today" />
       {/* The Pulse tab, named Nearby until the founder's November 7 decision (its test id stays). */}
       <SidebarItem icon={NavIcons.pulse} label="Pulse" active={startsWith('/app/feed') || startsWith('/app/beacons') || startsWith('/app/gigs') || startsWith('/app/marketplace')} onClick={() => go('/app/feed')} onPrefetch={prefetchNearby} showLabel={showLabels} testId="sidebar-nearby" />
+      {momentsOn && <SidebarItem icon={NavIcons.moments} label="Moments" active={startsWith('/app/moments')} onClick={() => go('/app/moments')} onPrefetch={() => router.prefetch('/app/moments')} showLabel={showLabels} accent="teal" accessory={newMoments ? <span aria-label="New Moments" className="h-2 w-2 rounded-full bg-teal-500"/> : undefined} testId="sidebar-moments" />}
       {launchFeatures.mailbox ? <SidebarItem icon={christmasMail ? NavIcons.christmasMail : NavIcons.mail} label="Mail" active={startsWith('/app/mailbox') && !(cardsOpen && onCards)} onClick={() => go('/app/mailbox/personal')} onPrefetch={prefetchMail} showLabel={showLabels} count={mailUnread} countLabel="unopened" testId="sidebar-mail" /> : null}
       {/* While Christmas cards are open (Mail's "Send a Christmas card" row shows), the send flow is one step away,
           right under Mail (TABCARD 2d, founder 2026-11-13). */}

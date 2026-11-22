@@ -25,7 +25,7 @@ function openTileCache(): Promise<Cache | null> {
  * Custom Leaflet TileLayer that intercepts tile loading to cache/serve
  * tiles via the Cache API.
  */
-const CachedTileLayerClass = L.TileLayer.extend({
+class CachedMapTiles extends L.TileLayer {
   createTile(coords: L.Coords, done: L.DoneCallback): HTMLImageElement {
     const tile = document.createElement('img');
     const url = this.getTileUrl(coords);
@@ -39,6 +39,8 @@ const CachedTileLayerClass = L.TileLayer.extend({
     openTileCache().then(async (cache) => {
       if (!cache) {
         // Cache API unavailable — fall through to normal load
+        tile.onload = () => done(undefined, tile);
+        tile.onerror = () => done(new Error('Tile load error'), tile);
         tile.src = url;
         return;
       }
@@ -91,8 +93,12 @@ const CachedTileLayerClass = L.TileLayer.extend({
     });
 
     return tile;
-  },
-});
+  }
+}
+
+export function createCachedTileLayer(url: string, attribution: string): L.TileLayer {
+  return new CachedMapTiles(url, { attribution, maxZoom: 19, tileSize: 512, zoomOffset: -1 });
+}
 
 interface CachedTileLayerProps {
   url: string;
@@ -111,12 +117,7 @@ export function CachedTileLayer({ url, attribution, onOfflineTileServed }: Cache
   }, []);
 
   useEffect(() => {
-    const layer = new (CachedTileLayerClass as any)(url, {
-      attribution,
-      maxZoom: 19,
-      tileSize: 512,
-      zoomOffset: -1,
-    });
+    const layer = createCachedTileLayer(url, attribution);
 
     layer.on('tilecachehit', handleCacheHit);
     layer.addTo(map);

@@ -17,6 +17,7 @@ import { postReactionIcon } from '@/components/feed/PostCard';
 import type { FeedSurface, MapMarker, PostType } from '@pantopus/api';
 import { BaseMap, MapSkeleton, useCluster, useAnimatedPins, useMapBounds, pinAnimClass, clusterAnimClass, ZoomGateOverlay, NearestActivityPrompt, RETINA_TILE_URL } from '@/components/map';
 import type { Bounds } from '@/components/map';
+import { MAP_PUBLIC_TOKEN } from '@/components/map/constants';
 import type { ClusterPoint } from '@/components/map/useCluster';
 import type { NearestActivityCenter } from '@/components/map';
 import { useReducedMotion } from '@/components/scheduling/polish/a11y';
@@ -35,9 +36,6 @@ const PulseGlMap = dynamic(
   () => import('./PulseGlMap').catch(() => ({ default: GlMapUnavailable })),
   { ssr: false, loading: () => <MapSkeleton /> },
 );
-
-/** Mapbox's public token: the 3D map needs it (the flat map's tiles do too). */
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
 /** WebGL 2, which the 3D map needs (mapboxgl.supported() checks the GPU once it has loaded). */
 function webGl2Present(): boolean {
@@ -287,7 +285,7 @@ export default function FeedMap({
   const reducedMotion = useReducedMotion();
 
   // The 3D map (Mapbox GL, Standard style) where it can run; the flat Leaflet map otherwise.
-  const [renderer, setRenderer] = useState<'3d' | 'flat'>(() => (MAPBOX_TOKEN && webGl2Present() ? '3d' : 'flat'));
+  const [renderer, setRenderer] = useState<'3d' | 'flat'>(() => (MAP_PUBLIC_TOKEN && webGl2Present() ? '3d' : 'flat'));
   const rendererRef = useRef(renderer);
   rendererRef.current = renderer;
   const glCamera = useRef<PulseCamera | null>(null);
@@ -626,7 +624,7 @@ export default function FeedMap({
     <div className="relative w-full h-full">
       {renderer === '3d' ? (
         <PulseGlMap
-          token={MAPBOX_TOKEN}
+          token={MAP_PUBLIC_TOKEN}
           center={center}
           zoom={13}
           markers={glMarkers}

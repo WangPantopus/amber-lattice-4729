@@ -4,13 +4,13 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { authSessionMarker } from '@pantopus/api/client';
-import type { UnifiedConversationItem } from '@pantopus/types';
+import type { ChatMomentQuote, UnifiedConversationItem } from '@pantopus/types';
 import { queryKeys } from '@/lib/query-keys';
 import { useSocket } from '@/hooks/useSocket';
 import type { ConversationsReply } from '@/lib/conversation-storage';
 import { compareConversationTime } from '@/lib/conversationOrder';
 
-type InboxMessage = { id?: string; room_id?: string; message?: string; message_text?: string;
+type InboxMessage = { moment?: ChatMomentQuote | null; id?: string; room_id?: string; message?: string; message_text?: string;
   created_at?: string; user_id?: string; sender_id?: string; sender?: { id?: string }; preview?: string; unread_for?: number };
 
 export function keptConversationRows(reply?: ConversationsReply): UnifiedConversationItem[] {
@@ -51,6 +51,7 @@ export function useConversationEvents(accountId?: string | null) {
         // not re-increment a count already included in the server snapshot.
         if (row.last_message_at && compareConversationTime(timestamp, row.last_message_at) <= 0) return previous;
         rows[index] = { ...row, last_message_at: timestamp,
+          last_message_moment: message.moment ? { ...message.moment, from_me: own } : null,
           last_message_preview: (message.preview || message.message_text || message.message || '[Attachment]').substring(0, 100),
           total_unread: typeof message.unread_for === 'number' ? message.unread_for : Number(row.total_unread || 0) + (own ? 0 : 1) };
         rows.sort((a, b) => compareConversationTime(b.last_message_at, a.last_message_at));

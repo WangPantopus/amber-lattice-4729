@@ -351,6 +351,7 @@ export async function getMutedEntities(): Promise<{
     username: string | null;
     avatar_url: string | null;
     muted_at: string;
+    surface?: 'moments' | null;
   }>;
   topic_mutes?: Array<{ topic: string; area_id: string | null; muted_at: string }>;
 }> {
