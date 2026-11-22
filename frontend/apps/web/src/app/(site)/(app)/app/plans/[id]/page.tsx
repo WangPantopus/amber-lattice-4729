@@ -189,12 +189,13 @@ export default function PlanPage() {
           {action.error instanceof Error ? action.error.message : 'That change couldn’t be saved.'}
         </p>
       )}
-      {(isIn ||
-        !!plan.business ||
-        (plan.kind !== 'playdate' &&
-          plan.audience === 'invited' &&
-          plan.place_kind === 'public' &&
-          invited)) &&
+      {active &&
+        (isIn ||
+          !!plan.business ||
+          (plan.kind !== 'playdate' &&
+            plan.audience === 'invited' &&
+            plan.place_kind === 'public' &&
+            invited)) &&
         plan.place && (
           <section className="space-y-2 rounded-2xl bg-surface-muted p-4">
             <h3 className="flex items-center gap-2 font-semibold">
@@ -276,7 +277,7 @@ export default function PlanPage() {
               </li>
             ))}
           </ul>
-          {plan.chat_open && plan.chat_room_id && (
+          {plan.chat_room_id && (plan.chat_open || !active) && (
             <Link
               className={buttonClass}
               href={
@@ -287,7 +288,7 @@ export default function PlanPage() {
               }
             >
               <MessageCircle size={17} />
-              Open plan chat
+              {plan.chat_open ? 'Open plan chat' : 'Read plan chat'}
             </Link>
           )}
           {isHost && active && !plan.chat_room_id && (
