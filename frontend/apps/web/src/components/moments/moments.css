@@ -28,30 +28,6 @@
   opacity: 0.5;
   cursor: default;
 }
-/* The tabs take their actual height, including safe-area and text-size changes. */
-[data-moments-shell] {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-[data-moments-shell] > main {
-  flex: 1;
-  min-height: 0;
-  height: auto;
-}
-[data-moments-shell] > nav {
-  position: relative;
-  flex: none;
-}
-/* Full-window mode keeps the same map mounted and removes the shell from keyboard navigation. */
-[data-moments-shell]:has(.mo-board[data-full-window]) > :is(header, aside, nav) {
-  display: none;
-}
-[data-moments-shell]:has(.mo-board[data-full-window]) > main {
-  margin-left: 0 !important; /* The responsive sidebar sets an inline offset. */
-  padding: 0;
-  transition: none;
-}
 .mo-board {
   --mo-edge: clamp(10px, 1.3vw, 20px);
   --mo-left: max(var(--mo-edge), env(safe-area-inset-left));
@@ -1608,7 +1584,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-moments-shell] > main,
   .mo-board *,
   .mo-dialog * {
     scroll-behavior: auto !important;

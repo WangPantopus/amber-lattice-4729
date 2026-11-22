@@ -37,6 +37,8 @@ export interface StandardMapProps {
   center: [number, number];
   zoom: number;
   markers: PulseMarker[];
+  /** Show the built-in zoom buttons alongside the compass. */
+  showZoomControls?: boolean;
   onMarkerClick: (id: string) => void;
   /** The post whose card is open, if any. */
   popupPin?: MapMarker | null;
@@ -135,7 +137,11 @@ export default function StandardMap(props: StandardMapProps) {
     }
 
     // A compass that shows the tilt and turns it back north (clear of My location and the cards).
-    instance.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
+    const { showZoomControls = false } = latest.current;
+    instance.addControl(
+      new mapboxgl.NavigationControl({ showZoom: showZoomControls, visualizePitch: true }),
+      showZoomControls ? 'top-right' : 'bottom-left',
+    );
 
     let styleLoaded = false;
     let settled = false;
@@ -153,14 +159,14 @@ export default function StandardMap(props: StandardMapProps) {
       const view = readView(instance);
       if (view) latest.current.onView(view);
     };
-    instance.on('moveend', () => {
+    // A resize can also end a move. Report the final bounds once, including after a sidebar transition.
+    const reportWhenSettled = () => {
       if (!settled) return;
       window.clearTimeout(reportTimer);
       reportTimer = window.setTimeout(report, 250);
-    });
-    instance.on('resize', () => {
-      if (settled) report();
-    });
+    };
+    instance.on('moveend', reportWhenSettled);
+    instance.on('resize', reportWhenSettled);
 
     // A person's pan, for the header's quick return. Drag events come from pointer pans only
     // (not the wheel, the keyboard or the map's own moves); two fingers are a pinch, not a scroll.
