@@ -40,6 +40,7 @@ import LookItOver from './LookItOver';
 import CardTable, { type SendMoment, type TableCard } from './CardTable';
 import CardShareSheet from './CardShareSheet';
 import CardRack from './CardRack';
+import { CardShelves, CollectionPage, scrollerOf, shelvesBarClass, shelvesOf, type Shelf } from './CardShelves';
 import { askTakeBack } from './takeBack';
 import { chosenPersonFor } from './sendOneBack';
 import { clearCardDraft, readCardDraft, saveCardDraft } from './cardDraft';
@@ -545,9 +546,124 @@ function PickStep({
   chosen,
   onChoose,
   onNext,
+  shelving = null,
 }: {
   designs: HolidayCardDesign[];
   /** The server's collections, in order; none (a server from before collections): one grid of every design. */
+  collections: HolidayCardCollection[];
+  year: number;
+  chosen: string | null;
+  onChoose: (id: string) => void;
+  onNext: () => void;
+  /** The shelves (server key card_shelves; null: today's screen) and the collection whose page is open. */
+  shelving?: ShelvesState | null;
+}) {
+  if (shelving) return <ShelvesPick designs={designs} year={year} chosen={chosen} onChoose={onChoose} onNext={onNext} shelving={shelving} />;
+  return <TodaysPick designs={designs} collections={collections} year={year} chosen={chosen} onChoose={onChoose} onNext={onNext} />;
+}
+
+/** Step 2 as shelves (card shelves SPEC Part C): what the flow keeps while it's open. */
+type ShelvesState = {
+  shelves: Shelf[];
+  /** The collection whose page is open, or null for the shelves. */
+  open: Shelf | null;
+  onOpenCollection: (shelf: Shelf) => void;
+  /** Where the shelves were scrolled when a collection's page opened (null: start at the chosen card's shelf). */
+  restoreTop: number | null;
+};
+
+/**
+ * "Pick a card" as shelves: the shelves or a collection's page, the card rack among the collection's cards (with
+ * card_table on; off, a tap chooses the card as today's grid does), and the bar, which shows only once a card is chosen.
+ */
+function ShelvesPick({ designs: list, year, chosen, onChoose, onNext, shelving }: {
+  designs: HolidayCardDesign[];
+  year: number;
+  chosen: string | null;
+  onChoose: (id: string) => void;
+  onNext: () => void;
+  shelving: ShelvesState;
+}) {
+  const [large, setLarge] = useState<HolidayCardDesign | null>(null);
+  const [rack, setRack] = useState<{ id: string; shelf: Shelf } | null>(null);
+  const designs = useMemo(() => new Map(list.map((design) => [design.id, design])), [list]);
+  const picked = (chosen && designs.get(chosen)) || null;
+  const shelfOf = (id: string) => shelving.shelves.find((s) => s.cards.some((c) => c.id === id)) ?? null;
+  const open = (id: string, shelf: Shelf) => {
+    if (launchFeatures.cardTable) { setRack({ id, shelf }); return; }
+    if (id === chosen) setLarge(designs.get(id) ?? null);
+    else onChoose(id);
+  };
+  const seeLarger = () => {
+    if (!picked) return;
+    const shelf = shelfOf(picked.id);
+    if (launchFeatures.cardTable && shelf) setRack({ id: picked.id, shelf });
+    else setLarge(picked);
+  };
+  return (
+    <div className="mt-3 px-4">
+      {shelving.open ? (
+        <CollectionPage key={shelving.open.id} shelf={shelving.open} chosen={chosen} onOpen={(id) => open(id, shelving.open as Shelf)} />
+      ) : (
+        <CardShelves shelves={shelving.shelves} chosen={chosen} restoreTop={shelving.restoreTop} onOpen={open} onAll={shelving.onOpenCollection} />
+      )}
+      {/* Hidden until a card is chosen; then it comes up from the bottom, and the page ends above it. */}
+      {picked ? (
+        <div
+          data-testid="sendCardPickBar"
+          className={`${shelvesBarClass} sticky bottom-0 z-10 -mx-4 mt-5 border-t border-[#e3d8c3] bg-[#f5f0e8] px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_16px_rgba(60,40,10,0.08)] md:-bottom-6 [@media(prefers-color-scheme:dark)]:border-app [@media(prefers-color-scheme:dark)]:bg-app`}
+        >
+          <div className="flex min-h-[48px] items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cardPicture(picked.id, 'thumb')} alt="" className="w-10 flex-shrink-0 -rotate-2 rounded-[2px] shadow-[0_3px_8px_rgba(60,40,10,0.25)]" />
+            <p className="min-w-0 flex-1 text-[14px] font-medium leading-[18px] text-[#374151] [@media(prefers-color-scheme:dark)]:text-app-text-secondary">{picked.caption}</p>
+            <button
+              type="button"
+              data-testid="sendCardSeeLarger"
+              onClick={seeLarger}
+              className="flex min-h-[44px] flex-shrink-0 items-center rounded-xl border border-[#d6cbb6] bg-[#fffdf8] px-3.5 text-[14px] font-semibold text-[#374151] transition hover:bg-[#f5efe3] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1d1d]"
+            >
+              See it larger
+            </button>
+          </div>
+          <button type="button" data-testid="sendCardWriteOn" onClick={onNext} className={`${primary} mt-2`} style={{ backgroundColor: WAX }}>Write on this card</button>
+        </div>
+      ) : null}
+      {rack ? (
+        <CardRack
+          designs={rack.shelf.cards}
+          collectionName={rack.shelf.name}
+          start={rack.id}
+          year={year}
+          onClose={(lastSeen) => { onChoose(lastSeen); setRack(null); }}
+          onWrite={(id) => { onChoose(id); setRack(null); onNext(); }}
+        />
+      ) : null}
+      {large ? <LargeCard design={large} year={year} onClose={() => setLarge(null)} onChoose={(id) => { onChoose(id); setLarge(null); }} /> : null}
+    </div>
+  );
+}
+
+/** "See it larger" without the card rack (card_table off): the card's front, with Close and Choose this card. */
+function LargeCard({ design, year, onClose, onChoose }: { design: HolidayCardDesign; year: number; onClose: () => void; onChoose: (id: string) => void }) {
+  return (
+    <div role="dialog" aria-modal="true" aria-label={design.caption} data-testid="sendCardLarge" className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={onClose}>
+      <div style={{ width: 'min(420px, calc((100vh - 120px) * 0.72), 100%)' }} onClick={(event) => event.stopPropagation()}>
+        <CardFront design={design.id} caption={design.caption} paper={design.paper} year={year} className="rounded-[3px] shadow-2xl" />
+        <div className="mt-3 flex gap-2.5">
+          <button type="button" data-testid="sendCardLargeClose" onClick={onClose} className={secondary}><X className="h-4 w-4" aria-hidden /> Close</button>
+          <button type="button" data-testid="sendCardChooseThis" onClick={() => onChoose(design.id)} className={primary} style={{ backgroundColor: WAX }}>Choose this card</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Today's "Pick a card": a row of the collections' names and one collection's grid at a time. */
+function TodaysPick({
+  designs, collections, year, chosen, onChoose, onNext,
+}: {
+  designs: HolidayCardDesign[];
   collections: HolidayCardCollection[];
   year: number;
   chosen: string | null;
@@ -1793,6 +1909,45 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   const stamps = useStamps(Boolean(data?.postage_enabled), `${sent?.id ?? ''}:${listSent?.length ?? 0}:${listTakenBack.size}:${tookBack}:${step}`);
   const mediaStamp = mediaStampOf(data?.media?.bought_stamp, data?.postage_enabled ? stamps.balance : null);
   const design = useMemo(() => data?.designs.find((d) => d.id === designId) ?? null, [data, designId]);
+  // "Pick a card" as shelves (server key card_shelves, card shelves SPEC Part C): null for today's screen. A collection's
+  // page opens inside step 2 with its own entry in the browser's history (?collection=<slug>), so the browser's Back
+  // returns to the shelves, where they were scrolled.
+  const shelves = useMemo(() => (data ? shelvesOf(data) : null), [data]);
+  const [pickCollection, setPickCollection] = useState<string | null>(null);
+  const [shelvesTop, setShelvesTop] = useState<number | null>(null);
+  const collectionPushed = useRef(false);
+  const openShelf = (step === 'pick' && pickCollection && shelves?.find((s) => s.id === pickCollection)) || null;
+  const openCollection = (shelf: Shelf) => {
+    setShelvesTop(scrollerOf(document.querySelector('[data-testid="cardShelves"]')).scrollTop);
+    const url = new URL(window.location.href);
+    url.searchParams.set('collection', shelf.slug || shelf.id);
+    window.history.pushState(null, '', url.toString());
+    collectionPushed.current = true;
+    setPickCollection(shelf.id);
+  };
+  // Back to the shelves: through the browser's history when the page has its entry there (popstate closes it).
+  const closeCollection = () => {
+    if (collectionPushed.current) { window.history.back(); return; }
+    setPickCollection(null);
+  };
+  useEffect(() => {
+    const onPop = () => {
+      if (!collectionPushed.current) return;
+      collectionPushed.current = false;
+      setPickCollection(null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  // Onward from step 2: a collection's page closes (and leaves the history), and coming back starts at the chosen card.
+  const leavePick = () => {
+    if (pickCollection) closeCollection();
+    setShelvesTop(null);
+  };
+  // A collection's page gets the heading's focus too, without moving the page.
+  useEffect(() => { if (step === 'pick' && shelves) headingRef.current?.focus({ preventScroll: true }); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pickCollection]);
   const today = sent ?? (data?.today && data.today.status !== 'withdrawn' ? data.today : null);
   // Another card can go now (Part 6): a stamp left, or without stamps, today's card not used yet.
   const canSendAgain = Boolean(data?.open && designId)
@@ -1841,6 +1996,13 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
   useEffect(() => {
     if (draftRead.current || !data || !me?.id) return;
     draftRead.current = true;
+    // A collection's page after a reload: its address comes back, and the page opens again if the card is at step 2.
+    const fromAddress = new URL(window.location.href).searchParams.get('collection');
+    if (fromAddress) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('collection');
+      window.history.replaceState(null, '', url.toString());
+    }
     // A new card starts with their saved signature beside FROM (founder, 2026-11-16); a draft brought back keeps its own.
     const saved = launchFeatures.cardTable ? data.signature?.saved ?? null : null;
     if (saved) setSignature(saved);
@@ -1863,7 +2025,12 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
     setArrival(draft.arrival);
     requestId.current = draft.requestId;
     listIds.current = new Map(draft.listIds);
-    setStep(!draft.to ? 'to' : !designHere ? 'pick' : draft.step);
+    const at = !draft.to ? 'to' : !designHere ? 'pick' : draft.step;
+    setStep(at);
+    const shelf = at === 'pick' && fromAddress ? shelves?.find((s) => s.slug === fromAddress || s.id === fromAddress) : undefined;
+    if (shelf) openCollection(shelf);
+    // Once, as the flow opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, me?.id, chosenPerson, chosenDesign]);
   // Kept as it changes (an upload only once it's stored), and gone once the card is sent, taken back or started over.
   // A send starting is a change too: the request ID it carries is kept before its answer comes.
@@ -1898,6 +2065,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
 
   // Back keeps everything chosen and written; only the last answers' errors go.
   const back = () => {
+    if (openShelf) { closeCollection(); return; }
+    if (step === 'pick') leavePick();
     if (step === 'to' || step === 'sent') { router.push('/app/mailbox/personal'); return; }
     setStep(STEPS[STEPS.indexOf(step) - 1]);
     setLook(null);
@@ -2378,7 +2547,7 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
       <div className="mx-auto w-full max-w-[560px]">
       <StepHeader
         step={step}
-        title={step === 'sent' && sent?.by_link ? 'Your card is ready.' : undefined}
+        title={step === 'sent' && sent?.by_link ? 'Your card is ready.' : openShelf ? 'All collections' : undefined}
         onBack={back}
         headingRef={headingRef}
         trailing={data.postage_enabled ? <StampChip stamps={stamps} onOpen={() => { setStampShort(null); setStampReason(null); setStampSheet(true); }} /> : null}
@@ -2412,7 +2581,8 @@ export default function SendCardFlow({ chosenDesign = null, chosenPerson = null,
           year={data.year}
           chosen={designId}
           onChoose={setDesignId}
-          onNext={() => setStep('write')}
+          onNext={() => { leavePick(); setStep('write'); }}
+          shelving={shelves ? { shelves, open: openShelf, onOpenCollection: openCollection, restoreTop: shelvesTop } : null}
         />
       ) : null}
       {/* From Write on the back onward, you are at the table (design plan Part 9): the chosen card's cloth. */}
