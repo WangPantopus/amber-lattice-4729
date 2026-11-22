@@ -227,7 +227,10 @@ struct HolidayCardShelves: View {
 
     private func shelf(_ collection: HolidayCardCollection, sizes: HolidayCardShelfSizes) -> some View {
         let all = cards.designs(in: collection)
-        let shown = Array(all.prefix(Self.rowLength))
+        // The first 10, and the chosen card when it's further along: after the tenth, before "See all" (the B6
+        // addition of Nov 21), so it shows ticked on its shelf and the row opens at it.
+        let chosenLater = viewModel.designId.flatMap { id in all.dropFirst(Self.rowLength).first { $0.id == id } }
+        let shown = Array(all.prefix(Self.rowLength)) + (chosenLater.map { [$0] } ?? [])
         return VStack(alignment: .leading, spacing: Spacing.s0) {
             Rectangle()
                 .fill(MailPaper.cardRowLine)
@@ -272,8 +275,8 @@ struct HolidayCardShelves: View {
                 ForEach(shown) { design in
                     cardButton(design, in: collection, all: all, width: sizes.shelf, loads: near.contains(collection.id))
                 }
-                // More than a row's worth: an eleventh tile of the same size opens the collection's page.
-                if all.count > shown.count {
+                // More than a row's worth: a last tile of the same size opens the collection's page.
+                if all.count > Self.rowLength {
                     seeAll(collection, count: all.count, width: sizes.shelf)
                 }
             }
