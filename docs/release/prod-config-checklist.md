@@ -1666,7 +1666,7 @@ Write these as `KEY=value` lines (no quotes, one line each) into
 
 | Setting | Staging | Production | Source |
 |---|---|---|---|
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | staging project | production project | Supabase → Project Settings → API |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | staging project | production project | Supabase → Project Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is the older-style `service_role` key from the dashboard's Legacy API keys tab, on staging and, since November 22, 2026, on production: with the newer secret key each call took about 34 ms on Supabase's side and calls were served one at a time (about 40 a second for the whole backend), against 1-2 ms and overlapping with the older-style key. Keep the Legacy API keys enabled in both projects: disabling them stops that API. Supabase says it is deprecating these keys by the end of 2026, so revisit this once secret keys perform the same: re-measure a one-row read alone and 20 at once with each key, reading the `x-envoy-upstream-service-time` response header |
 | `DATABASE_URL` | session pooler URI, port 5432, ending `?sslmode=verify-full&sslrootcert=/app/config/certificates/supabase-prod-ca-2021.crt` | same, production | Supabase → Connect → Session pooler (the direct host is IPv6 only) |
 | `DIRECT_DB_READS` (optional) | `shadow`, then `on` | unset (off); `shadow` once staging runs `on`, then `on` when its summaries show no differences | `backend/config/directDb.js`: the Home permission check reads Postgres over `DATABASE_URL` instead of the Data API (about 5 ms instead of 90) |
 | `PUBLIC_API_BASE_URL` | `https://staging-api.pantopus.com` | `https://api.pantopus.com` | D1 |
