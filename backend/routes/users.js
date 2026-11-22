@@ -13,7 +13,7 @@ const optionalAuth = require('../middleware/optionalAuth');
 const validate = require('../middleware/validate');
 const Joi = require('joi');
 const logger = require('../utils/logger');
-const { getPublicResidencySummary } = require('../utils/publicResidencyProfile');
+const { getPublicResidencySummary, residencyFromRows } = require('../utils/publicResidencyProfile');
 const { generateCsrfToken } = require('../utils/csrf');
 const { isConnected, isSearchable, loadUserSearchAccess, isScopedBlocked, isUnpublishedBusiness, unpublishedBusinessIds, canViewProfileField } = require('../utils/visibilityPolicy');
 const affinityService = require('../services/gig/affinityService');
@@ -2875,6 +2875,111 @@ router.post('/refresh', refreshLimiter, refreshDpop, async (req, res) => {
   }
 });
 
+// ============ OWN PROFILE ============
+// Required here, not at the top (scripts/ci/check-legacy-identity-aliases.js allowlists a line number further up).
+const directDb = require('../config/directDb');
+
+// The profile's parts through the Data API: read alongside the User row. Mail preferences a person doesn't have yet
+// are created only once the row is known to exist (by the route, after this).
+async function apiProfileParts(userId, viewerId) {
+  const [userRead, skillsResult, inviteProgress, residency, mailPrefsRead] = await Promise.all([
+    supabaseAdmin
+      .from('User')
+      .select('*')
+      .eq('id', userId)
+      .single(),
+    supabaseAdmin
+      .from('UserSkill')
+      .select('skill_name')
+      .eq('user_id', userId)
+      .order('display_order', { ascending: true }),
+    inviteRewardService.getInviteProgress(userId),
+    getPublicResidencySummary(userId, viewerId),
+    supabaseAdmin
+      .from('MailPreferences')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle(),
+  ]);
+  return { userRead, skillsResult, inviteProgress, residency, mailPrefsRead };
+}
+
+// The same rows in one query on a direct connection (config/directDb.js), shaped as the Data API sends them
+// (to_json / json_build_object). $1 the person. The verified ownerships keep the Data API read's (unordered) form,
+// and the city and state of each owned Home come along for the residency summary's owner-only case.
+const PROFILE_SQL = `
+select
+  (select to_json(u) from "User" u where u.id = $1) as "user",
+  (select coalesce(json_agg(json_build_object('skill_name', s.skill_name) order by s.display_order), '[]')
+   from "UserSkill" s where s.user_id = $1) as skills,
+  (select to_json(m) from "MailPreferences" m where m.user_id = $1) as mail,
+  (select count(*) from "UserReferral" r where r.referrer_id = $1) as invited,
+  (select count(*) from "UserReferral" r where r.referrer_id = $1 and r.referred_user_id is not null) as converted,
+  (select coalesce(json_agg(json_build_object('home_id', o.home_id, 'user_id', o.user_id, 'is_active', o.is_active,
+       'verification_status', o.verification_status, 'verification_source', o.verification_source,
+       'verified_at', o.verified_at, 'fast_check_kind', o.fast_check_kind, 'fast_check_at', o.fast_check_at,
+       'fast_check_expires_at', o.fast_check_expires_at, 'fast_check_recheck_due_at', o.fast_check_recheck_due_at,
+       'fast_check_confirmed_at', o.fast_check_confirmed_at, 'created_at', o.created_at,
+       'home', case when h.id is null then null else json_build_object('id', h.id, 'city', h.city, 'state', h.state) end)
+     order by o.created_at), '[]')
+   from "HomeOccupancy" o left join "Home" h on h.id = o.home_id
+   where o.user_id = $1 and o.is_active = true) as occupancies,
+  (select coalesce(json_agg(json_build_object('home_id', w.home_id, 'subject_type', w.subject_type)), '[]')
+   from "HomeOwner" w where w.subject_id = $1 and w.owner_status = 'verified') as owners,
+  (select coalesce(json_object_agg(h.id, json_build_object('city', h.city, 'state', h.state)), '{}')
+   from "Home" h where h.id in (select w.home_id from "HomeOwner" w where w.subject_id = $1 and w.owner_status = 'verified'))
+   as owner_homes`;
+
+async function directProfileParts(userId, viewerId) {
+  const [row] = await directDb.read('profile', PROFILE_SQL, [userId]);
+  if (!row) throw new Error('No profile row');
+  // Kept invite progress is used as the Data API path uses it; otherwise the counts read here make it.
+  const inviteProgress = inviteRewardService.cachedInviteProgress(userId)
+    || inviteRewardService.inviteProgressFromCounts(userId, Number(row.invited), Number(row.converted));
+  // getPublicResidencySummary's anonymous case, then its rules on these rows.
+  const residency = viewerId
+    ? await residencyFromRows(row.occupancies, { data: row.owners, error: null }, async (homeId) => row.owner_homes[homeId] || null)
+    : { hasHome: false, city: null, state: null, verified: false };
+  return {
+    userRead: { data: row.user, error: row.user ? null : { code: 'PGRST116' } },
+    skillsResult: { data: row.skills, error: null },
+    inviteProgress,
+    residency,
+    mailPrefsRead: { data: row.mail, error: null },
+  };
+}
+
+// Which parts of two reads differ (shadow mode).
+function profilePartsDiffer(a, b) {
+  const view = (p) => ({ user: p.userRead.data || null, skills: p.skillsResult.data || null, invite: p.inviteProgress,
+    residency: p.residency, mail: p.mailPrefsRead.data || null });
+  const [x, y] = [view(a), view(b)];
+  return Object.keys(x).filter((key) => JSON.stringify(x[key]) !== JSON.stringify(y[key]));
+}
+
+// DIRECT_DB_READS (config/directDb.js) picks the path, as for the Home access check (utils/homePermissions.js): "on"
+// reads direct and falls back to the Data API on any failure; "shadow" answers from the Data API and compares.
+async function profileParts(userId, viewerId) {
+  const mode = directDb.mode();
+  if (mode === 'on') {
+    try {
+      return await directProfileParts(userId, viewerId);
+    } catch (error) {
+      directDb.fellBack('profile', error);
+      return apiProfileParts(userId, viewerId);
+    }
+  }
+  if (mode !== 'shadow') return apiProfileParts(userId, viewerId);
+  const started = performance.now();
+  const direct = directProfileParts(userId, viewerId)
+    .then((parts) => ({ parts, ms: performance.now() - started }), (error) => ({ error }));
+  const api = await apiProfileParts(userId, viewerId);
+  const apiMs = performance.now() - started;
+  direct.then(({ parts, ms, error }) => directDb.compared('profile', error
+    ? { error } : { differs: profilePartsDiffer(api, parts), directMs: ms, apiMs }));
+  return api;
+}
+
 /**
  * GET /api/users/profile
  * Get current user's profile
@@ -2885,27 +2990,8 @@ router.get('/profile', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // The profile's parts are read alongside the User row. Mail preferences a person doesn't have
-    // yet are created only once the row is known to exist.
-    const [{ data: userData, error }, skillsResult, inviteProgress, residency, mailPrefsRead] = await Promise.all([
-      supabaseAdmin
-        .from('User')
-        .select('*')
-        .eq('id', userId)
-        .single(),
-      supabaseAdmin
-        .from('UserSkill')
-        .select('skill_name')
-        .eq('user_id', userId)
-        .order('display_order', { ascending: true }),
-      inviteRewardService.getInviteProgress(userId),
-      getPublicResidencySummary(userId, req.user?.id || null),
-      supabaseAdmin
-        .from('MailPreferences')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle(),
-    ]);
+    const { userRead: { data: userData, error }, skillsResult, inviteProgress, residency, mailPrefsRead } =
+      await profileParts(userId, req.user?.id || null);
 
     if (error || !userData) {
       logger.warn('Profile not found', { userId });
