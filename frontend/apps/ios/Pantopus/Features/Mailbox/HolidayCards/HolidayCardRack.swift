@@ -266,8 +266,11 @@ struct HolidayCardRack: View {
     /// the room (the largest text sizes), it scrolls.
     private var words: some View {
         ZStack {
+            // Smaller before it scrolls, so the words show whole under a card that takes the screen (card shelves E3).
             ViewThatFits(in: .vertical) {
                 HolidayCardRackWords(design: shown)
+                HolidayCardRackWords(design: shown, scale: 0.82)
+                HolidayCardRackWords(design: shown, scale: 0.68)
                 ScrollView { HolidayCardRackWords(design: shown) }
             }
             // At the largest sizes the pen and the verse stop growing at the first accessibility size, so more than
@@ -357,6 +360,8 @@ private struct HolidayCardRackCard: View {
 /// verse at 19 pt with its reference under it (plan 6.2).
 private struct HolidayCardRackWords: View {
     let design: HolidayCardDesign
+    /// Smaller where the room under the card is short.
+    var scale: CGFloat = 1
 
     @ScaledMetric(relativeTo: .title3) private var verseSize: CGFloat = 19
     @ScaledMetric(relativeTo: .title2) private var penSize: CGFloat = 28
@@ -366,19 +371,19 @@ private struct HolidayCardRackWords: View {
         VStack(spacing: 10) {
             if let verse = design.verse?.trimmingCharacters(in: .whitespacesAndNewlines), !verse.isEmpty {
                 Text(verse)
-                    .font(.system(size: verseSize, design: .serif))
-                    .lineSpacing(verseSize * 0.22)
+                    .font(.system(size: verseSize * scale, design: .serif))
+                    .lineSpacing(verseSize * scale * 0.22)
                     .foregroundStyle(MailPaper.tableCream)
                 Text(design.caption)
-                    .font(.system(size: referenceSize, design: .serif).italic())
+                    .font(.system(size: referenceSize * scale, design: .serif).italic())
                     .foregroundStyle(MailPaper.tableCreamSoft)
             } else if CardTableType.isVerseReference(design.caption) {
                 Text(design.caption)
-                    .font(.system(size: referenceSize + 4, design: .serif).italic())
+                    .font(.system(size: (referenceSize + 4) * scale, design: .serif).italic())
                     .foregroundStyle(MailPaper.tableCream)
             } else {
                 Text(design.caption)
-                    .font(Font(CardTableType.pen(penSize)))
+                    .font(Font(CardTableType.pen(penSize * scale)))
                     .foregroundStyle(MailPaper.tableCream)
             }
         }
