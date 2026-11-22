@@ -58,7 +58,7 @@ function Back({ piece, forName }: { piece: MailItemV2; forName: string }) {
   const card = piece.card!;
   const photo = card.photo ?? null;
   const voice = card.voice ?? null;
-  const mood = cardMood(card.number, card.design);
+  const mood = cardMood(card.number, card.design, card.mood);
   return (
     <>
       <CardFlip

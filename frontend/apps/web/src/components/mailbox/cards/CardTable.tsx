@@ -56,6 +56,8 @@ export type TableCard = {
   caption: string | null;
   paper: string;
   table?: string | null;
+  /** The table it opens on, as the server names it (absent: by its number, cardMood). */
+  mood?: string | null;
   year: number;
   sealed: boolean;
   sealed_until?: string | null;
@@ -270,7 +272,7 @@ export default function CardTable({
   const toastTimer = useRef(0);
   const from = firstNameOf(fromName);
   // The collection's mood (design plan Part 7): snow, candlelight or Santa's bounce. Off with Reduce Motion (CSS).
-  const mood = cardMood(card.number, card.design);
+  const mood = cardMood(card.number, card.design, card.mood);
   // A photo from someone who isn't the reader's connection stays covered until it's tapped (memories contract 10).
   const [uncovered, setUncovered] = useState(false);
   // The photo is fetched only once the card has been turned over, as on the phones: nothing at open or after a reload,
@@ -288,7 +290,7 @@ export default function CardTable({
   const envArt = (name: string) => art(isLetter ? `cream-${name}` : name);
   const waxWhole = isLetter ? LETTER_WAX_WHOLE : WAX_WHOLE;
   const waxCracked = isLetter ? LETTER_WAX_CRACKED : WAX_CRACKED;
-  const stampSrc = isLetter ? LETTER_STAMP : cardStampFile(card.number, card.design);
+  const stampSrc = isLetter ? LETTER_STAMP : cardStampFile(card.number, card.design, card.mood);
   const letterRef = useRef(letter);
   letterRef.current = letter;
   const days = daysWords(card.sealed_until);
