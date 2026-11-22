@@ -72,6 +72,7 @@ export * as upload from './endpoints/upload';       // NEW
 export * as reviews from './endpoints/reviews';     // NEW
 export * as moments from './endpoints/moments';
 export * as posts from './endpoints/posts';                 // Scoped feeds & posts
+export * as plans from './endpoints/plans';
 export * as businesses from './endpoints/businesses';       // Business profiles
 export * as businessIam from './endpoints/businessIam';     // Business IAM
 export * as wallet from './endpoints/wallet';               // Wallet/balance

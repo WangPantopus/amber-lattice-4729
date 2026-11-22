@@ -11,7 +11,7 @@
 /** Public Mapbox token for tile and style requests (client-safe). */
 export const MAP_PUBLIC_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
-/** The interactive basemap shared by Pulse and Moments. */
+/** The interactive basemap shared by Pulse, Moments, and Plans. */
 export const MAPBOX_STANDARD = {
   style: 'mapbox://styles/mapbox/standard',
   config: { basemap: { lightPreset: 'day', showPointOfInterestLabels: false } },

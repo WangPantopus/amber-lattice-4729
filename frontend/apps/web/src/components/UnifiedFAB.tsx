@@ -35,7 +35,7 @@ const ROUTES_WITH_PAGE_FAB = ['/app/homes/'];
  * the composer's Send button. The Mailbox has its own actions under each
  * letter, and the button sat on Shred. No quick-actions button there at all.
  */
-const ROUTES_WITHOUT_FAB = ['/app/chat', '/app/mailbox', '/app/moments'];
+const ROUTES_WITHOUT_FAB = ['/app/chat', '/app/mailbox', '/app/moments', '/app/plans'];
 
 /** Whether a quick-actions button (global or page-level) floats over this route. */
 export function routeHasFab(pathname: string): boolean {

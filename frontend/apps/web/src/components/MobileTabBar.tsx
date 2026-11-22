@@ -1,20 +1,12 @@
 'use client';
 
-// MobileTabBar — the app's tabs as a bottom bar on phone-width web:
-// Place · Today · Mail · Pulse while the Mailbox is on, Place · Today · Pulse
-// without it. Founder decision 2026-11-13: Mail is third (your home, your day,
-// your mailbox, then what's happening around you), as on iPhone and Android;
-// from November 1 to December 25, while Christmas cards are open, its icon is
-// a red envelope (cardDoors useChristmasMail). Messages left the
-// bar (founder decision 2026-11-08, as on iPhone and Android): the chat button
-// at the top right of the top bar opens it, with the unread count. Native gets
-// these tabs on day one; on mobile web they used to hide behind the hamburger,
-// which made the app read as a single long page. Desktop keeps the sidebar
-// (AppShell), in its own order. No Plans tab: Plans on the web comes later (founder, 2026-10-27).
+// Phone-width web follows the native order: Place, Today, Mail, Pulse, Moments, Plans.
+// Mail, Moments, and Plans appear while their respective switches are on. Desktop keeps its sidebar.
 
 import { useMomentBadge } from './moments/useMomentBadge';
 import { useMomentsAccess } from './moments/useMomentsAccess';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { usePathname, useRouter } from 'next/navigation';
 import { NavIcons } from '@/lib/icons';
 import { launchFeatures } from '@/lib/featureFlags';
@@ -22,7 +14,7 @@ import { afterInboxRows } from '@/lib/shellReads';
 import { useChristmasMail } from '@/components/mailbox/cards/cardDoors';
 
 type Tab = {
-  key: 'place' | 'today' | 'nearby' | 'mail' | 'moments';
+  key: 'place' | 'today' | 'nearby' | 'mail' | 'moments' | 'plans';
   label: string;
   href: string;
   icon: typeof NavIcons.place;
@@ -46,7 +38,12 @@ export const MOBILE_TABS: Tab[] = [
 ];
 
 const momentTab: Tab = { key: 'moments', label: 'Moments', href: '/app/moments', icon: NavIcons.moments, matches: p => starts(p, '/app/moments') };
-const tabsWithMoments = [...MOBILE_TABS, momentTab];
+const planTab: Tab = { key: 'plans', label: 'Plans', href: '/app/plans', icon: NavIcons.plans, matches: p => starts(p, '/app/plans') };
+const allTabs = [...MOBILE_TABS, momentTab, planTab];
+
+export function availableMobileTabs(moments: boolean, plans: boolean): Tab[] {
+  return allTabs.filter(tab => (tab.key !== 'moments' || moments) && (tab.key !== 'plans' || plans));
+}
 
 // With the Mailbox on, Mail's badge is the drawings' red count (Mail tab
 // design, 2026-10-27).
@@ -55,7 +52,7 @@ const BADGE_CLASS = launchFeatures.mailbox
   : 'absolute right-[calc(50%-18px)] top-1 min-w-[16px] rounded-full bg-primary-600 px-1 text-center text-[10px] font-bold leading-4 text-white';
 
 export function activeMobileTab(pathname: string): Tab['key'] | null {
-  return tabsWithMoments.find((t) => t.matches(pathname))?.key ?? null;
+  return allTabs.find((t) => t.matches(pathname))?.key ?? null;
 }
 
 // A conversation has the whole window on a phone (founder, 2026-11-06), a
@@ -78,7 +75,8 @@ export default function MobileTabBar({ unreadMail = 0 }: { unreadMail?: number }
   const active = activeMobileTab(pathname);
   const enabled = useMomentsAccess().data?.enabled;
   const newMoments = useMomentBadge(!!enabled);
-  const tabs = enabled ? tabsWithMoments : MOBILE_TABS;
+  const plansEnabled = useFeatureFlag('plans');
+  const tabs = useMemo(() => availableMobileTabs(!!enabled, plansEnabled), [enabled, plansEnabled]);
   const christmasMail = useChristmasMail();
 
   // The sidebar prefetches each tab on hover; phones have no hover, so
