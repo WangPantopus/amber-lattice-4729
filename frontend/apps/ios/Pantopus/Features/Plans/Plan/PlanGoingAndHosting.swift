@@ -257,12 +257,11 @@ struct PlanHostingSection: View {
             }
             requests
             invite
-            PlanHostGoingWithMoney(card: card) {
-                if let answers = card.answerCounts {
-                    PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
-                } else {
-                    going
-                }
+            if card.payHere != nil { PlanChecksEntryCard(card: card) }
+            if let answers = card.answerCounts {
+                PlanHostAnswers(card: card, answers: answers, people: viewModel.plan?.people ?? [], onOpenGuests: onOpenGuests)
+            } else {
+                going
             }
             PlanHostExtraCards(viewModel: viewModel, card: card, onOpenBring: onOpenBring) // the bring list, the extras
             // Side by side; one under another when the words don't fit beside each other (the largest text).
