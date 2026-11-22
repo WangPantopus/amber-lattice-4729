@@ -4,44 +4,29 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { geo, moments } from '@pantopus/api';
-import type {
-  Audience,
-  Background,
-  Hours,
-  Location,
-  NewMoment,
-  Point,
-} from '@pantopus/api/endpoints/moments';
+import type { Audience, Background, Hours, Location, NewMoment } from '@pantopus/api/endpoints/moments';
 import { Camera, Check, Clock3, ImagePlus, LocateFixed, MapPin, Type, Users, X } from 'lucide-react';
 import { readCaptureMetadata, type CaptureMetadata } from '@/components/feed/composer/mediaLocation';
 import MomentDialog from './MomentDialog';
 import MomentEditor from './MomentEditor';
 import MomentCamera, { type CameraCapture } from './MomentCamera';
 import { blankArt } from './momentArtwork';
-import { colors, deviceFix, messageOf } from './momentState';
+import {
+  colors,
+  deviceFix,
+  distance,
+  gpsLocation,
+  messageOf,
+  PIN_REVIEW_DISTANCE_M,
+  recentFix,
+  type DeviceFix,
+} from './momentState';
 import { prepareMedia } from './momentMedia';
 import { discardJob, keepJob, pendingJobs, postJob, type Job } from './momentOutbox';
 
 const PlacePreview = dynamic(() => import('./MomentPlacePreview'), { ssr: false });
 const fallback = { max_seconds: 30, max_parts: 1, max_bytes: 50 * 1024 * 1024 };
 type Placement = 'exact' | 'area' | 'place' | 'none';
-function distance(a: Point, b: Point) {
-  const rad = Math.PI / 180,
-    lat = (b.latitude - a.latitude) * rad,
-    lon = (b.longitude - a.longitude) * rad;
-  return (
-    12742000 *
-    Math.asin(
-      Math.min(
-        1,
-        Math.sqrt(
-          Math.sin(lat / 2) ** 2 +
-            Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(lon / 2) ** 2,
-        ),
-      ),
-    )
-  );
-}
 export default function MomentComposer({
   account,
   onClose,
@@ -64,7 +49,7 @@ export default function MomentComposer({
   const [hours, setHours] = useState<Hours>(24),
     [audience, setAudience] = useState<Audience>('nearby'),
     [placement, setPlacement] = useState<Placement>('exact');
-  const [fix, setFix] = useState<GeolocationPosition | null>(null),
+  const [fix, setFix] = useState<DeviceFix | null>(null),
     [meta, setMeta] = useState<CaptureMetadata | null>(null),
     [reading, setReading] = useState(false);
   const [locating, setLocating] = useState(false),
@@ -111,25 +96,27 @@ export default function MomentComposer({
     setLocating(true);
     setLocError('');
     try {
-      const f = await deviceFix();
+      const f = await deviceFix(0);
       if (mounted.current) setFix(f);
-      return f;
     } catch (e) {
       if (mounted.current) setLocError(messageOf(e, 'Location unavailable'));
-      return null;
     } finally {
       if (mounted.current) setLocating(false);
     }
   }, []);
   useEffect(() => {
-    if (navigator.permissions)
-      void navigator.permissions
-        .query({ name: 'geolocation' })
-        .then((s) => {
-          if (s.state === 'granted' && mounted.current) void locate();
-        })
-        .catch(() => {});
-  }, [locate]);
+    if (!recovered || jobs.length || !navigator.permissions) return;
+    let active = true;
+    void navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((s) => {
+        if (active && s.state === 'granted') void locate();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [locate, recovered, jobs.length]);
   useEffect(() => {
     let active = true;
     setMeta(null);
@@ -309,10 +296,18 @@ export default function MomentComposer({
         : [];
       controller.signal.throwIfAborted();
       let gps = fix;
-      if (!noPlace && !fromAlbum && gps && Date.now() - gps.timestamp > 240000) {
-        const newFix = await locate();
-        if (!newFix || distance(gps.coords, newFix.coords) > 50)
+      if (!noPlace && !fromAlbum && gps && !recentFix(gps.timestamp)) {
+        setBusy('Updating your location…');
+        const newFix = await deviceFix(0, controller.signal);
+        controller.signal.throwIfAborted();
+        setFix(newFix);
+        if (distance(gps.coords, newFix.coords) > PIN_REVIEW_DISTANCE_M) {
+          setHomeAck(false);
+          setVenue('');
+          setHeight(false);
+          setWeather(false);
           throw new Error('Your location changed. Review the updated pin and share again.');
+        }
         gps = newFix;
       }
       const loc: Location = noPlace
@@ -324,12 +319,7 @@ export default function MomentComposer({
               longitude: fromAlbum.longitude!,
               taken_at: fromAlbum.capturedAt!,
             }
-          : {
-              source: 'gps',
-              latitude: gps!.coords.latitude,
-              longitude: gps!.coords.longitude,
-              fix_at: new Date(gps!.timestamp).toISOString(),
-            };
+          : gpsLocation(gps!);
       const count = Math.max(1, prepared.length),
         series = crypto.randomUUID();
       const job: Job = {
