@@ -250,6 +250,65 @@ See [screens/](screens/) `web-1-top` and `web-2-scrolled`. It stays on the dark 
 - Shelves below the screen are not drawn until they are near; pictures keep their shape while they load.
 - With the switch off: today's page.
 
+## Part E: the founder's changes of November 22 (these win over anything above)
+
+The founder, on November 22 after trying staging: "for the \"One from each collection\", these ones need to be
+replaced: Matthew 2:11 (KJV) picture please replace it with the card of John 3:16, \"Come to the window. It's
+starting.\" should be replaced with \"Home for Christmas\", and let's do this order for the first few ones in the \"One
+from each collection\": first we have the sample card from Jesus, then sample card we picked from Christmas Memories
+(The whole street's lit up for you), then Christmas in the City (Meet me under the tree), then Santa, then the rest of
+them stay the same order. Also can we make sure when a card is clicked, when we go to the next page or screen of that
+picked card, can we make sure that card is big enough, fit in the screen, big."
+
+### E1. The opening cards
+
+| Collection | Opening card now | Was |
+|---|---|---|
+| Christmas with Jesus Christ | 61, John 3:16 (KJV), Mary holding the baby | 65 |
+| Christmas as a Kid | 1, "Home for Christmas." | 105 |
+
+The other seven keep theirs (95, 99, 47, 101, 22, 27, 37). There are two John 3:16 cards (61, Mary holding the baby,
+and 71, Jesus talking with an old man at night). The founder chose 61 on November 22 ("Mary and baby").
+
+The rule in A3 that an opening card is never one of its shelf's first three **is dropped**: the founder's two choices
+are the first and the third card of their shelves. The server no longer refuses to start over it. The same picture can
+now show twice on one wide screen (large in the opening row, small on the shelf under it); that is accepted.
+
+### E2. The opening row has its own order
+
+"One from each collection" now runs: Christmas with Jesus Christ, Christmas Memories, Christmas in the City, Christmas
+with Santa, then Christmas as a Kid, Christmas at Grandma's House, Christmas with Friends, Christmas Love Stories,
+Christmas in Your Twenties.
+
+**Only the opening row.** The shelves, the website's row of names, the names row in the stores' apps and everything
+else keep the collections' order of A2 (Jesus Christ, Santa, the City, As a Kid, Grandma's House, Memories, Friends,
+Love Stories, Your Twenties).
+
+The server says it, so it can change again without an app build: both list answers gain one more additive fact, the
+collections' ids in the opening row's order (CARDSHELF-WEB settles its name and writes the shape in NOTES.md; the
+design session suggests `opening`). Every app draws the opening row in that order when the answer has it; a collection
+it doesn't name follows after, in list order; without the fact, the collections' order as built.
+
+### E3. A picked card is big
+
+Wherever a person lands after picking one card, that card is as large as the screen allows: it fills the width on a
+phone and grows with the window on a wide screen, whole, never cut off, with what the screen needs under it (the
+caption or verse, and the first button) still on the first screen.
+
+- **The card's own public page** (`/cards/<slug>`, where pantopus.com/cards sends a tap). Today the card stops at 420 px
+  wide: on a 1440 x 900 screen it is 422 x 447, half the window's height, and on a 375 px phone 313 px, 84% of the
+  width. Make it at least 90% of a phone's width, and on wide screens let it grow with the window's height, up to about
+  720 px wide, keeping the envelope, the tilt, the words and the buttons, with "Send this card to someone" (or the store
+  button) on the first screen.
+- **The card rack on the web** already fills a phone's width and fits the height; raise its widest from 560 px to about
+  720 px so it uses a large window. The same for "See it larger" without the rack.
+- **The card rack on iPhone and Android.** Measure the card on a small and a large phone and on the widest window the
+  app runs in. On a phone it should be at least 90% of the width between the screen's edges, and elsewhere as large as
+  the height allows. Raise any cap that stops it short of that; a collection with verses keeps the room its verse needs.
+  Write the sizes before and after in the pull request.
+- Pictures stay sharp at the new sizes: use the full card picture (1214 x 1295) wherever a card is drawn wider than its
+  small picture can carry.
+
 ## What "done" means
 
 - Every part merged into `dev` and released to staging, the switch on there.
