@@ -34,9 +34,11 @@ const designIdOf = (number) => `christmas-2026-${String(number).padStart(2, '0')
 
 // The collections "Pick a card" shows, in this order, each with its pictures (by number) in grid order (founder,
 // 2026-10-31; Christmas with Santa 2026-11-07; the nativity pictures 2026-11-08, renamed Christmas with Jesus Christ
-// and moved to the front the same day; 22 more of the founder's pictures of Jesus's life after them, 2026-11-21). A
-// picture can move to another collection; its number stays. The collection's id stays first-christmas: nothing but this
-// list reads it.
+// and moved to the front the same day; 22 more of the founder's pictures of Jesus's life after them, 2026-11-21). On
+// 2026-11-21 the founder also approved 16 more pictures (90-105), a ninth collection, Christmas in the City, and this
+// order: Christmas with Jesus Christ first, then from cards anyone can send to anyone, to family, to one particular
+// person (card shelves SPEC A2). A picture can move to another collection; its number stays. The collection's id stays
+// first-christmas: nothing but this list reads it.
 // Each also has what the card shelves draw (docs/product/card-shelves-2026-11-21, SPEC A3; the layout itself is launch
 // key card_shelves, but these are sent whatever it says and older apps ignore them): `short`, its name in the website's
 // row; `slug`, its public name in a link (/cards/collection/<slug>); `pick`, the number of the card that stands for it in
@@ -49,21 +51,24 @@ const COLLECTIONS = [
       68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
     pick: 65,
     parts: [['The first Christmas', 59, 68], ['His life and teaching', 69, 80], ['The cross and the empty tomb', 81, 89]] },
+  { id: 'with-santa', name: 'Christmas with Santa', short: 'Santa', slug: 'santa',
+    line: 'For anyone who still believes, and anyone who used to.',
+    numbers: [50, 51, 52, 53, 54, 55, 56, 57, 58, 90, 91, 92, 93, 94, 95], pick: 95 },
+  { id: 'in-the-city', name: 'Christmas in the City', short: 'The City', slug: 'the-city',
+    line: 'For anyone who dreams of the city at Christmas.', numbers: [96, 97, 98, 99, 100], pick: 99 },
   { id: 'as-a-kid', name: 'Christmas as a Kid', short: 'As a Kid', slug: 'as-a-kid',
     line: 'For families with kids, and anyone who misses being one.',
-    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], pick: 9 },
+    numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 105], pick: 105 },
+  { id: 'grandmas-house', name: 'Christmas at Grandma’s House', short: 'Grandma’s House', slug: 'grandmas-house',
+    line: 'For grandparents, and the grandkids who still come home.', numbers: [44, 45, 46, 47, 48, 49], pick: 47 },
+  { id: 'memories', name: 'Christmas Memories', short: 'Memories', slug: 'memories',
+    line: 'For anyone who misses the little things.', numbers: [38, 39, 40, 41, 42, 43, 101, 102, 103, 104], pick: 101 },
   { id: 'with-friends', name: 'Christmas with Friends', short: 'Friends', slug: 'friends',
     line: 'For the friends who feel like family.', numbers: [18, 19, 20, 21, 22, 26, 31], pick: 22 },
   { id: 'love-stories', name: 'Christmas Love Stories', short: 'Love Stories', slug: 'love-stories',
     line: 'For the one you love, near or far.', numbers: [23, 24, 25, 27, 28, 29, 30], pick: 27 },
   { id: 'in-your-twenties', name: 'Christmas in Your Twenties', short: 'Your Twenties', slug: 'your-twenties',
     line: 'For first apartments, old roommates and long trips home.', numbers: [32, 33, 34, 35, 36, 37], pick: 37 },
-  { id: 'memories', name: 'Christmas Memories', short: 'Memories', slug: 'memories',
-    line: 'For anyone who misses the little things.', numbers: [38, 39, 40, 41, 42, 43], pick: 42 },
-  { id: 'grandmas-house', name: 'Christmas at Grandma’s House', short: 'Grandma’s House', slug: 'grandmas-house',
-    line: 'For grandparents, and the grandkids who still come home.', numbers: [44, 45, 46, 47, 48, 49], pick: 47 },
-  { id: 'with-santa', name: 'Christmas with Santa', short: 'Santa', slug: 'santa',
-    line: 'For anyone who still believes, and anyone who used to.', numbers: [50, 51, 52, 53, 54, 55, 56, 57, 58], pick: 55 },
 ].map(({ id, name, short, slug, line, numbers, pick, parts }) => {
   if (numbers.indexOf(pick) < 3) throw new Error(`Collection ${id}: its pick ${pick} must be on its shelf, after the first three`);
   return {
@@ -74,7 +79,7 @@ const COLLECTIONS = [
   };
 });
 const COLLECTION_OF_DESIGN = new Map(COLLECTIONS.flatMap((c) => c.designs.map((design) => [design, c.id])));
-const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'santa' };
+const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'santa' }; // every other: nostalgia
 
 // The pictures by number, with the caption printed under each, the colour of its paper, its height in px at 960 px wide
 // (an app keeps a picture's shape while it loads it), its name on the public card pages (/cards/<slug>) and the colour of
@@ -83,7 +88,9 @@ const MOOD_OF_COLLECTION = { 'first-christmas': 'reverence', 'with-santa': 'sant
 // 59–67 are the founder's nativity pictures (2026-11-08), each with its whole King James verse printed under the
 // painting, so the caption is the verse's reference (its book and numbers joined by a no-break space). 68–89 are 22 more
 // of the founder's pictures, from Jesus's birth to the Great Commission (2026-11-21), made the same way; a passage of
-// two or three verses has an en dash in its reference ("Matthew 4:10–11 (KJV)").
+// two or three verses has an en dash in its reference ("Matthew 4:10–11 (KJV)"). 90–105 are 16 more of the founder's
+// paintings (2026-11-21), borderless like 50–58: six more of Santa, five of Christmas in the City (no shop, hotel, rink or
+// city is named anywhere: not in a caption, a slug or a file name), four Memories and one As a Kid.
 // A number is never reused: every app picks the card's stamp from it. Each picture's `mood` is the table it opens on
 // (SPEC A4, 2026-11-21): candlelit for Christmas with Jesus Christ, Santa's for Christmas with Santa, snowy for every
 // other; it comes from the collection, so a picture that moves takes its table with it. Apps that don't read it decide
@@ -218,6 +225,22 @@ const DESIGNS = [
   ['John\u00a020:18 (KJV)', '#f7f0e2', 1022, 'john-20-18', '#704b51'],
   ['John\u00a021:17 (KJV)', '#f7f0e2', 1022, 'john-21-17', '#6e4b30'],
   ['Matthew\u00a028:18–20 (KJV)', '#f7f0e2', 1022, 'matthew-28-18-20', '#704b51'],
+  ['Bundle up. It’s a long night.', '#f7f0e2', 1022, 'bundle-up-its-a-long-night', '#6e4b30'],
+  ['Save some for the reindeer.', '#f7f0e2', 1022, 'save-some-for-the-reindeer', '#6e4b30'],
+  ['One more lap, then it’s yours.', '#f7f0e2', 1022, 'one-more-lap-then-its-yours', '#6e4b30'],
+  ['For everyone working tonight.', '#f7f0e2', 1022, 'for-everyone-working-tonight', '#704b51'],
+  ['He won’t tell if you don’t.', '#f7f0e2', 1022, 'he-wont-tell-if-you-dont', '#6e4b30'],
+  ['And away he goes.', '#f7f0e2', 1022, 'and-away-he-goes', '#2c4071'],
+  ['Christmas Eve in the city.', '#f7f0e2', 1022, 'christmas-eve-in-the-city', '#704b51'],
+  ['The whole city’s lit up.', '#f7f0e2', 1022, 'the-whole-citys-lit-up', '#2c4071'],
+  ['Remember the windows downtown?', '#f7f0e2', 1022, 'remember-the-windows-downtown', '#6e4b30'],
+  ['Meet me under the tree.', '#f7f0e2', 1022, 'meet-me-under-the-tree', '#2c4071'],
+  ['Skate with me till the lights come on.', '#f7f0e2', 1022, 'skate-with-me-till-the-lights-come-on', '#3b4c6e'],
+  ['The whole street’s lit up for you.', '#f7f0e2', 1022, 'the-whole-streets-lit-up-for-you', '#2c4071'],
+  ['The porch light’s on.', '#f7f0e2', 1022, 'the-porch-lights-on', '#704b51'],
+  ['Follow our footprints home.', '#f7f0e2', 1022, 'follow-our-footprints-home', '#3b4c6e'],
+  ['I had help with the wrapping.', '#f7f0e2', 1022, 'i-had-help-with-the-wrapping', '#6e4b30'],
+  ['Come to the window. It’s starting.', '#f7f0e2', 1022, 'come-to-the-window-its-starting', '#3b4c6e'],
 ].map(([caption, paper, height, slug, table], index) => {
   const id = designIdOf(index + 1);
   return {
