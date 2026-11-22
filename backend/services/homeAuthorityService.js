@@ -75,7 +75,12 @@ async function notifyRemovedMember({ homeId, targetId, occupancyId, completedAt 
 }
 
 async function deleteEligibility(homeId, actorId) {
-  const result = await rpc('home_delete_eligibility', { p_home_id: homeId, p_user_id: actorId });
+  return eligibilityAnswer(await rpc('home_delete_eligibility', { p_home_id: homeId, p_user_id: actorId }));
+}
+
+// A home_delete_eligibility answer, checked; also used for the same function read on a direct connection
+// (homeListService).
+function eligibilityAnswer(result) {
   if (['HOME_DELETE_RETRY', 'HOME_DELETE_FAILED'].includes(result.code)) throw fail(result.code);
   if (typeof result.allowed !== 'boolean') throw fail();
   return result;
@@ -244,4 +249,6 @@ function throwDeleteResult(result) {
   throw fail(result.code, status);
 }
 
-module.exports = { mutateMember, notifyRemovedMember, deleteEligibility, deleteHome, retireHomeForDeletedAccount };
+module.exports = {
+  mutateMember, notifyRemovedMember, deleteEligibility, eligibilityAnswer, deleteHome, retireHomeForDeletedAccount,
+};
