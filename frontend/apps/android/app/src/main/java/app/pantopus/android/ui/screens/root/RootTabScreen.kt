@@ -3405,6 +3405,8 @@ fun RootTabScreen(inboxBadgeCount: Int = 0) {
                         onRadonShown = { radonHomeId = null },
                         pickupHomeId = todayPickupHomeId,
                         onPickupShown = { todayPickupHomeId = null },
+                        // The house on Today's flag and "You have mail" row: the Mail tab, as tapping it does.
+                        onOpenMail = { navController.navigateToRootTab(PantopusRoute.Mail) },
                         onAsk = { context -> navController.navigate(ChildRoutes.askPantopus(context)) },
                         onOpenMenu = openMenu,
                         skyShare = skyShare,

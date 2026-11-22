@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -73,6 +74,7 @@ import app.pantopus.android.data.api.models.homes.HomeTaskDto
 import app.pantopus.android.data.api.models.place.AirQualityCategory
 import app.pantopus.android.data.api.models.place.BallotGovernments
 import app.pantopus.android.data.api.models.place.GoodDayVerdict
+import app.pantopus.android.data.api.models.place.PickupCollection
 import app.pantopus.android.data.api.models.place.PlaceAddressCalendarData
 import app.pantopus.android.data.api.models.place.PlaceAirQualityData
 import app.pantopus.android.data.api.models.place.PlaceCalendarEvent
@@ -84,6 +86,7 @@ import app.pantopus.android.data.api.models.place.PlaceSectionId
 import app.pantopus.android.data.api.models.place.PlaceSectionStatus
 import app.pantopus.android.data.api.models.place.PlaceWeatherAlert
 import app.pantopus.android.data.api.models.place.PlaceWeatherDay
+import app.pantopus.android.data.api.models.place.SetPickupDayRequest
 import app.pantopus.android.data.api.models.place.WeatherAlertSeverity
 import app.pantopus.android.data.api.models.plans.PlanDto
 import app.pantopus.android.data.api.net.NetworkError
@@ -201,6 +204,8 @@ data class TodayTabParts(
     val last: (@Composable () -> Unit)? = null,
     /** The pickup-day journey: the editor opened for tip card 16, "See it in Today", the next pickup lit. */
     val pickup: PickupJourney = PickupJourney(),
+    /** The house on Today (the server's switch on): the picture's things and the card under it; null: Today as it was. */
+    val house: TodayHouse? = null,
 )
 
 /**
@@ -262,28 +267,7 @@ fun PlaceTodayDetailContent(
         }
     }
 
-    // 3. What's in effect now, before anything else.
-    TodayAdvisorySummary(active, alertsEnv?.source, now, Modifier.padding(bottom = 12.dp))
-    // 4. The sky, the hours ahead, the source and Weather details.
-    TodayWeatherSection(
-        intel,
-        shownCalendar?.upcoming.orEmpty(),
-        active,
-        now,
-        onBins = {
-            calendarOpen = true
-            scope.launch {
-                withFrameNanos { }
-                targets.calendar.bringIntoView()
-            }
-        },
-        onDetails = { openConditions(targets.conditions) },
-    )
-    // The sun's path, sunrise, sunset and the day's length, right under the weather.
-    TodaySunCard(intel)
-    // Share, under the sun card: today's sky as a picture or a clip.
-    TodaySkyShare(intel, now, tab.skyShare)
-    // 5. Coming up at home, with the full calendar one tap away.
+    // What is coming up at home: read first, since the house's picture and its card need to know what it lists.
     val ballot = BallotPlacement.ballot(intel)
     val election = intel.section(PlaceSectionId.CIVIC_ELECTION)?.civicElection?.takeIf { ballot != null }?.let { it.name to it.date }
     val items =
@@ -300,6 +284,55 @@ fun PlaceTodayDetailContent(
             )
         }
     val guest = intel.viewer?.role == "nonresident"
+    // What waits on the person: a task the agenda lists shows there only (phase 3 brief section 3).
+    val agendaTasks = remember(items, now.toLocalDate()) { agendaTaskIds(items, now.toLocalDate()) }
+    val showBins = {
+        calendarOpen = true
+        scope.launch {
+            withFrameNanos { }
+            targets.calendar.bringIntoView()
+        }
+        Unit
+    }
+    // 3. What's in effect now, before anything else.
+    TodayAdvisorySummary(active, alertsEnv?.source, now, Modifier.padding(bottom = 12.dp))
+    // 4. The sky, the hours ahead, the source and Weather details.
+    TodayWeatherSection(
+        intel,
+        shownCalendar?.upcoming.orEmpty(),
+        active,
+        now,
+        onBins = showBins,
+        onDetails = { openConditions(targets.conditions) },
+        // The house on Today: its question and the "Needs you" card sit right under the picture.
+        house =
+            tab.house?.let { house ->
+                TodayHouseSky(house.sky(agendaTasks)) { pickupKinds ->
+                    TodayHouseUnderSky(
+                        house = house,
+                        agendaTasks = agendaTasks,
+                        pickup = pickupKinds?.let { pickupKindsLine(it) to showBins },
+                        calendar = shownCalendar.takeUnless { guest },
+                        actions = viewModel,
+                        onYes = { collections ->
+                            // The calendar opens for the saved box; the reminder goes on without asking again.
+                            pickupState.answer(collections)
+                            calendarOpen = true
+                            viewModel?.setPickupDay(
+                                SetPickupDayRequest(collections = collections, expectedVersion = shownCalendar?.pickupVersion),
+                                offerPrimer = true,
+                            )
+                        },
+                        onChange = openPickup,
+                    )
+                }
+            },
+    )
+    // The sun's path, sunrise, sunset and the day's length, right under the weather.
+    TodaySunCard(intel)
+    // Share, under the sun card: today's sky as a picture or a clip.
+    TodaySkyShare(intel, now, tab.skyShare)
+    // 5. Coming up at home, with the full calendar one tap away.
     PickupEditorRequestEffect(tab.pickup, ready = viewModel != null && shownCalendar != null, open = openPickup)
     PickupLitRequestEffect(
         tab.pickup,
@@ -313,9 +346,8 @@ fun PlaceTodayDetailContent(
         agenda = targets.agenda,
         showCalendar = { calendarOpen = it },
     )
-    // What waits on the person, before what is coming up at home (phase 3 brief section 3).
-    val agendaTasks = remember(items, now.toLocalDate()) { agendaTaskIds(items, now.toLocalDate()) }
-    tab.needsYou?.invoke(agendaTasks)
+    // What waits on the person, before what is coming up at home; with the house on Today it is under the picture.
+    if (tab.house == null) tab.needsYou?.invoke(agendaTasks)
     tab.christmas?.invoke()
     var governments by remember { mutableStateOf<BallotGovernments?>(null) }
     // A place with no address calendar (a saved place) and nothing else coming shows no agenda; its plan cards stay.
@@ -612,6 +644,8 @@ private fun TodayWeatherSection(
     now: ZonedDateTime,
     onBins: () -> Unit,
     onDetails: () -> Unit,
+    /** The house on Today: the picture's things and what sits right under the picture; null: the section as it was. */
+    house: TodayHouseSky? = null,
 ) {
     val env = intel.section(PlaceSectionId.WEATHER) ?: return
     val data = env.weather
@@ -632,7 +666,12 @@ private fun TodayWeatherSection(
                 timeZone = now.zone,
             ),
         onBins = onBins,
+        house = house?.things?.takeIf { LocalConfiguration.current.screenWidthDp < HOUSE_MAX_WIDTH_DP },
     )
+    if (house != null) {
+        val moment = SkyMoment.at(now, sun?.localSunrise(now.zone), sun?.localSunset(now.zone))
+        house.under(SkyNote.bins(now, moment, pickups)?.takeIf { it.kind == SkyNote.Kind.BINS_OUT }?.bins)
+    }
     TodayHourlyStrip(remember(data, active, sun, now) { hourlyCells(data, active, sun, now) }, Modifier.padding(top = 10.dp))
     val updated = PlacePresentation.fmtTime(env.asOf, intel.homeZone)?.let { "updated $it" }
     val source: @Composable () -> Unit = { PlaceSourceNote(env.source.orEmpty().ifBlank { "Source unavailable" }, updated) }
@@ -894,7 +933,9 @@ private fun AddressCalendarCard(
             )
         }
     }
-    if (viewModel != null) PickupReminderPrimer(viewModel)
+    if (viewModel != null) PickupReminderPrimer(viewModel, pickup, scheduleShown = !data.needsPickupDay)
+    // A save that failed: the next one's reminder question asks as usual.
+    LaunchedEffect(errorText) { if (errorText != null) pickup.forgetAnswer() }
 }
 
 @Composable
@@ -2000,3 +2041,44 @@ private val PICKUP_LIT_HEADROOM = 96.dp
 
 /** How long "See it in Today" waits for Today to show the saved schedule before giving up. */
 private const val PICKUP_LIT_WAIT_MS = 8000L
+
+/** The house on Today's parts of the weather section. */
+private class TodayHouseSky(
+    /** The picture's things. Drawn on a phone-width column; a wider one keeps the card as it was. */
+    val things: SkyHouse,
+    /** Under the picture, above the hourly strip; it gets the kinds collected tomorrow on a pickup evening. */
+    val under: @Composable (pickupKinds: List<String>?) -> Unit,
+)
+
+/** The larger picture needs a phone-width column: from this screen width (dp) the "Now" card stays as it was. */
+private const val HOUSE_MAX_WIDTH_DP = 600
+
+/**
+ * Under the house's picture: the question while the home still runs on its city's general pickup schedule, then the
+ * "Needs you" card with the rows only this page knows (tomorrow's pickup).
+ */
+@Composable
+@Suppress("LongParameterList")
+private fun TodayHouseUnderSky(
+    house: TodayHouse,
+    agendaTasks: Set<String>,
+    pickup: Pair<String, () -> Unit>?,
+    /** The home's calendar, for a person who may set its schedule; null for a saved place or a guest. */
+    calendar: PlaceAddressCalendarData?,
+    actions: AddressCalendarActions?,
+    onYes: (List<PickupCollection>) -> Unit,
+    onChange: () -> Unit,
+) {
+    val garbage = calendar?.takeIf { actions != null && it.needsPickupDay }?.let(::generalGarbageDate)
+    if (garbage != null && actions != null) {
+        val busy by actions.calendarBusy.collectAsStateWithLifecycle()
+        TodayHouseQuestion(
+            garbage = garbage,
+            busy = busy,
+            onYes = { onYes(generalSchedule(calendar)) },
+            onChange = onChange,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+    }
+    house.card(TodayHouseCard(agendaTaskIds = agendaTasks, pickup = pickup, hasHome = actions != null))
+}

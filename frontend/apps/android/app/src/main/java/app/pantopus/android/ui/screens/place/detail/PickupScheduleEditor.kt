@@ -33,7 +33,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -54,7 +56,9 @@ import app.pantopus.android.data.api.models.place.PlaceAddressCalendarData
 import app.pantopus.android.data.api.models.place.SetPickupDayRequest
 import app.pantopus.android.ui.components.GhostButton
 import app.pantopus.android.ui.theme.PantopusColors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -62,6 +66,9 @@ import java.time.format.DateTimeFormatter
 private const val WEEKLY_PICKUP_WINDOW_DAYS = 7L
 private const val BIWEEKLY_PICKUP_WINDOW_DAYS = 14L
 private const val WEEKDAY_LABEL_LENGTH = 3
+
+/** How long "Yes, remind me" waits for the page to show the saved schedule before turning the reminder on anyway. */
+private const val ANSWERED_WAIT_MS = 8000L
 private val PICKUP_DATE_FORMAT = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy")
 
 private val WEEKDAYS =
@@ -479,15 +486,26 @@ private fun ScheduleChoice(
     }
 }
 
-/** The only entry is an acknowledged first pickup save; dismissal sends no request. */
+/**
+ * The only entry is an acknowledged first pickup save; dismissal sends no request. After the house's question on Today
+ * ("Yes, remind me", [journey]) the answer is already given: the reminder goes on at once, and the sheet shows only if
+ * something needs saying (it couldn't be turned on, or notifications are off).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PickupReminderPrimer(actions: AddressCalendarActions) {
+@Suppress("CyclomaticComplexMethod")
+internal fun PickupReminderPrimer(
+    actions: AddressCalendarActions,
+    journey: PickupJourneyState? = null,
+    /** The card shows the household's saved schedule: the page has finished reading itself again after the save. */
+    scheduleShown: Boolean = true,
+) {
     val homeId = actions.pickupPrimerHomeId?.collectAsStateWithLifecycle()?.value ?: return
     val context = LocalContext.current
     val prefs = remember(context) { context.applicationContext.getSharedPreferences("just_moved", Context.MODE_PRIVATE) }
     val shownKey = "pickupPrimer.shown.$homeId"
-    val show = remember(homeId) { !prefs.getBoolean(shownKey, false) }
+    val answered = remember(homeId) { journey?.takeAnswered() == true }
+    val show = remember(homeId) { answered || !prefs.getBoolean(shownKey, false) }
     var busy by remember(homeId) { mutableStateOf(false) }
     var errorText by remember(homeId) { mutableStateOf<String?>(null) }
     var notificationsOff by remember(homeId) { mutableStateOf(false) }
@@ -525,6 +543,17 @@ internal fun PickupReminderPrimer(actions: AddressCalendarActions) {
             }
         }
     }
+    // The page reads itself again right after a save, and a request made across that read is refused as a changed
+    // session. So the answer given on Today waits until the saved schedule shows, or a few seconds at most; after that
+    // the sheet can say what went wrong and offer "Remind me".
+    val saved by rememberUpdatedState(scheduleShown)
+    LaunchedEffect(homeId) {
+        if (answered) {
+            withTimeoutOrNull(ANSWERED_WAIT_MS) { snapshotFlow { saved }.first { it } }
+            onRemind()
+        }
+    }
+    if (answered && errorText == null && !notificationsOff) return
     ModalBottomSheet(
         onDismissRequest = { if (!busy) actions.dismissPickupPrimer() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
