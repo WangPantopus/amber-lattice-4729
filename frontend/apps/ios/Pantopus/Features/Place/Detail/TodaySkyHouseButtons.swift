@@ -33,7 +33,7 @@ struct SkyHouseTargets: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             if house.things.has(.flag) {
-                target(at: spots.mailbox, label: "Mail came today. Opens Mail.", id: "todaySkyMailbox", action: house.onMail)
+                target(at: spots.mailbox, label: "You have mail. Opens Mail.", id: "todaySkyMailbox", action: house.onMail)
             }
             if house.things.has(.note) {
                 target(at: spots.note, label: "\(house.noteWords). Opens it.", id: "todaySkyNote", action: house.onNote)

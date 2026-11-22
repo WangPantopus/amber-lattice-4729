@@ -15,7 +15,7 @@
 //
 //  With the house on Today (JOURNEYS section 3) the card sits directly under
 //  the picture and says the same things in words: a first row while mail
-//  waits ("Mail came today"), its items as before, a last row on a pickup
+//  waits ("You have mail"), its items as before, a last row on a pickup
 //  evening ("Pickup is tomorrow"), and for a person with a home one line
 //  instead of hiding: "Nothing needs you today."
 //
@@ -166,7 +166,7 @@ struct TodayNeedsYouCard: View {
         case let .mail(count):
             row(
                 look: Look(icon: .mail, tint: Theme.Color.error, background: Theme.Color.errorBg),
-                title: "Mail came today",
+                title: "You have mail",
                 subtitle: "\(count) unopened",
                 identifier: "today.house.mailRow"
             ) { house?.onMail() }
