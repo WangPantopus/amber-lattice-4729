@@ -161,7 +161,7 @@ struct PlanScreen: View {
     }
 
     private func planScroll(_ card: PlanCardDTO) -> some View {
-        ScrollView {
+        PlanBringScroll { // a ScrollView that "See what to bring" can scroll to the bring card
             VStack(spacing: 0) {
                 ZStack(alignment: .bottomLeading) {
                     PlanHeaderMap(

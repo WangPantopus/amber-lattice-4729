@@ -31,11 +31,11 @@ struct PlanGoingSection: View {
     var body: some View {
         Group {
             if card.answersWithNumbers {
-                PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), onChange: onAnswer)
+                PlanAnswerBanner(kind: .isIn, line: card.myNumbers(viewModel.plan?.myRequest), bring: card.bringOpen, onChange: onAnswer)
             } else if let unlocked = card.dealUnlockedBanner {
                 PlanDealUnlockedBanner(text: unlocked)
             } else {
-                PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine)
+                PlanBanner(tone: .success, icon: .check, title: "You're in", message: yesLine, bring: card.bringOpen)
             }
         }
         .offset(y: bannerShift)
@@ -78,7 +78,7 @@ struct PlanGoingSection: View {
             .accessibilityElement(children: .combine)
         }
         // Board 20: the bring list for someone who is in.
-        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring) }
+        if let bring = card.bring { PlanBringGuestCard(viewModel: viewModel, bring: bring).id(PlanBringScroll<EmptyView>.anchor) }
         HStack(spacing: Spacing.s2) {
             if !card.isOnline { // nowhere to go for an online plan
                 Button(action: openDirections) { PlanButtonLabel(title: "Directions", icon: .locationArrow, kind: .tonal, stacked: true) }
