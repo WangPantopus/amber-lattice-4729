@@ -9,10 +9,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +45,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -99,13 +103,22 @@ import java.util.Locale
 internal val HolidayCardsResponse.drawsShelves: Boolean
     get() = shelves && shelvesOf().isNotEmpty()
 
-/** One collection on a shelf: its pictures in order, and the one that stands for it up top ([pick]). */
+/** One collection on a shelf: its pictures in order, the one that stands for it up top ([pick]), and its parts. */
 @Immutable
 internal class CardShelf(
     val collection: HolidayCardCollection,
     val designs: List<HolidayCardDesign>,
     /** Its card in "One from each collection"; null: none (the server sent none, or one not on this shelf). */
     val pick: HolidayCardDesign?,
+    /** Its parts in story order (Christmas with Jesus Christ); empty: its page is the grid alone. */
+    val parts: List<CardShelfPart>,
+)
+
+/** A part of a collection's page ("The first Christmas") and its pictures. */
+@Immutable
+internal class CardShelfPart(
+    val name: String,
+    val designs: List<HolidayCardDesign>,
 )
 
 /**
@@ -119,16 +132,25 @@ internal fun HolidayCardsResponse.openingOf(shelves: List<CardShelf>): List<Card
     return named + picked.filterNot { it in named }
 }
 
-/** The server's collections with the pictures it knows, in order; a collection with none is left out. */
+/**
+ * The server's collections with the pictures it knows, in order; a collection with none is left out. Parts are kept only
+ * when together they hold every picture of the collection, so no card goes missing from its page.
+ */
 internal fun HolidayCardsResponse.shelvesOf(): List<CardShelf> {
     val byId = designs.associateBy { it.id }
     return collections.mapNotNull { collection ->
         val shown = collection.designs.mapNotNull { byId[it] }
         if (shown.isEmpty()) return@mapNotNull null
+        val parts =
+            collection.parts
+                .map { part -> CardShelfPart(part.name.trim(), part.designs.mapNotNull { byId[it] }) }
+                .filter { it.name.isNotEmpty() && it.designs.isNotEmpty() }
+        val whole = parts.flatMap { it.designs }.map { it.id }.toSet() == shown.map { it.id }.toSet()
         CardShelf(
             collection = collection,
             designs = shown,
             pick = collection.pick?.let { id -> shown.firstOrNull { it.id == id } },
+            parts = parts.takeIf { whole }.orEmpty(),
         )
     }
 }
@@ -617,7 +639,12 @@ private fun SeeAllTile(
     }
 }
 
-/** A collection's page: its name in the card's serif, its line, and its cards two across as in today's grid. */
+/**
+ * A collection's page: its name in the card's serif, its line, and its cards two across as in today's grid. With parts,
+ * their names on pills that stay under the title row while the page scrolls: a tap goes to that part, and the part in
+ * view is the wax-red one; each part starts with its name and "· <n> cards".
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CollectionPage(
     shelf: CardShelf,
@@ -626,8 +653,38 @@ private fun CollectionPage(
     onLarge: (String) -> Unit,
 ) {
     val collection = shelf.collection
+    val total = shelf.designs.size
+    val list = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val reduceMotion = rememberReduceMotion()
+    val columns = sizes.columns
+    // Where each part's name sits in the list: the title, the line, the pills, then each part's name and its rows.
+    val head = if (collection.line.isNotBlank()) 2 else 1
+    val partStarts =
+        remember(shelf, columns) {
+            var at = head + 1
+            shelf.parts.map { part ->
+                at.also { at += 1 + (part.designs.size + columns - 1) / columns }
+            }
+        }
+    var pillsHeight by remember { mutableIntStateOf(0) }
+    val current by remember(partStarts) {
+        derivedStateOf {
+            val info = list.layoutInfo
+            var part = 0
+            partStarts.forEachIndexed { index, start ->
+                val seen = info.visibleItemsInfo.firstOrNull { it.index == start }
+                // A part's name at or above the pills' lower edge, or already scrolled away above them.
+                val reached = if (seen != null) seen.offset <= pillsHeight + 1 else start < list.firstVisibleItemIndex
+                if (reached) part = index
+            }
+            // At the end of the page the last part may never reach the top: it's the one in view once its name shows.
+            val lastSeen = partStarts.lastOrNull()?.let { last -> info.visibleItemsInfo.any { it.index == last } } == true
+            if (!list.canScrollForward && lastSeen) partStarts.lastIndex else part
+        }
+    }
     LazyColumn(
-        state = rememberLazyListState(),
+        state = list,
         modifier = Modifier.fillMaxSize().testTag("sendCardCollectionPage.${collection.id}"),
         contentPadding = PaddingValues(bottom = Spacing.s6),
     ) {
@@ -653,7 +710,70 @@ private fun CollectionPage(
                 )
             }
         }
-        gridRows(shelf.designs, sizes.columns, sizes, chosen, shelf.designs.size, offset = 0, key = "all", onLarge = onLarge)
+        if (shelf.parts.isEmpty()) {
+            gridRows(shelf.designs, columns, sizes, chosen, total, offset = 0, key = "all", onLarge = onLarge)
+        } else {
+            stickyHeader(key = "pills") {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(PantopusColors.cardDesk)
+                            .onSizeChanged { pillsHeight = it.height }
+                            .horizontalScroll(rememberScrollState())
+                            .padding(start = Spacing.s4, end = Spacing.s4, bottom = Spacing.s2)
+                            .semantics { contentDescription = "Parts" }
+                            .selectableGroup()
+                            .testTag("sendCardParts"),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                ) {
+                    shelf.parts.forEachIndexed { index, part ->
+                        CardPill(
+                            part.name,
+                            selected = index == current,
+                            onSelect = {
+                                val at = partStarts[index]
+                                scope.launch {
+                                    // The part's name lands just under the pills.
+                                    if (reduceMotion) list.scrollToItem(at, -pillsHeight) else list.animateScrollToItem(at, -pillsHeight)
+                                }
+                            },
+                            tag = "sendCardPart.$index",
+                        )
+                    }
+                }
+            }
+            var offset = 0
+            shelf.parts.forEachIndexed { index, part ->
+                item(key = "part.$index") {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = Spacing.s4, end = Spacing.s4, top = Spacing.s3, bottom = Spacing.s2)
+                                .semantics(mergeDescendants = true) { heading() },
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        Text(
+                            part.name,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PantopusColors.cardTextStrong,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(
+                            " · ${count(part.designs.size, "card")}",
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = PantopusColors.cardTextQuiet,
+                        )
+                    }
+                }
+                gridRows(part.designs, columns, sizes, chosen, total, offset = offset, key = "part.$index", onLarge = onLarge)
+                offset += part.designs.size
+            }
+        }
     }
 }
 
