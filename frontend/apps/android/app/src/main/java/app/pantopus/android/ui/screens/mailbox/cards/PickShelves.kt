@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -562,35 +563,40 @@ private fun ShelfTile(
 ) {
     val density = LocalDensity.current
     val thumb = with(density) { picture.toPx() } <= THUMB_REACH_PX
-    Column(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(Radii.md))
-                .clickable(onClick = onTap)
-                .clearAndSetSemantics {
-                    contentDescription = label
-                    role = Role.Button
-                    if (selected) stateDescription = "Chosen"
-                    onClick(label = "See it larger") {
-                        onTap()
-                        true
-                    }
-                }.padding(Spacing.s1)
-                .testTag(tag),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        PickPicture(design, selected, thumb = thumb)
-        // Two lines at most at the usual size, so the row keeps one height; at the largest text it wraps on, never cut.
-        Text(
-            design.caption,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (strong) PantopusColors.cardTextStrong else PantopusColors.cardTextBody,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.heightIn(min = with(density) { (if (strong) 18.sp else 36.sp).toDp() }),
-        )
+    // Pressed and held: the card large over the page until the finger lifts (SPEC B8).
+    var held by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Column(
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(Radii.md))
+                    .tapOrHold(onTap = onTap, onHold = { held = it })
+                    .clearAndSetSemantics {
+                        contentDescription = label
+                        role = Role.Button
+                        if (selected) stateDescription = "Chosen"
+                        onClick(label = "See it larger") {
+                            onTap()
+                            true
+                        }
+                    }.padding(Spacing.s1)
+                    .testTag(tag),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            PickPicture(design, selected, thumb = thumb)
+            // Two lines at most at the usual size, so the row keeps one height; at the largest text it wraps on, never cut.
+            Text(
+                design.caption,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (strong) PantopusColors.cardTextStrong else PantopusColors.cardTextBody,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.heightIn(min = with(density) { (if (strong) 18.sp else 36.sp).toDp() }),
+            )
+        }
+        if (held) HoldPreview(design)
     }
 }
 
