@@ -2,8 +2,9 @@
 //  CardTableMood.swift
 //  Pantopus
 //
-//  The mood follows the card (launch key `card_table`, plan Part 7). Each collection has one of three moods, mapped
-//  here from the picture's number (default nostalgia), so the server needn't send it:
+//  The mood follows the card (launch key `card_table`, plan Part 7). Each collection has one of three moods. The server
+//  names it on each picture and opened card (`mood`, card shelves A4); without it (older servers, answers kept from
+//  before) it comes from the picture's number here (default nostalgia):
 //  - Nostalgia: snow falling outside the window, its soft shadows drifting down through the patch of window light.
 //  - Reverence (Christmas with Jesus Christ): no snow; candlelight from the lower left that breathes very slowly, one
 //    slow glint across the gold lining when the flap opens, and the star stamp.
@@ -17,12 +18,22 @@ enum CardTableMood: Equatable {
     /// `letter`: a letter, not a card (plan Part 10): no snow, candle, glint or bounce.
     case nostalgia, reverence, santa, letter
 
-    /// By the picture's number, as the server's collections hold them: 59-89 Christmas with Jesus Christ, 50-58
-    /// Christmas with Santa, every other picture nostalgia.
+    /// The server's `mood` when it names one of the three; else by the picture's number.
+    init(mood: String?, number: Int?) {
+        switch mood {
+        case "reverence": self = .reverence
+        case "santa": self = .santa
+        case "nostalgia": self = .nostalgia
+        default: self.init(number: number)
+        }
+    }
+
+    /// By the picture's number, as the server's collections hold them: 59-89 Christmas with Jesus Christ, 50-58 and
+    /// 90-95 Christmas with Santa, every other picture nostalgia.
     init(number: Int?) {
         switch number ?? 0 {
         case 59...89: self = .reverence
-        case 50...58: self = .santa
+        case 50...58, 90...95: self = .santa
         default: self = .nostalgia
         }
     }

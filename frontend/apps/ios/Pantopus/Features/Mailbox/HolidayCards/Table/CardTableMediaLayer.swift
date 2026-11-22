@@ -43,7 +43,7 @@ struct CardTableMediaLayer: View {
                     source: from.source(photo.fileId),
                     aspect: photo.aspect,
                     alt: photo.alt,
-                    datedOn: CardTableMood(number: model.content.number) == .nostalgia ? mailedDay : nil,
+                    datedOn: CardTableMood(mood: model.content.mood, number: model.content.number) == .nostalgia ? mailedDay : nil,
                     covered: covered,
                     fromName: model.content.fromName,
                     onUncover: uncover,
@@ -64,7 +64,7 @@ struct CardTableMediaLayer: View {
                     durationMs: voice.durationMs,
                     forName: model.content.toName,
                     fromName: model.content.fromName,
-                    gift: CardTableMood(number: model.content.number) == .reverence,
+                    gift: CardTableMood(mood: model.content.mood, number: model.content.number) == .reverence,
                     tilt: 3
                 )
                 .frame(width: frame.width)
@@ -149,7 +149,7 @@ struct CardTableMediaLayer: View {
     /// the open Duo's picture page.
     private func greetingFrame() -> CGRect {
         // A cassette and its pill: about 0.62 of its width tall plus the pill; a gift tag about 0.53, with no pill.
-        let gift = CardTableMood(number: model.content.number) == .reverence
+        let gift = CardTableMood(mood: model.content.mood, number: model.content.number) == .reverence
         let tall: (CGFloat) -> CGFloat = { width in gift ? width * 0.53 : width * 0.62 + 30 }
         if model.fold.isSpread, let pages = model.fold.pages(screen: layout.screen, bottomRoom: model.pagesBottomRoom(layout)) {
             let page = pages.pictureFrame

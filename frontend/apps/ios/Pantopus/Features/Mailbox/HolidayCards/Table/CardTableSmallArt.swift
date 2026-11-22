@@ -47,8 +47,8 @@ final class CardTableSmallArt {
     }
 
     /// The card's stamp, from its number, as on the envelope (the star on Christmas with Jesus Christ cards).
-    func stamp(number: Int?) -> UIImage? {
-        if CardTableMood(number: number) == .reverence { return stampStar }
+    func stamp(number: Int?, mood: String? = nil) -> UIImage? {
+        if CardTableMood(mood: mood, number: number) == .reverence { return stampStar }
         return switch ((number ?? 1) - 1 + 3) % 3 {
         case 0: stampFir
         case 1: stampPeak
@@ -121,7 +121,7 @@ struct CardTableRowPostage: View {
     var body: some View {
         let art = CardTableSmallArt.shared
         ZStack(alignment: .topTrailing) {
-            if let stamp = art.stamp(number: model.card?.number) {
+            if let stamp = art.stamp(number: model.card?.number, mood: model.card?.mood) {
                 Image(uiImage: stamp)
                     .resizable()
                     .scaledToFit()

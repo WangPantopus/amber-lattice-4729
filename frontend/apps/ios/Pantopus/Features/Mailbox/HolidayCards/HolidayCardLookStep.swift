@@ -399,6 +399,7 @@ private extension HolidayCardLookStep {
                 voice: card?.voice,
                 from: .own,
                 number: card?.number ?? design.number,
+                moodName: card?.mood ?? design.mood,
                 day: preview.piece.item.postmark?.date ?? preview.piece.item.createdAt,
                 fromName: from,
                 forName: recipient.envelopeName
@@ -445,7 +446,8 @@ private extension HolidayCardLookStep {
             signature: card?.signature,
             photo: card?.photo,
             voice: card?.voice,
-            mediaFrom: .own
+            mediaFrom: .own,
+            mood: card?.mood ?? design.mood
         )
     }
 }

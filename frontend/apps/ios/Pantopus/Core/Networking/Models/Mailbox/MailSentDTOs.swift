@@ -144,6 +144,8 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
         /// The card's own photo and voice greeting (`holiday_card_memories`), on the card's page only, never covered.
         public let photo: CardPhoto?
         public let voice: CardVoice?
+        /// The table it opens on, named by the server (card shelves A4); nil from older servers.
+        public let mood: String?
 
         public init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -158,10 +160,11 @@ public struct MailSentPiece: Decodable, Sendable, Hashable, Identifiable {
             signature = try? c.decodeIfPresent(CardSignature.self, forKey: .signature)
             photo = try? c.decodeIfPresent(CardPhoto.self, forKey: .photo)
             voice = try? c.decodeIfPresent(CardVoice.self, forKey: .voice)
+            mood = try? c.decodeIfPresent(String.self, forKey: .mood)
         }
 
         private enum CodingKeys: String, CodingKey {
-            case design, number, caption, paper, height, year, slug, table, signature, photo, voice
+            case design, number, caption, paper, height, year, slug, table, signature, photo, voice, mood
         }
     }
 

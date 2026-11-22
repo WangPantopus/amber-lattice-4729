@@ -247,7 +247,8 @@ final class CardTablePassOnModel {
             sealedInDays: "",
             sealedDayCount: 0,
             verse: card.verse,
-            signature: signature
+            signature: signature,
+            mood: card.mood
         )
         let marks = (content.travel?.marks ?? []) + CardTravelEnvelope.marks(postmark.map { [$0] } ?? [], year: card.year)
         sealed.travel = marks.isEmpty ? nil : CardTravelEnvelope(sealing: marks)

@@ -49,6 +49,9 @@ struct CardTableContent: Equatable {
     /// A travelling card (server switch `card_travel`, travelling card plan Part 3): the postmarks of the towns on the
     /// way to its reader and how far it came; nil for every other card.
     var travel: CardTravelEnvelope?
+    /// The table it opens on, as the server names it (card shelves A4); nil from older servers (`CardTableMood` goes by
+    /// the number then).
+    var mood: String?
 
     var firstName: String {
         HolidayCardWords.firstName(fromName)
@@ -100,5 +103,6 @@ extension CardTableContent {
         mediaFrom = .sent(cardId: piece.id)
         // A card that travels: its envelope's postmarks, as they see it (travelling card plan Part 7).
         travel = CardTravelEnvelope(sent: piece.travel, year: piece.card.year)
+        mood = piece.card.mood
     }
 }

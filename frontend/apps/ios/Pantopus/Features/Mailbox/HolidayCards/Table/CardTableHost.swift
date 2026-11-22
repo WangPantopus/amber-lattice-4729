@@ -37,6 +37,7 @@ extension CardTableContent {
         voice = card.card.sealed ? nil : card.card.voice
         mediaFrom = .piece(mailId: letter.piece.id)
         travel = CardTravelEnvelope(card.card.travel, year: card.card.year)
+        mood = card.card.mood
     }
 }
 
