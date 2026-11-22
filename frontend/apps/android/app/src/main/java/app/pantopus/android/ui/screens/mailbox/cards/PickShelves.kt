@@ -674,7 +674,9 @@ private fun CollectionPage(
             var part = 0
             partStarts.forEachIndexed { index, start ->
                 val seen = info.visibleItemsInfo.firstOrNull { it.index == start }
-                if ((seen != null && seen.offset <= pillsHeight + 1) || (seen == null && start < list.firstVisibleItemIndex)) part = index
+                // A part's name at or above the pills' lower edge, or already scrolled away above them.
+                val reached = if (seen != null) seen.offset <= pillsHeight + 1 else start < list.firstVisibleItemIndex
+                if (reached) part = index
             }
             // At the end of the page the last part may never reach the top: it's the one in view once its name shows.
             val lastSeen = partStarts.lastOrNull()?.let { last -> info.visibleItemsInfo.any { it.index == last } } == true
