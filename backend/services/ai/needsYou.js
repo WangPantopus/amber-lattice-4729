@@ -24,6 +24,7 @@ const { pendingReceived } = require('../connectionRequests');
 const { localDisplayNames } = require('../../utils/identityProfiles');
 const { isUuid, clip, homesOf, zoneOr, firstNameOf } = require('./assistantKit');
 const { userTimeZone } = require('./chatContext');
+const { composeForHomeId } = require('../addressCalendarService');
 
 const SOURCE_MS = 1500;
 const MAX_ITEMS = 20;
@@ -31,8 +32,12 @@ const ASSIGNED_WITHIN_DAYS = 7;
 const NUDGE_DAYS = 7;
 const QUESTIONS = 3;
 const QUESTION_LOOKBACK_DAYS = 7;
+const PICKUP_ASK_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// The apps' Today tab, where "Coming up at home" holds the pickup schedule editor (no link opens the editor itself).
+const PICKUP_LINK = 'pantopus://today';
 // Most urgent first (§6.2).
-const ORDER = ['still_coming', 'plan_requests', 'task_overdue', 'home_invite', 'household_request', 'connection_request', 'task_assigned', 'nudge_card', 'question_answered'];
+const ORDER = ['still_coming', 'plan_requests', 'task_overdue', 'home_invite', 'household_request', 'connection_request', 'task_assigned', 'pickup_day', 'nudge_card', 'question_answered'];
 
 const when = (iso, zone) => {
   const at = iso ? DateTime.fromISO(String(iso), { zone: 'utc' }).setZone(zoneOr(zone)) : null;
@@ -166,6 +171,38 @@ async function connectionItems(ctx) {
   }));
 }
 
+/**
+ * "Which day do your bins go out?" (PICKUPDAY): a home the person joined in the last 14 days, whose pickup schedule
+ * they may set (the pickup routes' own check), with no garbage day from any source and none set by the household.
+ * Nothing is stored: setting the day answers it, and it stops asking 14 days after they joined.
+ */
+async function pickupDayItems(ctx) {
+  const since = Date.now() - PICKUP_ASK_DAYS * DAY_MS;
+  const { data: rows, error } = await supabaseAdmin.from('HomeOccupancy')
+    .select('home_id, start_at, created_at')
+    .eq('user_id', ctx.userId)
+    .eq('is_active', true)
+    .limit(10);
+  if (error) throw new Error(`Homes read failed: ${error.message}`);
+  const recent = [...new Set((rows || [])
+    .filter((row) => Date.parse(row.start_at || row.created_at) >= since)
+    .map((row) => row.home_id).filter(isUuid))];
+  const asks = await Promise.all(recent.map(async (homeId) => {
+    const [allowed, calendar] = await Promise.all([
+      supabaseAdmin.rpc('home_pickup_calendar_allowed', { p_home_id: homeId, p_user_id: ctx.userId, p_write: true })
+        .then(({ data, error: rpcError }) => !rpcError && data === true),
+      composeForHomeId(homeId, { userId: ctx.userId }).catch(() => null),
+    ]);
+    if (!allowed || !calendar?.needs_pickup_day || (calendar.upcoming || []).some((entry) => entry.kind === 'garbage')) return null;
+    return {
+      id: `pickup_day:${homeId}`, type: 'pickup_day', title: 'Which day do your bins go out?',
+      subtitle: 'Tell Pantopus once. It reminds you the night before.', due_at: null,
+      link: PICKUP_LINK, subject: { type: 'home', id: homeId },
+    };
+  }));
+  return asks.filter(Boolean);
+}
+
 /** Briefs and nudges of the last 7 days whose card is still open and unexpired (a follow-up that ran included). */
 async function nudgeItems(ctx) {
   const now = new Date().toISOString();
@@ -266,6 +303,7 @@ async function needsYou(ctx) {
     ['home_invite', inviteItems],
     ['household_request', householdRequestItems],
     ['connection_request', connectionItems],
+    ['pickup_day', pickupDayItems],
     ['nudge_card', nudgeItems],
     ['question_answered', questionItems],
   ].filter(([, run]) => run);
@@ -295,7 +333,7 @@ async function needsYou(ctx) {
 
 const needsYouDefinition = {
   name: 'needs_you',
-  description: 'What waits on them right now, most urgent first: "Still coming?" questions, people asking to join their plans, overdue and assigned household tasks, invitations and requests, open suggestion cards and answered questions. For "what needs me?", "what am I behind on?".',
+  description: 'What waits on them right now, most urgent first: "Still coming?" questions, people asking to join their plans, overdue and assigned household tasks, invitations and requests, a new home whose pickup day isn\'t known yet, open suggestion cards and answered questions. For "what needs me?", "what am I behind on?".',
   input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 
